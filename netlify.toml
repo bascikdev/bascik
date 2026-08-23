@@ -1,6 +1,0 @@
-[build]
-  command = "yarn pkg:build && yarn docs:build"
-  publish = "docs/dist"
-
-[build.environment]
-  FONTCONFIG_PATH = "/opt/build/repo/.fonts"
