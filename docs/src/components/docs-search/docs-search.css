@@ -38,8 +38,16 @@
 @media (max-width: 768px) {
   .search-btn-text,
   .search-btn-kbd { display: none; }
-  .dnav-search-btn { padding: 7px; background: none; border-color: transparent; }
-  .dnav-search-btn:hover { background: var(--elevated); border-color: var(--border); }
+  .dnav-search-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    background: none;
+    border-color: transparent;
+    border-radius: var(--r-sm);
+  }
+  .dnav-search-btn:hover { background: var(--elevated); border-color: transparent; }
 }
 
 /* Overlay */

@@ -2277,6 +2277,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:^4.1.10"
     lighthouse: "npm:^12.4.0"
     marked: "npm:^18.0.7"
+    opentype.js: "npm:^2.0.0"
     sharp: "npm:^0.35.3"
     typescript: "npm:^7.0.2"
     vitest: "npm:^4.1.10"
@@ -5022,6 +5023,15 @@ __metadata:
     is-docker: "npm:^2.1.1"
     is-wsl: "npm:^2.2.0"
   checksum: 10c0/bb6b3a58401dacdb0aad14360626faf3fb7fba4b77816b373495988b724fb48941cad80c1b65d62bb31a17609b2cd91c41a181602caea597ca80dfbcc27e84c9
+  languageName: node
+  linkType: hard
+
+"opentype.js@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "opentype.js@npm:2.0.0"
+  bin:
+    ot: bin/ot
+  checksum: 10c0/85539aca7b99ec10019adcdd2bcc74d0ab2757277f775394826db0fb465c5e075fa67cff83ce30082c990640225c1c678ddd23c1ba1c9580d167335ad5300b91
   languageName: node
   linkType: hard
 

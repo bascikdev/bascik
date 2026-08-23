@@ -79,9 +79,11 @@ hint-report/
 .lighthouseci-light
 docs/lighthouse/lighthouserc.all.json
 docs/lighthouse/lighthouserc.all-light.json
+docs/.wrangler
 
 # pnpm local store (created by sandboxed installs; normally lives in ~/.local/share/pnpm)
 .pnpm-store
 
 .vscode-test/
 .yarn/install-state.gz
+.wrangler

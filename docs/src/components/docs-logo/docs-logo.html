@@ -1,16 +1,16 @@
 <style>
   .dlogo {
     display: block;
+    height: 26px;
+    width: auto;
     -webkit-user-select: none;
     user-select: none;
   }
 </style>
-<svg class="dlogo" viewBox="0 0 114 28" height="26" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
-  focusable="false">
-  <polygon points="7,0 114,0 107,28 0,28" fill="#d3ff8d" />
-  <rect x="18" y="9" width="2" height="12" rx="1" fill="#0e0f10">
-    <animate attributeName="opacity" values="0.9;0.9;0;0" keyTimes="0;0.49;0.5;1" dur="1.1s" repeatCount="indefinite" />
-  </rect>
-  <text x="25" y="20" font-family="'Courier Prime','Courier New',Courier,monospace" font-size="17" font-weight="800"
-    fill="#0e0f10" letter-spacing="2">BASCIK</text>
-</svg>
+<script data-bascik-build>
+  import { readFile } from 'node:fs/promises';
+  import { join } from 'node:path';
+  const logoPath = join(process.cwd(), 'src/pages/assets/bascik-logo.svg');
+  const rawSvg = await readFile(logoPath, 'utf8');
+  console.log(rawSvg.replace('<svg ', '<svg class="dlogo" height="26" '));
+</script>

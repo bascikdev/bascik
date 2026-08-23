@@ -14,7 +14,7 @@
   --text:         #f0f1f2;
   --text-muted:   #8d929e;
   --pillar-text:  #9aa0ae;
-  --mono:         'Fira Code','SF Mono',Menlo,monospace;
+  --mono:         'SF Mono', 'Fira Code', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   --font-mono:    var(--mono);
   --r:            10px;
   --r-sm:         6px;
@@ -140,11 +140,13 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   font-size: 16px;
-  line-height: 1.7;
+  line-height: 1.6;
   margin: 0;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Render live CSS examples against the palette their source code targets. */
