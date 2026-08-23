@@ -27,6 +27,62 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
 const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 
+// Load and base64 encode custom fonts at startup to embed in SVG dynamically
+const fontFiles = {
+  inter400: join(__dirname, 'fonts', 'Inter-400.woff'),
+  inter700: join(__dirname, 'fonts', 'Inter-700.woff'),
+  inter900: join(__dirname, 'fonts', 'Inter-900.woff'),
+  courier400: join(__dirname, 'fonts', 'CourierPrime-400.woff'),
+  courier700: join(__dirname, 'fonts', 'CourierPrime-700.woff'),
+};
+
+const fontData = {
+  inter400: (await readFile(fontFiles.inter400)).toString('base64'),
+  inter700: (await readFile(fontFiles.inter700)).toString('base64'),
+  inter900: (await readFile(fontFiles.inter900)).toString('base64'),
+  courier400: (await readFile(fontFiles.courier400)).toString('base64'),
+  courier700: (await readFile(fontFiles.courier700)).toString('base64'),
+};
+
+const fontStyles = `
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter400}) format('woff');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 700;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter700}) format('woff');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 800;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter900}) format('woff');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 900;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter900}) format('woff');
+    }
+    @font-face {
+      font-family: 'Courier Prime';
+      font-style: normal;
+      font-weight: 400;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.courier400}) format('woff');
+    }
+    @font-face {
+      font-family: 'Courier Prime';
+      font-style: normal;
+      font-weight: 700;
+      src: url(data:font/woff;charset=utf-8;base64,${fontData.courier700}) format('woff');
+    }
+`;
+
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -189,9 +245,9 @@ function formatTextWithCodeStyles(line: string, fill = '#a0a6b5'): string {
     if (part.startsWith('`') && part.endsWith('`')) {
       const codeText = part.slice(1, -1);
       // Clean, recognizable inline code styling: Monospace font with lime-green color (#d3ff8d)
-      xml += `<tspan font-family="Courier New, Courier, monospace" font-weight="700" fill="#d3ff8d">${escapeXml(codeText)}</tspan>`;
+      xml += `<tspan font-family="'Courier Prime', 'Courier New', Courier, monospace" font-weight="700" fill="#d3ff8d">${escapeXml(codeText)}</tspan>`;
     } else {
-      xml += `<tspan font-family="Helvetica, Arial, sans-serif" font-weight="400" fill="${fill}">${escapeXml(part)}</tspan>`;
+      xml += `<tspan font-family="'Inter', Helvetica, Arial, sans-serif" font-weight="400" fill="${fill}">${escapeXml(part)}</tspan>`;
     }
   }
 
@@ -264,6 +320,10 @@ export function renderOgSvg(
       <stop offset="0%" stop-color="#d3ff8d" stop-opacity="0.14" />
       <stop offset="100%" stop-color="#d3ff8d" stop-opacity="0" />
     </radialGradient>
+
+    <style>
+      ${fontStyles}
+    </style>
   </defs>
 
   <!-- Base Backgrounds -->
@@ -287,7 +347,7 @@ export function renderOgSvg(
 
   <!-- Big Hero Title: split into "HTML components." (white) and "Zero runtime." (lime-green) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Helvetica, Arial, sans-serif" font-size="76" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="'Inter', Helvetica, Arial, sans-serif" font-size="76" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
       <tspan x="0" y="0">HTML components.</tspan>
       <tspan x="0" y="82" fill="#d3ff8d">Zero runtime.</tspan>
     </text>
@@ -295,7 +355,7 @@ export function renderOgSvg(
 
   <!-- Verbatim Description / Paragraph -->
   <g transform="translate(80, ${descStartY})">
-    <text font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
+    <text font-family="'Inter', Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
       ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${escapeXml(line)}</tspan>`).join('')}
     </text>
   </g>
@@ -303,8 +363,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="'Inter', Helvetica, Arial, sans-serif" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="'Inter', Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
   }
@@ -335,6 +395,10 @@ export function renderOgSvg(
       <stop offset="0%" stop-color="#d3ff8d" stop-opacity="0.16" />
       <stop offset="100%" stop-color="#d3ff8d" stop-opacity="0" />
     </radialGradient>
+
+    <style>
+      ${fontStyles}
+    </style>
   </defs>
 
   <!-- Base Backgrounds -->
@@ -358,20 +422,20 @@ export function renderOgSvg(
     <!-- Skewed Section Badge (Exact same dx = 10 slant as Logo) -->
     <g transform="translate(166, 0)">
       <polygon points="10,0 ${badgeWidth + 10},0 ${badgeWidth},40 0,40" fill="rgba(211,255,141,0.12)" stroke="rgba(211,255,141,0.28)" stroke-width="1.5" />
-      <text x="${Math.round((badgeWidth + 10) / 2)}" y="26" text-anchor="middle" font-family="Courier New, Courier, monospace" font-size="15" font-weight="700" fill="#d3ff8d" letter-spacing="1.5">${escapeXml(sectionUpper)}</text>
+      <text x="${Math.round((badgeWidth + 10) / 2)}" y="26" text-anchor="middle" font-family="'Courier Prime', 'Courier New', Courier, monospace" font-size="15" font-weight="700" fill="#d3ff8d" letter-spacing="1.5">${escapeXml(sectionUpper)}</text>
     </g>
   </g>
 
   <!-- Main Title (Big, Bold, Hero-style for Mobile & iMessage Previews) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="'Inter', Helvetica, Arial, sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
       ${titleLines.map((line, i) => `<tspan x="0" y="${i * titleLineHeight}">${escapeXml(line)}</tspan>`).join('')}
     </text>
   </g>
 
   <!-- Verbatim Subtitle / Description -->
   <g transform="translate(80, ${descStartY})">
-    <text font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
+    <text font-family="'Inter', Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#a0a6b5" letter-spacing="-0.01em">
       ${descLines.map((line, i) => `<tspan x="0" y="${i * descLineHeight}">${formatTextWithCodeStyles(line, '#a0a6b5')}</tspan>`).join('')}
     </text>
   </g>
@@ -379,8 +443,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="'Inter', Helvetica, Arial, sans-serif" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="'Inter', Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
 }
