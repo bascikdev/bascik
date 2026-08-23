@@ -54,12 +54,12 @@
 .dnav-inner {
   max-width: 1140px;
   margin: 0 auto;
-  padding: 14px 28px;
+  padding: 0 28px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
 }
 
 .dnav-logo {
@@ -231,14 +231,6 @@
 }
 
 @media (max-width: 768px) {
-  .dnav-banner-inner {
-    padding: 6px 20px;
-  }
-
-  .dnav-inner {
-    padding: 12px 20px;
-  }
-
   .dnav-toggle { display: flex; }
 
   .dnav-theme-toggle { display: none; }
@@ -267,7 +259,7 @@
   .mobile-only-sections {
     display: block;
     width: 100%;
-    padding: 0 20px;
+    padding: 0 28px;
   }
 
   .mobile-sep {
