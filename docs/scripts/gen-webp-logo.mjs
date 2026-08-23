@@ -6,7 +6,12 @@ async function generateWebpLogo() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ deviceScaleFactor: 2 }); // 2x Retina rendering
 
-  const fontData = await readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+  let fontData;
+  try {
+    fontData = await readFile('docs/fonts/CourierNew-700.ttf');
+  } catch {
+    fontData = await readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+  }
   const fontBase64 = fontData.toString('base64');
 
   await page.setContent(`
