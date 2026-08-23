@@ -32,6 +32,7 @@ const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 const fontPaths = [
   join(fontsDir, 'Inter-400.ttf'),
   join(fontsDir, 'Inter-700.ttf'),
+  join(fontsDir, 'Inter-900.ttf'),
 ];
 
 const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
@@ -39,6 +40,7 @@ const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
 const fontData = {
   inter400: fontBuffers[0].toString('base64'),
   inter700: fontBuffers[1].toString('base64'),
+  inter900: fontBuffers[2].toString('base64'),
 };
 
 const fontStyles = `
@@ -53,6 +55,18 @@ const fontStyles = `
       font-style: normal;
       font-weight: 700;
       src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter700}) format('truetype');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 800;
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 900;
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
     }
 `;
 
@@ -495,9 +509,10 @@ export async function generateOgImages(): Promise<void> {
           fontBuffers,
           fontDirs: [fontsDir],
           fontFiles: fontPaths,
-          loadSystemFonts: true,
+          loadSystemFonts: false,
           defaultFontFamily: 'Inter',
           sansSerifFamily: 'Inter',
+          serifFamily: 'Inter',
           monospaceFamily: 'Inter',
         } as unknown as import('@resvg/resvg-js').ResvgRenderOptions['font'],
       });
