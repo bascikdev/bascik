@@ -525,7 +525,7 @@ export async function generateOgImages(): Promise<void> {
           fontBuffers,
           fontDirs: [fontsDir],
           fontFiles: fontPaths,
-          loadSystemFonts: false,
+          loadSystemFonts: true,
           defaultFontFamily: 'Inter',
           sansSerifFamily: 'Inter',
           monospaceFamily: 'Courier Prime',
