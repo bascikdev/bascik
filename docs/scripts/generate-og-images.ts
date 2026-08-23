@@ -25,15 +25,17 @@ import { NAV } from './nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
+const rootDir = resolve(docsDir, '..');
+const fontsDir = join(rootDir, '.fonts');
 const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 
 // Load custom fonts into memory buffers for resvg and base64 embed in SVG
 const fontPaths = [
-  join(__dirname, 'fonts', 'Inter-400.woff'),
-  join(__dirname, 'fonts', 'Inter-700.woff'),
-  join(__dirname, 'fonts', 'Inter-900.woff'),
-  join(__dirname, 'fonts', 'CourierPrime-400.woff'),
-  join(__dirname, 'fonts', 'CourierPrime-700.woff'),
+  join(fontsDir, 'Inter-400.woff'),
+  join(fontsDir, 'Inter-700.woff'),
+  join(fontsDir, 'Inter-900.woff'),
+  join(fontsDir, 'CourierPrime-400.woff'),
+  join(fontsDir, 'CourierPrime-700.woff'),
 ];
 
 const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
@@ -506,7 +508,7 @@ export async function generateOgImages(): Promise<void> {
         fitTo: { mode: 'width', value: 1200 },
         font: {
           fontBuffers,
-          loadSystemFonts: false,
+          loadSystemFonts: true,
           defaultFontFamily: 'Inter',
         } as unknown as Record<string, unknown>,
       });
