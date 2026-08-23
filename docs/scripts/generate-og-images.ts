@@ -31,11 +31,11 @@ const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 
 // Load custom fonts into memory buffers for resvg and base64 embed in SVG
 const fontPaths = [
-  join(fontsDir, 'Inter-400.woff'),
-  join(fontsDir, 'Inter-700.woff'),
-  join(fontsDir, 'Inter-900.woff'),
-  join(fontsDir, 'CourierPrime-400.woff'),
-  join(fontsDir, 'CourierPrime-700.woff'),
+  join(fontsDir, 'Inter-400.ttf'),
+  join(fontsDir, 'Inter-700.ttf'),
+  join(fontsDir, 'Inter-900.ttf'),
+  join(fontsDir, 'CourierPrime-400.ttf'),
+  join(fontsDir, 'CourierPrime-700.ttf'),
 ];
 
 const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
@@ -53,37 +53,37 @@ const fontStyles = `
       font-family: 'Inter';
       font-style: normal;
       font-weight: 400;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter400}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter400}) format('truetype');
     }
     @font-face {
       font-family: 'Inter';
       font-style: normal;
       font-weight: 700;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter700}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter700}) format('truetype');
     }
     @font-face {
       font-family: 'Inter';
       font-style: normal;
       font-weight: 800;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter900}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
     }
     @font-face {
       font-family: 'Inter';
       font-style: normal;
       font-weight: 900;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.inter900}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
     }
     @font-face {
       font-family: 'Courier Prime';
       font-style: normal;
       font-weight: 400;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.courier400}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.courier400}) format('truetype');
     }
     @font-face {
       font-family: 'Courier Prime';
       font-style: normal;
       font-weight: 700;
-      src: url(data:font/woff;charset=utf-8;base64,${fontData.courier700}) format('woff');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.courier700}) format('truetype');
     }
 `;
 
@@ -375,8 +375,8 @@ export function renderOgSvg(
 
   // 1. Regular documentation page layout
   const sectionUpper = section.toUpperCase();
-  const badgeCharWidth = 10;
-  const badgeWidth = Math.max(90, Math.round(sectionUpper.length * badgeCharWidth + 24));
+  const badgeCharWidth = 12;
+  const badgeWidth = Math.max(100, Math.round(sectionUpper.length * badgeCharWidth + 32));
 
   const titleLines = wrapText(title, 24, 2);
   const descLines = wrapDescription(description, 48, 3);
