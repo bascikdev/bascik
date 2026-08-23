@@ -32,7 +32,6 @@ const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 const fontPaths = [
   join(fontsDir, 'Inter-400.ttf'),
   join(fontsDir, 'Inter-700.ttf'),
-  join(fontsDir, 'Inter-800.ttf'),
   join(fontsDir, 'Inter-900.ttf'),
 ];
 
@@ -41,8 +40,7 @@ const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
 const fontData = {
   inter400: fontBuffers[0].toString('base64'),
   inter700: fontBuffers[1].toString('base64'),
-  inter800: fontBuffers[2].toString('base64'),
-  inter900: fontBuffers[3].toString('base64'),
+  inter900: fontBuffers[2].toString('base64'),
 };
 
 const fontStyles = `
@@ -62,7 +60,7 @@ const fontStyles = `
       font-family: 'Inter';
       font-style: normal;
       font-weight: 800;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter800}) format('truetype');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
     }
     @font-face {
       font-family: 'Inter';
