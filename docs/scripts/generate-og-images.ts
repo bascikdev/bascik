@@ -503,6 +503,7 @@ export async function generateOgImages(): Promise<void> {
       const resvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: 1200 },
         font: {
+          fontFiles: Object.values(fontFiles),
           loadSystemFonts: true,
           defaultFontFamily: 'sans-serif',
         },
