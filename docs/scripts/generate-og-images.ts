@@ -25,8 +25,7 @@ import { NAV } from './nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
-const rootDir = resolve(docsDir, '..');
-const fontsDir = join(rootDir, '.fonts');
+const fontsDir = join(docsDir, 'fonts');
 const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 
 // Load custom fonts into memory buffers for resvg and base64 embed in SVG
