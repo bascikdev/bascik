@@ -33,8 +33,6 @@ const fontPaths = [
   join(fontsDir, 'Inter-400.ttf'),
   join(fontsDir, 'Inter-700.ttf'),
   join(fontsDir, 'Inter-900.ttf'),
-  join(fontsDir, 'CourierPrime-400.ttf'),
-  join(fontsDir, 'CourierPrime-700.ttf'),
 ];
 
 const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
@@ -43,8 +41,6 @@ const fontData = {
   inter400: fontBuffers[0].toString('base64'),
   inter700: fontBuffers[1].toString('base64'),
   inter900: fontBuffers[2].toString('base64'),
-  courier400: fontBuffers[3].toString('base64'),
-  courier700: fontBuffers[4].toString('base64'),
 };
 
 const fontStyles = `
@@ -71,18 +67,6 @@ const fontStyles = `
       font-style: normal;
       font-weight: 900;
       src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
-    }
-    @font-face {
-      font-family: 'Courier Prime';
-      font-style: normal;
-      font-weight: 400;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.courier400}) format('truetype');
-    }
-    @font-face {
-      font-family: 'Courier Prime';
-      font-style: normal;
-      font-weight: 700;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.courier700}) format('truetype');
     }
 `;
 
@@ -247,8 +231,8 @@ function formatTextWithCodeStyles(line: string, fill = '#a0a6b5'): string {
   for (const part of parts) {
     if (part.startsWith('`') && part.endsWith('`')) {
       const codeText = part.slice(1, -1);
-      // Clean, recognizable inline code styling: Monospace font with lime-green color (#d3ff8d)
-      xml += `<tspan font-family="Courier Prime" font-weight="700" fill="#d3ff8d">${escapeXml(codeText)}</tspan>`;
+      // Clean, recognizable inline code styling: Inter font with lime-green color (#d3ff8d)
+      xml += `<tspan font-family="Inter" font-weight="700" fill="#d3ff8d">${escapeXml(codeText)}</tspan>`;
     } else {
       xml += `<tspan font-family="Inter" font-weight="400" fill="${fill}">${escapeXml(part)}</tspan>`;
     }
@@ -356,7 +340,7 @@ export function renderOgSvg(
 
   <!-- Big Hero Title: split into "HTML components." (white) and "Zero runtime." (lime-green) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Inter" font-size="76" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="Inter" font-size="76" font-weight="700" fill="#f8fafc" letter-spacing="-0.03em">
       <tspan x="0" y="0">HTML components.</tspan>
       <tspan x="0" y="82" fill="#d3ff8d">Zero runtime.</tspan>
     </text>
@@ -372,8 +356,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
   }
@@ -430,13 +414,13 @@ export function renderOgSvg(
     <!-- Skewed Section Badge (Exact same dx = 10 slant as Logo) -->
     <g transform="translate(178, 0)">
       <polygon points="10,0 ${badgeWidth + 10},0 ${badgeWidth},40 0,40" fill="rgba(211,255,141,0.12)" stroke="rgba(211,255,141,0.28)" stroke-width="1.5" />
-      <text x="${Math.round((badgeWidth + 10) / 2)}" y="26" text-anchor="middle" font-family="Courier Prime" font-size="15" font-weight="700" fill="#d3ff8d" letter-spacing="1.5">${escapeXml(sectionUpper)}</text>
+      <text x="${Math.round((badgeWidth + 10) / 2)}" y="26" text-anchor="middle" font-family="Inter" font-size="15" font-weight="700" fill="#d3ff8d" letter-spacing="1.5">${escapeXml(sectionUpper)}</text>
     </g>
   </g>
 
   <!-- Main Title (Big, Bold, Hero-style for Mobile & iMessage Previews) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Inter" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="Inter" font-size="64" font-weight="700" fill="#f8fafc" letter-spacing="-0.03em">
       ${titleLines.map((line, i) => `<tspan x="0" y="${i * titleLineHeight}">${escapeXml(line)}</tspan>`).join('')}
     </text>
   </g>
@@ -451,8 +435,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="800" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
 }
@@ -525,10 +509,11 @@ export async function generateOgImages(): Promise<void> {
           fontBuffers,
           fontDirs: [fontsDir],
           fontFiles: fontPaths,
-          loadSystemFonts: true,
+          loadSystemFonts: false,
           defaultFontFamily: 'Inter',
           sansSerifFamily: 'Inter',
-          monospaceFamily: 'Courier Prime',
+          serifFamily: 'Inter',
+          monospaceFamily: 'Inter',
         } as unknown as import('@resvg/resvg-js').ResvgRenderOptions['font'],
       });
       const pngBuffer = resvg.render().asPng();

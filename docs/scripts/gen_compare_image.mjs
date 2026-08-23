@@ -3,7 +3,12 @@ import fs from 'node:fs/promises';
 import opentype from 'opentype.js';
 
 async function main() {
-  const fontBuffer = await fs.readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+  let fontBuffer;
+  try {
+    fontBuffer = await fs.readFile('docs/fonts/CourierNew-700.ttf');
+  } catch {
+    fontBuffer = await fs.readFile('/System/Library/Fonts/Supplemental/Courier New Bold.ttf');
+  }
   const font = opentype.parse(fontBuffer.buffer);
 
   // Generate vector path for BASCIK
