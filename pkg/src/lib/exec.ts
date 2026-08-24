@@ -3,35 +3,49 @@ import chokidar from 'chokidar';
 import { BascikConfig } from './config.js';
 import { eventEmitter, registerShutdownHandler } from './events.js';
 
-const runScript = (scriptPath: string): Promise<void> =>
-  new Promise((resolve, reject) => {
+const runScript = (scriptPath: string): Promise<number> => {
+  const start = performance.now();
+  console.log(`▸ exec: ${scriptPath}`);
+  return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath], {
       stdio: 'inherit',
       cwd: process.cwd(),
     });
     child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
+      const elapsed = Math.round(performance.now() - start);
+      if (code === 0) {
+        console.log(`✓ exec: ${scriptPath} (${elapsed}ms)`);
+        resolve(elapsed);
+      } else {
+        reject(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
+      }
     });
     child.on('error', reject);
   });
+};
 
 /** Run all exec entries in order. Used during `--build`. */
-export const runExecOnBuild = async (): Promise<void> => {
+export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: number }> => {
   const entries = BascikConfig.exec;
-  if (!entries?.length) return;
+  if (!entries?.length) return { count: 0, totalElapsed: 0 };
+  const start = performance.now();
   for (const entry of entries) {
     await runScript(entry.script);
   }
+  const totalElapsed = Math.round(performance.now() - start);
+  return { count: entries.length, totalElapsed };
 };
 
 /**
  * Fire watch-enabled exec entries async on dev startup and set up chokidar
  * re-run watchers. Build-only entries (no `watch`) are skipped.
+ * Returns a Promise that resolves when initial watched exec tasks finish.
  */
-export const startExecDev = (): void => {
+export const startExecDev = (): Promise<void> => {
   const entries = BascikConfig.exec;
-  if (!entries?.length) return;
+  if (!entries?.length) return Promise.resolve();
+  const initialRuns: Promise<unknown>[] = [];
+
   for (const entry of entries) {
     if (!entry.watch) continue;
     let running = false;
@@ -57,7 +71,7 @@ export const startExecDev = (): void => {
 
     // Non-blocking startup run: no reload needed on first run
     running = true;
-    runScript(entry.script)
+    const initialRun = runScript(entry.script)
       .catch((err) => console.error('[bascik] exec error:', err))
       .finally(() => {
         running = false;
@@ -66,6 +80,7 @@ export const startExecDev = (): void => {
           triggerRun();
         }
       });
+    initialRuns.push(initialRun);
 
     const patterns = Array.isArray(entry.watch) ? entry.watch : [entry.watch];
     const watcher = chokidar
@@ -75,4 +90,6 @@ export const startExecDev = (): void => {
       });
     registerShutdownHandler(() => watcher.close());
   }
+
+  return Promise.all(initialRuns).then(() => { });
 };

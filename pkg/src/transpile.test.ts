@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { _mockWatchFiles, _mockRunExecOnBuild, _mockStartExecDev, _mockStartServer } = vi.hoisted(() => ({
   _mockWatchFiles: vi.fn().mockResolvedValue(undefined),
-  _mockRunExecOnBuild: vi.fn().mockResolvedValue(undefined),
-  _mockStartExecDev: vi.fn(),
+  _mockRunExecOnBuild: vi.fn().mockResolvedValue({ count: 1, totalElapsed: 5 }),
+  _mockStartExecDev: vi.fn().mockResolvedValue(undefined),
   _mockStartServer: vi.fn().mockResolvedValue("http://localhost:8080"),
 }));
 
@@ -40,22 +40,29 @@ describe("runTranspile", () => {
     vi.clearAllMocks();
   });
 
-  it("runs build pipeline when BascikConfig.isBuild is true", async () => {
+  it("runs build pipeline when BascikConfig.isBuild is true and logs complete timing", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = true;
     await runTranspile();
 
     expect(_mockRunExecOnBuild).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(_mockStartExecDev).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in \d+ms/));
+    logSpy.mockRestore();
   });
 
-  it("runs dev pipeline when BascikConfig.isBuild is false", async () => {
+  it("runs dev pipeline when BascikConfig.isBuild is false and logs dev server ready timing", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = false;
     await runTranspile();
 
     expect(_mockStartExecDev).toHaveBeenCalled();
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Server running at http://localhost:8080");
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Dev server ready in \d+ms/));
+    logSpy.mockRestore();
   });
 
   it("handles server startup error gracefully when exitOnError is false", async () => {

@@ -95,7 +95,8 @@ beforeEach(() => {
 
 describe("runExecOnBuild", () => {
   it("does nothing when exec is undefined", async () => {
-    await runExecOnBuild();
+    const res = await runExecOnBuild();
+    expect(res).toEqual({ count: 0, totalElapsed: expect.any(Number) });
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
@@ -143,13 +144,18 @@ describe("runExecOnBuild", () => {
     await expect(runExecOnBuild()).rejects.toThrow('exec "fail.ts" exited with code 1');
   });
 
-  it("runs both watch-enabled and build-only entries", async () => {
+  it("runs both watch-enabled and build-only entries and logs progress", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     cfg.exec = [
       { script: "scripts/a.ts", watch: ["content/"] },
       { script: "scripts/b.ts" },
     ];
-    await runExecOnBuild();
+    const res = await runExecOnBuild();
+    expect(res.count).toBe(2);
     expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(logSpy).toHaveBeenCalledWith("▸ exec: scripts/a.ts");
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ exec: scripts\/a\.ts \(\d+ms\)/));
+    logSpy.mockRestore();
   });
 });
 
@@ -192,6 +198,13 @@ describe("startExecDev", () => {
     expect(mockWatch).toHaveBeenCalledTimes(2);
     expect(mockWatch).toHaveBeenNthCalledWith(1, ["content/"], expect.objectContaining({ ignoreInitial: true }));
     expect(mockWatch).toHaveBeenNthCalledWith(2, ["data/"], expect.objectContaining({ ignoreInitial: true }));
+  });
+
+  it("returns a promise that resolves when initial watched scripts complete", async () => {
+    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    const devPromise = startExecDev();
+    await expect(devPromise).resolves.toBeUndefined();
+    expect(mockSpawn).toHaveBeenCalledWith(process.execPath, ["scripts/gen.ts"], expect.anything());
   });
 
   it("normalizes a string watch value to an array", () => {

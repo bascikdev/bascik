@@ -46,6 +46,9 @@ p{margin:0;font-size:.875rem;opacity:.5}
         retryCount++;
         if (retryTimeout) clearTimeout(retryTimeout);
         retryTimeout = setTimeout(connect, delay);
+      } else {
+        var p = document.querySelector('p');
+        if (p) p.textContent = 'Connection to dev server lost. Refresh page.';
       }
     };
   }
