@@ -32,6 +32,7 @@ const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 const fontPaths = [
   join(fontsDir, 'Inter-400.ttf'),
   join(fontsDir, 'Inter-700.ttf'),
+  join(fontsDir, 'Inter-800.ttf'),
   join(fontsDir, 'Inter-900.ttf'),
 ];
 
@@ -40,7 +41,8 @@ const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
 const fontData = {
   inter400: fontBuffers[0].toString('base64'),
   inter700: fontBuffers[1].toString('base64'),
-  inter900: fontBuffers[2].toString('base64'),
+  inter800: fontBuffers[2].toString('base64'),
+  inter900: fontBuffers[3].toString('base64'),
 };
 
 const fontStyles = `
@@ -60,7 +62,7 @@ const fontStyles = `
       font-family: 'Inter';
       font-style: normal;
       font-weight: 800;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
+      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter800}) format('truetype');
     }
     @font-face {
       font-family: 'Inter';
@@ -340,7 +342,7 @@ export function renderOgSvg(
 
   <!-- Big Hero Title: split into "HTML components." (white) and "Zero runtime." (lime-green) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Inter" font-size="76" font-weight="700" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="Inter" font-size="76" font-weight="900" fill="#f8fafc" letter-spacing="-0.03em">
       <tspan x="0" y="0">HTML components.</tspan>
       <tspan x="0" y="82" fill="#d3ff8d">Zero runtime.</tspan>
     </text>
@@ -356,8 +358,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="900" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
   }
@@ -420,7 +422,7 @@ export function renderOgSvg(
 
   <!-- Main Title (Big, Bold, Hero-style for Mobile & iMessage Previews) -->
   <g transform="translate(80, ${titleStartY})">
-    <text font-family="Inter" font-size="64" font-weight="700" fill="#f8fafc" letter-spacing="-0.03em">
+    <text font-family="Inter" font-size="64" font-weight="900" fill="#f8fafc" letter-spacing="-0.03em">
       ${titleLines.map((line, i) => `<tspan x="0" y="${i * titleLineHeight}">${escapeXml(line)}</tspan>`).join('')}
     </text>
   </g>
@@ -435,8 +437,8 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
-    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="400" fill="#d3ff8d">bascik.dev</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="900" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
 }
