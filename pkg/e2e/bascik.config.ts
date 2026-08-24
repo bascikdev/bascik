@@ -11,6 +11,7 @@ export default defineConfig({
   watch: ['src/content/'],
   useWorkers: true,
   onScriptError: 'warn',
+  inlineStyles: ['src/css/inlined-global.css'],
   minify: {
     identifiers: false,
     css: async (css) => {

@@ -166,7 +166,7 @@ export interface BascikConfigOptions {
   * precedence.
    *
    * @example
-   * inlineStyles: ['src/pages/css/styles.css']
+   * inlineStyles: ['src/css/styles.css']
    */
   inlineStyles?: boolean | string[];
   /**

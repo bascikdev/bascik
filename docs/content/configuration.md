@@ -40,7 +40,7 @@ export default defineConfig({
     js: false,          // false in dev; true in --build and --serve
     identifiers: false, // false in dev; true in --build and --serve
   },
-  inlineStyles: false,  // false | true | ['src/pages/css/styles.css']
+  inlineStyles: false,  // false | true | ['src/css/styles.css']
 
   cacheHttp: false,     // false in dev; true in --serve
 
@@ -113,7 +113,14 @@ directory: {
 }
 ```
 
-> **Asset Mirroring:** Any subfolders and non-`.html` files inside `pages` (such as `css/`, `js/`, `images/`, `fonts/`) are automatically copied to `dist/` preserving their folder structure. CSS and JS files in `pages` are minified during build when `minify.css` / `minify.js` are enabled.
+> **Asset Mirroring and Exclusions:** Any subfolders and static asset files inside `pages` (such as `images/`, `fonts/`, favicons, or standalone `css/` and `js/` files) are automatically copied to `dist/` preserving their folder structure. CSS and JS files in `pages` are minified during build when `minify.css` / `minify.js` are enabled.
+>
+> The following files are **excluded** from static asset copying and are never copied to `dist/`:
+> - `.html` page templates (transpiled into compiled HTML output pages)
+> - `.ts` files (treated as build or server helper scripts)
+> - Test files matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
+> - Inlined stylesheets specified in `inlineStyles` (injected directly into HTML `<head>` blocks)
+> - All files in `src/components/` (treated as source-only component templates and styles)
 
 ### `scopeScriptBlocks`
 
@@ -328,7 +335,7 @@ Controls which global stylesheets Bascik reads and injects as `<style>` tags int
 ```ts
 inlineStyles: false // default
 inlineStyles: true
-inlineStyles: ['src/pages/css/styles.css']
+inlineStyles: ['src/css/styles.css']
 ```
 
 This eliminates the render-blocking `<link rel="stylesheet">` request, the CSS arrives in the same HTTP response as the HTML. It pairs naturally with `build` to minify only in production:
@@ -337,7 +344,7 @@ This eliminates the render-blocking `<link rel="stylesheet">` request, the CSS a
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  inlineStyles: ['src/pages/css/styles.css'],
+  inlineStyles: ['src/css/styles.css'],
   minify: { css: false },
 });
 

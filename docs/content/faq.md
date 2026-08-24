@@ -84,6 +84,17 @@ The `src/components/` directory is treated strictly as source-only files:
 
 Static assets intended to be served directly as public URLs (such as images, web fonts, or global stylesheets) should be placed in `src/pages/` instead.
 
+## Which files in `src/pages/` are copied to `dist/` and which are excluded?
+
+All non-`.html` static assets placed in `src/pages/` (such as images, fonts, favicons, PDFs, and standalone CSS or JS files) are automatically copied to `dist/` preserving their directory structure.
+
+The following files are **excluded** from static asset copying:
+- **`.html` page templates**: compiled into output HTML pages in `dist/`.
+- **`.ts` source files**: treated as Node build-script or server helper modules.
+- **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
+- **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into page `<head>` blocks).
+- **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.
+
 ## Do I need to restart the dev server when I add a new component?
 
 No. The dev server watches the components directory. Drop a new `.html` (or paired `.css`) file in and all pages that use that tag are automatically re-transpiled and reloaded. No restart required.

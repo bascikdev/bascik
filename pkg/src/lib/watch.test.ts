@@ -261,21 +261,21 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("calls processAllPages when matching inlineStyles array on change", async () => {
-    (BascikConfig as any).inlineStyles = ["src/pages/css/styles.css"];
+    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
-    await handler?.("/path/to/src/pages/css/styles.css");
+    await handler?.("/path/to/src/css/styles.css");
     expect(processAllPages).toHaveBeenCalledTimes(1);
     expect(eventEmitter.emit).not.toHaveBeenCalledWith("asset-changed");
   });
 
   it("emits asset-changed when a non-matching stylesheet changes", async () => {
-    (BascikConfig as any).inlineStyles = ["src/pages/css/styles.css"];
+    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
-    await handler?.("/path/to/src/pages/css/other.css");
+    await handler?.("/path/to/src/css/other.css");
     expect(processAllPages).not.toHaveBeenCalled();
     expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
   });

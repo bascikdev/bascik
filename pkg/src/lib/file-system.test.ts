@@ -238,6 +238,17 @@ describe("copyStaticAssets", () => {
     expect(console.log).toHaveBeenCalledWith("copied:", "pages/dir/one.css");
     expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.html");
   });
+
+  it("ignores inlined stylesheets specified in BascikConfig.inlineStyles", async () => {
+    (BascikConfig as any).inlineStyles = ["pages/dir/one.css"];
+
+    try {
+      await copyStaticAssets();
+      expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.css");
+    } finally {
+      (BascikConfig as any).inlineStyles = false;
+    }
+  });
 });
 
 describe("createDir", () => {

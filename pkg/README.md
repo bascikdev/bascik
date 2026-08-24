@@ -115,7 +115,7 @@ export const bascikConfig = {
     js: false,
     identifiers: true, // hash class/id names to short hex strings
   },
-  inlineStyles: false, // false | true | ['src/pages/css/styles.css']
+  inlineStyles: false, // false | true | ['src/css/styles.css']
   cacheHttp: false, // HTTP cache headers on dev server responses
 };
 

@@ -899,7 +899,7 @@ export default defineConfig({
     js: false,
     identifiers: false, // false in dev; true in --build and --serve
   },
-  inlineStyles: false, // false | true | ['src/pages/css/styles.css']
+  inlineStyles: false, // false | true | ['src/css/styles.css']
   cacheHttp: false, // dev default; automatically true in --serve mode
   siteUrl: 'https://example.com',
   generate: {
