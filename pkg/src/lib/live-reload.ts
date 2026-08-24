@@ -6,7 +6,7 @@
  * Shuts down permanently on connection failure to keep the console clean.
  */
 
-export const LIVE_RELOAD_SCRIPT = `
+export const getLiveReloadScript = (url = "/bascik-live-reload") => `
 <script>
   (function() {
     var wasConnected = false;
@@ -48,7 +48,7 @@ export const LIVE_RELOAD_SCRIPT = `
 
     function connect() {
       if (source) return;
-      source = new EventSource("/bascik-live-reload");
+      source = new EventSource("${url}");
       source.onmessage = function(e) {
         if (e.data === 'reload') {
           window.location.reload();
@@ -65,7 +65,7 @@ export const LIVE_RELOAD_SCRIPT = `
         source.close();
         source = null;
         if (retryCount < maxRetries) {
-          var delay = Math.pow(2, retryCount) * 1000;
+          var delay = Math.pow(2, retryCount) * 2000;
           retryCount++;
           showBanner('Live reload disconnected. Reconnecting (' + retryCount + '/' + maxRetries + ')...', false);
           if (retryTimeout) clearTimeout(retryTimeout);
@@ -94,3 +94,5 @@ export const LIVE_RELOAD_SCRIPT = `
   })();
 </script>
 `;
+
+export const LIVE_RELOAD_SCRIPT = getLiveReloadScript();

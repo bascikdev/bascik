@@ -37,8 +37,9 @@ describe("BOOT_PAGE_HTML", () => {
     expect(html).toContain('<div class="spinner"></div>');
   });
 
-  it("contains connection failure text when retries exhaust", () => {
+  it("contains inlined live-reload script for boot endpoint", () => {
     const html = BOOT_PAGE_HTML.toString("utf8");
-    expect(html).toContain("Connection to dev server lost. Refresh page.");
+    expect(html).toContain("/bascik-live-reload?boot=1");
+    expect(html).toContain("Live reload disconnected. Dev server offline.");
   });
 });
