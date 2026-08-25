@@ -89,8 +89,14 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(banner).toBeVisible({ timeout: 10000 });
     await expect(banner).toContainText('Live reload disconnected');
 
-    // Retries exhaust and Refresh button is rendered (5 retries * 2s = 10s)
-    await expect(banner.locator('button')).toHaveText('Refresh', { timeout: 15000 });
+    // The dismiss button (X) should NOT be present while retrying is in progress
+    await expect(banner.locator('.bascik-dismiss-btn')).not.toBeVisible();
+
+    // Retries exhaust and Refresh button is rendered (5 retries * 5s = 25s)
+    await expect(banner.locator('button').first()).toHaveText('Refresh', { timeout: 30000 });
+
+    // After retries exhaust, the dismiss button (X) is shown
+    await expect(banner.locator('.bascik-dismiss-btn')).toBeVisible();
   });
 
   test('removes disconnection banner when live-reload connection is restored', async ({ page }) => {
@@ -114,6 +120,35 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(banner).not.toBeAttached({ timeout: 10000 });
   });
 
+  test('disconnection banner can be manually dismissed by clicking the dismiss button after retries exhaust', async ({ page }) => {
+    // Abort requests to /bascik-live-reload to simulate network drop / server down
+    await page.route('**/bascik-live-reload*', (route) => route.abort());
+
+    await page.goto('/scope-test');
+
+    const banner = page.locator('#bascik-live-reload-banner');
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText('Live reload disconnected');
+
+    // Wait for retries to exhaust so the dismiss button (X) appears
+    const dismissBtn = banner.locator('.bascik-dismiss-btn');
+    await expect(dismissBtn).toBeVisible({ timeout: 30000 });
+    await dismissBtn.click();
+
+    // The banner should no longer be attached to the DOM
+    await expect(banner).not.toBeAttached({ timeout: 5000 });
+
+    // Explicitly dispatch window focus and visibilitychange events to simulate user focusing window
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Verify it stays dismissed and does NOT restart the retry countdown or show the banner
+    await page.waitForTimeout(3000);
+    await expect(banner).not.toBeAttached();
+  });
+
   // ── 2. Live Page Modification ──────────────────────────────────────────────
 
   test('open browser page receives instant live-reload when HTML page source changes', async ({ page }) => {
@@ -125,10 +160,13 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
       '<h1>JS Scope Rewriting — Live Test</h1>',
       `<h1>${markerText}</h1>`,
     );
+    const start = performance.now();
     await writeFile(pagePath, updatedContent, 'utf8');
 
-    // Page should auto-reload via SSE and display the new text
+    // Page should auto-reload via SSE and display the new text very quickly
     await expect(page.locator('h1')).toHaveText(markerText, { timeout: 15000 });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(3000); // Must transpile and reload under 3s
   });
 
   // ── 3. Live Component Modification ─────────────────────────────────────────
@@ -144,10 +182,13 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
       'classList.add("active", "highlighted")',
       markerText,
     );
+    const start = performance.now();
     await writeFile(componentPath, updatedComponent, 'utf8');
 
-    // Live reload should re-transpile the page with the updated component template
+    // Live reload should re-transpile the page with the updated component template very quickly
     await expect(page.locator('button[id$="__add-btn"]').first()).toHaveText(markerText, { timeout: 15000 });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(3000); // Must transpile and reload under 3s
   });
 
   // ── 4. Multi-Tab Live Reload ───────────────────────────────────────────────
@@ -224,9 +265,12 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(page.locator('h1')).toHaveText('Watch Doc Initial Content');
 
     const updatedText = `Updated Content ${Date.now()}`;
+    const start = performance.now();
     await writeFile(contentDocPath, updatedText, 'utf8');
 
     await expect(page.locator('h1')).toHaveText(updatedText, { timeout: 15000 });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(3000); // Must transpile and reload under 3s
   });
 
   test('subfolder routes receive live reload when nested page source changes', async ({ page }) => {
