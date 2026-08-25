@@ -79,6 +79,8 @@ The development server binds its port immediately while page transpilation runs 
 
 The boot page connects to `/bascik-live-reload`. When the requested page finishes transpiling, the `"transpiled"` event fires, the SSE connection receives a reload signal, and the browser fetches the actual page automatically. Once `watchFiles()` completes the initial build, the `isBooting` flag is cleared and unmatched paths fall through to 404 handling. The boot page is never used in production mode.
 
+> **Developer Experience (DX) & Startup Logging:** Although `startServer()` binds the HTTP port immediately in the background so developers can open the URL at any time (with the boot page serving pending requests), `transpile.ts` delays printing `Server running at http://...` until after all initial tasks (`watchFiles()` and `exec`) finish. This DX design choice ensures the clickable server URL appears as the final line in the terminal output without being scrolled up by page transpilation logs.
+
 ### Watch system (`watch.ts`)
 
 Three native filesystem watchers (chokidar) handle source file updates:
