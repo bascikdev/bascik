@@ -1466,6 +1466,21 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     expect(mockMem.trackOpenPage).toHaveBeenCalledWith("/faq");
   });
 
+  it("calls mem.trackOpenPage with pathname stripped of query string and fragment when Referer has query parameters", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/faq?tab=settings&search=1#section"));
+    expect(mockMem.trackOpenPage).toHaveBeenCalledWith("/faq");
+  });
+
+  it("sends reload when Referer header contains query string matching the transpiled page", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about?ref=social"));
+    fireTranspiled("pages/about.html");
+    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+  });
+
   it("calls mem.untrackOpenPage when the SSE stream closes", async () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();

@@ -23,7 +23,7 @@
 
 Bascik transpiles and scopes entire static sites in milliseconds.
 
-The website you're on right now is a prime example of a non-trivial build. Every single one of its 50 pages executes custom Node.js build-time scripts to convert Markdown content, extract demo code blocks, generate breadcrumbs, and construct structured search schemas. Even with all of these custom build scripts, sitemap generation, and component scoping, the entire site compiles in under 1.2 seconds.
+The website you're on right now is a prime example of a non-trivial build. Every single one of its 50 pages executes custom Node.js build-time scripts to convert Markdown content, extract demo code blocks, generate breadcrumbs, and construct structured search schemas. Even with all of these custom build scripts, sitemap generation, and component scoping, the entire site compiles in just 1.1 seconds.
 
 <!-- demo:home-build-output -->
 ```text

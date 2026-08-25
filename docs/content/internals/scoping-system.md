@@ -69,7 +69,11 @@ p { margin: 0; }
 <p class="bascik__site-nav__el__p">Content</p>
 ```
 
-`html`, `body`, and `head` are excluded from element-to-class conversion. Cross-boundary selectors like `html[data-theme="light"] .foo {}` are left with the root element name intact, so the scoped output is `html[data-theme="light"] .bascik__...__foo {}`, which matches correctly when the document root carries a theme or state attribute.
+### Root document boundary and selector preservation
+
+Document root elements (`html`, `body`, and `head`) are explicitly excluded from element-to-class scoping. This exception ensures that global document layout and page-level state remain accessible to component stylesheets without leaking unintended scoped class names onto `<html>` or `<body>`.
+
+Furthermore, cross-boundary selectors such as `html[data-theme="light"] .foo {}` preserve the root element identifier intact while scoping child selectors. The resulting output is `html[data-theme="light"] .bascik__site-nav__foo {}`. This design allows component styles to react seamlessly to global document attributes (such as dark mode toggles or language attributes) while maintaining strict scoping for all child elements within the component template.
 
 ### @keyframes
 

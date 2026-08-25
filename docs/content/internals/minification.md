@@ -12,6 +12,14 @@ Minification reduces payload sizes without introducing heavy external bundlers o
 - **Identifier Hashing (`names.ts`)**: Hashes scoped class names and element IDs using SHA-256 and Base62 encoding when `minify.identifiers: true` is configured.
 - **BYO Minifier**: Supports custom third-party minifier integrations (`esbuild`, `SWC`, `PostCSS`, `Lightning CSS`) configured in `bascik.config.ts`.
 
+## Zero-AST Lexical Context Preservation
+
+Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to minify code safely. Bascik achieves equivalent safety and higher throughput using zero-dependency lexical context preservation:
+
+1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>` and `<textarea>`) are extracted and replaced with null-byte placeholders (`\x00P0\x00`) before whitespace collapsing runs. This prevents code blocks and formatted text from losing indentation or newlines.
+2. **CSS String and Resource Shielding:** Quoted string literals and `url(...)` declarations in CSS can contain colons, semicolons, or multiple spaces (such as data URIs or content strings). `shieldCssStrings` extracts these values into temporary tokens before structural whitespace stripping, restoring them unchanged afterward.
+3. **JS Lexical Context and Regex Disambiguation:** JavaScript code is segmented into literal regions (quoted strings, template literals, regexes) and minifiable code regions. To disambiguate the forward slash `/` character (which can represent either a division operator or a regex literal), `js-minifier.ts` tracks preceding keyword context (such as `return`, `case`, `typeof`, `yield`, `await`). Forward slashes following expression keywords are preserved as regex literals.
+
 ## HTML Minification (`html-minifier.ts`)
 
 `minifyHtml` optimizes HTML documents through structural transformations and whitespace rules:
