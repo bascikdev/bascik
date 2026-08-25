@@ -1,29 +1,4 @@
-# Bascik
-
-> Bascik is a build tool for HTML components. Write your components in vanilla HTML, CSS, and JavaScript. Bascik scopes and assembles them at build time, outputting vanilla HTML pages with zero JavaScript added. Supports static site generation (SSG) out of the box.
-
-> **Docs Site Source.** This documentation site itself is a complete, real-world Bascik site! It features complex build-time generation, such as dynamically building the navigation, rendering markdown files, extracting code blocks, generating breadcrumbs, structured schema, sitemaps, and even live-embedding coverage stats. Check out the [Bascik Docs Source Code on GitHub](https://github.com/bascikdev/bascik/tree/main/docs) to see exactly how these advanced features are structured and built.
-
-## What Bascik Does
-
-- Resolves custom HTML tags (`<my-nav></my-nav>`) to their component source HTML at build time.
-- Scopes CSS class names, element selectors, `@keyframes`, and CSS custom properties per component so they never collide.
-- Rewrites DOM selector calls (`getElementById`, `querySelector`, etc.) in component scripts to match scoped attribute names.
-- Wraps component scripts in IIFEs so variables do not leak between components.
-- Outputs a `dist/` directory of plain `.html` files with zero runtime dependencies and no client-side JS added by Bascik itself.
-- Supports TypeScript natively; `bascik.config.ts`, build scripts, and helper modules run on Node 22.18+ with no compiler step.
-
-## What Bascik Does Not Do
-
-- It is not a JavaScript framework. There is no virtual DOM, no reactive state, no client-side routing.
-- It does not add any JavaScript to pages. Every script in the output was written by you.
-- It does not require Web Components, Shadow DOM, or any browser-specific API.
-
-## Sub-Second Build Speeds
-
-Bascik transpiles and scopes entire static sites in milliseconds.
-
-The website you're on right now is a prime example of a non-trivial build. Every single one of its 50 pages executes custom Node.js build-time scripts to convert Markdown content, extract demo code blocks, generate breadcrumbs, and construct structured search schemas. Even with all of these custom build scripts, sitemap generation, and component scoping, the entire site compiles in just 1.1 seconds.
+<!-- Content for home page demo code blocks extracted by docs/src/pages/index.html. -->
 
 <!-- demo:home-build-output -->
 ```text
@@ -37,10 +12,6 @@ transpiled: pages/getting-started.html
 ✓ 50 pages transpiled in 1150ms
 Server running at http://localhost:8080
 ```
-
-## Example: One Component, Start to Finish
-
-Create a file. The file name is the tag name. HTML, CSS, and JavaScript live together in that one file, and everything gets scoped automatically at build time.
 
 <!-- demo:home-card-component -->
 ```html
@@ -58,8 +29,6 @@ Create a file. The file name is the tag name. HTML, CSS, and JavaScript live tog
 </article>
 ```
 
-Reference the tag in any page. No imports, no registration, no configuration.
-
 <!-- demo:home-card-usage -->
 ```html
 <!-- src/pages/index.html -->
@@ -73,8 +42,6 @@ Reference the tag in any page. No imports, no registration, no configuration.
 </body>
 </html>
 ```
-
-At build time Bascik inlines the component and scopes every class name and DOM selector:
 
 <!-- demo:home-card-output -->
 ```html
@@ -99,10 +66,6 @@ At build time Bascik inlines the component and scopes every class name and DOM s
 </body>
 </html>
 ```
-
-## Example: Two Isolated Instances
-
-The same component used twice on one page. Each instance gets its own namespace, so plain `getElementById` and `querySelector` calls stay fully isolated without runtime JS, Shadow DOM, or a virtual DOM.
 
 <!-- demo:home-counter-usage -->
 ```html
