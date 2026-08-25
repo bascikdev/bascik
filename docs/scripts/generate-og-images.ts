@@ -29,49 +29,13 @@ const docsDir = resolve(__dirname, '..');
 const fontsDir = join(docsDir, 'fonts');
 const distOgDir = join(docsDir, 'dist', 'assets', 'og');
 
-// Load custom fonts into memory buffers for resvg and base64 embed in SVG
+// Custom font paths for resvg
 const fontPaths = [
   join(fontsDir, 'Inter-400.ttf'),
   join(fontsDir, 'Inter-700.ttf'),
   join(fontsDir, 'Inter-800.ttf'),
   join(fontsDir, 'Inter-900.ttf'),
 ];
-
-const fontBuffers = await Promise.all(fontPaths.map((p) => readFile(p)));
-
-const fontData = {
-  inter400: fontBuffers[0].toString('base64'),
-  inter700: fontBuffers[1].toString('base64'),
-  inter800: fontBuffers[2].toString('base64'),
-  inter900: fontBuffers[3].toString('base64'),
-};
-
-const fontStyles = `
-    @font-face {
-      font-family: 'Inter';
-      font-style: normal;
-      font-weight: 400;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter400}) format('truetype');
-    }
-    @font-face {
-      font-family: 'Inter';
-      font-style: normal;
-      font-weight: 700;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter700}) format('truetype');
-    }
-    @font-face {
-      font-family: 'Inter';
-      font-style: normal;
-      font-weight: 800;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter800}) format('truetype');
-    }
-    @font-face {
-      font-family: 'Inter';
-      font-style: normal;
-      font-weight: 900;
-      src: url(data:font/truetype;charset=utf-8;base64,${fontData.inter900}) format('truetype');
-    }
-`;
 
 function escapeXml(str: string): string {
   return str
@@ -318,10 +282,6 @@ export function renderOgSvg(
       <stop offset="0%" stop-color="#d3ff8d" stop-opacity="0.14" />
       <stop offset="100%" stop-color="#d3ff8d" stop-opacity="0" />
     </radialGradient>
-
-    <style>
-      ${fontStyles}
-    </style>
   </defs>
 
   <!-- Base Backgrounds -->
@@ -391,10 +351,6 @@ export function renderOgSvg(
       <stop offset="0%" stop-color="#d3ff8d" stop-opacity="0.16" />
       <stop offset="100%" stop-color="#d3ff8d" stop-opacity="0" />
     </radialGradient>
-
-    <style>
-      ${fontStyles}
-    </style>
   </defs>
 
   <!-- Base Backgrounds -->
@@ -514,15 +470,13 @@ export async function generateOgImages(): Promise<void> {
         const resvg = new Resvg(svg, {
           fitTo: { mode: 'width', value: 1200 },
           font: {
-            fontBuffers,
-            fontDirs: [fontsDir],
             fontFiles: fontPaths,
             loadSystemFonts: false,
             defaultFontFamily: 'Inter',
             sansSerifFamily: 'Inter',
             serifFamily: 'Inter',
             monospaceFamily: 'Inter',
-          } as unknown as import('@resvg/resvg-js').ResvgRenderOptions['font'],
+          },
         });
         const pngBuffer = resvg.render().asPng();
         const jpgBuffer = await sharp(pngBuffer)
