@@ -15,10 +15,8 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     var maxRetries = 5;
     var retryTimeout = null;
     var banner = null;
-    var manuallyDismissed = false;
 
-    function showBanner(message, showRefresh) {
-      if (manuallyDismissed) return;
+    function showBanner(message, isOffline) {
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'bascik-live-reload-banner';
@@ -29,37 +27,10 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
           'align-items:center;gap:12px;max-width:380px;';
         document.body.appendChild(banner);
       }
-      var dotColor = showRefresh ? '#ef4444' : '#f59e0b';
-      var html = '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor +
+      var dotColor = isOffline ? '#ef4444' : '#f59e0b';
+      banner.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor +
         ';flex-shrink:0;display:inline-block;"></span>' +
         '<span style="flex:1;">' + message + '</span>';
-      if (showRefresh) {
-        html += '<button onclick="location.reload()" style="background:#27272a;color:#fff;' +
-          'border:1px solid #52525b;border-radius:4px;padding:4px 8px;font-size:12px;' +
-          'cursor:pointer;font-weight:500;">Refresh</button>';
-        html += '<button class="bascik-dismiss-btn" style="background:transparent;color:#a1a1aa;' +
-          'border:none;padding:4px 8px;font-size:16px;cursor:pointer;font-weight:bold;line-height:1;margin-left:4px;" aria-label="Dismiss">&times;</button>';
-      }
-      banner.innerHTML = html;
-
-      if (showRefresh) {
-        var dismissBtn = banner.querySelector('.bascik-dismiss-btn');
-        if (dismissBtn) {
-          dismissBtn.onclick = function(e) {
-            if (e) e.stopPropagation();
-            manuallyDismissed = true;
-            if (retryTimeout) {
-              clearTimeout(retryTimeout);
-              retryTimeout = null;
-            }
-            if (source) {
-              source.close();
-              source = null;
-            }
-            removeBanner();
-          };
-        }
-      }
     }
 
     function removeBanner() {
@@ -70,16 +41,13 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     }
 
     function connect() {
-      if (manuallyDismissed) return;
       if (source) return;
       source = new EventSource("${url}");
       source.onmessage = function(e) {
-        if (manuallyDismissed) return;
         if (e.data === 'reload') {
           window.location.reload();
         } else if (e.data === 'connected') {
           retryCount = 0;
-          manuallyDismissed = false;
           removeBanner();
           if (wasConnected) {
             window.location.reload();
@@ -92,26 +60,31 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
           source.close();
           source = null;
         }
-        if (manuallyDismissed) return;
         if (retryCount < maxRetries) {
-          var delay = 5000;
+          var delay = 1000;
           retryCount++;
           showBanner('Live reload disconnected. Reconnecting (' + retryCount + '/' + maxRetries + ')...', false);
           if (retryTimeout) clearTimeout(retryTimeout);
           retryTimeout = setTimeout(connect, delay);
         } else {
-          showBanner('Live reload disconnected. Dev server offline.', true);
+          showBanner('Dev server offline. Will reconnect automatically when server restarts.', true);
         }
       };
     }
+
     function instantConnect() {
-      if (manuallyDismissed) return;
-      if (retryCount >= maxRetries) return;
-      if (retryTimeout) clearTimeout(retryTimeout);
-      if (!source) {
-        connect();
+      retryCount = 0;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
       }
+      if (source) {
+        source.close();
+        source = null;
+      }
+      connect();
     }
+
     window.addEventListener('focus', instantConnect);
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') instantConnect();

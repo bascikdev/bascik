@@ -16,12 +16,12 @@ describe("LIVE_RELOAD_SCRIPT", () => {
 
   it("contains reconnecting and offline banner status messages", () => {
     expect(LIVE_RELOAD_SCRIPT).toContain("Live reload disconnected. Reconnecting");
-    expect(LIVE_RELOAD_SCRIPT).toContain("Live reload disconnected. Dev server offline.");
+    expect(LIVE_RELOAD_SCRIPT).toContain("Dev server offline. Will reconnect automatically when server restarts.");
   });
 
-  it("contains refresh button for offline state", () => {
-    expect(LIVE_RELOAD_SCRIPT).toContain('<button onclick="location.reload()"');
-    expect(LIVE_RELOAD_SCRIPT).toContain("Refresh");
+  it("contains automatic reconnection on tab focus and visibilitychange", () => {
+    expect(LIVE_RELOAD_SCRIPT).toContain("instantConnect");
+    expect(LIVE_RELOAD_SCRIPT).toContain("addEventListener('focus', instantConnect)");
   });
 
   it("clears banner when connected message is received", () => {
@@ -40,6 +40,6 @@ describe("BOOT_PAGE_HTML", () => {
   it("contains inlined live-reload script for boot endpoint", () => {
     const html = BOOT_PAGE_HTML.toString("utf8");
     expect(html).toContain("/bascik-live-reload?boot=1");
-    expect(html).toContain("Live reload disconnected. Dev server offline.");
+    expect(html).toContain("Dev server offline. Will reconnect automatically when server restarts.");
   });
 });

@@ -91,7 +91,7 @@ Three native filesystem watchers (chokidar) handle source file updates:
 
 ### Live reload (`live-reload.ts`)
 
-Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects on browser tab focus or visibility changes, and cleanly closes streams on page unload. Production builds strip this script entirely.
+Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects instantly on browser tab focus or visibility changes (so restarting the dev server reloads your browser as soon as you re-focus the window without manual refresh), and cleanly closes streams on page unload. Production builds strip this script entirely. If the dev server is offline, a status banner indicates that auto-reconnection will happen automatically when the server is restarted.
 
 ## Production Server Mode (`bascik --serve`)
 

@@ -135,6 +135,8 @@ While the dev server is active, Bascik incrementally updates your build as files
   deleted file: pages/old-page.html
   ```
 
+> **Automatic Reconnection on Tab Focus:** If the dev server is restarted while editing code, returning focus to your browser window immediately attempts an instant reconnect and updates the page automatically with zero manual refreshes required.
+
 ## Transpilation and build errors
 
 If you introduce a syntax mistake or a build-script error, Bascik logs the file and location without crashing the dev server.

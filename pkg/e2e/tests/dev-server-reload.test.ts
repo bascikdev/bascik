@@ -78,7 +78,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     controller.abort();
   });
 
-  test('displays disconnection banner with Refresh button when live-reload connection fails', async ({ page }) => {
+  test('displays disconnection banner when live-reload connection fails', async ({ page }) => {
     // Abort requests to /bascik-live-reload to simulate network drop / server down
     await page.route('**/bascik-live-reload*', (route) => route.abort());
 
@@ -89,17 +89,11 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(banner).toBeVisible({ timeout: 10000 });
     await expect(banner).toContainText('Live reload disconnected');
 
-    // The dismiss button (X) should NOT be present while retrying is in progress
-    await expect(banner.locator('.bascik-dismiss-btn')).not.toBeVisible();
-
-    // Retries exhaust and Refresh button is rendered (5 retries * 5s = 25s)
-    await expect(banner.locator('button').first()).toHaveText('Refresh', { timeout: 30000 });
-
-    // After retries exhaust, the dismiss button (X) is shown
-    await expect(banner.locator('.bascik-dismiss-btn')).toBeVisible();
+    // Retries exhaust and offline message is rendered (5 retries * 1s = 5s)
+    await expect(banner).toContainText('Dev server offline. Will reconnect automatically when server restarts.', { timeout: 15000 });
   });
 
-  test('removes disconnection banner when live-reload connection is restored', async ({ page }) => {
+  test('removes disconnection banner and reconnects instantly when browser window regains focus', async ({ page }) => {
     // Block live-reload route briefly
     await page.route('**/bascik-live-reload*', (route) => route.abort());
 
@@ -111,42 +105,13 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     // Unroute live-reload to allow connection to succeed
     await page.unroute('**/bascik-live-reload*');
 
-    // Trigger instantConnect via visibilitychange or focus
-    await page.evaluate(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-
-    // Banner should be removed from DOM
-    await expect(banner).not.toBeAttached({ timeout: 10000 });
-  });
-
-  test('disconnection banner can be manually dismissed by clicking the dismiss button after retries exhaust', async ({ page }) => {
-    // Abort requests to /bascik-live-reload to simulate network drop / server down
-    await page.route('**/bascik-live-reload*', (route) => route.abort());
-
-    await page.goto('/scope-test');
-
-    const banner = page.locator('#bascik-live-reload-banner');
-    await expect(banner).toBeVisible({ timeout: 10000 });
-    await expect(banner).toContainText('Live reload disconnected');
-
-    // Wait for retries to exhaust so the dismiss button (X) appears
-    const dismissBtn = banner.locator('.bascik-dismiss-btn');
-    await expect(dismissBtn).toBeVisible({ timeout: 30000 });
-    await dismissBtn.click();
-
-    // The banner should no longer be attached to the DOM
-    await expect(banner).not.toBeAttached({ timeout: 5000 });
-
-    // Explicitly dispatch window focus and visibilitychange events to simulate user focusing window
+    // Trigger instantConnect via focus or visibilitychange
     await page.evaluate(() => {
       window.dispatchEvent(new Event('focus'));
-      document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    // Verify it stays dismissed and does NOT restart the retry countdown or show the banner
-    await page.waitForTimeout(3000);
-    await expect(banner).not.toBeAttached();
+    // Banner should be removed from DOM instantly
+    await expect(banner).not.toBeAttached({ timeout: 10000 });
   });
 
   // ── 2. Live Page Modification ──────────────────────────────────────────────
