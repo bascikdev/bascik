@@ -60,8 +60,8 @@ describe("runTranspile", () => {
     expect(_mockStartExecDev).toHaveBeenCalled();
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Server running at http://localhost:8080");
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Dev server ready in \d+ms/));
+    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ Dev server ready in \d+ms/));
+    expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
     logSpy.mockRestore();
   });
 

@@ -5,7 +5,7 @@ import { eventEmitter, registerShutdownHandler } from './events.js';
 
 const runScript = (scriptPath: string): Promise<number> => {
   const start = performance.now();
-  console.log(`▸ exec: ${scriptPath}`);
+  console.log(`(started) exec: ${scriptPath}`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath], {
       stdio: 'inherit',
@@ -14,7 +14,7 @@ const runScript = (scriptPath: string): Promise<number> => {
     child.on('close', (code) => {
       const elapsed = Math.round(performance.now() - start);
       if (code === 0) {
-        console.log(`✓ exec: ${scriptPath} (${elapsed}ms)`);
+        console.log(`(completed) exec: ${scriptPath} (${elapsed}ms)`);
         resolve(elapsed);
       } else {
         reject(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));

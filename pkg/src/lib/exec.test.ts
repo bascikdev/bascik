@@ -153,8 +153,8 @@ describe("runExecOnBuild", () => {
     const res = await runExecOnBuild();
     expect(res.count).toBe(2);
     expect(mockSpawn).toHaveBeenCalledTimes(2);
-    expect(logSpy).toHaveBeenCalledWith("▸ exec: scripts/a.ts");
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ exec: scripts\/a\.ts \(\d+ms\)/));
+    expect(logSpy).toHaveBeenCalledWith("(started) exec: scripts/a.ts");
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/completed exec: scripts\/a\.ts \(\d+ms\)/));
     logSpy.mockRestore();
   });
 });
