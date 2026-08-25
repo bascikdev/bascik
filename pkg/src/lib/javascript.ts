@@ -278,6 +278,7 @@ export const prefixElementAttribute = (
       let updatedMatch = match;
       attributesToReplace.forEach(
         ({ attributeName, obfuscatedAttributeName }) => {
+          if (!updatedMatch.includes(attributeName)) return;
           const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {
             // https://www.codemzy.com/blog/regex-groups-with-replace
             return updatedMatch.replace(regexp, (match, start, middle, end) => {

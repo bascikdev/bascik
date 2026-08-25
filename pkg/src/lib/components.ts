@@ -253,8 +253,14 @@ const ATTR_VALUE = `(?:[^>"']|"[^"]*"|'[^']*')*`;
  * Because lengths are preserved, indices found in the masked string are
  * valid in the original.
  */
-export const maskRawTextContent = (htmlString: string): string =>
-  htmlString
+export const maskRawTextContent = (htmlString: string): string => {
+  if (
+    !htmlString.includes("<!--") &&
+    !/<(?:script|style|textarea)\b/i.test(htmlString)
+  ) {
+    return htmlString;
+  }
+  return htmlString
     .replace(/<!--[\s\S]*?-->/g, (m) =>
       m.length >= 7 ? `<!--${" ".repeat(m.length - 7)}-->` : m,
     )
@@ -267,6 +273,7 @@ export const maskRawTextContent = (htmlString: string): string =>
       (_m, open: string, _tag: string, content: string, close: string) =>
         `${open}${" ".repeat(content.length)}${close}`,
     );
+};
 
 /**
  * Find the first `<tagName ...>` opening tag in `htmlString` and return its
@@ -507,6 +514,7 @@ export const injectProps = (
   if (!fileContent) return "";
   let result = fileContent;
   Object.entries(props).forEach(([propName, propValue]) => {
+    if (!result.includes(propName)) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     // Match: <tagName [attrsBefore] data-bascik-prop-name[=value] [attrsAfter]>...</tagName>
@@ -594,6 +602,7 @@ const findMatchingClose = (
 const parseNamedSlots = (
   innerContent: string,
 ): Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> => {
+  if (!innerContent.includes("data-bascik-slot")) return [];
   const results: Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> = [];
   // Quote-aware attribute scan (ATTR_VALUE) so the marker may appear after
   // other attributes, and `data-bascik-slot` inside a quoted attribute value
@@ -702,6 +711,7 @@ export const replaceDefaultSlots = (
   fileContent: string,
   defaultSlotContent: string,
 ): string => {
+  if (!fileContent.includes("data-bascik-slot")) return fileContent;
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
     `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot(?!\\s*=)(?:${ATTR_VALUE})>`,
