@@ -140,6 +140,20 @@ Production mode enforces a rate limit of **500 requests per 10-second window per
 
 Both development and production server modes share core security and lifecycle mechanisms:
 
+### Request routing and path normalization
+
+Every incoming request (`req.path`) passes through a deterministic normalization sequence before reaching the static asset or in-memory page resolver:
+
+1. **URL Decomposition (`?` and `#` stripping):** The raw request URI is split on `?` and `#` (`req.path.split(/[?#]/)[0]`) so query parameters and fragments never alter static asset paths or page lookup keys. For example, `/style.css?v=1` or `/about#section` resolve directly to `/style.css` and `/about`.
+2. **Percent-Encoding and Traversal Sanitation:** Paths are decoded using `decodeURIComponent()`. Malformed percent-encoding or paths containing `..` traversal patterns immediately yield a `400 Bad Request`.
+3. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections to `/bascik-live-reload`, the server extracts `new URL(req.headers.referer).pathname` before calling `getHttpPath()`. Query strings in the address bar (such as `/faq?tab=settings`) are stripped out so `mem.trackOpenPage()` tracks `/faq` accurately and selective reload filtering matches correctly.
+4. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
+   - Exact literal path match (`mem.getPageExact(pathname)`)
+   - Strip `.html` extension if present
+   - Alternate trailing-slash variant (`/blog` vs `/blog/`)
+   - Fallback to full `mem.getPage()` lookup (which returns `/404` if unmapped)
+5. **Server Script Parameter Parsing:** For pages containing `<script data-bascik-server>`, the original query string is isolated (`req.path.indexOf("?")`) and parsed via `URLSearchParams` into `searchParams` on the request context object.
+
 ### Security response headers
 
 Every response includes standard security headers:
