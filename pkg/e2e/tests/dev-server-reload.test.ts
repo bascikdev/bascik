@@ -89,8 +89,8 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(banner).toBeVisible({ timeout: 10000 });
     await expect(banner).toContainText('Live reload disconnected');
 
-    // Retries exhaust and Refresh button is rendered
-    await expect(banner.locator('button')).toHaveText('Refresh', { timeout: 15000 });
+    // Retries exhaust and Refresh button is rendered (1s + 2s + 4s + 8s + 16s = 31s backoff)
+    await expect(banner.locator('button')).toHaveText('Refresh', { timeout: 35000 });
   });
 
   test('removes disconnection banner when live-reload connection is restored', async ({ page }) => {
