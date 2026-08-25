@@ -16,9 +16,10 @@
  *   yarn workspace bascik-docs generate:og
  */
 
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { join, resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { availableParallelism } from 'node:os';
 import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
 import { NAV } from './nav.ts';
@@ -499,34 +500,43 @@ export async function generateOgImages(): Promise<void> {
     pagesMap.set(slug, { slug, section, title, description, fileName, codeSnippet });
   }
 
-  // Render SVG and convert to optimized JPEG for each documentation page
-  await Promise.all(
-    Array.from(pagesMap.entries()).map(async ([slug, { section, title, description }]) => {
-      const isHome = slug === 'home';
-      const svg = renderOgSvg(title, section, description, isHome, logoMarkup);
+  // Render SVG and convert to optimized JPEG in chunked batches with event-loop yielding
+  const entries = Array.from(pagesMap.entries());
+  const chunkSize = Math.max(2, availableParallelism ? availableParallelism() : 4);
 
-      const resvg = new Resvg(svg, {
-        fitTo: { mode: 'width', value: 1200 },
-        font: {
-          fontBuffers,
-          fontDirs: [fontsDir],
-          fontFiles: fontPaths,
-          loadSystemFonts: false,
-          defaultFontFamily: 'Inter',
-          sansSerifFamily: 'Inter',
-          serifFamily: 'Inter',
-          monospaceFamily: 'Inter',
-        } as unknown as import('@resvg/resvg-js').ResvgRenderOptions['font'],
-      });
-      const pngBuffer = resvg.render().asPng();
-      const jpgBuffer = await sharp(pngBuffer)
-        .jpeg({ quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: '4:4:4' })
-        .toBuffer();
+  for (let i = 0; i < entries.length; i += chunkSize) {
+    const chunk = entries.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async ([slug, { section, title, description }]) => {
+        const isHome = slug === 'home';
+        const svg = renderOgSvg(title, section, description, isHome, logoMarkup);
 
-      const outFile = join(distOgDir, `${slug}.jpg`);
-      await writeFile(outFile, jpgBuffer);
-    })
-  );
+        const resvg = new Resvg(svg, {
+          fitTo: { mode: 'width', value: 1200 },
+          font: {
+            fontBuffers,
+            fontDirs: [fontsDir],
+            fontFiles: fontPaths,
+            loadSystemFonts: false,
+            defaultFontFamily: 'Inter',
+            sansSerifFamily: 'Inter',
+            serifFamily: 'Inter',
+            monospaceFamily: 'Inter',
+          } as unknown as import('@resvg/resvg-js').ResvgRenderOptions['font'],
+        });
+        const pngBuffer = resvg.render().asPng();
+        const jpgBuffer = await sharp(pngBuffer)
+          .jpeg({ quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: '4:4:4' })
+          .toBuffer();
+
+        const outFile = join(distOgDir, `${slug}.jpg`);
+        await writeFile(outFile, jpgBuffer);
+      })
+    );
+    if (i + chunkSize < entries.length) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
 }
 
 // Auto-run when executed directly

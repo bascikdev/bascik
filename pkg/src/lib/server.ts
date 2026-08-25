@@ -337,7 +337,7 @@ export const createRequestHandler = () => {
       // toggle so that `/blog` and `/blog/` both resolve a page stored as `pages/blog/index.html`.
       const exactPage =
         mem.getPageExact(pathname) ??
-        mem.getPageExact(cleanPathname) ??
+        (cleanPathname !== pathname ? mem.getPageExact(cleanPathname) : undefined) ??
         mem.getPageExact(cleanPathname.endsWith("/") ? cleanPathname.slice(0, -1) : `${cleanPathname}/`);
 
       if (!exactPage && pathname.split(".").length > 1) {
