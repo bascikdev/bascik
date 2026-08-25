@@ -34,7 +34,6 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     eventEmitter.emit("boot-done");
     const totalElapsed = Math.round(performance.now() - overallStart);
     console.log(`✓ All tasks completed in ${totalElapsed}ms`);
-    if (url) console.log(`Server running at ${url}`);
   }
 };
 
