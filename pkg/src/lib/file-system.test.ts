@@ -13,6 +13,7 @@ import {
   createDir,
   copyReplicatePath,
   copyStaticAssets,
+  isInlineStylesheet,
 } from "./file-system.js";
 import { BascikConfig } from "./config.js";
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
@@ -237,6 +238,49 @@ describe("copyStaticAssets", () => {
 
     expect(console.log).toHaveBeenCalledWith("copied:", "pages/dir/one.css");
     expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.html");
+  });
+
+  it("ignores inlined stylesheets specified in BascikConfig.inlineStyles", async () => {
+    (BascikConfig as any).inlineStyles = ["pages/dir/one.css"];
+
+    try {
+      await copyStaticAssets();
+      expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.css");
+    } finally {
+      (BascikConfig as any).inlineStyles = false;
+    }
+  });
+});
+
+describe("isInlineStylesheet", () => {
+  it("returns false when inlineStyles is false or empty", () => {
+    (BascikConfig as any).inlineStyles = false;
+    expect(isInlineStylesheet("src/css/styles.css")).toBe(false);
+
+    (BascikConfig as any).inlineStyles = [];
+    expect(isInlineStylesheet("src/css/styles.css")).toBe(false);
+  });
+
+  it("returns true when inlineStyles is boolean true and file is .css", () => {
+    (BascikConfig as any).inlineStyles = true;
+    expect(isInlineStylesheet("src/css/styles.css")).toBe(true);
+    expect(isInlineStylesheet("src/css/main.js")).toBe(false);
+    (BascikConfig as any).inlineStyles = false;
+  });
+
+  it("correctly matches relative and absolute path variants for configured inlineStyles", () => {
+    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    expect(isInlineStylesheet("src/css/styles.css")).toBe(true);
+    expect(isInlineStylesheet("/Users/project/src/css/styles.css")).toBe(true);
+    expect(isInlineStylesheet("styles.css")).toBe(true);
+    (BascikConfig as any).inlineStyles = false;
+  });
+
+  it("does not falsely match substring filenames like other-styles.css when configured with styles.css", () => {
+    (BascikConfig as any).inlineStyles = ["styles.css"];
+    expect(isInlineStylesheet("src/css/other-styles.css")).toBe(false);
+    expect(isInlineStylesheet("my-styles.css")).toBe(false);
+    (BascikConfig as any).inlineStyles = false;
   });
 });
 

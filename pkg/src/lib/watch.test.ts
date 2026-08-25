@@ -16,6 +16,7 @@ const {
   mockCopyStaticAssets,
   mockDeleteDistDir,
   mockDeleteDistFile,
+  mockIsInlineStylesheet,
   mockEventEmit,
 } = vi.hoisted(() => {
   const watchers: { on: ReturnType<typeof vi.fn> }[] = [];
@@ -28,6 +29,7 @@ const {
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
   const mockDeleteDistDir = vi.fn().mockResolvedValue(undefined);
   const mockDeleteDistFile = vi.fn().mockResolvedValue(undefined);
+  const mockIsInlineStylesheet = vi.fn().mockReturnValue(false);
   const mockEventEmit = vi.fn();
   const makeWatcher = () => {
     const w = {
@@ -77,6 +79,7 @@ const {
     mockCopyStaticAssets,
     mockDeleteDistDir,
     mockDeleteDistFile,
+    mockIsInlineStylesheet,
     mockEventEmit,
   };
 });
@@ -100,6 +103,7 @@ vi.mock("./file-system.js", () => ({
   copyStaticAssets: mockCopyStaticAssets,
   deleteDistDir: mockDeleteDistDir,
   deleteDistFile: mockDeleteDistFile,
+  isInlineStylesheet: mockIsInlineStylesheet,
 }));
 
 vi.mock("./config.js", () => ({
@@ -242,6 +246,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
 
   it("calls processAllPages when an inline stylesheet changes and inlineStyles is true", async () => {
     (BascikConfig as any).inlineStyles = true;
+    mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
@@ -252,6 +257,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
 
   it("calls processAllPages when an inline stylesheet is added and inlineStyles is true", async () => {
     (BascikConfig as any).inlineStyles = true;
+    mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "add");
@@ -261,21 +267,23 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("calls processAllPages when matching inlineStyles array on change", async () => {
-    (BascikConfig as any).inlineStyles = ["src/pages/css/styles.css"];
+    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
-    await handler?.("/path/to/src/pages/css/styles.css");
+    await handler?.("/path/to/src/css/styles.css");
     expect(processAllPages).toHaveBeenCalledTimes(1);
     expect(eventEmitter.emit).not.toHaveBeenCalledWith("asset-changed");
   });
 
   it("emits asset-changed when a non-matching stylesheet changes", async () => {
-    (BascikConfig as any).inlineStyles = ["src/pages/css/styles.css"];
+    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
     const handler = getHandler(0, "change");
-    await handler?.("/path/to/src/pages/css/other.css");
+    await handler?.("/path/to/src/css/other.css");
     expect(processAllPages).not.toHaveBeenCalled();
     expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
   });

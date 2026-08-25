@@ -667,7 +667,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("inlines a single stylesheet into the <head> before component styles", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/pages/css/styles.css'];
+    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)          // page read
       .mockResolvedValueOnce('body { color: red; }'); // inlineStyles file
@@ -711,7 +711,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS when minify.css is true", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/pages/css/styles.css'];
+    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
     (BascikConfig.minify as any).css = true;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
@@ -723,7 +723,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS using a custom minify.css function", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/pages/css/styles.css'];
+    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
     (BascikConfig.minify as any).css = async (css: string) => `/* custom */ ${css.trim()}`;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)

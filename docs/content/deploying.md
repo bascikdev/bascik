@@ -12,6 +12,16 @@ Running `bascik --build` produces:
 
 The output uses root-relative paths (e.g. `/css/styles.css`). Files must be served from an HTTP server; opening them directly with `file://` will break asset loading.
 
+### Excluded source files
+
+To keep deployment artifacts clean, the following files are excluded from static asset copying and are never copied to `dist/`:
+
+- **Component source files**: all files in `src/components/` are source templates, resolved at build time, and never copied to `dist/`
+- **Page templates**: `.html` files in `src/pages/` are transpiled into compiled pages
+- **TypeScript files**: `.ts` source files used by build scripts or helper modules
+- **Test files**: any test file matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
+- **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into `<head>`)
+
 ### Previewing static builds locally
 
 To preview your built site locally before deploying, run Bascik's built-in production server:

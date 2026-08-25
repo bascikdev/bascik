@@ -7,11 +7,14 @@ import { mem } from "./lib/mem.js";
 import { eventEmitter } from "./lib/events.js";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
+  const overallStart = performance.now();
+
   if (BascikConfig.isBuild) {
     await runExecOnBuild();
     await watchFiles();
+    const totalElapsed = Math.round(performance.now() - overallStart);
+    console.log(`\n✓ Build complete in ${totalElapsed}ms`);
   } else {
-    startExecDev();
     const { startServer } = await import("./lib/server.js");
     const serverReady = startServer().catch((err) => {
       console.error("Server startup failed:", err);
@@ -21,11 +24,16 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       throw err;
     });
 
-    await watchFiles();
-    mem.setBootingDone();
-    eventEmitter.emit("boot-done");
+    const execReady = startExecDev();
     const url = await serverReady;
     if (url) console.log(`Server running at ${url}`);
+
+    await watchFiles();
+    await execReady;
+    mem.setBootingDone();
+    eventEmitter.emit("boot-done");
+    const totalElapsed = Math.round(performance.now() - overallStart);
+    console.log(`✓ All tasks completed in ${totalElapsed}ms`);
   }
 };
 

@@ -631,7 +631,7 @@ Keep inlined critical CSS to the minimum needed for above-the-fold visibility, t
 > import { defineConfig } from '@bascik/bascik/config';
 >
 > export default defineConfig({
->   inlineStyles: ['src/pages/css/styles.css'],
+>   inlineStyles: ['src/css/styles.css'],
 > });
 >
 > export const build = defineConfig({

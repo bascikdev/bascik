@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 describe('global design tokens & breakpoint CSS variables (styles.css)', () => {
-  const cssPath = join(process.cwd(), 'src/pages/css/styles.css');
+  const cssPath = join(process.cwd(), 'src/css/styles.css');
 
   it('defines standard responsive breakpoint screen width variables according to 2026 guidelines', async () => {
     const css = await readFile(cssPath, 'utf8');

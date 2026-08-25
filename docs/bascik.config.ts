@@ -8,5 +8,5 @@ export default defineConfig({
     { script: 'scripts/generate-og-images.ts', watch: ['content/'] },
   ],
   siteUrl: 'https://bascik.dev',
-  inlineStyles: ['src/pages/css/styles.css'],
+  inlineStyles: ['src/css/styles.css'],
 });

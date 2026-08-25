@@ -1,0 +1,4 @@
+/* inlined-global.css for e2e tests */
+:root {
+  --e2e-inlined-var: #123456;
+}

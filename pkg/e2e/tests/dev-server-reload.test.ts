@@ -78,6 +78,42 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     controller.abort();
   });
 
+  test('displays disconnection banner with Refresh button when live-reload connection fails', async ({ page }) => {
+    // Abort requests to /bascik-live-reload to simulate network drop / server down
+    await page.route('**/bascik-live-reload*', (route) => route.abort());
+
+    await page.goto('/scope-test');
+
+    // The banner should appear on the document body
+    const banner = page.locator('#bascik-live-reload-banner');
+    await expect(banner).toBeVisible({ timeout: 10000 });
+    await expect(banner).toContainText('Live reload disconnected');
+
+    // Retries exhaust and Refresh button is rendered (5 retries * 2s = 10s)
+    await expect(banner.locator('button')).toHaveText('Refresh', { timeout: 15000 });
+  });
+
+  test('removes disconnection banner when live-reload connection is restored', async ({ page }) => {
+    // Block live-reload route briefly
+    await page.route('**/bascik-live-reload*', (route) => route.abort());
+
+    await page.goto('/scope-test');
+
+    const banner = page.locator('#bascik-live-reload-banner');
+    await expect(banner).toBeVisible({ timeout: 10000 });
+
+    // Unroute live-reload to allow connection to succeed
+    await page.unroute('**/bascik-live-reload*');
+
+    // Trigger instantConnect via visibilitychange or focus
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Banner should be removed from DOM
+    await expect(banner).not.toBeAttached({ timeout: 10000 });
+  });
+
   // ── 2. Live Page Modification ──────────────────────────────────────────────
 
   test('open browser page receives instant live-reload when HTML page source changes', async ({ page }) => {
@@ -303,7 +339,7 @@ test.describe('Dev Server Startup Output', () => {
 
       child.stdout?.on('data', (data) => {
         output += data.toString('utf8');
-        if (output.includes('Server running at')) {
+        if (output.includes('All tasks completed in')) {
           clearTimeout(timeout);
           child.kill();
           resolve();
@@ -321,7 +357,7 @@ test.describe('Dev Server Startup Output', () => {
 
       child.on('exit', (code) => {
         clearTimeout(timeout);
-        if (!output.includes('Server running at')) {
+        if (!output.includes('All tasks completed in')) {
           reject(new Error(`Dev server exited prematurely with code ${code}. Output:\n${output}`));
         } else {
           resolve();

@@ -1,3 +1,5 @@
+import { getLiveReloadScript } from "./live-reload.js";
+
 /**
  * boot-page.ts: In-memory dev-server boot page.
  *
@@ -27,39 +29,6 @@ p{margin:0;font-size:.875rem;opacity:.5}
   <div class="spinner"></div>
   <p>Building site\u2026</p>
 </div>
-<script>
-(function(){
-  var es;
-  var retryCount = 0;
-  var maxRetries = 5;
-  var retryTimeout = null;
-
-  function connect() {
-    if (es) return;
-    es = new EventSource('/bascik-live-reload?boot=1');
-    es.onmessage = function(e){ if (e.data === 'reload') location.reload() };
-    es.onerror = function(){
-      es.close();
-      es = null;
-      if (retryCount < maxRetries) {
-        var delay = Math.pow(2, retryCount) * 1000;
-        retryCount++;
-        if (retryTimeout) clearTimeout(retryTimeout);
-        retryTimeout = setTimeout(connect, delay);
-      }
-    };
-  }
-  function instantConnect() {
-    retryCount = 0;
-    if (retryTimeout) clearTimeout(retryTimeout);
-    if (!es) connect();
-  }
-  window.addEventListener('focus', instantConnect);
-  document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'visible') instantConnect();
-  });
-  connect();
-})();
-</script>
+${getLiveReloadScript("/bascik-live-reload?boot=1")}
 </body>
 </html>`);

@@ -34,6 +34,13 @@ test.describe('Production Server (`bascik --serve`) Engine', () => {
     expect(hasLiveReloadScript).toBe(false);
   });
 
+  test('never renders live-reload banner in production mode', async ({ page }) => {
+    await page.goto('/scope-test');
+
+    const banner = page.locator('#bascik-live-reload-banner');
+    await expect(banner).not.toBeAttached();
+  });
+
   // ── 2. Security Headers & HTTP/2 ──────────────────────────────────────────
 
   test('serves production security headers and correct HTML content-type', async ({ request }) => {

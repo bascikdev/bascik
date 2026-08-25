@@ -198,6 +198,24 @@ export const deepReadDirFlat = async (
   }
 };
 
+export const isInlineStylesheet = (path: string): boolean => {
+  if (!BascikConfig.inlineStyles) return false;
+  if (!path.endsWith(".css")) return false;
+  if (BascikConfig.inlineStyles === true) return true;
+  if (Array.isArray(BascikConfig.inlineStyles)) {
+    const normalizedPath = path.replace(/\\/g, "/");
+    return BascikConfig.inlineStyles.some((stylePath) => {
+      const normalizedStyle = stylePath.replace(/\\/g, "/");
+      return (
+        normalizedPath === normalizedStyle ||
+        normalizedPath.endsWith("/" + normalizedStyle) ||
+        normalizedStyle.endsWith("/" + normalizedPath)
+      );
+    });
+  }
+  return false;
+};
+
 export const copyStaticAssets = async (): Promise<void> => {
   const allFiles = await deepReadDirFlat(BascikConfig.directory.pages);
   const staticAssetFiles = allFiles.filter(
@@ -205,7 +223,8 @@ export const copyStaticAssets = async (): Promise<void> => {
       /\.[a-zA-Z0-9]+$/.test(filePath) &&
       !filePath.endsWith(".html") &&
       !filePath.endsWith(".ts") &&
-      !/\.(test|spec)\.[a-zA-Z0-9]+$/.test(filePath),
+      !/\.(test|spec)\.[a-zA-Z0-9]+$/.test(filePath) &&
+      !isInlineStylesheet(filePath),
   );
   await Promise.all(
     staticAssetFiles.map((filePath) => copyReplicatePath(filePath, "dist")),
