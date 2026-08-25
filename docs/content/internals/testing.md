@@ -116,9 +116,11 @@ export default defineConfig({
 
 Each fixture page renders two or more instances of the component under test so isolation can be verified, changes to instance A must not affect instance B.
 
-### Compiler Verification
+### Testing philosophy: scoping engine verification
 
-When designing and updating end-to-end tests, these tests explicitly verify that Bascik's scoping and compilation rules transpile and rewrite selectors correctly. As a result, they deliberately select and assert against exact compiled class names (e.g., `.bascik__my-comp__wrapper`) and rewritten component IDs (e.g., `[id$="__btn"]`). They must not use `data-testid` properties because doing so would bypass the verification of the scoping engine itself.
+In standard web application testing, best practices dictate using explicit `data-testid` attributes to decouple Playwright tests from visual styling or class name changes.
+
+In Bascik's compiler test suite, however, the primary objective is to verify that the transpilation and scoping engine transforms HTML, CSS, and JavaScript correctly. As a result, E2E tests deliberately target generated scoped class names (such as `.bascik__my-comp__wrapper`) and rewritten element IDs (such as `[id$="__btn"]`). Using `data-testid` attributes in compiler tests would bypass assertions on class name scoping, attribute prefixing, and selector rewrites, leaving compiler regressions undetected.
 
 ## E2E Test Files
 
