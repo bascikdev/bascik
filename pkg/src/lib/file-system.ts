@@ -207,8 +207,9 @@ export const isInlineStylesheet = (path: string): boolean => {
     return BascikConfig.inlineStyles.some((stylePath) => {
       const normalizedStyle = stylePath.replace(/\\/g, "/");
       return (
-        normalizedPath.endsWith(normalizedStyle) ||
-        normalizedStyle.endsWith(normalizedPath)
+        normalizedPath === normalizedStyle ||
+        normalizedPath.endsWith("/" + normalizedStyle) ||
+        normalizedStyle.endsWith("/" + normalizedPath)
       );
     });
   }
