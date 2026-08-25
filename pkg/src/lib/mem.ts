@@ -4,6 +4,7 @@ import { getHttpPath } from "./paths.js";
 import { getRelativePath } from "./file-system.js";
 import { htmlHasServerScripts } from "./server-scripts.js";
 import { BascikConfig } from "./config.js";
+import { makeEtag } from "./names.js";
 import type { StoredPage } from "./types.js";
 
 interface StorePageArgs {
@@ -62,6 +63,7 @@ class MemoryStore {
       relativePagePath,
       absolutePagePath,
       content: buffer,
+      etag: makeEtag(buffer),
       compressedContent: undefined,
       usedComponentsSet,
       fileDependenciesSet,

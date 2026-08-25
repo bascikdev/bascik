@@ -77,6 +77,14 @@ describe("storePage + getPage round-trip", () => {
     expect(page?.usedComponentsSet.has("my-nav")).toBe(true);
     expect(page?.usedComponentsSet.has("my-footer")).toBe(true);
   });
+
+  it("pre-computes etag property on StoredPage", async () => {
+    await storeSample("etag-test");
+    const page = mem.getPage("etag-test");
+    expect(page?.etag).toBeDefined();
+    expect(typeof page?.etag).toBe("string");
+    expect(page?.etag?.startsWith('"')).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

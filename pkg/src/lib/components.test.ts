@@ -1415,6 +1415,19 @@ describe("masked string caching performance helpers", () => {
     const customMasked = " ".repeat(html.length);
     expect(replaceTag(html, "my-card", "<div>injected</div>", customMasked)).toBe(html);
   });
+
+  it("getFirstComponent caches regex compilation for repeated calls on the same ComponentList", () => {
+    const list: ComponentList = {
+      "my-card": { fileContent: "<div>card</div>" },
+      "my-button": { fileContent: "<button>btn</button>" },
+    };
+    const html1 = '<my-card></my-card>';
+    const html2 = '<my-button></my-button>';
+    expect(getFirstComponent(html1, list).name).toBe("my-card");
+    expect(getFirstComponent(html2, list).name).toBe("my-button");
+    // Repeating on the same ComponentList object should return consistent results
+    expect(getFirstComponent(html1, list).name).toBe("my-card");
+  });
 });
 
 

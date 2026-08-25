@@ -359,26 +359,36 @@ export const getTagContents = (
   return { ...match.groups };
 };
 
+const componentRegexCache = new WeakMap<ComponentList, { keysCount: number; regex: RegExp | null }>();
+
 export const getFirstComponent = (
   htmlString: string,
   componentList: ComponentList,
   masked?: string,
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
-  // Super important here, reverse, makes it so we're matching on the most specific tag first
-  // Meaning, it will find test-comp-clone before test-comp,
-  // because reverse, the longer tag will be first in the regexp, and therefore match first.
-  // It's like how an ingress controller works.
-  const componentNames = Object.keys(componentList)
-    .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .sort((a, b) => b.length - a.length);
-  if (componentNames.length === 0) return {};
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const matchComponentName = new RegExp(
-    `<\\b(${componentNames.join("|")})\\b[\\s\\S]*?>`,
-    "i",
-  );
+
+  const currentKeyCount = Object.keys(componentList).length;
+  let cached = componentRegexCache.get(componentList);
+  if (!cached || cached.keysCount !== currentKeyCount) {
+    // Super important here, reverse, makes it so we're matching on the most specific tag first
+    // Meaning, it will find test-comp-clone before test-comp,
+    // because reverse, the longer tag will be first in the regexp, and therefore match first.
+    // It's like how an ingress controller works.
+    const componentNames = Object.keys(componentList)
+      .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
+      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .sort((a, b) => b.length - a.length);
+    const regex = componentNames.length === 0
+      ? null
+      : new RegExp(`<\\b(${componentNames.join("|")})\\b[\\s\\S]*?>`, "i");
+    cached = { keysCount: currentKeyCount, regex };
+    componentRegexCache.set(componentList, cached);
+  }
+
+  const matchComponentName = cached.regex;
+  if (!matchComponentName) return {};
+
   // Match against the masked string so literal component-tag text inside
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
   const maskedHtml = masked ?? maskRawTextContent(htmlString);

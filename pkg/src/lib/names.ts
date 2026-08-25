@@ -40,3 +40,6 @@ export const getUniqueId = (length: number): string => {
   }
   return randomBytes(length / 2).toString("hex");
 };
+
+export const makeEtag = (buf: Buffer): string =>
+  `"${createHash("sha256").update(buf).digest("base64url").slice(0, 27)}"`;
