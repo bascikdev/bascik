@@ -65,7 +65,7 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
         source.close();
         source = null;
         if (retryCount < maxRetries) {
-          var delay = Math.pow(2, retryCount) * 2000;
+          var delay = 1000;
           retryCount++;
           showBanner('Live reload disconnected. Reconnecting (' + retryCount + '/' + maxRetries + ')...', false);
           if (retryTimeout) clearTimeout(retryTimeout);

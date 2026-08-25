@@ -79,10 +79,10 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   });
 
   test('displays disconnection banner with Refresh button when live-reload connection fails', async ({ page }) => {
-    await page.goto('/scope-test');
-
-    // Abort future requests to /bascik-live-reload to simulate network drop / server down
+    // Abort requests to /bascik-live-reload to simulate network drop / server down
     await page.route('**/bascik-live-reload*', (route) => route.abort());
+
+    await page.goto('/scope-test');
 
     // The banner should appear on the document body
     const banner = page.locator('#bascik-live-reload-banner');
@@ -94,10 +94,10 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   });
 
   test('removes disconnection banner when live-reload connection is restored', async ({ page }) => {
-    await page.goto('/scope-test');
-
     // Block live-reload route briefly
     await page.route('**/bascik-live-reload*', (route) => route.abort());
+
+    await page.goto('/scope-test');
 
     const banner = page.locator('#bascik-live-reload-banner');
     await expect(banner).toBeVisible({ timeout: 10000 });
