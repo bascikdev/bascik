@@ -2,7 +2,7 @@
 
 Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote.
 
-The guiding principle behind Bascik is simple: use what already exists. Do not invent new syntax, do not add a runtime, do not get in the way. Modern HTML, CSS, and JavaScript are enough.
+The guiding principle behind Bascik is simple: use what already exists. Do not invent new syntax, do not add a runtime, do not get in the way. Modern HTML, CSS, and JavaScript are enough. Be fast. Be transparent.
 
 ## See it in action
 
@@ -132,8 +132,14 @@ This is the opposite of a full-stack framework, which tends to control the entir
 
 ## The Core Principle
 
-Every decision in Bascik follows from one rule: use what already exists. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
+Every decision in Bascik follows three simple rules:
+
+- **Be fast.** Build times are measured in milliseconds. In development, live reload updates your browser instantly. In production, zero runtime JavaScript is added, giving users maximum page load performance.
+- **Be transparent.** There is no hidden runtime, no virtual DOM abstraction, and no framework black box. What you write in source is what ships in `dist/`: plain HTML, CSS, and JavaScript with deterministic, human-readable scoping prefixes.
+- **Use what exists.** Use the standard HTML, CSS, and Javascript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
 
 Bascik is a find-and-replace at build time. Custom component tags are resolved to their source HTML. CSS class names are scoped so they cannot collide. Script variables are isolated so they cannot leak. The output is a directory of vanilla HTML files that any server can host, any browser can render, and any tool can inspect without knowing Bascik exists.
+
+> **Be fast. Be transparent.** Bascik organizes your source at build time and steps aside. The output is pure HTML, CSS, and JavaScript.
 
 > **Next:** Read the [Getting Started guide](/getting-started) to install Bascik and write your first component in under five minutes. Or jump to [Scoping Compatibility](/compatibility) to see exactly what CSS and JavaScript patterns are supported.
