@@ -52,7 +52,7 @@ describe("runTranspile", () => {
     logSpy.mockRestore();
   });
 
-  it("runs dev pipeline when BascikConfig.isBuild is false and logs dev server ready timing", async () => {
+  it("runs dev pipeline when BascikConfig.isBuild is false and logs server running and completion timing", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = false;
     await runTranspile();
@@ -60,8 +60,8 @@ describe("runTranspile", () => {
     expect(_mockStartExecDev).toHaveBeenCalled();
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ Dev server ready in \d+ms/));
-    expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
+    expect(logSpy).toHaveBeenNthCalledWith(1, "Server running at http://localhost:8080");
+    expect(logSpy).toHaveBeenNthCalledWith(2, expect.stringMatching(/✓ All tasks completed in \d+ms/));
     logSpy.mockRestore();
   });
 

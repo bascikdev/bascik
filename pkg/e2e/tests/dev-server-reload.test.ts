@@ -339,7 +339,7 @@ test.describe('Dev Server Startup Output', () => {
 
       child.stdout?.on('data', (data) => {
         output += data.toString('utf8');
-        if (output.includes('Dev server ready in')) {
+        if (output.includes('All tasks completed in')) {
           clearTimeout(timeout);
           child.kill();
           resolve();
@@ -357,7 +357,7 @@ test.describe('Dev Server Startup Output', () => {
 
       child.on('exit', (code) => {
         clearTimeout(timeout);
-        if (!output.includes('Dev server ready in')) {
+        if (!output.includes('All tasks completed in')) {
           reject(new Error(`Dev server exited prematurely with code ${code}. Output:\n${output}`));
         } else {
           resolve();

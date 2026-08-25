@@ -26,14 +26,14 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
 
     const execReady = startExecDev();
     const url = await serverReady;
+    if (url) console.log(`Server running at ${url}`);
 
     await watchFiles();
     await execReady;
     mem.setBootingDone();
     eventEmitter.emit("boot-done");
     const totalElapsed = Math.round(performance.now() - overallStart);
-    console.log(`✓ Dev server ready in ${totalElapsed}ms`);
-    if (url) console.log(`Server running at ${url}`);
+    console.log(`✓ All tasks completed in ${totalElapsed}ms`);
   }
 };
 
