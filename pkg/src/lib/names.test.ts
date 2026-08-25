@@ -3,6 +3,7 @@ import {
   minifyAttributeName,
   obfuscateAttributeName,
   getAttributeNameHash,
+  clearHashCache,
   getUniqueId,
   toBase62,
 } from "./names.js";
@@ -41,7 +42,8 @@ describe("getAttributeNameHash", () => {
     expect(hash.length).toBe(12);
   });
 
-  it("is deterministic for the same input", () => {
+  it("is deterministic for the same input and uses the Map cache", () => {
+    clearHashCache();
     const hash1 = getAttributeNameHash("bascik__btn__primary");
     const hash2 = getAttributeNameHash("bascik__btn__primary");
     expect(hash1).toBe(hash2);

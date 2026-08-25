@@ -19,11 +19,21 @@ export const toBase62 = (num: bigint, length = 11): string => {
   return str.padStart(length, "0");
 };
 
+const hashCache = new Map<string, string>();
+
+export const clearHashCache = (): void => {
+  hashCache.clear();
+};
+
 export const getAttributeNameHash = (attributeName: string): string => {
+  const cached = hashCache.get(attributeName);
+  if (cached !== undefined) return cached;
   const digest = createHash("sha256").update(attributeName).digest();
   const num = typeof digest === "string" ? Buffer.from(digest).readBigUInt64BE(0) : digest.readBigUInt64BE(0);
   // Must start with a letter, so `b` for Bascik + 11 Base62 chars = 12 chars
-  return `b${toBase62(num, 11)}`;
+  const hash = `b${toBase62(num, 11)}`;
+  hashCache.set(attributeName, hash);
+  return hash;
 };
 
 export const minifyAttributeName = (attributeName: string): string => {
@@ -40,3 +50,6 @@ export const getUniqueId = (length: number): string => {
   }
   return randomBytes(length / 2).toString("hex");
 };
+
+export const makeEtag = (buf: Buffer): string =>
+  `"${createHash("sha256").update(buf).digest("base64url").slice(0, 27)}"`;

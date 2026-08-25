@@ -287,6 +287,7 @@ export const addIdClassesInHtml = (
 ): string => {
   if (idsConverted.length === 0) return html;
   idsConverted.forEach(({ idName, className }) => {
+    if (!html.includes(idName)) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     html = html.replace(
       new RegExp(`(<[^>]+(?<=\\s)id=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')[^>]*)>`, "gi"),
@@ -385,6 +386,7 @@ export const scopeCssCustomProperties = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("--")) return css;
   const propMap = new Map();
   // Collect --var-name from element-level declarations:  --name:
   const declRegex = /(?<!-)--(\w[\w-]*)(?=\s*:)/gm;
@@ -445,6 +447,7 @@ export const scopeCssCustomProperties = (
  * referenced elsewhere are left untouched.
  */
 export const scopeLayerNames = (css: string, componentName: string): string => {
+  if (!css.includes("@layer")) return css;
   const layerNames = new Set<string>();
   css.replace(
     /@layer\s+([\w-]+(?:\s*,\s*[\w-]+)*)/g,
@@ -484,6 +487,7 @@ export const scopeContainerNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("container")) return css;
   const containerNames = new Set<string>();
   css.replace(
     /container(?:-name)?\s*:\s*([\w-]+)/g,

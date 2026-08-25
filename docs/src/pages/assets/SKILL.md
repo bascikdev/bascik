@@ -948,6 +948,7 @@ export const build = defineConfig({
 
 When creating or modifying `bascik.config.ts`:
 * **Do NOT invent non-existent `exec` scripts:** `exec` is only for executing existing custom pre-build script files. If no custom script file exists in the workspace, leave `exec` as an empty array `[]` or omit it.
+* **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
 * **Set `siteUrl` for production features:** Configure `siteUrl` (e.g. `'https://example.com'`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled.

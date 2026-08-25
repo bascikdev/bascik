@@ -324,6 +324,8 @@ exec: [
 ]
 ```
 
+> **Production Overrides:** Array properties like `exec` are replaced entirely when overridden in `export const build`. If you define `exec` inside `export const build`, list all scripts that should run during production builds.
+
 ### `inlineStyles`
 
 Controls which global stylesheets Bascik reads and injects as `<style>` tags into every page's `<head>` during transpilation. When `minify.css` is true the content is minified before injection. Global styles are placed before component styles so component rules take precedence.
@@ -413,15 +415,30 @@ onMinifyError: "warn" // default in dev; "error" in build/prod-server
 
 ## `build`
 
-Exporting a `build` object lets you set options that apply during `bascik --build` and `bascik --serve` (production server), overriding the default export. A common pattern is to enable minification options only in production:
+Exporting a `build` object lets you set options that apply during `bascik --build` and `bascik --serve` (production server), overriding the default export. A common pattern is to enable minification options or additional lifecycle scripts only in production:
 
 ```ts
-export const build = {
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  exec: [
+    { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
+  ],
+});
+
+export const build = defineConfig({
   minify: {
     html: true,
     css: true,
     js: true,
     identifiers: true,
   },
-};
+  exec: [
+    { script: 'scripts/generate-search-index.ts' },
+    { script: 'scripts/generate-llms-txt.ts' },
+    { script: 'scripts/generate-og-images.ts' },
+  ],
+});
 ```
+
+> **Array Replacement vs Object Merging:** Nested configuration objects (such as `minify`, `directory`, `scopeAttribute`, and `devServer`) merge shallowly with default options. Array properties (such as `exec`, `watch`, and `inlineStyles`) are treated as atomic values and **replaced entirely** when specified in `export const build`. Any script omitted from `build.exec` will not execute during production builds.

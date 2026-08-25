@@ -67,7 +67,7 @@ During local development, `bascik` compiles pages into memory and starts the wat
 
 The `MemoryStore` class manages rendered pages during development without writing intermediate files to disk on every edit:
 
-- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists.
+- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs $O(1)$ exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
 - `#openPages`: Tracks active SSE live-reload connections. Pages currently open in a browser tab are transpiled first during batch rebuilds so visible tabs refresh immediately.
 
@@ -79,6 +79,8 @@ The development server binds its port immediately while page transpilation runs 
 
 The boot page connects to `/bascik-live-reload`. When the requested page finishes transpiling, the `"transpiled"` event fires, the SSE connection receives a reload signal, and the browser fetches the actual page automatically. Once `watchFiles()` completes the initial build, the `isBooting` flag is cleared and unmatched paths fall through to 404 handling. The boot page is never used in production mode.
 
+> **Developer Experience (DX) & Startup Logging:** Although `startServer()` binds the HTTP port immediately in the background so developers can open the URL at any time (with the boot page serving pending requests), `transpile.ts` delays printing `Server running at http://...` until after all initial tasks (`watchFiles()` and `exec`) finish. This DX design choice ensures the clickable server URL appears as the final line in the terminal output without being scrolled up by page transpilation logs.
+
 ### Watch system (`watch.ts`)
 
 Three native filesystem watchers (chokidar) handle source file updates:
@@ -89,7 +91,7 @@ Three native filesystem watchers (chokidar) handle source file updates:
 
 ### Live reload (`live-reload.ts`)
 
-Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects on browser tab focus or visibility changes, and cleanly closes streams on page unload. Production builds strip this script entirely.
+Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects instantly on browser tab focus or visibility changes (so restarting the dev server reloads your browser as soon as you re-focus the window without manual refresh), and cleanly closes streams on page unload. Production builds strip this script entirely. If the dev server is offline, a status banner indicates that auto-reconnection will happen automatically when the server is restarted.
 
 ## Production Server Mode (`bascik --serve`)
 

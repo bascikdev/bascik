@@ -11,6 +11,10 @@ import { MIME_MAP } from "./mime.js";
 import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.js";
 import { BOOT_PAGE_HTML } from "./boot-page.js";
 
+import { makeEtag } from "./names.js";
+
+export { makeEtag };
+
 // ─── Security headers sent on every response ──────────────────────────────────
 export const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
@@ -18,10 +22,6 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "referrer-policy": "strict-origin-when-cross-origin",
   "permissions-policy": "interest-cohort=()",
 };
-
-// Strong ETag from a content buffer (uses sha256 truncated for fast, collision-resistant ETags)
-export const makeEtag = (buf: Buffer): string =>
-  `"${createHash("sha256").update(buf).digest("base64url").slice(0, 27)}"`;
 
 // Weak stat-based ETag for static files: no extra file read needed
 export const makeStatEtag = (mtimeMs: number, size: number): string =>
@@ -216,7 +216,7 @@ export const createRequestHandler = () => {
         }
 
         const staticHeaders: Record<string, string | number> = {
-          "content-type": MIME_MAP.get(ext) ?? (MIME_MAP.get("octet-stream") as string),
+          "content-type": MIME_MAP.get(ext) ?? "application/octet-stream",
           "content-length": fileStat.size,
           ...SECURITY_HEADERS,
         };
@@ -337,7 +337,7 @@ export const createRequestHandler = () => {
       // toggle so that `/blog` and `/blog/` both resolve a page stored as `pages/blog/index.html`.
       const exactPage =
         mem.getPageExact(pathname) ??
-        mem.getPageExact(cleanPathname) ??
+        (cleanPathname !== pathname ? mem.getPageExact(cleanPathname) : undefined) ??
         mem.getPageExact(cleanPathname.endsWith("/") ? cleanPathname.slice(0, -1) : `${cleanPathname}/`);
 
       if (!exactPage && pathname.split(".").length > 1) {
@@ -407,7 +407,7 @@ export const createRequestHandler = () => {
       }
 
       // ── ETag + conditional GET (skip for no-store pages) ─────────────────
-      const etag = makeEtag(page.content);
+      const etag = page.etag ?? makeEtag(page.content);
       if (BascikConfig.cacheHttp !== false && req.headers["if-none-match"] === etag) {
         responseStatus = 304;
         res.respond(304, { etag, ...SECURITY_HEADERS });

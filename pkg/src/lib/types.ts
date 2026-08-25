@@ -325,4 +325,6 @@ export interface StoredPage {
   fileDependenciesSet?: Set<string>;
   /** True when the stored HTML contains `data-bascik-server` script blocks. */
   hasServerScripts: boolean;
+  /** Pre-computed ETag from the page content buffer for fast response headers. */
+  etag?: string;
 }

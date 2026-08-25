@@ -56,7 +56,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename, relative } from "node:path";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -83,6 +83,7 @@ import {
   replaceDefaultSlots,
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
+  maskRawTextContent,
 } from "./components.js";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.js";
 import { minifyJs } from "./js-minifier.js";
@@ -344,11 +345,13 @@ export const recursivelyTranspile = (
   // copy, leading to multi-GB heap usage on pages with many component instances).
   let substitutions = 0;
   while (true) {
+    const masked = maskRawTextContent(transpiledHtmlBody);
+
     if (
       substitutions >= MAX_SUBSTITUTIONS ||
       transpiledHtmlBody.length > MAX_OUTPUT_BYTES
     ) {
-      const partial = getFirstComponent(transpiledHtmlBody, componentList);
+      const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
       const tag = partial.name ? `<${partial.name}>` : "(unknown)";
       console.error(
         `[bascik] Transpilation aborted in "${filePath ?? "unknown file"}": ` +
@@ -362,7 +365,7 @@ export const recursivelyTranspile = (
         .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
       return { transpiledHtmlBody: cleanedHtml, usedComponents };
     }
-    const partial = getFirstComponent(transpiledHtmlBody, componentList);
+    const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
     if (!partial.name) {
       const cleanedHtml = transpiledHtmlBody
         .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
@@ -426,6 +429,7 @@ export const recursivelyTranspile = (
         transpiledHtmlBody,
         component.name,
         transpiledTag,
+        masked,
       );
       usedComponents.push(component);
       substitutions++;
@@ -449,7 +453,7 @@ export const recursivelyTranspile = (
       }
       console.error(`${errorMsg}\n  Error: ${error instanceof Error ? error.stack || error.message : String(error)}`);
       if (component.content) {
-        transpiledHtmlBody = replaceTag(transpiledHtmlBody, component.name, "");
+        transpiledHtmlBody = replaceTag(transpiledHtmlBody, component.name, "", masked);
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)

@@ -84,13 +84,18 @@ export const minifyHtml = (htmlString: string): string => {
   );
   html = html.replace(/\n/g, " ").replace(/\s\s+/g, " ");
   html = html.replace(/>\s+</g, (match, offset, fullString) => {
-    const prevSub = fullString.slice(0, offset + 1);
-    const prevMatch = prevSub.match(/<\/?([a-zA-Z0-9-]+)[^>]*>$/);
-    const prevTag = prevMatch ? prevMatch[1].toLowerCase() : "";
+    const lastOpen = fullString.lastIndexOf("<", offset);
+    const prevTagMatch =
+      lastOpen !== -1
+        ? fullString.slice(lastOpen, offset + 1).match(/^<\/?([a-zA-Z0-9-]+)/)
+        : null;
+    const prevTag = prevTagMatch ? prevTagMatch[1].toLowerCase() : "";
 
-    const nextSub = fullString.slice(offset + match.length - 1);
-    const nextMatch = nextSub.match(/^<\/?([a-zA-Z0-9-]+)/);
-    const nextTag = nextMatch ? nextMatch[1].toLowerCase() : "";
+    const nextStart = offset + match.length - 1;
+    const nextTagMatch = fullString
+      .slice(nextStart, nextStart + 64)
+      .match(/^<\/?([a-zA-Z0-9-]+)/);
+    const nextTag = nextTagMatch ? nextTagMatch[1].toLowerCase() : "";
 
     if (INLINE_TAGS.has(prevTag) && INLINE_TAGS.has(nextTag)) {
       return "> <";

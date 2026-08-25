@@ -1390,3 +1390,44 @@ describe("tagName Validation Guards", () => {
   });
 });
 
+describe("masked string caching performance helpers", () => {
+  const componentList: ComponentList = {
+    "my-card": { fileContent: "<div>card</div>" },
+  };
+
+  it("getFirstComponent utilizes pre-masked cached string when provided", () => {
+    const html = '<script><my-card></my-card></script><my-card></my-card>';
+    // If we mask it fully, it will find no components. Let's pass a custom masked string where everything is space-filled (meaning no tags).
+    const customMasked = " ".repeat(html.length);
+    expect(getFirstComponent(html, componentList, customMasked)).toEqual({});
+  });
+
+  it("getTag utilizes pre-masked cached string when provided", () => {
+    const html = '<my-card></my-card>';
+    // If we mask it fully, getTag won't see any open tag inside the masked string
+    const customMasked = " ".repeat(html.length);
+    expect(getTag(html, "my-card", componentList, customMasked)).toEqual({});
+  });
+
+  it("replaceTag utilizes pre-masked cached string when provided", () => {
+    const html = '<my-card></my-card>';
+    // If we mask it fully, replaceTag won't see any open tag inside the masked string
+    const customMasked = " ".repeat(html.length);
+    expect(replaceTag(html, "my-card", "<div>injected</div>", customMasked)).toBe(html);
+  });
+
+  it("getFirstComponent caches regex compilation for repeated calls on the same ComponentList", () => {
+    const list: ComponentList = {
+      "my-card": { fileContent: "<div>card</div>" },
+      "my-button": { fileContent: "<button>btn</button>" },
+    };
+    const html1 = '<my-card></my-card>';
+    const html2 = '<my-button></my-button>';
+    expect(getFirstComponent(html1, list).name).toBe("my-card");
+    expect(getFirstComponent(html2, list).name).toBe("my-button");
+    // Repeating on the same ComponentList object should return consistent results
+    expect(getFirstComponent(html1, list).name).toBe("my-card");
+  });
+});
+
+

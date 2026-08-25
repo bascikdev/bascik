@@ -90,11 +90,13 @@ When `useWorkers: true` is set, worker threads share the same filesystem and the
 
 The component phase recurses until no custom component tags remain in the HTML string. On each pass it finds the first component tag, fully resolves it, and substitutes it. It then repeats until no more tags are found.
 
-### Raw-text masking
+### Raw-text masking & Fast String Existence Guards
 
 Component tags are only markup outside of raw-text elements. Text like `<my-card>` inside a `<script>` (for example a JSON-LD string), a `<style>` comment, or a `<textarea>` is content, not a component usage, and resolving it there would inject component markup, including a stray `</script>`, into the middle of script content and corrupt the page.
 
-To prevent this, every tag search runs against a masked copy of the HTML produced by `maskRawTextContent`. The mask replaces the inner content of `<script>`, `<style>`, and `<textarea>` elements with an equal number of spaces, so the masked string has exactly the same length as the original. Searches (`getFirstComponent`, `findOpenTag`, the self-closing fallbacks, and the `findMatchingClose` depth counter) find indices in the masked string, and those indices are then used to slice and splice the original string. The same masking idea is used by the unresolved-tag warning scanner, which strips raw-text content before looking for leftover hyphenated tags.
+To prevent this, every tag search runs against a masked copy of the HTML produced by `maskRawTextContent`. Before running regexes, `maskRawTextContent` performs a fast string existence check (`!htmlString.includes("<!--") && !/<(?:script|style|textarea)\b/i.test(...)`). Pages without comments or raw-text tags bypass masking regexes entirely. Similarly, DOM selector script rewrites (`prefixElementAttribute`), CSS custom property/layer/container scoping, prop injection, and slot replacements use `.includes()` guards to skip regex execution when target identifiers or markers are absent.
+
+The mask replaces the inner content of `<script>`, `<style>`, and `<textarea>` elements with an equal number of spaces, so the masked string has exactly the same length as the original. Searches (`getFirstComponent`, `findOpenTag`, the self-closing fallbacks, and the `findMatchingClose` depth counter) find indices in the masked string, and those indices are then used to slice and splice the original string. The same masking idea is used by the unresolved-tag warning scanner, which strips raw-text content before looking for leftover hyphenated tags.
 
 For each component tag found:
 

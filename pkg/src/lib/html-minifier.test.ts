@@ -100,6 +100,16 @@ describe("minifyHtml", () => {
     expect(minifyHtml(htmlString)).toBe("<div><pre><code>const query = '$1' && '$&' || '$`';</code></pre></div>");
   });
 
+  it("handles tags with long attributes and custom tag names efficiently", () => {
+    const htmlString = '<div data-very-long-attribute="abcdefghijklmnopqrstuvwxyz1234567890"><span>First</span> <span>Second</span></div>';
+    expect(minifyHtml(htmlString)).toBe('<div data-very-long-attribute="abcdefghijklmnopqrstuvwxyz1234567890"><span>First</span> <span>Second</span></div>');
+  });
+
+  it("collapses whitespace between non-inline block elements", () => {
+    const htmlString = '<div>   <h1>Title</h1>   <p>Paragraph</p>   </div>';
+    expect(minifyHtml(htmlString)).toBe('<div><h1>Title</h1><p>Paragraph</p></div>');
+  });
+
   it("handles an empty input string", () => {
     expect(minifyHtml("")).toEqual("");
   });

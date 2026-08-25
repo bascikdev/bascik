@@ -33,6 +33,8 @@ transpiled: pages/index.html (modified component: <user-badge>)
 
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.
 
+> **Zero-Refresh Dev Server Reconnection:** If you stop or restart the local development server while working in your code editor, you do not need to click refresh in your browser. As soon as you focus back onto your web page, Bascik's injected live reload client immediately re-establishes the SSE connection and reloads the page automatically.
+
 > **Deep Dive:** Read [CLI Dev Server](/cli#starting-the-dev-server) for server options, or explore [Server Architecture Internals](/internals/server) for live reload mechanics.
 
 ## VS Code Editor Ergonomics
@@ -311,4 +313,3 @@ Serving dist/ at http://localhost:8080
 ```
 
 > **Deep Dive:** Read [Deploying](/deploying) for deployment targets and [Production Server](/server) for server options.
-

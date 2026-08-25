@@ -32,7 +32,7 @@ switch (decision.action) {
 }
 ```
 
-`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes. `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls` and returns the origin URL; `transpile.ts` prints `Server running at …` immediately after the transpilation summary line.
+`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
 
 The dynamic `import()` calls are intentional: they avoid loading modules when not needed (`init` and `--check` exit before reaching `transpile.ts`; `--build` never starts the server).
 
@@ -128,7 +128,7 @@ Bascik has a single runtime dependency: [chokidar](https://github.com/paulmillr/
 
 Bascik does not use abstract syntax trees (ASTs), DOM parsers (e.g. `htmlparser2`, `parse5`), or heavy browser emulation environments (such as JSDOM or Puppeteer) during transpilation. Early prototypes explored these paths but quickly hit significant barriers: JSDOM and browser-level emulation added enormous CPU and memory overhead, while full AST construction introduced complex tree-traversal bottlenecks that severely limited performance.
 
-Instead, Bascik uses high-performance, raw-string manipulation powered by targeted regular expressions combined with temporary content masking (e.g. shielding `<script>`, `<style>`, and `<textarea>` tags). This regex-first strategy keeps compile times down to single-digit milliseconds per page, ensures zero external package bloat, and aligns with the project philosophy of being lightweight and fast. The [Scoping Compatibility](/compatibility) page documents the known limitations and edge cases of this regex approach.
+Instead, Bascik uses high-performance, raw-string manipulation powered by targeted regular expressions combined with temporary content masking (e.g. shielding `<script>`, `<style>`, and `<textarea>` tags). Fast `.includes()` string-existence guards skip regex execution when target markers are absent, and HTML tag boundary scans use $O(1)$ backwards offset lookups (`lastIndexOf`) rather than full-string slicing to eliminate $O(N^2)$ heap allocations. This regex-first strategy keeps compile times down to single-digit milliseconds per page, ensures zero external package bloat, and aligns with the project philosophy of being lightweight and fast. The [Scoping Compatibility](/compatibility) page documents the known limitations and edge cases of this regex approach.
 
 ### Native TypeScript and ESM Compilation
 

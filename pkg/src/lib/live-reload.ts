@@ -10,13 +10,13 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
 <script>
   (function() {
     var wasConnected = false;
-    var source;
+    var source = null;
     var retryCount = 0;
     var maxRetries = 5;
     var retryTimeout = null;
     var banner = null;
 
-    function showBanner(message, showRefresh) {
+    function showBanner(message, isOffline) {
       if (!banner) {
         banner = document.createElement('div');
         banner.id = 'bascik-live-reload-banner';
@@ -27,16 +27,10 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
           'align-items:center;gap:12px;max-width:380px;';
         document.body.appendChild(banner);
       }
-      var dotColor = showRefresh ? '#ef4444' : '#f59e0b';
-      var html = '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor +
+      var dotColor = isOffline ? '#ef4444' : '#f59e0b';
+      banner.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor +
         ';flex-shrink:0;display:inline-block;"></span>' +
         '<span style="flex:1;">' + message + '</span>';
-      if (showRefresh) {
-        html += '<button onclick="location.reload()" style="background:#27272a;color:#fff;' +
-          'border:1px solid #52525b;border-radius:4px;padding:4px 8px;font-size:12px;' +
-          'cursor:pointer;font-weight:500;">Refresh</button>';
-      }
-      banner.innerHTML = html;
     }
 
     function removeBanner() {
@@ -62,26 +56,35 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
         }
       };
       source.onerror = function() {
-        source.close();
-        source = null;
+        if (source) {
+          source.close();
+          source = null;
+        }
         if (retryCount < maxRetries) {
-          var delay = 2000;
+          var delay = 1000;
           retryCount++;
           showBanner('Live reload disconnected. Reconnecting (' + retryCount + '/' + maxRetries + ')...', false);
           if (retryTimeout) clearTimeout(retryTimeout);
           retryTimeout = setTimeout(connect, delay);
         } else {
-          showBanner('Live reload disconnected. Dev server offline.', true);
+          showBanner('Dev server offline. Will reconnect automatically when server restarts.', true);
         }
       };
     }
+
     function instantConnect() {
       retryCount = 0;
-      if (retryTimeout) clearTimeout(retryTimeout);
-      if (!source) {
-        connect();
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
       }
+      if (source) {
+        source.close();
+        source = null;
+      }
+      connect();
     }
+
     window.addEventListener('focus', instantConnect);
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') instantConnect();
