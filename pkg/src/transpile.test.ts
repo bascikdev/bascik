@@ -62,6 +62,7 @@ describe("runTranspile", () => {
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(logSpy).toHaveBeenNthCalledWith(1, "Server running at http://localhost:8080");
     expect(logSpy).toHaveBeenNthCalledWith(2, expect.stringMatching(/✓ All tasks completed in \d+ms/));
+    expect(logSpy).toHaveBeenNthCalledWith(3, "Server running at http://localhost:8080");
     logSpy.mockRestore();
   });
 
