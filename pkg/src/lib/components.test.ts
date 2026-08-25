@@ -1390,3 +1390,31 @@ describe("tagName Validation Guards", () => {
   });
 });
 
+describe("masked string caching performance helpers", () => {
+  const componentList: ComponentList = {
+    "my-card": { fileContent: "<div>card</div>" },
+  };
+
+  it("getFirstComponent utilizes pre-masked cached string when provided", () => {
+    const html = '<script><my-card></my-card></script><my-card></my-card>';
+    // If we mask it fully, it will find no components. Let's pass a custom masked string where everything is space-filled (meaning no tags).
+    const customMasked = " ".repeat(html.length);
+    expect(getFirstComponent(html, componentList, customMasked)).toEqual({});
+  });
+
+  it("getTag utilizes pre-masked cached string when provided", () => {
+    const html = '<my-card></my-card>';
+    // If we mask it fully, getTag won't see any open tag inside the masked string
+    const customMasked = " ".repeat(html.length);
+    expect(getTag(html, "my-card", componentList, customMasked)).toEqual({});
+  });
+
+  it("replaceTag utilizes pre-masked cached string when provided", () => {
+    const html = '<my-card></my-card>';
+    // If we mask it fully, replaceTag won't see any open tag inside the masked string
+    const customMasked = " ".repeat(html.length);
+    expect(replaceTag(html, "my-card", "<div>injected</div>", customMasked)).toBe(html);
+  });
+});
+
+

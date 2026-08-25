@@ -253,7 +253,7 @@ const ATTR_VALUE = `(?:[^>"']|"[^"]*"|'[^']*')*`;
  * Because lengths are preserved, indices found in the masked string are
  * valid in the original.
  */
-const maskRawTextContent = (htmlString: string): string =>
+export const maskRawTextContent = (htmlString: string): string =>
   htmlString
     .replace(/<!--[\s\S]*?-->/g, (m) =>
       m.length >= 7 ? `<!--${" ".repeat(m.length - 7)}-->` : m,
@@ -278,12 +278,13 @@ const maskRawTextContent = (htmlString: string): string =>
 const findOpenTag = (
   htmlString: string,
   tagName: string,
+  masked?: string,
 ): { openTag: string; start: number; end: number } | null => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRegexp = new RegExp(`<${tn}(?:${ATTR_VALUE})>`, "i");
-  const openTagMatch = openTagRegexp.exec(maskRawTextContent(htmlString));
+  const openTagMatch = openTagRegexp.exec(masked ?? maskRawTextContent(htmlString));
   if (!openTagMatch) return null;
   return {
     openTag: openTagMatch[0],
@@ -296,6 +297,7 @@ export const replaceTag = (
   htmlString: string,
   tagName: string,
   transpiledTag: string,
+  masked?: string,
 ): string => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return htmlString;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -303,9 +305,10 @@ export const replaceTag = (
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const openTag = findOpenTag(htmlString, tagName);
+  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const openTag = findOpenTag(htmlString, tagName, maskedHtml);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
-    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end);
+    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
     if (closeIndex !== -1) {
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
@@ -330,7 +333,7 @@ export const replaceTag = (
   // content is never replaced; splice by index into the original string.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const selfClosingRegexp = new RegExp(`<${tn}(?:${ATTR_VALUE})\\s*\\/?>`, "i");
-  const selfClosingMatch = selfClosingRegexp.exec(maskRawTextContent(htmlString));
+  const selfClosingMatch = selfClosingRegexp.exec(maskedHtml);
   if (!selfClosingMatch) return htmlString;
   return (
     htmlString.slice(0, selfClosingMatch.index) +
@@ -359,6 +362,7 @@ export const getTagContents = (
 export const getFirstComponent = (
   htmlString: string,
   componentList: ComponentList,
+  masked?: string,
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
   // Super important here, reverse, makes it so we're matching on the most specific tag first
@@ -377,7 +381,8 @@ export const getFirstComponent = (
   );
   // Match against the masked string so literal component-tag text inside
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
-  const match = maskRawTextContent(htmlString).match(matchComponentName);
+  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const match = maskedHtml.match(matchComponentName);
   if (!match) {
     return {};
   }
@@ -385,7 +390,7 @@ export const getFirstComponent = (
   return {
     name: firstComponentName,
     index: match.index,
-    ...getTag(htmlString, firstComponentName, componentList),
+    ...getTag(htmlString, firstComponentName, componentList, maskedHtml),
   };
 };
 
@@ -393,6 +398,7 @@ export const getTag = (
   htmlString: string,
   tagName: string,
   componentList?: ComponentList,
+  masked?: string,
 ): Partial<BascikComponent> => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -400,9 +406,10 @@ export const getTag = (
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const openTag = findOpenTag(htmlString, tagName);
+  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const openTag = findOpenTag(htmlString, tagName, maskedHtml);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
-    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end);
+    const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
     if (closeIndex !== -1) {
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
@@ -428,7 +435,7 @@ export const getTag = (
     `<${tn}([\\s\\S]*?)\\/?>`,
     "i",
   );
-  const selfClosingMatch = selfClosingPattern.exec(maskRawTextContent(htmlString));
+  const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
   if (selfClosingMatch) {
     const returnObj = {
       content: htmlString.slice(
@@ -532,6 +539,7 @@ const findMatchingClose = (
   html: string,
   tagName: string,
   contentStart: number,
+  masked?: string,
 ): number => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return -1;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -541,14 +549,14 @@ const findMatchingClose = (
   const closeRe = new RegExp(`<\\/${tn}>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
-  const masked = maskRawTextContent(html);
+  const maskedHtml = masked ?? maskRawTextContent(html);
   let depth = 1;
   let pos = contentStart;
-  while (pos < masked.length) {
+  while (pos < maskedHtml.length) {
     openRe.lastIndex = pos;
     closeRe.lastIndex = pos;
-    const openMatch = openRe.exec(masked);
-    const closeMatch = closeRe.exec(masked);
+    const openMatch = openRe.exec(maskedHtml);
+    const closeMatch = closeRe.exec(maskedHtml);
     if (!closeMatch) return -1;
     if (!openMatch || closeMatch.index < openMatch.index) {
       depth--;

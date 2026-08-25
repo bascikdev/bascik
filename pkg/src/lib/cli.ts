@@ -39,30 +39,75 @@ const KNOWN_FLAGS = new Set([
 /** Positional subcommands the CLI understands. */
 const KNOWN_SUBCOMMANDS = new Set(["init"]);
 
+/** Filters out common Node.js internal, profiling, and loader flags and their values. */
+export const filterNodeArgs = (args: string[]): string[] => {
+  const result: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    // Skip flags that have a separate parameter argument following them
+    if (
+      arg === "-r" ||
+      arg === "--require" ||
+      arg === "--import" ||
+      arg === "--loader" ||
+      arg === "--experimental-loader"
+    ) {
+      i++; // skip the parameter value
+      continue;
+    }
+
+    // Skip self-contained flags or flags with inline values
+    if (
+      arg === "--prof" ||
+      arg === "--print-opt-source" ||
+      arg === "--expose-gc" ||
+      arg === "--experimental-strip-types" ||
+      arg === "--heapprofile" ||
+      arg === "--cpuprof" ||
+      arg.startsWith("--logfile=") ||
+      arg.startsWith("--heapprofile=") ||
+      arg.startsWith("--cpuprof=") ||
+      arg.startsWith("--inspect=") ||
+      arg.startsWith("--inspect-brk=") ||
+      arg === "--inspect" ||
+      arg === "--inspect-brk" ||
+      arg.startsWith("--conditions=")
+    ) {
+      continue;
+    }
+
+    result.push(arg);
+  }
+  return result;
+};
+
 export const resolveCliAction = (args: string[]): CliDecision => {
-  const unknownFlags = args.filter(
+  const filtered = filterNodeArgs(args);
+
+  const unknownFlags = filtered.filter(
     (a) => a.startsWith("-") && !KNOWN_FLAGS.has(a),
   );
 
   if (unknownFlags.length > 0) {
     return { action: "error", unknownFlags };
   }
-  if (args.includes("--help") || args.includes("-h")) {
+  if (filtered.includes("--help") || filtered.includes("-h")) {
     return { action: "help" };
   }
-  if (args.includes("--version") || args.includes("-v")) {
+  if (filtered.includes("--version") || filtered.includes("-v")) {
     return { action: "version" };
   }
-  if (args.includes("init")) {
+  if (filtered.includes("init")) {
     return { action: "init" };
   }
-  if (args.includes("--check")) {
+  if (filtered.includes("--check")) {
     return { action: "check" };
   }
-  if (args.includes("--serve")) {
+  if (filtered.includes("--serve")) {
     return { action: "prodServer" };
   }
-  if (args.includes("--build")) {
+  if (filtered.includes("--build")) {
     return { action: "build" };
   }
   return { action: "dev" };
