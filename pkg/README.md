@@ -240,15 +240,15 @@ yarn pkg:bench
 
 | Scenario                               | ops/sec | mean latency |
 | -------------------------------------- | ------- | ------------ |
-| `minifyHtml` — small HTML              | ~600K   | ~1.6µs       |
-| `minifyHtml` — large HTML (50×)        | ~19K    | ~52µs        |
-| `getTag` — paired                      | ~2.5M   | ~0.4µs       |
-| `getTag` — self-closing                | ~1.8M   | ~0.56µs      |
-| `prefixClassesInCss` — realistic CSS   | ~220K   | ~4.5µs       |
-| `scopeCssCustomProperties` — 10 props  | ~106K   | ~9.5µs       |
-| `recursivelyTranspile` — 10 components | ~13.7K  | ~73µs        |
-| `recursivelyTranspile` — 50 components | ~1.45K  | ~691µs       |
-| `deduplicateCss` — 20 entries          | ~1.4M   | ~0.7µs       |
+| `minifyHtml` — small HTML              | ~138K   | ~7.2µs       |
+| `minifyHtml` — large HTML (50×)        | ~81     | ~12.4ms      |
+| `getTag` — paired                      | ~778K   | ~1.3µs       |
+| `getTag` — self-closing                | ~1.07M  | ~0.9µs       |
+| `prefixClassesInCss` — realistic CSS   | ~14.1K  | ~70.7µs      |
+| `scopeCssCustomProperties` — 10 props  | ~69.4K  | ~14.4µs      |
+| `recursivelyTranspile` — 10 components | ~7.17K  | ~140µs       |
+| `recursivelyTranspile` — 50 components | ~809    | ~1.23ms      |
+| `deduplicateCss` — 20 entries          | ~1.28M  | ~0.8µs       |
 
 Run `yarn bench` after any change to the hot paths to catch regressions.
 
