@@ -319,7 +319,7 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="900" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
     <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
@@ -394,7 +394,7 @@ export function renderOgSvg(
   <!-- Footer -->
   <g transform="translate(80, 520)">
     <line x1="0" y1="-25" x2="1040" y2="-25" stroke="rgba(255,255,255,0.08)" stroke-width="1.5" />
-    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="900" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
+    <text x="0" y="27" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d" letter-spacing="-0.02em">HTML components. Zero runtime.</text>
     <text x="1040" y="27" text-anchor="end" font-family="Inter" font-size="26" font-weight="700" fill="#d3ff8d">bascik.dev</text>
   </g>
 </svg>`;
