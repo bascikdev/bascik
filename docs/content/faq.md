@@ -34,6 +34,16 @@ That might seem like a big undertaking, but the web standards are so well define
 
 Then I saw the rise of AI-assisted coding and thought, this tool I've been building is going to be perfect for that. Web development frameworks and tooling primarily exists to make tasks easier for developers. But when the levels of abstraction start getting in the way, a tool that doesn't impose its own rules and instead uses the fundamental web languages is going to be great for both developers and AI-assisted coding.
 
+## Will there ever be a version 2.0.0 of Bascik?
+
+I don't intend to ever create new major versions of Bascik. There isn't a need to. The web is stable and Bascik is built to adhere to web standards.
+
+I find great satisfaction in providing long term stability and not causing churn for teams trying to keep up with the latest version.
+
+Bascik will advance through minor updates to support new browser capabilities, performance enhancements, and new features.
+
+Then of course, I hope for very few patch updates as stability is a top priority.
+
 ## What happens if I name a component after a native HTML element?
 
 If you create a file like `nav.html` or `div.html`, Bascik will print a warning in the terminal when starting the dev server or running a build, and still load it:
