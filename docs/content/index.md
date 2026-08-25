@@ -34,7 +34,7 @@ transpiled: pages/search.html
 transpiled: pages/license.html
 transpiled: pages/getting-started.html
 ...
-✓ 50 pages transpiled in 1245ms
+✓ 50 pages transpiled in 1150ms
 Server running at http://localhost:8080
 ```
 
