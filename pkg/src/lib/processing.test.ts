@@ -1335,6 +1335,12 @@ describe("processAllPages – side effects", () => {
     const result = await processAllPages({ useWorkers: false });
     expect(result).toEqual(["pages/index.html"]);
   });
+
+  it("invalidates the component list cache before processing pages", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await processAllPages();
+    expect(invalidateComponentListCache).toHaveBeenCalledOnce();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -577,6 +577,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
+  invalidateComponentListCache();
   const useWorkers = options?.useWorkers ?? BascikConfig.useWorkers ?? false;
   const start = performance.now();
   // Parallel processing of pages
