@@ -966,6 +966,19 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).not.toContain("BSKIP");
   });
 
+  it("handles a '>' inside an attribute that appears before class, id, or name attributes", () => {
+    const c = makeComponent(
+      `<div data-condition="x > y" class="my-cls" id="my-id" name="my-name"></div>`,
+    );
+    let result = prefixElementAttribute(c, "class", "test1234");
+    result = prefixElementAttribute(result, "id", "test1234");
+    result = prefixElementAttribute(result, "name", "test1234");
+    expect(result.fileContent).toContain('data-condition="x > y"');
+    expect(result.fileContent).toContain(`class="${scopeClass("my-cls")}"`);
+    expect(result.fileContent).toContain(`id="${scope("my-id")}"`);
+    expect(result.fileContent).toContain(`name="${scope("my-name")}"`);
+  });
+
   it("restores slot markers inside pre>code so slot injection can proceed", () => {
     // Mirrors the real code-block component template: slot marker inside <code> inside <pre>
     const c = makeComponent(

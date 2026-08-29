@@ -113,6 +113,59 @@ export const convertCssElementSelectorsToClasses = (
 };
 
 /**
+ * Helper to inject or append a scoped class onto an open HTML tag without
+ * corrupting class-like text nested inside other attribute values.
+ */
+export const injectClassIntoTag = (openTag: string, className: string): string => {
+  const stringRanges: Array<{ start: number; end: number }> = [];
+  let j = 0;
+  let strChar = null;
+  let strStart = -1;
+  while (j < openTag.length) {
+    if (strChar) {
+      if (openTag[j] === "\\") j++;
+      else if (openTag[j] === strChar) {
+        stringRanges.push({ start: strStart, end: j });
+        strChar = null;
+      }
+    } else if (openTag[j] === '"' || openTag[j] === "'") {
+      strChar = openTag[j];
+      strStart = j;
+    }
+    j++;
+  }
+
+  let replaced = false;
+  let finalStr = "";
+  const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
+  let match;
+
+  while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
+    const matchStart = match.index;
+    const isInside = stringRanges.some(
+      (r) => matchStart > r.start && matchStart < r.end,
+    );
+    if (!isInside) {
+      const classQuote = match[1] !== undefined ? '"' : "'";
+      const classVal = match[1] !== undefined ? match[1] : match[2];
+      finalStr =
+        openTag.substring(0, matchStart) +
+        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}` +
+        openTag.substring(matchStart + match[0].length);
+      replaced = true;
+    }
+  }
+
+  if (!replaced) {
+    finalStr = openTag.replace(
+      /^<[a-zA-Z0-9-]+/i,
+      (tagHead) => `${tagHead} class="${className}"`,
+    );
+  }
+  return finalStr;
+};
+
+/**
  * If a component's css styles any element, add bascik classes to those elements
  */
 export const addElementClassesInHtml = (
@@ -126,55 +179,8 @@ export const addElementClassesInHtml = (
       `bascik__${componentName}__el__${element}`,
     );
     componentHtml = componentHtml.replace(
-      new RegExp(`<${element}\\b[^>]*>`, "gis"),
-      (openTag) => {
-        const stringRanges: Array<{ start: number; end: number }> = [];
-        let j = 0;
-        let strChar = null;
-        let strStart = -1;
-        while (j < openTag.length) {
-          if (strChar) {
-            if (openTag[j] === "\\") j++;
-            else if (openTag[j] === strChar) {
-              stringRanges.push({ start: strStart, end: j });
-              strChar = null;
-            }
-          } else if (openTag[j] === '"' || openTag[j] === "'") {
-            strChar = openTag[j];
-            strStart = j;
-          }
-          j++;
-        }
-
-        let replaced = false;
-        let finalStr = "";
-        const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
-        let match;
-
-        while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
-          const matchStart = match.index;
-          const isInside = stringRanges.some(
-            (r) => matchStart > r.start && matchStart < r.end,
-          );
-          if (!isInside) {
-            const classQuote = match[1] !== undefined ? '"' : "'";
-            const classVal = match[1] !== undefined ? match[1] : match[2];
-            finalStr =
-              openTag.substring(0, matchStart) +
-              ` class=${classQuote}${classVal ? classVal + " " : ""}${bascikClassName}${classQuote}` +
-              openTag.substring(matchStart + match[0].length);
-            replaced = true;
-          }
-        }
-
-        if (!replaced) {
-          finalStr = openTag.replace(
-            new RegExp(`<${element}\\b`, "i"),
-            `<${element} class="${bascikClassName}"`,
-          );
-        }
-        return finalStr;
-      }
+      new RegExp(`<${element}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis"),
+      (openTag) => injectClassIntoTag(openTag, bascikClassName),
     );
   });
   return componentHtml;
@@ -297,27 +303,12 @@ export const addIdClassesInHtml = (
   idsConverted.forEach(({ idName, className }) => {
     if (!html.includes(idName)) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    html = html.replace(
-      new RegExp(`(<[^>]+(?<=\\s)id=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')[^>]*)>`, "gi"),
-      (_: string, tagContent: string) => {
-        if (/\bclass="/.test(tagContent)) {
-          return (
-            tagContent.replace(
-              /\bclass="([^"]*)"/,
-              (_: string, c: string) => `class="${c} ${className}"`,
-            ) + ">"
-          );
-        }
-        if (/\bclass='/.test(tagContent)) {
-          return (
-            tagContent.replace(
-              /\bclass='([^']*)'/,
-              (_: string, c: string) => `class='${c} ${className}'`,
-            ) + ">"
-          );
-        }
-        return `${tagContent} class="${className}">`;
-      },
+    const idPattern = new RegExp(
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      "gi",
+    );
+    html = html.replace(idPattern, (openTag) =>
+      injectClassIntoTag(openTag, className),
     );
   });
   return html;

@@ -824,6 +824,12 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
     // Should inject the new class.
     expect(result).toContain("<div class=\"bascik__MyComp__el__div\" data-foo=' class=\"fake\" '></div>");
   });
+
+  it("handles '>' inside attributes before or after class when scoping elements", () => {
+    const html = `<div data-condition="x > y" class="box"></div>`;
+    const result = addElementClassesInHtml(html, "MyComp", ["div"]);
+    expect(result).toBe(`<div data-condition="x > y" class="box bascik__MyComp__el__div"></div>`);
+  });
 });
 
 // ─── scopeLayerNames ─────────────────────────────────────────────────────────
@@ -1123,6 +1129,14 @@ describe("addIdClassesInHtml", () => {
       { idName: "btn", className: "bascik__my-comp__id__btn" },
     ]);
     expect(result).not.toContain("bascik__my-comp__id__btn");
+  });
+
+  it("handles '>' inside attributes and nested class strings safely in addIdClassesInHtml", () => {
+    const html = `<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary">Click</button>`;
+    const result = addIdClassesInHtml(html, [
+      { idName: "btn", className: "bascik__my-comp__id__btn" },
+    ]);
+    expect(result).toBe(`<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary bascik__my-comp__id__btn">Click</button>`);
   });
 
   it("returns html unchanged when idsConverted is empty", () => {

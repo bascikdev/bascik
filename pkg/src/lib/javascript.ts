@@ -201,9 +201,11 @@ const replaceSafeAttr = (
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
-  return html.replace(/<[a-zA-Z0-9-]+(?:\s[^>]+)?>/g, (tagMatch) => {
-    // First, find all proper string boundaries in this tag to ignore false matches.
-    const stringRanges: Array<{ start: number; end: number }> = [];
+  return html.replace(
+    /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
+    (tagMatch) => {
+      // First, find all proper string boundaries in this tag to ignore false matches.
+      const stringRanges: Array<{ start: number; end: number }> = [];
     let j = 0;
     let strChar = null;
     let strStart = -1;

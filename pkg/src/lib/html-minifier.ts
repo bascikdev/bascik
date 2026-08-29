@@ -10,7 +10,7 @@
 export const extractScriptTags = (htmlString: string): string => {
   const html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
   const pattern = new RegExp(
-    `<script(?:(?!(?:type="(?!(?:text\\/javascript|application\\/javascript|module))[\\w\\/]+"|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
+    `<script(?:(?!(?:type=["'](?!(?:text\\/javascript|application\\/javascript|module)(?:["'\\s]|$))[^"']*["']|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
     "gi"
   );
   const arr = [...html.matchAll(pattern)];
@@ -72,7 +72,7 @@ export const minifyHtml = (htmlString: string): string => {
   const scriptTags = extractScriptTags(html);
   if (scriptTags) {
     const pattern = new RegExp(
-      `<script(?:(?!(?:type="(?!(?:text\\/javascript|application\\/javascript|module))[\\w\\/]+"|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
+      `<script(?:(?!(?:type=["'](?!(?:text\\/javascript|application\\/javascript|module)(?:["'\\s]|$))[^"']*["']|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
       "gi"
     );
     html = html.replace(pattern, "").trim();

@@ -24,6 +24,16 @@ describe("extractScriptTags", () => {
     expect(extracted).toBe("<script>client()</script>");
   });
 
+  it("ignores non-executable scripts with single or double quotes such as application/ld+json or importmap", () => {
+    const html = `
+      <script type='application/ld+json'>{ "name": "test" }</script>
+      <script type="importmap">{ "imports": {} }</script>
+      <script>client()</script>
+    `;
+    const extracted = extractScriptTags(html);
+    expect(extracted).toBe("<script>client()</script>");
+  });
+
   it("returns an empty string if no script tags are present", () => {
     expect(extractScriptTags("<div>No scripts here</div>")).toBe("");
   });
