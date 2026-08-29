@@ -21,6 +21,6 @@
 
   // getElementById("inner") should fail to find the scoped element if it was scoped,
   // but wait... bascik rewrites `document.getElementById('inner')` to `document.querySelector('.bascik__skip-contents__id__inner')`.
-  // Because it was rewritten, and the actual DOM element has `id="inner"` (not scoped), 
+  // Because it was rewritten, and the actual DOM element has `id="inner"` (not scoped),
   // it won't find it! So let's NOT write it that way.
 </script>
