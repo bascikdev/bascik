@@ -356,7 +356,7 @@ Setting `deduplicateCss` in `bascik.config.ts` controls whether class names are 
 > **Go deeper.** To understand how Bascik collects, scopes, and compiles CSS blocks at the parser level, check out the [CSS Deduplication internals guide](/internals/scoping-system#css-deduplication).
 
 | Feature / Aspect | `deduplicateCss: true` (Default) | `deduplicateCss: false` |
-|---|---|---|
+| --- | --- | --- |
 | **Class Scoping Scheme** | `bascik__card__wrapper` (shared per component) | `bascik__card__a1b2c3d4__wrapper` (unique per instance) |
 | **CSS Payload** | Single `<style>` block per component type, zero CSS duplication | Multiplied `<style>` blocks (one block per component instance) |
 | **`querySelector('.cls')` Behavior** | Targets the first instance on the page | Targets the matching element inside that specific instance |

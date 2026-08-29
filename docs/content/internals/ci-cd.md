@@ -35,7 +35,7 @@ The `e2e` job installs only the Chromium browser via `playwright install chromiu
 The release workflow (`.github/workflows/release.yml`) triggers on version tags. The two packages are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
 
 | Package | Tag format | Example |
-|---|---|---|
+| --- | --- | --- |
 | `@bascik/bascik` | `v<semver>` | `v1.2.0` |
 | `create-bascik` | `create-v<semver>` | `create-v1.0.3` |
 

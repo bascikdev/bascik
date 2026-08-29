@@ -199,7 +199,7 @@ bascik --check && bascik --build
 `bascik --check` does **not** validate CSS or JavaScript syntax. Use those tools immediately around it rather than treating them as a separate, later concern:
 
 | Tool | What it catches | How to use |
-|---|---|---|
+| --- | --- | --- |
 | **VS Code built-in CSS** | CSS syntax errors in `.css` files | Enabled by default |
 | **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions | `npm install -D stylelint && npx stylelint "**/*.css"` |
 | **[HTMLHint](https://htmlhint.com)** | HTML structure errors in page and component `.html` files | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` |
@@ -254,7 +254,7 @@ export default {
 ```
 
 | Option | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `port` | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on |
 | `hostname` | `"localhost"` | Hostname or IP to bind to |
 | `enableTls` | `false` | Enable TLS (HTTPS) and serve over HTTP/2. |

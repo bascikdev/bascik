@@ -46,7 +46,7 @@ Sitemap: https://example.com/sitemap.xml
 Each page is converted from its file path to a URL path following these rules:
 
 | Source file | URL |
-|---|---|
+| --- | --- |
 | `src/pages/index.html` | `/` |
 | `src/pages/about.html` | `/about` |
 | `src/pages/blog/index.html` | `/blog` |

@@ -138,7 +138,7 @@ Production mode enforces a rate limit of **500 requests per 10-second window per
 ## Development vs Production Comparison
 
 | Capability | Development (`bascik`) | Production (`bascik --serve`) |
-|---|---|---|
+| --- | --- | --- |
 | Entry Module | `transpile.ts` | `serve.ts` |
 | Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
 | Brotli Quality | `BROTLI_MIN_QUALITY = 1` | `BROTLI_MAX_QUALITY = 11` |
@@ -172,7 +172,7 @@ Every incoming request (`req.path`) passes through a deterministic normalization
 Every response includes standard security headers:
 
 | Header | Value |
-|---|---|
+| --- | --- |
 | `x-content-type-options` | `nosniff` |
 | `x-frame-options` | `SAMEORIGIN` |
 | `referrer-policy` | `strict-origin-when-cross-origin` |
