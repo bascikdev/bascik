@@ -618,6 +618,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             absolutePagePath: result.absolutePagePath,
             pageContent: result.distHtml,
             usedComponentsNames: result.usedComponentsNames,
+            fileDependencies: result.fileDependencies,
           });
         }
       })
