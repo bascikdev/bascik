@@ -262,17 +262,19 @@ const ATTR_VALUE = `(?:[^>"']|"[^"]*"|'[^']*')*`;
  * valid in the original.
  */
 export const maskRawTextContent = (htmlString: string): string => {
-  if (
-    !htmlString.includes("<!--") &&
-    !/<(?:script|style|textarea)\b/i.test(htmlString)
-  ) {
+  const hasComments = htmlString.includes("<!--");
+  const hasRawTags = /<(?:script|style|textarea)\b/i.test(htmlString);
+  if (!hasComments && !hasRawTags) {
     return htmlString;
   }
-  return htmlString
-    .replace(/<!--[\s\S]*?-->/g, (m) =>
+  let masked = htmlString;
+  if (hasComments) {
+    masked = masked.replace(/<!--[\s\S]*?-->/g, (m) =>
       m.length >= 7 ? `<!--${" ".repeat(m.length - 7)}-->` : m,
-    )
-    .replace(
+    );
+  }
+  if (hasRawTags) {
+    masked = masked.replace(
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       new RegExp(
         `(<(script|style|textarea)(?:${ATTR_VALUE})>)([\\s\\S]*?)(<\\/\\2\\s*>)`,
@@ -281,6 +283,8 @@ export const maskRawTextContent = (htmlString: string): string => {
       (_m, open: string, _tag: string, content: string, close: string) =>
         `${open}${" ".repeat(content.length)}${close}`,
     );
+  }
+  return masked;
 };
 
 /**

@@ -14,6 +14,7 @@ import {
   deleteDistFile,
   isInlineStylesheet,
 } from "./file-system.js";
+import { clearBuildScriptCaches } from "./build-scripts.js";
 import { BascikConfig } from "./config.js";
 import { MIME_MAP } from "./mime.js";
 import { eventEmitter, registerShutdownHandler } from "./events.js";
@@ -112,10 +113,19 @@ export const watchFiles = async () => {
       persistent: !BascikConfig.isBuild,
     })
     // If you add a component, how will we know what pages to update unless we go and look
-    .on("add", async () => processAllPages().catch(onWatchError))
+    .on("add", async (path) => {
+      clearBuildScriptCaches(path);
+      processAllPages().catch(onWatchError);
+    })
     // For changes and deletion of components we can be selective
-    .on("change", async (path) => selectivelyProcessPages(path).catch(onWatchError))
-    .on("unlink", async (path) => selectivelyProcessPages(path).catch(onWatchError)));
+    .on("change", async (path) => {
+      clearBuildScriptCaches(path);
+      selectivelyProcessPages(path).catch(onWatchError);
+    })
+    .on("unlink", async (path) => {
+      clearBuildScriptCaches(path);
+      selectivelyProcessPages(path).catch(onWatchError);
+    }));
 
   // Re-transpile all pages when user-specified extra paths change (dev only)
   if (!BascikConfig.isBuild && BascikConfig.watch.length) {
@@ -124,9 +134,18 @@ export const watchFiles = async () => {
         ignoreInitial: true,
         persistent: true,
       })
-      .on("add", async (path) => selectivelyProcessPagesForWatchPath(path).catch(onWatchError))
-      .on("change", async (path) => selectivelyProcessPagesForWatchPath(path).catch(onWatchError))
-      .on("unlink", async () => processAllPages().catch(onWatchError)));
+      .on("add", async (path) => {
+        clearBuildScriptCaches(path);
+        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+      })
+      .on("change", async (path) => {
+        clearBuildScriptCaches(path);
+        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+      })
+      .on("unlink", async () => {
+        clearBuildScriptCaches();
+        processAllPages().catch(onWatchError);
+      }));
   }
 
   // Re-transpile all pages when inlined global stylesheets change (dev only)

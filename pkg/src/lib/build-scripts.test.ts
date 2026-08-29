@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolve } from "node:path";
-import { executeBuildScripts, extractScriptDeps, collectAllScriptDeps, cleanStackTrace, SCRIPT_CACHE_VERSION } from "./build-scripts.js";
+import {
+  executeBuildScripts,
+  extractScriptDeps,
+  collectAllScriptDeps,
+  cleanStackTrace,
+  SCRIPT_CACHE_VERSION,
+  clearBuildScriptCaches,
+} from "./build-scripts.js";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -60,6 +67,7 @@ const rejectWith = (message: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearBuildScriptCaches();
 });
 
 describe("executeBuildScripts", () => {
@@ -666,6 +674,7 @@ describe("build-script output cache", () => {
 
     // Change transitive dependency nav.ts
     navVersion = "v2";
+    clearBuildScriptCaches("docs/scripts/nav.ts");
     mockExecFile.mockClear();
     mockWriteFile.mockClear();
     resolveWith("<p>rendered-v2</p>");
