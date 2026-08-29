@@ -14,12 +14,13 @@
  */
 import { readFile } from 'node:fs/promises';
 
-// Sections that have their own index page (e.g. /internals, /switch)
-const SECTIONS_WITH_PAGE = new Set(['internals', 'switch']);
+// Sections that have their own index page (e.g. /internals, /switch, /testing)
+const SECTIONS_WITH_PAGE = new Set(['internals', 'switch', 'testing']);
 
 const SECTION_LABELS: Record<string, string> = {
   internals: 'Internals',
   switch: 'Switch',
+  testing: 'Testing & Debugging',
   recipes: 'Recipes',
   resources: 'Resources',
 };

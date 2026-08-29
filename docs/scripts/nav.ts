@@ -46,8 +46,19 @@ export const NAV: NavSection[] = [
       { href: '/cli', label: 'CLI / Command Line' },
       { href: '/configuration', label: 'Configuration' },
       { href: '/compatibility', label: 'Scoping Compatibility' },
-      { href: '/testing', label: 'Testing' },
       { href: '/deploying', label: 'Deploying' },
+    ]
+  },
+  {
+    section: 'Testing & Debugging', pages: [
+      { href: '/testing', label: 'Overview' },
+      { href: '/testing/unit-testing', label: 'Unit Testing' },
+      { href: '/testing/component-testing', label: 'Component Testing' },
+      { href: '/testing/server-scripts', label: 'Server Scripts' },
+      { href: '/testing/e2e-testing', label: 'End-to-End Testing' },
+      { href: '/testing/debugging', label: 'Debugging' },
+      { href: '/testing/source-maps', label: 'Source Maps' },
+      { href: '/testing/linting', label: 'Linting' },
     ]
   },
   {

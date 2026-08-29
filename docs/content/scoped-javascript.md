@@ -60,13 +60,17 @@ The `class` attribute can still coexist on the same element for styling, just ad
 
 > **Rule of thumb.** Use `getElementById` (or `getElementsByName`) for elements you need to control per-instance. Reserve `querySelector`/`querySelectorAll` for cases where you intentionally want to sweep across all instances.
 
-## Debugging Component Scripts
+## Source Maps and DevTools Debugging
 
-When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`), Bascik makes debugging component scripts seamless:
+When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`), Bascik provides zero-overhead source mapping without generating external `.map` files:
 
-### Virtual Source Files in DevTools
+### Virtual Source Files in DevTools (`//# sourceURL`)
 
-Bascik appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+Bascik automatically appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+
+### 1:1 Line Number Preservation
+
+Bascik inserts leading newline padding when scoping component `<script>` tags so that line numbers in the compiled output match the original component file line numbers exactly. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template.
 
 ### Setting Breakpoints and Inspecting State
 

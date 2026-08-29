@@ -26,7 +26,8 @@ describe('renderSectionLabel', () => {
   it('returns section label for valid page paths', () => {
     expect(renderSectionLabel('/why-bascik')).toBe('<p class="section-label">Overview</p>');
     expect(renderSectionLabel('/components')).toBe('<p class="section-label">Features</p>');
-    expect(renderSectionLabel('/testing')).toBe('<p class="section-label">Reference</p>');
+    expect(renderSectionLabel('/testing')).toBe('<p class="section-label">Testing & Debugging</p>');
+    expect(renderSectionLabel('/testing/unit-testing')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/recipes/markdown')).toBe('<p class="section-label">Recipes</p>');
   });
 
