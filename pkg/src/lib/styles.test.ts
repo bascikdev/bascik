@@ -799,6 +799,24 @@ describe("single-quoted HTML attributes in styles", () => {
   });
 });
 
+describe("addElementClassesInHtml – nested same-tag elements", () => {
+  it("injects class to nested same-tag elements without skipping inner ones", () => {
+    const html = '<div class="outer">\n  <div class="inner">nested</div>\n</div>';
+    const result = addElementClassesInHtml(html, "my-comp", ["div"]);
+    expect(result).toBe(
+      '<div class="outer bascik__my-comp__el__div">\n  <div class="inner bascik__my-comp__el__div">nested</div>\n</div>'
+    );
+  });
+
+  it("handles void elements and nested tags together correctly", () => {
+    const html = '<div class="outer"><img src="foo.png" /><div class="inner"></div></div>';
+    const result = addElementClassesInHtml(html, "my-comp", ["div", "img"]);
+    expect(result).toBe(
+      '<div class="outer bascik__my-comp__el__div"><img class="bascik__my-comp__el__img" src="foo.png" /><div class="inner bascik__my-comp__el__div"></div></div>'
+    );
+  });
+});
+
 // ─── scopeLayerNames ─────────────────────────────────────────────────────────
 
 describe("scopeLayerNames", () => {

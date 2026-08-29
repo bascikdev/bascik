@@ -115,13 +115,6 @@ export const convertCssElementSelectorsToClasses = (
 /**
  * If a component's css styles any element, add bascik classes to those elements
  */
-// HTML void elements — they have no closing tag, so the paired-tag regex in
-// addElementClassesInHtml never matches them. Handle them separately.
-const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
-
 export const addElementClassesInHtml = (
   componentHtml: string,
   componentName: string,
@@ -132,41 +125,24 @@ export const addElementClassesInHtml = (
     const bascikClassName = minifyAttributeName(
       `bascik__${componentName}__el__${element}`,
     );
-    const injectClass = (elementHtml: string): string => {
-      // Check only the element's own opening tag for a class attribute,
-      // not any nested child's class (which would cause the class to land
-      // on the wrong element, e.g. <code> instead of <pre>).
-      const openTag = elementHtml.match(new RegExp(`^<${element}\\b[^>]*>`, "i"))?.[0] ?? "";
-      if (/\bclass="/.test(openTag)) {
-        return elementHtml.replace(/class=".*?(?=")/i, (classStr) => {
-          return `${classStr} ${bascikClassName}`;
-        });
-      }
-      if (/\bclass='/.test(openTag)) {
-        return elementHtml.replace(/class='.*?(?=')/i, (classStr) => {
-          return `${classStr} ${bascikClassName}`;
-        });
-      }
-      return elementHtml.replace(
-        new RegExp(`<${element}\\b`, "i"),
-        `<${element} class="${bascikClassName}"`,
-      );
-    };
-
-    if (VOID_ELEMENTS.has(element)) {
-      // Void elements: match the standalone opening tag (no closing tag).
-      componentHtml = componentHtml.replace(
-        new RegExp(`<${element}\\b(\\s[^>]*?)?\\/?>`, "gis"),
-        (tag) => injectClass(tag),
-      );
-      return;
-    }
-
-    // Find all the instances of that element in the component.
-    // The `s` (dotAll) flag lets `.` match newlines for multi-line element content.
     componentHtml = componentHtml.replace(
-      new RegExp(`<${element}\\b[^>]*>([\\s\\S]*?)<\\/${element}\\b>`, "gis"),
-      (elementHtml: string) => injectClass(elementHtml),
+      new RegExp(`<${element}\\b[^>]*>`, "gis"),
+      (openTag) => {
+        if (/\bclass="/i.test(openTag)) {
+          return openTag.replace(/class=".*?(?=")/i, (classStr) => {
+            return `${classStr} ${bascikClassName}`;
+          });
+        }
+        if (/\bclass='/i.test(openTag)) {
+          return openTag.replace(/class='.*?(?=')/i, (classStr) => {
+            return `${classStr} ${bascikClassName}`;
+          });
+        }
+        return openTag.replace(
+          new RegExp(`<${element}\\b`, "i"),
+          `<${element} class="${bascikClassName}"`,
+        );
+      }
     );
   });
   return componentHtml;
