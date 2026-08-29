@@ -28,6 +28,9 @@ describe('renderSectionLabel', () => {
     expect(renderSectionLabel('/components')).toBe('<p class="section-label">Features</p>');
     expect(renderSectionLabel('/testing')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/unit-testing')).toBe('<p class="section-label">Testing & Debugging</p>');
+    expect(renderSectionLabel('/testing/build-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
+    expect(renderSectionLabel('/testing/server-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
+    expect(renderSectionLabel('/testing/exec-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/recipes/markdown')).toBe('<p class="section-label">Recipes</p>');
   });
 

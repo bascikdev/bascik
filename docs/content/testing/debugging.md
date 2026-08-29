@@ -21,6 +21,15 @@ Scaffolded Bascik projects include a `.vscode/launch.json` file configured for d
       "skipFiles": ["<node_internals>/**"]
     },
     {
+      "name": "Debug Build Scripts",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["bascik", "--build"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
       "name": "Debug Unit Tests",
       "type": "node",
       "request": "launch",
@@ -42,16 +51,24 @@ Scaffolded Bascik projects include a `.vscode/launch.json` file configured for d
 
 ## Debugging Workflow
 
-### 1. Server Scripts and Build Steps
+### 1. Build-Time Scripts (`data-bascik-build`)
 
-To debug server scripts (`<script data-bascik-server>`) or build scripts (`<script data-bascik-build>`):
+To step through build-time scripts or page-aware helpers:
 
-1. Open your component template or exported `.ts` file in VS Code.
-2. Click to the left of a line number to set a breakpoint.
-3. Select **Debug Dev Server** in VS Code's **Run and Debug** panel and press `F5`.
+1. Set a breakpoint in your helper module (such as `src/lib/canonical.ts` or `src/lib/md-renderer.ts`).
+2. Select **Debug Build Scripts** in VS Code's **Run and Debug** panel and press `F5`.
+3. The build runs under the Node.js inspector and pauses at your breakpoint before generating output files.
+
+### 2. Request-Time Server Scripts (`data-bascik-server`)
+
+To debug server scripts running during incoming HTTP requests:
+
+1. Open your component template or exported backend service file in VS Code.
+2. Set a breakpoint on your request handling line.
+3. Select **Debug Dev Server** in VS Code and press `F5`.
 4. Trigger the page request in your browser. Execution pauses at your breakpoint in VS Code.
 
-### 2. Unit Tests
+### 3. Unit Tests
 
 To step through Vitest unit tests:
 
@@ -59,7 +76,7 @@ To step through Vitest unit tests:
 2. Select **Debug Unit Tests** in VS Code and press `F5`.
 3. Vitest runs under the debugger and pauses at your breakpoint.
 
-### 3. Client Component Scripts
+### 4. Client Component Scripts
 
 To debug browser scripts in Google Chrome or Microsoft Edge directly from VS Code:
 

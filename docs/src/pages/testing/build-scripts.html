@@ -36,8 +36,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Overview of testing and debugging in Bascik: unit testing, component contract testing, server script testing, Playwright end-to-end testing, VS Code debuggers, and web standards linting." />
-  <title>Testing & Debugging Overview - Bascik Docs</title>
+    content="Guide to testing build-time scripts in Bascik: separating build logic into pure TypeScript helper modules, testing page-aware scripts, and verifying fallback markup." />
+  <title>Build Scripts Testing - Bascik Docs</title>
 </head>
 
 <body>
@@ -56,7 +56,7 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/testing'));
+          console.log(renderSectionLabel('/testing/build-scripts'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
@@ -64,13 +64,13 @@
           const { renderMd } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMd('./content/testing.md'));
+          console.log(await renderMd('./content/testing/build-scripts.md'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
-          console.log(renderPagination('/testing'));
+          console.log(renderPagination('/testing/build-scripts'));
         </script>
       </main>
     </div>

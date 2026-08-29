@@ -10,13 +10,13 @@
   <div id="result-box" class="result-box">No query yet</div>
   <div class="card">Card 1</div>
   <div class="card">Card 2</div>
-  <input name="username" type="hidden" value="alice">
+  <input name="username" type="hidden" value="alice" title="Hidden username field" aria-label="Hidden username field">
 
   <div class="btn-row">
-    <button id="query-by-id-btn">getElementById</button>
-    <button id="query-by-class-btn">querySelectorAll .card</button>
-    <button id="query-by-name-btn">querySelector [name=username]</button>
-    <button id="get-by-class-btn">getElementsByClassName</button>
+    <button id="query-by-id-btn" type="button">getElementById</button>
+    <button id="query-by-class-btn" type="button">querySelectorAll .card</button>
+    <button id="query-by-name-btn" type="button">querySelector [name=username]</button>
+    <button id="get-by-class-btn" type="button">getElementsByClassName</button>
   </div>
 
   <script>

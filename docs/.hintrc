@@ -16,5 +16,13 @@
         ]
       }
     ]
-  }
+  },
+  "ignoredUrls": [
+    {
+      "domain": ".*(e2e|dist|test-results|coverage|hint-report).*",
+      "hints": [
+        "*"
+      ]
+    }
+  ]
 }

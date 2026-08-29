@@ -72,3 +72,30 @@ Execute your Playwright test suite:
 ```sh
 npx playwright test --config e2e/playwright.config.ts
 ```
+
+## Multi-Environment Testing Matrix
+
+Depending on the features under test, configure Playwright to run against the appropriate execution mode:
+
+| Environment Mode | Command | What to Verify |
+| --- | --- | --- |
+| **Static Production** | `bascik --build` | Static HTML rendering, slot replacement, compiled assets, client JS interactivity |
+| **Dev Server (Live)** | `bascik --dev` | SSE live-reload connection, fast recompilation, open-page prioritization |
+| **HTTP/1.1 Production** | `bascik --serve` | Request-time `<script data-bascik-server>` scripts, query parameters, cookies |
+| **HTTP/2 Production** | `bascik --serve` (TLS) | TLS termination, HTTP/2 multiplexed streaming, encrypted server scripts |
+
+### Example: Testing Live Dev Server Reloading
+
+```ts
+// e2e/dev-reload.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('dev server establishes Server-Sent Events stream for live reload', async ({ page }) => {
+  await page.goto('/');
+
+  // Verify SSE live reload client script injected in dev mode
+  const sseScript = page.locator('script[data-bascik-live-reload]');
+  await expect(sseScript).toBeAttached();
+});
+```
+

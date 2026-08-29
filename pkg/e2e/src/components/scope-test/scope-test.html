@@ -10,16 +10,16 @@
     is also scoped (bascik only scopes name values it sees in static HTML).
   -->
   <span hidden class="active highlighted state-b"></span>
-  <input hidden name="email">
+  <input hidden name="email" title="Hidden email field" aria-label="Hidden email field">
 
   <!-- 1. Multi-arg classList.add / remove -->
   <div class="section">
     <h3>Multi-arg classList.add / remove</h3>
     <div id="box" class="box">box</div>
     <div class="btn-row">
-      <button id="add-btn" class="btn">classList.add("active", "highlighted")</button>
-      <button id="remove-btn" class="btn">classList.remove("active", "highlighted")</button>
-      <button id="parens-add-btn" class="btn">classList.add(fn("active"))</button>
+      <button id="add-btn" class="btn" type="button">classList.add("active", "highlighted")</button>
+      <button id="remove-btn" class="btn" type="button">classList.remove("active", "highlighted")</button>
+      <button id="parens-add-btn" class="btn" type="button">classList.add(fn("active"))</button>
     </div>
   </div>
 
@@ -28,9 +28,9 @@
     <h3>classList.toggle(cls, force)</h3>
     <div id="toggle-box" class="box">toggle-box</div>
     <div class="btn-row">
-      <button id="toggle-on-btn" class="btn">toggle("active", true)</button>
-      <button id="toggle-off-btn" class="btn">toggle("active", false)</button>
-      <button id="toggle-plain-btn" class="btn">toggle("active")</button>
+      <button id="toggle-on-btn" class="btn" type="button">toggle("active", true)</button>
+      <button id="toggle-off-btn" class="btn" type="button">toggle("active", false)</button>
+      <button id="toggle-plain-btn" class="btn" type="button">toggle("active")</button>
     </div>
   </div>
 
@@ -39,19 +39,20 @@
     <h3>classList.replace</h3>
     <div id="replace-box" class="box state-a">replace-box (state-a)</div>
     <div class="btn-row">
-      <button id="a-to-b-btn" class="btn">replace("state-a", "state-b")</button>
-      <button id="b-to-a-btn" class="btn">replace("state-b", "state-a")</button>
+      <button id="a-to-b-btn" class="btn" type="button">replace("state-a", "state-b")</button>
+      <button id="b-to-a-btn" class="btn" type="button">replace("state-b", "state-a")</button>
     </div>
   </div>
 
   <!-- 4. setAttribute("name") -->
   <div class="section">
     <h3>setAttribute("name", …)</h3>
-    <input id="field" name="username" class="field" value="test input" readonly>
+    <input id="field" name="username" class="field" value="test input" readonly title="Username input field"
+      aria-label="Username input field">
     <p id="name-display" class="status">name = "username"</p>
     <div class="btn-row">
-      <button id="set-name-btn" class="btn">setAttribute("name", "email")</button>
-      <button id="reset-name-btn" class="btn">setAttribute("name", "username")</button>
+      <button id="set-name-btn" class="btn" type="button">setAttribute("name", "email")</button>
+      <button id="reset-name-btn" class="btn" type="button">setAttribute("name", "username")</button>
     </div>
   </div>
 

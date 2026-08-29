@@ -76,6 +76,26 @@ describe('Compiled production build output', () => {
 });
 ```
 
+## Testing Slot Fallback Defaults and Prop Substitutions
+
+When authoring components with optional slots or fallback content, verify both the default state and the customized state:
+
+```ts
+// src/components/modal/modal.test.ts
+import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+describe('Modal component fallback contract', () => {
+  it('contains default fallback markup for optional action slot', async () => {
+    const html = await readFile(join(process.cwd(), 'src/components/modal/modal.html'), 'utf8');
+
+    // Verify default fallback button exists inside the slot tag
+    expect(html).toMatch(/<div[^>]*data-bascik-slot="actions"[^>]*>[\s\S]*?<button[^>]*>Close<\/button>/);
+  });
+});
+```
+
 ## What to Test vs What to Avoid
 
 - **Test Compiled Outputs**: Assert that components resolve completely and render valid HTML without leftover compiler attributes.

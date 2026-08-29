@@ -113,3 +113,5 @@ Any tag or content block that should be consistent across every page but derived
 | `FAQPage` JSON-LD | The content Markdown file, not the HTML page |
 
 Write the script once in `src/lib/`, add the same 8-line build script block to each page, and every page gets the right output automatically.
+
+> **Next Steps:** Learn how to write automated tests for your page-aware helpers by mocking environment variables in the [Build Scripts Testing Guide](/testing/build-scripts).

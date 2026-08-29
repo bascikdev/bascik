@@ -279,6 +279,8 @@ To clear the cache manually (useful after a branch switch that changes shared sc
 rm -rf node_modules/.cache/bascik/script-cache
 ```
 
+> **Testing Build Scripts:** Read the [Build Scripts Testing Guide](/testing/build-scripts) to learn how to isolate build-time data pipelines into testable TypeScript modules, mock page environment variables, and verify fallback markup with Vitest.
+
 **Disable for scripts that read external state.** The cache key only covers files Bascik can watch: the script body and local `scripts/`/`content/` files. If a script fetches data from a source Bascik cannot watch, such as a live API, a database, a remote CMS, or a file referenced by a dynamic path computed at runtime, the cached output will go stale silently. Set `buildScriptCache: false` in your config for those scripts, or globally, so the script always runs fresh:
 
 ```ts

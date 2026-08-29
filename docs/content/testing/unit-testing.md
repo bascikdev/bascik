@@ -72,6 +72,41 @@ describe('formatCurrency', () => {
 });
 ```
 
+## Property-Based Testing with fast-check
+
+For complex parsers, string token replacers, and mathematical transforms, use property-based testing (`fast-check`) to generate thousands of randomized inputs and verify system invariants across all edge cases:
+
+```sh
+npm install -D fast-check
+```
+
+```ts
+// src/utils/slugify.test.ts
+import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+describe('slugify property invariants', () => {
+  it('never outputs spaces or uppercase characters', () => {
+    fc.assert(
+      fc.property(fc.string(), (str) => {
+        const slug = slugify(str);
+        expect(slug).not.toMatch(/\s/);
+        expect(slug).toBe(slug.toLowerCase());
+      })
+    );
+  });
+});
+```
+
 ## V8 Code Coverage Reports
 
 Running `npm run test:coverage` generates comprehensive code coverage metrics powered by `@vitest/coverage-v8`:

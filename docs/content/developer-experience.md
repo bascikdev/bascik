@@ -239,7 +239,7 @@ Node.js executes `<script data-bascik-build>` and `<script data-bascik-server>` 
 - **External Source Maps (`sourceMap: true`):** Set `"sourceMap": true` in `tsconfig.json` so external tools, debuggers, and language servers generate and resolve `.map` files across external libraries and helper scripts.
 - **BYOMinifier Integration:** When using custom minifiers via `minify.js` or `minify.css` in `bascik.config.ts` (such as Terser, esbuild, or LightningCSS), you can configure inline or external source maps according to your production requirements.
 
-> **Deep Dive:** Read [Debugging with VS Code and Node.js](/testing#debugging-with-vs-code-and-nodejs) for step-debugging launch configurations, [CLI Transpilation and Build Errors](/cli#transpilation-and-build-errors) to learn how Bascik reports syntax issues, or explore [Architecture](/internals/architecture) to see how transpilation works under the hood.
+> **Deep Dive:** Read [Debugging with VS Code and Node.js](/testing/debugging) for step-debugging launch configurations, [CLI Transpilation and Build Errors](/cli#transpilation-and-build-errors) to learn how Bascik reports syntax issues, or explore [Architecture](/internals/architecture) to see how transpilation works under the hood.
 
 ## Testing Your Workflow
 
@@ -304,7 +304,7 @@ Output:
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
 
-> **Deep Dive:** Read [Component Template Contract Testing](/testing#component-template-contract-testing) and [End-to-End Browser Testing](/testing#end-to-end-browser-testing-playwright) for complete testing guidelines.
+> **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 
 ## Production Build & Inspection
 
