@@ -7,7 +7,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +15,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -666,7 +666,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-card-usage'));
                 </script>
               </code-block>
@@ -676,7 +676,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-card-component'));
                 </script>
               </code-block>
@@ -686,7 +686,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-card-output'));
                 </script>
               </code-block>
@@ -732,7 +732,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/index.md', 'home-build-output'));
               </script>
             </code-block>
@@ -773,7 +773,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-counter-usage'));
                 </script>
               </code-block>
@@ -783,7 +783,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-counter-html'));
                 </script>
               </code-block>
@@ -793,7 +793,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-counter-css'));
                 </script>
               </code-block>
@@ -803,7 +803,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-counter-js'));
                 </script>
               </code-block>
@@ -813,7 +813,7 @@
                 <script data-bascik-build>
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                  const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                   console.log(await extractDemoBlock('./content/index.md', 'home-counter-output-html'));
                 </script>
               </code-block>

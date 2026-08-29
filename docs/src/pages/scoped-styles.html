@@ -7,7 +7,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +15,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -23,7 +23,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/breadcrumb-ld.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
     );
     console.log(await breadcrumbLd());
   </script>
@@ -31,7 +31,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { articleSchema } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/article-schema.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
     );
     console.log(await articleSchema());
   </script>
@@ -53,7 +53,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
           console.log(renderSectionLabel('/scoped-styles'));
         </script>
@@ -62,7 +62,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMdRange('./content/scoped-styles.md', { to: 'Where Scoped CSS Can Live' }));
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'See it in action', to: 'Source and output' }));
@@ -80,7 +80,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'source-usage'));
               </script>
             </code-block>
@@ -90,7 +90,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'source-html'));
               </script>
             </code-block>
@@ -100,7 +100,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'output-html'));
               </script>
             </code-block>
@@ -111,7 +111,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Where Scoped CSS Can Live', to: 'Selector and animation lab' }));
         </script>
@@ -120,7 +120,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Selector and animation lab', to: 'Class Scoping' }, { stripDemoBlocks: true }));
         </script>
@@ -134,7 +134,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-usage'));
               </script>
             </code-block>
@@ -144,7 +144,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-html'));
               </script>
             </code-block>
@@ -154,7 +154,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-css'));
               </script>
             </code-block>
@@ -164,7 +164,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-html'));
               </script>
             </code-block>
@@ -174,7 +174,7 @@
               <script data-bascik-build>
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href);
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-css'));
               </script>
             </code-block>
@@ -185,7 +185,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Class Scoping', to: 'See it in action' }));
         </script>
@@ -193,7 +193,7 @@
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href);
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
           console.log(renderPagination('/scoped-styles'));
         </script>
 

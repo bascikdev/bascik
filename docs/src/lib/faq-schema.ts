@@ -5,7 +5,7 @@
  * Usage inside a <script data-bascik-build> block:
  *
  *   const { faqSchema } = await import(
- *     pathToFileURL(join(process.cwd(), 'scripts/faq-schema.ts')).href
+ *     pathToFileURL(join(process.cwd(), 'src/lib/faq-schema.ts')).href
  *   );
  *   console.log(await faqSchema('content/faq.md'));
  */

@@ -27,13 +27,13 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
   import { join } from 'node:path';
   import { pathToFileURL } from 'node:url';
   const { renderMd } = await import(
-    pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
   );
   console.log(await renderMd('./content/topic.md'));
 </script>
 ```
 
-The `renderMd` helper (`docs/scripts/md-renderer.ts`) applies these transformations:
+The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformations:
 - Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component
 - Blockquotes (`>`) → `<div class="callout">`
 
@@ -55,7 +55,7 @@ The `renderMd` helper (`docs/scripts/md-renderer.ts`) applies these transformati
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
           console.log(renderSectionLabel('/topic'));
         </script>
@@ -138,7 +138,7 @@ Marker IDs are arbitrary strings (e.g. `source-html`, `output-css`, `code`, `out
 
 ### How to use it in an HTML slot
 
-Use `extractDemoBlock` from `scripts/md-renderer.ts` inside a `data-bascik-build` script. Bascik trims slot content at build time, so normal indentation around the `<script>` tag is fine: no collapsed one-liner is needed.
+Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build` script. Bascik trims slot content at build time, so normal indentation around the `<script>` tag is fine: no collapsed one-liner is needed.
 
 ```html
 <div data-bascik-slot="source-html">
@@ -147,7 +147,7 @@ Use `extractDemoBlock` from `scripts/md-renderer.ts` inside a `data-bascik-build
       import { join } from 'node:path';
       import { pathToFileURL } from 'node:url';
       const { extractDemoBlock } = await import(
-        pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+        pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
       );
       console.log(await extractDemoBlock('./content/03-scoped-css.md', 'source-html'));
     </script>

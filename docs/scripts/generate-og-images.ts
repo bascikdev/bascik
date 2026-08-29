@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
 import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
-import { NAV } from './nav.ts';
+import { NAV } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');

@@ -13,7 +13,7 @@ describe('docs-nav component', () => {
     expect(html).toContain('<nav class="dnav" aria-label="Main">');
     expect(html).toContain('<docs-logo />');
     expect(html).toContain('<docs-search />');
-    expect(html).toContain('scripts/nav.ts');
+    expect(html).toContain('src/lib/nav.ts');
   });
 
   it('constrains banner and dnav-inner to max-width 1140px', async () => {

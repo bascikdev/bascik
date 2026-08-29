@@ -11,7 +11,7 @@
  *   import { join } from 'node:path';
  *   import { pathToFileURL } from 'node:url';
  *   const { canonical } = await import(
- *     pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+ *     pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
  *   );
  *   console.log(await canonical());
  */

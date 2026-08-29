@@ -8,7 +8,7 @@
  * Usage inside a <script data-bascik-build> block:
  *
  *   const { articleSchema } = await import(
- *     pathToFileURL(join(process.cwd(), 'scripts/article-schema.ts')).href
+ *     pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
  *   );
  *   console.log(await articleSchema());
  */

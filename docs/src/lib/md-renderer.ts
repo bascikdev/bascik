@@ -8,7 +8,7 @@
  *     import { join } from 'node:path';
  *     import { pathToFileURL } from 'node:url';
  *     const { renderMd } = await import(
- *       pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+ *       pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
  *     );
  *     console.log(await renderMd('./content/16-performance.md'));
  *   </script>

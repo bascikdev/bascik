@@ -7,7 +7,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +15,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -23,7 +23,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/breadcrumb-ld.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
     );
     console.log(await breadcrumbLd());
   </script>
@@ -76,7 +76,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
           console.log(renderSectionLabel('/getting-started'));
         </script>
@@ -87,7 +87,7 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMd('./content/getting-started.md'));
         </script>
@@ -105,7 +105,7 @@
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
                   const { extractDemoBlock } = await import(
-                    pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+                    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
                   );
                   console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
                 </script>
@@ -123,7 +123,7 @@
                   import { join } from 'node:path';
                   import { pathToFileURL } from 'node:url';
                   const { extractDemoBlock } = await import(
-                    pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+                    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
                   );
                   console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
                 </script>
@@ -184,7 +184,7 @@
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href);
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
           console.log(renderPagination('/getting-started'));
         </script>
 

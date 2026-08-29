@@ -7,7 +7,7 @@
  *     import { join } from 'node:path';
  *     import { pathToFileURL } from 'node:url';
  *     const { renderPagination } = await import(
- *       pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href
+ *       pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
  *     );
  *     console.log(renderPagination('/getting-started'));
  *   </script>

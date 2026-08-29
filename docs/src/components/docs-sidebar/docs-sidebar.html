@@ -2,7 +2,7 @@
      <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
-          const { NAV } = await import(pathToFileURL(join(process.cwd(), 'scripts/nav.ts')).href);
+          const { NAV } = await import(pathToFileURL(join(process.cwd(), 'src/lib/nav.ts')).href);
           let html = '';
           for (const section of NAV) {
                html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;

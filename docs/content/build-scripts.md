@@ -78,7 +78,7 @@ One combination always hard-fails regardless of `onScriptError`: putting both `d
 When your build scripts read local files or fetch remote data, wrap file and network operations in `try / catch` blocks. Returning fallback markup or logging a warning keeps your page layout intact even if an external resource is temporarily missing:
 
 ```ts
-// scripts/md-renderer.ts
+// src/lib/md-renderer.ts
 import { readFile } from 'node:fs/promises';
 import { marked } from 'marked';
 
