@@ -29,6 +29,12 @@ const staticCssPath = join(e2eDir, 'src/pages/dev-static-test.css');
 const contentDocPath = join(e2eDir, 'src/content/watch-doc.md');
 const subfolderPagePath = join(e2eDir, 'src/pages/subfolder/route-test.html');
 
+const dynamicCreatedCompPath = join(e2eDir, 'src/components/dynamic-created-comp.html');
+const dynamicHeadMetaCompPath = join(e2eDir, 'src/components/dynamic-head-meta.html');
+const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css');
+const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
+const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
+
 test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalPageContent: string;
   let originalSecondPageContent: string;
@@ -52,6 +58,11 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await writeFile(contentDocPath, originalContentDoc, 'utf8');
     await writeFile(subfolderPagePath, originalSubfolderPage, 'utf8');
     await rm(staticCssPath, { force: true });
+    await rm(dynamicCreatedCompPath, { force: true });
+    await rm(dynamicHeadMetaCompPath, { force: true });
+    await rm(scopeTestCssPath, { force: true });
+    await rm(dynamicCreatedPagePath, { force: true });
+    await rm(tempUnlinkCompPath, { force: true });
   });
 
   // ── 1. Dev-mode Script Injection & SSE ─────────────────────────────────────
@@ -246,6 +257,116 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await writeFile(subfolderPagePath, `<!DOCTYPE html><html><body><h1>${updatedText}</h1></body></html>`, 'utf8');
 
     await expect(page.locator('h1')).toHaveText(updatedText, { timeout: 15000 });
+  });
+
+  // ── 8. Dynamic Component & Page Addition Engine ──────────────────────────
+
+  // ── 8. Dynamic Component & Page Addition Engine ──────────────────────────
+
+  test('invalidates component cache and expands new component when a new component file is created during dev server session', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    const markerText = `Dynamic Comp Marker ${Date.now()}`;
+    await writeFile(
+      dynamicCreatedCompPath,
+      `<style>.dyn-box { padding: 8px; border: 1px solid #f0f; }</style><div class="dyn-box" id="dyn-box-id">${markerText}</div>`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const updatedPage = originalPageContent.replace(
+      '</body>',
+      '<dynamic-created-comp></dynamic-created-comp></body>',
+    );
+    await writeFile(pagePath, updatedPage, 'utf8');
+
+    const dynElement = page.locator('[id$="__dyn-box-id"]');
+    await expect(dynElement).toBeVisible({ timeout: 15000 });
+    await expect(dynElement).toHaveText(markerText);
+  });
+
+  test('expands dynamically created head component when component file is created during dev server session', async ({ page }) => {
+    await page.goto('/scope-test');
+
+    const metaVal = `head-meta-val-${Date.now()}`;
+    await writeFile(
+      dynamicHeadMetaCompPath,
+      `<meta name="e2e-dyn-head-meta" content="${metaVal}">`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const updatedPage = originalPageContent.replace(
+      '</head>',
+      '<dynamic-head-meta></dynamic-head-meta></head>',
+    );
+    await writeFile(pagePath, updatedPage, 'utf8');
+
+    await page.waitForFunction(
+      (val) => document.querySelector('meta[name="e2e-dyn-head-meta"]')?.getAttribute('content') === val,
+      metaVal,
+      { timeout: 15000 },
+    );
+  });
+
+  test('picks up companion CSS file added to component during dev server session', async ({ page }) => {
+    await page.goto('/scope-test');
+
+    await writeFile(
+      scopeTestCssPath,
+      '.dyn-companion-style { color: rgb(12, 34, 56); }',
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const updatedComponent = originalComponentContent + '\n<p class="dyn-companion-style" id="dyn-companion-target">Companion Target</p>';
+    await writeFile(componentPath, updatedComponent, 'utf8');
+
+    const target = page.locator('[id$="__dyn-companion-target"]').first();
+    await expect(target).toBeVisible({ timeout: 15000 });
+    await expect(target).toHaveCSS('color', 'rgb(12, 34, 56)');
+  });
+
+  test('transpiles and serves newly created page with component tags during dev server session', async ({ page }) => {
+    const pageMarker = `New Page Heading ${Date.now()}`;
+    await writeFile(
+      dynamicCreatedPagePath,
+      `<!DOCTYPE html><html><head><title>New Page</title></head><body><h1 id="dyn-page-h1">${pageMarker}</h1><scope-test></scope-test></body></html>`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const res = await page.goto('/dynamic-created-page');
+    expect(res?.status()).toBe(200);
+
+    await expect(page.locator('#dyn-page-h1')).toHaveText(pageMarker, { timeout: 15000 });
+    await expect(page.locator('button[id$="__add-btn"]').first()).toBeVisible();
+  });
+
+  test('invalidates component cache and stops expanding component when component file is deleted', async ({ page }) => {
+    const tempMarker = `Temp Unlink ${Date.now()}`;
+    await writeFile(
+      tempUnlinkCompPath,
+      `<div id="temp-unlink-id">${tempMarker}</div>`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const updatedPage = originalPageContent.replace(
+      '</body>',
+      '<temp-unlink-comp></temp-unlink-comp></body>',
+    );
+    await writeFile(pagePath, updatedPage, 'utf8');
+
+    await page.goto('/scope-test');
+    await expect(page.locator('[id$="__temp-unlink-id"]')).toHaveText(tempMarker, { timeout: 15000 });
+
+    await rm(tempUnlinkCompPath, { force: true });
+    await new Promise((r) => setTimeout(r, 1000));
+    await writeFile(pagePath, updatedPage + ' ', 'utf8');
+
+    await expect(page.locator('[id$="__temp-unlink-id"]')).not.toBeAttached({ timeout: 15000 });
   });
 });
 
