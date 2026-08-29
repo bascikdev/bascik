@@ -5,7 +5,7 @@ Some pages need content that is specific to the current page, such as a canonica
 Bascik makes this possible by injecting three environment variables into every `data-bascik-build` subprocess:
 
 | Variable | Value |
-|---|---|
+| --- | --- |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML file currently being transpiled |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts` |
@@ -105,7 +105,7 @@ The script runs on the source HTML before any other build scripts have fired, so
 Any tag or content block that should be consistent across every page but derived from per-page values is a good fit for this pattern:
 
 | Output | What to read from the page |
-|---|---|
+| --- | --- |
 | `<link rel="canonical">` | Derived from file path alone, with no file read needed |
 | Open Graph tags | `<title>`, `<meta name="description">` |
 | `TechArticle` JSON-LD | `<title>`, `<meta name="description">` |
