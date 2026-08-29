@@ -516,6 +516,23 @@
       color: var(--pillar-text);
     }
 
+    .speed-note {
+      grid-column: 1 / -1;
+      margin-top: 12px;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    .speed-note code {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: var(--pre-bg);
+      border: 1px solid var(--border);
+    }
+
     /* ── Install CTA ── */
     .cta-section {
       padding: 72px 0 88px;
@@ -643,7 +660,7 @@
           class="install-command hero-quickstart"><code>npm create bascik@latest</code><button class="install-copy-btn" type="button" aria-label="Copy" title="Copy"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copy-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></button></pre>
         <ul class="hero-stats">
           <li><strong>0 kB</strong> framework JS added</li>
-          <li><strong>50 pages</strong> transpiled in ~1.1s</li>
+          <li><strong>59 pages</strong> transpiled in ~1.4s</li>
           <li><a href="/performance"><strong>Lighthouse 100s</strong> out of the box</a></li>
           <li><strong>Use what you know</strong>: vanilla HTML, CSS, JS</li>
         </ul>
@@ -713,11 +730,10 @@
       <div class="container">
         <p class="section-label">Build Performance</p>
         <h2 class="section-heading">Sub-second build speeds. Industry-leading performance.</h2>
-        <p class="section-sub">Bascik transpiles and scopes entire static websites in milliseconds. This documentation
-          website is a prime example: every single one of its 50 pages executes custom Node.js build-time scripts to
-          convert Markdown, extract code blocks, and construct structured search schemas, yet, on a 2020 M1 MacBook Air,
-          the entire site
-          compiles in just <b class="highlight-text">1.1 seconds.</b></p>
+        <p class="section-sub">Bascik transpiles and scopes entire static websites in milliseconds. Pure component
+          scoping executes in under 0.2ms per page. This documentation website is a prime real-world example: across 59
+          pages executing over 500 custom Node.js build scripts to render Markdown and extract code blocks, the entire
+          site compiles in just <b class="highlight-text">1.4 seconds.</b></p>
         <div class="speed-grid">
           <div class="speed-terminal">
             <div class="speed-terminal-bar">
@@ -740,19 +756,27 @@
 
           <div class="speed-metrics">
             <div class="metric-card">
-              <div class="metric-number">1150ms</div>
-              <div class="metric-label">50 full pages transpiled with build scripts, search indexing, and component
-                scoping</div>
+              <div class="metric-number">1421ms</div>
+              <div class="metric-label">59 full pages transpiled with 500+ build scripts, Markdown rendering, and
+                component scoping (warm cache)</div>
             </div>
             <div class="metric-card">
-              <div class="metric-number">~23ms</div>
-              <div class="metric-label">Average build time per page</div>
+              <div class="metric-number">&lt; 0.2ms</div>
+              <div class="metric-label">Pure component and CSS scoping time per page</div>
             </div>
             <div class="metric-card">
               <div class="metric-number">0 kB</div>
               <div class="metric-label">Framework runtime overhead</div>
             </div>
           </div>
+
+          <p class="speed-note">
+            <strong>Warm vs. Cold Startup Note:</strong> The ~1.4s build time above reflects a warm start with SHA-256
+            build script output caching enabled. On a fresh cold start (or after clearing
+            <code>node_modules/.cache/bascik</code>), spawning individual Node.js child processes to execute all 500+
+            Markdown rendering scripts takes ~10.8s on a 2020 M1 MacBook Air. Once cached, subsequent restarts and
+            live-reload edits compile in milliseconds.
+          </p>
         </div>
       </div>
     </section>

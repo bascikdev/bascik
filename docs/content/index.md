@@ -5,11 +5,11 @@
 $ bascik
 transpiled: pages/404.html
 transpiled: pages/index.html
-transpiled: pages/search.html
+transpiled: pages/cli.html
 transpiled: pages/license.html
 transpiled: pages/getting-started.html
 ...
-✓ 50 pages transpiled in 1150ms
+✓ 59 pages transpiled in 1421ms
 Server running at http://localhost:8080
 ```
 
