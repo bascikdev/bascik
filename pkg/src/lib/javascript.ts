@@ -494,18 +494,24 @@ export const prefixElementAttribute = (
             // classList.toggle — rewrites the class-name (first) arg only.
             // Deliberately does NOT require `)` after the closing quote so
             // `classList.toggle("open", condition)` is handled correctly.
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>classList\\.toggle\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["'])`,
-                "gm",
-              ),
+            updatedMatch = replaceBalancedCall(
+              updatedMatch,
+              /classList\.toggle\s*\(/gm,
+              (call) =>
+                call.replace(
+                  new RegExp(`(["'])${escapedAttr}\\1`),
+                  `$1${obfuscatedAttributeName}$1`,
+                ),
             );
             // classList.contains — always single arg
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>classList\\.contains\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            updatedMatch = replaceBalancedCall(
+              updatedMatch,
+              /classList\.contains\s*\(/gm,
+              (call) =>
+                call.replace(
+                  new RegExp(`(["'])${escapedAttr}\\1`),
+                  `$1${obfuscatedAttributeName}$1`,
+                ),
             );
             // classList.replace(oldToken, newToken) — rewrites both args if
             // either matches a scoped class name.

@@ -19,6 +19,7 @@
     <div class="btn-row">
       <button id="add-btn" class="btn">classList.add("active", "highlighted")</button>
       <button id="remove-btn" class="btn">classList.remove("active", "highlighted")</button>
+      <button id="parens-add-btn" class="btn">classList.add(fn("active"))</button>
     </div>
   </div>
 
@@ -67,6 +68,10 @@
     });
     document.getElementById("remove-btn").addEventListener("click", () => {
       box.classList.remove("active", "highlighted");
+    });
+    document.getElementById("parens-add-btn").addEventListener("click", () => {
+      const id = (val) => val;
+      box.classList.add(id("active"), id("highlighted"));
     });
 
     // 2. classList.toggle with boolean second arg

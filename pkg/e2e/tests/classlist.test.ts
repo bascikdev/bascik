@@ -67,6 +67,13 @@ test.describe('scope-test page', () => {
     await expect(box(b)).not.toHaveClass(/highlighted/);
   });
 
+  test('classList.add with parens: adds classes accurately', async ({ page }) => {
+    const { a } = getInstances(page);
+    await btn(a, 'parens-add-btn').click();
+    await expect(box(a)).toHaveClass(/bascik__scope-test__active/);
+    await expect(box(a)).toHaveClass(/bascik__scope-test__highlighted/);
+  });
+
   // ── 2. Multi-arg classList.remove ──────────────────────────────────────
 
   test('classList.remove multi-arg: removes both classes from instance A', async ({ page }) => {
