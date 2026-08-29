@@ -76,6 +76,21 @@ vi.mock("./events.js", () => ({
   eventEmitter: { emit: vi.fn() },
 }));
 
+vi.mock("./worker-pool.js", () => {
+  return {
+    WorkerPool: vi.fn().mockImplementation(function (this: any) {
+      this.run = vi.fn(async (pagePath: string) => ({
+        relativePagePath: "pages/index.html",
+        absolutePagePath: pagePath,
+        distHtml: "<html></html>",
+        usedComponentsNames: ["my-comp"],
+        fileDependencies: ["scripts/md-renderer.ts"],
+      }));
+      this.terminate = vi.fn(async () => { });
+    }),
+  };
+});
+
 vi.mock("./names.js", () => ({
   getUniqueId: vi.fn(() => "test1234"),
   minifyAttributeName: vi.fn((name) => name),
@@ -1329,7 +1344,19 @@ describe("processAllPages – side effects", () => {
     expect(mem.storePage).not.toHaveBeenCalled();
   });
 
-  it("processes pages using workers when useWorkers option is true", async () => {
+  it("processes pages using workers when useWorkers option is true and passes fileDependencies to storePage", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    const result = await processAllPages({ useWorkers: true });
+    expect(result).toEqual(["pages/index.html"]);
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePagePath: "pages/index.html",
+        fileDependencies: ["scripts/md-renderer.ts"],
+      }),
+    );
+  });
+
+  it("processes pages on main thread when useWorkers option is false", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages({ useWorkers: false });
