@@ -1,0 +1,26 @@
+<div class="wrapper" data-testid="wrapper">
+  <!-- This is outside the skipped tag, it SHOULD be scoped -->
+  <p class="text" id="outer" data-testid="outer">Outer text</p>
+
+  <!-- The class and id ON the skip tag SHOULD be scoped -->
+  <code class="code-block" id="code-root" data-testid="code-block" data-x="a>b">
+    <!-- Everything INSIDE the skip tag MUST NOT be scoped -->
+    <div class="text" id="inner" data-testid="inner">
+      <span class="highlight">Literal inner text</span>
+    </div>
+  </code>
+</div>
+
+<script>
+  // This script is outside code, so it SHOULD be processed.
+  // getElementById("outer") should be transformed by bascik.
+  const outer = document.getElementById('outer');
+  if (outer) {
+    outer.classList.add('active');
+  }
+
+  // getElementById("inner") should fail to find the scoped element if it was scoped,
+  // but wait... bascik rewrites `document.getElementById('inner')` to `document.querySelector('.bascik__skip-contents__id__inner')`.
+  // Because it was rewritten, and the actual DOM element has `id="inner"` (not scoped), 
+  // it won't find it! So let's NOT write it that way.
+</script>
