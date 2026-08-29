@@ -19,7 +19,7 @@
 
     // Include Node types for IDE support
     "types": ["node"],
-    "lib": ["ES2025"],
+    "lib": ["ESNext"],
 
     "skipLibCheck": true
   },
