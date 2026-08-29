@@ -1,6 +1,26 @@
+---
+audit_id: WS-2026-08-29
+title: Web Standards & MDN Compliance Report
+date_generated: "2026-08-29"
+date_addressed: "2026-08-29"
+git_branch: "pre-release-25"
+git_commit_baseline: "e9cd07f45337cf7eb70ae3a0e74f2274b1e56955"
+scope: "pkg/src, docs/, extensions/vscode-bascik"
+status: "completed"
+---
+
 # Web Standards & MDN Compliance Report
 
-This report evaluates **Bascik Core (`pkg/src`)** and **Bascik Docs (`docs/`)** against authoritative **W3C Recommendations**, **WHATWG Living Standards**, **IETF RFCs**, **WAI-ARIA 1.2/1.3 / WCAG 2.1/2.2 AA**, **ECMA-262**, and **Schema.org** specifications, cross-referenced with **MDN Web Docs** documentation and **Baseline** support status.
+| Audit Metadata | Value / Specification Context |
+| :--- | :--- |
+| **Audit ID** | `AUDIT-WS-2026-08-29` |
+| **Date Generated** | August 29, 2026 |
+| **Date Addressed** | August 29, 2026 |
+| **Git Branch** | `pre-release-25` |
+| **Git Commit Baseline** | `e9cd07f45337cf7eb70ae3a0e74f2274b1e56955` |
+| **Target Scope** | `pkg/src` (Core), `docs/` (Site & Design System), `extensions/vscode-bascik` (VS Code Extension) |
+| **Evaluation Framework** | W3C REC / WHATWG Living Standard / IETF RFC / WAI-ARIA 1.2/1.3 / MDN BCD |
+| **Resolution Status** | ✅ **Addressed & Verified via TDD** (1,202 `pkg` tests + 114 `docs` tests passing) |
 
 ---
 

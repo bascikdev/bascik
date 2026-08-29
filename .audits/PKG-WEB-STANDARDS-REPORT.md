@@ -1,4 +1,28 @@
+---
+audit_id: PKG-WS-2026-08-29
+title: Bascik Core (`pkg/`) Web Standards & MDN Compliance Audit Report
+date_generated: "2026-08-29"
+date_addressed: "2026-08-29"
+git_branch: "pre-release-25"
+git_commit_baseline: "e9cd07f45337cf7eb70ae3a0e74f2274b1e56955"
+scope: "pkg/src (Core Compiler, Runtime, Protocols & Protocols)"
+status: "completed"
+---
+
 # Bascik Core (`pkg/`) Web Standards & MDN Compliance Audit Report
+
+| Audit Metadata | Value / Specification Context |
+| :--- | :--- |
+| **Audit ID** | `AUDIT-PKG-WS-2026-08-29` |
+| **Date Generated** | August 29, 2026 |
+| **Date Addressed** | August 29, 2026 |
+| **Git Branch** | `pre-release-25` |
+| **Git Commit Baseline** | `e9cd07f45337cf7eb70ae3a0e74f2274b1e56955` |
+| **Target Scope** | `pkg/src` exclusively (HTML Parser, CSS Scoping, JS DOM Rewriting, HTTP/2 Server, MIME, Sitemaps) |
+| **Evaluation Framework** | WHATWG HTML & DOM §4, W3C CSS Selectors 4, ECMA-262, RFC 9110/9112/9113, RFC 6797, RFC 9239, MDN BCD |
+| **Resolution Status** | ✅ **Addressed & Verified via TDD** (1,202 `pkg` unit tests passing) |
+
+---
 
 This report evaluates **Bascik Core (`pkg/src`)** exclusively against authoritative **W3C Recommendations**, **WHATWG Living Standards**, **IETF RFCs**, **ECMA-262 (ECMAScript)**, and **MDN Web Docs** specifications (including Browser Compatibility Data / Baseline tiers).
 
