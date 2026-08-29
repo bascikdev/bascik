@@ -206,43 +206,43 @@ const replaceSafeAttr = (
     (tagMatch) => {
       // First, find all proper string boundaries in this tag to ignore false matches.
       const stringRanges: Array<{ start: number; end: number }> = [];
-    let j = 0;
-    let strChar = null;
-    let strStart = -1;
-    while (j < tagMatch.length) {
-      if (strChar) {
-        if (tagMatch[j] === "\\") j++;
-        else if (tagMatch[j] === strChar) {
-          stringRanges.push({ start: strStart, end: j });
-          strChar = null;
+      let j = 0;
+      let strChar = null;
+      let strStart = -1;
+      while (j < tagMatch.length) {
+        if (strChar) {
+          if (tagMatch[j] === "\\") j++;
+          else if (tagMatch[j] === strChar) {
+            stringRanges.push({ start: strStart, end: j });
+            strChar = null;
+          }
+        } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
+          strChar = tagMatch[j];
+          strStart = j;
         }
-      } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
-        strChar = tagMatch[j];
-        strStart = j;
+        j++;
       }
-      j++;
-    }
 
-    let finalStr = "";
-    let lastIdx = 0;
-    let match;
-    attrRegex.lastIndex = 0;
-    while ((match = attrRegex.exec(tagMatch)) !== null) {
-      const matchStart = match.index;
-      // Is the " class=" part inside a string attribute value?
-      const isInside = stringRanges.some(
-        (r) => matchStart > r.start && matchStart < r.end,
-      );
-      if (!isInside) {
-        finalStr +=
-          tagMatch.substring(lastIdx, matchStart) +
-          replacer(match[0], match[1], match[2]);
-        lastIdx = matchStart + match[0].length;
+      let finalStr = "";
+      let lastIdx = 0;
+      let match;
+      attrRegex.lastIndex = 0;
+      while ((match = attrRegex.exec(tagMatch)) !== null) {
+        const matchStart = match.index;
+        // Is the " class=" part inside a string attribute value?
+        const isInside = stringRanges.some(
+          (r) => matchStart > r.start && matchStart < r.end,
+        );
+        if (!isInside) {
+          finalStr +=
+            tagMatch.substring(lastIdx, matchStart) +
+            replacer(match[0], match[1], match[2]);
+          lastIdx = matchStart + match[0].length;
+        }
       }
-    }
-    finalStr += tagMatch.substring(lastIdx);
-    return finalStr;
-  });
+      finalStr += tagMatch.substring(lastIdx);
+      return finalStr;
+    });
 };
 export const prefixElementAttribute = (
   component: BascikComponent,
