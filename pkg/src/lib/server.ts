@@ -274,8 +274,9 @@ export const createRequestHandler = () => {
         return;
       }
 
-      // Normalize pathname for page lookup (e.g. /about.html -> /about)
+      // Normalize pathname for page lookup (e.g. /about.html -> /about, /index.html -> /)
       const cleanPathname = pathname.replace(/\.html$/i, "");
+      const normalizedPath = cleanPathname === "/index" ? "/" : cleanPathname.replace(/\/index$/, "/");
 
       // ── Live-reload SSE ──────────────────────────────────────────────────
       if (pathname === "/bascik-live-reload") {
@@ -348,30 +349,31 @@ export const createRequestHandler = () => {
       }
 
       // ── In-memory page lookup ────────────────────────────────────────────
-      // Try the literal path first, then cleanPathname (stripping .html), and trailing-slash
+      // Try the literal path first, then normalizedPath (/index -> /), cleanPathname (stripping .html), and trailing-slash
       // toggle so that `/blog` and `/blog/` both resolve a page stored as `pages/blog/index.html`.
       const exactPage =
         mem.getPageExact(pathname) ??
+        mem.getPageExact(normalizedPath) ??
         (cleanPathname !== pathname ? mem.getPageExact(cleanPathname) : undefined) ??
         mem.getPageExact(cleanPathname.endsWith("/") ? cleanPathname.slice(0, -1) : `${cleanPathname}/`);
 
-      if (!exactPage && pathname.split(".").length > 1) {
+      if (!exactPage && pathname.split(".").length > 1 && !/\.html?$/i.test(pathname)) {
         responseStatus = 404;
         res.respond(404, { ...secHeaders });
         return res.end();
       }
 
+      // During the initial transpile in dev mode, serve a boot page instead of 404 for any page
+      // that has not yet finished transpiling into memory.
+      if (!exactPage && mem.isBooting && !BascikConfig.isProdServer) {
+        responseStatus = 200;
+        res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...secHeaders });
+        return res.end(isHead ? undefined : Buffer.from(BOOT_PAGE_HTML));
+      }
+
       const page = exactPage ?? mem.getPage(pathname);
 
       if (!page) {
-        // During the initial transpile, serve a boot page instead of 404.
-        // The boot page connects to the SSE endpoint and reloads automatically
-        // when its specific page is transpiled or when boot finishes entirely.
-        if (mem.isBooting && !BascikConfig.isProdServer) {
-          responseStatus = 200;
-          res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...secHeaders });
-          return res.end(isHead ? undefined : Buffer.from(BOOT_PAGE_HTML));
-        }
         responseStatus = 404;
         res.respond(404, { ...secHeaders });
         return res.end("Not Found");

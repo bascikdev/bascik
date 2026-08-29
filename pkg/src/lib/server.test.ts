@@ -428,6 +428,7 @@ describe("startHttp2Server – stream handler", () => {
   });
 
   it("treats uppercase .HTML extensions like lowercase (no static-file lookup)", async () => {
+    mockMem.getPage.mockReturnValue(undefined);
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/index.HTML", "GET"));
@@ -1935,8 +1936,39 @@ describe("startHttp2Server – boot page", () => {
     expect(body?.toString()).toContain("Building site");
   });
 
+  it("serves the boot page even when /404 page is already in memory if requested page is not yet in mem", async () => {
+    mockMem.isBooting = true;
+    mockMem.getPageExact.mockReturnValue(undefined);
+    // Simulate /404 page being in memory during cold boot
+    mockMem.getPage.mockReturnValue(makePage({ relativePagePath: "pages/404.html", content: Buffer.from("<html>404 Page</html>") }));
+    const handler = getStreamHandler()!;
+    for (const path of ["/", "/getting-started", "/index.html", "/about"]) {
+      const stream = makeStream();
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 200, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }),
+      );
+      const body = stream.end.mock.calls[0]?.[0];
+      expect(body?.toString()).toContain("Building site");
+    }
+  });
+
+  it("resolves /index.html to index page stored at / in mem", async () => {
+    mockMem.isBooting = false;
+    const indexPage = makePage({ relativePagePath: "pages/index.html", content: Buffer.from("<html>Home</html>") });
+    mockMem.getPageExact.mockImplementation((p: string) => (p === "/" ? indexPage : undefined));
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/index.html", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
+    expect(stream.end).toHaveBeenCalledWith(indexPage.content);
+  });
+
   it("serves the real page (not the boot page) when the page is already in mem", async () => {
     const page = makePage({ content: Buffer.from("<html>Ready</html>") });
+    mockMem.getPageExact.mockReturnValue(page);
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
     const stream = makeStream();

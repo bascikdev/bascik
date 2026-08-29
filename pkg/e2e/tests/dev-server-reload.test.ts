@@ -444,8 +444,12 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
 
     // The open page /scope-test must be prioritized during processAllPages and reloaded very quickly
     await expect.poll(async () => {
-      const styles = await page.locator('head style').allInnerTexts();
-      return styles.some((s) => s.includes(uniqueRule));
+      try {
+        const styles = await page.locator('head style').allInnerTexts();
+        return styles.some((s) => s.includes(uniqueRule));
+      } catch {
+        return false;
+      }
     }, { timeout: 15000 }).toBe(true);
 
     const elapsed = performance.now() - start;
@@ -612,6 +616,77 @@ test.describe('Dev Server Startup Output', () => {
     // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready
     const summaryLines = lines.filter((l) => /^✓ \d+ pages? transpiled in \d+ms$/.test(l));
     expect(summaryLines.length).toBe(1);
+  });
+});
+
+test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
+  test('serves boot loading screen during cold start before initial transpile completes and resolves pages afterwards', async () => {
+    const entryPath = join(pkgDir, 'bin/bascik.js');
+    const cacheDir = join(e2eDir, 'node_modules/.cache/bascik');
+    await rm(cacheDir, { recursive: true, force: true });
+
+    const port = '9992';
+    const baseUrl = `http://localhost:${port}`;
+    const child = spawn(process.execPath, [entryPath], {
+      cwd: e2eDir,
+      env: { ...process.env, PORT: port },
+    });
+
+    let bootFinished = false;
+    child.stdout?.on('data', (data) => {
+      if (data.toString('utf8').includes('All tasks completed in')) {
+        bootFinished = true;
+      }
+    });
+
+    try {
+      // 1. Poll until server binds port and responds to requests
+      let bootPageRes: Response | null = null;
+      for (let i = 0; i < 50; i++) {
+        try {
+          const res = await fetch(`${baseUrl}/index.html`);
+          if (res.status === 200) {
+            bootPageRes = res;
+            break;
+          }
+        } catch {
+          // Connection refused while starting server
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      expect(bootPageRes).not.toBeNull();
+      expect(bootPageRes?.status).toBe(200);
+
+      // If caught while still booting, verify boot loading screen HTML
+      if (!bootFinished) {
+        const html = await bootPageRes!.text();
+        expect(html).toContain('Building site');
+      }
+
+      // 2. Wait for initial transpile / boot phase to complete
+      await expect.poll(() => bootFinished, { timeout: 20000 }).toBe(true);
+
+      // 3. Verify requesting /index.html, /, and /scope-test.html after boot return status 200 with transpiled content
+      const indexHtmlRes = await fetch(`${baseUrl}/index.html`);
+      expect(indexHtmlRes.status).toBe(200);
+      const indexText = await indexHtmlRes.text();
+      expect(indexText).not.toContain('Building site');
+      expect(indexText).toContain('<!DOCTYPE html>');
+
+      const rootRes = await fetch(`${baseUrl}/`);
+      expect(rootRes.status).toBe(200);
+      const rootText = await rootRes.text();
+      expect(rootText).not.toContain('Building site');
+
+      const scopeRes = await fetch(`${baseUrl}/scope-test.html`);
+      expect(scopeRes.status).toBe(200);
+      const scopeText = await scopeRes.text();
+      expect(scopeText).not.toContain('Building site');
+      expect(scopeText).toContain('JS Scope Rewriting');
+    } finally {
+      child.kill();
+    }
   });
 });
 
