@@ -65,9 +65,11 @@ export const convertCssElementSelectorsToClasses = (
   //   p { }
   //   @media (...) { p { } }
   //   p:hover { }
+  //   tr:nth-child(2n+1) { }
+  //   p:not(.lead) { }
   // The context-aware lookahead confirms we are still in selector position.
   let result = css.replace(
-    /(^\s*|[;{}]\s*)([a-z1-6]+)(?=[^{};)]*\{)/gim,
+    /(^\s*|[;{}]\s*)([a-z1-6]+)(?=[^{};]*\{)/gim,
     (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
 
@@ -87,16 +89,17 @@ export const convertCssElementSelectorsToClasses = (
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s*(?:[>+~]\s*)?)[a-z1-6]+(?=[^{};)]*\{)/g,
+    /(?<=&\s*(?:[>+~]\s*)?)[a-z1-6]+(?=[^{};]*\{)/g,
     toClass,
   );
   result = result.replace(
-    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z1-6]+(?=[^{};)]*\{)/g,
+    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z1-6]+(?=[^{};]*\{)/g,
     toClass,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
-  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`.
+  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
+  // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
   // After Pass 1 (class scoping), class names become `bascik__…__foo`. The
   // `bascik__` prefix is a uniquely safe anchor — it never appears in CSS
@@ -111,7 +114,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=bascik__[\w-]+\s+(?:[>+~]\s+)?)[a-z1-6]+(?!__)(?=[^{};)]*\{)/g,
+      /(?<=bascik__[\w-]+(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z1-6]+(?!__)(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);

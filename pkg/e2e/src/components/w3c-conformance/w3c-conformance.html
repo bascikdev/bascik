@@ -1,0 +1,71 @@
+<div class="w3c-card" data-testid="w3c-card-root">
+  <style>
+    .w3c-card {
+      --w3c-accent-color: #2563eb;
+      border: 2px solid var(--w3c-accent-color);
+      padding: 1rem;
+      border-radius: 8px;
+    }
+
+    .w3c-mq-box {
+      background-color: #10b981;
+      color: white;
+      padding: 0.5rem;
+    }
+
+    @media (max-width: 600px) {
+      .w3c-mq-box {
+        background-color: #f59e0b;
+      }
+    }
+
+    ul.w3c-list>li:first-child {
+      font-weight: bold;
+      color: #3b82f6;
+    }
+
+    ul.w3c-list>li:nth-child(2) {
+      font-style: italic;
+      color: #8b5cf6;
+    }
+  </style>
+
+  <header class="w3c-header">
+    <div data-bascik-slot="header">
+      <h3 data-testid="w3c-default-header">Default W3C Header</h3>
+    </div>
+  </header>
+
+  <div class="w3c-mq-box" data-testid="w3c-mq-box">
+    Media Query Box
+  </div>
+
+  <ul class="w3c-list" data-testid="w3c-list">
+    <li data-testid="w3c-item-1">Item 1 (First Child)</li>
+    <li data-testid="w3c-item-2">Item 2 (Second Child)</li>
+    <li data-testid="w3c-item-3">Item 3 (Third Child)</li>
+  </ul>
+
+  <main class="w3c-body">
+    <div data-bascik-slot>
+      <p data-testid="w3c-default-body">Default Body Content</p>
+    </div>
+  </main>
+
+  <footer class="w3c-footer">
+    <button id="counter-btn" data-testid="w3c-btn">Clicked 0 times</button>
+    <span id="counter-display" data-testid="w3c-display">Count: 0</span>
+  </footer>
+
+  <script>
+    let localCount = 0;
+    const btn = document.getElementById("counter-btn");
+    const display = document.getElementById("counter-display");
+
+    btn.addEventListener("click", () => {
+      localCount++;
+      btn.textContent = `Clicked ${localCount} times`;
+      display.textContent = `Count: ${localCount}`;
+    });
+  </script>
+</div>
