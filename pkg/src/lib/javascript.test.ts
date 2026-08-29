@@ -160,6 +160,24 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
     expect(result.fileContent).toContain(`getElementById("${scopedId}")`);
     expect(result.fileContent).toContain(`querySelector("#${scopedId}")`);
   });
+
+  it("handles whitespace inside getElementById, querySelector, and getElementsByClassName calls", () => {
+    const c = makeComponent(
+      '<button id="btn" class="my-cls"></button>' +
+      "<script>" +
+      'document.getElementById( "btn" );\n' +
+      'document.querySelector( "#btn" );\n' +
+      'document.getElementsByClassName( "my-cls" );\n' +
+      "</script>",
+    );
+    let result = prefixElementAttribute(c, "id", "test1234");
+    result = prefixElementAttribute(result, "class", "test1234");
+    const scopedId = scope("btn");
+    const scopedCls = scopeClass("my-cls");
+    expect(result.fileContent).toContain(`getElementById( "${scopedId}" )`);
+    expect(result.fileContent).toContain(`querySelector( "#${scopedId}" )`);
+    expect(result.fileContent).toContain(`getElementsByClassName( "${scopedCls}" )`);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

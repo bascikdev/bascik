@@ -305,7 +305,7 @@ export const prefixElementAttribute = (
             prefix: string,
           ): void => {
             updatedMatch = updatedMatch.replace(
-              new RegExp(`(${method}\\(['"][^'"]*['"]\\))`, "gm"),
+              new RegExp(`(${method}\\(\\s*['"][^'"]*['"]\\s*\\))`, "gm"),
               (call) =>
                 call.replace(
                   // Token must NOT be immediately preceded or followed by
@@ -323,7 +323,7 @@ export const prefixElementAttribute = (
           if (attribute === "id") {
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>getElementById\\(["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>getElementById\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
@@ -339,28 +339,28 @@ export const prefixElementAttribute = (
             // element.setAttribute("id", "value")
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>setAttribute\\(["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>setAttribute\\(\\s*["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
           } else if (attribute === "name") {
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>getElementsByName\\(["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>getElementsByName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
             // element.setAttribute("name", "value")
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>setAttribute\\(["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>setAttribute\\(\\s*["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
           } else if (attribute === "class") {
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>getElementsByClassName\\(["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>getElementsByClassName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
@@ -390,14 +390,14 @@ export const prefixElementAttribute = (
             // `classList.toggle("open", condition)` is handled correctly.
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>classList\.toggle\\(["'])(?<middle>${escapedAttr})(?<end>["'])`,
+                `(?<start>classList\\.toggle\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["'])`,
                 "gm",
               ),
             );
             // classList.contains — always single arg
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>classList\.contains\\(["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>classList\\.contains\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
@@ -414,7 +414,7 @@ export const prefixElementAttribute = (
             // element.setAttribute("class", "value")
             updatedMatch = rewriteSelectorRef(
               new RegExp(
-                `(?<start>setAttribute\\(["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\))`,
+                `(?<start>setAttribute\\(\\s*["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
                 "gm",
               ),
             );
