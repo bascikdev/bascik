@@ -128,4 +128,16 @@ export const watchFiles = async () => {
       .on("change", async (path) => selectivelyProcessPagesForWatchPath(path).catch(onWatchError))
       .on("unlink", async () => processAllPages().catch(onWatchError)));
   }
+
+  // Re-transpile all pages when inlined global stylesheets change (dev only)
+  if (!BascikConfig.isBuild && Array.isArray(BascikConfig.inlineStyles) && BascikConfig.inlineStyles.length) {
+    w(chokidar
+      .watch(BascikConfig.inlineStyles, {
+        ignoreInitial: true,
+        persistent: true,
+      })
+      .on("add", async () => processAllPages().catch(onWatchError))
+      .on("change", async () => processAllPages().catch(onWatchError))
+      .on("unlink", async () => processAllPages().catch(onWatchError)));
+  }
 };

@@ -80,10 +80,11 @@ export const minifyHtml = (htmlString: string): string => {
   }
   // Preserve content of whitespace-sensitive elements before collapsing whitespace.
   // Without this, code inside <pre> blocks has its newlines and indentation stripped,
-  // breaking the visual display of code examples in the browser.
+  // breaking the visual display of code examples in the browser. Non-extracted scripts
+  // (such as data-bascik-server or application/ld+json) are also preserved verbatim.
   const preserved: string[] = [];
   html = html.replace(
-    /<(pre|textarea)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    /<(pre|textarea|script)\b[^>]*>[\s\S]*?<\/\1>/gi,
     (match) => {
       preserved.push(match);
       return `\x00P${preserved.length - 1}\x00`;

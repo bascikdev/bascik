@@ -126,6 +126,8 @@ While the dev server is active, Bascik incrementally updates your build as files
   transpiled: pages/index.html
   transpiled: pages/about.html
   ```
+- **Open-page prioritization** rebuilds active browser tabs first:
+  When a change impacts multiple pages (such as an inlined stylesheet or shared component), Bascik checks active live-reload connections and compiles currently open pages first so your visible browser window refreshes immediately before background pages are processed.
 - **Static assets** are copied into `dist/`:
   ```terminal
   copied: pages/css/custom.css

@@ -33,6 +33,10 @@ transpiled: pages/index.html (modified component: <user-badge>)
 
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.
 
+### Open-Page Prioritization for Instant Feedback
+
+When you edit a shared component or a global stylesheet used across many pages, Bascik does not make your active browser tab wait for the entire site to recompile. The dev server tracks which pages currently have active live-reload browser tabs connected. It partitions the rebuild queue, transpiles the open page(s) first, stores them in memory, and emits the live-reload signal immediately. Your visible browser window updates in milliseconds while any remaining background pages finish compiling afterwards.
+
 > **Zero-Refresh Dev Server Reconnection:** If you stop or restart the local development server while working in your code editor, you do not need to click refresh in your browser. As soon as you focus back onto your web page, Bascik's injected live reload client immediately re-establishes the SSE connection and reloads the page automatically.
 
 > **Deep Dive:** Read [CLI Dev Server](/cli#starting-the-dev-server) for server options, or explore [Server Architecture Internals](/internals/server) for live reload mechanics.

@@ -80,7 +80,7 @@ vi.mock("./worker-pool.js", () => {
   return {
     WorkerPool: vi.fn().mockImplementation(function (this: any) {
       this.run = vi.fn(async (pagePath: string) => ({
-        relativePagePath: "pages/index.html",
+        relativePagePath: pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`),
         absolutePagePath: pagePath,
         distHtml: "<html></html>",
         usedComponentsNames: ["my-comp"],
@@ -1361,6 +1361,55 @@ describe("processAllPages – side effects", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages({ useWorkers: false });
     expect(result).toEqual(["pages/index.html"]);
+  });
+
+  it("prioritizes open pages over other pages during dev mode (main thread)", async () => {
+    (mem as any).openPages = ["/about"];
+    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const emitOrder: string[] = [];
+    const { eventEmitter } = await import("./events.js");
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
+      if (event === "transpiled") {
+        emitOrder.push(payload.relativePagePath);
+      }
+    });
+
+    await processAllPages({ useWorkers: false });
+
+    expect(emitOrder[0]).toBe("pages/about.html");
+    expect(emitOrder).toHaveLength(3);
+    expect(emitOrder).toContain("pages/index.html");
+    expect(emitOrder).toContain("pages/faq.html");
+  });
+
+  it("prioritizes open pages over other pages when useWorkers is true", async () => {
+    (mem as any).openPages = ["/faq"];
+    const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+
+    const callOrder: string[] = [];
+    (mem.storePage as ReturnType<typeof vi.fn>).mockImplementation(async ({ relativePagePath }) => {
+      callOrder.push(`store:${relativePagePath}`);
+    });
+
+    const { eventEmitter } = await import("./events.js");
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
+      if (event === "transpiled") {
+        callOrder.push(`emit:${payload.relativePagePath}`);
+      }
+    });
+
+    await processAllPages({ useWorkers: true });
+
+    expect(callOrder[0]).toBe("store:pages/faq.html");
+    expect(callOrder[1]).toBe("emit:pages/faq.html");
+    expect(callOrder).toContain("store:pages/index.html");
+    expect(callOrder).toContain("emit:pages/index.html");
+    expect(callOrder).toContain("store:pages/about.html");
+    expect(callOrder).toContain("emit:pages/about.html");
   });
 
   it("invalidates the component list cache before processing pages", async () => {

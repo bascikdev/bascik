@@ -69,7 +69,7 @@ The `MemoryStore` class manages rendered pages during development without writin
 
 - `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs $O(1)$ exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
-- `#openPages`: Tracks active SSE live-reload connections. Pages currently open in a browser tab are transpiled first during batch rebuilds so visible tabs refresh immediately.
+- `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
 Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers.
 
@@ -92,6 +92,19 @@ Three native filesystem watchers (chokidar) handle source file updates:
 ### Live reload (`live-reload.ts`)
 
 Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects instantly on browser tab focus or visibility changes (so restarting the dev server reloads your browser as soon as you re-focus the window without manual refresh), and cleanly closes streams on page unload. Production builds strip this script entirely. If the dev server is offline, a status banner indicates that auto-reconnection will happen automatically when the server is restarted.
+
+### Open-page priority transpilation (`partitionByOpenPages`)
+
+When multiple pages must be re-transpiled at once (for example, when modifying a shared component used across many pages, editing an inlined stylesheet, or running `processAllPages()`), compiling every page sequentially before notifying the browser could introduce visible latency on large sites.
+
+Bascik solves this with open-page priority batching (`partitionByOpenPages` in `processing.ts`):
+
+1. **Active tab tracking:** Each active browser tab connected to `GET /bascik-live-reload` registers its normalized HTTP route in `mem.openPages` (derived from the HTTP `Referer` header).
+2. **Queue partitioning:** When a batch transpilation begins, the page list is split into `openPages` (pages currently open in at least one browser tab) and `restPages` (all other pages).
+3. **Immediate reload emission:** The dev server transpiles all `openPages` first, commits them into `MemoryStore`, and emits the `"transpiled"` event immediately. Connected browser tabs reload in milliseconds.
+4. **Background completion:** Once the active tabs have been updated, the remaining pages are transpiled and cached in the background.
+
+This prioritization operates identically whether running on the main thread or across multi-threaded workers via `WorkerPool` (`useWorkers: true`).
 
 ## Production Server Mode (`bascik --serve`)
 

@@ -50,6 +50,39 @@ describe("minifyHtml", () => {
     expect(minifyHtml(html)).toBe(`<div><script data-bascik-server>server()</script></div>\n<script>client()</script>`);
   });
 
+  it("preserves newlines, indentation, and single-line comments inside data-bascik-server scripts", () => {
+    const htmlString = [
+      "<div>",
+      "  <script data-bascik-server>",
+      "    // Single line comment",
+      "    const x = 1;",
+      "    console.log(x);",
+      "  </script>",
+      "</div>",
+    ].join("\n");
+    const result = minifyHtml(htmlString);
+    expect(result).toBe(
+      "<div><script data-bascik-server>\n    // Single line comment\n    const x = 1;\n    console.log(x);\n  </script></div>",
+    );
+  });
+
+  it("preserves multiline data scripts such as application/ld+json verbatim in place", () => {
+    const htmlString = [
+      "<div>",
+      '  <script type="application/ld+json">',
+      "    {",
+      '      "@context": "https://schema.org",',
+      '      "@type": "Article"',
+      "    }",
+      "  </script>",
+      "</div>",
+    ].join("\n");
+    const result = minifyHtml(htmlString);
+    expect(result).toBe(
+      '<div><script type="application/ld+json">\n    {\n      "@context": "https://schema.org",\n      "@type": "Article"\n    }\n  </script></div>',
+    );
+  });
+
   it("removes newlines and spaces from HTML, and removes extra spaces", () => {
     const htmlString = "<div>\n    \tcontent\n   \t</div>";
     expect(minifyHtml(htmlString)).toEqual("<div> content </div>");

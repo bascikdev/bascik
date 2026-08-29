@@ -1110,6 +1110,7 @@ While the dev server is active, Bascik watches your file system and incrementall
   transpiled: pages/index.html
   transpiled: pages/about.html
   ```
+* **Open-Page Prioritization:** When a batch rebuild is triggered (such as an inlined stylesheet or shared component), Bascik checks active live-reload browser connections and prioritizes compiling currently open pages first, emitting reload signals immediately before compiling background pages.
 * **Static Assets:** Replicating any non-HTML static assets (like custom CSS, JS files, or images) from pages directly into the output directory:
   ```terminal
   copied: pages/css/custom.css
