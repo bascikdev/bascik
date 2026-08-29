@@ -1368,6 +1368,14 @@ describe("processAllPages – side effects", () => {
     await processAllPages();
     expect(invalidateComponentListCache).toHaveBeenCalledOnce();
   });
+
+  it("logs 'Starting transpiling...' when processAllPages starts", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await processAllPages();
+    expect(consoleSpy).toHaveBeenCalledWith("Starting transpiling...");
+    consoleSpy.mockRestore();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1795,7 +1803,7 @@ describe("transpilePage – inline component <style> extraction & deduplication"
       "comp-multi-root": {
         fileName: "components/comp-multi-root.html",
         fileContent:
-          '<style>h2 { color: red; } .badge { font-weight: bold; }</style>' +
+          '<style>h2 { color: red; } .title { font-size: 1.5rem; } .badge { font-weight: bold; }</style>' +
           '<h2 class="title">Title</h2>' +
           '<div class="badge">Badge</div>',
       },

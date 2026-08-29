@@ -577,6 +577,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
+  console.log("Starting transpiling...");
   invalidateComponentListCache();
   const useWorkers = options?.useWorkers ?? BascikConfig.useWorkers ?? false;
   const start = performance.now();

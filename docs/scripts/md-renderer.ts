@@ -185,7 +185,8 @@ function _transformMd(
   html = html.replace(/<blockquote>\n?/g, '<div class="callout">');
   html = html.replace(/\n?<\/blockquote>/g, '</div>');
 
-  // Wrap all tables in <doc-table> component
+  // Wrap all tables in <doc-table> component and ensure table header cells have scope="col"
+  html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
 
   // Open external links in a new tab

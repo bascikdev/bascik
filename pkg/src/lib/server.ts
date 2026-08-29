@@ -23,6 +23,19 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "permissions-policy": "interest-cohort=()",
 };
 
+export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
+  const isHttps = req && req.headers
+    ? req.headers[":scheme"] === "https" || req.headers["x-forwarded-proto"] === "https"
+    : false;
+  if (isHttps || (BascikConfig.isProdServer && BascikConfig.prodServer?.enableTls)) {
+    return {
+      ...SECURITY_HEADERS,
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+    };
+  }
+  return { ...SECURITY_HEADERS };
+};
+
 // Weak stat-based ETag for static files: no extra file read needed
 export const makeStatEtag = (mtimeMs: number, size: number): string =>
   `W/"${mtimeMs.toString(36)}-${fileStatSizeToString(size)}"`;
@@ -87,15 +100,16 @@ export const isNetworkResetError = (err: unknown): boolean => {
   );
 };
 
-export const onError = (error: unknown, res: BascikResponse): void => {
+export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest): void => {
   // Client disconnected mid-request: not a server bug, nothing to respond to.
   if (isNetworkResetError(error)) return;
+  const secHeaders = getSecurityHeaders(req);
   try {
     if (!res.headersSent) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        res.respond(404, { ...SECURITY_HEADERS });
+        res.respond(404, { ...secHeaders });
       } else {
-        res.respond(500, { ...SECURITY_HEADERS });
+        res.respond(500, { ...secHeaders });
       }
     }
   } catch (respondErr) {
@@ -117,6 +131,7 @@ export const createRequestHandler = () => {
   return async (req: BascikRequest, res: BascikResponse) => {
     const startMs = Date.now();
     let responseStatus = 0;
+    const secHeaders = getSecurityHeaders(req);
 
     const logAccess = () => {
       if (responseStatus === 0) return;
@@ -137,7 +152,7 @@ export const createRequestHandler = () => {
       // ── Rate limiting ────────────────────────────────────────────────────
       if (BascikConfig.isProdServer && BascikConfig.prodServer?.rateLimit !== false && isRateLimited(req.remoteIp)) {
         responseStatus = 429;
-        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...SECURITY_HEADERS });
+        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
         res.end("Too Many Requests");
         return;
       }
@@ -146,14 +161,14 @@ export const createRequestHandler = () => {
       const isHead = req.method === "HEAD";
       if (req.method !== "GET" && !isHead) {
         responseStatus = 405;
-        res.respond(405, { "allow": "GET, HEAD", ...SECURITY_HEADERS });
+        res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
         res.end("Method Not Allowed");
         return;
       }
 
       if (!req.path) {
         responseStatus = 400;
-        res.respond(400, { ...SECURITY_HEADERS });
+        res.respond(400, { ...secHeaders });
         return res.end();
       }
 
@@ -165,7 +180,7 @@ export const createRequestHandler = () => {
         pathname = decodeURIComponent(rawPathname);
       } catch {
         responseStatus = 400;
-        res.respond(400, { ...SECURITY_HEADERS });
+        res.respond(400, { ...secHeaders });
         res.end("Bad Request");
         return;
       }
@@ -178,7 +193,7 @@ export const createRequestHandler = () => {
         pathname === ".."
       ) {
         responseStatus = 400;
-        res.respond(400, { ...SECURITY_HEADERS });
+        res.respond(400, { ...secHeaders });
         res.end("Bad Request");
         return;
       }
@@ -191,7 +206,7 @@ export const createRequestHandler = () => {
         const fullPath = resolve(distDir, safePath);
         if (!fullPath.startsWith(distDir + sep)) {
           responseStatus = 400;
-          res.respond(400, { ...SECURITY_HEADERS });
+          res.respond(400, { ...secHeaders });
           res.end("Bad Request");
           return;
         }
@@ -202,7 +217,7 @@ export const createRequestHandler = () => {
           fileStat = await stat(fullPath);
         } catch (err) {
           responseStatus = (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
-          res.respond(responseStatus, { ...SECURITY_HEADERS });
+          res.respond(responseStatus, { ...secHeaders });
           res.end(responseStatus === 404 ? "Not Found" : "Internal Server Error");
           return;
         }
@@ -210,7 +225,7 @@ export const createRequestHandler = () => {
         const etag = makeStatEtag(fileStat.mtimeMs, fileStat.size);
         if (BascikConfig.cacheHttp !== false && req.headers["if-none-match"] === etag) {
           responseStatus = 304;
-          res.respond(304, { etag, ...SECURITY_HEADERS });
+          res.respond(304, { etag, ...secHeaders });
           res.end();
           return;
         }
@@ -218,7 +233,7 @@ export const createRequestHandler = () => {
         const staticHeaders: Record<string, string | number> = {
           "content-type": MIME_MAP.get(ext) ?? "application/octet-stream",
           "content-length": fileStat.size,
-          ...SECURITY_HEADERS,
+          ...secHeaders,
         };
         if (BascikConfig.cacheHttp !== false) {
           staticHeaders["etag"] = etag;
@@ -245,7 +260,7 @@ export const createRequestHandler = () => {
             return;
           }
           responseStatus = (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
-          res.respond(responseStatus, { ...SECURITY_HEADERS });
+          res.respond(responseStatus, { ...secHeaders });
           res.end(responseStatus === 404 ? "Not Found" : "Internal Server Error");
         });
 
@@ -267,7 +282,7 @@ export const createRequestHandler = () => {
         // Disable in production serve mode.
         if (BascikConfig.isProdServer) {
           responseStatus = 404;
-          res.respond(404, { ...SECURITY_HEADERS });
+          res.respond(404, { ...secHeaders });
           return res.end();
         }
 
@@ -277,7 +292,7 @@ export const createRequestHandler = () => {
         res.respond(200, {
           "content-type": "text/event-stream",
           "cache-control": "no-cache",
-          ...SECURITY_HEADERS,
+          ...secHeaders,
         });
 
         res.write(`data: connected\n\n`);
@@ -342,7 +357,7 @@ export const createRequestHandler = () => {
 
       if (!exactPage && pathname.split(".").length > 1) {
         responseStatus = 404;
-        res.respond(404, { ...SECURITY_HEADERS });
+        res.respond(404, { ...secHeaders });
         return res.end();
       }
 
@@ -354,11 +369,11 @@ export const createRequestHandler = () => {
         // when its specific page is transpiled or when boot finishes entirely.
         if (mem.isBooting && !BascikConfig.isProdServer) {
           responseStatus = 200;
-          res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...SECURITY_HEADERS });
+          res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...secHeaders });
           return res.end(isHead ? undefined : Buffer.from(BOOT_PAGE_HTML));
         }
         responseStatus = 404;
-        res.respond(404, { ...SECURITY_HEADERS });
+        res.respond(404, { ...secHeaders });
         return res.end("Not Found");
       }
 
@@ -371,7 +386,7 @@ export const createRequestHandler = () => {
       const responseHeaders: Record<string, string | number> = {
         "content-type": "text/html; charset=utf-8",
         "vary": "Accept-Encoding",
-        ...SECURITY_HEADERS,
+        ...secHeaders,
       };
 
       if (BascikConfig.cacheHttp === false) {
@@ -410,7 +425,7 @@ export const createRequestHandler = () => {
       const etag = page.etag ?? makeEtag(page.content);
       if (BascikConfig.cacheHttp !== false && req.headers["if-none-match"] === etag) {
         responseStatus = 304;
-        res.respond(304, { etag, ...SECURITY_HEADERS });
+        res.respond(304, { etag, ...secHeaders });
         return res.end();
       }
       responseHeaders["etag"] = etag;
@@ -432,7 +447,7 @@ export const createRequestHandler = () => {
       res.respond(responseStatus, responseHeaders);
       return res.end(isHead ? undefined : page.content);
     } catch (error) {
-      onError(error, res);
+      onError(error, res, req);
     } finally {
       logAccess();
     }

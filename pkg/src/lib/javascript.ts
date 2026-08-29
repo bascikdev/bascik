@@ -279,6 +279,29 @@ export const prefixElementAttribute = (
     obfuscatedAttributeName: string;
   }> = [];
 
+  // For class attributes: extract all class names defined in the component's CSS
+  // (companion .css and inline <style> tags). Only classes present in component CSS
+  // are scoped; classes not in component CSS are treated as global classes.
+  let scopedClassesSet: Set<string> | null = null;
+  if (attribute === "class" && (component.cssFileContent !== undefined || component.fileContent.includes("<style"))) {
+    scopedClassesSet = new Set<string>();
+    const cssSources: string[] = [];
+    if (component.cssFileContent) {
+      cssSources.push(component.cssFileContent);
+    }
+    if (component.fileContent && component.fileContent.includes("<style")) {
+      const { css: inlineCss } = extractInlineStyles(component.fileContent);
+      if (inlineCss) cssSources.push(inlineCss);
+    }
+    const combinedCss = cssSources.join("\n");
+    if (combinedCss) {
+      const { css: shieldedCss } = shieldCssStrings(combinedCss);
+      for (const m of shieldedCss.matchAll(/(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
+        scopedClassesSet.add(m[0]);
+      }
+    }
+  }
+
   // Shield <meta> elements from name-attribute scoping. The `name` attribute
   // on <meta> refers to a standardized metadata vocabulary (e.g. "viewport",
   // "description", "robots") and must never be mangled by the scoping pipeline.
@@ -305,6 +328,9 @@ export const prefixElementAttribute = (
         .replace(/  +/g, " ")
         .split(" ")
         .map((attributeName: string) => {
+          if (attribute === "class" && scopedClassesSet !== null && !scopedClassesSet.has(attributeName)) {
+            return attributeName;
+          }
           const name = `bascik__${scopeKey}__${attributeName}`;
           const obfuscatedAttributeName = minifyAttributeName(name);
           attributesToReplace.push({ attributeName, obfuscatedAttributeName });
@@ -322,6 +348,9 @@ export const prefixElementAttribute = (
   if (attribute === "class") {
     const knownClasses = new Set(attributesToReplace.map((a) => a.attributeName));
     const addIfNew = (className: string): void => {
+      if (scopedClassesSet !== null && !scopedClassesSet.has(className)) {
+        return;
+      }
       if (!knownClasses.has(className)) {
         attributesToReplace.push({
           attributeName: className,

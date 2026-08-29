@@ -47,6 +47,8 @@ describe('articleSchema', () => {
     expect(result).toContain('"headline": "Test Title - Bascik Docs"');
     expect(result).toContain('"description": "A test description for the page."');
     expect(result).toContain('"url": "https://bascik.dev/"');
+    expect(result).toContain('"mainEntityOfPage": "https://bascik.dev/"');
+    expect(result).toContain('"inLanguage": "en-US"');
   });
 
   it('extracts description when content precedes name or uses single quotes', async () => {

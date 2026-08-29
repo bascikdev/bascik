@@ -199,5 +199,26 @@ suite('Extension Integration Suite', () => {
       assert.ok(match, 'Expected JS warning in standalone JS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
+
+    test('reports non-hyphenated component name warning for component files in src/components/', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+
+      const nonHyphenatedUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'card.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<article><p>Card</p></article>',
+      });
+      // Test file with fsPath ending with src/components/card.html
+      const fileDoc = await vscode.workspace.openTextDocument(nonHyphenatedUri);
+      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('Under WHATWG HTML §4.13, custom elements should include a hyphen'),
+      );
+      assert.ok(match, 'Expected non-hyphenated component warning');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
   });
 });

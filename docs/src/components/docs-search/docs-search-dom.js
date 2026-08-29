@@ -5,6 +5,7 @@ var input = document.querySelector('.search-input');
 var list = document.querySelector('.search-results');
 var empty = document.querySelector('.search-empty');
 var hint = document.querySelector('.search-hint');
+var statusEl = document.getElementById('docs-search-status');
 var lastFocused = null;
 var preloaded = new Set();
 
@@ -25,6 +26,7 @@ function open() {
   lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   overlay.hidden = false;
   btn.setAttribute('aria-expanded', 'true');
+  input.setAttribute('aria-expanded', 'true');
   document.body.style.overflow = 'hidden';
   input.focus();
   if (!index) loadIndex();
@@ -33,11 +35,13 @@ function open() {
 function close() {
   overlay.hidden = true;
   btn.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-expanded', 'false');
   document.body.style.overflow = '';
   input.value = '';
   list.innerHTML = '';
   empty.hidden = true;
   hint.hidden = false;
+  if (statusEl) statusEl.textContent = '';
   if (lastFocused && typeof lastFocused.focus === 'function') {
     lastFocused.focus();
   } else {
@@ -65,12 +69,23 @@ function runSearch(query) {
   list.innerHTML = '';
   empty.hidden = true;
   hint.hidden = !!q;
-  if (!q) return;
+  if (!q) {
+    if (statusEl) statusEl.textContent = '';
+    return;
+  }
 
   var toks = tokens(q);
   var top = buildResults(index, q, toks, 13);
 
-  if (!top.length) { empty.hidden = false; return; }
+  if (!top.length) {
+    empty.hidden = false;
+    if (statusEl) statusEl.textContent = 'No results found.';
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.textContent = top.length + ' ' + (top.length === 1 ? 'result' : 'results') + ' found.';
+  }
 
   list.innerHTML = top.map(function (e) {
     var label = e.heading

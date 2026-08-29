@@ -38,13 +38,15 @@ const x = 1;
     expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com"');
   });
 
-  it('renderMd wraps tables in <doc-table>', async () => {
+  it('renderMd wraps tables in <doc-table> and adds scope="col" to <th> headers', async () => {
     const mdContent = `| Col 1 | Col 2 |\n| --- | --- |\n| Val 1 | Val 2 |\n`;
     const mdFile = join(tempDir, 'table.md');
     await writeFile(mdFile, mdContent);
 
     const html = await renderMd(mdFile);
     expect(html).toContain('<doc-table><table>');
+    expect(html).toContain('<th scope="col">Col 1</th>');
+    expect(html).toContain('<th scope="col">Col 2</th>');
     expect(html).toContain('</table></doc-table>');
   });
 

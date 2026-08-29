@@ -158,6 +158,11 @@ export const listComponents = async (): Promise<ComponentList> => {
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +
           `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
         );
+      } else if (!componentName.includes("-")) {
+        console.warn(
+          `warning: Component "${componentName}" is not hyphenated. ` +
+          `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${componentName}") to avoid collisions with future HTML standards.`,
+        );
       }
       let fileContentBuffer: Buffer;
       let cssFileContent: string | undefined;

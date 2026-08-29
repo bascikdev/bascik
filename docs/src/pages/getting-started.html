@@ -71,7 +71,7 @@
       <docs-sidebar />
 
       <!-- Content -->
-      <main class="docs-content">
+      <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
@@ -94,59 +94,61 @@
 
         <h2>Your First Component</h2>
 
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-body">
-            <h3>Create the component file</h3>
-            <p>The file name becomes the tag name.</p>
-            <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
-              <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(
-                  pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
-                );
-                console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
-              </script>
-            </code-block>
-          </div>
-        </div>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h3>Create the component file</h3>
+              <p>The file name becomes the tag name.</p>
+              <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
+                <script data-bascik-build>
+                  import { join } from 'node:path';
+                  import { pathToFileURL } from 'node:url';
+                  const { extractDemoBlock } = await import(
+                    pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+                  );
+                  console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
+                </script>
+              </code-block>
+            </div>
+          </li>
 
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-body">
-            <h3>Reference it in a page</h3>
-            <p>No imports or registration. Just use the tag.</p>
-            <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
-              <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(
-                  pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
-                );
-                console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
-              </script>
-            </code-block>
-          </div>
-        </div>
+          <li class="step">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h3>Reference it in a page</h3>
+              <p>No imports or registration. Just use the tag.</p>
+              <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
+                <script data-bascik-build>
+                  import { join } from 'node:path';
+                  import { pathToFileURL } from 'node:url';
+                  const { extractDemoBlock } = await import(
+                    pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+                  );
+                  console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
+                </script>
+              </code-block>
+            </div>
+          </li>
 
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-body">
-            <h3>Start the dev server</h3>
-            <code-block data-bascik-prop-lang="sh">npm run dev</code-block>
-            <p>The server runs on <code>http://localhost:8080</code> and live-reloads on every change.</p>
-          </div>
-        </div>
+          <li class="step">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h3>Start the dev server</h3>
+              <code-block data-bascik-prop-lang="sh">npm run dev</code-block>
+              <p>The server runs on <code>http://localhost:8080</code> and live-reloads on every change.</p>
+            </div>
+          </li>
 
-        <div class="step">
-          <div class="step-num">4</div>
-          <div class="step-body">
-            <h3>Build for production</h3>
-            <code-block data-bascik-prop-lang="sh">npm run build</code-block>
-            <p>Output is written to the <code>dist/</code> directory. Deploy it anywhere that serves static files.</p>
-          </div>
-        </div>
+          <li class="step">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h3>Build for production</h3>
+              <code-block data-bascik-prop-lang="sh">npm run build</code-block>
+              <p>Output is written to the <code>dist/</code> directory. Deploy it anywhere that serves static files.</p>
+            </div>
+          </li>
+        </ol>
 
         <style>
           .next-step-card {

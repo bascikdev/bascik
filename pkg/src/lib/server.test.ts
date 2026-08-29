@@ -510,6 +510,19 @@ describe("startHttp2Server – security headers", () => {
       expect.objectContaining(EXPECTED_SECURITY_HEADERS),
     );
   });
+
+  it("includes Strict-Transport-Security header when request has :scheme https or x-forwarded-proto https", async () => {
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { ":scheme": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...EXPECTED_SECURITY_HEADERS,
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      }),
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -136,6 +136,26 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const text = document.getText();
   const diagnostics: vscode.Diagnostic[] = [];
 
+  // Warn if a component file name in src/components is not hyphenated per WHATWG HTML §4.13
+  if (languageId === 'html' && document.uri.scheme === 'file') {
+    const fsPath = document.uri.fsPath.replace(/\\/g, '/');
+    if (fsPath.includes('/src/components/')) {
+      const fileName = path.basename(fsPath);
+      const nameWithoutExt = fileName.replace(/\.html$/i, '').toLowerCase();
+      if (!nameWithoutExt.includes('-') && !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)) {
+        const start = new vscode.Position(0, 0);
+        const end = new vscode.Position(0, Math.min(text.length, 10));
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${nameWithoutExt}") to avoid collisions with future HTML standards.`,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diag.source = 'bascik';
+        diagnostics.push(diag);
+      }
+    }
+  }
+
   const addCompatibilityDiagnostics = (sourceText: string, kind: 'css' | 'js', offset: number) => {
     for (const rule of matchCompatibilityRules(sourceText, kind)) {
       const flags = rule.regex.flags.includes('g') ? rule.regex.flags : `${rule.regex.flags}g`;

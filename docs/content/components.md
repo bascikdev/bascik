@@ -436,6 +436,17 @@ Bascik gives you complete freedom to structure your components however you prefe
 
 You can choose any of these arrangements at any time. There is **no functionality or performance difference** between them. At build time, Bascik treats them identically, extracting and scoping your styles and bundling them into the page's final compiled output.
 
+## Component Naming and Hyphens
+
+Under the **WHATWG HTML standard (§4.13.1.2)**, custom elements must contain at least one hyphen (such as `<site-nav>`, `<hello-card>`, or `<my-button>`).
+
+Naming your components with hyphens ensures they never collide with native HTML tags or future web standards. Bascik's CLI compiler and the official Bascik VS Code Extension validate component names at build time and in your editor:
+
+- If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), Bascik issues a build-time warning indicating that it may collide with standard HTML elements.
+- If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
+
+Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
+
 ## Multiple Root Elements
 
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.

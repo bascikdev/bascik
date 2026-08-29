@@ -87,6 +87,18 @@ describe("prefixElementAttribute – class with deduplicateCss: false", () => {
 });
 
 describe("prefixElementAttribute – class (existing patterns)", () => {
+  it("preserves global classes in component HTML when class is not defined in component CSS", () => {
+    const c = makeComponent(
+      '<a href="#main" class="skip-link dnav-logo">Skip</a>',
+      ".dnav-logo { color: green; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `class="skip-link ${scopeClass("dnav-logo")}"`,
+    );
+    expect(result.cssFileContent).toContain(`.${scopeClass("dnav-logo")}`);
+  });
+
   it("scopes getElementsByClassName", () => {
     const c = makeComponent(
       '<div class="card"></div><script>document.getElementsByClassName("card")</script>',

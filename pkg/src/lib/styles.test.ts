@@ -653,6 +653,41 @@ describe("convertCssElementSelectorsToClasses – CSS nesting (& selector)", () 
     expect(css).toContain("& > .bascik__my-comp__el__h2");
   });
 
+  it("converts element in unspaced '&>h2' and '&> h2'", () => {
+    const res1 = convertCssElementSelectorsToClasses(
+      ".parent { &>h2 { font-size: 1.5rem; } }",
+      "my-comp",
+    );
+    expect(res1.css).toContain("&>.bascik__my-comp__el__h2");
+    expect(res1.elementsConvertedClasses).toContain("h2");
+
+    const res2 = convertCssElementSelectorsToClasses(
+      ".parent { &> h2 { font-size: 1.5rem; } }",
+      "my-comp",
+    );
+    expect(res2.css).toContain("&> .bascik__my-comp__el__h2");
+  });
+
+  it("converts relaxed direct nesting with combinators without leading '&'", () => {
+    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
+      ".parent { > h2 { color: red; } + li { color: blue; } ~ span { color: green; } }",
+      "my-comp",
+    );
+    expect(css).toContain("> .bascik__my-comp__el__h2");
+    expect(css).toContain("+ .bascik__my-comp__el__li");
+    expect(css).toContain("~ .bascik__my-comp__el__span");
+    expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["h2", "li", "span"]));
+  });
+
+  it("converts relaxed direct element nesting without '&'", () => {
+    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
+      ".parent { p { color: red; } }",
+      "my-comp",
+    );
+    expect(css).toContain(".bascik__my-comp__el__p");
+    expect(elementsConvertedClasses).toContain("p");
+  });
+
   it("converts element after '& + ' (adjacent sibling combinator)", () => {
     const { css } = convertCssElementSelectorsToClasses(
       ".card { & + li { margin-top: 8px; } }",

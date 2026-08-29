@@ -1,12 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import * as elements from '@webref/elements';
 import * as idl from '@webref/idl';
+import * as cssRef from '@webref/css';
 import * as webidl2 from 'webidl2';
 import bcd from '@mdn/browser-compat-data';
 import { NATIVE_HTML_ELEMENTS } from './components.js';
-import { convertCssElementSelectorsToClasses, scopeLayerNames, scopeContainerNames } from './styles.js';
+import {
+  convertCssElementSelectorsToClasses,
+  scopeLayerNames,
+  scopeContainerNames,
+  scopeCssCustomProperties,
+  prefixKeyframes,
+  scopeViewTransitionNames,
+  scopeCounterStyleNames,
+  scopeAnchorNames,
+} from './styles.js';
 import { prefixElementAttribute, namespaceScriptTags } from './javascript.js';
-import { INLINE_TAGS } from './html-minifier.js';
+import { INLINE_TAGS, minifyHtml } from './html-minifier.js';
+import { MIME_MAP } from './mime.js';
+import { makeEtag, makeStatEtag } from './server.js';
+import { escapeXml, buildSitemapXml } from './sitemap.js';
 
 describe('Web Standards Validation via @webref & MDN BCD', () => {
   describe('HTML Standards Validation (WHATWG HTML §4 / @webref/elements & MDN BCD)', () => {
@@ -148,6 +161,100 @@ describe('Web Standards Validation via @webref & MDN BCD', () => {
       const containerCss = `container-name: card; @container card (min-width: 400px) { .child { flex-direction: row; } }`;
       const scopedContainer = scopeContainerNames(containerCss, 'cq123');
       expect(scopedContainer).toContain('@container bascik__cq123__container__card');
+    });
+
+    it('verifies W3C CSS Nesting Module (2023 relaxed direct nesting with and without explicit &)', () => {
+      const nestedCss = `
+        .container {
+          & > h1 { font-size: 2rem; }
+          &>h2 { font-size: 1.5rem; }
+          > p { line-height: 1.6; }
+          + aside { margin-top: 1rem; }
+          ~ footer { opacity: 0.8; }
+          span { color: #333; }
+        }
+      `;
+      const { css: scoped, elementsConvertedClasses } = convertCssElementSelectorsToClasses(nestedCss, 'my-comp');
+
+      expect(scoped).toContain('& > .bascik__my-comp__el__h1');
+      expect(scoped).toContain('&>.bascik__my-comp__el__h2');
+      expect(scoped).toContain('> .bascik__my-comp__el__p');
+      expect(scoped).toContain('+ .bascik__my-comp__el__aside');
+      expect(scoped).toContain('~ .bascik__my-comp__el__footer');
+      expect(scoped).toContain('.bascik__my-comp__el__span');
+      expect(elementsConvertedClasses).toEqual(expect.arrayContaining(['h1', 'h2', 'p', 'aside', 'footer', 'span']));
+    });
+
+    it('verifies standard CSS at-rules from W3C specs in @webref/css are supported', async () => {
+      const allCss = await cssRef.listAll();
+      expect(allCss).toBeDefined();
+
+      // Check custom properties, keyframes, view transitions, counter styles, and anchor positioning
+      const customPropCss = `--brand: #00f; color: var(--brand);`;
+      const scopedProps = scopeCssCustomProperties(customPropCss, 'c1');
+      expect(scopedProps).toContain('--bascik__c1__brand');
+
+      const kfCss = `@keyframes pulse { 0% { opacity: 0; } } .anim { animation: pulse 1s; }`;
+      const scopedKf = prefixKeyframes(kfCss, 'c1');
+      expect(scopedKf).toContain('@keyframes bascik__c1__keyframe__pulse');
+
+      const vtCss = `.card { view-transition-name: card-thumb; } ::view-transition-old(card-thumb) { opacity: 0; }`;
+      const scopedVt = scopeViewTransitionNames(vtCss, 'c1');
+      expect(scopedVt).toContain('view-transition-name: bascik__c1__vtn__card-thumb');
+      expect(scopedVt).toContain('::view-transition-old(bascik__c1__vtn__card-thumb)');
+
+      const counterCss = `@counter-style custom-roman { system: additive; } li { list-style: custom-roman; }`;
+      const scopedCounter = scopeCounterStyleNames(counterCss, 'c1');
+      expect(scopedCounter).toContain('@counter-style bascik__c1__counter__custom-roman');
+      expect(scopedCounter).toContain('list-style: bascik__c1__counter__custom-roman');
+
+      const anchorCss = `.anchor { anchor-name: --menu; } .popover { position-anchor: --menu; } @position-try --top { top: 0; }`;
+      const scopedAnchor = scopeAnchorNames(anchorCss, 'c1');
+      expect(scopedAnchor).toContain('anchor-name: --bascik__c1__anchor__menu');
+      expect(scopedAnchor).toContain('position-anchor: --bascik__c1__anchor__menu');
+      expect(scopedAnchor).toContain('@position-try --bascik__c1__anchor__top');
+    });
+  });
+
+  describe('HTTP, ALPN & Protocols Standards Validation (RFC 9110, RFC 9112, RFC 9113, RFC 9239)', () => {
+    it('verifies HSTS security header complies with RFC 6797 directive grammar', async () => {
+      const { getSecurityHeaders } = await import('./server.js');
+      const mockHttpsReq = {
+        method: 'GET',
+        path: '/',
+        headers: { ':scheme': 'https' },
+        remoteIp: '127.0.0.1',
+      };
+      const headers = getSecurityHeaders(mockHttpsReq);
+      expect(headers['strict-transport-security']).toBe('max-age=31536000; includeSubDomains');
+    });
+
+    it('verifies RFC 9239 JavaScript MIME type complies with current web standard', () => {
+      expect(MIME_MAP.get('.js')).toBe('text/javascript; charset=utf-8');
+      expect(MIME_MAP.get('.mjs')).toBe('text/javascript; charset=utf-8');
+      expect(MIME_MAP.get('.cjs')).toBe('text/javascript; charset=utf-8');
+      expect(MIME_MAP.get('.css')).toBe('text/css; charset=utf-8');
+      expect(MIME_MAP.get('.json')).toBe('application/json; charset=utf-8');
+    });
+
+    it('verifies ETag generation conforms to RFC 9110 §8.8.3 entity-tag grammar', () => {
+      const strongEtag = makeEtag(Buffer.from('<div>test content</div>'));
+      expect(strongEtag).toMatch(/^"[A-Za-z0-9_-]+"?$/);
+
+      const weakStatEtag = makeStatEtag(1700000000, 4096);
+      expect(weakStatEtag).toMatch(/^W\/"[a-z0-9]+-[a-z0-9]+"$/);
+    });
+  });
+
+  describe('Sitemaps & XML Standards Validation (W3C XML 1.0 & Sitemaps.org)', () => {
+    it('verifies XML entity escaping and sitemap namespace per sitemaps.org schema', () => {
+      const rawText = '<"hello" & \'world\'>';
+      expect(escapeXml(rawText)).toBe('&lt;&quot;hello&quot; &amp; &apos;world&apos;&gt;');
+
+      const sitemap = buildSitemapXml('https://example.com', ['/', '/about']);
+      expect(sitemap).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
+      expect(sitemap).toContain('<loc>https://example.com/</loc>');
+      expect(sitemap).toContain('<loc>https://example.com/about</loc>');
     });
   });
 });

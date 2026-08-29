@@ -18,10 +18,12 @@
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
       <input type="search" id="docs-search-input" name="search" class="search-input" placeholder="Search docs…"
-        autocomplete="off" spellcheck="false" />
+        role="combobox" aria-expanded="false" aria-controls="docs-search-results" aria-autocomplete="list"
+        aria-haspopup="listbox" autocomplete="off" spellcheck="false" />
       <kbd class="search-esc">Esc</kbd>
     </div>
-    <ul class="search-results" role="listbox" aria-label="Search results"></ul>
+    <div id="docs-search-status" class="sr-only" role="status" aria-live="polite"></div>
+    <ul id="docs-search-results" class="search-results" role="listbox" aria-label="Search results"></ul>
     <p class="search-empty" hidden>No results.</p>
     <p class="search-hint">Start typing to search all docs pages.</p>
   </div>

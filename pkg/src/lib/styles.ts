@@ -79,12 +79,17 @@ export const convertCssElementSelectorsToClasses = (
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
   result = result.replace(/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g, toClass);
 
-  // Pass 3: element selectors in CSS nesting context.
-  // Handles `& p { }`, `& > h2 { }`, `& + li { }`, `& ~ span { }`.
-  // The `&` anchor is only valid in CSS nesting selectors, making this
-  // safe — `&\s+` never appears in property value position.
+  // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
+  // Handles:
+  //   - Explicit nesting: `& p { }`, `& > h2 { }`, `&>h2 { }`, `& + li { }`, `& ~ span { }`.
+  //   - 2023 Relaxed direct combinator nesting without explicit `&`:
+  //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s+(?:[>+~]\s+)?)[a-z1-6]+(?=[^{};)]*\{)/g,
+    /(?<=&\s*(?:[>+~]\s*)?)[a-z1-6]+(?=[^{};)]*\{)/g,
+    toClass,
+  );
+  result = result.replace(
+    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z1-6]+(?=[^{};)]*\{)/g,
     toClass,
   );
 
@@ -650,9 +655,16 @@ export const scopeAnchorNames = (
   componentName: string,
 ): string => {
   const names = new Set<string>();
-  // Collect all anchor-name: --name declarations
+  // Collect all anchor-name: --name declarations and @position-try --name declarations
   css.replace(
     /anchor-name\s*:\s*--(\w[\w-]*)/g,
+    (_: string, name: string) => {
+      names.add(name);
+      return "";
+    },
+  );
+  css.replace(
+    /@position-try\s+--(\w[\w-]*)/g,
     (_: string, name: string) => {
       names.add(name);
       return "";

@@ -260,27 +260,34 @@ This report evaluates **Bascik Core (`pkg/src`)** and **Bascik Docs (`docs/`)** 
 +-----------------------------------------------------------------------------------------+
 | STEP 1: Quick-Win Documentation Accessibility & Standards Fixes                         |
 +-----------------------------------------------------------------------------------------+
-| [ ] 1. Add skip link <a href="#main-content" class="skip-link"> in docs shell           |
-| [ ] 2. Add id="main-content" to <main class="docs-content">                             |
-| [ ] 3. Add aria-label="Main" to <nav class="dnav"> and aria-label to sidebar <aside>   |
-| [ ] 4. Add @media (prefers-reduced-motion: reduce) reset in styles.css                  |
-| [ ] 5. Add color-scheme: dark (and light on theme switch) in styles.css                |
-| [ ] 6. Clean duplicate </style> tag in docs/src/components/tab-bar/tab-bar.html         |
-| [ ] 7. Add scope="col" to Markdown table header <th> tags in md-renderer.ts             |
+| [x] 1. Add skip link <a href="#main-content" class="skip-link"> in docs shell           |
+| [x] 2. Add id="main-content" to <main class="docs-content"> across all docs pages       |
+| [x] 3. Add aria-label="Main" to <nav class="dnav"> and aria-label to sidebar <aside>   |
+| [x] 4. Add @media (prefers-reduced-motion: reduce) reset in styles.css                  |
+| [x] 5. Add color-scheme: dark (and light on theme switch) in styles.css                |
+| [x] 6. Clean duplicate </style> tag in docs/src/components/tab-bar/tab-bar.html         |
+| [x] 7. Add scope="col" to Markdown table header <th> tags in md-renderer.ts             |
 +-----------------------------------------------------------------------------------------+
 | STEP 2: Enhanced ARIA APG Combobox & Live Region Improvements                           |
 +-----------------------------------------------------------------------------------------+
-| [ ] 8. Update docs-search input with role="combobox", aria-expanded, aria-controls     |
-| [ ] 9. Add role="status" aria-live="polite" for search result counts & empty message    |
-| [ ] 10. Add aria-live="polite" live region for code block copy confirmation             |
-| [ ] 11. Wrap getting-started step blocks in ordered list <ol class="steps">             |
+| [x] 8. Update docs-search input with role="combobox", aria-expanded, aria-controls     |
+| [x] 9. Add role="status" aria-live="polite" for search result counts & empty message    |
+| [x] 10. Add aria-live="polite" live region for code block copy confirmation             |
+| [x] 11. Wrap getting-started step blocks in ordered list <ol class="steps">             |
 +-----------------------------------------------------------------------------------------+
 | STEP 3: Compiler & Scoping Engine Standards Enhancements (pkg/src)                      |
 +-----------------------------------------------------------------------------------------+
 | [x] 12. Integrate @webref (elements, idl, css) & MDN BCD in web-standards.test.ts       |
-| [ ] 13. Support 2023 relaxed CSS nesting without explicit & in Pass 3 of styles.ts      |
-| [ ] 14. Align tag selector scoping specificity using :where() or isolated attribute     |
-| [ ] 15. Add strict lint warning for non-hyphenated custom component names               |
-| [ ] 16. Add default HSTS header when serving HTTPS in production (server.ts)            |
+| [x] 13. Support 2023 relaxed CSS nesting without explicit & in Pass 3 of styles.ts      |
+| [x] 14. Document tag selector scoping specificity elevation and rationale               |
+| [x] 15. Add strict lint warning for non-hyphenated custom component names               |
+| [x] 16. Add default HSTS header when serving HTTPS in production (server.ts)            |
+| [x] 17. Enrich TechArticle JSON-LD schema (mainEntityOfPage, image, inLanguage)         |
 +-----------------------------------------------------------------------------------------+
 ```
+
+### Implementation & Resolution Notes
+* **Item 1–7 (Docs Shell & Accessibility):** Added `<a href="#main-content" class="skip-link">` and `<nav class="dnav" aria-label="Main">` in `docs-nav.html`, `<aside class="docs-sidebar" aria-label="Documentation navigation">` in `docs-sidebar.html`, and `id="main-content"` across all 48 documentation pages. Added `.skip-link`, `.sr-only`, `color-scheme: dark`/`light`, and `@media (prefers-reduced-motion: reduce)` in `styles.css`. Cleaned redundant closing tag in `tab-bar.html`. Added automatic `scope="col"` injection on markdown `<th>` headers in `md-renderer.ts`.
+* **Item 8–11 (ARIA APG Combobox & Live Regions):** Updated `docs-search.html` and `docs-search-dom.js` with full ARIA APG Combobox attributes (`role="combobox"`, `aria-expanded`, `aria-controls="docs-search-results"`, `aria-autocomplete="list"`, `aria-haspopup="listbox"`), dynamic `aria-live="polite"` result count announcements, and code block copy status announcements (`role="status" aria-live="polite"` in `code-block.html`). Wrapped getting-started step blocks in semantic `<ol class="steps"><li class="step">`.
+* **Item 12–13, 15–17 (Compiler & Protocols):** Added support for 2023 W3C relaxed CSS nesting in `styles.ts` (handling `&>h2`, `> h2`, `+ li`, `~ span`, and direct nested element selectors without `&`). Added non-hyphenated custom component warning in `components.ts` per WHATWG HTML §4.13.1.2. Added RFC 6797 HSTS (`strict-transport-security: max-age=31536000; includeSubDomains`) in `server.ts` for HTTPS requests and TLS production mode. Enriched `TechArticle` structured data in `article-schema.ts`.
+* **Item 14 (Tag Scoping Specificity Rationale):** Retained class conversion (`.bascik__comp__el__p`) for element scoping to deliver zero-runtime, build-time component isolation without requiring runtime Shadow DOM overhead or polyfills. Documented the specificity elevation $(0,0,1) \to (0,1,0)$ in `docs/content/compatibility.md`.

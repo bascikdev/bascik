@@ -47,8 +47,11 @@ export async function articleSchema(): Promise<string> {
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'TechArticle',
+    mainEntityOfPage: url,
     headline,
     description,
+    image: `${siteUrl}/assets/og-image.jpg`,
+    inLanguage: 'en-US',
     url,
     author: {
       '@type': 'Person',
