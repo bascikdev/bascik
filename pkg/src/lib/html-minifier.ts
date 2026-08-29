@@ -21,8 +21,9 @@ export const extractScriptTags = (htmlString: string): string => {
     .trim();
 };
 
-const INLINE_TAGS = new Set([
+export const INLINE_TAGS = new Set([
   "a",
+
   "abbr",
   "acronym",
   "b",

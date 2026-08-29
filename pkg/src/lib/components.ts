@@ -9,8 +9,9 @@ import { minifyHtml } from "./html-minifier.js";
 import type { BascikComponent, ComponentList } from "./types.js";
 
 // Warn if a component name shadows a native HTML element
-const NATIVE_HTML_ELEMENTS = new Set([
+export const NATIVE_HTML_ELEMENTS = new Set([
   "a",
+
   "abbr",
   "address",
   "area",
@@ -97,6 +98,7 @@ const NATIVE_HTML_ELEMENTS = new Set([
   "section",
   "select",
   "small",
+  "slot",
   "source",
   "span",
   "strong",

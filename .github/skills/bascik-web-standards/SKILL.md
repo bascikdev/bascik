@@ -87,6 +87,12 @@ Always verify the maturity tier of the specification:
 
 The Bascik repository enforces standards compliance via integrated tooling:
 
+* **Machine-Readable W3C / WHATWG Specifications (`@webref` & `@mdn/browser-compat-data`):**
+  * `@webref/elements`: Machine-readable WHATWG HTML element specifications.
+  * `@webref/idl`: Official WebIDL definitions from WHATWG DOM, HTML, and related web platform specifications.
+  * `@webref/css`: Official W3C CSS grammar and property definitions.
+  * `@mdn/browser-compat-data`: MDN BCD data verifying standard DOM APIs, Element/Document methods, and Baseline compatibility tiers.
+  * Integration tests in `pkg/src/lib/web-standards.test.ts` validate element sets, phrasing/inline tags, WebIDL interfaces, DOM query rewrites, and CSS at-rules against official standards ASTs.
 * **`webhint` (`hint`):** Automated static analysis checking cross-browser compatibility, HTML valid markup, ARIA best practices, and HTTP security headers. Run via:
   ```sh
   yarn check:standards
