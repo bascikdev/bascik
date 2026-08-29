@@ -1733,11 +1733,48 @@ describe("CSS @import resolution and hoisting", () => {
       expect(parsed?.layer).toBe(true);
     });
 
-    it("parses supports(...) conditions containing nested parentheses", () => {
-      const statement = '@import "./grid.css" supports((display: flex) and (selector(h1))) screen;';
-      const parsed = parseCssImport(statement);
-      expect(parsed?.supports).toBe("(display: flex) and (selector(h1))");
-      expect(parsed?.media).toBe("screen");
+    it("parses MDN example syntax variants", () => {
+      // @import "custom.css";
+      expect(parseCssImport('@import "custom.css";')?.url).toBe("custom.css");
+
+      // @import 'custom.css';
+      expect(parseCssImport("@import 'custom.css';")?.url).toBe("custom.css");
+
+      // @import url(fineprint.css);
+      expect(parseCssImport("@import url(fineprint.css);")?.url).toBe("fineprint.css");
+
+      // @import url("fineprint.css");
+      expect(parseCssImport('@import url("fineprint.css");')?.url).toBe("fineprint.css");
+
+      // @import url('fineprint.css');
+      expect(parseCssImport("@import url('fineprint.css');")?.url).toBe("fineprint.css");
+
+      // @import "common.css" screen, projection;
+      const media1 = parseCssImport('@import "common.css" screen, projection;');
+      expect(media1?.url).toBe("common.css");
+      expect(media1?.media).toBe("screen, projection");
+
+      // @import url("landscape.css") screen and (orientation: landscape);
+      const media2 = parseCssImport('@import url("landscape.css") screen and (orientation: landscape);');
+      expect(media2?.media).toBe("screen and (orientation: landscape)");
+
+      // @import "common.css" layer;
+      expect(parseCssImport('@import "common.css" layer;')?.layer).toBe(true);
+
+      // @import "common.css" layer(layer-name);
+      expect(parseCssImport('@import "common.css" layer(layer-name);')?.layer).toBe("layer-name");
+
+      // @import "theme.css" supports(display: grid);
+      expect(parseCssImport('@import "theme.css" supports(display: grid);')?.supports).toBe("display: grid");
+
+      // @import "theme.css" supports(not (display: grid));
+      expect(parseCssImport('@import "theme.css" supports(not (display: grid));')?.supports).toBe("not (display: grid)");
+
+      // @import "theme.css" layer(utilities) supports(display: grid) screen;
+      const comb = parseCssImport('@import "theme.css" layer(utilities) supports(display: grid) screen;');
+      expect(comb?.layer).toBe("utilities");
+      expect(comb?.supports).toBe("display: grid");
+      expect(comb?.media).toBe("screen");
     });
   });
 
