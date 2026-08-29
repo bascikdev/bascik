@@ -286,6 +286,14 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 }
 ```
 
+## CSS @import
+
+Bascik supports standard CSS `@import` statements in component CSS (`.css` files and inline `<style>` blocks):
+
+- **Local file imports:** Local relative paths (e.g. `@import "./tokens.css"`, `@import "../shared/theme.css"`) are resolved and inlined recursively at build time. All selectors, custom properties, and keyframes inside imported stylesheets are automatically scoped to the component instance.
+- **Remote URL imports:** External URLs (e.g. `@import "https://fonts.googleapis.com/..."`) are preserved and automatically hoisted to the top of the compiled stylesheet per W3C CSS specifications.
+- **Conditions & Cascade Layers:** Optional conditions such as `layer(...)`, `supports(...)`, and media query lists attached to `@import` rules are fully preserved and wrapped around the inlined CSS.
+
 ## Toggling Scoping
 
 All scoping can be controlled in [`bascik.config.ts`](/configuration):
