@@ -815,6 +815,15 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
       '<div class="outer bascik__my-comp__el__div"><img class="bascik__my-comp__el__img" src="foo.png" /><div class="inner bascik__my-comp__el__div"></div></div>'
     );
   });
+
+  it("handles class attributes inside other string attributes safely without mangling", () => {
+    const html = `<div data-foo=' class="fake" '></div>`;
+    const result = addElementClassesInHtml(html, "MyComp", ["div"]);
+    // Should NOT mangle the inner string.
+    expect(result).not.toContain("data-foo=' class=\"fake bascik__");
+    // Should inject the new class.
+    expect(result).toContain("<div class=\"bascik__MyComp__el__div\" data-foo=' class=\"fake\" '></div>");
+  });
 });
 
 // ─── scopeLayerNames ─────────────────────────────────────────────────────────

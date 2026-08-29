@@ -65,7 +65,7 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
     // This is intentional minifyHtml behavior — it consolidates scripts at
     // the bottom. But it means executeBuildScripts MUST run before minifyHtml;
     // otherwise the script would be hoisted before it can be replaced.
-    const html = "<aside><script data-bascik-build>gen()</script></aside>";
+    const html = "<aside><script>client()</script></aside>";
     const minified = minifyHtml(html);
 
     // Script is moved outside the aside
@@ -79,7 +79,9 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
   it("would cause generated content to appear outside its container if order were reversed", () => {
     // Simulate the wrong order: minifyHtml first, then replace script with content.
     // The generated <li> items would end up after </ul>, not inside it.
-    const raw = "<ul><script data-bascik-build>makeList()</script></ul>";
+    // We use a regular script tag here to simulate the hoisting behavior, since
+    // our html-minifier no longer hoists data-bascik-build scripts.
+    const raw = "<ul><script>makeList()</script></ul>";
     const minified = minifyHtml(raw);
     // If we now naively replace the script with generated content:
     const wrongOrder = minified.replace(

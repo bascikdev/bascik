@@ -97,6 +97,56 @@ import {
 import type { BascikComponent } from "./types.js";
 
 /**
+ * Extracts and replaces function calls that might contain nested parentheses.
+ * Avoids the regex `[^)]*` bug where `classList.add(fn('foo'), 'bar')` fails.
+ */
+const replaceBalancedCall = (
+  src: string,
+  methodRegex: RegExp,
+  replacer: (callBody: string) => string,
+): string => {
+  let result = "";
+  let lastIndex = 0;
+  // Ensure the regex has the 'g' flag so we can use lastIndex
+  const regex = new RegExp(
+    methodRegex.source,
+    methodRegex.flags.includes("g") ? methodRegex.flags : methodRegex.flags + "g",
+  );
+
+  let match;
+  while ((match = regex.exec(src)) !== null) {
+    const startIndex = match.index + match[0].length;
+    let depth = 1;
+    let i = startIndex;
+    let inString: string | null = null;
+
+    while (i < src.length && depth > 0) {
+      const char = src[i];
+      if (inString) {
+        if (char === "\\") i++;
+        else if (char === inString) inString = null;
+      } else {
+        if (char === '"' || char === "'" || char === "`") inString = char;
+        else if (char === "(") depth++;
+        else if (char === ")") depth--;
+      }
+      i++;
+    }
+
+    const endIndex = i;
+    const callText = src.substring(match.index, endIndex);
+    const replacedText = replacer(callText);
+
+    result += src.substring(lastIndex, match.index) + replacedText;
+    lastIndex = endIndex;
+    regex.lastIndex = endIndex;
+  }
+
+  result += src.substring(lastIndex);
+  return result;
+};
+
+/**
  * Preserve the inner content of named elements in `html`, replacing each with a
  * placeholder sentinel.  Returns the modified html and a `restore` function
  * that puts the original content back.  Used to shield element contents (e.g.
@@ -138,7 +188,60 @@ const preserveElementContents = (
     },
   };
 };
+/**
+ * Replaces attributes inside HTML tags, taking care to ignore attribute-like
+ * substrings that appear inside other string attribute values (e.g. `data-foo='class="fake"'`).
+ */
+const replaceSafeAttr = (
+  html: string,
+  attrName: string,
+  replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
+): string => {
+  const attrRegex = new RegExp(`(\\s${attrName}=)("[^"]*"|'[^']*')`, "gm");
 
+  // This simple regex identifies tags loosely. It handles nested attributes
+  // because we only process the attributes inside the matched tag brackets.
+  return html.replace(/<[a-zA-Z0-9-]+(?:\s[^>]+)?>/g, (tagMatch) => {
+    // First, find all proper string boundaries in this tag to ignore false matches.
+    const stringRanges: Array<{ start: number; end: number }> = [];
+    let j = 0;
+    let strChar = null;
+    let strStart = -1;
+    while (j < tagMatch.length) {
+      if (strChar) {
+        if (tagMatch[j] === "\\") j++;
+        else if (tagMatch[j] === strChar) {
+          stringRanges.push({ start: strStart, end: j });
+          strChar = null;
+        }
+      } else if (tagMatch[j] === '"' || tagMatch[j] === "'") {
+        strChar = tagMatch[j];
+        strStart = j;
+      }
+      j++;
+    }
+
+    let finalStr = "";
+    let lastIdx = 0;
+    let match;
+    attrRegex.lastIndex = 0;
+    while ((match = attrRegex.exec(tagMatch)) !== null) {
+      const matchStart = match.index;
+      // Is the " class=" part inside a string attribute value?
+      const isInside = stringRanges.some(
+        (r) => matchStart > r.start && matchStart < r.end,
+      );
+      if (!isInside) {
+        finalStr +=
+          tagMatch.substring(lastIdx, matchStart) +
+          replacer(match[0], match[1], match[2]);
+        lastIdx = matchStart + match[0].length;
+      }
+    }
+    finalStr += tagMatch.substring(lastIdx);
+    return finalStr;
+  });
+};
 export const prefixElementAttribute = (
   component: BascikComponent,
   attribute: "id" | "name" | "class",
@@ -188,10 +291,10 @@ export const prefixElementAttribute = (
     );
   }
 
-  // Use [\s\n\r\t] or \s to handle newlines before the attribute name
-  const attrRegexp = new RegExp(`(\\s${attribute}=)("[^"]*"|'[^']*')`, "gm");
-  const scopedAttrsHtml = component.fileContent.replace(
-    attrRegexp,
+  // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`
+  const scopedAttrsHtml = replaceSafeAttr(
+    component.fileContent,
+    attribute,
     (fullMatch, prefix, quotedVal) => {
       const quote = quotedVal[0];
       const match = quotedVal.slice(1, -1);
@@ -232,14 +335,16 @@ export const prefixElementAttribute = (
       const src = scriptMatch[1];
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
-      for (const callMatch of src.matchAll(
-        /classList\.(?:add|remove|toggle|contains|replace)\(([^)]*)\)/gm,
-      )) {
-        for (const tokenMatch of callMatch[1].matchAll(/["']([^"']+)["']/g)) {
-          addIfNew(tokenMatch[1]);
-        }
-      }
-
+        replaceBalancedCall(
+          src,
+          /classList\.(?:add|remove|toggle|contains|replace)\s*\(/gm,
+          (callText) => {
+            for (const tokenMatch of callText.matchAll(/["']([^"']+)["']/g)) {
+              addIfNew(tokenMatch[1]);
+            }
+            return callText;
+          },
+        );
       // querySelector / querySelectorAll / closest / matches — extract ".token" class tokens
       for (const callMatch of src.matchAll(
         /(?:querySelector(?:All)?|closest|matches)\(\s*["']([^"']*)["']\s*\)/gm,
@@ -377,8 +482,9 @@ export const prefixElementAttribute = (
             // Match the entire call then replace every quoted token matching
             // the class name. Handles both `classList.add("x")` and
             // `classList.add("x", "y", …)` forms.
-            updatedMatch = updatedMatch.replace(
-              /classList\.(?:add|remove)\([^)]*\)/gm,
+            updatedMatch = replaceBalancedCall(
+              updatedMatch,
+              /classList\.(?:add|remove)\s*\(/gm,
               (call) =>
                 call.replace(
                   new RegExp(`(["'])${escapedAttr}\\1`, "g"),
@@ -403,8 +509,9 @@ export const prefixElementAttribute = (
             );
             // classList.replace(oldToken, newToken) — rewrites both args if
             // either matches a scoped class name.
-            updatedMatch = updatedMatch.replace(
-              /classList\.replace\([^)]*\)/gm,
+            updatedMatch = replaceBalancedCall(
+              updatedMatch,
+              /classList\.replace\s*\(/gm,
               (call) =>
                 call.replace(
                   new RegExp(`(["'])${escapedAttr}\\1`, "g"),

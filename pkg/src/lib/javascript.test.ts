@@ -320,6 +320,16 @@ describe("prefixElementAttribute – class classList methods", () => {
       `classList.replace("${scopeClass("active")}", "${scopeClass("other")}")`,
     );
   });
+
+  it("scopes classList.add with nested function calls in arguments", () => {
+    const c = makeComponent(
+      '<div class="active"></div><script>el.classList.add(fn("active"), "other")</script>',
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `classList.add(fn("${scopeClass("active")}"), "${scopeClass("other")}")`,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -386,6 +396,17 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(`classList.add("${scopeClass("spinner")}")`);
     expect(result.fileContent).toContain(`classList.remove("${scopeClass("done")}")`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
+  });
+
+  it("discovers JS-only classes even when arguments contain nested parentheses", () => {
+    const c = makeComponent(
+      '<div></div><script>el.classList.add(getCls("spinner"), "done");</script>',
+      ".spinner { } .done { }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(`classList.add(getCls("${scopeClass("spinner")}"), "${scopeClass("done")}")`);
     expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
     expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
   });

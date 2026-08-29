@@ -14,6 +14,16 @@ describe("extractScriptTags", () => {
     expect(extracted).toBe("<script>console.log(1);</script>\n<script src=\"app.js\"></script>");
   });
 
+  it("ignores data-bascik-build and data-bascik-server scripts", () => {
+    const html = `
+      <script data-bascik-server>server()</script>
+      <script>client()</script>
+      <script data-bascik-build>build()</script>
+    `;
+    const extracted = extractScriptTags(html);
+    expect(extracted).toBe("<script>client()</script>");
+  });
+
   it("returns an empty string if no script tags are present", () => {
     expect(extractScriptTags("<div>No scripts here</div>")).toBe("");
   });
@@ -23,6 +33,11 @@ describe("minifyHtml", () => {
   it("removes comments from HTML", () => {
     const htmlString = "<!-- comment --><div>content</div>";
     expect(minifyHtml(htmlString)).toEqual("<div>content</div>");
+  });
+
+  it("leaves data-bascik-server scripts untouched in their original location", () => {
+    const html = `<div><script data-bascik-server>server()</script></div><script>client()</script>`;
+    expect(minifyHtml(html)).toBe(`<div><script data-bascik-server>server()</script></div>\n<script>client()</script>`);
   });
 
   it("removes newlines and spaces from HTML, and removes extra spaces", () => {

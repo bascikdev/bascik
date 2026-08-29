@@ -128,20 +128,52 @@ export const addElementClassesInHtml = (
     componentHtml = componentHtml.replace(
       new RegExp(`<${element}\\b[^>]*>`, "gis"),
       (openTag) => {
-        if (/\bclass="/i.test(openTag)) {
-          return openTag.replace(/class=".*?(?=")/i, (classStr) => {
-            return `${classStr} ${bascikClassName}`;
-          });
+        const stringRanges: Array<{ start: number; end: number }> = [];
+        let j = 0;
+        let strChar = null;
+        let strStart = -1;
+        while (j < openTag.length) {
+          if (strChar) {
+            if (openTag[j] === "\\") j++;
+            else if (openTag[j] === strChar) {
+              stringRanges.push({ start: strStart, end: j });
+              strChar = null;
+            }
+          } else if (openTag[j] === '"' || openTag[j] === "'") {
+            strChar = openTag[j];
+            strStart = j;
+          }
+          j++;
         }
-        if (/\bclass='/i.test(openTag)) {
-          return openTag.replace(/class='.*?(?=')/i, (classStr) => {
-            return `${classStr} ${bascikClassName}`;
-          });
+
+        let replaced = false;
+        let finalStr = "";
+        const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
+        let match;
+
+        while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
+          const matchStart = match.index;
+          const isInside = stringRanges.some(
+            (r) => matchStart > r.start && matchStart < r.end,
+          );
+          if (!isInside) {
+            const classQuote = match[1] !== undefined ? '"' : "'";
+            const classVal = match[1] !== undefined ? match[1] : match[2];
+            finalStr =
+              openTag.substring(0, matchStart) +
+              ` class=${classQuote}${classVal ? classVal + " " : ""}${bascikClassName}${classQuote}` +
+              openTag.substring(matchStart + match[0].length);
+            replaced = true;
+          }
         }
-        return openTag.replace(
-          new RegExp(`<${element}\\b`, "i"),
-          `<${element} class="${bascikClassName}"`,
-        );
+
+        if (!replaced) {
+          finalStr = openTag.replace(
+            new RegExp(`<${element}\\b`, "i"),
+            `<${element} class="${bascikClassName}"`,
+          );
+        }
+        return finalStr;
       }
     );
   });

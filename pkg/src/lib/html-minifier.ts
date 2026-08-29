@@ -9,7 +9,10 @@
 
 export const extractScriptTags = (htmlString: string): string => {
   const html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
-  const pattern = new RegExp(`<script[^>]*>([\\s\\S]*?)<\\/script>`, "gi");
+  const pattern = new RegExp(
+    `<script(?:(?!(?:type="(?!(?:text\\/javascript|application\\/javascript|module))[\\w\\/]+"|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
+    "gi"
+  );
   const arr = [...html.matchAll(pattern)];
   if (!arr.length) return "";
   return arr
@@ -68,7 +71,10 @@ export const minifyHtml = (htmlString: string): string => {
   let html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
   const scriptTags = extractScriptTags(html);
   if (scriptTags) {
-    const pattern = new RegExp(`<script[^>]*>([\\s\\S]*?)<\\/script>`, "gi");
+    const pattern = new RegExp(
+      `<script(?:(?!(?:type="(?!(?:text\\/javascript|application\\/javascript|module))[\\w\\/]+"|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
+      "gi"
+    );
     html = html.replace(pattern, "").trim();
   }
   // Preserve content of whitespace-sensitive elements before collapsing whitespace.
