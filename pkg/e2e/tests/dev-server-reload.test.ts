@@ -28,6 +28,7 @@ const componentPath = join(e2eDir, 'src/components/scope-test/scope-test.html');
 const staticCssPath = join(e2eDir, 'src/pages/dev-static-test.css');
 const contentDocPath = join(e2eDir, 'src/content/watch-doc.md');
 const subfolderPagePath = join(e2eDir, 'src/pages/subfolder/route-test.html');
+const inlinedGlobalCssPath = join(e2eDir, 'src/css/inlined-global.css');
 
 const dynamicCreatedCompPath = join(e2eDir, 'src/components/dynamic-created-comp.html');
 const dynamicHeadMetaCompPath = join(e2eDir, 'src/components/dynamic-head-meta.html');
@@ -41,6 +42,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalComponentContent: string;
   let originalContentDoc: string;
   let originalSubfolderPage: string;
+  let originalInlinedGlobalCss: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, 'utf8');
@@ -48,6 +50,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     originalComponentContent = await readFile(componentPath, 'utf8');
     originalContentDoc = await readFile(contentDocPath, 'utf8');
     originalSubfolderPage = await readFile(subfolderPagePath, 'utf8');
+    originalInlinedGlobalCss = await readFile(inlinedGlobalCssPath, 'utf8');
   });
 
   test.afterEach(async () => {
@@ -57,6 +60,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await writeFile(componentPath, originalComponentContent, 'utf8');
     await writeFile(contentDocPath, originalContentDoc, 'utf8');
     await writeFile(subfolderPagePath, originalSubfolderPage, 'utf8');
+    await writeFile(inlinedGlobalCssPath, originalInlinedGlobalCss, 'utf8');
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
     await rm(dynamicHeadMetaCompPath, { force: true });
@@ -367,6 +371,86 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await writeFile(pagePath, updatedPage + ' ', 'utf8');
 
     await expect(page.locator('[id$="__temp-unlink-id"]')).not.toBeAttached({ timeout: 15000 });
+  });
+
+  // ── 9. Dev Server Caching & Dependency Graph Engine ─────────────────────
+
+  test('updates in-memory component dependency graph when page component usage changes dynamically', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // 1. Create a new component file
+    const dynCompText = `Dyn Comp Usage ${Date.now()}`;
+    await writeFile(
+      dynamicCreatedCompPath,
+      `<div id="dyn-reassoc-id">${dynCompText}</div>`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // 2. Modify page to replace <scope-test> with <dynamic-created-comp>
+    const pageWithDyn = originalPageContent.replace(/<scope-test><\/scope-test>/g, '<dynamic-created-comp></dynamic-created-comp>');
+    await writeFile(pagePath, pageWithDyn, 'utf8');
+
+    // Verify page now displays the dynamic component
+    await expect(page.locator('[id$="__dyn-reassoc-id"]').first()).toHaveText(dynCompText, { timeout: 15000 });
+
+    // 3. Now modify scope-test.html (which is NO LONGER used on /scope-test)
+    const scopeCompMarker = `Scope Comp Edited ${Date.now()}`;
+    await writeFile(
+      componentPath,
+      originalComponentContent + `\n<p id="stale-scope-marker">${scopeCompMarker}</p>`,
+      'utf8',
+    );
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // Verify page on /scope-test did NOT receive the stale component marker
+    await expect(page.locator('#stale-scope-marker')).not.toBeAttached();
+
+    // 4. Now modify dynamic-created-comp.html (which IS used on /scope-test)
+    const updatedDynText = `Dyn Comp Updated ${Date.now()}`;
+    await writeFile(
+      dynamicCreatedCompPath,
+      `<div id="dyn-reassoc-id">${updatedDynText}</div>`,
+      'utf8',
+    );
+
+    // Verify page re-transpiled and reloaded with updated dynamic component text
+    await expect(page.locator('[id$="__dyn-reassoc-id"]').first()).toHaveText(updatedDynText, { timeout: 15000 });
+  });
+
+  test('updates inlined global stylesheet across pages when watched inlineStyles asset changes', async ({ page }) => {
+    await page.goto('/scope-test');
+
+    const styleMarker = `.inlined-dyn-test-${Date.now()} { color: rgb(123, 45, 67); }`;
+    await writeFile(inlinedGlobalCssPath, originalInlinedGlobalCss + '\n' + styleMarker, 'utf8');
+
+    await expect.poll(async () => {
+      const styles = await page.locator('head style').allInnerTexts();
+      return styles.some((s) => s.includes(styleMarker));
+    }, { timeout: 15000 }).toBe(true);
+  });
+
+  test('invalidates build script disk cache and re-executes script when file dependency changes', async ({ page }) => {
+    await page.goto('/watch-content-test');
+    await expect(page.locator('h1')).toHaveText('Watch Doc Initial Content');
+
+    const updatedText = `Cache Invalidation Text ${Date.now()}`;
+    await writeFile(contentDocPath, updatedText, 'utf8');
+
+    // Page updates with the new build script output
+    await expect(page.locator('h1')).toHaveText(updatedText, { timeout: 15000 });
+  });
+
+  test('maintains isolated build script cache entries across different pages using the same script', async ({ page }) => {
+    await page.goto('/build-script-page-env-test');
+    const textA = await page.locator('#page-file').textContent();
+    expect(textA).toContain('build-script-page-env-test.html');
+
+    await page.goto('/build-script-page-env-test-b');
+    const textB = await page.locator('#page-file').textContent();
+    expect(textB).toContain('build-script-page-env-test-b.html');
+    expect(textB).not.toContain('build-script-page-env-test.html');
   });
 });
 
