@@ -92,6 +92,7 @@ import {
   scopeAnchorNames,
   scopeInlineStyleTags,
   extractInlineStyles,
+  resolveCssImportsSync,
   shieldCssStrings,
 } from "./styles.js";
 import type { BascikComponent } from "./types.js";
@@ -287,11 +288,11 @@ export const prefixElementAttribute = (
     scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {
-      cssSources.push(component.cssFileContent);
+      cssSources.push(resolveCssImportsSync(component.cssFileContent, component.fileName));
     }
     if (component.fileContent && component.fileContent.includes("<style")) {
       const { css: inlineCss } = extractInlineStyles(component.fileContent);
-      if (inlineCss) cssSources.push(inlineCss);
+      if (inlineCss) cssSources.push(resolveCssImportsSync(inlineCss, component.fileName));
     }
     const combinedCss = cssSources.join("\n");
     if (combinedCss) {
@@ -605,9 +606,13 @@ export const prefixElementAttribute = (
       );
       component.fileContent = cleanedHtml;
       if (inlineCss) {
+        const resolvedInline = resolveCssImportsSync(
+          inlineCss,
+          component.fileName,
+        );
         component.cssFileContent = component.cssFileContent
-          ? `${component.cssFileContent}\n${inlineCss}`
-          : inlineCss;
+          ? `${component.cssFileContent}\n${resolvedInline}`
+          : resolvedInline;
       }
     }
 
@@ -617,6 +622,10 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
+      component.cssFileContent = resolveCssImportsSync(
+        component.cssFileContent,
+        component.fileName,
+      );
       // Handle basic replacement of classnames in css file.
       // Shield string literals and url(...) contents first so dots inside
       // them (file extensions, domains) are never mistaken for class selectors:

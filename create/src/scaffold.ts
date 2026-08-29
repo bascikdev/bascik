@@ -81,6 +81,24 @@ export const BASCIK_CONFIG = `// Bascik works out of the box — no config requi
 // Full reference: https://bascik.dev/configuration
 `;
 
+export const HINTRC = JSON.stringify(
+  {
+    extends: ["development"],
+    hints: {
+      "apple-touch-icons": "off",
+      "compat-api/css": [
+        "default",
+        {
+          ignore: ["scrollbar-width"],
+        },
+      ],
+      "meta-viewport": "off",
+    },
+  },
+  null,
+  2,
+) + "\n";
+
 export const VITE_CONFIG = `import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -867,6 +885,7 @@ export async function scaffold(
     writeFile(join(root, "bascik.config.ts"), BASCIK_CONFIG, "utf8"),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
     writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
+    writeFile(join(root, ".hintrc"), HINTRC, "utf8"),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
     writeFile(join(root, ".github", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),
     writeFile(join(root, ".claude", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),

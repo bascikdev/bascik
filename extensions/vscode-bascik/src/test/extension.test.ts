@@ -120,15 +120,14 @@ suite('Extension Integration Suite', () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('reports CSS compatibility warning in html style tag', async () => {
+    test('does not report CSS compatibility warning for @import in html style tag', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',
         content: '<style>\n@import "theme.css";\n</style>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) => d.message.includes('CSS @import is not processed'));
-      assert.ok(match, 'Expected CSS compatibility warning in style block');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.ok(!match, 'Should NOT report CSS compatibility warning for @import in style block');
     });
 
     test('reports unclosed component tag warning', async () => {
@@ -181,10 +180,10 @@ suite('Extension Integration Suite', () => {
     test('reports compatibility warning in standalone CSS file', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'css',
-        content: '@import "base.css";',
+        content: '[data-state] { color: red; }',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) => d.message.includes('CSS @import is not processed'));
+      const match = diagnostics.find((d) => d.message.includes('Standalone attribute selectors are not scoped'));
       assert.ok(match, 'Expected CSS warning in standalone CSS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });

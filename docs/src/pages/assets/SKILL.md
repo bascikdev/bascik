@@ -330,7 +330,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@scope` (native): class names in `@scope (.foo)` argument and optional `to (.clause)` are scoped normally, and class names inside the `@scope` block are scoped
 * `:nth-child(An+B of .selector)`: class names in the `of <selector>` argument are scoped (same global `(?<=\.)` pass as `:is()`, `:where()`, `:has()`); works for `:nth-child` and `:nth-last-child`
 * `@font-face`: passed through untouched; declare in a shared stylesheet to avoid duplicate injections
-* `@import`: not followed; include CSS directly in the component file instead
+* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
 * Compound element selectors: `.class element {}` and `.class > element {}` are scoped (element converted to class and injected on matching HTML elements); patterns with two bare elements (`div p {}`) still require a class anchor on the left

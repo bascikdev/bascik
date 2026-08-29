@@ -6,6 +6,7 @@ import {
   FEAT_CARD_HTML,
   FEAT_CARD_TEST,
   GITIGNORE,
+  HINTRC,
   MY_COUNTER_CSS,
   MY_COUNTER_HTML,
   MY_COUNTER_TEST,
@@ -139,6 +140,15 @@ describe("E2E_APP_SPEC", () => {
 describe("BASCIK_CONFIG", () => {
   it("contains a link to the docs", () => {
     expect(BASCIK_CONFIG).toContain("bascik.dev/configuration");
+  });
+});
+
+describe("HINTRC", () => {
+  it("is valid JSON and disables apple-touch-icons and meta-viewport for partials", () => {
+    expect(() => JSON.parse(HINTRC)).not.toThrow();
+    const config = JSON.parse(HINTRC);
+    expect(config.hints["apple-touch-icons"]).toBe("off");
+    expect(config.hints["meta-viewport"]).toBe("off");
   });
 });
 
@@ -391,9 +401,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 28 expected files", async () => {
+  it("writes all 29 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(28);
+    expect(mockWriteFile.mock.calls.length).toBe(29);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -416,6 +426,7 @@ describe("scaffold", () => {
     expect(writtenTo("bascik.config.ts")).toBeDefined();
     expect(writtenTo("vite.config.js")).toBeDefined();
     expect(writtenTo(".gitignore")).toBeDefined();
+    expect(writtenTo(".hintrc")).toBeDefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
   });
 

@@ -1,5 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
@@ -22,6 +25,12 @@ import {
   shieldCssStrings,
   getComponentCss,
   extractInlineStyles,
+  isRemoteCssUrl,
+  parseCssImport,
+  wrapInlinedCss,
+  resolveCssImports,
+  resolveCssImportsSync,
+  hoistCssImports,
 } from "./styles.js";
 
 const css = `
@@ -122,9 +131,17 @@ vi.mock("node:crypto", () => {
   };
 });
 
-vi.mock("node:fs/promises", () => {
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
-    readFile: vi.fn(async () => css),
+    ...actual,
+    readFile: vi.fn(async (path, opts) => {
+      try {
+        return await actual.readFile(path, opts);
+      } catch {
+        return css;
+      }
+    }),
   };
 });
 
@@ -1647,6 +1664,142 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
     expect(result).toContain("my$1comp");
     expect(result).not.toContain("myslide");
     expect(result).not.toContain("my.el");
+  });
+});
+
+// ─── CSS @import Resolution & Hoisting ────────────────────────────────────────
+
+describe("CSS @import resolution and hoisting", () => {
+  describe("isRemoteCssUrl", () => {
+    it("identifies remote and data URLs", () => {
+      expect(isRemoteCssUrl("http://example.com/style.css")).toBe(true);
+      expect(isRemoteCssUrl("https://fonts.googleapis.com/css")).toBe(true);
+      expect(isRemoteCssUrl("//cdn.jsdelivr.net/style.css")).toBe(true);
+      expect(isRemoteCssUrl("data:text/css;base64,body{color:red}")).toBe(true);
+    });
+
+    it("identifies local file paths", () => {
+      expect(isRemoteCssUrl("./tokens.css")).toBe(false);
+      expect(isRemoteCssUrl("../shared/button.css")).toBe(false);
+      expect(isRemoteCssUrl("styles/base.css")).toBe(false);
+      expect(isRemoteCssUrl("/abs/path/style.css")).toBe(false);
+    });
+  });
+
+  describe("parseCssImport", () => {
+    it("parses bare quote import", () => {
+      const parsed = parseCssImport('@import "./theme.css";');
+      expect(parsed).toEqual({
+        fullMatch: '@import "./theme.css";',
+        url: "./theme.css",
+        isRemote: false,
+        layer: undefined,
+        supports: undefined,
+        media: undefined,
+      });
+    });
+
+    it("parses url(...) import", () => {
+      const parsed = parseCssImport('http://fonts.googleapis.com/css');
+      expect(parsed).toBeNull();
+
+      const parsed2 = parseCssImport('@import url("https://fonts.googleapis.com/css2?family=Inter");');
+      expect(parsed2).toEqual({
+        fullMatch: '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+        url: "https://fonts.googleapis.com/css2?family=Inter",
+        isRemote: true,
+        layer: undefined,
+        supports: undefined,
+        media: undefined,
+      });
+    });
+
+    it("parses @import with layer, supports, and media conditions", () => {
+      const statement = '@import url("./base.css") layer(framework) supports(display: grid) screen and (min-width: 600px);';
+      const parsed = parseCssImport(statement);
+      expect(parsed).toEqual({
+        fullMatch: statement,
+        url: "./base.css",
+        isRemote: false,
+        layer: "framework",
+        supports: "display: grid",
+        media: "screen and (min-width: 600px)",
+      });
+    });
+
+    it("parses anonymous layer import", () => {
+      const statement = '@import "./reset.css" layer;';
+      const parsed = parseCssImport(statement);
+      expect(parsed?.layer).toBe(true);
+    });
+  });
+
+  describe("wrapInlinedCss", () => {
+    it("wraps CSS in layer, supports, and media queries", () => {
+      const css = ".btn { color: red; }";
+      const wrapped = wrapInlinedCss(css, "utilities", "display: flex", "screen");
+      expect(wrapped).toContain("@media screen {");
+      expect(wrapped).toContain("@layer utilities {");
+      expect(wrapped).toContain("@supports (display: flex) {");
+      expect(wrapped).toContain(".btn { color: red; }");
+    });
+  });
+
+  describe("hoistCssImports", () => {
+    it("hoists remote @import statements to the top of the CSS", () => {
+      const css = `
+.card { padding: 1rem; }
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+.btn { color: blue; }
+@import "https://cdn.example.com/icons.css";
+      `.trim();
+
+      const hoisted = hoistCssImports(css);
+      expect(hoisted.startsWith('@import url("https://fonts.googleapis.com/css?family=Roboto");')).toBe(true);
+      expect(hoisted).toContain('@import "https://cdn.example.com/icons.css";');
+      expect(hoisted).toContain(".card { padding: 1rem; }");
+    });
+
+    it("deduplicates identical @import statements when hoisting", () => {
+      const css = `
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+.card { color: red; }
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+      `.trim();
+
+      const hoisted = hoistCssImports(css);
+      const occurrences = (hoisted.match(/fonts\.googleapis/g) || []).length;
+      expect(occurrences).toBe(1);
+    });
+  });
+
+  describe("resolveCssImports / resolveCssImportsSync", () => {
+    it("inlines local CSS files recursively and prevents circular imports", async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), "bascik-import-test-"));
+      try {
+        const fileA = join(tmpDir, "a.css");
+        const fileB = join(tmpDir, "b.css");
+
+        writeFileSync(fileA, '@import "./b.css";\n.class-a { color: red; }');
+        writeFileSync(fileB, '@import "./a.css";\n.class-b { color: blue; }');
+
+        const resolved = await resolveCssImports('@import "./a.css";', join(tmpDir, "index.css"));
+        expect(resolved).toContain(".class-a { color: red; }");
+        expect(resolved).toContain(".class-b { color: blue; }");
+
+        const resolvedSync = resolveCssImportsSync('@import "./a.css";', join(tmpDir, "index.css"));
+        expect(resolvedSync).toContain(".class-a { color: red; }");
+        expect(resolvedSync).toContain(".class-b { color: blue; }");
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves remote imports untouched", async () => {
+      const css = '@import url("https://fonts.googleapis.com/css2?family=Inter");\n.main { font-family: Inter; }';
+      const resolved = await resolveCssImports(css);
+      expect(resolved).toBe(css);
+    });
   });
 });
 

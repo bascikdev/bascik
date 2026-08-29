@@ -261,6 +261,40 @@ test.describe('Docs Component Functional E2E Tests', () => {
 });
 ```
 
+## Web Standards and HTML Linting (Webhint)
+
+Automated web standards checks and HTML linting catch accessibility flaws, invalid markup, and browser compatibility issues in component templates before building.
+
+If you use the **[Webhint VS Code Extension](https://marketplace.visualstudio.com/items?itemName=webhint.vscode-webhint)** (`webhint.vscode-webhint`) or the `hint` CLI (`npx hint`), add a `.hintrc` configuration file to your project root. Because Bascik components are standalone HTML template partials that expand into full page shells at build time, individual component files do not contain top-level `<meta name="viewport">` or `<link rel="apple-touch-icon">` tags.
+
+### Recommended `.hintrc` configuration
+
+```json
+{
+  "extends": [
+    "development"
+  ],
+  "hints": {
+    "apple-touch-icons": "off",
+    "compat-api/css": [
+      "default",
+      {
+        "ignore": [
+          "scrollbar-width"
+        ]
+      }
+    ],
+    "meta-viewport": "off"
+  }
+}
+```
+
+### Configuration rationale
+
+- **`apple-touch-icons: off`**: Component templates are partials rendered inside full page shells. Apple touch icons belong on the top-level HTML document head, not in individual component markup.
+- **`meta-viewport: off`**: Viewport metadata tags are declared once in the page layout head, so checking for them inside component `.html` files produces false positives.
+- **`compat-api/css`**: Ignores specific modern CSS property compatibility checks (like `scrollbar-width`) where progressive enhancement and fallback behavior are intentional.
+
 ## Testing Boundaries and Guidance
 
 Choosing between unit tests and E2E browser tests depends on what you need to verify:

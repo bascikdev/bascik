@@ -203,6 +203,7 @@ bascik --check && bascik --build
 | **VS Code built-in CSS** | CSS syntax errors in `.css` files | Enabled by default |
 | **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions | `npm install -D stylelint && npx stylelint "**/*.css"` |
 | **[HTMLHint](https://htmlhint.com)** | HTML structure errors in page and component `.html` files | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` |
+| **[Webhint](https://webhint.io)** | Web standards, ARIA accessibility, and cross-browser compatibility | `npm install -D hint && npx hint "src/**/*.html"` (with recommended `.hintrc`) |
 | **[ESLint](https://eslint.org)** | JavaScript syntax and logic errors in `.js` files | `npm install -D eslint && npx eslint "src/**/*.js"` |
 
 For most teams, the most useful CI command sequence is:

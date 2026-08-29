@@ -16,14 +16,6 @@
     "suggestion": "Use a class selector inside the pseudo-class instead of bare element names."
   },
   {
-    "id": "css-import",
-    "kind": "css",
-    "pattern": "@import\\s+",
-    "flags": "i",
-    "message": "CSS @import is not processed by Bascik and should be avoided in component CSS.",
-    "suggestion": "Inline the CSS directly in the component or move it to a shared global stylesheet."
-  },
-  {
     "id": "js-id-setter",
     "kind": "js",
     "pattern": "\\.id\\s*=\\s*(?:[\"'`]|\\w)",

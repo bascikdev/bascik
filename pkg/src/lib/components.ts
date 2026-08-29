@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { getComponentCss, extractInlineStyles } from "./styles.js";
+import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.js";
 import { getComponentScripts } from "./javascript.js";
 import { deepReadDirFlat } from "./file-system.js";
 import { BascikConfig } from "./config.js";
@@ -199,7 +199,8 @@ export const listComponents = async (): Promise<ComponentList> => {
         );
       }
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
-      const combinedCss = [cssFileContent, inlineCss].filter(Boolean).join("\n");
+      const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
+      const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
         minifiedContent = minifyHtml(cleanedContent);

@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.js";
 import type { BascikComponent } from "./types.js";
 
@@ -357,6 +359,272 @@ export const removeCommentsFromCss = (css: string): string => {
 
 export { minifyCss } from "./css-minifier.js";
 
+// ─── CSS @import Resolution & Scoping ────────────────────────────────────────
+
+/**
+ * Check if a CSS @import target URL is an external / remote URL
+ * (e.g. http://, https://, //, data:).
+ */
+export const isRemoteCssUrl = (url: string): boolean => {
+  return /^(?:https?:|\/\/|data:)/i.test(url.trim());
+};
+
+export interface ParsedCssImport {
+  fullMatch: string;
+  url: string;
+  isRemote: boolean;
+  layer?: string | boolean;
+  supports?: string;
+  media?: string;
+}
+
+/**
+ * Parses a single CSS `@import` statement into its constituent components:
+ * target URL/path, and optional layer, supports, and media query conditions.
+ */
+export const parseCssImport = (statement: string): ParsedCssImport | null => {
+  const match = statement.match(
+    /^@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?$/i,
+  );
+  if (!match) return null;
+
+  const rawUrl = (match[2] ?? match[3] ?? match[5] ?? "").trim();
+  const rawConditions = (match[6] ?? "").trim();
+
+  let layer: string | boolean | undefined;
+  let supports: string | undefined;
+  let media: string | undefined;
+
+  let remainingConditions = rawConditions;
+
+  // 1. Check for layer / layer(name)
+  const layerMatch = remainingConditions.match(/\blayer(?:\(([^)]*)\))?/i);
+  if (layerMatch) {
+    if (layerMatch[1] !== undefined) {
+      layer = layerMatch[1].trim();
+    } else {
+      layer = true;
+    }
+    remainingConditions = remainingConditions.replace(layerMatch[0], "").trim();
+  }
+
+  // 2. Check for supports(...)
+  const supportsMatch = remainingConditions.match(/\bsupports\(([\s\S]*?)\)(?:\s+|$)/i);
+  if (supportsMatch) {
+    supports = supportsMatch[1].trim();
+    remainingConditions = remainingConditions.replace(supportsMatch[0], "").trim();
+  }
+
+  // 3. Any remainder is media query list
+  if (remainingConditions.length > 0) {
+    media = remainingConditions;
+  }
+
+  return {
+    fullMatch: statement,
+    url: rawUrl,
+    isRemote: isRemoteCssUrl(rawUrl),
+    layer,
+    supports,
+    media,
+  };
+};
+
+/**
+ * Wrap inlined CSS with any layer, supports, or media queries specified on the @import rule.
+ */
+export const wrapInlinedCss = (
+  css: string,
+  layer?: string | boolean,
+  supports?: string,
+  media?: string,
+): string => {
+  let result = css.trim();
+  if (!result) return "";
+
+  if (supports) {
+    result = `@supports (${supports}) {\n${result}\n}`;
+  }
+  if (layer) {
+    if (typeof layer === "string" && layer.length > 0) {
+      result = `@layer ${layer} {\n${result}\n}`;
+    } else {
+      result = `@layer {\n${result}\n}`;
+    }
+  }
+  if (media) {
+    result = `@media ${media} {\n${result}\n}`;
+  }
+  return result;
+};
+
+/**
+ * Resolves and inlines local `@import` statements in a CSS string asynchronously.
+ * Remote `@import` statements (e.g. Google Fonts) are preserved.
+ *
+ * @param css The raw CSS content
+ * @param baseFilePath The file path of the current CSS/HTML file (used to resolve relative import paths)
+ * @param visited Set of canonical file paths already visited (for circular import prevention)
+ */
+export const resolveCssImports = async (
+  css: string,
+  baseFilePath?: string,
+  visited: Set<string> = new Set(),
+): Promise<string> => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const matches = [...css.matchAll(importRegex)];
+  if (matches.length === 0) return css;
+
+  let result = css;
+
+  for (const match of matches) {
+    const fullStatement = match[0];
+    const parsed = parseCssImport(fullStatement);
+    if (!parsed) continue;
+
+    // Remote URLs (https://, //, etc.) are kept as @import statements
+    if (parsed.isRemote) continue;
+
+    // Local file path resolution
+    const baseDir = baseFilePath
+      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
+        ? baseFilePath
+        : dirname(baseFilePath)
+      : process.cwd();
+
+    let targetPath = resolve(baseDir, parsed.url);
+    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
+      targetPath = `${targetPath}.css`;
+    }
+
+    if (!existsSync(targetPath)) {
+      console.warn(
+        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
+      );
+      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+      continue;
+    }
+
+    // Circular import guard
+    if (visited.has(targetPath)) {
+      result = result.replace(fullStatement, "");
+      continue;
+    }
+
+    const nextVisited = new Set(visited);
+    nextVisited.add(targetPath);
+
+    try {
+      const importedRaw = removeCommentsFromCss((await readFile(targetPath)).toString());
+      const nestedResolved = await resolveCssImports(importedRaw, targetPath, nextVisited);
+      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
+      result = result.replace(fullStatement, () => wrapped);
+    } catch (err) {
+      console.warn(`[bascik] warning: Failed to read imported CSS file "${targetPath}":`, err);
+      result = result.replace(fullStatement, "");
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Resolves and inlines local `@import` statements in a CSS string synchronously.
+ * Remote `@import` statements (e.g. Google Fonts) are preserved.
+ */
+export const resolveCssImportsSync = (
+  css: string,
+  baseFilePath?: string,
+  visited: Set<string> = new Set(),
+): string => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const matches = [...css.matchAll(importRegex)];
+  if (matches.length === 0) return css;
+
+  let result = css;
+
+  for (const match of matches) {
+    const fullStatement = match[0];
+    const parsed = parseCssImport(fullStatement);
+    if (!parsed) continue;
+
+    // Remote URLs (https://, //, etc.) are kept as @import statements
+    if (parsed.isRemote) continue;
+
+    const baseDir = baseFilePath
+      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
+        ? baseFilePath
+        : dirname(baseFilePath)
+      : process.cwd();
+
+    let targetPath = resolve(baseDir, parsed.url);
+    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
+      targetPath = `${targetPath}.css`;
+    }
+
+    if (!existsSync(targetPath)) {
+      console.warn(
+        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
+      );
+      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+      continue;
+    }
+
+    if (visited.has(targetPath)) {
+      result = result.replace(fullStatement, "");
+      continue;
+    }
+
+    const nextVisited = new Set(visited);
+    nextVisited.add(targetPath);
+
+    try {
+      const importedRaw = removeCommentsFromCss(readFileSync(targetPath, "utf-8"));
+      const nestedResolved = resolveCssImportsSync(importedRaw, targetPath, nextVisited);
+      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
+      result = result.replace(fullStatement, () => wrapped);
+    } catch (err) {
+      console.warn(`[bascik] warning: Failed to read imported CSS file "${targetPath}":`, err);
+      result = result.replace(fullStatement, "");
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Hoist all preserved `@import` statements (e.g. remote font / stylesheet URLs)
+ * to the top of the CSS block, deduplicating identical imports.
+ *
+ * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
+ * which requires @import rules to precede all other style rules.
+ */
+export const hoistCssImports = (css: string): string => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
+  const imports: string[] = [];
+  const seen = new Set<string>();
+
+  const cleanedCss = css.replace(importRegex, (statement) => {
+    const trimmed = statement.trim();
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      imports.push(trimmed);
+    }
+    return "";
+  });
+
+  if (imports.length === 0) return css;
+
+  const body = cleanedCss.trim();
+  return body ? `${imports.join("\n")}\n${body}` : imports.join("\n");
+};
+
 export const getComponentCss = async (
   htmlFileName: string,
   cssFileNames: string[],
@@ -367,7 +635,8 @@ export const getComponentCss = async (
   );
   if (!cssFileName) return;
   try {
-    return removeCommentsFromCss((await readFile(cssFileName)).toString());
+    const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
+    return await resolveCssImports(raw, cssFileName);
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
@@ -777,6 +1046,7 @@ export const extractInlineStyles = (
 export const scopeInlineStyleTags = (
   html: string,
   componentName: string,
+  baseFilePath?: string,
 ): {
   html: string;
   elementsConvertedClasses: string[];
@@ -787,7 +1057,7 @@ export const scopeInlineStyleTags = (
   const processedHtml = html.replace(
     /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
-      let css = removeCommentsFromCss(styleContent);
+      let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
       css = restore(
@@ -834,21 +1104,24 @@ export const deduplicateCss = (
   usedComponents: Pick<BascikComponent, "name" | "cssFileContent">[],
   dedup: boolean = true,
 ): string => {
+  let combined: string;
   if (!dedup) {
     // Per-instance class scoping: every instance emits its own CSS block.
-    return usedComponents
+    combined = usedComponents
+      .map(({ cssFileContent }) => cssFileContent)
+      .filter((css): css is string => Boolean(css))
+      .join(" ");
+  } else {
+    const seen = new Set<string>();
+    combined = usedComponents
+      .filter(({ name }) => {
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      })
       .map(({ cssFileContent }) => cssFileContent)
       .filter((css): css is string => Boolean(css))
       .join(" ");
   }
-  const seen = new Set<string>();
-  return usedComponents
-    .filter(({ name }) => {
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    })
-    .map(({ cssFileContent }) => cssFileContent)
-    .filter((css): css is string => Boolean(css))
-    .join(" ");
+  return hoistCssImports(combined);
 };

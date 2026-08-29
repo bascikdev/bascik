@@ -15,10 +15,10 @@ suite('Compatibility Rules Suite', () => {
       assert.ok(matches.some((r) => r.id === 'css-is-element-names'));
     });
 
-    test('detects @import statements', () => {
+    test('does not report warning for @import statements', () => {
       const css = '@import "styles.css";';
       const matches = matchCompatibilityRules(css, 'css');
-      assert.ok(matches.some((r) => r.id === 'css-import'));
+      assert.ok(!matches.some((r) => r.id === 'css-import'));
     });
 
     test('returns empty array for clean CSS', () => {
