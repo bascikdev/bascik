@@ -46,7 +46,16 @@ Webhint loads its project configuration from one of three sources in order of pr
       "default",
       {
         "ignore": [
-          "scrollbar-width"
+          "scrollbar-width",
+          "scrollbar-width: none"
+        ]
+      }
+    ],
+    "compat-api/html": [
+      "default",
+      {
+        "ignore": [
+          "meta[name=theme-color]"
         ]
       }
     ]

@@ -27,7 +27,16 @@ Place a `.hintrc` file in your project root:
       "default",
       {
         "ignore": [
-          "scrollbar-width"
+          "scrollbar-width",
+          "scrollbar-width: none"
+        ]
+      }
+    ],
+    "compat-api/html": [
+      "default",
+      {
+        "ignore": [
+          "meta[name=theme-color]"
         ]
       }
     ]

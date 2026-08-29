@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "strict": true,
     "allowImportingTsExtensions": true,

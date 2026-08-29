@@ -6,6 +6,8 @@
     // Strict mode catches the most mistakes
     "strict": true,
 
+    "forceConsistentCasingInFileNames": true,
+
     // Allow .ts extension in import specifiers (required with noEmit)
     "allowImportingTsExtensions": true,
 
