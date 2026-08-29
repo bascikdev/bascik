@@ -335,16 +335,16 @@ export const prefixElementAttribute = (
       const src = scriptMatch[1];
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
-        replaceBalancedCall(
-          src,
-          /classList\.(?:add|remove|toggle|contains|replace)\s*\(/gm,
-          (callText) => {
-            for (const tokenMatch of callText.matchAll(/["']([^"']+)["']/g)) {
-              addIfNew(tokenMatch[1]);
-            }
-            return callText;
-          },
-        );
+      replaceBalancedCall(
+        src,
+        /classList\.(?:add|remove|toggle|contains|replace)\s*\(/gm,
+        (callText) => {
+          for (const tokenMatch of callText.matchAll(/["']([^"']+)["']/g)) {
+            addIfNew(tokenMatch[1]);
+          }
+          return callText;
+        },
+      );
       // querySelector / querySelectorAll / closest / matches — extract ".token" class tokens
       for (const callMatch of src.matchAll(
         /(?:querySelector(?:All)?|closest|matches)\(\s*["']([^"']*)["']\s*\)/gm,
