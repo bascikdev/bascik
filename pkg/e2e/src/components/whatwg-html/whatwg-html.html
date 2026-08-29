@@ -1,0 +1,46 @@
+<div class="html-standards-box" data-testid="html-standards-box">
+  <style>
+    .html-standards-box {
+      border: 2px solid #0284c7;
+      padding: 1rem;
+      border-radius: 6px;
+    }
+
+    .slot-section {
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      background: #f0fdf4;
+    }
+  </style>
+
+  <!-- Multi-Slot Projection -->
+  <header class="slot-section" data-testid="slot-header-section">
+    <div data-bascik-slot="top">
+      <p data-testid="fallback-top">Default Top Header Slot Content</p>
+    </div>
+  </header>
+
+  <main class="slot-section" data-testid="slot-main-section">
+    <div data-bascik-slot>
+      <p data-testid="fallback-main">Default Main Body Slot Content</p>
+    </div>
+  </main>
+
+  <footer class="slot-section" data-testid="slot-footer-section">
+    <div data-bascik-slot="bottom">
+      <p data-testid="fallback-bottom">Default Bottom Footer Slot Content</p>
+    </div>
+  </footer>
+
+  <!-- Rawtext and Code Whitespace Preservation -->
+  <pre data-testid="raw-pre">
+line 1: indented text
+line 2:   triple space
+line 3: &lt;safe-entity&gt;
+  </pre>
+
+  <p data-testid="phrasing-p">
+    Click <a href="/docs" data-testid="link-tag">here</a> for <strong>bold text</strong> and <span
+      data-testid="span-tag">span text</span>.
+  </p>
+</div>

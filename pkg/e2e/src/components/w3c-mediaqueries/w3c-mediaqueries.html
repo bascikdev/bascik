@@ -1,0 +1,102 @@
+<div class="mq-container" data-testid="mq-container">
+  <style>
+    .mq-container {
+      --mq-theme-bg: #f8fafc;
+      --mq-theme-color: #0f172a;
+      background-color: var(--mq-theme-bg);
+      color: var(--mq-theme-color);
+      padding: 1.5rem;
+      border: 2px solid #cbd5e1;
+      border-radius: 8px;
+    }
+
+    /* Range Syntax & Breakpoints */
+    .viewport-box {
+      padding: 1rem;
+      background-color: #3b82f6;
+      color: white;
+      text-align: center;
+      border-radius: 4px;
+    }
+
+    @media (width <=600px) {
+      .viewport-box {
+        background-color: #ef4444;
+        /* Mobile Red */
+      }
+    }
+
+    @media (600px < width <=900px) {
+      .viewport-box {
+        background-color: #f59e0b;
+        /* Tablet Amber */
+      }
+    }
+
+    @media (width > 900px) {
+      .viewport-box {
+        background-color: #10b981;
+        /* Desktop Green */
+      }
+    }
+
+    /* User Preference: Color Scheme */
+    .theme-box {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border: 1px solid #94a3b8;
+      background-color: #ffffff;
+      color: #1e293b;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .theme-box {
+        background-color: #0f172a;
+        color: #f8fafc;
+        border-color: #334155;
+      }
+    }
+
+    /* User Preference: Reduced Motion */
+    .motion-box {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background-color: #6366f1;
+      color: white;
+      transition: transform 0.5s ease;
+    }
+
+    .motion-box.active {
+      transform: translateX(50px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .motion-box {
+        transition: none !important;
+        transform: none !important;
+      }
+    }
+  </style>
+
+  <div class="viewport-box" data-testid="mq-viewport-box">
+    Viewport Mode
+  </div>
+
+  <div class="theme-box" data-testid="mq-theme-box">
+    Theme Detection Box
+  </div>
+
+  <div class="motion-box" data-testid="mq-motion-box" id="motion-target">
+    Motion Preference Box
+  </div>
+
+  <button id="toggle-motion-btn" data-testid="mq-toggle-btn" style="margin-top: 0.5rem;">Toggle Motion</button>
+
+  <script>
+    const motionBtn = document.getElementById("toggle-motion-btn");
+    const motionTarget = document.getElementById("motion-target");
+    motionBtn.addEventListener("click", () => {
+      motionTarget.classList.toggle("active");
+    });
+  </script>
+</div>
