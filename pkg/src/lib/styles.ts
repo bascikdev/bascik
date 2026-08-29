@@ -408,11 +408,24 @@ export const parseCssImport = (statement: string): ParsedCssImport | null => {
     remainingConditions = remainingConditions.replace(layerMatch[0], "").trim();
   }
 
-  // 2. Check for supports(...)
-  const supportsMatch = remainingConditions.match(/\bsupports\(([\s\S]*?)\)(?:\s+|$)/i);
-  if (supportsMatch) {
-    supports = supportsMatch[1].trim();
-    remainingConditions = remainingConditions.replace(supportsMatch[0], "").trim();
+  // 2. Check for supports(...) with balanced parentheses
+  const supportsIdx = remainingConditions.search(/\bsupports\(/i);
+  if (supportsIdx !== -1) {
+    const startInner = remainingConditions.indexOf("(", supportsIdx) + 1;
+    let depth = 1;
+    let endInner = startInner;
+    while (endInner < remainingConditions.length && depth > 0) {
+      if (remainingConditions[endInner] === "(") depth++;
+      else if (remainingConditions[endInner] === ")") depth--;
+      if (depth > 0) endInner++;
+    }
+    if (depth === 0) {
+      supports = remainingConditions.slice(startInner, endInner).trim();
+      remainingConditions = (
+        remainingConditions.slice(0, supportsIdx) +
+        remainingConditions.slice(endInner + 1)
+      ).trim();
+    }
   }
 
   // 3. Any remainder is media query list
@@ -517,7 +530,10 @@ export const resolveCssImports = async (
     nextVisited.add(targetPath);
 
     try {
-      const importedRaw = removeCommentsFromCss((await readFile(targetPath)).toString());
+      const importedRaw = removeCommentsFromCss((await readFile(targetPath)).toString()).replace(
+        /@charset\s+["'][^"']+["'];?/gi,
+        "",
+      );
       const nestedResolved = await resolveCssImports(importedRaw, targetPath, nextVisited);
       const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
       result = result.replace(fullStatement, () => wrapped);
@@ -583,7 +599,10 @@ export const resolveCssImportsSync = (
     nextVisited.add(targetPath);
 
     try {
-      const importedRaw = removeCommentsFromCss(readFileSync(targetPath, "utf-8"));
+      const importedRaw = removeCommentsFromCss(readFileSync(targetPath, "utf-8")).replace(
+        /@charset\s+["'][^"']+["'];?/gi,
+        "",
+      );
       const nestedResolved = resolveCssImportsSync(importedRaw, targetPath, nextVisited);
       const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
       result = result.replace(fullStatement, () => wrapped);

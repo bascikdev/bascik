@@ -1732,6 +1732,13 @@ describe("CSS @import resolution and hoisting", () => {
       const parsed = parseCssImport(statement);
       expect(parsed?.layer).toBe(true);
     });
+
+    it("parses supports(...) conditions containing nested parentheses", () => {
+      const statement = '@import "./grid.css" supports((display: flex) and (selector(h1))) screen;';
+      const parsed = parseCssImport(statement);
+      expect(parsed?.supports).toBe("(display: flex) and (selector(h1))");
+      expect(parsed?.media).toBe("screen");
+    });
   });
 
   describe("wrapInlinedCss", () => {
