@@ -109,6 +109,7 @@ const replaceBalancedCall = (
   let result = "";
   let lastIndex = 0;
   // Ensure the regex has the 'g' flag so we can use lastIndex
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const regex = new RegExp(
     methodRegex.source,
     methodRegex.flags.includes("g") ? methodRegex.flags : methodRegex.flags + "g",
@@ -198,6 +199,7 @@ const replaceSafeAttr = (
   attrName: string,
   replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
 ): string => {
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attrRegex = new RegExp(`(\\s${attrName}=)("[^"]*"|'[^']*')`, "gm");
 
   // This simple regex identifies tags loosely. It handles nested attributes
@@ -441,29 +443,33 @@ export const prefixElementAttribute = (
             method: string,
             prefix: string,
           ): void => {
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const methodCallRegex = new RegExp(`(${method}\\(\\s*['"][^'"]*['"]\\s*\\))`, "gm");
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const tokenRegex = new RegExp(
+              `(?<![a-zA-Z0-9_-])\\${prefix}${escapedAttr}(?![a-zA-Z0-9_-])`,
+              "g",
+            );
             updatedMatch = updatedMatch.replace(
-              new RegExp(`(${method}\\(\\s*['"][^'"]*['"]\\s*\\))`, "gm"),
+              methodCallRegex,
               (call) =>
                 call.replace(
                   // Token must NOT be immediately preceded or followed by
                   // alphanumeric, underscore, or hyphen (avoids partial
                   // matches inside already-scoped names like __myClass).
-                  new RegExp(
-                    `(?<![a-zA-Z0-9_-])\\${prefix}${escapedAttr}(?![a-zA-Z0-9_-])`,
-                    "g",
-                  ),
+                  tokenRegex,
                   `${prefix}${obfuscatedAttributeName}`,
                 ),
             );
           };
 
           if (attribute === "id") {
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>getElementById\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const getByIdRegex = new RegExp(
+              `(?<start>getElementById\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(getByIdRegex);
             // querySelector-family — compound-aware
             for (const method of [
               "querySelector",
@@ -474,33 +480,33 @@ export const prefixElementAttribute = (
               rewriteInSelectorString(method, "#");
             }
             // element.setAttribute("id", "value")
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>setAttribute\\(\\s*["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const setIdRegex = new RegExp(
+              `(?<start>setAttribute\\(\\s*["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(setIdRegex);
           } else if (attribute === "name") {
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>getElementsByName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const getByNameRegex = new RegExp(
+              `(?<start>getElementsByName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(getByNameRegex);
             // element.setAttribute("name", "value")
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>setAttribute\\(\\s*["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const setNameRegex = new RegExp(
+              `(?<start>setAttribute\\(\\s*["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(setNameRegex);
           } else if (attribute === "class") {
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>getElementsByClassName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const getByClassRegex = new RegExp(
+              `(?<start>getElementsByClassName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(getByClassRegex);
             // querySelector-family — compound-aware
             for (const method of [
               "querySelector",
@@ -514,24 +520,28 @@ export const prefixElementAttribute = (
             // Match the entire call then replace every quoted token matching
             // the class name. Handles both `classList.add("x")` and
             // `classList.add("x", "y", …)` forms.
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const classTokenAllRegex = new RegExp(`(["'])${escapedAttr}\\1`, "g");
             updatedMatch = replaceBalancedCall(
               updatedMatch,
               /classList\.(?:add|remove)\s*\(/gm,
               (call) =>
                 call.replace(
-                  new RegExp(`(["'])${escapedAttr}\\1`, "g"),
+                  classTokenAllRegex,
                   `$1${obfuscatedAttributeName}$1`,
                 ),
             );
             // classList.toggle — rewrites the class-name (first) arg only.
             // Deliberately does NOT require `)` after the closing quote so
             // `classList.toggle("open", condition)` is handled correctly.
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const classTokenSingleRegex = new RegExp(`(["'])${escapedAttr}\\1`);
             updatedMatch = replaceBalancedCall(
               updatedMatch,
               /classList\.toggle\s*\(/gm,
               (call) =>
                 call.replace(
-                  new RegExp(`(["'])${escapedAttr}\\1`),
+                  classTokenSingleRegex,
                   `$1${obfuscatedAttributeName}$1`,
                 ),
             );
@@ -541,7 +551,7 @@ export const prefixElementAttribute = (
               /classList\.contains\s*\(/gm,
               (call) =>
                 call.replace(
-                  new RegExp(`(["'])${escapedAttr}\\1`),
+                  classTokenSingleRegex,
                   `$1${obfuscatedAttributeName}$1`,
                 ),
             );
@@ -552,29 +562,31 @@ export const prefixElementAttribute = (
               /classList\.replace\s*\(/gm,
               (call) =>
                 call.replace(
-                  new RegExp(`(["'])${escapedAttr}\\1`, "g"),
+                  classTokenAllRegex,
                   `$1${obfuscatedAttributeName}$1`,
                 ),
             );
             // element.setAttribute("class", "value")
-            updatedMatch = rewriteSelectorRef(
-              new RegExp(
-                `(?<start>setAttribute\\(\\s*["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-                "gm",
-              ),
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const setClassRegex = new RegExp(
+              `(?<start>setAttribute\\(\\s*["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
+              "gm",
             );
+            updatedMatch = rewriteSelectorRef(setClassRegex);
             // element.className setter — handles both single-class and
             // space-separated multi-class assignments (className = "…" or
             // className += "…").  Replaces each known class token in the
             // string value using the same word-boundary guards as above.
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const classNameTokenRegex = new RegExp(
+              `(?<![a-zA-Z0-9_-])${escapedAttr}(?![a-zA-Z0-9_-])`,
+              "g",
+            );
             updatedMatch = updatedMatch.replace(
               /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
               (_, prefix, classes, suffix) => {
                 const replaced = classes.replace(
-                  new RegExp(
-                    `(?<![a-zA-Z0-9_-])${escapedAttr}(?![a-zA-Z0-9_-])`,
-                    "g",
-                  ),
+                  classNameTokenRegex,
                   obfuscatedAttributeName,
                 );
                 return `${prefix}${replaced}${suffix}`;

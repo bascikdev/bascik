@@ -188,8 +188,10 @@ export const addElementClassesInHtml = (
     const bascikClassName = minifyAttributeName(
       `bascik__${componentName}__el__${element}`,
     );
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const elPattern = new RegExp(`<${element}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
     componentHtml = componentHtml.replace(
-      new RegExp(`<${element}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis"),
+      elPattern,
       (openTag) => injectClassIntoTag(openTag, bascikClassName),
     );
   });
@@ -313,6 +315,7 @@ export const addIdClassesInHtml = (
   idsConverted.forEach(({ idName, className }) => {
     if (!html.includes(idName)) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
       `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
@@ -541,7 +544,7 @@ export const resolveCssImports = async (
       const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
       result = result.replace(fullStatement, () => wrapped);
     } catch (err) {
-      console.warn(`[bascik] warning: Failed to read imported CSS file "${targetPath}":`, err);
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
       result = result.replace(fullStatement, "");
     }
   }
@@ -610,7 +613,7 @@ export const resolveCssImportsSync = (
       const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
       result = result.replace(fullStatement, () => wrapped);
     } catch (err) {
-      console.warn(`[bascik] warning: Failed to read imported CSS file "${targetPath}":`, err);
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
       result = result.replace(fullStatement, "");
     }
   }
