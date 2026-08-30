@@ -39,9 +39,19 @@ Build mode (`bascik --build`) writes transpiled files incrementally into `dist/`
 
 If source files are deleted from `src/pages/` between separate build runs, their previously compiled output in `dist/` remains until `dist/` is cleaned manually. In dev mode (`bascik`), the active file watcher listens for deletion events (`unlink` and `unlinkDir`) and removes corresponding files from `dist/` dynamically during the dev session.
 
-## Build Script Output Cache
+## Build Script Output Cache & Batch Execution
 
-Every `<script data-bascik-build>` block spawns a fresh Node.js child process, which carries a ~50–150 ms V8 startup cost even for a trivial script. On a site with many pages and many build-script blocks this cost dominates total build time. The cache eliminates that cost for scripts whose inputs have not changed.
+Uncached `<script data-bascik-build>` blocks are executed by Node.js, which carries a ~50–150 ms V8 startup cost when spawning individual processes. Bascik optimizes cold builds by batching all uncached scripts on a page into a single harness runner process, and eliminates startup overhead entirely on warm builds via disk caching for scripts whose inputs have not changed.
+
+### Page-Level Batch Execution
+
+When a page contains multiple uncached `<script data-bascik-build>` blocks:
+1. Bascik groups all uncached tasks into a single batch.
+2. A lightweight ESM runner harness (`runner-<batchId>.mjs`) dynamically imports each script sequentially in one child process.
+3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.
+4. Outputs are mapped back to their corresponding tags, cached on disk, and spliced into the page simultaneously.
+
+This reduces Node child process spawns from $N$ scripts to 1 per page during cold builds.
 
 ### Location
 
