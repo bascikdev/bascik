@@ -6,12 +6,35 @@ However, Bascik is also **highly configurable** for both development and product
 
 To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` also works and takes precedence if both files exist.
 
-## Default Configuration Example
+## Minimal Configuration Example (Recommended)
 
-Because Bascik is zero-config, you do not need a `bascik.config.ts` file to use these settings. The example below displays all available configuration options populated with their built-in default values for illustrative purposes.
+Because Bascik is zero-config, you only need to specify settings that differ from built-in defaults. Keep your `bascik.config.ts` clean and minimal:
 
 ```ts
-// bascik.config.ts
+// bascik.config.ts (minimal example)
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+});
+
+// Production build overrides (applied only during `bascik --build` and `bascik --serve`)
+export const build = defineConfig({
+  minify: {
+    html: true,
+    css: true,
+    js: true,
+    identifiers: true,
+  },
+});
+```
+
+## Full Configuration Reference (Built-In Defaults)
+
+You do not need to populate default options in `bascik.config.ts`. The reference below displays all available configuration options populated with their built-in default values for illustrative purposes only.
+
+```ts
+// bascik.config.ts (reference showing all default values)
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({

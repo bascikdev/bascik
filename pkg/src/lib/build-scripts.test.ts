@@ -144,27 +144,12 @@ describe("executeBuildScripts", () => {
   });
 
   it("processes multiple build scripts in order", async () => {
-    mockExecFile
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>first</p>", "");
-        },
-      )
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>second</p>", "");
-        },
-      );
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<p>first</p>" },
+        { id: 1, ok: true, stdout: "<p>second</p>" },
+      ]),
+    );
 
     const html =
       "<script data-bascik-build>a</script><script data-bascik-build>b</script>";
@@ -283,27 +268,12 @@ describe("executeBuildScripts", () => {
   });
 
   it("replaces two identical build-script blocks each with their own output", async () => {
-    mockExecFile
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>first</p>", "");
-        },
-      )
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>second</p>", "");
-        },
-      );
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<p>first</p>" },
+        { id: 1, ok: true, stdout: "<p>second</p>" },
+      ]),
+    );
 
     const tag = "<script data-bascik-build>same()</script>";
     const result = await executeBuildScripts(`<div>${tag}</div><div>${tag}</div>`);
@@ -701,6 +671,84 @@ describe("build-script output cache", () => {
     const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
     expect(jsonWrites.length).toBe(0);
     (BascikConfig as Record<string, unknown>).buildScriptCache = true;
+  });
+
+  it("handles batch execution when one script fails and onScriptError is 'warn'", async () => {
+    (BascikConfig as any).onScriptError = "warn";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<span>Success</span>" },
+        { id: 1, ok: false, error: "ReferenceError: foo is not defined" },
+      ]),
+    );
+
+    const html =
+      "<div><script data-bascik-build>good()</script><script data-bascik-build>bad()</script></div>";
+    const result = await executeBuildScripts(html);
+
+    expect(result).toBe("<div><span>Success</span></div>");
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+    (BascikConfig as any).onScriptError = undefined;
+  });
+
+  it("throws and identifies the failed script in a batch when onScriptError is 'error'", async () => {
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<span>Success</span>" },
+        { id: 1, ok: false, error: "SyntaxError: Unexpected token" },
+      ]),
+    );
+
+    const html =
+      "<div><script data-bascik-build>good()</script><script data-bascik-build>bad()</script></div>";
+    await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
+  });
+
+  it("forwards stderr per script in a batch execution", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<p>ok</p>", stderr: "warning from script 0\n" },
+        { id: 1, ok: true, stdout: "<p>ok2</p>", stderr: "warning from script 1\n" },
+      ]),
+    );
+
+    const html =
+      "<script data-bascik-build>a()</script><script data-bascik-build>b()</script>";
+    const result = await executeBuildScripts(html);
+    expect(result).toBe("<p>ok</p><p>ok2</p>");
+    expect(stderrSpy).toHaveBeenCalledWith("warning from script 0\n");
+    expect(stderrSpy).toHaveBeenCalledWith("warning from script 1\n");
+    stderrSpy.mockRestore();
+  });
+
+  it("handles mixed cached and uncached scripts on the same page", async () => {
+    let callCount = 0;
+    const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
+    mockReadFile.mockImplementation(async (filePath: string) => {
+      if (String(filePath).endsWith(".json") && ++callCount === 1) {
+        // Only return cached output for first key
+        return JSON.stringify({ v: SCRIPT_CACHE_VERSION, output: "<p>cached-1</p>" });
+      }
+      throw new Error("ENOENT");
+    });
+
+    resolveWith(
+      JSON.stringify([
+        { id: 0, ok: true, stdout: "<p>batch-2</p>" },
+        { id: 1, ok: true, stdout: "<p>batch-3</p>" },
+      ]),
+    );
+
+    const html =
+      "<script data-bascik-build>c1()</script><script data-bascik-build>u2()</script><script data-bascik-build>u3()</script>";
+    const result = await executeBuildScripts(html);
+    expect(result).toBe("<p>cached-1</p><p>batch-2</p><p>batch-3</p>");
+    // Only 1 batch call for the 2 uncached scripts
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,6 +1,6 @@
 # Server Architecture
 
-Bascik's server infrastructure powers both local development (`bascik`) and per-request production serving (`bascik --serve`). Designed as a modular 4-tier pipeline, the server handles request routing, static file serving, `data-bascik-server` request script execution, live reload SSE streams, in-memory caching, and security hardening.
+Bascik's server infrastructure powers both local development (`bascik`) and per-request production serving (`bascik --serve`). Designed as a modular 4-tier pipeline, the server handles request routing, static file serving, `data-bascik-server` request script execution, live reload SSE streams, in-memory caching, port environment overrides, and security hardening.
 
 ## Modular Architecture (`server.ts`, `http.ts`, `http2.ts`, `pki.ts`)
 

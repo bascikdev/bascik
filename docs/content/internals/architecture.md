@@ -43,7 +43,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | Module | Responsibility |
 | --- | --- |
 | `boot-page.ts` | In-memory dev-server boot page shown during initial transpile. Connects to live reload and refreshes once the build finishes. |
-| `build-scripts.ts` | Executes `<script data-bascik-build>` blocks as Node.js ESM modules at transpile time, cleaning child-process stack traces and appending sourceURL comments for debugging. |
+| `build-scripts.ts` | Executes `<script data-bascik-build>` blocks as Node.js ESM modules at transpile time, batching uncached scripts per page in a single harness process, caching results on disk, cleaning child-process stack traces, and appending sourceURL comments for debugging. |
 | `check.ts` | Static analysis for `bascik --check`. Scans all pages and components for unresolved custom tags (errors) and unused component files (warnings). Exits with code 1 when errors are found so it can gate CI pipelines. |
 | `cli.ts` | Command-line argument parser for the `bascik` binary, resolving CLI flags into actions that `index.ts` can execute. |
 | `components.ts` | Loads component HTML and CSS files from disk, detects component tags in HTML strings, extracts props/slots/attributes, and injects resolved content back. Tag detection masks `<script>`/`<style>`/`<textarea>` content so literal tag text is never resolved. |
@@ -165,3 +165,7 @@ Instead of pulling in a WebSocket dependency like `ws` or injecting a heavy clie
 ### Brotli-compressed in-memory cache
 
 To achieve fast response times in both dev and production modes, Bascik keeps transpiled pages in an in-memory store (`mem.ts`). Storing large raw HTML strings in V8 memory can lead to high memory consumption and GC pressure on large sites. To prevent this, Bascik compresses all cached pages using Node's native `node:zlib` Brotli implementation. This reduces the dev server's RAM footprint by up to 90% while allowing production environments to stream pre-compressed buffers directly to modern browsers.
+
+### CLI startup and package manager overhead
+
+Bascik's Node.js CLI runtime (`pkg/dist/index.js`) boots and starts transpilation in under 50ms. When invoking commands through monorepo package managers (such as `yarn <workspace> <script>`), the package manager itself may spend 1.0 to 1.5 seconds loading plugins, parsing configuration files, and resolving workspace dependency graphs before it spawns the Node.js process. The framework's logged completion metrics (e.g. `✓ All tasks completed in Xms` and `✓ Build complete in Xms`) measure total task execution within the running Node process. For instant CLI execution with sub-50ms startup latency, invoke the compiled binary directly via `node` (e.g. `node ./node_modules/.bin/bascik`) or use a lightweight script runner.

@@ -201,6 +201,41 @@ src/components/
 ### Companion CSS and Script Files
 Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Path resolution is strictly scoped to the component directory or base filename.
 
+### Component Decomposition & Shared Head Tags
+When structuring or migrating a site with Bascik, identify repeating HTML structures (especially shared `<head>` markup such as meta charset, viewport, favicons, fonts, Open Graph tags, and global CSS links, as well as site headers/footers) and extract them into reusable components.
+
+Component tags can be placed inside `<head>` element blocks in your page shells:
+
+```html
+<!-- src/components/site-head.html -->
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/styles.css" />
+```
+
+Page shells can then include `<site-head />` inside their `<head>`:
+
+```html
+<!-- src/pages/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <site-head />
+  <title>Home - My Site</title>
+</head>
+<body>
+  <site-nav />
+  <main>
+    <h1>Welcome</h1>
+  </main>
+  <site-footer />
+</body>
+</html>
+```
+
+At build time, Bascik expands `<site-head>` inside `<head>` and merges any component styles into the document `<head>` naturally. Proactively extract shared head elements, site headers, and site footers whenever initializing or refactoring a site into Bascik.
+
 ### Multiple Root Elements
 Unlike other frameworks that require a single wrapper element or fragment, Bascik component templates support multiple top-level HTML elements in a single `.html` file. All root elements are inserted in order. If non-`data-bascik-*` attributes are passed on a usage tag, Bascik merges them onto the first root HTML element.
 
@@ -638,21 +673,25 @@ If a component template contains multiple root elements, inherited attributes ar
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance: `inheritAttributes: false` in `bascik.config.ts`.
 
 ### Self-Closing Tags
+Components that do not contain inner slot content should always use self-closing void syntax:
 ```html
-<my-nav /> <my-nav class="top" />
+<site-nav />
+<site-head />
+<site-footer />
+<site-nav class="top" />
 ```
 
 ### Head Components
-Components work inside `<head>` to organize metadata:
+Components work inside `<head>` to organize metadata and shared links:
 ```html
 <!-- src/components/site-meta.html -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="My site" />
 
-<!-- usage -->
+<!-- usage in page shell -->
 <head>
+  <site-meta />
   <title>Home</title>
-  <site-meta></site-meta>
 </head>
 ```
 
@@ -873,10 +912,39 @@ Rules:
 
 ## 9. Configuration (`bascik.config.ts`)
 
-Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs:
+Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `siteUrl`, custom `exec` build scripts, or production `build` minification overrides).
+
+Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs.
+
+### Minimal Configuration Example (Recommended)
+
+When creating or editing `bascik.config.ts`, only include options that differ from built-in defaults:
 
 ```ts
-// bascik.config.ts
+// bascik.config.ts (minimal example)
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+});
+
+// Applied only during `bascik --build` and `bascik --serve`.
+export const build = defineConfig({
+  minify: {
+    html: true,
+    css: true,
+    js: true,
+    identifiers: true,
+  },
+});
+```
+
+### Full Configuration Reference (Built-In Defaults)
+
+You do not need to populate default options in `bascik.config.ts`. The reference below displays all available configuration options populated with their built-in default values for illustrative purposes only:
+
+```ts
+// bascik.config.ts (reference showing all default values)
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
@@ -957,6 +1025,10 @@ export const build = defineConfig({
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:
+* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. `siteUrl`, custom `exec` scripts, or `build` minification rules).
+* **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
+* **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
+* **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
 * **Do NOT invent non-existent `exec` scripts:** `exec` is only for executing existing custom pre-build script files. If no custom script file exists in the workspace, leave `exec` as an empty array `[]` or omit it.
 * **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.

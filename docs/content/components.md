@@ -449,17 +449,21 @@ Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/compon
 
 ## Void / Self-Closing Component Tags
 
-When utilizing your components inside pages or other components, you can use standard opening and closing tags, or you can use self-closing/void syntax:
+When utilizing your components inside pages or other components, choose self-closing void syntax for any component that does not take slot children:
 
 ```html
-<!-- Standard paired tags -->
-<site-nav></site-nav>
-
-<!-- Void (self-closing) syntax -->
+<!-- Preferred void (self-closing) syntax for components without slots -->
 <site-nav />
+<site-head />
+<site-footer />
+
+<!-- Paired tags (only required when passing inner slot content) -->
+<hello-card>
+  <p>Slot content goes here.</p>
+</hello-card>
 ```
 
-If your component does not use a `<slot>` to accept inner children, you can choose to use it as a void/self-closing component. Both forms are fully supported and compile to the exact same output, with no difference in behavior or performance. You can choose whichever style matches your personal preference or project guidelines.
+If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. Both forms compile to the exact same output.
 
 ## Multiple Root Elements
 
@@ -518,6 +522,42 @@ Understanding the distinction between **page shells** (`src/pages/*.html`) and *
 
 * **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
 * **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).
+
+## Shared Head Tags & Layout Component Decomposition
+
+When structuring or migrating a site with Bascik, identify repeating HTML markup across page shells (especially shared `<head>` tags such as meta charset, viewport, favicons, web fonts, Open Graph tags, global CSS links, and site headers or footers) and extract them into reusable components.
+
+Component tags can be placed inside `<head>` element blocks in your page shells:
+
+```html
+<!-- src/components/site-head.html -->
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/styles.css" />
+```
+
+Page shells can then include `<site-head />` inside their `<head>`:
+
+```html
+<!-- src/pages/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <site-head />
+  <title>Home - My Site</title>
+</head>
+<body>
+  <site-nav />
+  <main id="main-content">
+    <h1>Welcome</h1>
+  </main>
+  <site-footer />
+</body>
+</html>
+```
+
+At build time, Bascik expands `<site-head>` inside `<head>` and merges any component styles into the document `<head>` naturally.
 
 ### Accessible Skip Links and Focus Order
 

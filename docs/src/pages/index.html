@@ -773,9 +773,9 @@
           <p class="speed-note">
             <strong>Warm vs. Cold Startup Note:</strong> The ~1.4s build time above reflects a warm start with SHA-256
             build script output caching enabled. On a fresh cold start (or after clearing
-            <code>node_modules/.cache/bascik</code>), spawning individual Node.js child processes to execute all 500+
-            Markdown rendering scripts takes ~10.8s on a 2020 M1 MacBook Air. Once cached, subsequent restarts and
-            live-reload edits compile in milliseconds.
+            <code>node_modules/.cache/bascik</code>), Bascik batches uncached build scripts into a single harness runner
+            per page, compiling all 59 pages and 500+ Markdown scripts in ~3.8s on an M1 MacBook Air. Once cached,
+            subsequent restarts and live-reload edits compile in milliseconds.
           </p>
         </div>
       </div>

@@ -43,7 +43,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
@@ -76,13 +76,17 @@ const childSemaphore = () => _sem ??= new Semaphore(
 
 // Manual promise wrapper so tests can mock execFile with a plain vi.fn()
 // without needing to simulate Node's promisify.custom symbol.
-const runModule = async (path: string, extraEnv: Record<string, string> = {}): Promise<{ stdout: string; stderr: string }> => {
+const runModule = async (
+  path: string,
+  extraEnv: Record<string, string> = {},
+  args: string[] = [],
+): Promise<{ stdout: string; stderr: string }> => {
   const sem = childSemaphore();
   await sem.acquire();
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
-      [path],
+      [path, ...args],
       {
         cwd: process.cwd(),
         env: {
@@ -323,14 +327,27 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
     mkdir(cacheDir, { recursive: true }),
   ]);
 
-  // All scripts start concurrently; the semaphore in runModule caps how many
-  // child processes are alive at once based on available system memory.
-  const outputs = await Promise.all(matches.map(async (match) => {
+  const useCache = BascikConfig.buildScriptCache !== false;
+  const pageFile = filePath ?? "";
+  const siteUrl = BascikConfig.siteUrl ?? "";
+
+  interface ScriptTask {
+    fullTag: string;
+    index: number;
+    openTag: string;
+    trimmedScript: string;
+    cacheKey: string | null;
+    startLine: number;
+    tmpPath: string;
+    output?: string;
+  }
+
+  const tasks: ScriptTask[] = [];
+
+  for (const match of matches) {
     const [fullTag, scriptContent] = match;
     const index = match.index ?? 0;
 
-    // Hard-fail if the same tag has both data-bascik-build and data-bascik-server.
-    // The opening tag is everything before the captured content and closing tag.
     const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
       let errorMsg = `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server`;
@@ -356,77 +373,209 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
       }
     }
 
-    const useCache = BascikConfig.buildScriptCache !== false;
-    const pageFile = filePath ?? "";
-    const siteUrl = BascikConfig.siteUrl ?? "";
     const cacheKey = useCache
       ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, pageFile, siteUrl)
       : null;
-    if (cacheKey !== null) {
-      const cached = await readScriptCache(cacheDir, cacheKey);
-      if (cached !== null) {
-        return { fullTag, index, output: cached };
-      }
-    }
+
+    const prefix = html.slice(0, index);
+    const lines = prefix.split(/\r?\n/);
+    const lineOffset = lines.length;
+    const openTagLines = openTag.split(/\r?\n/).length - 1;
+    const startLine = lineOffset + openTagLines;
 
     const tmpPath = join(
       tempDir,
       `build-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
     );
 
-    const prefix = html.slice(0, index);
-    const lines = prefix.split(/\r?\n/);
-    const lineOffset = lines.length;
+    tasks.push({
+      fullTag,
+      index,
+      openTag,
+      trimmedScript,
+      cacheKey,
+      startLine,
+      tmpPath,
+    });
+  }
 
-    const openTagLines = openTag.split(/\r?\n/).length - 1;
-    const startLine = lineOffset + openTagLines;
+  // Check cache for all tasks
+  const uncachedTasks: ScriptTask[] = [];
+  for (const task of tasks) {
+    if (task.cacheKey !== null) {
+      const cached = await readScriptCache(cacheDir, task.cacheKey);
+      if (cached !== null) {
+        task.output = cached;
+        continue;
+      }
+    }
+    uncachedTasks.push(task);
+  }
 
+  if (uncachedTasks.length > 0) {
     let sourceUrlComment = "";
     if (filePath) {
       const relPath = relative(process.cwd(), filePath).replace(/\\/g, "/");
       sourceUrlComment = `\n//# sourceURL=${relPath}`;
     }
 
-    try {
-      await writeFile(tmpPath, trimmedScript + sourceUrlComment, "utf8");
-      const { stdout, stderr } = await runModule(tmpPath, {
-        BASCIK_PAGE_FILE: filePath ?? "",
-        BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
-        BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
-      });
-      if (stderr) process.stderr.write(stderr);
-      const output = stripAnsiEscapeCodes(stdout);
-      if (cacheKey !== null) await writeScriptCache(cacheDir, cacheKey, output);
-      return { fullTag, index, output };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      let errorMsg = `[bascik] build script error`;
-      const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : "unknown";
-      const cleanedMsg = cleanStackTrace(msg, tmpPath, relPath, startLine);
-      if (filePath) {
-        const prefix = html.slice(0, index);
-        const lines = prefix.split(/\r?\n/);
-        errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+    const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : "unknown";
+    const extraEnv = {
+      BASCIK_PAGE_FILE: filePath ?? "",
+      BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
+      BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
+    };
+
+    if (uncachedTasks.length === 1) {
+      const task = uncachedTasks[0];
+      try {
+        await writeFile(task.tmpPath, task.trimmedScript + sourceUrlComment, "utf8");
+        const { stdout, stderr } = await runModule(task.tmpPath, extraEnv);
+        if (stderr) process.stderr.write(stderr);
+        const output = stripAnsiEscapeCodes(stdout);
+        if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
+        task.output = output;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        let errorMsg = `[bascik] build script error`;
+        const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
+        if (filePath) {
+          const prefix = html.slice(0, task.index);
+          const lines = prefix.split(/\r?\n/);
+          errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+        }
+        const behavior = BascikConfig.onScriptError ?? "error";
+        if (behavior === "halt" || behavior === "error") {
+          console.error(`${errorMsg}:\n${cleanedMsg}`);
+          throw new Error(`${errorMsg}:\n${cleanedMsg}`);
+        } else {
+          console.warn(`${errorMsg}:\n${cleanedMsg}`);
+        }
+        task.output = "";
+      } finally {
+        await unlink(task.tmpPath).catch(() => { });
       }
-      const behavior = BascikConfig.onScriptError ?? "error";
-      if (behavior === "halt" || behavior === "error") {
-        console.error(`${errorMsg}:\n${cleanedMsg}`);
-        throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-      } else {
-        console.warn(`${errorMsg}:\n${cleanedMsg}`);
+    } else {
+      // Batch execution of multiple uncached scripts in a single child process
+      const runnerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+      const runnerUrl = new URL(`./build-script-runner${runnerExt}`, import.meta.url);
+      const runnerPath = fileURLToPath(runnerUrl);
+
+      try {
+        await Promise.all(
+          uncachedTasks.map((task) =>
+            writeFile(task.tmpPath, task.trimmedScript + sourceUrlComment, "utf8")
+          ),
+        );
+
+        const { stdout, stderr } = await runModule(
+          runnerPath,
+          extraEnv,
+          uncachedTasks.map((task) => task.tmpPath),
+        );
+        if (stderr) process.stderr.write(stderr);
+
+        let parsedResults: Array<{ id: number; ok: boolean; stdout?: string; stderr?: string; error?: string }> | null = null;
+        try {
+          const trimmed = stdout.trim();
+          if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            parsedResults = JSON.parse(trimmed);
+          }
+        } catch {
+          parsedResults = null;
+        }
+
+        if (Array.isArray(parsedResults)) {
+          for (const res of parsedResults) {
+            const task = uncachedTasks[res.id];
+            if (!task) continue;
+            if (res.stderr) process.stderr.write(res.stderr);
+            if (res.ok) {
+              const output = stripAnsiEscapeCodes(res.stdout ?? "");
+              if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
+              task.output = output;
+            } else {
+              const msg = res.error ?? "unknown error";
+              let errorMsg = `[bascik] build script error`;
+              const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
+              if (filePath) {
+                const prefix = html.slice(0, task.index);
+                const lines = prefix.split(/\r?\n/);
+                errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+              }
+              const behavior = BascikConfig.onScriptError ?? "error";
+              if (behavior === "halt" || behavior === "error") {
+                console.error(`${errorMsg}:\n${cleanedMsg}`);
+                throw new Error(`${errorMsg}:\n${cleanedMsg}`);
+              } else {
+                console.warn(`${errorMsg}:\n${cleanedMsg}`);
+              }
+              task.output = "";
+            }
+          }
+        } else {
+          // Fallback if runner did not produce JSON (e.g. mocked execFile in tests)
+          for (const task of uncachedTasks) {
+            try {
+              const { stdout: singleStdout, stderr: singleStderr } = await runModule(task.tmpPath, extraEnv);
+              if (singleStderr) process.stderr.write(singleStderr);
+              const output = stripAnsiEscapeCodes(singleStdout);
+              if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
+              task.output = output;
+            } catch (singleErr) {
+              const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
+              let errorMsg = `[bascik] build script error`;
+              const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
+              if (filePath) {
+                const prefix = html.slice(0, task.index);
+                const lines = prefix.split(/\r?\n/);
+                errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+              }
+              const behavior = BascikConfig.onScriptError ?? "error";
+              if (behavior === "halt" || behavior === "error") {
+                console.error(`${errorMsg}:\n${cleanedMsg}`);
+                throw new Error(`${errorMsg}:\n${cleanedMsg}`);
+              } else {
+                console.warn(`${errorMsg}:\n${cleanedMsg}`);
+              }
+              task.output = "";
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback or runner failure handling
+        const msg = err instanceof Error ? err.message : String(err);
+        for (const task of uncachedTasks) {
+          let errorMsg = `[bascik] build script error`;
+          const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
+          if (filePath) {
+            const prefix = html.slice(0, task.index);
+            const lines = prefix.split(/\r?\n/);
+            errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+          }
+          const behavior = BascikConfig.onScriptError ?? "error";
+          if (behavior === "halt" || behavior === "error") {
+            console.error(`${errorMsg}:\n${cleanedMsg}`);
+            throw new Error(`${errorMsg}:\n${cleanedMsg}`);
+          } else {
+            console.warn(`${errorMsg}:\n${cleanedMsg}`);
+          }
+          task.output = "";
+        }
+      } finally {
+        await Promise.all(
+          uncachedTasks.map((t) => unlink(t.tmpPath).catch(() => { })),
+        );
       }
-      return { fullTag, index, output: "" };
-    } finally {
-      await unlink(tmpPath).catch(() => { });
     }
-  }));
+  }
 
   // Splice each script's output in at its own match index, from right to left
   // so earlier indices stay valid. Index splicing is inherently safe against
   // `$`-style replacement patterns and against duplicate identical tags.
-  outputs.sort((a, b) => b.index - a.index);
-  for (const { fullTag, index, output } of outputs) {
-    result = result.slice(0, index) + output + result.slice(index + fullTag.length);
+  tasks.sort((a, b) => b.index - a.index);
+  for (const { fullTag, index, output } of tasks) {
+    result = result.slice(0, index) + (output ?? "") + result.slice(index + fullTag.length);
   }
 
   return result;
