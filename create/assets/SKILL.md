@@ -214,22 +214,22 @@ Component tags can be placed inside `<head>` element blocks in your page shells:
 <link rel="stylesheet" href="/styles.css" />
 ```
 
-Page shells can then include `<site-head></site-head>` inside their `<head>`:
+Page shells can then include `<site-head />` inside their `<head>`:
 
 ```html
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <site-head></site-head>
+  <site-head />
   <title>Home - My Site</title>
 </head>
 <body>
-  <site-nav></site-nav>
+  <site-nav />
   <main>
     <h1>Welcome</h1>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```
@@ -673,21 +673,25 @@ If a component template contains multiple root elements, inherited attributes ar
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance: `inheritAttributes: false` in `bascik.config.ts`.
 
 ### Self-Closing Tags
+Components that do not contain inner slot content should always use self-closing void syntax:
 ```html
-<my-nav /> <my-nav class="top" />
+<site-nav />
+<site-head />
+<site-footer />
+<site-nav class="top" />
 ```
 
 ### Head Components
-Components work inside `<head>` to organize metadata:
+Components work inside `<head>` to organize metadata and shared links:
 ```html
 <!-- src/components/site-meta.html -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="My site" />
 
-<!-- usage -->
+<!-- usage in page shell -->
 <head>
+  <site-meta />
   <title>Home</title>
-  <site-meta></site-meta>
 </head>
 ```
 
@@ -1024,6 +1028,7 @@ When creating or modifying `bascik.config.ts`:
 * **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. `siteUrl`, custom `exec` scripts, or `build` minification rules).
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
+* **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
 * **Do NOT invent non-existent `exec` scripts:** `exec` is only for executing existing custom pre-build script files. If no custom script file exists in the workspace, leave `exec` as an empty array `[]` or omit it.
 * **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
