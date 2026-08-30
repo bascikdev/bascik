@@ -519,6 +519,42 @@ Understanding the distinction between **page shells** (`src/pages/*.html`) and *
 * **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
 * **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).
 
+## Shared Head Tags & Layout Component Decomposition
+
+When structuring or migrating a site with Bascik, identify repeating HTML markup across page shells (especially shared `<head>` tags such as meta charset, viewport, favicons, web fonts, Open Graph tags, global CSS links, and site headers or footers) and extract them into reusable components.
+
+Component tags can be placed inside `<head>` element blocks in your page shells:
+
+```html
+<!-- src/components/site-head.html -->
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/styles.css" />
+```
+
+Page shells can then include `<site-head></site-head>` inside their `<head>`:
+
+```html
+<!-- src/pages/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <site-head></site-head>
+  <title>Home - My Site</title>
+</head>
+<body>
+  <site-nav></site-nav>
+  <main id="main-content">
+    <h1>Welcome</h1>
+  </main>
+  <site-footer></site-footer>
+</body>
+</html>
+```
+
+At build time, Bascik expands `<site-head>` inside `<head>` and merges any component styles into the document `<head>` naturally.
+
 ### Accessible Skip Links and Focus Order
 
 Under **WCAG 2.4.1 (Bypass Blocks)**, a "Skip to main content" link must be the **first focusable element in the DOM** so keyboard users pressing `Tab` can skip past header navigation links directly to the page's primary content.
