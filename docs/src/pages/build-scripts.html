@@ -73,13 +73,13 @@
             <script data-bascik-build>
               import { readFile } from 'node:fs/promises';
               import { marked } from 'marked';
-              const md = await readFile('./content/index.md', 'utf8');
-              const firstPara = md.split('\n\n')[1];
+              const md = await readFile('./content/why-bascik.md', 'utf8');
+              const [heading, paragraph] = md.split('\n\n');
+              const title = heading.replace(/^#\s*/, '');
               console.log(`
                 <feature-card
-                  data-bascik-prop-label="Build Time"
-                  data-bascik-prop-title="Generated from Markdown"
-                  data-bascik-prop-desc="${marked.parseInline(firstPara).replace(/"/g, '&quot;')}">
+                  data-bascik-prop-title="${title}"
+                  data-bascik-prop-desc="${marked.parseInline(paragraph).replace(/"/g, '&quot;')}">
                 </feature-card>
               `);
             </script>
