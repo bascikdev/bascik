@@ -165,3 +165,7 @@ Instead of pulling in a WebSocket dependency like `ws` or injecting a heavy clie
 ### Brotli-compressed in-memory cache
 
 To achieve fast response times in both dev and production modes, Bascik keeps transpiled pages in an in-memory store (`mem.ts`). Storing large raw HTML strings in V8 memory can lead to high memory consumption and GC pressure on large sites. To prevent this, Bascik compresses all cached pages using Node's native `node:zlib` Brotli implementation. This reduces the dev server's RAM footprint by up to 90% while allowing production environments to stream pre-compressed buffers directly to modern browsers.
+
+### CLI startup and package manager overhead
+
+Bascik's Node.js CLI runtime (`pkg/dist/index.js`) boots and starts transpilation in under 50ms. When invoking commands through monorepo package managers (such as `yarn <workspace> <script>`), the package manager itself may spend 1.0 to 1.5 seconds loading plugins, parsing configuration files, and resolving workspace dependency graphs before it spawns the Node.js process. The framework's logged completion metrics (e.g. `✓ All tasks completed in Xms` and `✓ Build complete in Xms`) measure total task execution within the running Node process. For instant CLI execution with sub-50ms startup latency, invoke the compiled binary directly via `node` (e.g. `node ./node_modules/.bin/bascik`) or use a lightweight script runner.
