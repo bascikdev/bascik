@@ -43,7 +43,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
@@ -76,13 +76,17 @@ const childSemaphore = () => _sem ??= new Semaphore(
 
 // Manual promise wrapper so tests can mock execFile with a plain vi.fn()
 // without needing to simulate Node's promisify.custom symbol.
-const runModule = async (path: string, extraEnv: Record<string, string> = {}): Promise<{ stdout: string; stderr: string }> => {
+const runModule = async (
+  path: string,
+  extraEnv: Record<string, string> = {},
+  args: string[] = [],
+): Promise<{ stdout: string; stderr: string }> => {
   const sem = childSemaphore();
   await sem.acquire();
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
-      [path],
+      [path, ...args],
       {
         cwd: process.cwd(),
         env: {
@@ -453,63 +457,22 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
       }
     } else {
       // Batch execution of multiple uncached scripts in a single child process
-      const batchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const runnerPath = join(tempDir, `runner-${batchId}.mjs`);
-      const scriptItems = uncachedTasks.map((task, i) => ({
-        id: i,
-        file: task.tmpPath,
-      }));
-
-      const runnerCode = `import { pathToFileURL } from "node:url";
-
-const items = ${JSON.stringify(scriptItems)};
-const results = [];
-
-for (const item of items) {
-  let stdout = "";
-  let stderr = "";
-  const origStdout = process.stdout.write;
-  const origStderr = process.stderr.write;
-  process.stdout.write = (chunk, encoding, cb) => {
-    stdout += typeof chunk === "string" ? chunk : chunk.toString(encoding);
-    if (typeof cb === "function") cb();
-    return true;
-  };
-  process.stderr.write = (chunk, encoding, cb) => {
-    stderr += typeof chunk === "string" ? chunk : chunk.toString(encoding);
-    if (typeof cb === "function") cb();
-    return true;
-  };
-
-  try {
-    await import(pathToFileURL(item.file).href);
-    results.push({ id: item.id, ok: true, stdout, stderr });
-  } catch (err) {
-    results.push({
-      id: item.id,
-      ok: false,
-      error: err instanceof Error ? (err.stack || err.message) : String(err),
-      stdout,
-      stderr,
-    });
-  } finally {
-    process.stdout.write = origStdout;
-    process.stderr.write = origStderr;
-  }
-}
-
-process.stdout.write(JSON.stringify(results));
-`;
+      const runnerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+      const runnerUrl = new URL(`./build-script-runner${runnerExt}`, import.meta.url);
+      const runnerPath = fileURLToPath(runnerUrl);
 
       try {
-        await Promise.all([
-          writeFile(runnerPath, runnerCode, "utf8"),
-          ...uncachedTasks.map((task) =>
+        await Promise.all(
+          uncachedTasks.map((task) =>
             writeFile(task.tmpPath, task.trimmedScript + sourceUrlComment, "utf8")
           ),
-        ]);
+        );
 
-        const { stdout, stderr } = await runModule(runnerPath, extraEnv);
+        const { stdout, stderr } = await runModule(
+          runnerPath,
+          extraEnv,
+          uncachedTasks.map((task) => task.tmpPath),
+        );
         if (stderr) process.stderr.write(stderr);
 
         let parsedResults: Array<{ id: number; ok: boolean; stdout?: string; stderr?: string; error?: string }> | null = null;
@@ -600,10 +563,9 @@ process.stdout.write(JSON.stringify(results));
           task.output = "";
         }
       } finally {
-        await Promise.all([
-          unlink(runnerPath).catch(() => { }),
-          ...uncachedTasks.map((t) => unlink(t.tmpPath).catch(() => { })),
-        ]);
+        await Promise.all(
+          uncachedTasks.map((t) => unlink(t.tmpPath).catch(() => { })),
+        );
       }
     }
   }
