@@ -18,11 +18,11 @@ import {
   extractDefaultSlotContent,
   replaceNamedSlots,
   replaceDefaultSlots,
-} from './components.js';
+} from './components.ts';
 import {
   INLINE_TAGS,
   minifyHtml,
-} from './html-minifier.js';
+} from './html-minifier.ts';
 
 describe('WHATWG HTML & DOM Conformance', () => {
   describe('1. Native HTML Elements (WHATWG HTML §4.13.1.2)', () => {

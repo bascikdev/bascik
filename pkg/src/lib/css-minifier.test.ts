@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { minifyCss } from "./css-minifier.js";
+import { minifyCss } from "./css-minifier.ts";
 
 describe("minifyCss", () => {
   it("strips block comments", () => {

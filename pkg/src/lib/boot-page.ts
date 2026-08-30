@@ -1,4 +1,4 @@
-import { getLiveReloadScript } from "./live-reload.js";
+import { getLiveReloadScript } from "./live-reload.ts";
 
 /**
  * boot-page.ts: In-memory dev-server boot page.

@@ -8,7 +8,7 @@ vi.mock("./processing.js", () => ({
   transpilePage: _mockTranspilePage,
 }));
 
-import { handlePageWorkerMessage } from "./page-worker.js";
+import { handlePageWorkerMessage } from "./page-worker.ts";
 
 describe("handlePageWorkerMessage", () => {
   it("posts success result when transpilePage resolves", async () => {

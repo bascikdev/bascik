@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { extractCustomTags, checkProject } from "./check.js";
+import { extractCustomTags, checkProject } from "./check.ts";
 
 const { listPagesMock, listComponentsMock } = vi.hoisted(() => ({
   listPagesMock: vi.fn(),
@@ -9,7 +9,7 @@ const { listPagesMock, listComponentsMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("./config.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./config.js")>();
+  const original = await importOriginal<typeof import("./config.ts")>();
   // Spread into a fresh, writable object — the module namespace is frozen.
   return {
     BascikConfig: {

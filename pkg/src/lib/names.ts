@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { BascikConfig } from "./config.js";
+import { BascikConfig } from "./config.ts";
 
 const BASE62_ALPHABET =
   "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";

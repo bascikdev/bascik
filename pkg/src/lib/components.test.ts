@@ -3,7 +3,7 @@
  * Test may have been modified by hand.
  */
 import { describe, expect, it } from "vitest";
-import type { ComponentList } from "./types.js";
+import type { ComponentList } from "./types.ts";
 
 import {
   replaceTag,
@@ -22,7 +22,7 @@ import {
   mergeAttributesOntoRoot,
   listComponents,
   invalidateComponentListCache,
-} from "./components.js";
+} from "./components.ts";
 
 describe("extractScriptTags", () => {
   it("should extract one script tag", () => {

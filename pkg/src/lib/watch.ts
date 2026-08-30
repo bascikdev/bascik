@@ -6,18 +6,18 @@ import {
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
-} from "./processing.js";
+} from "./processing.ts";
 import {
   copyReplicatePath,
   copyStaticAssets,
   deleteDistDir,
   deleteDistFile,
   isInlineStylesheet,
-} from "./file-system.js";
-import { clearBuildScriptCaches } from "./build-scripts.js";
-import { BascikConfig } from "./config.js";
-import { MIME_MAP } from "./mime.js";
-import { eventEmitter, registerShutdownHandler } from "./events.js";
+} from "./file-system.ts";
+import { clearBuildScriptCaches } from "./build-scripts.ts";
+import { BascikConfig } from "./config.ts";
+import { MIME_MAP } from "./mime.ts";
+import { eventEmitter, registerShutdownHandler } from "./events.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {

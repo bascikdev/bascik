@@ -15,8 +15,8 @@ import { describe, it, expect } from 'vitest';
 import {
   namespaceScriptTags,
   prefixElementAttribute,
-} from './javascript.js';
-import { minifyJs } from './js-minifier.js';
+} from './javascript.ts';
+import { minifyJs } from './js-minifier.ts';
 
 describe('TC39 / ECMA-262 JavaScript Conformance', () => {
   const componentName = 'counter-card';
@@ -118,7 +118,7 @@ describe('TC39 / ECMA-262 JavaScript Conformance', () => {
         fileContent: `
           <div class="box"></div>
           <script type="module">
-            import { render } from './renderer.js';
+            import { render } from './renderer.ts';
             render();
           </script>
         `,
@@ -127,7 +127,7 @@ describe('TC39 / ECMA-262 JavaScript Conformance', () => {
       const namespaced = namespaceScriptTags(component);
       // ES modules are scoped to their module context by definition in WHATWG HTML §8
       expect(namespaced.fileContent).toContain('<script type="module">');
-      expect(namespaced.fileContent).toContain("import { render } from './renderer.js';");
+      expect(namespaced.fileContent).toContain("import { render } from './renderer.ts';");
     });
   });
 

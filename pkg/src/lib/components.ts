@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.js";
-import { getComponentScripts } from "./javascript.js";
-import { deepReadDirFlat } from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { executeBuildScripts } from "./build-scripts.js";
-import { minifyHtml } from "./html-minifier.js";
-import type { BascikComponent, ComponentList } from "./types.js";
+import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
+import { getComponentScripts } from "./javascript.ts";
+import { deepReadDirFlat } from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
+import { minifyHtml } from "./html-minifier.ts";
+import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
 export const NATIVE_HTML_ELEMENTS = new Set([
@@ -484,7 +484,7 @@ export const getTag = (
 // HTML minification
 // ─────────────────────────────────────────────────────────────────────────────
 
-export { minifyHtml, extractScriptTags } from "./html-minifier.js";
+export { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

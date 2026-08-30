@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import { config, buildConfig } from "./userConfig.js";
-import type { BascikConfigOptions } from "./types.js";
+import { config, buildConfig } from "./userConfig.ts";
+import type { BascikConfigOptions } from "./types.ts";
 
 const args = process.argv.slice(2);
 const isBuild =

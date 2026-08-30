@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getHttpPath } from "./paths.js";
+import { getHttpPath } from "./paths.ts";
 
 describe("getHttpPath", () => {
   it("converts pages/index.html to /", () => {

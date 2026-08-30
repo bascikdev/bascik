@@ -38,9 +38,9 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
 }));
 
-import { listComponents, minifyHtml, invalidateComponentListCache } from "./components.js";
-import { deepReadDirFlat } from "./file-system.js";
-import { executeBuildScripts } from "./build-scripts.js";
+import { listComponents, minifyHtml, invalidateComponentListCache } from "./components.ts";
+import { deepReadDirFlat } from "./file-system.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
 import { readFile } from "node:fs/promises";
 
 const mockDeepReadDirFlat = deepReadDirFlat as ReturnType<typeof vi.fn>;

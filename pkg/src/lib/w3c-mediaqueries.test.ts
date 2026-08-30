@@ -20,7 +20,7 @@ import {
   scopeInlineStyleTags,
   minifyCss,
   shieldCssStrings,
-} from './styles.js';
+} from './styles.ts';
 
 describe('W3C Media Queries 20120229 & Media Queries 4 Conformance', () => {
   const componentName = 'media-box';

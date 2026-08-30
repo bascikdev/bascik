@@ -6,7 +6,7 @@ vi.mock("./userConfig.js", () => ({
   buildConfig: {},
 }));
 
-import { defaultConfig, BascikConfig, initBascikConfig } from "./config.js";
+import { defaultConfig, BascikConfig, initBascikConfig } from "./config.ts";
 
 describe("defaultConfig", () => {
   it("has scopeScriptBlocks: true", () => {
@@ -126,14 +126,14 @@ describe("BascikConfig.isBuild", () => {
   it("is false when BASCIK_BUILD is not set", async () => {
     vi.stubEnv("BASCIK_BUILD", "0");
     vi.resetModules();
-    const mod = await import("./config.js");
+    const mod = await import("./config.ts");
     expect(mod.BascikConfig.isBuild).toBe(false);
   });
 
   it("is true when BASCIK_BUILD=1", async () => {
     vi.stubEnv("BASCIK_BUILD", "1");
     vi.resetModules();
-    const mod = await import("./config.js");
+    const mod = await import("./config.ts");
     expect(mod.BascikConfig.isBuild).toBe(true);
   });
 
@@ -141,7 +141,7 @@ describe("BascikConfig.isBuild", () => {
     const original = process.argv;
     process.argv = ["node", "bascik.js", "--build"];
     vi.resetModules();
-    const mod = await import("./config.js");
+    const mod = await import("./config.ts");
     expect(mod.BascikConfig.isBuild).toBe(true);
     process.argv = original;
   });
@@ -192,14 +192,14 @@ describe("dev vs build vs prod server defaults", () => {
   it("applies build defaults through the singleton when BASCIK_BUILD=1", async () => {
     vi.stubEnv("BASCIK_BUILD", "1");
     vi.resetModules();
-    const mod = await import("./config.js");
+    const mod = await import("./config.ts");
     expect(mod.BascikConfig.isBuild).toBe(true);
     expect(mod.BascikConfig.minify.html).toBe(true);
     expect(mod.BascikConfig.minify.identifiers).toBe(true);
   });
 
   it("exposes buildDefaultConfig with the production defaults", async () => {
-    const { buildDefaultConfig } = await import("./config.js");
+    const { buildDefaultConfig } = await import("./config.ts");
     expect(buildDefaultConfig.minify).toEqual({
       html: true,
       css: true,

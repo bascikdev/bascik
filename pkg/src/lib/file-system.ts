@@ -3,9 +3,9 @@ import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
-import { BascikConfig, shouldLog } from "./config.js";
-import { minifyCss } from "./styles.js";
-import { minifyJs } from "./javascript.js";
+import { BascikConfig, shouldLog } from "./config.ts";
+import { minifyCss } from "./styles.ts";
+import { minifyJs } from "./javascript.ts";
 
 /** Resolve an absolute path to a `parentDir/...` relative path, normalizing separators. */
 export const getRelativePath = (path: string, parentDir: string): string => {

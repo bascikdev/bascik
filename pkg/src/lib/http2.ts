@@ -1,18 +1,18 @@
 import { readFile } from "node:fs/promises";
 import http2 from "node:http2";
 import type { ServerHttp2Stream, IncomingHttpHeaders } from "node:http2";
-import { BascikConfig } from "./config.js";
-import { ensureCertificates } from "./pki.js";
+import { BascikConfig } from "./config.ts";
+import { ensureCertificates } from "./pki.ts";
 import {
   createRequestHandler,
   isNetworkResetError,
   startServerInstance,
   type BascikRequest,
   type BascikResponse
-} from "./server.js";
-import { adaptHttp1 } from "./http.js";
+} from "./server.ts";
+import { adaptHttp1 } from "./http.ts";
 
-export { _rateLimiter } from "./server.js";
+export { _rateLimiter } from "./server.ts";
 
 export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeaders): { req: BascikRequest; res: BascikResponse } => {
   let remoteIp = "unknown";

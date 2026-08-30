@@ -23,10 +23,10 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import { BascikConfig } from "./config.js";
-import { listPages } from "./file-system.js";
-import { getRelativePath } from "./file-system.js";
-import { getHttpPath } from "./paths.js";
+import { BascikConfig } from "./config.ts";
+import { listPages } from "./file-system.ts";
+import { getRelativePath } from "./file-system.ts";
+import { getHttpPath } from "./paths.ts";
 
 /**
  * Escape the five XML metacharacters for safe interpolation into `<loc>` etc.

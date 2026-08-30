@@ -3,15 +3,15 @@ import { extname, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Server as NetServer } from "node:net";
-import { mem } from "./mem.js";
-import { BascikConfig, shouldLog } from "./config.js";
-import { eventEmitter, runShutdownHandlers } from "./events.js";
-import { getHttpPath } from "./paths.js";
-import { MIME_MAP } from "./mime.js";
-import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.js";
-import { BOOT_PAGE_HTML } from "./boot-page.js";
+import { mem } from "./mem.ts";
+import { BascikConfig, shouldLog } from "./config.ts";
+import { eventEmitter, runShutdownHandlers } from "./events.ts";
+import { getHttpPath } from "./paths.ts";
+import { MIME_MAP } from "./mime.ts";
+import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
+import { BOOT_PAGE_HTML } from "./boot-page.ts";
 
-import { makeEtag } from "./names.js";
+import { makeEtag } from "./names.ts";
 
 export { makeEtag };
 
@@ -544,11 +544,11 @@ export const startServerInstance = async (
 export const startServer = async (): Promise<string> => {
   const enableTls = !!BascikConfig.prodServer?.enableTls;
   if (enableTls) {
-    const { createSelfSignedCert } = await import("./pki.js");
+    const { createSelfSignedCert } = await import("./pki.ts");
     await createSelfSignedCert();
-    const { startHttp2Server } = await import("./http2.js");
+    const { startHttp2Server } = await import("./http2.ts");
     return startHttp2Server();
   }
-  const { startHttpServer } = await import("./http.js");
+  const { startHttpServer } = await import("./http.ts");
   return startHttpServer();
 };

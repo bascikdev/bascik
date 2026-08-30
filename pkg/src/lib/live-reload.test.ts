@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.js";
-import { BOOT_PAGE_HTML } from "./boot-page.js";
+import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { BOOT_PAGE_HTML } from "./boot-page.ts";
 
 describe("LIVE_RELOAD_SCRIPT", () => {
   it("contains script tag wrapper", () => {

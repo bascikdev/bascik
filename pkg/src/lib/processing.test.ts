@@ -1,8 +1,8 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.js";
-import { collectAllScriptDeps } from "./build-scripts.js";
-import { BascikConfig } from "./config.js";
+import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
+import { collectAllScriptDeps } from "./build-scripts.ts";
+import { BascikConfig } from "./config.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -135,9 +135,9 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { readFile } from "node:fs/promises";
-import { mem } from "./mem.js";
-import { invalidateComponentListCache } from "./components.js";
-import { listPages } from "./file-system.js";
+import { mem } from "./mem.ts";
+import { invalidateComponentListCache } from "./components.ts";
+import { listPages } from "./file-system.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A: Slot fallback content
@@ -750,7 +750,7 @@ describe("pageProcessing – inlineStyles", () => {
 
   it("inlines every page stylesheet when inlineStyles is true", async () => {
     (BascikConfig as Record<string, unknown>).inlineStyles = true;
-    const { deepReadDirFlat } = await import("./file-system.js");
+    const { deepReadDirFlat } = await import("./file-system.ts");
     (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/css/a.css",
       "src/pages/css/b.css",
@@ -791,7 +791,7 @@ describe("selectivelyProcessPagesForWatchPath", () => {
       return Promise.resolve("<html><body>unrelated</body></html>");
     });
     await selectivelyProcessPagesForWatchPath("scripts/nav.mjs");
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     expect(eventEmitter.emit).toHaveBeenCalledTimes(pages.length);
   });
 
@@ -803,7 +803,7 @@ describe("selectivelyProcessPagesForWatchPath", () => {
 
     await selectivelyProcessPagesForWatchPath("content/cli.md");
 
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     expect(mem.pagesDependentOnFile).toHaveBeenCalledWith("content/cli.md");
     expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
     expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", { relativePagePath: "pages/cli.html" });
@@ -873,7 +873,7 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   it("transpiles and emits open pages FIRST before rest of pages", async () => {
     (mem as any).openPages = ["/about"];
     const emitOrder: string[] = [];
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
       if (event === "transpiled") {
         emitOrder.push(payload.relativePagePath);
@@ -898,7 +898,7 @@ describe("processPageBatch – open page priority & instant reloading", () => {
       callSequence.push(`store:${relativePagePath}`);
     });
 
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
       if (event === "transpiled") {
         callSequence.push(`emit:${payload.relativePagePath}`);
@@ -1315,7 +1315,7 @@ describe("processAllPages – side effects", () => {
     (BascikConfig as Record<string, unknown>).isBuild = false;
     (BascikConfig as Record<string, unknown>).useWorkers = false;
     // Provide a stub componentList so listComponents doesn't scan the filesystem
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
@@ -1324,7 +1324,7 @@ describe("processAllPages – side effects", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await processAllPages();
     expect(mem.storePage).toHaveBeenCalledOnce();
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       "transpiled",
       expect.objectContaining({ relativePagePath: "pages/index.html" }),
@@ -1370,7 +1370,7 @@ describe("processAllPages – side effects", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
     const emitOrder: string[] = [];
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
       if (event === "transpiled") {
         emitOrder.push(payload.relativePagePath);
@@ -1395,7 +1395,7 @@ describe("processAllPages – side effects", () => {
       callOrder.push(`store:${relativePagePath}`);
     });
 
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
       if (event === "transpiled") {
         callOrder.push(`emit:${payload.relativePagePath}`);
@@ -1436,7 +1436,7 @@ describe("selectivelyProcessPages", () => {
     vi.clearAllMocks();
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = false;
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
@@ -1466,7 +1466,7 @@ describe("selectivelyProcessPages", () => {
     (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue(["src/pages/index.html"]);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await selectivelyProcessPages("src/components/my-nav.html");
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", expect.anything());
   });
 });
@@ -1481,7 +1481,7 @@ describe("selectivelyProcessPagesForWatchPath – open pages first", () => {
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = false;
     (mem as any).openPages = [];
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
@@ -1500,7 +1500,7 @@ describe("selectivelyProcessPagesForWatchPath – open pages first", () => {
       callOrder.push(`store:${relativePagePath}`);
     });
 
-    const { eventEmitter } = await import("./events.js");
+    const { eventEmitter } = await import("./events.ts");
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event, payload) => {
       if (event === "transpiled") {
         callOrder.push(`emit:${payload.relativePagePath}`);
@@ -1533,7 +1533,7 @@ describe("processAllPages – build mode sitemap", () => {
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = true;
     (BascikConfig as Record<string, unknown>).useWorkers = false;
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
@@ -1543,7 +1543,7 @@ describe("processAllPages – build mode sitemap", () => {
 
   it("calls generateSitemapFiles after transpiling in build mode", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    const { generateSitemapFiles } = await import("./sitemap.js");
+    const { generateSitemapFiles } = await import("./sitemap.ts");
     await processAllPages();
     expect(generateSitemapFiles).toHaveBeenCalledOnce();
   });
@@ -1551,7 +1551,7 @@ describe("processAllPages – build mode sitemap", () => {
   it("does not call generateSitemapFiles in dev mode", async () => {
     (BascikConfig as Record<string, unknown>).isBuild = false;
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    const { generateSitemapFiles } = await import("./sitemap.js");
+    const { generateSitemapFiles } = await import("./sitemap.ts");
     await processAllPages();
     expect(generateSitemapFiles).not.toHaveBeenCalled();
   });
@@ -1560,7 +1560,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/bad.html"]);
     // Page with no body → transpilePage returns null
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><head></head></html>");
-    const { generateSitemapFiles } = await import("./sitemap.js");
+    const { generateSitemapFiles } = await import("./sitemap.ts");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     await processAllPages();
     expect(generateSitemapFiles).toHaveBeenCalledOnce();
@@ -1569,7 +1569,7 @@ describe("processAllPages – build mode sitemap", () => {
 
   it("calls generateSitemapFiles before printing the summary line", async () => {
     const callOrder: string[] = [];
-    const { generateSitemapFiles } = await import("./sitemap.js");
+    const { generateSitemapFiles } = await import("./sitemap.ts");
     (generateSitemapFiles as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       callOrder.push("sitemap");
     });
@@ -1674,7 +1674,7 @@ describe("transpilePage – auto-fetches componentList", () => {
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = false;
     (BascikConfig.minify as any).js = false;
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
@@ -1684,7 +1684,7 @@ describe("transpilePage – auto-fetches componentList", () => {
 
   it("calls listComponents internally when no componentList is passed", async () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     const result = await transpilePage(PAGE_PATH /* no componentList arg */);
     expect(componentsModule.listComponents).toHaveBeenCalled();
     expect(result).not.toBeNull();
@@ -1697,7 +1697,7 @@ describe("transpilePage – auto-fetches componentList", () => {
 
 describe("recursivelyTranspile – non-Error thrown in component processing", () => {
   it("stringifies a non-Error rejection in the error log", async () => {
-    const componentsModule = await import("./components.js");
+    const componentsModule = await import("./components.ts");
     // Temporarily make injectProps throw a plain string (not an Error instance)
     vi.spyOn(componentsModule, "injectProps").mockImplementationOnce(() => {
       throw "string-error-not-an-Error-object";

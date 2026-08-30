@@ -31,7 +31,7 @@ import {
   resolveCssImports,
   resolveCssImportsSync,
   hoistCssImports,
-} from "./styles.js";
+} from "./styles.ts";
 
 const css = `
 .navigation ul {

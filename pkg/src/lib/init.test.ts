@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { initProject } from "./init.js";
+import { initProject } from "./init.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 

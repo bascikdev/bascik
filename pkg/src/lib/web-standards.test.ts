@@ -4,7 +4,7 @@ import * as idl from '@webref/idl';
 import * as cssRef from '@webref/css';
 import * as webidl2 from 'webidl2';
 import bcd from '@mdn/browser-compat-data';
-import { NATIVE_HTML_ELEMENTS } from './components.js';
+import { NATIVE_HTML_ELEMENTS } from './components.ts';
 import {
   convertCssElementSelectorsToClasses,
   scopeLayerNames,
@@ -14,12 +14,12 @@ import {
   scopeViewTransitionNames,
   scopeCounterStyleNames,
   scopeAnchorNames,
-} from './styles.js';
-import { prefixElementAttribute, namespaceScriptTags } from './javascript.js';
-import { INLINE_TAGS, minifyHtml } from './html-minifier.js';
-import { MIME_MAP } from './mime.js';
-import { makeEtag, makeStatEtag } from './server.js';
-import { escapeXml, buildSitemapXml } from './sitemap.js';
+} from './styles.ts';
+import { prefixElementAttribute, namespaceScriptTags } from './javascript.ts';
+import { INLINE_TAGS, minifyHtml } from './html-minifier.ts';
+import { MIME_MAP } from './mime.ts';
+import { makeEtag, makeStatEtag } from './server.ts';
+import { escapeXml, buildSitemapXml } from './sitemap.ts';
 
 describe('Web Standards Validation via @webref & MDN BCD', () => {
   describe('HTML Standards Validation (WHATWG HTML §4 / @webref/elements & MDN BCD)', () => {
@@ -139,7 +139,7 @@ describe('Web Standards Validation via @webref & MDN BCD', () => {
       // Native ES Modules (type="module") must not be wrapped in IIFE per ECMA-262 / WHATWG HTML §7.1
       const compModule = {
         name: 'card',
-        fileContent: `<script type="module">import { x } from './x.js';</script>`,
+        fileContent: `<script type="module">import { x } from './x.ts';</script>`,
         filePath: '/src/components/card.html',
         directory: '/src/components',
         componentFileExtension: '.html',
@@ -218,7 +218,7 @@ describe('Web Standards Validation via @webref & MDN BCD', () => {
 
   describe('HTTP, ALPN & Protocols Standards Validation (RFC 9110, RFC 9112, RFC 9113, RFC 9239)', () => {
     it('verifies HSTS security header complies with RFC 6797 directive grammar', async () => {
-      const { getSecurityHeaders } = await import('./server.js');
+      const { getSecurityHeaders } = await import('./server.ts');
       const mockHttpsReq = {
         method: 'GET',
         path: '/',

@@ -75,8 +75,8 @@
 
 import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
-import { getUniqueId, minifyAttributeName } from "./names.js";
-import { BascikConfig } from "./config.js";
+import { getUniqueId, minifyAttributeName } from "./names.ts";
+import { BascikConfig } from "./config.ts";
 import {
   addElementClassesInHtml,
   addIdClassesInHtml,
@@ -94,8 +94,8 @@ import {
   extractInlineStyles,
   resolveCssImportsSync,
   shieldCssStrings,
-} from "./styles.js";
-import type { BascikComponent } from "./types.js";
+} from "./styles.ts";
+import type { BascikComponent } from "./types.ts";
 
 /**
  * Extracts and replaces function calls that might contain nested parentheses.
@@ -858,5 +858,5 @@ export const namespaceScriptTags = (
 
 // ─── Built-in JS minifier ────────────────────────────────────────────────────
 
-export { minifyJs } from "./js-minifier.js";
+export { minifyJs } from "./js-minifier.ts";
 

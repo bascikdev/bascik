@@ -21,10 +21,10 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { listPages, getRelativePath } from "./file-system.js";
-import { listComponents } from "./components.js";
-import { BascikConfig } from "./config.js";
-import type { ComponentList } from "./types.js";
+import { listPages, getRelativePath } from "./file-system.ts";
+import { listComponents } from "./components.ts";
+import { BascikConfig } from "./config.ts";
+import type { ComponentList } from "./types.ts";
 
 /**
  * Strip the inner content of elements that can legitimately contain raw,

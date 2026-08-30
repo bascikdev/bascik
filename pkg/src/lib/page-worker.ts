@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { transpilePage } from "./processing.js";
-import type { ComponentList } from "./types.js";
+import { transpilePage } from "./processing.ts";
+import type { ComponentList } from "./types.ts";
 
 export const handlePageWorkerMessage = async (
   port: { postMessage: (msg: any) => void } | null,

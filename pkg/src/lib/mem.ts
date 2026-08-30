@@ -1,11 +1,11 @@
 import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
-import { getHttpPath } from "./paths.js";
-import { getRelativePath } from "./file-system.js";
-import { htmlHasServerScripts } from "./server-scripts.js";
-import { BascikConfig } from "./config.js";
-import { makeEtag } from "./names.js";
-import type { StoredPage } from "./types.js";
+import { getHttpPath } from "./paths.ts";
+import { getRelativePath } from "./file-system.ts";
+import { htmlHasServerScripts } from "./server-scripts.ts";
+import { BascikConfig } from "./config.ts";
+import { makeEtag } from "./names.ts";
+import type { StoredPage } from "./types.ts";
 
 interface StorePageArgs {
   relativePagePath: string;

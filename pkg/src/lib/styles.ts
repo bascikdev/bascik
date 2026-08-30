@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { minifyAttributeName } from "./names.js";
-import type { BascikComponent } from "./types.js";
+import { minifyAttributeName } from "./names.ts";
+import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
 // error (e.g. breaking `0.7rem 1em` across two lines) can place a unit
@@ -360,7 +360,7 @@ export const removeCommentsFromCss = (css: string): string => {
   );
 };
 
-export { minifyCss } from "./css-minifier.js";
+export { minifyCss } from "./css-minifier.ts";
 
 // ─── CSS @import Resolution & Scoping ────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import {
   startServerInstance,
   type BascikRequest,
   type BascikResponse
-} from "./server.js";
+} from "./server.ts";
 
 export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResponse): { req: BascikRequest; res: BascikResponse } => {
   const req: BascikRequest = {

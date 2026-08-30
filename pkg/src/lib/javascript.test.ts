@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
-import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minifyJs } from "./javascript.js";
+import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minifyJs } from "./javascript.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {

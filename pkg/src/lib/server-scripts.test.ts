@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { htmlHasServerScripts, executeServerScripts, cleanStackTrace } from "./server-scripts.js";
+import { htmlHasServerScripts, executeServerScripts, cleanStackTrace } from "./server-scripts.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ vi.mock("./config.js", () => ({
 
 import { execFile } from "node:child_process";
 import { writeFile, unlink } from "node:fs/promises";
-import { BascikConfig } from "./config.js";
+import { BascikConfig } from "./config.ts";
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 

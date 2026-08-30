@@ -65,9 +65,9 @@ import {
   deleteDistFile,
   getRelativePath,
   deepReadDirFlat,
-} from "./file-system.js";
-import { getHttpPath } from "./paths.js";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.js";
+} from "./file-system.ts";
+import { getHttpPath } from "./paths.ts";
+import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
 import {
   listComponents,
   invalidateComponentListCache,
@@ -84,23 +84,23 @@ import {
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
   maskRawTextContent,
-} from "./components.js";
-import { namespaceScriptTags, prefixElementAttribute } from "./javascript.js";
-import { minifyJs } from "./js-minifier.js";
-import { deduplicateCss, minifyCss } from "./styles.js";
-import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.js";
-import { getUniqueId } from "./names.js";
-import { BascikConfig, shouldLog } from "./config.js";
-import { mem } from "./mem.js";
-import { eventEmitter } from "./events.js";
-import { generateSitemapFiles } from "./sitemap.js";
-import { WorkerPool } from "./worker-pool.js";
+} from "./components.ts";
+import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
+import { minifyJs } from "./js-minifier.ts";
+import { deduplicateCss, minifyCss } from "./styles.ts";
+import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
+import { getUniqueId } from "./names.ts";
+import { BascikConfig, shouldLog } from "./config.ts";
+import { mem } from "./mem.ts";
+import { eventEmitter } from "./events.ts";
+import { generateSitemapFiles } from "./sitemap.ts";
+import { WorkerPool } from "./worker-pool.ts";
 import type {
   BascikComponent,
   ComponentList,
   TranspileResult,
   TranspilePageResult,
-} from "./types.js";
+} from "./types.ts";
 
 export const getFilePosition = (
   filePath: string,

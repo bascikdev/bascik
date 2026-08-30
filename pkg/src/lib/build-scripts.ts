@@ -44,9 +44,9 @@ import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { getRelativePath } from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { cleanStackTrace } from "./stack-trace.js";
+import { getRelativePath } from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
 
 export { cleanStackTrace };
 

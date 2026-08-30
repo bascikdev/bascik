@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import chokidar from 'chokidar';
-import { BascikConfig } from './config.js';
-import { eventEmitter, registerShutdownHandler } from './events.js';
+import { BascikConfig } from './config.ts';
+import { eventEmitter, registerShutdownHandler } from './events.ts';
 
 const runScript = (scriptPath: string): Promise<number> => {
   const start = performance.now();

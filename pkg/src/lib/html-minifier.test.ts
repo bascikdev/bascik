@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { minifyHtml, extractScriptTags } from "./html-minifier.js";
+import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 describe("extractScriptTags", () => {
   it("extracts all <script> tags and removes HTML comments", () => {

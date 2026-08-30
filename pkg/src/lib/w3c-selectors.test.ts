@@ -18,7 +18,7 @@ import {
   scopeInlineStyleTags,
   addElementClassesInHtml,
   addIdClassesInHtml,
-} from './styles.js';
+} from './styles.ts';
 
 describe('W3C CSS Selectors & CSS2.1 Conformance', () => {
   const componentName = 'selector-box';

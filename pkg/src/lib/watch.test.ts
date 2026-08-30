@@ -131,22 +131,22 @@ vi.mock("./events.js", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { watchFiles } from "./watch.js";
+import { watchFiles } from "./watch.ts";
 import {
   pageProcessing,
   processAllPages,
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
-} from "./processing.js";
+} from "./processing.ts";
 import {
   copyReplicatePath,
   copyStaticAssets,
   deleteDistDir,
   deleteDistFile,
-} from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { eventEmitter } from "./events.js";
+} from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { eventEmitter } from "./events.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
