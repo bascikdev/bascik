@@ -6,7 +6,7 @@
  * characters ({}, :, ;, ,) while preserving string literals and url() contents verbatim.
  */
 
-import { shieldCssStrings, removeCommentsFromCss } from "./styles.js";
+import { shieldCssStrings, removeCommentsFromCss } from "./styles.ts";
 
 /**
  * Minify a CSS string: strip comments, collapse whitespace, and remove

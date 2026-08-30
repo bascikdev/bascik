@@ -8,7 +8,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NAV } from '../scripts/nav.ts';
+import { NAV } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const lighthouseDir = resolve(__dirname);

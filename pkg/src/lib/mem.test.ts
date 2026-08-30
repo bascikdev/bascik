@@ -13,19 +13,19 @@ vi.mock("./file-system.js", () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Use dynamic imports so each test gets a fresh MemoryStore instance
-let mem: Awaited<typeof import("./mem.js")>["mem"];
+let mem: Awaited<typeof import("./mem.ts")>["mem"];
 let mockGetHttpPath: ReturnType<typeof vi.fn>;
 let mockGetRelativePath: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   vi.resetModules();
   // Re-import mem; the mocked paths/file-system factories are called fresh
-  const memMod = await import("./mem.js");
+  const memMod = await import("./mem.ts");
   mem = memMod.mem;
   // Grab fresh mock instances (same object the mem module received)
-  const pathsMod = (await import("./paths.js")) as any;
+  const pathsMod = (await import("./paths.ts")) as any;
   mockGetHttpPath = pathsMod.getHttpPath;
-  const fsMod = (await import("./file-system.js")) as any;
+  const fsMod = (await import("./file-system.ts")) as any;
   mockGetRelativePath = fsMod.getRelativePath;
 });
 

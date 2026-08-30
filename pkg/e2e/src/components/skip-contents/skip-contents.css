@@ -1,0 +1,17 @@
+.wrapper {
+  padding: 10px;
+}
+
+.text {
+  color: red;
+}
+
+.code-block {
+  display: block;
+  background: #222;
+  color: #fff;
+}
+
+.active {
+  font-weight: bold;
+}

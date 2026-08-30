@@ -120,15 +120,14 @@ suite('Extension Integration Suite', () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
-    test('reports CSS compatibility warning in html style tag', async () => {
+    test('does not report CSS compatibility warning for @import in html style tag', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',
         content: '<style>\n@import "theme.css";\n</style>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) => d.message.includes('CSS @import is not processed'));
-      assert.ok(match, 'Expected CSS compatibility warning in style block');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.ok(!match, 'Should NOT report CSS compatibility warning for @import in style block');
     });
 
     test('reports unclosed component tag warning', async () => {
@@ -181,10 +180,10 @@ suite('Extension Integration Suite', () => {
     test('reports compatibility warning in standalone CSS file', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'css',
-        content: '@import "base.css";',
+        content: '[data-state] { color: red; }',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) => d.message.includes('CSS @import is not processed'));
+      const match = diagnostics.find((d) => d.message.includes('Standalone attribute selectors are not scoped'));
       assert.ok(match, 'Expected CSS warning in standalone CSS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
@@ -197,6 +196,27 @@ suite('Extension Integration Suite', () => {
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((d) => d.message.includes('Attribute selectors are not rewritten'));
       assert.ok(match, 'Expected JS warning in standalone JS file');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('reports non-hyphenated component name warning for component files in src/components/', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+
+      const nonHyphenatedUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'card.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<article><p>Card</p></article>',
+      });
+      // Test file with fsPath ending with src/components/card.html
+      const fileDoc = await vscode.workspace.openTextDocument(nonHyphenatedUri);
+      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('Under WHATWG HTML §4.13, custom elements should include a hyphen'),
+      );
+      assert.ok(match, 'Expected non-hyphenated component warning');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
   });

@@ -74,7 +74,7 @@ Instead, when `check.ts` detects a `<script data-bascik-build>` block in a file,
 `bascik --check` produces categorized diagnostic reporting:
 
 | Diagnostic Type | Severity | Exit Code | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Unknown Component Tag | Error | 1 | A hyphenated tag (e.g. `<missing-btn>`) was used in HTML, but no matching file exists in `src/components/`. |
 | Unused Component File | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page or component file. |
 

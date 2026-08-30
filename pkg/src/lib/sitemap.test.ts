@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { pagePathToUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.js";
-import { listPages } from "./file-system.js";
+import { pagePathToUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
+import { listPages } from "./file-system.ts";
 import { writeFile } from "node:fs/promises";
-import { BascikConfig } from "./config.js";
+import { BascikConfig } from "./config.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 

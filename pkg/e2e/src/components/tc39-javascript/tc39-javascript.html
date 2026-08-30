@@ -1,0 +1,64 @@
+<div class="js-standards-box" data-testid="js-standards-box">
+  <style>
+    .js-standards-box {
+      border: 2px solid #8b5cf6;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 4px;
+    }
+  </style>
+
+  <div class="status-badge" id="state-badge" data-testid="js-badge">
+    State: Initial
+  </div>
+
+  <div style="margin-top: 0.75rem;">
+    <button id="increment-btn" data-testid="js-inc-btn">Add 1</button>
+    <button id="async-btn" data-testid="js-async-btn">Async Update</button>
+    <span id="counter-val" data-testid="js-count-val" style="margin-left: 0.5rem;">0</span>
+  </div>
+
+  <ul id="log-list" data-testid="js-log-list" style="margin-top: 0.5rem; font-family: monospace; font-size: 0.875rem;">
+  </ul>
+
+  <script>
+    // Independent lexical scope per instance via IIFE
+    let instanceCount = 0;
+    const badge = document.getElementById("state-badge");
+    const incBtn = document.getElementById("increment-btn");
+    const asyncBtn = document.getElementById("async-btn");
+    const countVal = document.getElementById("counter-val");
+    const logList = document.getElementById("log-list");
+
+    const addLog = (msg) => {
+      const li = document.createElement("li");
+      li.textContent = msg;
+      logList.appendChild(li);
+    };
+
+    incBtn.addEventListener("click", () => {
+      instanceCount++;
+      countVal.textContent = String(instanceCount);
+      badge.textContent = `State: Counted (${instanceCount})`;
+      addLog(`Synchronous click: ${instanceCount}`);
+    });
+
+    asyncBtn.addEventListener("click", async () => {
+      badge.textContent = "State: Fetching...";
+      // Simulate async microtask
+      await Promise.resolve();
+      instanceCount += 5;
+      countVal.textContent = String(instanceCount);
+      badge.textContent = `State: Async (+5)`;
+      addLog(`Async resolved: ${instanceCount}`);
+    });
+  </script>
+</div>

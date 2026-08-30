@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { BascikConfigOptions } from "./types.js";
+import type { BascikConfigOptions } from "./types.ts";
 
 // Partial on nested objects that config.ts deep-merges individually.
 type UserConfig = Partial<

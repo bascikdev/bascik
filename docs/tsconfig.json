@@ -8,9 +8,10 @@
     "target": "ES2022",
     "rootDir": ".",
     "types": ["node"],
-    "lib": ["ES2025"],
+    "lib": ["ESNext"],
+    "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["scripts/**/*.ts", "e2e/**/*.ts", "bascik.config.ts"],
+  "include": ["scripts/**/*.ts", "src/lib/**/*.ts", "e2e/**/*.ts", "bascik.config.ts"],
   "exclude": ["node_modules"]
 }

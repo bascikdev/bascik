@@ -1,23 +1,21 @@
 # Templating Recipes
 
-Bascik does not ship a template language or a custom server-side object model. The core stays small: static HTML, scoped CSS, and plain Node.js scripts at build time or request time. If you want loops, partials, or layout composition, use an existing template library or a tiny project helper file.
+Bascik does not ship a proprietary template language or a custom server-side component framework. The core compiler focuses on what it does best: compiling static HTML components, scoping CSS and JavaScript, and executing plain Node.js scripts at build time or request time. When a project requires loops, partials, or layout composition, you can use native JavaScript features or any template engine from the npm ecosystem.
 
-This page shows the patterns Bascik recommends: explicit recipes, not framework magic.
+This page outlines recommended patterns for data-driven markup in Bascik projects.
 
 ## Why Bascik stays out of the template layer
 
-The goal is to keep the runtime boring and predictable.
+Traditional web frameworks often bundle proprietary templating languages, custom JSX compilers, or bespoke reactivity runtimes. Bascik intentionally avoids this layer for several reasons:
 
-- Bascik compiles HTML and CSS, not a second app framework
-- `data-bascik-server` runs plain Node.js ESM with `process.env.BASCIK_REQUEST`
-- rendering helpers stay in your app code where they belong
-- escaping and HTML composition remain explicit, not hidden behind globals
-
-If a project needs a template engine, use one that already solves the problem well. Bascik is the static-site engine; the template library is an app choice.
+- **Standard web technologies:** Bascik treats HTML as standard HTML. Rather than introducing a custom DSL that requires dedicated parser plugins, custom syntax highlighters, and bespoke IDE tooling, your markup remains standard vanilla HTML.
+- **Node.js as the execution environment:** Both build-time scripts (`data-bascik-build`) and request-time scripts (`data-bascik-server`) run as standard Node.js processes. This means you have full, direct access to the entire JavaScript language and the npm package ecosystem without needing framework-specific adapters.
+- **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and printed to standard output via `console.log`.
+- **Ecosystem flexibility:** Simple sites often only need native JavaScript template literals and a small helper module. Content-heavy publications or complex applications might prefer EJS, Nunjucks, or Handlebars. You choose the right tool for your project without framework lock-in.
 
 ## Plain JS template literals
 
-For many pages, the simplest approach is still ordinary JavaScript string templates.
+For many pages, the simplest approach is still ordinary JavaScript string templates. They require no external dependencies and work identically in both build-time (`data-bascik-build`) and request-time (`data-bascik-server`) scripts.
 
 ```html
 <script data-bascik-server>
@@ -76,7 +74,7 @@ export const renderList = (items) =>
 </script>
 ```
 
-This is the same philosophy as the server-script rule: keep the runtime small, but let your app own the reusable helpers it wants.
+> **Why `escapeHtml` is not applied automatically.** Bascik injects the standard output of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping untrusted user inputs before interpolating them into HTML strings keeps data flow safe and explicit.
 
 ## EJS for loops and includes
 
@@ -110,7 +108,7 @@ npm install ejs
 </ul>
 ```
 
-This works well when the HTML is large, repetitive, or needs layout-like partials. Bascik still stays out of the way because the template engine is just a dependency in the app layer.
+This works well when the HTML is large, repetitive, or needs layout-like partials. EJS automatically HTML-escapes values printed with `<%= ... %>`. To output unescaped HTML when you have already sanitized the markup, use `<%- ... %>`.
 
 ## Nunjucks for richer template composition
 
@@ -145,7 +143,7 @@ npm install nunjucks
 </section>
 ```
 
-Nunjucks is useful when the site has a lot of repetitive HTML and a real template structure. Bascik still remains the static compiler; the template library just renders fragments into ordinary HTML before they are injected.
+Nunjucks is useful when the site has a lot of repetitive HTML and a real template structure. Bascik still remains the static compiler; the template library just renders fragments into ordinary HTML before they are injected. Nunjucks automatically escapes variable output by default.
 
 ## Handlebars
 
@@ -178,7 +176,7 @@ npm install handlebars
 ```hbs
 {{! templates/article-list.hbs }}
 <section>
-  <h2>Articles — page {{page}}</h2>
+  <h2>Articles (Page {{page}})</h2>
   <ul>
     {{#each items}}
       <li><a href="{{href}}">{{title}}</a></li>
@@ -188,14 +186,3 @@ npm install handlebars
 ```
 
 Handlebars HTML-escapes `{{value}}` expressions by default. Use the triple-stache `{{{value}}}` only when you have already sanitized the value yourself.
-
-## Keep the boundary explicit
-
-The best rule is simple:
-
-- do not add a template language to the core
-- do not add a custom request/session/cookie object to the runtime
-- do not hide escaping or HTML assembly behind globals
-- do document recipes for the common patterns people actually reach for
-
-If a project wants a template language, it should be an explicit dependency and an explicit choice. That keeps Bascik focused on the job it actually does best: compiling static HTML, CSS, and JS without becoming a framework.

@@ -1,16 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { getComponentCss, extractInlineStyles } from "./styles.js";
-import { getComponentScripts } from "./javascript.js";
-import { deepReadDirFlat } from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { executeBuildScripts } from "./build-scripts.js";
-import { minifyHtml } from "./html-minifier.js";
-import type { BascikComponent, ComponentList } from "./types.js";
+import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
+import { getComponentScripts } from "./javascript.ts";
+import { deepReadDirFlat } from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { executeBuildScripts } from "./build-scripts.ts";
+import { minifyHtml } from "./html-minifier.ts";
+import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
-const NATIVE_HTML_ELEMENTS = new Set([
+export const NATIVE_HTML_ELEMENTS = new Set([
   "a",
+
   "abbr",
   "address",
   "area",
@@ -97,6 +98,7 @@ const NATIVE_HTML_ELEMENTS = new Set([
   "section",
   "select",
   "small",
+  "slot",
   "source",
   "span",
   "strong",
@@ -156,6 +158,11 @@ export const listComponents = async (): Promise<ComponentList> => {
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +
           `This may cause unexpected behavior — consider a hyphenated name like "my-${componentName}".`,
         );
+      } else if (!componentName.includes("-")) {
+        console.warn(
+          `warning: Component "${componentName}" is not hyphenated. ` +
+          `Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${componentName}") to avoid collisions with future HTML standards.`,
+        );
       }
       let fileContentBuffer: Buffer;
       let cssFileContent: string | undefined;
@@ -192,7 +199,8 @@ export const listComponents = async (): Promise<ComponentList> => {
         );
       }
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
-      const combinedCss = [cssFileContent, inlineCss].filter(Boolean).join("\n");
+      const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
+      const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
         minifiedContent = minifyHtml(cleanedContent);
@@ -254,17 +262,19 @@ const ATTR_VALUE = `(?:[^>"']|"[^"]*"|'[^']*')*`;
  * valid in the original.
  */
 export const maskRawTextContent = (htmlString: string): string => {
-  if (
-    !htmlString.includes("<!--") &&
-    !/<(?:script|style|textarea)\b/i.test(htmlString)
-  ) {
+  const hasComments = htmlString.includes("<!--");
+  const hasRawTags = /<(?:script|style|textarea)\b/i.test(htmlString);
+  if (!hasComments && !hasRawTags) {
     return htmlString;
   }
-  return htmlString
-    .replace(/<!--[\s\S]*?-->/g, (m) =>
+  let masked = htmlString;
+  if (hasComments) {
+    masked = masked.replace(/<!--[\s\S]*?-->/g, (m) =>
       m.length >= 7 ? `<!--${" ".repeat(m.length - 7)}-->` : m,
-    )
-    .replace(
+    );
+  }
+  if (hasRawTags) {
+    masked = masked.replace(
       // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       new RegExp(
         `(<(script|style|textarea)(?:${ATTR_VALUE})>)([\\s\\S]*?)(<\\/\\2\\s*>)`,
@@ -273,6 +283,8 @@ export const maskRawTextContent = (htmlString: string): string => {
       (_m, open: string, _tag: string, content: string, close: string) =>
         `${open}${" ".repeat(content.length)}${close}`,
     );
+  }
+  return masked;
 };
 
 /**
@@ -472,7 +484,7 @@ export const getTag = (
 // HTML minification
 // ─────────────────────────────────────────────────────────────────────────────
 
-export { minifyHtml, extractScriptTags } from "./html-minifier.js";
+export { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { minifyHtml, extractScriptTags } from "./html-minifier.js";
+import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 describe("extractScriptTags", () => {
   it("extracts all <script> tags and removes HTML comments", () => {
@@ -14,6 +14,26 @@ describe("extractScriptTags", () => {
     expect(extracted).toBe("<script>console.log(1);</script>\n<script src=\"app.js\"></script>");
   });
 
+  it("ignores data-bascik-build and data-bascik-server scripts", () => {
+    const html = `
+      <script data-bascik-server>server()</script>
+      <script>client()</script>
+      <script data-bascik-build>build()</script>
+    `;
+    const extracted = extractScriptTags(html);
+    expect(extracted).toBe("<script>client()</script>");
+  });
+
+  it("ignores non-executable scripts with single or double quotes such as application/ld+json or importmap", () => {
+    const html = `
+      <script type='application/ld+json'>{ "name": "test" }</script>
+      <script type="importmap">{ "imports": {} }</script>
+      <script>client()</script>
+    `;
+    const extracted = extractScriptTags(html);
+    expect(extracted).toBe("<script>client()</script>");
+  });
+
   it("returns an empty string if no script tags are present", () => {
     expect(extractScriptTags("<div>No scripts here</div>")).toBe("");
   });
@@ -23,6 +43,44 @@ describe("minifyHtml", () => {
   it("removes comments from HTML", () => {
     const htmlString = "<!-- comment --><div>content</div>";
     expect(minifyHtml(htmlString)).toEqual("<div>content</div>");
+  });
+
+  it("leaves data-bascik-server scripts untouched in their original location", () => {
+    const html = `<div><script data-bascik-server>server()</script></div><script>client()</script>`;
+    expect(minifyHtml(html)).toBe(`<div><script data-bascik-server>server()</script></div>\n<script>client()</script>`);
+  });
+
+  it("preserves newlines, indentation, and single-line comments inside data-bascik-server scripts", () => {
+    const htmlString = [
+      "<div>",
+      "  <script data-bascik-server>",
+      "    // Single line comment",
+      "    const x = 1;",
+      "    console.log(x);",
+      "  </script>",
+      "</div>",
+    ].join("\n");
+    const result = minifyHtml(htmlString);
+    expect(result).toBe(
+      "<div><script data-bascik-server>\n    // Single line comment\n    const x = 1;\n    console.log(x);\n  </script></div>",
+    );
+  });
+
+  it("preserves multiline data scripts such as application/ld+json verbatim in place", () => {
+    const htmlString = [
+      "<div>",
+      '  <script type="application/ld+json">',
+      "    {",
+      '      "@context": "https://schema.org",',
+      '      "@type": "Article"',
+      "    }",
+      "  </script>",
+      "</div>",
+    ].join("\n");
+    const result = minifyHtml(htmlString);
+    expect(result).toBe(
+      '<div><script type="application/ld+json">\n    {\n      "@context": "https://schema.org",\n      "@type": "Article"\n    }\n  </script></div>',
+    );
   });
 
   it("removes newlines and spaces from HTML, and removes extra spaces", () => {

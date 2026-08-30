@@ -48,8 +48,8 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import os from "node:os";
-import { BascikConfig } from "./config.js";
-import { cleanStackTrace } from "./stack-trace.js";
+import { BascikConfig } from "./config.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
 
 export { cleanStackTrace };
 

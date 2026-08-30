@@ -4,8 +4,8 @@ import { stripTypeScriptTypes } from "node:module";
 import { transform } from "esbuild";
 import postcss from "postcss";
 import autoprefixer from "autoprefixer";
-import { BascikConfig } from "./config.js";
-import { transpilePage } from "./processing.js";
+import { BascikConfig } from "./config.ts";
+import { transpilePage } from "./processing.ts";
 
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),

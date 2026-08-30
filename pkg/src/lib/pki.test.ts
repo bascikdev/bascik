@@ -28,7 +28,7 @@ vi.mock("node:os", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { createSelfSignedCert, ensureCertificates } from "./pki.js";
+import { createSelfSignedCert, ensureCertificates } from "./pki.ts";
 
 const mockAccess = _mockAccess;
 const mockExec = _mockExec;

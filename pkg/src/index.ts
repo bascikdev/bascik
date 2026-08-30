@@ -4,7 +4,7 @@ import { readFile, mkdir, appendFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
-import { CLI_USAGE, resolveCliAction } from "./lib/cli.js";
+import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 
 // Read the installed package version from package.json.
 export const readVersion = async (baseDir?: string): Promise<string> => {
@@ -91,27 +91,27 @@ export const runCli = async (
       return { action: "error", exitCode: 1 };
     }
     case "init": {
-      const { initProject } = await import("./lib/init.js");
+      const { initProject } = await import("./lib/init.ts");
       console.log("\nInitializing Bascik project…\n");
       await initProject();
       exit(0);
       return { action: "init", exitCode: 0 };
     }
     case "check": {
-      const { checkProject } = await import("./lib/check.js");
+      const { checkProject } = await import("./lib/check.ts");
       const ok = await checkProject();
       exit(ok ? 0 : 1);
       return { action: "check", exitCode: ok ? 0 : 1 };
     }
     case "prodServer": {
-      const { serveProduction } = await import("./lib/serve.js");
+      const { serveProduction } = await import("./lib/serve.ts");
       await serveProduction();
       return { action: "prodServer", exitCode: 0 };
     }
     case "dev":
     case "build":
     default: {
-      const { runTranspile } = await import("./transpile.js");
+      const { runTranspile } = await import("./transpile.ts");
       try {
         await runTranspile({ exitOnError: options.exitOnFinish !== false });
         return { action: decision.action, exitCode: 0 };

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { rm } from "node:fs/promises";
-import { resolveCliAction, CLI_USAGE } from "./lib/cli.js";
+import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
   it("starts the dev server when called with no args", () => {
@@ -112,7 +112,7 @@ describe("CLI_USAGE", () => {
 
 describe("index.ts CLI runner functions", () => {
   it("readVersion returns valid version from package.json or unknown on failure", async () => {
-    const { readVersion } = await import("./index.js");
+    const { readVersion } = await import("./index.ts");
     const ver = await readVersion();
     expect(typeof ver).toBe("string");
     expect(ver.length).toBeGreaterThan(0);
@@ -122,14 +122,14 @@ describe("index.ts CLI runner functions", () => {
   });
 
   it("resolveBuildLogPath resolves default or custom log paths", async () => {
-    const { resolveBuildLogPath } = await import("./index.js");
+    const { resolveBuildLogPath } = await import("./index.ts");
     expect(resolveBuildLogPath(["--build"])).toBeUndefined();
     expect(resolveBuildLogPath(["--build", "--log"])).toBe(".bascik/build.log");
     expect(resolveBuildLogPath(["--build", "--log", "custom.log"])).toBe("custom.log");
   });
 
   it("runCli handles help and version flags", async () => {
-    const { runCli } = await import("./index.js");
+    const { runCli } = await import("./index.ts");
     const helpRes = await runCli(["--help"], { exitOnFinish: false });
     expect(helpRes).toEqual({ action: "help", exitCode: 0 });
 
@@ -138,13 +138,13 @@ describe("index.ts CLI runner functions", () => {
   });
 
   it("runCli handles unknown flags with error", async () => {
-    const { runCli } = await import("./index.js");
+    const { runCli } = await import("./index.ts");
     const errRes = await runCli(["--unknown-flag"], { exitOnFinish: false });
     expect(errRes).toEqual({ action: "error", exitCode: 1 });
   });
 
   it("setupBuildLogging creates log directory and tees console logs", async () => {
-    const { setupBuildLogging } = await import("./index.js");
+    const { setupBuildLogging } = await import("./index.ts");
     const tmpLogPath = join(tmpdir(), "bascik-test-logs", "build.log");
     const path = await setupBuildLogging(tmpLogPath);
     expect(path).toContain("build.log");
@@ -157,12 +157,12 @@ describe("index.ts CLI runner functions", () => {
   });
 
   it("runCli executes subcommands init, check, prodServer, and dev/build", async () => {
-    const { runCli } = await import("./index.js");
+    const { runCli } = await import("./index.ts");
 
-    const initSpy = vi.spyOn(await import("./lib/init.js"), "initProject").mockResolvedValueOnce(undefined);
-    const checkSpy = vi.spyOn(await import("./lib/check.js"), "checkProject").mockResolvedValueOnce(true);
-    const serveSpy = vi.spyOn(await import("./lib/serve.js"), "serveProduction").mockResolvedValueOnce("http://localhost:8080");
-    const transpileSpy = vi.spyOn(await import("./transpile.js"), "runTranspile").mockResolvedValue(undefined);
+    const initSpy = vi.spyOn(await import("./lib/init.ts"), "initProject").mockResolvedValueOnce(undefined);
+    const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce(true);
+    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serveProduction").mockResolvedValueOnce("http://localhost:8080");
+    const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
     const initRes = await runCli(["init"], { exitOnFinish: false });
     expect(initRes.action).toBe("init");

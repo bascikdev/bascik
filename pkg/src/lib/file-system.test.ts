@@ -14,8 +14,8 @@ import {
   copyReplicatePath,
   copyStaticAssets,
   isInlineStylesheet,
-} from "./file-system.js";
-import { BascikConfig } from "./config.js";
+} from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
@@ -598,7 +598,7 @@ describe("copyReplicatePath – JS minification", () => {
 
     await copyReplicatePath("pages/js/app.js", "dist");
 
-    const { minifyJs } = await import("./javascript.js");
+    const { minifyJs } = await import("./javascript.ts");
     expect(vi.mocked(minifyJs)).toHaveBeenCalledWith("const x = 1;");
     expect(writeFile).toHaveBeenCalledOnce();
   });

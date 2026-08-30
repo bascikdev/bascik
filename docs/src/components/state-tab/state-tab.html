@@ -1,5 +1,5 @@
 <div v-scope="{ active: false }">
-  <button class="tab" :data-state="active ? 'on' : 'off'" @click="active = !active">
+  <button class="tab" type="button" :data-state="active ? 'on' : 'off'" @click="active = !active">
     Dashboard
   </button>
   <p class="status">data-state: <span v-text="active ? 'on' : 'off'"></span></p>

@@ -124,6 +124,20 @@ test.describe('attr-props-test page', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Usage 4 — class prop bug simulation
+  // -------------------------------------------------------------------------
+
+  test('usage 4: nested class attribute strings do not mangle properties', async ({ page }) => {
+    // This tests the replaceSafeAttr function inside javascript.ts/styles.ts
+    // The component wrapper element should have the `real` class but NOT `bascik__...__fake`
+    const inst = getInstance(page, 3);
+    await expect(heading(inst)).toHaveText('Data Foo Title');
+    await expect(sub(inst)).toHaveText('Default Subtitle');
+
+    await expect(inst).toHaveClass(/bascik__attr-props__ap-card/);
+  });
+
+  // -------------------------------------------------------------------------
   // Instance isolation — verify instances are independent
   // -------------------------------------------------------------------------
 

@@ -2,12 +2,20 @@
 <html lang="en">
 
 <head>
+  <!--
+    Why Bascik maintains a dedicated `/search` page:
+    1. Search Engine Integration: Google Sitelinks Search Box (Schema.org SearchAction)
+       directs direct-from-Google site searches to `bascik.dev/search?q=...`
+    2. Progressive Enhancement: Serves as a standard GET fallback if client JS is disabled.
+    3. Deep Linking: Allows bookmarking and sharing search result URLs directly.
+    4. SEO Isolation: Configured with `noindex` below to prevent search engine indexing of dynamic queries.
+  -->
   <docs-head />
   <script data-bascik-build>
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +23,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -32,14 +40,14 @@
     <div class="docs-layout">
       <docs-sidebar />
 
-      <main class="docs-content">
+      <main class="docs-content" id="main-content">
         <!-- Content rendered from docs/content/search.md at build time.
              To update page content, edit the MD file — not this file. -->
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMd('./content/search.md'));
         </script>

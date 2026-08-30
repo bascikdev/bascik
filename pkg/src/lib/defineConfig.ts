@@ -1,4 +1,4 @@
-import type { BascikConfigOptions } from "./types.js";
+import type { BascikConfigOptions } from "./types.ts";
 
 // Partial on nested objects that config.ts deep-merges individually.
 type UserConfig = Partial<

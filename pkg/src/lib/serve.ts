@@ -19,7 +19,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join, extname, resolve } from "node:path";
-import { mem } from "./mem.js";
+import { mem } from "./mem.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -93,7 +93,7 @@ const loadDistIntoMemory = async (): Promise<void> => {
  */
 export const serveProduction = async (): Promise<string> => {
   await loadDistIntoMemory();
-  const { startServer } = await import("./server.js");
+  const { startServer } = await import("./server.ts");
   const url = await startServer();
   if (url) console.log(`Server running at ${url}`);
   return url;

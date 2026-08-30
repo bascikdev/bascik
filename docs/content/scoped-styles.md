@@ -166,6 +166,45 @@ Every class name in the `.css` file is prefixed with a unique instance ID. The c
 
 Both demos on this page show the source class names under Source and their rewritten names under Output.
 
+## Global Utility & Accessibility Classes
+
+Class names in a component's HTML template are only scoped if they are declared in the component's stylesheet (`.css` file or inline `<style>` block).
+
+If a class name is **not** defined in the component's CSS, Bascik leaves it unscoped. This allows global utility classes (such as `skip-link`, `flex`, `hidden`, or global design tokens) defined in your global stylesheet (e.g. `src/css/styles.css`) to pass through and match normally across any component.
+
+```html
+<!-- src/components/site-nav.html -->
+<a href="#main-content" class="skip-link dnav-logo">Skip to main content</a>
+```
+
+```css
+/* src/components/site-nav.css */
+/* .dnav-logo is declared locally → Bascik scopes it */
+.dnav-logo {
+  display: inline-flex;
+  align-items: center;
+}
+```
+
+```css
+/* src/css/styles.css (global stylesheet) */
+/* .skip-link is NOT in site-nav.css → Bascik leaves it unscoped */
+.skip-link {
+  position: absolute;
+  top: -100px;
+}
+.skip-link:focus {
+  top: 16px;
+}
+```
+
+```html
+<!-- dist/index.html (compiled output) -->
+<a href="#main-content" class="skip-link bascik__site-nav__dnav-logo">
+  Skip to main content
+</a>
+```
+
 ## Element Selector Scoping
 
 Bare element selectors like `p {}` or `h2 {}` are converted to generated class selectors and injected onto matching elements inside the component.
@@ -247,6 +286,14 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 }
 ```
 
+## CSS @import
+
+Bascik supports standard CSS `@import` statements in component CSS (`.css` files and inline `<style>` blocks):
+
+- **Local file imports:** Local relative paths (e.g. `@import "./tokens.css"`, `@import "../shared/theme.css"`) are resolved and inlined recursively at build time. All selectors, custom properties, and keyframes inside imported stylesheets are automatically scoped to the component instance.
+- **Remote URL imports:** External URLs (e.g. `@import "https://fonts.googleapis.com/..."`) are preserved and automatically hoisted to the top of the compiled stylesheet per W3C CSS specifications.
+- **Conditions & Cascade Layers:** Optional conditions such as `layer(...)`, `supports(...)`, and media query lists attached to `@import` rules are fully preserved and wrapped around the inlined CSS.
+
 ## Toggling Scoping
 
 All scoping can be controlled in [`bascik.config.ts`](/configuration):
@@ -309,7 +356,7 @@ Setting `deduplicateCss` in `bascik.config.ts` controls whether class names are 
 > **Go deeper.** To understand how Bascik collects, scopes, and compiles CSS blocks at the parser level, check out the [CSS Deduplication internals guide](/internals/scoping-system#css-deduplication).
 
 | Feature / Aspect | `deduplicateCss: true` (Default) | `deduplicateCss: false` |
-|---|---|---|
+| --- | --- | --- |
 | **Class Scoping Scheme** | `bascik__card__wrapper` (shared per component) | `bascik__card__a1b2c3d4__wrapper` (unique per instance) |
 | **CSS Payload** | Single `<style>` block per component type, zero CSS duplication | Multiplied `<style>` blocks (one block per component instance) |
 | **`querySelector('.cls')` Behavior** | Targets the first instance on the page | Targets the matching element inside that specific instance |

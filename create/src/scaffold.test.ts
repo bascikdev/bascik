@@ -416,6 +416,7 @@ describe("scaffold", () => {
     expect(writtenTo("bascik.config.ts")).toBeDefined();
     expect(writtenTo("vite.config.js")).toBeDefined();
     expect(writtenTo(".gitignore")).toBeDefined();
+    expect(writtenTo(".hintrc")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
   });
 

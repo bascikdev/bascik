@@ -1,0 +1,100 @@
+<div class="selectors-container" data-testid="selectors-container">
+  <style>
+    .selectors-container {
+      padding: 1.5rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Relational Pseudo-class :has() */
+    .card-item {
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background-color: #f1f5f9;
+      border-left: 4px solid #94a3b8;
+    }
+
+    .card-item:has(span.badge) {
+      border-left-color: #3b82f6;
+      /* Blue for items with badge */
+      background-color: #eff6ff;
+    }
+
+    /* List pseudo-classes :is() and :where() */
+    :is(h2, h3).heading-special {
+      color: #7c3aed;
+    }
+
+    :where(section, article).content-area {
+      padding: 0.5rem;
+    }
+
+    /* Selectors 4 :nth-child(An+B of S) */
+    ul.item-list>li {
+      padding: 0.25rem 0.5rem;
+    }
+
+    ul.item-list>li:nth-child(even of .featured) {
+      background-color: #fef08a;
+      /* Yellow for even featured items */
+      font-weight: bold;
+    }
+
+    /* Attribute Selectors */
+    a[href^="https://"] {
+      color: #059669;
+    }
+
+    div[data-priority="high"] {
+      color: #dc2626;
+      font-weight: bold;
+    }
+
+    /* 2023 Relaxed CSS Nesting */
+    .nested-panel {
+      border: 1px dashed #64748b;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+
+      & p {
+        color: #334155;
+      }
+
+      >span {
+        display: block;
+        color: #0284c7;
+      }
+    }
+  </style>
+
+  <h3 class="heading-special" data-testid="selector-heading">Special Heading</h3>
+
+  <div class="card-item" data-testid="card-plain">
+    <p>Plain Card Item</p>
+  </div>
+
+  <div class="card-item" data-testid="card-with-badge">
+    <p>Badge Card Item</p>
+    <span class="badge" data-testid="inner-badge">Pro</span>
+  </div>
+
+  <ul class="item-list" data-testid="item-list">
+    <li class="featured" data-testid="feat-1">Featured 1 (1st featured)</li>
+    <li class="regular" data-testid="reg-1">Regular 1</li>
+    <li class="featured" data-testid="feat-2">Featured 2 (2nd featured - even)</li>
+    <li class="featured" data-testid="feat-3">Featured 3 (3rd featured)</li>
+  </ul>
+
+  <div class="link-box">
+    <a href="https://example.com" data-testid="secure-link">Secure Link</a>
+    <a href="//insecure.example.com" data-testid="insecure-link">Insecure Link</a>
+  </div>
+
+  <div data-priority="high" data-testid="high-priority-box">
+    High Priority Task
+  </div>
+
+  <div class="nested-panel" data-testid="nested-panel">
+    <p data-testid="nested-p">Nested Paragraph Text</p>
+    <span data-testid="nested-span">Nested Direct Span</span>
+  </div>
+</div>

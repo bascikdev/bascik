@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { mem } from "./mem.js";
-import { serveProduction } from "./serve.js";
+import { mem } from "./mem.ts";
+import { serveProduction } from "./serve.ts";
 
 const { startServerMock } = vi.hoisted(() => ({
   startServerMock: vi.fn().mockResolvedValue(undefined),

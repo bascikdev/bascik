@@ -1,10 +1,10 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { BascikConfig } from "./lib/config.js";
-import { watchFiles } from "./lib/watch.js";
-import { runExecOnBuild, startExecDev } from "./lib/exec.js";
-import { mem } from "./lib/mem.js";
-import { eventEmitter } from "./lib/events.js";
+import { BascikConfig } from "./lib/config.ts";
+import { watchFiles } from "./lib/watch.ts";
+import { runExecOnBuild, startExecDev } from "./lib/exec.ts";
+import { mem } from "./lib/mem.ts";
+import { eventEmitter } from "./lib/events.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const overallStart = performance.now();
@@ -15,7 +15,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const totalElapsed = Math.round(performance.now() - overallStart);
     console.log(`\n✓ Build complete in ${totalElapsed}ms`);
   } else {
-    const { startServer } = await import("./lib/server.js");
+    const { startServer } = await import("./lib/server.ts");
     const serverReady = startServer().catch((err) => {
       console.error("Server startup failed:", err);
       if (options.exitOnError !== false) {

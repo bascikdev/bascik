@@ -34,7 +34,7 @@ This lets you personalize pages per visitor, reading session cookies, querying a
 Every server script receives `process.env.BASCIK_REQUEST`, a JSON string with four fields:
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `path` | `string` | URL path without the query string, e.g. `"/about"` |
 | `method` | `string` | HTTP method in uppercase, e.g. `"GET"` |
 | `headers` | `object` | Request headers as string-to-string. HTTP/2 pseudo-headers (`:path`, `:method`, etc.) are excluded. |
@@ -247,7 +247,7 @@ Requests for a path that has no matching page fall through to the `404` page if 
 ## What `--serve` does differently from `--build`
 
 | Capability | `bascik --build` | `bascik --serve` |
-|---|---|---|
+| --- | --- | --- |
 | Transpile pages to `dist/` | ✓ | ✕ (reads existing `dist/`) |
 | Watch source files for changes | ✕ | ✕ |
 | Live-reload SSE | ✕ | ✕ |
@@ -268,7 +268,7 @@ The Bascik HTTP server applies several hardening measures. Most of these are act
 Every response includes these headers:
 
 | Header | Value |
-|---|---|
+| --- | --- |
 | `x-content-type-options` | `nosniff` |
 | `x-frame-options` | `SAMEORIGIN` |
 | `referrer-policy` | `strict-origin-when-cross-origin` |

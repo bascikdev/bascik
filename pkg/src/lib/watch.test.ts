@@ -131,22 +131,22 @@ vi.mock("./events.js", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { watchFiles } from "./watch.js";
+import { watchFiles } from "./watch.ts";
 import {
   pageProcessing,
   processAllPages,
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
-} from "./processing.js";
+} from "./processing.ts";
 import {
   copyReplicatePath,
   copyStaticAssets,
   deleteDistDir,
   deleteDistFile,
-} from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { eventEmitter } from "./events.js";
+} from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { eventEmitter } from "./events.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -568,6 +568,50 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
     const handler = getHandler(3, "unlink");
     await handler?.();
     expect(processAllPages).toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline styles paths watcher (dev-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("watchFiles – inlineStyles paths", () => {
+  beforeEach(async () => {
+    (BascikConfig as any).inlineStyles = ["src/css/inlined.css"];
+    await watchFiles();
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).inlineStyles = false;
+  });
+
+  it("creates an extra watcher when inlineStyles array is configured", () => {
+    expect(mockWatch).toHaveBeenCalledTimes(4);
+  });
+
+  it("watches BascikConfig.inlineStyles paths", () => {
+    expect(mockWatch.mock.calls[3][0]).toEqual(["src/css/inlined.css"]);
+  });
+
+  it("calls processAllPages on 'add'", async () => {
+    const handler = getHandler(3, "add");
+    mockProcessAllPages.mockClear();
+    await handler?.();
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls processAllPages on 'change'", async () => {
+    const handler = getHandler(3, "change");
+    mockProcessAllPages.mockClear();
+    await handler?.();
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls processAllPages on 'unlink'", async () => {
+    const handler = getHandler(3, "unlink");
+    mockProcessAllPages.mockClear();
+    await handler?.();
+    expect(processAllPages).toHaveBeenCalledTimes(1);
   });
 });
 

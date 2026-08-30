@@ -7,7 +7,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +15,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -23,7 +23,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/breadcrumb-ld.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
     );
     console.log(await breadcrumbLd());
   </script>
@@ -31,13 +31,13 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { articleSchema } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/article-schema.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
     );
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Official reference for testing and debugging Bascik applications: component markup and CSS verification, VS Code and Node.js debugger integration, Playwright end-to-end testing, server script testing, and browser component script testing." />
-  <title>Testing - Bascik Docs</title>
+    content="Overview of testing and debugging in Bascik: unit testing, component contract testing, server script testing, Playwright end-to-end testing, VS Code debuggers, and web standards linting." />
+  <title>Testing & Debugging Overview - Bascik Docs</title>
 </head>
 
 <body>
@@ -49,12 +49,12 @@
 
       <docs-sidebar />
 
-      <main class="docs-content">
+      <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
           console.log(renderSectionLabel('/testing'));
         </script>
@@ -62,16 +62,16 @@
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMd('./content/testing.md'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'scripts/render-nav.ts')).href);
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
           console.log(renderPagination('/testing'));
-        </script>>
+        </script>
       </main>
     </div>
   </div>

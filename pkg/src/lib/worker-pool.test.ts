@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WorkerPool } from "./worker-pool.js";
+import { WorkerPool } from "./worker-pool.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;

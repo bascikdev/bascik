@@ -1,4 +1,6 @@
-# Bascik Scoping Compatibility
+# Bascik Web Standards & Scoping Compatibility
+
+This page documents Bascik's support matrix against authoritative **W3C Recommendations**, **WHATWG Living Standards**, **IETF RFCs**, and **ECMA-262 specifications**, cross-referenced with **MDN Web Docs** documentation and **Baseline** browser compatibility tiers.
 
 **Legend**
 
@@ -10,7 +12,6 @@
 <!-- bascik-compatibility-rules [
   {"id":"css-attribute-selector","kind":"css","pattern":"(^|,)\\s*\\[[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]","flags":"gm","message":"Standalone attribute selectors are not scoped by Bascik and may leak globally.","suggestion":"Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector."},
   {"id":"css-is-element-names","kind":"css","pattern":":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)","flags":"gi","message":"Element names inside :is(), :where(), or :has() are not converted by Bascik.","suggestion":"Use a class selector inside the pseudo-class instead of bare element names."},
-  {"id":"css-import","kind":"css","pattern":"@import\\s+","flags":"i","message":"CSS @import is not processed by Bascik and should be avoided in component CSS.","suggestion":"Inline the CSS directly in the component or move it to a shared global stylesheet."},
   {"id":"js-id-setter","kind":"js","pattern":"\\.id\\s*=\\s*(?:[\"'`]|\\w)","flags":"g","message":"Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.","suggestion":"Capture the element once with getElementById() and operate on that reference."},
   {"id":"js-attribute-selector","kind":"js","pattern":"querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)","flags":"g","message":"Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.","suggestion":"Use getElementById() or a static class selector that Bascik can rewrite."},
   {"id":"js-template-classname","kind":"js","pattern":"className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)","flags":"g","message":"Template-literal class names are not rewritten safely at build time.","suggestion":"Use classList.add(), classList.remove(), or a static string instead."},
@@ -19,15 +20,45 @@
 
 ---
 
-## Component Template Structure
+## Web Standards Authority Matrix
 
-Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` component files.
+Bascik operates as a zero-runtime build-time compiler and HTTP delivery server. All transformations, protocols, and APIs are designed to comply with official web specifications:
 
-| Capability | Status | Notes |
-| --- | --- | --- |
-| Multiple top-level HTML elements | ✓ | Supported naturally without requiring single wrapper elements or fragment tags. All root elements are inserted in order. Inherited usage attributes merge onto the first root HTML element. |
-| Multiple `<style>` blocks | ✓ | Extracted and combined with any companion `.css` file before scoping and deduplication. *Note:* Using multiple `<style>` tags in a single component file is supported but not recommended for readability and maintainability. |
-| Multiple `<script>` blocks | ✓ | Client `<script>` blocks are each wrapped in an independent IIFE. Recommended for clean, maintainable code when separating unrelated logic within a component. Build (`data-bascik-build`), server (`data-bascik-server`), and data scripts (e.g. `type="application/ld+json"`) are processed according to their script type. |
+| Domain / Subsystem | Authoritative Standard | MDN / Baseline Status | Summary |
+| --- | --- | --- | --- |
+| HTML Elements & Composition | WHATWG HTML §3 / §4 | Baseline: Widely Available | Custom element naming, valid data-* attributes, slot fallback, raw-text masking |
+| HTML Minification | CSS Text 3 / WHATWG HTML | Baseline: Widely Available | Safe phrasing content space preservation (`INLINE_TAGS`) and block collapsing |
+| CSS Selectors & Nesting | W3C Selectors 4 / CSS Nesting | Baseline: Widely Available | Class scoping, 2023 relaxed nesting, pseudo-classes, combinators |
+| Modern CSS At-Rules | W3C CSS Module Level 3 / 5 | Baseline: Newly / Widely Available | `@layer`, `@container`, `@keyframes`, `@property`, `@counter-style`, `@starting-style`, `@position-try` |
+| JavaScript DOM Scoping | WHATWG DOM §4 / WebIDL | Baseline: Widely Available | Compile-time query rewriting for standard DOM element methods |
+| Script Execution Isolation | ECMA-262 / WHATWG HTML §7.1 | Baseline: Widely Available | IIFE encapsulation for classic scripts, native module isolation for `type="module"` |
+| HTTP/1.1 & HTTP/2 Protocols | IETF RFC 9112 / RFC 9113 | Baseline: Widely Available | ALPN negotiation, HTTP/2 multiplexing, pseudo-headers, stream lifecycle |
+| HTTP Semantics & Caching | IETF RFC 9110 / RFC 6797 | Baseline: Widely Available | Strong/weak ETags, conditional 304 responses, Vary, Brotli, HSTS header |
+| MIME Types | IETF RFC 9239 / IANA | Baseline: Widely Available | Current standard `text/javascript; charset=utf-8` media types |
+| Live Reload & Events | WHATWG EventSource | Baseline: Widely Available | Server-Sent Events (SSE) `/bascik-live-reload` endpoint |
+| Sitemaps & Robots | Sitemaps 0.9 / IETF RFC 9309 | Standard Protocols | Canonical XML sitemap and robots exclusion directives |
+
+---
+
+## Component Template Structure & HTML Standards
+
+Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` component files without requiring runtime frameworks.
+
+| Capability | Standard / Spec | Status | Notes |
+| --- | --- | --- | --- |
+| Hyphenated custom element names | WHATWG HTML §4.13.1.2 | ✓ | Component tags with hyphens (e.g. `<my-button>`, `<site-nav>`) follow the WHATWG custom element standard and prevent collisions with native tags. |
+| Single-word component filenames | WHATWG HTML §4.13.1.2 | △ | Single-word component names (e.g. `card.html` $\to$ `<card></card>`) compile for backward compatibility, but Bascik's CLI compiler and VS Code extension issue warnings recommending a hyphenated name (e.g. `my-card.html`). |
+| Native element shadowing guard | WHATWG HTML §4 | ✓ | Bascik maintains a set of 115 native HTML elements and issues a build-time warning if a component filename shadows a native tag (e.g. `header.html` or `dialog.html`). |
+| Custom `data-*` attributes | WHATWG HTML §3.2.6.6 | ✓ | Internal directives (`data-bascik-prop-*`, `data-bascik-slot`, `data-bascik-build`, `data-bascik-server`) strictly conform to XML NCName lower-case naming syntax. |
+| Self-closing custom tags | WHATWG HTML §13.1.2 | ✓ | In HTML source code, custom tags can use self-closing syntax (`<my-comp />`). Bascik expands them at build time into standard paired `<my-comp></my-comp>` elements before emitting output HTML. |
+| Multiple top-level HTML elements | WHATWG HTML | ✓ | Supported naturally without requiring single wrapper elements or fragment tags. All root elements are inserted in document order. Inherited usage attributes merge onto the first root HTML element. |
+| Multiple `<style>` blocks | WHATWG HTML §4.2.6 | ✓ | Extracted and combined with any companion `.css` file before scoping and deduplication. *Note:* Using multiple `<style>` tags in a single component file is supported, but using a single stylesheet pattern per component is recommended for maintainability. |
+| Multiple `<script>` blocks | WHATWG HTML §4.12 | ✓ | Client `<script>` blocks are each wrapped in an independent IIFE. Recommended for clean, maintainable code when separating unrelated logic within a component. Build (`data-bascik-build`), server (`data-bascik-server`), and data scripts (e.g. `type="application/ld+json"`) are processed according to their script type. |
+| Global class passthrough | WHATWG HTML | ✓ | Class names in component HTML that are not declared in the component's stylesheet (such as global utility classes like `skip-link`, `flex`, `hidden`) pass through as unscoped global classes so global stylesheets continue to match them. |
+| Slot fallback semantics | WHATWG DOM §4 | ✓ | Default and named slots preserve their inner placeholder markup when no replacement content is passed from the parent template. |
+| Raw-text content shielding | WHATWG HTML §13.1.2 | ✓ | Inner content of `<pre>`, `<textarea>`, `<script>`, `<style>`, and `<code>` blocks are shielded during compilation using sentinel tokens so code examples and literal tags (e.g. `<my-card>` in Markdown or JSON-LD) are never evaluated as active tags. |
+| Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. |
+| `<meta>` tag preservation | WHATWG HTML §4.2.5 | ✓ | Standard metadata attributes on `<meta>` tags (e.g. `name="viewport"`, `name="description"`) are shielded from attribute scoping. |
 
 ---
 
@@ -42,7 +73,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | Class selector                                     | `.foo {}`                               | ✓     | Scoped with unique instance prefix                                                                                                                                                                                                                                                        |
 | Descendant with class                              | `.foo .bar {}`                          | ✓     | All class names in selector scoped                                                                                                                                                                                                                                                        |
 | Multi-class                                        | `.foo.bar {}`                           | ✓     | Both class names scoped                                                                                                                                                                                                                                                                   |
-| Standalone element selector                        | `p {}`                                  | ✓     | Converted to a generated class and injected on matching elements in component HTML, including indented selectors inside at-rules such as `@media` and inline `<style>` blocks.                                                                                                             |
+| Standalone element selector                        | `p {}`                                  | ✓     | Converted to a generated class and injected on matching elements in component HTML, including indented selectors inside at-rules such as `@media` and inline `<style>` blocks. *Note on specificity:* converting element selectors $(0, 0, 1)$ to class selectors $(0, 1, 0)$ is an intentional zero-runtime build-time transformation that guarantees robust class isolation across components without requiring runtime shadow DOM.                                                                                                             |
 | Element pseudo-class                               | `p:hover {}`                            | ✓     | Element converted to class; pseudo-class preserved: `.bascik__...__el__p:hover {}`                                                                                                                                                                                                        |
 | Element pseudo-element                             | `p::before {}`                          | ✓     | Element converted to class; pseudo-element preserved: `.bascik__...__el__p::before {}`                                                                                                                                                                                                    |
 | `@keyframes` name                                  | `@keyframes spin {}`                    | ✓     | Name scoped; `animation:` and `animation-name:` references updated to match                                                                                                                                                                                                               |
@@ -63,7 +94,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | Cross-boundary root element selectors              | `html[data-theme="dark"] .foo {}`       | ✓     | `html`, `body`, and `head` are excluded from element-to-class conversion so cross-boundary selectors compile with the root element name intact. `html[data-theme="light"] .component-class {}` becomes `html[data-theme="light"] .bascik__comp__class {}` and correctly matches the component element when the document root carries a theme or state attribute. |
 | `:is()` / `:where()` / `:has()` with element names | `:is(p, h2) {}`                         | ✕     | Element names inside these functions are not converted. Class equivalents work fine: `:is(.foo, .bar) {}`.                                                                                                                                                          |
 | CSS nesting, class selectors                      | `& .child {}`                           | ✓     | Class selectors inside nesting are scoped normally.                                                                                                                                                                                                                                       |
-| CSS nesting, element selectors                    | `& p {}`, `& > h2 {}`                   | △     | Element selectors directly after `& ` (with optional single combinator `>`, `+`, `~`) are converted. Complex patterns (`& .parent p {}`, `&p {}`) are not converted.                                                                                                                      |
+| CSS nesting, element selectors                    | `& p {}`, `& > h2 {}`, `> h2 {}`, `p {}` | ✓     | Fully supported for explicit nesting (`& p {}`, `& > h2 {}`, `&>h2 {}`, `& + li {}`, `& ~ span {}`) and 2023 relaxed direct nesting (`> h2 {}`, `+ li {}`, `~ span {}`, direct nested element selectors without `&`).                                                                                                                      |
 | `@scope` (native)                                  | `@scope (.foo) { .bar {} }`             | ✓     | Class names in both the `@scope (.selector)` argument and the optional `to (.selector)` clause are scoped normally (handled by the global class-scoping pass). Class names inside the `@scope` block are also scoped. Element names in `@scope` arguments and indented element selectors inside the block follow the same rules as other at-rules. |
 | `:nth-child(An+B of .selector)`                    | `:nth-child(2n+1 of .item) {}`          | ✓     | Class names in the `of <selector>` argument are scoped by the global class-scoping pass (the same `(?<=\.)` regex that handles `:is()`, `:where()`, and `:has()` class arguments). Works for `:nth-child` and `:nth-last-child`.                                                          |
 
@@ -77,7 +108,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | Comments                  | ✓     | Stripped before processing.                                                                                              |
 | SVG elements in component HTML | ✓ | `class` attributes on SVG elements (`<svg>`, `<circle>`, `<path>`, `<rect>`, etc.) are scoped with the same pipeline as HTML elements. JS `classList` and `querySelector` calls targeting SVG children are rewritten. |
 | `@font-face`              | △     | Passed through untouched, the `font-family` name is not scoped. Both the declaration and all usage sites remain unmodified, so the font resolves correctly within the page. Declare `@font-face` in a shared global stylesheet rather than a component `.css` file to avoid duplicate declarations when a component is used multiple times. |
-| `@import`                 | ✕     | Not followed by the scoping pipeline. The imported CSS file is not processed or scoped. Include CSS directly in the component file instead.                       |
+| `@import`                 | ✓     | Local file imports (`@import "./file.css"`) are inlined recursively at build time and scoped to the component. Remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet per W3C CSS spec requirements. |
 | `@property`               | ✓     | `@property --name { }` declaration names are scoped. Any matching `--name:` element declarations and `var(--name)` references in the same component file are scoped to match. |
 | `@starting-style`         | ✓     | Class names and element selectors inside `@starting-style` blocks are scoped by the same passes that handle other at-rules. Both standalone `@starting-style { .foo { } }` and nested `.foo { @starting-style { } }` forms are handled. |
 | `@counter-style`          | ✓     | `@counter-style name { }` declaration names are scoped. References in `list-style`, `list-style-type`, `counter(counter, name)`, and `counters(counter, sep, name)` in the same component file are updated to match. |
@@ -99,6 +130,9 @@ Bascik rewrites DOM selector references inside component `<script>` tags to matc
 | `<script type="module">`                                 | ✓     | Not wrapped in an IIFE (modules are already isolated by spec). DOM selector references still rewritten.                                                                                                                                                     |
 | `<script type="application/json">` (and any non-JS type) | ✓     | Left completely untouched.                                                                                                                                                                                                                                  |
 | `<script data-bascik-build>`                             | ✓     | Executed at **transpile time** as a Node.js ESM module. The script's stdout is injected in place of the tag. Runs in both dev and build modes. Use `console.log()` / `process.stdout.write()` to output HTML. Top-level `import` and `await` are supported. |
+| `<script data-bascik-server>`                            | ✓     | Executed on the server at **request time** as a Node.js ESM module. Standard output replaces the tag dynamically. Top-level `import` and `await` are supported. |
+| DevTools `//# sourceURL` directives                      | ✓     | Automatically appended to every client, build, and server `<script>` block with 1:1 newline padding to preserve source file paths and line numbers in browser DevTools and Node.js debuggers. |
+| Stack trace remapping (`stack-trace.ts`)                 | ✓     | Ephemeral build-time and server-side script errors are remapped back to source HTML files and exact line numbers while stripping noisy internal Node.js runtime frames. |
 | Literal component tags inside `<script>`, `<style>`, or `<textarea>` | ✓     | Treated as text, never resolved into components. Safe to mention tags like `<my-card>` in JSON-LD strings, inline scripts, or code examples.                                                                                                              |
 | HTML comments containing component tags                  | ✓     | HTML comments (`<!-- <my-card> -->`) are stripped during HTML minification, so commented custom tags are never expanded into components.                                                                                                                |
 
@@ -172,3 +206,25 @@ const panel = document.getElementById("panel"); // rewritten with instance hash
 ### FormData with scoped `name` attributes
 
 When a component uses `<input name="username">`, Bascik scopes the `name` attribute to a per-instance value like `bascik__comp__a1b2c3__username`. As a result, `new FormData(form)` entries use the **scoped** name as the key. If your server-side code expects the unscoped field name, you will need to adapt it, or extract values using `formData.get` with the scoped name, or via `form.elements` iteration.
+
+---
+
+## HTTP Protocols, Caching & Security Standards
+
+When running Bascik's built-in HTTP/1.1 and HTTP/2 production server (`bascik --serve`) or dev server (`bascik`), responses strictly adhere to modern IETF network and caching standards:
+
+| Feature / Standard | Protocol Authority | Status | Implementation Details |
+| --- | --- | --- | --- |
+| HTTP/2 & ALPN Negotiation | IETF RFC 9113 / RFC 9112 | ✓ | Uses `http2.createSecureServer({ allowHTTP1: true })` for ALPN negotiation with automatic HTTP/1.1 fallback. Handles HTTP/2 pseudo-headers (`:status`, `:path`, `:method`, `:scheme`). |
+| Strong & Weak ETags | IETF RFC 9110 §8.8.3 | ✓ | Generates strong SHA-256 base64url ETags for dynamic HTML pages and weak stat-based ETags ($W/"\text{mtime}-\text{size}"$) for static files. |
+| Conditional GET & 304 Responses | IETF RFC 9110 §13.1.1 | ✓ | Evaluates incoming `If-None-Match` request headers against generated ETags and returns `304 Not Modified` with zero response body. |
+| Content Negotiation & Vary | IETF RFC 9110 §12.5.5 | ✓ | Sends `Vary: Accept-Encoding` and serves pre-compressed Brotli (`content-encoding: br`) assets when supported by the client. |
+| Method Guarding | IETF RFC 9110 §9.1 | ✓ | Enforces `GET` and `HEAD` requests only. Rejects other methods with `405 Method Not Allowed` and sends `Allow: GET, HEAD`. |
+| Strict-Transport-Security (HSTS) | IETF RFC 6797 | ✓ | Automatically sends `Strict-Transport-Security: max-age=31536000; includeSubDomains` when serving HTTPS or when behind an SSL reverse proxy (`x-forwarded-proto: https`). |
+| Standard Security Headers | OWASP / IETF Guidelines | ✓ | Every response sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: interest-cohort=()`. |
+| Modern JavaScript MIME Types | IETF RFC 9239 | ✓ | Serves JavaScript files (`.js`, `.mjs`, `.cjs`) as `text/javascript; charset=utf-8` (`application/javascript` is legacy and deprecated per RFC 9239). |
+| Text MIME Charsets | IANA Media Types | ✓ | All text and data MIME types (`text/html`, `text/css`, `application/json`, `application/geo+json`) include explicit `charset=utf-8`. |
+| Server-Sent Events (SSE) | WHATWG EventSource | ✓ | Endpoint `/bascik-live-reload` sends `Content-Type: text/event-stream; charset=utf-8`, `Cache-Control: no-cache`, and standard double-newline frames (`data: ...\n\n`). Injected client includes automatic reconnect and focus re-sync. |
+| Path Traversal Security | WHATWG URL Standard | ✓ | Decodes request paths and strictly enforces boundary containment within `dist/`. Rejects `/../` path segments with `400 Bad Request`. |
+| Sitemaps Protocol | Sitemaps.org / W3C | ✓ | Generates valid XML sitemaps with namespace `http://www.sitemaps.org/schemas/sitemap/0.9`, escaping XML metacharacters and normalizing canonical URLs. |
+| Robots Exclusion Protocol | IETF RFC 9309 | ✓ | Generates RFC 9309 compliant `robots.txt` pointing crawlers at the XML sitemap. |

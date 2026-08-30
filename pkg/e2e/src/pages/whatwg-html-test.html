@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WHATWG HTML & DOM E2E Test</title>
+</head>
+
+<body>
+  <h1>WHATWG HTML & DOM Conformance</h1>
+
+  <section data-testid="html-instance-1">
+    <h2>Instance 1 (Default Slots)</h2>
+    <whatwg-html></whatwg-html>
+  </section>
+
+  <section data-testid="html-instance-2">
+    <h2>Instance 2 (Custom Slots Provided)</h2>
+    <whatwg-html>
+      <div data-bascik-slot="top">
+        <h3 data-testid="custom-top">Custom Top Slot Content</h3>
+      </div>
+      <p data-testid="custom-main">Custom Main Slot Paragraph Content</p>
+      <div data-bascik-slot="bottom">
+        <span data-testid="custom-bottom">Custom Bottom Slot Content</span>
+      </div>
+    </whatwg-html>
+  </section>
+</body>
+
+</html>

@@ -5,7 +5,7 @@ Some pages need content that is specific to the current page, such as a canonica
 Bascik makes this possible by injecting three environment variables into every `data-bascik-build` subprocess:
 
 | Variable | Value |
-|---|---|
+| --- | --- |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML file currently being transpiled |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts` |
@@ -14,10 +14,10 @@ A build script reads these and computes whatever it needs, without the page know
 
 ## Canonical URL Example
 
-A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `scripts/canonical.ts` that derives the URL from `BASCIK_PAGE_FILE`:
+A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `src/lib/canonical.ts` that derives the URL from `BASCIK_PAGE_FILE`:
 
 ```ts
-// scripts/canonical.ts
+// src/lib/canonical.ts
 export async function canonical(): Promise<string> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
   const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
@@ -74,7 +74,7 @@ The script block is identical on every page. Bascik injects a different `BASCIK_
 For richer outputs, including Open Graph tags or JSON-LD structured data, a script can also read the page file itself to extract metadata. `BASCIK_PAGE_FILE` is an absolute path, so `readFile` works directly:
 
 ```ts
-// scripts/article-schema.ts (simplified)
+// src/lib/article-schema.ts (simplified)
 import { readFile } from 'node:fs/promises';
 
 export async function articleSchema(): Promise<string> {
@@ -105,11 +105,13 @@ The script runs on the source HTML before any other build scripts have fired, so
 Any tag or content block that should be consistent across every page but derived from per-page values is a good fit for this pattern:
 
 | Output | What to read from the page |
-|---|---|
+| --- | --- |
 | `<link rel="canonical">` | Derived from file path alone, with no file read needed |
 | Open Graph tags | `<title>`, `<meta name="description">` |
 | `TechArticle` JSON-LD | `<title>`, `<meta name="description">` |
 | `BreadcrumbList` JSON-LD | File path, page `<title>` |
 | `FAQPage` JSON-LD | The content Markdown file, not the HTML page |
 
-Write the script once in `scripts/`, add the same 8-line build script block to each page, and every page gets the right output automatically.
+Write the script once in `src/lib/`, add the same 8-line build script block to each page, and every page gets the right output automatically.
+
+> **Next Steps:** Learn how to write automated tests for your page-aware helpers by mocking environment variables in the [Build Scripts Testing Guide](/testing/build-scripts).

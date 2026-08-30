@@ -8,8 +8,8 @@ describe('docs-sidebar component', () => {
   it('renders sidebar navigation build script and preloading script', async () => {
     const html = await readFile(componentPath, 'utf8');
 
-    expect(html).toContain('<aside class="docs-sidebar">');
-    expect(html).toContain('scripts/nav.ts');
+    expect(html).toContain('<aside class="docs-sidebar" aria-label="Documentation navigation">');
+    expect(html).toContain('src/lib/nav.ts');
     expect(html).toContain('link.rel = \'prefetch\'');
   });
 });

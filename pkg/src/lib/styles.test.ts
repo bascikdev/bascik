@@ -1,5 +1,8 @@
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
@@ -22,7 +25,13 @@ import {
   shieldCssStrings,
   getComponentCss,
   extractInlineStyles,
-} from "./styles.js";
+  isRemoteCssUrl,
+  parseCssImport,
+  wrapInlinedCss,
+  resolveCssImports,
+  resolveCssImportsSync,
+  hoistCssImports,
+} from "./styles.ts";
 
 const css = `
 .navigation ul {
@@ -122,9 +131,17 @@ vi.mock("node:crypto", () => {
   };
 });
 
-vi.mock("node:fs/promises", () => {
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
-    readFile: vi.fn(async () => css),
+    ...actual,
+    readFile: vi.fn(async (path, opts) => {
+      try {
+        return await actual.readFile(path, opts);
+      } catch {
+        return css;
+      }
+    }),
   };
 });
 
@@ -653,6 +670,41 @@ describe("convertCssElementSelectorsToClasses – CSS nesting (& selector)", () 
     expect(css).toContain("& > .bascik__my-comp__el__h2");
   });
 
+  it("converts element in unspaced '&>h2' and '&> h2'", () => {
+    const res1 = convertCssElementSelectorsToClasses(
+      ".parent { &>h2 { font-size: 1.5rem; } }",
+      "my-comp",
+    );
+    expect(res1.css).toContain("&>.bascik__my-comp__el__h2");
+    expect(res1.elementsConvertedClasses).toContain("h2");
+
+    const res2 = convertCssElementSelectorsToClasses(
+      ".parent { &> h2 { font-size: 1.5rem; } }",
+      "my-comp",
+    );
+    expect(res2.css).toContain("&> .bascik__my-comp__el__h2");
+  });
+
+  it("converts relaxed direct nesting with combinators without leading '&'", () => {
+    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
+      ".parent { > h2 { color: red; } + li { color: blue; } ~ span { color: green; } }",
+      "my-comp",
+    );
+    expect(css).toContain("> .bascik__my-comp__el__h2");
+    expect(css).toContain("+ .bascik__my-comp__el__li");
+    expect(css).toContain("~ .bascik__my-comp__el__span");
+    expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["h2", "li", "span"]));
+  });
+
+  it("converts relaxed direct element nesting without '&'", () => {
+    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(
+      ".parent { p { color: red; } }",
+      "my-comp",
+    );
+    expect(css).toContain(".bascik__my-comp__el__p");
+    expect(elementsConvertedClasses).toContain("p");
+  });
+
   it("converts element after '& + ' (adjacent sibling combinator)", () => {
     const { css } = convertCssElementSelectorsToClasses(
       ".card { & + li { margin-top: 8px; } }",
@@ -796,6 +848,39 @@ describe("single-quoted HTML attributes in styles", () => {
       { idName: "main-box", className: "bascik__my-comp__id__main-box" },
     ]);
     expect(result).toContain('class="bascik__my-comp__id__main-box"');
+  });
+});
+
+describe("addElementClassesInHtml – nested same-tag elements", () => {
+  it("injects class to nested same-tag elements without skipping inner ones", () => {
+    const html = '<div class="outer">\n  <div class="inner">nested</div>\n</div>';
+    const result = addElementClassesInHtml(html, "my-comp", ["div"]);
+    expect(result).toBe(
+      '<div class="outer bascik__my-comp__el__div">\n  <div class="inner bascik__my-comp__el__div">nested</div>\n</div>'
+    );
+  });
+
+  it("handles void elements and nested tags together correctly", () => {
+    const html = '<div class="outer"><img src="foo.png" /><div class="inner"></div></div>';
+    const result = addElementClassesInHtml(html, "my-comp", ["div", "img"]);
+    expect(result).toBe(
+      '<div class="outer bascik__my-comp__el__div"><img class="bascik__my-comp__el__img" src="foo.png" /><div class="inner bascik__my-comp__el__div"></div></div>'
+    );
+  });
+
+  it("handles class attributes inside other string attributes safely without mangling", () => {
+    const html = `<div data-foo=' class="fake" '></div>`;
+    const result = addElementClassesInHtml(html, "MyComp", ["div"]);
+    // Should NOT mangle the inner string.
+    expect(result).not.toContain("data-foo=' class=\"fake bascik__");
+    // Should inject the new class.
+    expect(result).toContain("<div class=\"bascik__MyComp__el__div\" data-foo=' class=\"fake\" '></div>");
+  });
+
+  it("handles '>' inside attributes before or after class when scoping elements", () => {
+    const html = `<div data-condition="x > y" class="box"></div>`;
+    const result = addElementClassesInHtml(html, "MyComp", ["div"]);
+    expect(result).toBe(`<div data-condition="x > y" class="box bascik__MyComp__el__div"></div>`);
   });
 });
 
@@ -1096,6 +1181,14 @@ describe("addIdClassesInHtml", () => {
       { idName: "btn", className: "bascik__my-comp__id__btn" },
     ]);
     expect(result).not.toContain("bascik__my-comp__id__btn");
+  });
+
+  it("handles '>' inside attributes and nested class strings safely in addIdClassesInHtml", () => {
+    const html = `<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary">Click</button>`;
+    const result = addIdClassesInHtml(html, [
+      { idName: "btn", className: "bascik__my-comp__id__btn" },
+    ]);
+    expect(result).toBe(`<button data-condition="x > y" data-foo=' class="fake" ' id="btn" class="primary bascik__my-comp__id__btn">Click</button>`);
   });
 
   it("returns html unchanged when idsConverted is empty", () => {
@@ -1571,6 +1664,186 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
     expect(result).toContain("my$1comp");
     expect(result).not.toContain("myslide");
     expect(result).not.toContain("my.el");
+  });
+});
+
+// ─── CSS @import Resolution & Hoisting ────────────────────────────────────────
+
+describe("CSS @import resolution and hoisting", () => {
+  describe("isRemoteCssUrl", () => {
+    it("identifies remote and data URLs", () => {
+      expect(isRemoteCssUrl("http://example.com/style.css")).toBe(true);
+      expect(isRemoteCssUrl("https://fonts.googleapis.com/css")).toBe(true);
+      expect(isRemoteCssUrl("//cdn.jsdelivr.net/style.css")).toBe(true);
+      expect(isRemoteCssUrl("data:text/css;base64,body{color:red}")).toBe(true);
+    });
+
+    it("identifies local file paths", () => {
+      expect(isRemoteCssUrl("./tokens.css")).toBe(false);
+      expect(isRemoteCssUrl("../shared/button.css")).toBe(false);
+      expect(isRemoteCssUrl("styles/base.css")).toBe(false);
+      expect(isRemoteCssUrl("/abs/path/style.css")).toBe(false);
+    });
+  });
+
+  describe("parseCssImport", () => {
+    it("parses bare quote import", () => {
+      const parsed = parseCssImport('@import "./theme.css";');
+      expect(parsed).toEqual({
+        fullMatch: '@import "./theme.css";',
+        url: "./theme.css",
+        isRemote: false,
+        layer: undefined,
+        supports: undefined,
+        media: undefined,
+      });
+    });
+
+    it("parses url(...) import", () => {
+      const parsed = parseCssImport('http://fonts.googleapis.com/css');
+      expect(parsed).toBeNull();
+
+      const parsed2 = parseCssImport('@import url("https://fonts.googleapis.com/css2?family=Inter");');
+      expect(parsed2).toEqual({
+        fullMatch: '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+        url: "https://fonts.googleapis.com/css2?family=Inter",
+        isRemote: true,
+        layer: undefined,
+        supports: undefined,
+        media: undefined,
+      });
+    });
+
+    it("parses @import with layer, supports, and media conditions", () => {
+      const statement = '@import url("./base.css") layer(framework) supports(display: grid) screen and (min-width: 600px);';
+      const parsed = parseCssImport(statement);
+      expect(parsed).toEqual({
+        fullMatch: statement,
+        url: "./base.css",
+        isRemote: false,
+        layer: "framework",
+        supports: "display: grid",
+        media: "screen and (min-width: 600px)",
+      });
+    });
+
+    it("parses anonymous layer import", () => {
+      const statement = '@import "./reset.css" layer;';
+      const parsed = parseCssImport(statement);
+      expect(parsed?.layer).toBe(true);
+    });
+
+    it("parses MDN example syntax variants", () => {
+      // @import "custom.css";
+      expect(parseCssImport('@import "custom.css";')?.url).toBe("custom.css");
+
+      // @import 'custom.css';
+      expect(parseCssImport("@import 'custom.css';")?.url).toBe("custom.css");
+
+      // @import url(fineprint.css);
+      expect(parseCssImport("@import url(fineprint.css);")?.url).toBe("fineprint.css");
+
+      // @import url("fineprint.css");
+      expect(parseCssImport('@import url("fineprint.css");')?.url).toBe("fineprint.css");
+
+      // @import url('fineprint.css');
+      expect(parseCssImport("@import url('fineprint.css');")?.url).toBe("fineprint.css");
+
+      // @import "common.css" screen, projection;
+      const media1 = parseCssImport('@import "common.css" screen, projection;');
+      expect(media1?.url).toBe("common.css");
+      expect(media1?.media).toBe("screen, projection");
+
+      // @import url("landscape.css") screen and (orientation: landscape);
+      const media2 = parseCssImport('@import url("landscape.css") screen and (orientation: landscape);');
+      expect(media2?.media).toBe("screen and (orientation: landscape)");
+
+      // @import "common.css" layer;
+      expect(parseCssImport('@import "common.css" layer;')?.layer).toBe(true);
+
+      // @import "common.css" layer(layer-name);
+      expect(parseCssImport('@import "common.css" layer(layer-name);')?.layer).toBe("layer-name");
+
+      // @import "theme.css" supports(display: grid);
+      expect(parseCssImport('@import "theme.css" supports(display: grid);')?.supports).toBe("display: grid");
+
+      // @import "theme.css" supports(not (display: grid));
+      expect(parseCssImport('@import "theme.css" supports(not (display: grid));')?.supports).toBe("not (display: grid)");
+
+      // @import "theme.css" layer(utilities) supports(display: grid) screen;
+      const comb = parseCssImport('@import "theme.css" layer(utilities) supports(display: grid) screen;');
+      expect(comb?.layer).toBe("utilities");
+      expect(comb?.supports).toBe("display: grid");
+      expect(comb?.media).toBe("screen");
+    });
+  });
+
+  describe("wrapInlinedCss", () => {
+    it("wraps CSS in layer, supports, and media queries", () => {
+      const css = ".btn { color: red; }";
+      const wrapped = wrapInlinedCss(css, "utilities", "display: flex", "screen");
+      expect(wrapped).toContain("@media screen {");
+      expect(wrapped).toContain("@layer utilities {");
+      expect(wrapped).toContain("@supports (display: flex) {");
+      expect(wrapped).toContain(".btn { color: red; }");
+    });
+  });
+
+  describe("hoistCssImports", () => {
+    it("hoists remote @import statements to the top of the CSS", () => {
+      const css = `
+.card { padding: 1rem; }
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+.btn { color: blue; }
+@import "https://cdn.example.com/icons.css";
+      `.trim();
+
+      const hoisted = hoistCssImports(css);
+      expect(hoisted.startsWith('@import url("https://fonts.googleapis.com/css?family=Roboto");')).toBe(true);
+      expect(hoisted).toContain('@import "https://cdn.example.com/icons.css";');
+      expect(hoisted).toContain(".card { padding: 1rem; }");
+    });
+
+    it("deduplicates identical @import statements when hoisting", () => {
+      const css = `
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+.card { color: red; }
+@import url("https://fonts.googleapis.com/css?family=Roboto");
+      `.trim();
+
+      const hoisted = hoistCssImports(css);
+      const occurrences = (hoisted.match(/fonts\.googleapis/g) || []).length;
+      expect(occurrences).toBe(1);
+    });
+  });
+
+  describe("resolveCssImports / resolveCssImportsSync", () => {
+    it("inlines local CSS files recursively and prevents circular imports", async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), "bascik-import-test-"));
+      try {
+        const fileA = join(tmpDir, "a.css");
+        const fileB = join(tmpDir, "b.css");
+
+        writeFileSync(fileA, '@import "./b.css";\n.class-a { color: red; }');
+        writeFileSync(fileB, '@import "./a.css";\n.class-b { color: blue; }');
+
+        const resolved = await resolveCssImports('@import "./a.css";', join(tmpDir, "index.css"));
+        expect(resolved).toContain(".class-a { color: red; }");
+        expect(resolved).toContain(".class-b { color: blue; }");
+
+        const resolvedSync = resolveCssImportsSync('@import "./a.css";', join(tmpDir, "index.css"));
+        expect(resolvedSync).toContain(".class-a { color: red; }");
+        expect(resolvedSync).toContain(".class-b { color: blue; }");
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves remote imports untouched", async () => {
+      const css = '@import url("https://fonts.googleapis.com/css2?family=Inter");\n.main { font-family: Inter; }';
+      const resolved = await resolveCssImports(css);
+      expect(resolved).toBe(css);
+    });
   });
 });
 

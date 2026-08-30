@@ -1,0 +1,10 @@
+@import "./import-base.css";
+@import url("./import-layer.css") layer(custom-framework);
+@import "./import-supports.css" supports(display: grid);
+@import "./import-media.css" screen;
+@import url("https://fonts.googleapis.com/css2?family=Inter");
+
+.import-card {
+  padding: 16px;
+  background-color: rgb(34, 34, 34);
+}

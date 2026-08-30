@@ -7,7 +7,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
     );
     console.log(await canonical());
   </script>
@@ -15,7 +15,7 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/open-graph.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
     );
     console.log(await openGraph());
   </script>
@@ -23,13 +23,13 @@
     import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
     const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/breadcrumb-ld.ts')).href
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
     );
     console.log(await breadcrumbLd());
   </script>
   <meta name="description"
-    content="Bascik Source Available License 1.0 (BSAL-1.0) — the canonical license for the Bascik build tool." />
-  <title>License (BSAL-1.0) - Bascik</title>
+    content="Bascik Source Available License 1.0 (BSAL-1.0), the canonical license for the Bascik build tool." />
+  <title>License (BSAL-1.0) - Bascik Docs</title>
 </head>
 
 <body>
@@ -41,14 +41,14 @@
 
       <docs-sidebar />
 
-      <main class="docs-content">
+      <main class="docs-content" id="main-content">
         <!-- Content rendered from docs/content/license.md at build time.
              To update page content, edit the MD file — not this file. -->
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'scripts/md-renderer.ts')).href
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
           console.log(await renderMd('./content/license.md'));
         </script>

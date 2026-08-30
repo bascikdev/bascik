@@ -436,19 +436,16 @@ Bascik gives you complete freedom to structure your components however you prefe
 
 You can choose any of these arrangements at any time. There is **no functionality or performance difference** between them. At build time, Bascik treats them identically, extracting and scoping your styles and bundling them into the page's final compiled output.
 
-## Multiple Root Elements
+## Component Naming and Hyphens
 
-Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
+Under the **WHATWG HTML standard (§4.13.1.2)**, custom elements must contain at least one hyphen (such as `<site-nav>`, `<hello-card>`, or `<my-button>`).
 
-```html
-<h2>Section Heading</h2>
-<p class="intro">Introductory paragraph text.</p>
-<div class="card">Card content</div>
-```
+Naming your components with hyphens ensures they never collide with native HTML tags or future web standards. Bascik's CLI compiler and the official Bascik VS Code Extension validate component names at build time and in your editor:
 
-When transpiled, all root-level elements are inserted directly into the page markup in order. No unnecessary wrapper `<div>` or `<Fragment>` tags are added to your rendered HTML. Bascik's scoping engine automatically handles CSS rules, class names, IDs, element selectors, and scripts across every element in the component template.
+- If a component shares the name of a native HTML element (such as `header.html` or `dialog.html`), Bascik issues a build-time warning indicating that it may collide with standard HTML elements.
+- If a component filename is not hyphenated (such as `card.html`), Bascik compiles it for backward compatibility, but issues a warning recommending a hyphenated name like `my-card.html` or `site-card.html`.
 
-> **Attribute Inheritance:** If non-`data-bascik-*` attributes are passed on a usage tag (such as `class="extra"` or `aria-label="Section"`), Bascik merges them onto the **first** root HTML element in the component template.
+Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
 ## Void / Self-Closing Component Tags
 
@@ -463,6 +460,20 @@ When utilizing your components inside pages or other components, you can use sta
 ```
 
 If your component does not use a `<slot>` to accept inner children, you can choose to use it as a void/self-closing component. Both forms are fully supported and compile to the exact same output, with no difference in behavior or performance. You can choose whichever style matches your personal preference or project guidelines.
+
+## Multiple Root Elements
+
+Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
+
+```html
+<h2>Section Heading</h2>
+<p class="intro">Introductory paragraph text.</p>
+<div class="card">Card content</div>
+```
+
+When transpiled, all root-level elements are inserted directly into the page markup in order. No unnecessary wrapper `<div>` or `<Fragment>` tags are added to your rendered HTML. Bascik's scoping engine automatically handles CSS rules, class names, IDs, element selectors, and scripts across every element in the component template.
+
+> **Attribute Inheritance:** If non-`data-bascik-*` attributes are passed on a usage tag (such as `class="extra"` or `aria-label="Section"`), Bascik merges them onto the **first** root HTML element in the component template.
 
 ## Component Structure & Tag Ordering
 
@@ -500,3 +511,41 @@ Component templates can also contain multiple `<script>` tags. Bascik handles ea
 - **Data scripts (e.g., `type="application/ld+json"`):** Preserved intact without IIFE wrapping or JavaScript minification.
 
 > **Clean Code Recommendation:** Using separate `<script>` tags for distinct, unrelated concerns within a component (for example, a modal controller vs. an analytics handler) is recommended for code readability and maintainability. Because Bascik wraps each client script in its own IIFE, local variables stay safely isolated without polluting a single monolithic script block. Avoid splitting closely related code for no reason, but use separate `<script>` tags whenever a component handles multiple independent interactive features.
+
+## Page Shells vs. Component Templates (Landmarks & Skip Links)
+
+Understanding the distinction between **page shells** (`src/pages/*.html`) and **component templates** (`src/components/*.html`) is key to structuring accessible layouts:
+
+* **Component Templates (`src/components/*.html`):** Component markup is scoped at build time. Class names are namespaced, and `id` attributes are hashed per instance (e.g. `id="bascik__comp__a1b2__btn"`).
+* **Page Shells (`src/pages/*.html`):** Page markup is **unscoped vanilla HTML**. IDs, landmarks, and attributes written directly in page files remain literal strings (`id="main-content"`).
+
+### Accessible Skip Links and Focus Order
+
+Under **WCAG 2.4.1 (Bypass Blocks)**, a "Skip to main content" link must be the **first focusable element in the DOM** so keyboard users pressing `Tab` can skip past header navigation links directly to the page's primary content.
+
+Placing the skip link at the top of a `<site-nav>` component guarantees it is rendered at the top of every page, while targeting an unscoped `id="main-content"` on the page shell's `<main>` landmark:
+
+```html
+<!-- src/components/site-nav.html (First focusable element in DOM) -->
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<nav class="dnav" aria-label="Main">
+  <a href="/" class="dnav-logo">Logo</a>
+  <!-- Navigation links... -->
+</nav>
+
+<!-- src/pages/about.html (Page Shell: unscoped HTML landmark) -->
+<!DOCTYPE html>
+<html lang="en">
+<body>
+  <site-nav />
+
+  <!-- Target landmark: ID remains unscoped and literal for #main-content anchor -->
+  <main id="main-content" class="docs-content">
+    <h1>About Us</h1>
+    <p>Page content...</p>
+  </main>
+</body>
+</html>
+```
+
+Because `id="main-content"` is written on the page shell (`<main id="main-content">`), the `id` is not hashed, ensuring the component's `<a href="#main-content">` skip link always resolves cleanly to the main landmark.

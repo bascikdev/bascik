@@ -16,7 +16,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NAV } from './nav.ts';
+import { NAV } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');

@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
-import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minifyJs } from "./javascript.js";
+import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minifyJs } from "./javascript.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -87,6 +87,18 @@ describe("prefixElementAttribute – class with deduplicateCss: false", () => {
 });
 
 describe("prefixElementAttribute – class (existing patterns)", () => {
+  it("preserves global classes in component HTML when class is not defined in component CSS", () => {
+    const c = makeComponent(
+      '<a href="#main" class="skip-link dnav-logo">Skip</a>',
+      ".dnav-logo { color: green; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `class="skip-link ${scopeClass("dnav-logo")}"`,
+    );
+    expect(result.cssFileContent).toContain(`.${scopeClass("dnav-logo")}`);
+  });
+
   it("scopes getElementsByClassName", () => {
     const c = makeComponent(
       '<div class="card"></div><script>document.getElementsByClassName("card")</script>',
@@ -159,6 +171,24 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
     const scopedId = scope("btn");
     expect(result.fileContent).toContain(`getElementById("${scopedId}")`);
     expect(result.fileContent).toContain(`querySelector("#${scopedId}")`);
+  });
+
+  it("handles whitespace inside getElementById, querySelector, and getElementsByClassName calls", () => {
+    const c = makeComponent(
+      '<button id="btn" class="my-cls"></button>' +
+      "<script>" +
+      'document.getElementById( "btn" );\n' +
+      'document.querySelector( "#btn" );\n' +
+      'document.getElementsByClassName( "my-cls" );\n' +
+      "</script>",
+    );
+    let result = prefixElementAttribute(c, "id", "test1234");
+    result = prefixElementAttribute(result, "class", "test1234");
+    const scopedId = scope("btn");
+    const scopedCls = scopeClass("my-cls");
+    expect(result.fileContent).toContain(`getElementById( "${scopedId}" )`);
+    expect(result.fileContent).toContain(`querySelector( "#${scopedId}" )`);
+    expect(result.fileContent).toContain(`getElementsByClassName( "${scopedCls}" )`);
   });
 });
 
@@ -302,6 +332,16 @@ describe("prefixElementAttribute – class classList methods", () => {
       `classList.replace("${scopeClass("active")}", "${scopeClass("other")}")`,
     );
   });
+
+  it("scopes classList.add with nested function calls in arguments", () => {
+    const c = makeComponent(
+      '<div class="active"></div><script>el.classList.add(fn("active"), "other")</script>',
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `classList.add(fn("${scopeClass("active")}"), "${scopeClass("other")}")`,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -368,6 +408,17 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(`classList.add("${scopeClass("spinner")}")`);
     expect(result.fileContent).toContain(`classList.remove("${scopeClass("done")}")`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
+  });
+
+  it("discovers JS-only classes even when arguments contain nested parentheses", () => {
+    const c = makeComponent(
+      '<div></div><script>el.classList.add(getCls("spinner"), "done");</script>',
+      ".spinner { } .done { }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(`classList.add(getCls("${scopeClass("spinner")}"), "${scopeClass("done")}")`);
     expect(result.cssFileContent).toContain(`.${scopeClass("spinner")}`);
     expect(result.cssFileContent).toContain(`.${scopeClass("done")}`);
   });
@@ -925,6 +976,19 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).toContain('<div class="inner">literal</div>');
     expect(result.fileContent).toContain(scopeClass("outer"));
     expect(result.fileContent).not.toContain("BSKIP");
+  });
+
+  it("handles a '>' inside an attribute that appears before class, id, or name attributes", () => {
+    const c = makeComponent(
+      `<div data-condition="x > y" class="my-cls" id="my-id" name="my-name"></div>`,
+    );
+    let result = prefixElementAttribute(c, "class", "test1234");
+    result = prefixElementAttribute(result, "id", "test1234");
+    result = prefixElementAttribute(result, "name", "test1234");
+    expect(result.fileContent).toContain('data-condition="x > y"');
+    expect(result.fileContent).toContain(`class="${scopeClass("my-cls")}"`);
+    expect(result.fileContent).toContain(`id="${scope("my-id")}"`);
+    expect(result.fileContent).toContain(`name="${scope("my-name")}"`);
   });
 
   it("restores slot markers inside pre>code so slot injection can proceed", () => {

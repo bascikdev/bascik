@@ -8,7 +8,10 @@ const { mockServer, mockCreateSecureServer } = vi.hoisted(() => {
     once: vi.fn().mockReturnThis(),
     removeListener: vi.fn().mockReturnThis(),
     listen: vi.fn().mockImplementation(
-      (_port: number, _hostname: string, cb?: () => void) => { cb?.(); },
+      (_port: number, hostnameOrCb: any, cb?: () => void) => {
+        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+        callback?.();
+      },
     ),
     close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
   };
@@ -99,12 +102,12 @@ vi.mock("./mime.js", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { startHttp2Server } from "./http2.js";
-import { _rateLimiter, startServerInstance } from "./server.js";
-import { mem } from "./mem.js";
+import { startHttp2Server } from "./http2.ts";
+import { _rateLimiter, startServerInstance } from "./server.ts";
+import { mem } from "./mem.ts";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { eventEmitter } from "./events.js";
+import { eventEmitter } from "./events.ts";
 
 const mockMem = mem as unknown as {
   getPage: ReturnType<typeof vi.fn>;
@@ -428,6 +431,7 @@ describe("startHttp2Server – stream handler", () => {
   });
 
   it("treats uppercase .HTML extensions like lowercase (no static-file lookup)", async () => {
+    mockMem.getPage.mockReturnValue(undefined);
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/index.HTML", "GET"));
@@ -508,6 +512,19 @@ describe("startHttp2Server – security headers", () => {
     openCall?.[1]?.();
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining(EXPECTED_SECURITY_HEADERS),
+    );
+  });
+
+  it("includes Strict-Transport-Security header when request has :scheme https or x-forwarded-proto https", async () => {
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { ":scheme": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...EXPECTED_SECURITY_HEADERS,
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      }),
     );
   });
 });
@@ -635,7 +652,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   });
 
   it("returns 304 when If-None-Match matches and cacheHttp is enabled", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     // Temporarily set cacheHttp to true for this test
     (BascikConfig as any).cacheHttp = true;
 
@@ -681,7 +698,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   });
 
   it("sets an ETag header on static asset responses", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).cacheHttp = true;
     const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
@@ -697,7 +714,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   });
 
   it("returns 304 for a static asset when If-None-Match matches", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).cacheHttp = true;
     // Stat returns deterministic values so the ETag is predictable
     const mtimeMs = 1_705_000_000_000;
@@ -771,13 +788,13 @@ describe("startHttp2Server – path traversal protection", () => {
 describe("startHttp2Server – rate limiting", () => {
   beforeEach(async () => {
     // Rate limiting is isProdServer-only; enable it for this suite.
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     await startHttp2Server();
   });
 
   afterEach(async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = false;
   });
 
@@ -809,7 +826,7 @@ describe("startHttp2Server – rate limiting", () => {
   });
 
   it("does not throttle requests when rateLimit is disabled in prodServer config", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).prodServer.rateLimit = false;
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
@@ -830,7 +847,7 @@ describe("startHttp2Server – rate limiting", () => {
 
 describe("onError and server resiliency edge cases", () => {
   it("ignores network reset errors in onError", async () => {
-    const { onError, isNetworkResetError } = await import("./server.js");
+    const { onError, isNetworkResetError } = await import("./server.ts");
     expect(isNetworkResetError({ code: "ECONNRESET" })).toBe(true);
     expect(isNetworkResetError({ code: "EPIPE" })).toBe(true);
     expect(isNetworkResetError({ code: "ECANCELED" })).toBe(true);
@@ -853,7 +870,7 @@ describe("onError and server resiliency edge cases", () => {
   });
 
   it("responds 404 for ENOENT and 500 for generic error in onError", async () => {
-    const { onError } = await import("./server.js");
+    const { onError } = await import("./server.ts");
     const mockRes1: any = {
       headersSent: false,
       respond: vi.fn(),
@@ -874,7 +891,7 @@ describe("onError and server resiliency edge cases", () => {
   });
 
   it("handles exceptions thrown during res.respond in onError safely", async () => {
-    const { onError } = await import("./server.js");
+    const { onError } = await import("./server.ts");
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     const mockRes: any = {
       headersSent: false,
@@ -916,8 +933,8 @@ describe("onError and server resiliency edge cases", () => {
   });
 
   it("startServer boots HTTP/1.1 server when enableTls is false and HTTP/2 server when enableTls is true", async () => {
-    const { startServer } = await import("./server.js");
-    const { BascikConfig } = await import("./config.js");
+    const { startServer } = await import("./server.ts");
+    const { BascikConfig } = await import("./config.ts");
 
     // HTTP/1.1 mode
     (BascikConfig as any).prodServer.enableTls = false;
@@ -931,7 +948,7 @@ describe("onError and server resiliency edge cases", () => {
   });
 
   it("executes server scripts and sets private, no-store cache-control header", async () => {
-    const { executeServerScripts } = await import("./server-scripts.js");
+    const { executeServerScripts } = await import("./server-scripts.ts");
     const mockExecute = executeServerScripts as unknown as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<p>Server Script Result</p>");
 
@@ -980,7 +997,7 @@ describe("onError and server resiliency edge cases", () => {
   });
 
   it("returns 404 for /bascik-live-reload when isProdServer is true", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
 
     await startHttp2Server();
@@ -1096,13 +1113,13 @@ describe("onError and server resiliency edge cases", () => {
 
 describe("startHttp2Server – rate limiting details", () => {
   beforeEach(async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     await startHttp2Server();
   });
 
   afterEach(async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = false;
   });
 
@@ -1215,7 +1232,7 @@ describe("startHttp2Server – graceful shutdown", () => {
       (c: any[]) => c[0] === "SIGTERM",
     ) as [string, () => void];
 
-    const { runShutdownHandlers } = await import("./events.js");
+    const { runShutdownHandlers } = await import("./events.ts");
     const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
     sigTermHandler();
     expect(mockServer.close).toHaveBeenCalled();
@@ -1229,7 +1246,7 @@ describe("startHttp2Server – graceful shutdown", () => {
       (c: any[]) => c[0] === "SIGINT",
     ) as [string, () => void];
 
-    const { runShutdownHandlers } = await import("./events.js");
+    const { runShutdownHandlers } = await import("./events.ts");
     const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
     sigIntHandler();
     expect(mockServer.close).toHaveBeenCalled();
@@ -1498,7 +1515,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
   });
 
   it("responds 404 in --serve mode (SSE only runs in dev)", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -1651,7 +1668,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
   });
 
   it("logs access for ordinary page requests (logging.requests defaults to true)", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).devServer = { logging: { level: "info", requests: true } };
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
@@ -1664,7 +1681,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
   });
 
   it("skips logging when logging.requests is false", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).devServer = { logging: { level: "info", requests: false } };
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
@@ -1678,7 +1695,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
   });
 
   it("uses prodServer.logging config when isProdServer is true", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     (BascikConfig as any).prodServer = { logging: { level: "info", requests: true } };
     mockMem.getPage.mockReturnValue(makePage());
@@ -1763,13 +1780,13 @@ describe("startHttp2Server – query string and trailing-slash routing", () => {
 
 describe("startHttp2Server – static asset cache-control (cacheHttp=true)", () => {
   beforeEach(async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).cacheHttp = true;
     await startHttp2Server();
   });
 
   afterEach(async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).cacheHttp = false;
   });
 
@@ -1826,7 +1843,7 @@ describe("startHttp2Server – server-scripts execution", () => {
   });
 
   it("calls executeServerScripts and serves the result for pages with hasServerScripts=true", async () => {
-    const { executeServerScripts } = await import("./server-scripts.js");
+    const { executeServerScripts } = await import("./server-scripts.ts");
     const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<p>Hello World</p>");
 
@@ -1845,7 +1862,7 @@ describe("startHttp2Server – server-scripts execution", () => {
   });
 
   it("passes query params, path, and request headers to executeServerScripts", async () => {
-    const { executeServerScripts } = await import("./server-scripts.js");
+    const { executeServerScripts } = await import("./server-scripts.ts");
     const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<p>ok</p>");
 
@@ -1861,7 +1878,7 @@ describe("startHttp2Server – server-scripts execution", () => {
   });
 
   it("returns HEAD with no body for server-script pages", async () => {
-    const { executeServerScripts } = await import("./server-scripts.js");
+    const { executeServerScripts } = await import("./server-scripts.ts");
     const mockExecute = executeServerScripts as ReturnType<typeof vi.fn>;
     mockExecute.mockResolvedValueOnce("<html>ok</html>");
 
@@ -1880,7 +1897,7 @@ describe("startHttp2Server – server-scripts execution", () => {
 
 describe("startHttp2Server – custom cert config error", () => {
   it("throws when custom cert files are configured but missing", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).prodServer = {
       ...BascikConfig.prodServer,
       certFile: "custom-cert.pem",
@@ -1922,8 +1939,39 @@ describe("startHttp2Server – boot page", () => {
     expect(body?.toString()).toContain("Building site");
   });
 
+  it("serves the boot page even when /404 page is already in memory if requested page is not yet in mem", async () => {
+    mockMem.isBooting = true;
+    mockMem.getPageExact.mockReturnValue(undefined);
+    // Simulate /404 page being in memory during cold boot
+    mockMem.getPage.mockReturnValue(makePage({ relativePagePath: "pages/404.html", content: Buffer.from("<html>404 Page</html>") }));
+    const handler = getStreamHandler()!;
+    for (const path of ["/", "/getting-started", "/index.html", "/about"]) {
+      const stream = makeStream();
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 200, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }),
+      );
+      const body = stream.end.mock.calls[0]?.[0];
+      expect(body?.toString()).toContain("Building site");
+    }
+  });
+
+  it("resolves /index.html to index page stored at / in mem", async () => {
+    mockMem.isBooting = false;
+    const indexPage = makePage({ relativePagePath: "pages/index.html", content: Buffer.from("<html>Home</html>") });
+    mockMem.getPageExact.mockImplementation((p: string) => (p === "/" ? indexPage : undefined));
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/index.html", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
+    expect(stream.end).toHaveBeenCalledWith(indexPage.content);
+  });
+
   it("serves the real page (not the boot page) when the page is already in mem", async () => {
     const page = makePage({ content: Buffer.from("<html>Ready</html>") });
+    mockMem.getPageExact.mockReturnValue(page);
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -1944,7 +1992,7 @@ describe("startHttp2Server – boot page", () => {
   });
 
   it("serves a 404 (not the boot page) in --serve mode even when isBooting is true", async () => {
-    const { BascikConfig } = await import("./config.js");
+    const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     mockMem.getPage.mockReturnValue(undefined);
     const handler = getStreamHandler()!;
@@ -2115,8 +2163,9 @@ describe("startServerInstance signal handler cleanup", () => {
         if (event === "close") closeCb = cb;
         return mockServer;
       }),
-      listen: vi.fn((_port: number, _host: string, cb?: () => void) => {
-        cb?.();
+      listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
+        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+        callback?.();
         return mockServer;
       }),
       on: vi.fn().mockReturnThis(),
@@ -2149,7 +2198,11 @@ describe("startServerInstance signal handler cleanup", () => {
     const mockServerWithCloseAll: any = {
       once: vi.fn().mockReturnThis(),
       on: vi.fn().mockReturnThis(),
-      listen: vi.fn((_port: number, _host: string, cb?: () => void) => { cb?.(); return mockServerWithCloseAll; }),
+      listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
+        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+        callback?.();
+        return mockServerWithCloseAll;
+      }),
       close: vi.fn((cb?: (err?: Error) => void) => { cb?.(); }),
       closeAllConnections: vi.fn(),
       removeListener: vi.fn().mockReturnThis(),
@@ -2173,7 +2226,7 @@ describe("startServerInstance signal handler cleanup", () => {
         }
         return mockOverflowServer;
       }),
-      listen: vi.fn((port: number, _host: string, _cb?: () => void) => {
+      listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
         portAttempt = port;
         return mockOverflowServer;
       }),
@@ -2182,5 +2235,33 @@ describe("startServerInstance signal handler cleanup", () => {
     };
 
     await expect(startServerInstance(mockOverflowServer, "http")).rejects.toThrow(RangeError);
+  });
+
+  it("uses process.env.PORT when defined", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "9992";
+
+    try {
+      const mockServer: any = {
+        once: vi.fn().mockReturnThis(),
+        listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
+          const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          callback?.();
+          return mockServer;
+        }),
+        on: vi.fn().mockReturnThis(),
+        removeListener: vi.fn().mockReturnThis(),
+      };
+
+      const origin = await startServerInstance(mockServer, "http");
+      expect(mockServer.listen).toHaveBeenCalledWith(9992, "localhost", expect.any(Function));
+      expect(origin).toBe("http://localhost:9992");
+    } finally {
+      if (originalPort !== undefined) {
+        process.env.PORT = originalPort;
+      } else {
+        delete process.env.PORT;
+      }
+    }
   });
 });

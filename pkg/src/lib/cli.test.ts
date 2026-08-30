@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCliAction, filterNodeArgs } from "./cli.js";
+import { resolveCliAction, filterNodeArgs } from "./cli.ts";
 
 describe("cli helper tests", () => {
   describe("filterNodeArgs", () => {

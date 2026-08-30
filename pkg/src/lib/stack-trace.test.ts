@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanStackTrace } from "./stack-trace.js";
+import { cleanStackTrace } from "./stack-trace.ts";
 
 describe("cleanStackTrace", () => {
   it("returns raw trace if trace is empty or falsy", () => {

@@ -123,4 +123,4 @@ npm install pg
 </script>
 ```
 
-> **Next:** See the [Production Server](/server) page for the full `data-bascik-server` API, rules, and server configuration.
+> **Next:** See the [Production Server](/server) page for the full `data-bascik-server` API, rules, and server configuration, or read the [Server Scripts Testing Guide](/testing/server-scripts) to learn how to test server request handlers and database queries.

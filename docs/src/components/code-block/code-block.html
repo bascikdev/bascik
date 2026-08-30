@@ -5,7 +5,7 @@
   </div>
   <div class="cblock-pre-wrap">
     <pre><code class="cblock-body"><span data-bascik-slot></span></code></pre>
-    <button class="cblock-copy" aria-label="Copy code" title="Copy">
+    <button class="cblock-copy" type="button" aria-label="Copy code" title="Copy">
       <svg class="cblock-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -16,6 +16,7 @@
         <polyline points="20 6 9 17 4 12"></polyline>
       </svg>
     </button>
+    <span class="cblock-status sr-only" role="status" aria-live="polite"></span>
   </div>
 </div>
 
@@ -243,6 +244,7 @@
   const langEl = root && root.querySelector('.cblock-lang');
   const codeEl = root && root.querySelector('.cblock-body');
   const copyBtn = root && root.querySelector('.cblock-copy');
+  const statusEl = root && root.querySelector('.cblock-status');
   if (langEl && codeEl) {
     const lang = langEl.textContent.trim().toLowerCase();
     const raw = codeEl.textContent;
@@ -258,10 +260,12 @@
         copyBtn.classList.add('cblock-copy--done');
         copyBtn.setAttribute('aria-label', 'Copied!');
         copyBtn.setAttribute('title', 'Copied!');
+        if (statusEl) statusEl.textContent = 'Code copied to clipboard';
         setTimeout(function () {
           copyBtn.classList.remove('cblock-copy--done');
           copyBtn.setAttribute('aria-label', 'Copy code');
           copyBtn.setAttribute('title', 'Copy');
+          if (statusEl) statusEl.textContent = '';
         }, 2000);
       }).catch(function () {
         // Clipboard may be unavailable (permissions / non-secure context)

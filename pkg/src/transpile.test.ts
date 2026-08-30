@@ -32,8 +32,8 @@ vi.mock("./lib/config.js", () => ({
   BascikConfig: { isBuild: false },
 }));
 
-import { runTranspile } from "./transpile.js";
-import { BascikConfig } from "./lib/config.js";
+import { runTranspile } from "./transpile.ts";
+import { BascikConfig } from "./lib/config.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {

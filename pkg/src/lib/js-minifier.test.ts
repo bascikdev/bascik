@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { minifyJs } from "./js-minifier.js";
+import { minifyJs } from "./js-minifier.ts";
 
 describe("minifyJs – basic comment stripping and whitespace collapsing", () => {
   it("removes block comments", () => {

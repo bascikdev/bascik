@@ -81,8 +81,8 @@ vi.mock("./config.js", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import { BascikConfig } from "./config.js";
-import { runExecOnBuild, startExecDev } from "./exec.js";
+import { BascikConfig } from "./config.ts";
+import { runExecOnBuild, startExecDev } from "./exec.ts";
 
 const cfg = BascikConfig as { exec: typeof BascikConfig.exec };
 

@@ -6,6 +6,8 @@
     // Strict mode catches the most mistakes
     "strict": true,
 
+    "forceConsistentCasingInFileNames": true,
+
     // Allow .ts extension in import specifiers (required with noEmit)
     "allowImportingTsExtensions": true,
 
@@ -19,7 +21,7 @@
 
     // Include Node types for IDE support
     "types": ["node"],
-    "lib": ["ES2025"],
+    "lib": ["ESNext"],
 
     "skipLibCheck": true
   },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MIME_MAP } from "./mime.js";
+import { MIME_MAP } from "./mime.ts";
 
 describe("MIME_MAP", () => {
   it("is a Map with entries", () => {

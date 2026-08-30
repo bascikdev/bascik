@@ -6,17 +6,18 @@ import {
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
-} from "./processing.js";
+} from "./processing.ts";
 import {
   copyReplicatePath,
   copyStaticAssets,
   deleteDistDir,
   deleteDistFile,
   isInlineStylesheet,
-} from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { MIME_MAP } from "./mime.js";
-import { eventEmitter, registerShutdownHandler } from "./events.js";
+} from "./file-system.ts";
+import { clearBuildScriptCaches } from "./build-scripts.ts";
+import { BascikConfig } from "./config.ts";
+import { MIME_MAP } from "./mime.ts";
+import { eventEmitter, registerShutdownHandler } from "./events.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -112,10 +113,19 @@ export const watchFiles = async () => {
       persistent: !BascikConfig.isBuild,
     })
     // If you add a component, how will we know what pages to update unless we go and look
-    .on("add", async () => processAllPages().catch(onWatchError))
+    .on("add", async (path) => {
+      clearBuildScriptCaches(path);
+      processAllPages().catch(onWatchError);
+    })
     // For changes and deletion of components we can be selective
-    .on("change", async (path) => selectivelyProcessPages(path).catch(onWatchError))
-    .on("unlink", async (path) => selectivelyProcessPages(path).catch(onWatchError)));
+    .on("change", async (path) => {
+      clearBuildScriptCaches(path);
+      selectivelyProcessPages(path).catch(onWatchError);
+    })
+    .on("unlink", async (path) => {
+      clearBuildScriptCaches(path);
+      selectivelyProcessPages(path).catch(onWatchError);
+    }));
 
   // Re-transpile all pages when user-specified extra paths change (dev only)
   if (!BascikConfig.isBuild && BascikConfig.watch.length) {
@@ -124,8 +134,29 @@ export const watchFiles = async () => {
         ignoreInitial: true,
         persistent: true,
       })
-      .on("add", async (path) => selectivelyProcessPagesForWatchPath(path).catch(onWatchError))
-      .on("change", async (path) => selectivelyProcessPagesForWatchPath(path).catch(onWatchError))
+      .on("add", async (path) => {
+        clearBuildScriptCaches(path);
+        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+      })
+      .on("change", async (path) => {
+        clearBuildScriptCaches(path);
+        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+      })
+      .on("unlink", async () => {
+        clearBuildScriptCaches();
+        processAllPages().catch(onWatchError);
+      }));
+  }
+
+  // Re-transpile all pages when inlined global stylesheets change (dev only)
+  if (!BascikConfig.isBuild && Array.isArray(BascikConfig.inlineStyles) && BascikConfig.inlineStyles.length) {
+    w(chokidar
+      .watch(BascikConfig.inlineStyles, {
+        ignoreInitial: true,
+        persistent: true,
+      })
+      .on("add", async () => processAllPages().catch(onWatchError))
+      .on("change", async () => processAllPages().catch(onWatchError))
       .on("unlink", async () => processAllPages().catch(onWatchError)));
   }
 };

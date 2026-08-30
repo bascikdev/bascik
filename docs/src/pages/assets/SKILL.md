@@ -124,6 +124,12 @@ For local contributor testing of the generator itself, rebuild from `create/`, l
 
 A component is one `.html` file inside `src/components/`. Its tag name is derived from the file name.
 
+### Component Naming Conventions
+Under the **WHATWG HTML standard (§4.13.1.2)**, custom elements should contain at least one hyphen (such as `<site-nav>`, `<hello-card>`, or `<my-button>`).
+* Single-word component filenames (e.g., `card.html`) compile for backward compatibility, but Bascik's CLI compiler and VS Code extension issue warnings encouraging a hyphenated name (`my-card.html`).
+* Filenames matching native HTML elements (e.g., `header.html` or `dialog.html`) issue a shadowing warning.
+* Always use lowercase hyphenated filenames in `src/components/` (e.g., `src/components/feature-card.html` for `<feature-card>`).
+
 **HTML-only component:**
 ```html
 <!-- src/components/page-footer.html -->
@@ -207,6 +213,9 @@ Unlike other frameworks that require a single wrapper element or fragment, Basci
 Scoped CSS can live in a paired `.css` file or one or more inline `<style>` tags inside component HTML. Both go through the same scoping pipeline.
 
 At build time, Bascik extracts all inline `<style>` blocks, combines them with any companion `.css` file, scopes them, and injects them into the document `<head>`. Using multiple `<style>` tags (or mixing them with a companion `.css` file) is supported but not recommended for readability and maintainability. Choose a single stylesheet pattern per component.
+
+### Global Class Passthrough
+Bascik checks whether a class name in a component template is defined in the component's CSS (paired `.css` or inline `<style>`). Only class names defined in the component's stylesheet are scoped (prefixed/hashed). Classes in component HTML that are NOT defined in the component's stylesheet (such as global utility classes like `skip-link`, `flex`, `hidden`, or design system classes) pass through as unscoped global classes so global stylesheets continue to match them.
 
 Pair a `.css` file alongside the HTML in a same-named directory:
 
@@ -312,6 +321,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 ```
 
 ### CSS Scoping Compatibility Notes
+* CSS nesting: fully supports explicit `&` nesting (`& p`, `& > h2`, `&>h2`) and 2023 W3C relaxed direct nesting without `&` (`> h2`, `+ li`, `~ span`, direct nested element selectors)
 * `@property`: `@property --name { }` declaration names are scoped along with any matching `--name:` declarations and `var(--name)` references in the same component
 * `@starting-style`: class names and element selectors inside `@starting-style` blocks are scoped by the same passes that handle other at-rules; both standalone `@starting-style { .foo { } }` and nested `.foo { @starting-style { } }` forms work
 * `@counter-style`: `@counter-style name { }` declaration names are scoped; references in `list-style`, `list-style-type`, `counter(counter, name)`, and `counters(counter, sep, name)` in the same CSS file are updated to match
@@ -320,7 +330,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@scope` (native): class names in `@scope (.foo)` argument and optional `to (.clause)` are scoped normally, and class names inside the `@scope` block are scoped
 * `:nth-child(An+B of .selector)`: class names in the `of <selector>` argument are scoped (same global `(?<=\.)` pass as `:is()`, `:where()`, `:has()`); works for `:nth-child` and `:nth-last-child`
 * `@font-face`: passed through untouched; declare in a shared stylesheet to avoid duplicate injections
-* `@import`: not followed; include CSS directly in the component file instead
+* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
 * Compound element selectors: `.class element {}` and `.class > element {}` are scoped (element converted to class and injected on matching HTML elements); patterns with two bare elements (`div p {}`) still require a class anchor on the left
@@ -1056,7 +1066,7 @@ When `enableTls: true` is set, TLS certs are generated automatically (mkcert if 
 **`cacheHttp`:** defaults to `true` in `--serve` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
 
 **Production hardening (automatic in `--serve`):**
-* **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`.
+* **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`. When serving over HTTPS/TLS (`enableTls: true` or `x-forwarded-proto: https`), `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS) is automatically included per RFC 6797.
 * **URL routing (dev and production):** pages are served at their filename without the `.html` extension. `dist/about.html` is at `/about`, `dist/blog/post.html` is at `/blog/post`, `dist/index.html` is at `/`. Unmatched paths fall through to `/404` if a `dist/404.html` exists.
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
 * **Graceful shutdown:** SIGTERM and SIGINT stop accepting connections, destroy all open sessions and live-reload SSE connections, and drain in-flight requests before exiting. Force-exits after 10 seconds if anything hasn't drained.
@@ -1077,6 +1087,7 @@ Bascik's CLI is designed to provide clean, minimal, and informative terminal out
 When you start the dev server, Bascik starts the HTTP server concurrently with page transpilation so the server is already bound to its port by the time the last page finishes. The `Server running at` line prints immediately after the transpilation summary with no gap between them. Pages are served from memory with no disk I/O at request time in dev mode. If port 8080 is in use, Bascik automatically tries the next available port (8081, 8082, etc.).
 
 ```terminal
+Starting transpiling...
 transpiled: pages/getting-started.html
 transpiled: pages/index.html
 transpiled: pages/about.html
@@ -1099,6 +1110,7 @@ While the dev server is active, Bascik watches your file system and incrementall
   transpiled: pages/index.html
   transpiled: pages/about.html
   ```
+* **Open-Page Prioritization:** When a batch rebuild is triggered (such as an inlined stylesheet or shared component), Bascik checks active live-reload browser connections and prioritizes compiling currently open pages first, emitting reload signals immediately before compiling background pages.
 * **Static Assets:** Replicating any non-HTML static assets (like custom CSS, JS files, or images) from pages directly into the output directory:
   ```terminal
   copied: pages/css/custom.css

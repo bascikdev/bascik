@@ -126,6 +126,8 @@ While the dev server is active, Bascik incrementally updates your build as files
   transpiled: pages/index.html
   transpiled: pages/about.html
   ```
+- **Open-page prioritization** rebuilds active browser tabs first:
+  When a change impacts multiple pages (such as an inlined stylesheet or shared component), Bascik checks active live-reload connections and compiles currently open pages first so your visible browser window refreshes immediately before background pages are processed.
 - **Static assets** are copied into `dist/`:
   ```terminal
   copied: pages/css/custom.css
@@ -197,10 +199,11 @@ bascik --check && bascik --build
 `bascik --check` does **not** validate CSS or JavaScript syntax. Use those tools immediately around it rather than treating them as a separate, later concern:
 
 | Tool | What it catches | How to use |
-|---|---|---|
+| --- | --- | --- |
 | **VS Code built-in CSS** | CSS syntax errors in `.css` files | Enabled by default |
 | **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions | `npm install -D stylelint && npx stylelint "**/*.css"` |
 | **[HTMLHint](https://htmlhint.com)** | HTML structure errors in page and component `.html` files | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` |
+| **[Webhint](https://webhint.io)** | Web standards, ARIA accessibility, and cross-browser compatibility | `npm install -D hint && npx hint "src/**/*.html"` (with recommended `.hintrc`) |
 | **[ESLint](https://eslint.org)** | JavaScript syntax and logic errors in `.js` files | `npm install -D eslint && npx eslint "src/**/*.js"` |
 
 For most teams, the most useful CI command sequence is:
@@ -251,7 +254,7 @@ export default {
 ```
 
 | Option | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `port` | `8080` (HTTP) / `8443` (HTTPS) | TCP port to listen on |
 | `hostname` | `"localhost"` | Hostname or IP to bind to |
 | `enableTls` | `false` | Enable TLS (HTTPS) and serve over HTTP/2. |

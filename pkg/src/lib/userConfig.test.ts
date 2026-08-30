@@ -26,7 +26,7 @@ const writeConfig = async (contents: string): Promise<string> => {
 
 describe("loadUserConfig", () => {
   it("loads default and build exports from the file", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(
       `export default { scopeScriptBlocks: false };
        export const build = { minify: { css: false } };`,
@@ -37,7 +37,7 @@ describe("loadUserConfig", () => {
   });
 
   it("defaults missing exports to empty objects", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(`export const somethingElse = 1;`);
     const { config, build } = await loadUserConfig(p);
     expect(config).toEqual({});
@@ -45,7 +45,7 @@ describe("loadUserConfig", () => {
   });
 
   it("handles primitive or null exports cleanly", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(`export default null; export const build = "invalid";`);
     const { config, build } = await loadUserConfig(p);
     expect(config).toEqual({});
@@ -53,7 +53,7 @@ describe("loadUserConfig", () => {
   });
 
   it("returns empty config (with a warning) when the file does not exist", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     vi.spyOn(console, "warn").mockImplementation(() => { });
     const { config } = await loadUserConfig("/nonexistent/bascik.config.js");
     expect(config).toEqual({});
@@ -63,7 +63,7 @@ describe("loadUserConfig", () => {
   });
 
   it("throws (not process.exit) when the config file fails to load", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(`this is not valid javascript {{{`);
     await expect(loadUserConfig(p)).rejects.toThrow(
       /Failed to load bascik\.config/,
@@ -73,14 +73,14 @@ describe("loadUserConfig", () => {
   it("imports via a file:// URL (Windows-safe)", async () => {
     // importUserConfig must convert to a file URL — importing a bare absolute
     // path fails with ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows.
-    const { importUserConfig } = await import("./userConfig.js");
+    const { importUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(`export default { cacheHttp: true };`);
     const mod = await importUserConfig(p);
     expect(mod.default).toEqual({ cacheHttp: true });
   });
 
   it("loads a bascik.config.ts file (Node 22.18+ strips types natively)", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
     dirs.push(dir);
     const p = join(dir, "bascik.config.ts");
@@ -90,7 +90,7 @@ describe("loadUserConfig", () => {
   });
 
   it("handles non-Error exceptions when loading config file fails", async () => {
-    const { loadUserConfig } = await import("./userConfig.js");
+    const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(`throw "custom string error";`);
     await expect(loadUserConfig(p)).rejects.toThrow("custom string error");
   });

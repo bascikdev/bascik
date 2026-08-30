@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { minifyAttributeName } from "./names.js";
-import type { BascikComponent } from "./types.js";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { minifyAttributeName } from "./names.ts";
+import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
 // error (e.g. breaking `0.7rem 1em` across two lines) can place a unit
@@ -63,9 +65,11 @@ export const convertCssElementSelectorsToClasses = (
   //   p { }
   //   @media (...) { p { } }
   //   p:hover { }
+  //   tr:nth-child(2n+1) { }
+  //   p:not(.lead) { }
   // The context-aware lookahead confirms we are still in selector position.
   let result = css.replace(
-    /(^\s*|[;{}]\s*)([a-z1-6]+)(?=[^{};)]*\{)/gim,
+    /(^\s*|[;{}]\s*)([a-z1-6]+)(?=[^{};]*\{)/gim,
     (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
 
@@ -79,17 +83,23 @@ export const convertCssElementSelectorsToClasses = (
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
   result = result.replace(/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g, toClass);
 
-  // Pass 3: element selectors in CSS nesting context.
-  // Handles `& p { }`, `& > h2 { }`, `& + li { }`, `& ~ span { }`.
-  // The `&` anchor is only valid in CSS nesting selectors, making this
-  // safe — `&\s+` never appears in property value position.
+  // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
+  // Handles:
+  //   - Explicit nesting: `& p { }`, `& > h2 { }`, `&>h2 { }`, `& + li { }`, `& ~ span { }`.
+  //   - 2023 Relaxed direct combinator nesting without explicit `&`:
+  //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s+(?:[>+~]\s+)?)[a-z1-6]+(?=[^{};)]*\{)/g,
+    /(?<=&\s*(?:[>+~]\s*)?)[a-z1-6]+(?=[^{};]*\{)/g,
+    toClass,
+  );
+  result = result.replace(
+    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z1-6]+(?=[^{};]*\{)/g,
     toClass,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
-  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`.
+  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
+  // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
   // After Pass 1 (class scoping), class names become `bascik__…__foo`. The
   // `bascik__` prefix is a uniquely safe anchor — it never appears in CSS
@@ -104,7 +114,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=bascik__[\w-]+\s+(?:[>+~]\s+)?)[a-z1-6]+(?!__)(?=[^{};)]*\{)/g,
+      /(?<=bascik__[\w-]+(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z1-6]+(?!__)(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);
@@ -113,15 +123,61 @@ export const convertCssElementSelectorsToClasses = (
 };
 
 /**
+ * Helper to inject or append a scoped class onto an open HTML tag without
+ * corrupting class-like text nested inside other attribute values.
+ */
+export const injectClassIntoTag = (openTag: string, className: string): string => {
+  const stringRanges: Array<{ start: number; end: number }> = [];
+  let j = 0;
+  let strChar = null;
+  let strStart = -1;
+  while (j < openTag.length) {
+    if (strChar) {
+      if (openTag[j] === "\\") j++;
+      else if (openTag[j] === strChar) {
+        stringRanges.push({ start: strStart, end: j });
+        strChar = null;
+      }
+    } else if (openTag[j] === '"' || openTag[j] === "'") {
+      strChar = openTag[j];
+      strStart = j;
+    }
+    j++;
+  }
+
+  let replaced = false;
+  let finalStr = "";
+  const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
+  let match;
+
+  while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
+    const matchStart = match.index;
+    const isInside = stringRanges.some(
+      (r) => matchStart > r.start && matchStart < r.end,
+    );
+    if (!isInside) {
+      const classQuote = match[1] !== undefined ? '"' : "'";
+      const classVal = match[1] !== undefined ? match[1] : match[2];
+      finalStr =
+        openTag.substring(0, matchStart) +
+        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}` +
+        openTag.substring(matchStart + match[0].length);
+      replaced = true;
+    }
+  }
+
+  if (!replaced) {
+    finalStr = openTag.replace(
+      /^<[a-zA-Z0-9-]+/i,
+      (tagHead) => `${tagHead} class="${className}"`,
+    );
+  }
+  return finalStr;
+};
+
+/**
  * If a component's css styles any element, add bascik classes to those elements
  */
-// HTML void elements — they have no closing tag, so the paired-tag regex in
-// addElementClassesInHtml never matches them. Handle them separately.
-const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
-
 export const addElementClassesInHtml = (
   componentHtml: string,
   componentName: string,
@@ -132,41 +188,11 @@ export const addElementClassesInHtml = (
     const bascikClassName = minifyAttributeName(
       `bascik__${componentName}__el__${element}`,
     );
-    const injectClass = (elementHtml: string): string => {
-      // Check only the element's own opening tag for a class attribute,
-      // not any nested child's class (which would cause the class to land
-      // on the wrong element, e.g. <code> instead of <pre>).
-      const openTag = elementHtml.match(new RegExp(`^<${element}\\b[^>]*>`, "i"))?.[0] ?? "";
-      if (/\bclass="/.test(openTag)) {
-        return elementHtml.replace(/class=".*?(?=")/i, (classStr) => {
-          return `${classStr} ${bascikClassName}`;
-        });
-      }
-      if (/\bclass='/.test(openTag)) {
-        return elementHtml.replace(/class='.*?(?=')/i, (classStr) => {
-          return `${classStr} ${bascikClassName}`;
-        });
-      }
-      return elementHtml.replace(
-        new RegExp(`<${element}\\b`, "i"),
-        `<${element} class="${bascikClassName}"`,
-      );
-    };
-
-    if (VOID_ELEMENTS.has(element)) {
-      // Void elements: match the standalone opening tag (no closing tag).
-      componentHtml = componentHtml.replace(
-        new RegExp(`<${element}\\b(\\s[^>]*?)?\\/?>`, "gis"),
-        (tag) => injectClass(tag),
-      );
-      return;
-    }
-
-    // Find all the instances of that element in the component.
-    // The `s` (dotAll) flag lets `.` match newlines for multi-line element content.
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const elPattern = new RegExp(`<${element}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
     componentHtml = componentHtml.replace(
-      new RegExp(`<${element}\\b[^>]*>([\\s\\S]*?)<\\/${element}\\b>`, "gis"),
-      (elementHtml: string) => injectClass(elementHtml),
+      elPattern,
+      (openTag) => injectClassIntoTag(openTag, bascikClassName),
     );
   });
   return componentHtml;
@@ -289,27 +315,13 @@ export const addIdClassesInHtml = (
   idsConverted.forEach(({ idName, className }) => {
     if (!html.includes(idName)) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    html = html.replace(
-      new RegExp(`(<[^>]+(?<=\\s)id=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')[^>]*)>`, "gi"),
-      (_: string, tagContent: string) => {
-        if (/\bclass="/.test(tagContent)) {
-          return (
-            tagContent.replace(
-              /\bclass="([^"]*)"/,
-              (_: string, c: string) => `class="${c} ${className}"`,
-            ) + ">"
-          );
-        }
-        if (/\bclass='/.test(tagContent)) {
-          return (
-            tagContent.replace(
-              /\bclass='([^']*)'/,
-              (_: string, c: string) => `class='${c} ${className}'`,
-            ) + ">"
-          );
-        }
-        return `${tagContent} class="${className}">`;
-      },
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const idPattern = new RegExp(
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      "gi",
+    );
+    html = html.replace(idPattern, (openTag) =>
+      injectClassIntoTag(openTag, className),
     );
   });
   return html;
@@ -351,7 +363,292 @@ export const removeCommentsFromCss = (css: string): string => {
   );
 };
 
-export { minifyCss } from "./css-minifier.js";
+export { minifyCss } from "./css-minifier.ts";
+
+// ─── CSS @import Resolution & Scoping ────────────────────────────────────────
+
+/**
+ * Check if a CSS @import target URL is an external / remote URL
+ * (e.g. http://, https://, //, data:).
+ */
+export const isRemoteCssUrl = (url: string): boolean => {
+  return /^(?:https?:|\/\/|data:)/i.test(url.trim());
+};
+
+export interface ParsedCssImport {
+  fullMatch: string;
+  url: string;
+  isRemote: boolean;
+  layer?: string | boolean;
+  supports?: string;
+  media?: string;
+}
+
+/**
+ * Parses a single CSS `@import` statement into its constituent components:
+ * target URL/path, and optional layer, supports, and media query conditions.
+ */
+export const parseCssImport = (statement: string): ParsedCssImport | null => {
+  const match = statement.match(
+    /^@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?$/i,
+  );
+  if (!match) return null;
+
+  const rawUrl = (match[2] ?? match[3] ?? match[5] ?? "").trim();
+  const rawConditions = (match[6] ?? "").trim();
+
+  let layer: string | boolean | undefined;
+  let supports: string | undefined;
+  let media: string | undefined;
+
+  let remainingConditions = rawConditions;
+
+  // 1. Check for layer / layer(name)
+  const layerMatch = remainingConditions.match(/\blayer(?:\(([^)]*)\))?/i);
+  if (layerMatch) {
+    if (layerMatch[1] !== undefined) {
+      layer = layerMatch[1].trim();
+    } else {
+      layer = true;
+    }
+    remainingConditions = remainingConditions.replace(layerMatch[0], "").trim();
+  }
+
+  // 2. Check for supports(...) with balanced parentheses
+  const supportsIdx = remainingConditions.search(/\bsupports\(/i);
+  if (supportsIdx !== -1) {
+    const startInner = remainingConditions.indexOf("(", supportsIdx) + 1;
+    let depth = 1;
+    let endInner = startInner;
+    while (endInner < remainingConditions.length && depth > 0) {
+      if (remainingConditions[endInner] === "(") depth++;
+      else if (remainingConditions[endInner] === ")") depth--;
+      if (depth > 0) endInner++;
+    }
+    if (depth === 0) {
+      supports = remainingConditions.slice(startInner, endInner).trim();
+      remainingConditions = (
+        remainingConditions.slice(0, supportsIdx) +
+        remainingConditions.slice(endInner + 1)
+      ).trim();
+    }
+  }
+
+  // 3. Any remainder is media query list
+  if (remainingConditions.length > 0) {
+    media = remainingConditions;
+  }
+
+  return {
+    fullMatch: statement,
+    url: rawUrl,
+    isRemote: isRemoteCssUrl(rawUrl),
+    layer,
+    supports,
+    media,
+  };
+};
+
+/**
+ * Wrap inlined CSS with any layer, supports, or media queries specified on the @import rule.
+ */
+export const wrapInlinedCss = (
+  css: string,
+  layer?: string | boolean,
+  supports?: string,
+  media?: string,
+): string => {
+  let result = css.trim();
+  if (!result) return "";
+
+  if (supports) {
+    result = `@supports (${supports}) {\n${result}\n}`;
+  }
+  if (layer) {
+    if (typeof layer === "string" && layer.length > 0) {
+      result = `@layer ${layer} {\n${result}\n}`;
+    } else {
+      result = `@layer {\n${result}\n}`;
+    }
+  }
+  if (media) {
+    result = `@media ${media} {\n${result}\n}`;
+  }
+  return result;
+};
+
+/**
+ * Resolves and inlines local `@import` statements in a CSS string asynchronously.
+ * Remote `@import` statements (e.g. Google Fonts) are preserved.
+ *
+ * @param css The raw CSS content
+ * @param baseFilePath The file path of the current CSS/HTML file (used to resolve relative import paths)
+ * @param visited Set of canonical file paths already visited (for circular import prevention)
+ */
+export const resolveCssImports = async (
+  css: string,
+  baseFilePath?: string,
+  visited: Set<string> = new Set(),
+): Promise<string> => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const matches = [...css.matchAll(importRegex)];
+  if (matches.length === 0) return css;
+
+  let result = css;
+
+  for (const match of matches) {
+    const fullStatement = match[0];
+    const parsed = parseCssImport(fullStatement);
+    if (!parsed) continue;
+
+    // Remote URLs (https://, //, etc.) are kept as @import statements
+    if (parsed.isRemote) continue;
+
+    // Local file path resolution
+    const baseDir = baseFilePath
+      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
+        ? baseFilePath
+        : dirname(baseFilePath)
+      : process.cwd();
+
+    let targetPath = resolve(baseDir, parsed.url);
+    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
+      targetPath = `${targetPath}.css`;
+    }
+
+    if (!existsSync(targetPath)) {
+      console.warn(
+        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
+      );
+      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+      continue;
+    }
+
+    // Circular import guard
+    if (visited.has(targetPath)) {
+      result = result.replace(fullStatement, "");
+      continue;
+    }
+
+    const nextVisited = new Set(visited);
+    nextVisited.add(targetPath);
+
+    try {
+      const importedRaw = removeCommentsFromCss((await readFile(targetPath)).toString()).replace(
+        /@charset\s+["'][^"']+["'];?/gi,
+        "",
+      );
+      const nestedResolved = await resolveCssImports(importedRaw, targetPath, nextVisited);
+      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
+      result = result.replace(fullStatement, () => wrapped);
+    } catch (err) {
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
+      result = result.replace(fullStatement, "");
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Resolves and inlines local `@import` statements in a CSS string synchronously.
+ * Remote `@import` statements (e.g. Google Fonts) are preserved.
+ */
+export const resolveCssImportsSync = (
+  css: string,
+  baseFilePath?: string,
+  visited: Set<string> = new Set(),
+): string => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const matches = [...css.matchAll(importRegex)];
+  if (matches.length === 0) return css;
+
+  let result = css;
+
+  for (const match of matches) {
+    const fullStatement = match[0];
+    const parsed = parseCssImport(fullStatement);
+    if (!parsed) continue;
+
+    // Remote URLs (https://, //, etc.) are kept as @import statements
+    if (parsed.isRemote) continue;
+
+    const baseDir = baseFilePath
+      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
+        ? baseFilePath
+        : dirname(baseFilePath)
+      : process.cwd();
+
+    let targetPath = resolve(baseDir, parsed.url);
+    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
+      targetPath = `${targetPath}.css`;
+    }
+
+    if (!existsSync(targetPath)) {
+      console.warn(
+        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
+      );
+      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+      continue;
+    }
+
+    if (visited.has(targetPath)) {
+      result = result.replace(fullStatement, "");
+      continue;
+    }
+
+    const nextVisited = new Set(visited);
+    nextVisited.add(targetPath);
+
+    try {
+      const importedRaw = removeCommentsFromCss(readFileSync(targetPath, "utf-8")).replace(
+        /@charset\s+["'][^"']+["'];?/gi,
+        "",
+      );
+      const nestedResolved = resolveCssImportsSync(importedRaw, targetPath, nextVisited);
+      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
+      result = result.replace(fullStatement, () => wrapped);
+    } catch (err) {
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
+      result = result.replace(fullStatement, "");
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Hoist all preserved `@import` statements (e.g. remote font / stylesheet URLs)
+ * to the top of the CSS block, deduplicating identical imports.
+ *
+ * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
+ * which requires @import rules to precede all other style rules.
+ */
+export const hoistCssImports = (css: string): string => {
+  if (!css || !css.includes("@import")) return css;
+
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)[^;]*;/gi;
+  const imports: string[] = [];
+  const seen = new Set<string>();
+
+  const cleanedCss = css.replace(importRegex, (statement) => {
+    const trimmed = statement.trim();
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      imports.push(trimmed);
+    }
+    return "";
+  });
+
+  if (imports.length === 0) return css;
+
+  const body = cleanedCss.trim();
+  return body ? `${imports.join("\n")}\n${body}` : imports.join("\n");
+};
 
 export const getComponentCss = async (
   htmlFileName: string,
@@ -363,7 +660,8 @@ export const getComponentCss = async (
   );
   if (!cssFileName) return;
   try {
-    return removeCommentsFromCss((await readFile(cssFileName)).toString());
+    const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
+    return await resolveCssImports(raw, cssFileName);
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
@@ -651,9 +949,16 @@ export const scopeAnchorNames = (
   componentName: string,
 ): string => {
   const names = new Set<string>();
-  // Collect all anchor-name: --name declarations
+  // Collect all anchor-name: --name declarations and @position-try --name declarations
   css.replace(
     /anchor-name\s*:\s*--(\w[\w-]*)/g,
+    (_: string, name: string) => {
+      names.add(name);
+      return "";
+    },
+  );
+  css.replace(
+    /@position-try\s+--(\w[\w-]*)/g,
     (_: string, name: string) => {
       names.add(name);
       return "";
@@ -766,6 +1071,7 @@ export const extractInlineStyles = (
 export const scopeInlineStyleTags = (
   html: string,
   componentName: string,
+  baseFilePath?: string,
 ): {
   html: string;
   elementsConvertedClasses: string[];
@@ -776,7 +1082,7 @@ export const scopeInlineStyleTags = (
   const processedHtml = html.replace(
     /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
-      let css = removeCommentsFromCss(styleContent);
+      let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
       // Shield strings/url() so dots inside them aren't treated as class selectors
       const { css: shieldedCss, restore } = shieldCssStrings(css);
       css = restore(
@@ -823,21 +1129,24 @@ export const deduplicateCss = (
   usedComponents: Pick<BascikComponent, "name" | "cssFileContent">[],
   dedup: boolean = true,
 ): string => {
+  let combined: string;
   if (!dedup) {
     // Per-instance class scoping: every instance emits its own CSS block.
-    return usedComponents
+    combined = usedComponents
+      .map(({ cssFileContent }) => cssFileContent)
+      .filter((css): css is string => Boolean(css))
+      .join(" ");
+  } else {
+    const seen = new Set<string>();
+    combined = usedComponents
+      .filter(({ name }) => {
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      })
       .map(({ cssFileContent }) => cssFileContent)
       .filter((css): css is string => Boolean(css))
       .join(" ");
   }
-  const seen = new Set<string>();
-  return usedComponents
-    .filter(({ name }) => {
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    })
-    .map(({ cssFileContent }) => cssFileContent)
-    .filter((css): css is string => Boolean(css))
-    .join(" ");
+  return hoistCssImports(combined);
 };

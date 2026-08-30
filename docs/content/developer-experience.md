@@ -33,6 +33,10 @@ transpiled: pages/index.html (modified component: <user-badge>)
 
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.
 
+### Open-Page Prioritization for Instant Feedback
+
+When you edit a shared component or a global stylesheet used across many pages, Bascik does not make your active browser tab wait for the entire site to recompile. The dev server tracks which pages currently have active live-reload browser tabs connected. It partitions the rebuild queue, transpiles the open page(s) first, stores them in memory, and emits the live-reload signal immediately. Your visible browser window updates in milliseconds while any remaining background pages finish compiling afterwards.
+
 > **Zero-Refresh Dev Server Reconnection:** If you stop or restart the local development server while working in your code editor, you do not need to click refresh in your browser. As soon as you focus back onto your web page, Bascik's injected live reload client immediately re-establishes the SSE connection and reloads the page automatically.
 
 > **Deep Dive:** Read [CLI Dev Server](/cli#starting-the-dev-server) for server options, or explore [Server Architecture Internals](/internals/server) for live reload mechanics.
@@ -192,7 +196,50 @@ To debug `bascik.config.ts` or custom build scripts, press `F5` in VS Code. Node
 }
 ```
 
-> **Deep Dive:** Read [Debugging with VS Code and Node.js](/testing#debugging-with-vs-code-and-nodejs) for step-debugging launch configurations, [CLI Transpilation and Build Errors](/cli#transpilation-and-build-errors) to learn how Bascik reports syntax issues, or explore [Architecture](/internals/architecture) to see how transpilation works under the hood.
+## Source Maps and Location Attribution
+
+Bascik eliminates the overhead and synchronization issues of traditional multi-megabyte `.map` files by combining zero-overhead `//# sourceURL` directives, 1:1 line offset preservation, and build-time stack trace remapping.
+
+### Zero-Overhead Browser Source Mapping (`//# sourceURL`)
+
+During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and inserts newline padding to preserve exact line offsets:
+
+```html
+<!-- Compiled output injected into page HTML -->
+<script>
+(function() {
+
+
+  document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
+    console.log("Button clicked");
+  });
+})();
+//# sourceURL=src/components/counter/counter.html
+</script>
+```
+
+When inspecting your application in Chrome DevTools, Firefox Developer Tools, Safari Web Inspector, or Microsoft Edge DevTools:
+
+- **Virtual File Tree:** Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab.
+- **Accurate Breakpoints:** Clicking a line number in DevTools or adding a `debugger;` statement pauses execution directly on the original source line.
+- **Console Log and Error Mapping:** Messages from `console.log()` and uncaught runtime errors reference the component file and line number rather than a compiled monolithic page.
+
+### Build and Server Script Stack Trace Remapping
+
+Node.js executes `<script data-bascik-build>` and `<script data-bascik-server>` blocks in ephemeral temporary modules. When a script throws an unhandled exception or encounters an error:
+
+1. **Stack Trace Interception:** Bascik's `cleanStackTrace` engine intercepts the raw error emitted by Node.js.
+2. **File and Line Remapping:** Temporary file paths and line offsets are converted back to the original source HTML file and line position (for example, `src/pages/dashboard.html:34`).
+3. **Noise Reduction:** Internal Node.js runtime frames (`node:internal/*`, `node:diagnostics_channel`, and execution wrappers) are filtered out.
+4. **Clickable Terminal Links:** Terminal error messages display standard `file:line:column` coordinates that you can `Cmd + Click` (macOS) or `Ctrl + Click` (Windows/Linux) in VS Code to jump straight to the failing line.
+
+### TypeScript and Custom Minifier Source Maps
+
+- **Native TypeScript Support:** Node 24 and Node 22.18+ strip TypeScript types without an intermediate compilation step, preserving source line numbers in imported `.ts` modules.
+- **External Source Maps (`sourceMap: true`):** Set `"sourceMap": true` in `tsconfig.json` so external tools, debuggers, and language servers generate and resolve `.map` files across external libraries and helper scripts.
+- **BYOMinifier Integration:** When using custom minifiers via `minify.js` or `minify.css` in `bascik.config.ts` (such as Terser, esbuild, or LightningCSS), you can configure inline or external source maps according to your production requirements.
+
+> **Deep Dive:** Read [Debugging with VS Code and Node.js](/testing/debugging) for step-debugging launch configurations, [CLI Transpilation and Build Errors](/cli#transpilation-and-build-errors) to learn how Bascik reports syntax issues, or explore [Architecture](/internals/architecture) to see how transpilation works under the hood.
 
 ## Testing Your Workflow
 
@@ -257,7 +304,7 @@ Output:
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
 
-> **Deep Dive:** Read [Component Template Contract Testing](/testing#component-template-contract-testing) and [End-to-End Browser Testing](/testing#end-to-end-browser-testing-playwright) for complete testing guidelines.
+> **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 
 ## Production Build & Inspection
 

@@ -87,3 +87,4 @@ docs/.wrangler
 .vscode-test/
 .yarn/install-state.gz
 .wrangler
+.playwright-mcp/

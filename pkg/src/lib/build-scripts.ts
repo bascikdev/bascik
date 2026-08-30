@@ -44,9 +44,9 @@ import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { getRelativePath } from "./file-system.js";
-import { BascikConfig } from "./config.js";
-import { cleanStackTrace } from "./stack-trace.js";
+import { getRelativePath } from "./file-system.ts";
+import { BascikConfig } from "./config.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
 
 export { cleanStackTrace };
 
@@ -143,6 +143,30 @@ const BUILD_SCRIPT_TIMEOUT = 60_000;
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
 export const SCRIPT_CACHE_VERSION = 3;
 
+// In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
+const depContentCache = new Map<string, string>();
+const inMemoryScriptOutputCache = new Map<string, string>();
+
+/** Clear in-memory caches (called on watch change or between test runs). */
+export const clearBuildScriptCaches = (filePath?: string): void => {
+  if (filePath) {
+    const absPath = resolve(process.cwd(), filePath);
+    const relKey = relative(process.cwd(), absPath).replace(/\\/g, "/");
+    depContentCache.delete(relKey);
+  } else {
+    depContentCache.clear();
+  }
+  inMemoryScriptOutputCache.clear();
+};
+
+const readCachedFile = async (absPath: string, relKey: string): Promise<string> => {
+  const cached = depContentCache.get(relKey);
+  if (cached !== undefined) return cached;
+  const content = await readFile(absPath, "utf8");
+  depContentCache.set(relKey, content);
+  return content;
+};
+
 /**
  * Extract all local file dependencies referenced by `<script data-bascik-build>`
  * blocks in `html`, recursively scanning referenced local JS/TS/MJS files.
@@ -169,7 +193,7 @@ export const collectAllScriptDeps = async (html: string): Promise<string[]> => {
     visited.add(relKey);
 
     try {
-      const content = await readFile(absPath, "utf8");
+      const content = await readCachedFile(absPath, relKey);
       const fileDir = dirname(absPath);
       const nested = extractScriptDeps(content, fileDir);
       for (const n of nested) {
@@ -228,7 +252,7 @@ const computeScriptCacheKey = async (
     visited.add(relKey);
 
     try {
-      const content = await readFile(absPath, "utf8");
+      const content = await readCachedFile(absPath, relKey);
       hash.update(relKey);
       hash.update(content);
 
@@ -251,10 +275,13 @@ const readScriptCache = async (
   cacheDir: string,
   key: string,
 ): Promise<string | null> => {
+  const memCached = inMemoryScriptOutputCache.get(key);
+  if (memCached !== undefined) return memCached;
   try {
     const raw = await readFile(join(cacheDir, `${key}.json`), "utf8");
     const entry = JSON.parse(raw) as { v?: number; output?: string };
     if (typeof entry === "object" && entry !== null && entry.v === SCRIPT_CACHE_VERSION && typeof entry.output === "string") {
+      inMemoryScriptOutputCache.set(key, entry.output);
       return entry.output;
     }
   } catch { /* cache miss */ }
@@ -266,6 +293,7 @@ const writeScriptCache = async (
   key: string,
   output: string,
 ): Promise<void> => {
+  inMemoryScriptOutputCache.set(key, output);
   // Best-effort: don't let a cache write failure abort the build.
   await writeFile(
     join(cacheDir, `${key}.json`),

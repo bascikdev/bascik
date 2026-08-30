@@ -34,7 +34,7 @@ vi.mock("./server.js", () => ({
   startServerInstance: vi.fn(async () => "http://localhost:8443"),
 }));
 
-import { startHttpServer, adaptHttp1 } from "./http.js";
+import { startHttpServer, adaptHttp1 } from "./http.ts";
 
 describe("startHttpServer", () => {
   beforeEach(() => {
@@ -144,7 +144,7 @@ describe("startHttpServer", () => {
       return mockServer;
     });
 
-    const { startServerInstance } = await import("./server.js");
+    const { startServerInstance } = await import("./server.ts");
     (startServerInstance as any).mockImplementation(
       async (_server: any, _protocol: string, onShutdown?: () => void) => {
         shutdownCb = onShutdown;

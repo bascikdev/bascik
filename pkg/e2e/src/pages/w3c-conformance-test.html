@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>W3C & Web Standards Conformance E2E Test</title>
+</head>
+
+<body>
+  <h1>W3C Conformance Test Fixture</h1>
+
+  <!-- Instance 1: Uses default slot fallback -->
+  <section data-testid="instance-1-section">
+    <h2>Instance 1 (Default Content)</h2>
+    <w3c-conformance></w3c-conformance>
+  </section>
+
+  <!-- Instance 2: Overrides named slot and default slot -->
+  <section data-testid="instance-2-section">
+    <h2>Instance 2 (Slotted Content)</h2>
+    <w3c-conformance>
+      <div data-bascik-slot="header">
+        <h3 data-testid="w3c-custom-header">Custom Injected Header</h3>
+      </div>
+      <p data-testid="w3c-custom-body">Custom Slotted Body Paragraph</p>
+    </w3c-conformance>
+  </section>
+</body>
+
+</html>

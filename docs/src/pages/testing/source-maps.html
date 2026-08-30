@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { canonical } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
+    );
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { openGraph } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
+    );
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { breadcrumbLd } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
+    );
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { articleSchema } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
+    );
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Guide to source maps and location attribution in Bascik: zero-overhead //# sourceURL comments, 1:1 line padding, and cleanStackTrace stack remapping." />
+  <title>Source Maps & Location Attribution - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderSectionLabel } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
+          );
+          console.log(renderSectionLabel('/testing/source-maps'));
+        </script>
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderMd } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
+          );
+          console.log(await renderMd('./content/testing/source-maps.md'));
+        </script>
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
+          console.log(renderPagination('/testing/source-maps'));
+        </script>
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

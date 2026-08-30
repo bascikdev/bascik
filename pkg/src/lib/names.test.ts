@@ -6,8 +6,8 @@ import {
   clearHashCache,
   getUniqueId,
   toBase62,
-} from "./names.js";
-import { BascikConfig } from "./config.js";
+} from "./names.ts";
+import { BascikConfig } from "./config.ts";
 
 vi.mock("./config.js", () => {
   return {

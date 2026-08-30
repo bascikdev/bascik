@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "strict": true,
     "allowImportingTsExtensions": true,
@@ -8,7 +9,7 @@
     "target": "ES2022",
     "rootDir": ".",
     "types": ["node"],
-    "lib": ["ES2025"],
+    "lib": ["ESNext"],
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],

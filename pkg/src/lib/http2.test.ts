@@ -6,7 +6,10 @@ const { mockServer, mockCreateSecureServer, mockStartHttpServer } = vi.hoisted((
     once: vi.fn().mockReturnThis(),
     removeListener: vi.fn().mockReturnThis(),
     listen: vi.fn().mockImplementation(
-      (_port: number, _hostname: string, cb?: () => void) => { cb?.(); },
+      (_port: number, hostnameOrCb: any, cb?: () => void) => {
+        const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+        callback?.();
+      },
     ),
     close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
   };
@@ -49,7 +52,7 @@ vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
 }));
 
-import { startHttp2Server, adaptHttp2 } from "./http2.js";
+import { startHttp2Server, adaptHttp2 } from "./http2.ts";
 
 describe("startHttp2Server", () => {
   beforeEach(() => {
@@ -77,7 +80,7 @@ describe("startHttp2Server", () => {
     // Case 1: HTTP/2 request (should be ignored by request listener because it is already handled by 'stream')
     const mockReqH2 = { httpVersion: "2.0" };
     const mockResH2 = {};
-    const adaptHttp1Mock = vi.mocked(await import("./http.js")).adaptHttp1;
+    const adaptHttp1Mock = vi.mocked(await import("./http.ts")).adaptHttp1;
     adaptHttp1Mock.mockClear();
 
     await requestListener(mockReqH2, mockResH2);

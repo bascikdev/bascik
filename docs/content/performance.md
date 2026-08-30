@@ -678,12 +678,12 @@ The deepest lesson from McMaster-Carr is architectural. Its homepage has no Java
 A Bascik site or any statically built HTML page works the same way. Compare the waterfalls:
 
 | Step | Framework SPA | Static HTML (Bascik) |
-|------|:---:|:---:|
+| --- | :---: | :---: |
 | 1 | Fetch HTML shell | Fetch complete HTML |
 | 2 | Fetch JS bundle | Browser paints ✓ |
-| 3 | Parse & execute JS |, |
-| 4 | Fetch API data |, |
-| 5 | Render content |, |
+| 3 | Parse & execute JS | |
+| 4 | Fetch API data | |
+| 5 | Render content | |
 
 A framework SPA requires five sequential steps before the user sees content. A static HTML page requires one. Every framework adds steps; every step adds latency that compounds across all network conditions.
 

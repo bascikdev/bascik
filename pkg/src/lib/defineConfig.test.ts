@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { defineConfig, type BascikConfig } from "./defineConfig.js";
+import { defineConfig, type BascikConfig } from "./defineConfig.ts";
 
 describe("defineConfig", () => {
   it("returns the exact config object passed to it", () => {

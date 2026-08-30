@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { canonical } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
+    );
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { openGraph } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
+    );
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { breadcrumbLd } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
+    );
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { articleSchema } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
+    );
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Guide to testing build-time scripts in Bascik: separating build logic into pure TypeScript helper modules, testing page-aware scripts, and verifying fallback markup." />
+  <title>Build Scripts Testing - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderSectionLabel } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
+          );
+          console.log(renderSectionLabel('/testing/build-scripts'));
+        </script>
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderMd } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
+          );
+          console.log(await renderMd('./content/testing/build-scripts.md'));
+        </script>
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
+          console.log(renderPagination('/testing/build-scripts'));
+        </script>
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

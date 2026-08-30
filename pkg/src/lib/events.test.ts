@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import EventEmitter from "node:events";
-import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.js";
+import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.ts";
 
 describe("eventEmitter", () => {
   it("is an EventEmitter instance", () => {
