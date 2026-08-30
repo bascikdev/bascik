@@ -463,7 +463,8 @@ export const startServerInstance = async (
 ): Promise<string> => {
   const hostname = BascikConfig.prodServer?.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
-  const startPort = BascikConfig.prodServer?.port ?? defaultPort;
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : undefined;
+  const startPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.prodServer?.port ?? defaultPort);
   let origin = "";
 
   // Find the first available port, incrementing if the preferred one is in use.

@@ -2236,4 +2236,32 @@ describe("startServerInstance signal handler cleanup", () => {
 
     await expect(startServerInstance(mockOverflowServer, "http")).rejects.toThrow(RangeError);
   });
+
+  it("uses process.env.PORT when defined", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "9992";
+
+    try {
+      const mockServer: any = {
+        once: vi.fn().mockReturnThis(),
+        listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
+          const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          callback?.();
+          return mockServer;
+        }),
+        on: vi.fn().mockReturnThis(),
+        removeListener: vi.fn().mockReturnThis(),
+      };
+
+      const origin = await startServerInstance(mockServer, "http");
+      expect(mockServer.listen).toHaveBeenCalledWith(9992, "localhost", expect.any(Function));
+      expect(origin).toBe("http://localhost:9992");
+    } finally {
+      if (originalPort !== undefined) {
+        process.env.PORT = originalPort;
+      } else {
+        delete process.env.PORT;
+      }
+    }
+  });
 });
