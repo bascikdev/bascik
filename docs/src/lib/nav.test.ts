@@ -38,3 +38,42 @@ describe('renderSectionLabel', () => {
     expect(renderSectionLabel('/nonexistent-page')).toBe('');
   });
 });
+
+describe('renderPagination', () => {
+  it('returns next only on the first page', () => {
+    const html = renderPagination('/why-bascik');
+    expect(html).toContain('data-pg="next"');
+    expect(html).not.toContain('data-pg="prev"');
+    expect(html).toContain('<span data-pg-section>Overview</span>');
+    expect(html).toContain('<span data-pg-label>Developer Experience</span>');
+  });
+
+  it('returns prev only on the last page', () => {
+    const html = renderPagination('/switch/from-vue');
+    expect(html).toContain('data-pg="prev"');
+    expect(html).not.toContain('data-pg="next"');
+    expect(html).toContain('<span data-pg-section>Switch to Bascik</span>');
+    expect(html).toContain('<span data-pg-label>From Svelte</span>');
+  });
+
+  it('includes section names and labels for prev and next across section transitions', () => {
+    const html = renderPagination('/deploying');
+    expect(html).toContain('data-pg="prev"');
+    expect(html).toContain('data-pg="next"');
+    expect(html).toContain('<span data-pg-section>Reference</span>');
+    expect(html).toContain('<span data-pg-label>Scoping Compatibility</span>');
+    expect(html).toContain('<span data-pg-section>Testing & Debugging</span>');
+    expect(html).toContain('<span data-pg-label>Overview</span>');
+  });
+
+  it('includes section names within the same section', () => {
+    const html = renderPagination('/testing/unit-testing');
+    expect(html).toContain('<span data-pg-section>Testing & Debugging</span>');
+    expect(html).toContain('<span data-pg-label>Overview</span>');
+    expect(html).toContain('<span data-pg-label>Component Testing</span>');
+  });
+
+  it('returns empty string for unknown paths', () => {
+    expect(renderPagination('/nonexistent-page')).toBe('');
+  });
+});

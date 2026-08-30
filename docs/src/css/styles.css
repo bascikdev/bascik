@@ -507,6 +507,11 @@ pre code { background: none; border: none; padding: 0; color: #cdd6f4; font-size
   color: var(--text-muted);
 }
 
+.docs-pagination [data-pg-section] {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .docs-pagination [data-pg-label] {
   font-size: 0.9rem;
   font-weight: 600;

@@ -38,8 +38,9 @@ export function renderSectionLabel(currentPath: string): string {
  * @param {string} currentPath - e.g. '/slots'
  */
 export function renderPagination(currentPath: string): string {
-  const flat = NAV.flatMap(s => s.pages);
-  const idx = flat.findIndex(p => p.href === currentPath);
+  const path = currentPath === '/using-markdown' ? '/recipes/markdown' : currentPath;
+  const flat = NAV.flatMap(s => s.pages.map(p => ({ ...p, section: s.section })));
+  const idx = flat.findIndex(p => p.href === path);
   if (idx === -1) return '';
   const prev = idx > 0 ? flat[idx - 1] : null;
   const next = idx < flat.length - 1 ? flat[idx + 1] : null;
@@ -48,12 +49,14 @@ export function renderPagination(currentPath: string): string {
   if (prev) {
     html += `<a href="${prev.href}" data-pg="prev">`;
     html += `<span data-pg-dir>&#8592; Previous</span>`;
+    html += `<span data-pg-section>${prev.section}</span>`;
     html += `<span data-pg-label>${prev.label}</span>`;
     html += `</a>`;
   }
   if (next) {
     html += `<a href="${next.href}" data-pg="next">`;
     html += `<span data-pg-dir>Next &#8594;</span>`;
+    html += `<span data-pg-section>${next.section}</span>`;
     html += `<span data-pg-label>${next.label}</span>`;
     html += `</a>`;
   }
