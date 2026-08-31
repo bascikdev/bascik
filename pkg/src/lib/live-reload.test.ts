@@ -27,6 +27,90 @@ describe("LIVE_RELOAD_SCRIPT", () => {
   it("clears banner when connected message is received", () => {
     expect(LIVE_RELOAD_SCRIPT).toContain("removeBanner()");
   });
+
+  it("does not reconnect on focus when already connected, but reconnects when disconnected", () => {
+    const listeners: Record<string, Function[]> = {};
+    let reloadCalls = 0;
+    const eventSourceInstances: any[] = [];
+
+    class MockEventSource {
+      url: string;
+      readyState = 1; // OPEN
+      onmessage: ((e: any) => void) | null = null;
+      onerror: (() => void) | null = null;
+      closed = false;
+
+      constructor(url: string) {
+        this.url = url;
+        eventSourceInstances.push(this);
+      }
+
+      close() {
+        this.closed = true;
+        this.readyState = 2; // CLOSED
+      }
+    }
+
+    const mockWindow = {
+      location: { reload: () => { reloadCalls++; } },
+      addEventListener: (type: string, fn: Function) => {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(fn);
+      },
+    };
+
+    const mockDocument = {
+      visibilityState: "visible",
+      body: { appendChild: () => { }, removeChild: () => { } },
+      createElement: () => ({ style: {}, parentNode: null }),
+      addEventListener: (type: string, fn: Function) => {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(fn);
+      },
+    };
+
+    const scriptCode = LIVE_RELOAD_SCRIPT
+      .replace("<script>", "")
+      .replace("</script>", "");
+
+    const runScript = new Function("window", "document", "EventSource", scriptCode);
+    runScript(mockWindow, mockDocument, MockEventSource);
+
+    expect(eventSourceInstances.length).toBe(1);
+    const es1 = eventSourceInstances[0];
+
+    // Simulate initial connection message
+    es1.onmessage({ data: "connected" });
+    expect(reloadCalls).toBe(0);
+
+    // Trigger focus while still connected
+    if (listeners["focus"]) {
+      listeners["focus"].forEach((fn) => fn());
+    }
+
+    // Should NOT have created a second EventSource or reloaded
+    expect(eventSourceInstances.length).toBe(1);
+    expect(reloadCalls).toBe(0);
+
+    // Now simulate connection error / disconnection
+    es1.onerror();
+    expect(es1.closed).toBe(true);
+
+    // Trigger focus while disconnected
+    if (listeners["focus"]) {
+      listeners["focus"].forEach((fn) => fn());
+    }
+
+    // Should have created a new EventSource to reconnect
+    expect(eventSourceInstances.length).toBe(2);
+    const es2 = eventSourceInstances[1];
+
+    // Simulate new connection succeeding
+    es2.onmessage({ data: "connected" });
+
+    // Since it was previously connected before disconnection, it should now reload
+    expect(reloadCalls).toBe(1);
+  });
 });
 
 describe("BOOT_PAGE_HTML", () => {
