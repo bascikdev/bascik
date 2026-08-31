@@ -82,6 +82,26 @@ Third content.
     expect(html).not.toContain('Third content.');
   });
 
+  it('renderMdRange throws an error if specified "from" heading is not found', async () => {
+    const mdContent = `# Title\n\n## Section 1\nContent.`;
+    const mdFile = join(tempDir, 'missing-from.md');
+    await writeFile(mdFile, mdContent);
+
+    await expect(renderMdRange(mdFile, { from: 'Nonexistent Section' })).rejects.toThrow(
+      '[md-renderer] Heading "from: Nonexistent Section" not found'
+    );
+  });
+
+  it('renderMdRange throws an error if specified "to" heading is not found', async () => {
+    const mdContent = `# Title\n\n## Section 1\nContent.`;
+    const mdFile = join(tempDir, 'missing-to.md');
+    await writeFile(mdFile, mdContent);
+
+    await expect(renderMdRange(mdFile, { from: 'Section 1', to: 'Nonexistent Section' })).rejects.toThrow(
+      '[md-renderer] Heading "to: Nonexistent Section" not found'
+    );
+  });
+
   it('extractDemoBlock extracts marked fenced code blocks', async () => {
     const mdContent = `
 # Demo Page
