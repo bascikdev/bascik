@@ -992,7 +992,7 @@ export default defineConfig({
   // Note: The commented examples below demonstrate possible custom build tasks (e.g. search indexes, RSS feeds, social card images).
   // Do NOT add exec entries unless your project actually implements corresponding script files!
   exec: [
-    // Example: { script: 'scripts/generate-search-index.ts', phase: 'pre', watch: ['content/'] },
+    // Example: { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
     // Example: { script: 'scripts/generate-sitemap.ts', phase: 'post' },
   ],
   // Critical: custom lifecycle scripts registered in `exec` must write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than `src/` to prevent polluting your source tree or causing infinite watcher re-transpile loops.

@@ -336,9 +336,9 @@ Has no effect during `bascik --build`.
 Scripts to run as part of the build/dev lifecycle. Each entry has a `script` path (relative to the project root, run with the same `node` binary), an optional `phase`, and an optional `watch` array.
 
 - **`phase`** (optional): Execution phase controlling when the script runs relative to page transpilation. Defaults to `'pre'`.
-  - `'pre'` (default): Runs before page transpilation begins. In both `--build` and `dev` startup, `pre` scripts are awaited before pages transpile, guaranteeing generated data files (such as CMS feeds, search indexes, or route manifests) are available for `<script data-bascik-build>` blocks and dynamic routes.
+  - `'pre'` (default): Runs before page transpilation begins. In both `--build` and `dev` startup, `pre` scripts are awaited sequentially before pages transpile. This is the default because build scripts frequently fetch dynamic data (CMS feeds, localized string bundles, or route manifests) required by `<script data-bascik-build>` blocks or dynamic routes during page compilation. Defaulting to `'pre'` guarantees data safety and eliminates cold-build race conditions.
   - `'post'`: Runs after all pages finish transpilation and sitemaps are generated. Ideal for post-processing, build artifact verification, or deployment packaging.
-  - `'parallel'`: Initiates concurrently with page transpilation without blocking the start of page processing.
+  - `'parallel'`: Initiates concurrently with page transpilation without blocking the start of page processing. Ideal for independent generation tasks (such as search indexes, LLM manifests, or social share images) that do not produce data needed during page compilation.
 - **With `watch`**: runs on dev startup according to its phase and re-runs whenever a watched file changes, followed by a live-reload. Also runs during `--build`.
 - **Without `watch`**: build-only, skipped in dev.
 
@@ -347,8 +347,8 @@ Scripts to run as part of the build/dev lifecycle. Each entry has a `script` pat
 ```ts
 exec: [
   { script: 'scripts/fetch-content.ts', phase: 'pre', watch: ['content/'] },
-  { script: 'scripts/generate-search-index.ts', phase: 'post' },
-  { script: 'scripts/background-sync.ts', phase: 'parallel' },
+  { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
+  { script: 'scripts/verify-build.ts', phase: 'post' },
 ]
 ```
 
@@ -450,7 +450,7 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   exec: [
-    { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
+    { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
   ],
 });
 
@@ -462,9 +462,9 @@ export const build = defineConfig({
     identifiers: true,
   },
   exec: [
-    { script: 'scripts/generate-search-index.ts' },
-    { script: 'scripts/generate-llms-txt.ts' },
-    { script: 'scripts/generate-og-images.ts' },
+    { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
+    { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
+    { script: 'scripts/generate-og-images.ts', phase: 'parallel' },
   ],
 });
 ```
