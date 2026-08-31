@@ -74,6 +74,13 @@
             <code>bascik.config.ts</code> options including <code>siteUrl</code> and <code>generateSitemap</code>.
           </p>
         </div>
+
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
+          console.log(renderPagination('/sitemap'));
+        </script>
       </main>
     </div>
   </div>
