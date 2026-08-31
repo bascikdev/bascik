@@ -16,8 +16,8 @@ npm run dev
 When you launch the dev server, Bascik transpiles pages and components, starts the HTTP server, and opens a live Server-Sent Events (SSE) connection:
 
 ```terminal
-transpiled: pages/index.html
-transpiled: pages/about.html
+transpiled: pages/index.html in 0.5ms
+transpiled: pages/about.html in 0.3ms
 
 ✓ 2 pages transpiled in 18ms
 Server running at http://localhost:8080
@@ -28,7 +28,7 @@ Server running at http://localhost:8080
 Edit any file and save. Bascik re-transpiles only the affected files in milliseconds and updates your browser automatically without full page reloads:
 
 ```terminal
-transpiled: pages/index.html (modified component: <user-badge>)
+transpiled: pages/index.html in 0.4ms (modified component: <user-badge>)
 ```
 
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.

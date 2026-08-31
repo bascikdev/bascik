@@ -1194,9 +1194,9 @@ When you start the dev server, Bascik starts the HTTP server concurrently with p
 
 ```terminal
 Starting transpiling...
-transpiled: pages/getting-started.html
-transpiled: pages/index.html
-transpiled: pages/about.html
+transpiled: pages/getting-started.html in 0.4ms
+transpiled: pages/index.html in 0.6ms
+transpiled: pages/about.html in 0.3ms
 
 ✓ 3 pages transpiled in 45ms
 Server running at http://localhost:8080
@@ -1209,12 +1209,12 @@ While the dev server is active, Bascik watches your file system and incrementall
 
 * **Modifying/Adding Pages:** Editing or adding an HTML page in your pages directory (e.g., `src/pages/about.html`) triggers incremental transpilation of just that page:
   ```terminal
-  transpiled: pages/about.html
+  transpiled: pages/about.html in 0.3ms
   ```
 * **Modifying Components:** Editing a component (e.g., `src/components/site-nav/site-nav.html`) triggers selective transpilation. Bascik tracks dependency mappings and only rebuilds pages that actually reference that component:
   ```terminal
-  transpiled: pages/index.html
-  transpiled: pages/about.html
+  transpiled: pages/index.html in 0.5ms
+  transpiled: pages/about.html in 0.3ms
   ```
 * **Open-Page Prioritization:** When a batch rebuild is triggered (such as an inlined stylesheet or shared component), Bascik checks active live-reload browser connections and prioritizes compiling currently open pages first, emitting reload signals immediately before compiling background pages.
 * **Static Assets:** Replicating any non-HTML static assets (like custom CSS, JS files, or images) from pages directly into the output directory:

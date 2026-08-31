@@ -96,6 +96,7 @@ import { eventEmitter } from "./events.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
+import { formatDuration } from "./format.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -753,14 +754,14 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   }
 
   const count = relativePaths.length;
-  const elapsed = Math.round(performance.now() - start);
+  const elapsed = performance.now() - start;
 
   if (BascikConfig.isBuild) {
     await generateSitemapFiles(relativePaths);
   }
 
   console.log(
-    `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${elapsed}ms`,
+    `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${formatDuration(elapsed)}`,
   );
 
   return relativePaths;
@@ -812,6 +813,7 @@ export const transpilePage = async (
   route?: RouteEntry | null,
   preCleanedHtml?: string,
 ): Promise<TranspilePageResult | null> => {
+  const start = performance.now();
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
     : getRelativePath(pagePath, "pages");
@@ -1015,7 +1017,8 @@ export const transpilePage = async (
   if (BascikConfig.devServer?.logging?.transpiles !== false) {
     const configLevel = BascikConfig.devServer?.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
-      console.log(`transpiled: ${relativePagePath}`);
+      const elapsed = performance.now() - start;
+      console.log(`transpiled: ${relativePagePath} in ${formatDuration(elapsed)}`);
     }
   }
 

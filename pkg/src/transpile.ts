@@ -5,6 +5,7 @@ import { watchFiles } from "./lib/watch.ts";
 import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
+import { formatDuration } from "./lib/format.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const overallStart = performance.now();
@@ -14,8 +15,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     startExecParallel();
     await watchFiles();
     await runExecPhase("post");
-    const totalElapsed = Math.round(performance.now() - overallStart);
-    console.log(`\n✓ Build complete in ${totalElapsed}ms`);
+    const totalElapsed = performance.now() - overallStart;
+    console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
     const { startServer } = await import("./lib/server.ts");
     const serverReady = startServer().catch((err) => {
@@ -36,8 +37,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await execReady;
     mem.setBootingDone();
     eventEmitter.emit("boot-done");
-    const totalElapsed = Math.round(performance.now() - overallStart);
-    console.log(`✓ All tasks completed in ${totalElapsed}ms`);
+    const totalElapsed = performance.now() - overallStart;
+    console.log(`✓ All tasks completed in ${formatDuration(totalElapsed)}`);
     if (url) console.log(`Server running at ${url}`);
   }
 };

@@ -96,9 +96,9 @@ When you run `bascik`, Bascik transpiles your pages, starts the built-in HTTP se
 Typical output:
 
 ```terminal
-transpiled: pages/getting-started.html
-transpiled: pages/index.html
-transpiled: pages/about.html
+transpiled: pages/getting-started.html in 0.4ms
+transpiled: pages/index.html in 0.6ms
+transpiled: pages/about.html in 0.3ms
 
 ✓ 3 pages transpiled in 45ms
 Server running at http://localhost:8080
@@ -119,12 +119,12 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 - **Modifying or adding pages** rebuilds just that page:
   ```terminal
-  transpiled: pages/about.html
+  transpiled: pages/about.html in 0.3ms
   ```
 - **Modifying components** rebuilds only the pages that use that component:
   ```terminal
-  transpiled: pages/index.html
-  transpiled: pages/about.html
+  transpiled: pages/index.html in 0.5ms
+  transpiled: pages/about.html in 0.3ms
   ```
 - **Open-page prioritization** rebuilds active browser tabs first:
   When a change impacts multiple pages (such as an inlined stylesheet or shared component), Bascik checks active live-reload connections and compiles currently open pages first so your visible browser window refreshes immediately before background pages are processed.

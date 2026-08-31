@@ -85,7 +85,7 @@ describe("runTranspile", () => {
       "runExecPhase:post",
     ]);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in \d+ms/));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in (?:[<]?[\d.]+(?:ms|s))/));
     logSpy.mockRestore();
   });
 
@@ -110,7 +110,7 @@ describe("runTranspile", () => {
     expect(watchIndex).toBeGreaterThan(preIndex);
     expect(postIndex).toBeGreaterThan(watchIndex);
 
-    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in \d+ms/));
+    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/));
     expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
     logSpy.mockRestore();
   });

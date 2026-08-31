@@ -3,13 +3,13 @@
 <!-- demo:home-build-output -->
 ```text
 $ bascik
-transpiled: pages/404.html
-transpiled: pages/index.html
-transpiled: pages/cli.html
-transpiled: pages/license.html
-transpiled: pages/getting-started.html
+transpiled: pages/404.html in 0.4ms
+transpiled: pages/index.html in 0.8ms
+transpiled: pages/cli.html in 0.5ms
+transpiled: pages/license.html in 0.3ms
+transpiled: pages/getting-started.html in 0.6ms
 ...
-✓ 59 pages transpiled in 1421ms
+✓ 59 pages transpiled in 1.42s
 Server running at http://localhost:8080
 ```
 

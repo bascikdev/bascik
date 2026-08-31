@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import chokidar from 'chokidar';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
+import { formatDuration } from './format.ts';
 import type { ExecPhase } from './types.ts';
 
 const runScript = (scriptPath: string): Promise<number> => {
@@ -13,9 +14,9 @@ const runScript = (scriptPath: string): Promise<number> => {
       cwd: process.cwd(),
     });
     child.on('close', (code) => {
-      const elapsed = Math.round(performance.now() - start);
+      const elapsed = performance.now() - start;
       if (code === 0) {
-        console.log(`(completed) exec: ${scriptPath} (${elapsed}ms)`);
+        console.log(`(completed) exec: ${scriptPath} in ${formatDuration(elapsed)}`);
         resolve(elapsed);
       } else {
         reject(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
@@ -36,7 +37,7 @@ export const runExecPhase = async (phase: ExecPhase): Promise<{ count: number; t
   for (const entry of matching) {
     await runScript(entry.script);
   }
-  const totalElapsed = Math.round(performance.now() - start);
+  const totalElapsed = performance.now() - start;
   return { count: matching.length, totalElapsed };
 };
 
@@ -60,7 +61,7 @@ export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: n
   for (const entry of entries) {
     await runScript(entry.script);
   }
-  const totalElapsed = Math.round(performance.now() - start);
+  const totalElapsed = performance.now() - start;
   return { count: entries.length, totalElapsed };
 };
 
