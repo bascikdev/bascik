@@ -504,6 +504,31 @@ describe("collectAllScriptDeps", () => {
     expect(deps).toContain("scripts/md-renderer.ts");
     expect(deps).toContain("content/cli.md");
   });
+
+  it("collects file dependencies from <script data-bascik-routes> tags in html", async () => {
+    const html = `
+      <script data-bascik-routes>
+        import { fetchRoutes } from './scripts/route-generator.ts';
+        console.log(JSON.stringify(await fetchRoutes()));
+      </script>
+    `;
+    const deps = await collectAllScriptDeps(html);
+    expect(deps).toContain("scripts/route-generator.ts");
+  });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-server", async () => {
+    const html = "<script data-bascik-build data-bascik-server>console.log(1)</script>";
+    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-build and data-bascik-server/,
+    );
+  });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-routes", async () => {
+    const html = "<script data-bascik-build data-bascik-routes>console.log(1)</script>";
+    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-build and data-bascik-routes/,
+    );
+  });
 });
 
 // ─── script output cache ─────────────────────────────────────────────────────

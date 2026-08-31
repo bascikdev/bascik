@@ -210,4 +210,20 @@ describe("executeRoutesScript", () => {
     );
     warnSpy.mockRestore();
   });
+
+  it("warns when routes script src cannot be read from disk", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+    (BascikConfig as any).onScriptError = "warn";
+
+    const html = `<script data-bascik-routes src="./missing-routes.ts"></script>`;
+    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    expect(result.routes).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[bascik] warning: Failed to read routes script src "%s":',
+      "./missing-routes.ts",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
 });

@@ -19,18 +19,20 @@ const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
 const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
 const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})?`;
 
+const SCRIPT_TAG_PREFIX = "<script\\b";
+
 const ROUTES_SCRIPT_RE = new RegExp(
-  String.raw`<script\b(?:\s+${ATTR})*\s+${ROUTES_FLAG}(?:\s+${ATTR})*\s*>([\s\S]*?)<\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
   "gi",
 );
 
 const ROUTES_BUILD_CONFLICT_RE = new RegExp(
-  String.raw`<script\b(?:\s+${ATTR})*\s+${BUILD_FLAG}(?:\s+${ATTR})*\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const ROUTES_SERVER_CONFLICT_RE = new RegExp(
-  String.raw`<script\b(?:\s+${ATTR})*\s+${SERVER_FLAG}(?:\s+${ATTR})*\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -340,7 +342,8 @@ export const executeRoutesScript = async (
         trimmedScript = await readFile(resolvedPath, "utf8");
       } catch (err) {
         console.warn(
-          `[bascik] warning: Failed to read routes script src "${srcPath}":`,
+          '[bascik] warning: Failed to read routes script src "%s":',
+          srcPath,
           err,
         );
       }

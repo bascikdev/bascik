@@ -89,13 +89,15 @@ const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
 const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
 const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
 
+const SCRIPT_TAG_PREFIX = "<script\\b";
+
 const SERVER_BUILD_CONFLICT_RE = new RegExp(
-  String.raw`<script\b(?:\s+${ATTR})*\s+${BUILD_FLAG}(?:\s+${ATTR})*\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
 const SERVER_ROUTES_CONFLICT_RE = new RegExp(
-  String.raw`<script\b(?:\s+${ATTR})*\s+${ROUTES_FLAG}(?:\s+${ATTR})*\s*>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -235,7 +237,7 @@ export const executeServerScripts = async (
             try {
               codeToExecute = await readFile(resolvedPath, "utf8");
             } catch (err) {
-              console.warn(`[bascik] warning: Failed to read server script src "${srcPath}":`, err);
+              console.warn('[bascik] warning: Failed to read server script src "%s":', srcPath, err);
             }
           }
         }

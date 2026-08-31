@@ -10,7 +10,7 @@ Run these steps in order before pushing.
 3. Check spelling, web standards, and static analysis across the workspace to prevent typos, security flaws, and compatibility regressions:
    - Run `yarn check:spelling` to verify American English spelling with codespell.
    - Run `yarn check:standards` to check web standards with webhint.
-   - Run Jelly static analysis (`jelly --obj-spread pkg/src/index.ts`) and Semgrep (`semgrep --config p/default`) if installed locally to catch static analysis and security issues before pushing.
+   - Run Jelly static analysis (`jelly --obj-spread pkg/src/index.ts`) and Semgrep (`semgrep --error --config p/default`) if installed locally to catch static analysis and security issues before pushing.
 4. Run typechecks, checks, unit tests, Playwright E2E tests, and Lighthouse CLI audits across all monorepo packages using token-efficient reporters:
    - Run `yarn test:all` to verify typechecks (`typecheck:all`), web standards (`check:all`), unit tests (`unit:all`), E2E tests (`e2e:all`), and Lighthouse audits (`docs:lighthouse`) across pkg, docs, create, and extensions/vscode-bascik. Playwright E2E tests are configured with concise `--reporter=line` output.
    - Lighthouse CLI (`docs:lighthouse`) runs the same underlying engine (axe-core / Chrome Lighthouse) as DevTools. Review Lighthouse output and reports in `.lighthouseci/`.
