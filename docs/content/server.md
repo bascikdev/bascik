@@ -116,7 +116,7 @@ When built, each generated HTML file (e.g. `dist/blog/hello-world.html`) retains
 </script>
 ```
 
-> **Note:** A single `<script>` tag cannot have both `data-bascik-routes` and `data-bascik-server` attributes.
+> **Note:** A single `<script>` tag cannot combine `data-bascik-routes` with `data-bascik-server` or `data-bascik-build`. All three directives are mutually exclusive.
 
 ### Rules and behavior
 

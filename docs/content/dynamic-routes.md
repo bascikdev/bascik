@@ -89,7 +89,7 @@ Dynamic route templates can contain both `<script data-bascik-build>` and `<scri
 
 - The `<script data-bascik-routes>` script expands the template into concrete HTML files at build time (for example, `dist/blog/hello-world.html` and `dist/blog/second-post.html`).
 - The `<script data-bascik-server>` blocks remain in the generated HTML files and execute per request when served by the Bascik production server.
-- Note that `<script data-bascik-routes>` and `<script data-bascik-server>` cannot be combined on the same script tag.
+- Note that `<script data-bascik-routes>` cannot be combined with `<script data-bascik-build>` or `<script data-bascik-server>` on the same script tag.
 
 ## Cache Invalidation
 
@@ -118,7 +118,7 @@ Bascik validates routes scripts and parameter mappings during the build:
 - **Empty Route List:** If the routes script outputs an empty array `[]`, Bascik logs a warning and skips generation for that template.
 - **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik throws an error indicating that parameter `id` was not supplied.
 - **Invalid Output Format:** If the script prints text that is not valid JSON or does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the received output.
-- **Conflicting Directives:** Specifying both `data-bascik-routes` and `data-bascik-server` on a single script tag is prevented with a validation error.
+- **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
 
 ## Common Recipes
 

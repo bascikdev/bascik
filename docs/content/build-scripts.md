@@ -71,9 +71,9 @@ Bascik supports three error modes:
 
 ### Conflict Errors
 
-Directives cannot be combined on the same `<script>` tag:
+Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) are mutually exclusive and cannot be combined on the same `<script>` tag:
 - Combining `data-bascik-build` and `data-bascik-server` is disallowed. A script can run at build time or at request time, but not both.
-- Combining `data-bascik-routes` and `data-bascik-server` is disallowed. Route generation occurs at build time.
+- Combining `data-bascik-routes` with `data-bascik-build` or `data-bascik-server` is disallowed. Route generation scripts run independently at build time.
 
 Bascik throws an error with the file name and line position. The VS Code extension also highlights this as an error as you type.
 

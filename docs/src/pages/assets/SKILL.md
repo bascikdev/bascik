@@ -908,7 +908,7 @@ Rules:
 * In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
 * Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup.
 * Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
-* `data-bascik-routes` and `data-bascik-server` cannot be combined on the same tag.
+* `data-bascik-routes`, `data-bascik-build`, and `data-bascik-server` are mutually exclusive and cannot be combined on the same tag.
 
 ### data-bascik-server
 
