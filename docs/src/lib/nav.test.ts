@@ -77,12 +77,13 @@ describe('renderPagination', () => {
     expect(renderPagination('/nonexistent-page')).toBe('');
   });
 
-  it('auto-detects route path from process.env.BASCIK_PAGE_FILE when no argument is provided', () => {
-    const originalFile = process.env.BASCIK_PAGE_FILE;
+  it('auto-detects route path from process.env.BASCIK_SOURCE_FILE when no argument is provided', () => {
+    const originalFile = process.env.BASCIK_SOURCE_FILE;
+    const originalPageFile = process.env.BASCIK_PAGE_FILE;
     const originalDir = process.env.BASCIK_PAGES_DIR;
 
     process.env.BASCIK_PAGES_DIR = '/abs/docs/src/pages';
-    process.env.BASCIK_PAGE_FILE = '/abs/docs/src/pages/dynamic-routes.html';
+    process.env.BASCIK_SOURCE_FILE = '/abs/docs/src/pages/dynamic-routes.html';
 
     try {
       const html = renderPagination();
@@ -91,7 +92,8 @@ describe('renderPagination', () => {
       expect(html).toContain('href="/build-scripts"');
       expect(html).toContain('href="/server"');
     } finally {
-      process.env.BASCIK_PAGE_FILE = originalFile;
+      process.env.BASCIK_SOURCE_FILE = originalFile;
+      process.env.BASCIK_PAGE_FILE = originalPageFile;
       process.env.BASCIK_PAGES_DIR = originalDir;
     }
   });

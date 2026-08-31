@@ -407,7 +407,7 @@ buildScriptCache: true  // default
 buildScriptCache: false // disable for debugging
 ```
 
-Cache entries live in `node_modules/.cache/bascik/script-cache/`. The cache key covers the script content, dev/build mode, the current page path (`BASCIK_PAGE_FILE`), the site URL, and the content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files the script references as quoted path literals. This means the cache self-invalidates on a per-script basis: editing one Markdown file only invalidates scripts that reference that file.
+Cache entries live in `node_modules/.cache/bascik/script-cache/`. The cache key covers the script content, dev/build mode, the source file path (`BASCIK_SOURCE_FILE`), the site URL, and the content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files the script references as quoted path literals. This means the cache self-invalidates on a per-script basis: editing one Markdown file only invalidates scripts that reference that file.
 
 To bust the entire cache manually, for example after upgrading a build-time npm dependency whose output changed:
 

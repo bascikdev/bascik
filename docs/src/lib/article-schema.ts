@@ -15,7 +15,7 @@
 import { readFile } from 'node:fs/promises';
 
 export async function articleSchema(): Promise<string> {
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
   if (!pageFile || !siteUrl) return '';

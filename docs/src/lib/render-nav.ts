@@ -21,7 +21,7 @@ import { NAV } from './nav.ts';
 function resolveRoutePath(currentPath?: string): string {
   let path = currentPath;
   if (!path) {
-    const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+    const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
     const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
     if (pageFile && pagesDir && pageFile.startsWith(pagesDir)) {
       const relPath = pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/');

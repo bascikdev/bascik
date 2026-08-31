@@ -2,11 +2,12 @@
 
 Some pages need content that is specific to the current page, such as a canonical URL in the head, an Open Graph image, a structured-data block, or even a page-specific sidebar. Hardcoding those values in every page file works. However, a shared script is easier to maintain. You can change the logic once and every page picks it up automatically.
 
-Bascik makes this possible by injecting three environment variables into every `data-bascik-build` subprocess:
+Bascik makes this possible by injecting environment variables into every `data-bascik-build` subprocess:
 
 | Variable | Value |
 | --- | --- |
-| `BASCIK_PAGE_FILE` | Absolute path to the HTML file currently being transpiled |
+| `BASCIK_SOURCE_FILE`| Absolute path to the file currently being transpiled (this is the file containing the executing `<script data-bascik-build>`, whether it's a page or a nested component template) |
+| `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled (always points to the page shell, even when compiling a nested component) |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts` |
 
@@ -14,13 +15,13 @@ A build script reads these and computes whatever it needs, without the page know
 
 ## Canonical URL Example
 
-A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `src/lib/canonical.ts` that derives the URL from `BASCIK_PAGE_FILE`:
+A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `src/lib/canonical.ts` that derives the URL from `BASCIK_SOURCE_FILE` (falling back to `BASCIK_PAGE_FILE` for legacy purposes):
 
 ```ts
 // src/lib/canonical.ts
 export async function canonical(): Promise<string> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
 
   if (!siteUrl || !pageFile || !pagesDir) return '';
@@ -67,18 +68,18 @@ Use it from any page's `<head>`:
 <link rel="canonical" href="https://yourdomain.com/internals/architecture" />
 ```
 
-The script block is identical on every page. Bascik injects a different `BASCIK_PAGE_FILE` for each, so the output is always specific to that page.
+The script block is identical on every page. Bascik injects a different `BASCIK_SOURCE_FILE` for each, so the output is always specific to that page.
 
 ## Reading the Page's Own HTML
 
-For richer outputs, including Open Graph tags or JSON-LD structured data, a script can also read the page file itself to extract metadata. `BASCIK_PAGE_FILE` is an absolute path, so `readFile` works directly:
+For richer outputs, including Open Graph tags or JSON-LD structured data, a script can also read the page file itself to extract metadata. `BASCIK_PAGE_FILE` is an absolute path to the main page shell (and `BASCIK_SOURCE_FILE` is the file executing the script), so `readFile` works directly:
 
 ```ts
 // src/lib/article-schema.ts (simplified)
 import { readFile } from 'node:fs/promises';
 
 export async function articleSchema(): Promise<string> {
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
   if (!pageFile || !siteUrl) return '';

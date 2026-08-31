@@ -70,7 +70,7 @@ The key is the SHA-256 hex digest of:
 1. The cache version integer.
 2. The trimmed script content.
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
-4. The current page file path (`BASCIK_PAGE_FILE`). This is critical: scripts like `canonical.ts` and `open-graph.ts` have identical content on every page but use `process.env.BASCIK_PAGE_FILE` to produce page-specific output (different URLs). Without this component the cache would return the first page's output for every subsequent page.
+4. The source file path (`BASCIK_SOURCE_FILE`, with `BASCIK_PAGE_FILE` as a fallback). This is critical: scripts like `canonical.ts` and `open-graph.ts` have identical content on every page but use `process.env.BASCIK_SOURCE_FILE` to produce page-specific output (different URLs). Without this component the cache would return the first page's output for every subsequent page.
 5. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
 6. The full content of every local file the script references, concatenated in order.
 

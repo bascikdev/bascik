@@ -366,6 +366,7 @@ export const executeRoutesScript = async (
   const sourceUrlComment = filePath ? `\n//# sourceURL=${relPath}` : "";
 
   const extraEnv = {
+    BASCIK_SOURCE_FILE: filePath ?? "",
     BASCIK_PAGE_FILE: filePath ?? "",
     BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
     BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),

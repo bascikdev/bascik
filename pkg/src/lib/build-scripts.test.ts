@@ -198,6 +198,7 @@ describe("executeBuildScripts", () => {
       "/abs/project/src/pages/guides/intro.html",
     );
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_SITE_URL).toBe("");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
