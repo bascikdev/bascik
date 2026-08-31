@@ -115,12 +115,7 @@
           console.log(await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build' }, { stripDemoBlocks: true }));
         </script>
 
-        <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
-          console.log(renderPagination('/build-scripts'));
-        </script>
+        <docs-pagination />
 
       </main>
     </div>

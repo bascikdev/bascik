@@ -18,14 +18,31 @@
 
 import { NAV } from './nav.ts';
 
+function resolveRoutePath(currentPath?: string): string {
+  let path = currentPath;
+  if (!path) {
+    const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+    const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
+    if (pageFile && pagesDir && pageFile.startsWith(pagesDir)) {
+      const relPath = pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/');
+      const withoutExt = relPath.replace(/\.html$/, '');
+      const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
+      path = routePath ? `/${routePath}` : '/';
+    }
+  }
+  if (!path) return '';
+  return path === '/using-markdown' ? '/recipes/markdown' : path;
+}
+
 /**
  * Renders the section label <p class="section-label">...</p> for a given page.
  * Returns an empty string when currentPath is not found in NAV.
  *
- * @param {string} currentPath - e.g. '/slots'
+ * @param {string} [currentPath] - e.g. '/slots' (auto-detected from env if omitted)
  */
-export function renderSectionLabel(currentPath: string): string {
-  const path = currentPath === '/using-markdown' ? '/recipes/markdown' : currentPath;
+export function renderSectionLabel(currentPath?: string): string {
+  const path = resolveRoutePath(currentPath);
+  if (!path) return '';
   const section = NAV.find(s => s.pages.some(p => p.href === path));
   if (!section) return '';
   return `<p class="section-label">${section.section}</p>`;
@@ -35,10 +52,11 @@ export function renderSectionLabel(currentPath: string): string {
  * Renders the prev/next pagination <nav> for a given page. Returns an
  * empty string when currentPath is not found in NAV or is the only page.
  *
- * @param {string} currentPath - e.g. '/slots'
+ * @param {string} [currentPath] - e.g. '/slots' (auto-detected from env if omitted)
  */
-export function renderPagination(currentPath: string): string {
-  const path = currentPath === '/using-markdown' ? '/recipes/markdown' : currentPath;
+export function renderPagination(currentPath?: string): string {
+  const path = resolveRoutePath(currentPath);
+  if (!path) return '';
   const flat = NAV.flatMap(s => s.pages.map(p => ({ ...p, section: s.section })));
   const idx = flat.findIndex(p => p.href === path);
   if (idx === -1) return '';
