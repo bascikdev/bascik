@@ -19,15 +19,15 @@
 import { NAV } from './nav.ts';
 
 function resolveRoutePath(currentPath?: string): string {
-  let path = currentPath;
+  let path = currentPath || process.env.BASCIK_PAGE_PATH;
   if (!path) {
+    // Fallback for older runners or custom callers
     const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
     const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
     if (pageFile && pagesDir && pageFile.startsWith(pagesDir)) {
       const relPath = pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/');
       const withoutExt = relPath.replace(/\.html$/, '');
-      const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
-      path = routePath ? `/${routePath}` : '/';
+      path = withoutExt === 'index' ? '/' : `/${withoutExt.replace(/\/index$/, '/')}`;
     }
   }
   if (!path) return '';

@@ -3,6 +3,7 @@ import {
   isDynamicRoute,
   extractRouteParamNames,
   resolveRoutePath,
+  computePagePath,
   parseRouteList,
   dedupeRoutes,
 } from "./routes.ts";
@@ -274,5 +275,45 @@ describe("dedupeRoutes", () => {
     expect(deduped).toEqual([{ params: { slug: "Hello" }, data: 1 }]);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/case-insensitive/i);
+  });
+});
+
+describe("computePagePath", () => {
+  it("computes root index as /", () => {
+    expect(computePagePath("/app/src/pages/index.html", "/app/src/pages")).toBe("/");
+  });
+
+  it("computes top-level page as /name", () => {
+    expect(computePagePath("/app/src/pages/about.html", "/app/src/pages")).toBe("/about");
+  });
+
+  it("computes directory index as /dir/", () => {
+    expect(computePagePath("/app/src/pages/blog/index.html", "/app/src/pages")).toBe("/blog/");
+  });
+
+  it("computes nested guide page as /guides/getting-started", () => {
+    expect(computePagePath("/app/src/pages/guides/getting-started.html", "/app/src/pages")).toBe(
+      "/guides/getting-started",
+    );
+  });
+
+  it("handles Windows backslashes", () => {
+    expect(
+      computePagePath("C:\\project\\src\\pages\\switch\\from-vue.html", "C:\\project\\src\\pages"),
+    ).toBe("/switch/from-vue");
+  });
+
+  it("resolves dynamic route params into the path", () => {
+    expect(
+      computePagePath("/app/src/pages/posts/[slug].html", "/app/src/pages", {
+        params: { slug: "hello-world" },
+      }),
+    ).toBe("/posts/hello-world");
+  });
+
+  it("handles relative paths with default or custom pagesDir", () => {
+    expect(computePagePath("src/pages/index.html", "src/pages")).toBe("/");
+    expect(computePagePath("src/pages/blog/post.html", "src/pages")).toBe("/blog/post");
+    expect(computePagePath("blog/index.html", "pages")).toBe("/blog/");
   });
 });

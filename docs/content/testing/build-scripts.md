@@ -91,6 +91,7 @@ Bascik injects environment variables into every `data-bascik-build` execution su
 
 | Variable | Value |
 | --- | --- |
+| `BASCIK_PAGE_PATH` | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/`) |
 | `BASCIK_SOURCE_FILE`| Absolute path to the file currently being transpiled (page or component template) |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |

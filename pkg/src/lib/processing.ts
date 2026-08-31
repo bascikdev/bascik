@@ -862,12 +862,44 @@ export const transpilePage = async (
     pagePath,
   );
 
+  let bodyPasses = 0;
+  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHtmlBody) && bodyPasses < 10) {
+    bodyPasses++;
+    transpiledHtmlBody = await executeBuildScripts(transpiledHtmlBody, pagePath, route, {
+      pageFile: pagePath,
+    });
+    const nextPass = recursivelyTranspile(
+      transpiledHtmlBody,
+      componentList,
+      usedComponents,
+      pagePath,
+    );
+    transpiledHtmlBody = nextPass.transpiledHtmlBody;
+    usedComponents = nextPass.usedComponents;
+  }
+
   // Also transpile the <head> so components can be used there (e.g. shared <meta> tags)
   const { innerContent: headRaw } = getTag(htmlWithBuildOutput, "head");
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
   } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath);
+
+  let headPasses = 0;
+  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
+    headPasses++;
+    transpiledHeadContent = await executeBuildScripts(transpiledHeadContent, pagePath, route, {
+      pageFile: pagePath,
+    });
+    const nextPassHead = recursivelyTranspile(
+      transpiledHeadContent,
+      componentList,
+      headUsedComponents,
+      pagePath,
+    );
+    transpiledHeadContent = nextPassHead.transpiledHtmlBody;
+    headUsedComponents = nextPassHead.usedComponents;
+  }
 
   // Warn about any hyphenated tags remaining after transpilation — these have no
   // matching component file and will appear unresolved in the output HTML.

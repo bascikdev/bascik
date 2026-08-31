@@ -92,6 +92,49 @@ export const resolveRoutePath = (
   });
 };
 
+/**
+ * Compute the normalized root-relative route path for a page file.
+ * e.g.
+ * - '/app/src/pages/index.html' -> '/'
+ * - '/app/src/pages/about.html' -> '/about'
+ * - '/app/src/pages/blog/index.html' -> '/blog/'
+ * - '/app/src/pages/guides/getting-started.html' -> '/guides/getting-started'
+ * - '/app/src/pages/posts/[slug].html' with { params: { slug: 'hello-world' } } -> '/posts/hello-world'
+ */
+export const computePagePath = (
+  pageFilePath: string,
+  pagesDir: string = BascikConfig.directory?.pages ?? "src/pages",
+  dynamicRoute?: { params?: Record<string, string | number> } | RouteEntry | null,
+): string => {
+  const normPage = pageFilePath.replace(/\\/g, "/");
+  const normPagesDir = pagesDir.replace(/\\/g, "/").replace(/\/$/, "");
+
+  let relPath: string;
+  if (normPagesDir && normPage.includes(normPagesDir)) {
+    const idx = normPage.indexOf(normPagesDir);
+    relPath = normPage.slice(idx + normPagesDir.length).replace(/^\/+/, "");
+  } else {
+    relPath = normPage.replace(/^\/+/, "");
+  }
+
+  let withoutExt = relPath.replace(/\.html$/i, "");
+
+  if (dynamicRoute && dynamicRoute.params) {
+    withoutExt = resolveRoutePath(withoutExt, dynamicRoute.params);
+  }
+
+  if (withoutExt === "index" || withoutExt === "") {
+    return "/";
+  }
+
+  if (withoutExt.endsWith("/index")) {
+    const dir = withoutExt.slice(0, -"/index".length);
+    return `/${dir}/`;
+  }
+
+  return `/${withoutExt}`;
+};
+
 /** Parse + validate routes-script stdout. Returns valid entries and warning strings. */
 export const parseRouteList = (
   stdout: string,
@@ -368,6 +411,9 @@ export const executeRoutesScript = async (
   const extraEnv = {
     BASCIK_SOURCE_FILE: filePath ?? "",
     BASCIK_PAGE_FILE: filePath ?? "",
+    BASCIK_PAGE_PATH: filePath
+      ? computePagePath(filePath, BascikConfig.directory?.pages ?? "src/pages")
+      : "",
     BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
     BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",

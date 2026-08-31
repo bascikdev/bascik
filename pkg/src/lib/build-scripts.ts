@@ -47,6 +47,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { computePagePath } from "./routes.ts";
 import type { RouteEntry } from "./types.ts";
 
 export { cleanStackTrace };
@@ -158,7 +159,7 @@ const BUILD_SCRIPT_TIMEOUT = 60_000;
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 4;
+export const SCRIPT_CACHE_VERSION = 5;
 
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
@@ -256,12 +257,16 @@ const computeScriptCacheKey = async (
   filePath: string,
   siteUrl: string,
   routeStr: string = "",
+  pageFile: string = "",
+  pagePath: string = "",
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
   hash.update(script);
   hash.update(isBuild ? "1" : "0");
-  hash.update(filePath);   // BASCIK_SOURCE_FILE (and legacy BASCIK_PAGE_FILE) — varies per file
+  hash.update(filePath);   // BASCIK_SOURCE_FILE
+  hash.update(pageFile);   // BASCIK_PAGE_FILE
+  hash.update(pagePath);   // BASCIK_PAGE_PATH — varies per page for page-aware scripts
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
   hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
 
@@ -327,6 +332,12 @@ const writeScriptCache = async (
   ).catch(() => { });
 };
 
+export interface ExecuteBuildScriptOptions {
+  pageFile?: string;
+  pagePath?: string;
+  sourceFile?: string;
+}
+
 /**
  * Find every `<script data-bascik-build>` block in `html`, execute each as a
  * Node.js ESM module, and replace the tag with the script's stdout output.
@@ -335,6 +346,7 @@ export const executeBuildScripts = async (
   html: string,
   filePath?: string,
   route?: RouteEntry | null,
+  options?: ExecuteBuildScriptOptions,
 ): Promise<string> => {
   const matches = [...html.matchAll(BUILD_SCRIPT_RE)];
   if (matches.length === 0) return html;
@@ -353,9 +365,11 @@ export const executeBuildScripts = async (
   ]);
 
   const useCache = BascikConfig.buildScriptCache !== false;
-  const pageFile = filePath ?? "";
+  const sourceFile = options?.sourceFile ?? filePath ?? "";
+  const pageFile = options?.pageFile ?? filePath ?? "";
   const siteUrl = BascikConfig.siteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
+  const pagePath = options?.pagePath ?? (pageFile ? computePagePath(pageFile, BascikConfig.directory?.pages ?? "src/pages", route) : "");
 
   interface ScriptTask {
     fullTag: string;
@@ -400,7 +414,7 @@ export const executeBuildScripts = async (
       const srcMatch = openTag.match(/\bsrc=["']([^"']+)["']/i);
       if (srcMatch) {
         const srcPath = srcMatch[1];
-        const resolvedPath = filePath ? resolve(dirname(filePath), srcPath) : resolve(process.cwd(), srcPath);
+        const resolvedPath = sourceFile ? resolve(dirname(sourceFile), srcPath) : (filePath ? resolve(dirname(filePath), srcPath) : resolve(process.cwd(), srcPath));
         try {
           trimmedScript = await readFile(resolvedPath, "utf8");
         } catch (err) {
@@ -410,7 +424,7 @@ export const executeBuildScripts = async (
     }
 
     const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, pageFile, siteUrl, routeStr)
+      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, sourceFile, siteUrl, routeStr, pageFile, pagePath)
       : null;
 
     const prefix = html.slice(0, index);
@@ -450,15 +464,17 @@ export const executeBuildScripts = async (
 
   if (uncachedTasks.length > 0) {
     let sourceUrlComment = "";
-    if (filePath) {
-      const relPath = relative(process.cwd(), filePath).replace(/\\/g, "/");
+    const activeFile = sourceFile || filePath;
+    if (activeFile) {
+      const relPath = relative(process.cwd(), activeFile).replace(/\\/g, "/");
       sourceUrlComment = `\n//# sourceURL=${relPath}`;
     }
 
-    const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : "unknown";
+    const relPath = activeFile ? relative(process.cwd(), activeFile).replace(/\\/g, "/") : "unknown";
     const extraEnv: Record<string, string> = {
-      BASCIK_SOURCE_FILE: filePath ?? "",
-      BASCIK_PAGE_FILE: filePath ?? "",
+      BASCIK_SOURCE_FILE: sourceFile,
+      BASCIK_PAGE_FILE: pageFile,
+      BASCIK_PAGE_PATH: pagePath,
       BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     };

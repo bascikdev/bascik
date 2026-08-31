@@ -824,6 +824,25 @@ describe("build-script output cache", () => {
     const optsWithoutRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
     expect(optsWithoutRoute.env?.BASCIK_ROUTE).toBeUndefined();
   });
+
+  it("passes BASCIK_PAGE_PATH to child process based on computePagePath or options", async () => {
+    resolveWith("<p>ok</p>");
+    const template = "<script data-bascik-build>x()</script>";
+
+    await executeBuildScripts(template, "src/pages/guides/getting-started.html");
+    const opts1 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts1.env?.BASCIK_PAGE_PATH).toBe("/guides/getting-started");
+
+    mockExecFile.mockClear();
+    await executeBuildScripts(template, "src/components/pagination.html", null, {
+      pageFile: "src/pages/switch/from-react.html",
+      sourceFile: "src/components/pagination.html",
+    });
+    const opts2 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
+    expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
+    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
+  });
 });
 
 // ─── cleanStackTrace ─────────────────────────────────────────────────────────

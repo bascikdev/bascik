@@ -2192,3 +2192,40 @@ describe("dynamic routes pipeline expansion", () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// transpilePage – deferred page-aware component build scripts
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("transpilePage – deferred page-aware component build scripts", () => {
+  it("executes deferred build scripts in components with page context during transpilePage", async () => {
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (html: string, filePath?: string, _route?: unknown, options?: { pageFile?: string }) => {
+        const pageFile = options?.pageFile ?? filePath ?? "";
+        return html.replace(
+          /<script\b[^>]*\bdata-bascik-build[^>]*>[\s\S]*?<\/script>/gi,
+          () => `<span>${pageFile.includes("page-a") ? "/page-a" : "/page-b"}</span>`,
+        );
+      },
+    );
+
+    const componentList = {
+      "page-badge": {
+        fileName: "src/components/page-badge.html",
+        fileContent:
+          '<div class="badge"><script data-bascik-build="page">console.log("<span>" + process.env.BASCIK_PAGE_PATH + "</span>")</script></div>',
+      },
+    };
+
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      return "<!DOCTYPE html><html><head></head><body><page-badge></page-badge></body></html>";
+    });
+
+    const resultA = await transpilePage("src/pages/page-a.html", componentList);
+    const resultB = await transpilePage("src/pages/page-b.html", componentList);
+
+    expect(resultA?.distHtml).toContain("<span>/page-a</span>");
+    expect(resultB?.distHtml).toContain("<span>/page-b</span>");
+  });
+});

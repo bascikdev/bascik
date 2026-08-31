@@ -725,6 +725,7 @@ Build scripts receive these `process.env` variables:
 
 | Variable | Description |
 |---|---|
+| `BASCIK_PAGE_PATH` | Normalized root-relative route path of the current page shell (e.g. `/getting-started`, `/switch/from-vue`, `/`). |
 | `BASCIK_SOURCE_FILE` | Absolute path to the file currently being transpiled (page or component template). |
 | `BASCIK_PAGE_FILE` | Absolute path of the current page file (e.g. `/project/src/pages/about.html`). Use this to generate page-specific output like canonical URLs. |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
@@ -732,7 +733,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts`, e.g. `"https://example.com"`. |
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
-These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE` gets a separate cache entry per page automatically.
+These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
 
 ### Build Script Output Cache
 
