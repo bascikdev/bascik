@@ -12,7 +12,7 @@ Bascik makes this possible by injecting environment variables into every `data-b
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts` |
 
-A build script reads these and computes whatever it needs, without the page knowing anything about the logic.
+A build script reads these and computes whatever it needs, without the page knowing anything about the logic. See [Environment Variables](/environment-variables) for the complete reference of all variables available in Bascik scripts.
 
 ## Canonical URL Example
 

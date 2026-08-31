@@ -88,7 +88,7 @@ When a build script runs inside a dynamic route template (for example, `src/page
 </script>
 ```
 
-See [Dynamic Routes](/dynamic-routes) for the full guide to dynamic route generation and templates.
+See [Dynamic Routes](/dynamic-routes) for the guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full list of variables available to build scripts.
 
 ### Best Practices for Resilient Scripts
 
