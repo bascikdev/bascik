@@ -18,7 +18,11 @@ const mime: Record<string, string> = {
 };
 
 createServer((req, res) => {
-  const url = req.url ?? '/';
+  const rawUrl = (req.url ?? '/').split(/[?#]/)[0];
+  let url = rawUrl;
+  try {
+    url = decodeURIComponent(rawUrl);
+  } catch { }
   let p = join(distDir, url === '/' ? 'index.html' : url);
   if (!p.endsWith('.html') && existsSync(p + '.html')) p += '.html';
   if (!existsSync(p)) {
