@@ -124,4 +124,64 @@ describe('renderPagination', () => {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }
   });
+
+  it('handles process.env.BASCIK_PAGE_PATH = "/components" correctly', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/components';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('<nav class="docs-pagination" aria-label="Page navigation">');
+      expect(html).toContain('href="/getting-started"');
+      expect(html).toContain('href="/scoped-styles"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles first item in NAV correctly via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/why-bascik';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="next"');
+      expect(html).not.toContain('data-pg="prev"');
+      expect(html).toContain('href="/developer-experience"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles last item in NAV correctly via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/switch/from-vue';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="prev"');
+      expect(html).not.toContain('data-pg="next"');
+      expect(html).toContain('href="/switch/from-svelte"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('returns empty string for unknown path via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/nonexistent-page';
+    try {
+      const html = renderPagination();
+      expect(html).toBe('');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles renderSectionLabel with process.env.BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/components';
+    try {
+      expect(renderSectionLabel()).toBe('<p class="section-label">Features</p>');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
 });
