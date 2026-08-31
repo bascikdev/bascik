@@ -95,11 +95,13 @@ import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
+import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import type {
   BascikComponent,
   ComponentList,
   TranspileResult,
   TranspilePageResult,
+  RouteEntry,
 } from "./types.ts";
 
 export const getFilePosition = (
@@ -468,55 +470,148 @@ export const recursivelyTranspile = (
 };
 
 
-/** Partitions absolute page paths into [openPages, otherPages] by active SSE connections. */
-export const partitionByOpenPages = (pageList: string[]): [string[], string[]] => {
+export interface PageJob {
+  pagePath: string;
+  route: RouteEntry | null;
+  relativePagePath: string;
+  preCleanedHtml?: string;
+}
+
+export const templateToGeneratedRelativePaths = new Map<string, Set<string>>();
+
+export const clearTemplateRoutesCache = (): void => {
+  templateToGeneratedRelativePaths.clear();
+};
+
+export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => {
+  if (!isDynamicRoute(pagePath)) {
+    return [
+      {
+        pagePath,
+        route: null,
+        relativePagePath: getRelativePath(pagePath, "pages"),
+      },
+    ];
+  }
+
+  let rawHtml: string;
+  try {
+    rawHtml = (await readFile(pagePath)).toString();
+  } catch (err) {
+    console.warn(
+      `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
+    );
+    return [];
+  }
+
+  const result = await executeRoutesScript(rawHtml, pagePath);
+  if (!result.routes || result.routes.length === 0) {
+    const prevGenerated = templateToGeneratedRelativePaths.get(pagePath);
+    if (prevGenerated) {
+      for (const staleRel of prevGenerated) {
+        if (!BascikConfig.isBuild) mem.removeByRelativePath(staleRel);
+        await deleteDistFile(staleRel).catch(() => { });
+      }
+      templateToGeneratedRelativePaths.delete(pagePath);
+    }
+    return [];
+  }
+
+  const currentGenerated = new Set<string>();
+  const jobs: PageJob[] = [];
+  const baseRelativePath = getRelativePath(pagePath, "pages");
+
+  for (const route of result.routes) {
+    const relativePagePath = resolveRoutePath(baseRelativePath, route.params);
+    currentGenerated.add(relativePagePath);
+    jobs.push({
+      pagePath,
+      route,
+      relativePagePath,
+      preCleanedHtml: result.cleanedHtml,
+    });
+  }
+
+  const prevGenerated = templateToGeneratedRelativePaths.get(pagePath);
+  if (prevGenerated) {
+    for (const oldRel of prevGenerated) {
+      if (!currentGenerated.has(oldRel)) {
+        if (!BascikConfig.isBuild) mem.removeByRelativePath(oldRel);
+        await deleteDistFile(oldRel).catch(() => { });
+      }
+    }
+  }
+  templateToGeneratedRelativePaths.set(pagePath, currentGenerated);
+
+  return jobs;
+};
+
+/** Partitions page paths or PageJobs into [openPages, otherPages] by active SSE connections. */
+export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string | PageJob)[], (string | PageJob)[]] => {
   const openSet = new Set(mem.openPages);
   if (openSet.size === 0) return [[], pageList];
   const strip = (p: string) => p.replace(/\/$/, "") || "/";
   const openNormalizedSet = new Set([...openSet].map(strip));
-  const open: string[] = [];
-  const rest: string[] = [];
-  for (const path of pageList) {
-    const httpPath = getHttpPath(getRelativePath(path, "pages"));
-    (openNormalizedSet.has(strip(httpPath)) ? open : rest).push(path);
+  const open: (string | PageJob)[] = [];
+  const rest: (string | PageJob)[] = [];
+  for (const item of pageList) {
+    const relPath = typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath;
+    const httpPath = getHttpPath(relPath);
+    (openNormalizedSet.has(strip(httpPath)) ? open : rest).push(item);
   }
   return [open, rest];
 };
 
 export const processPageBatch = async (
-  pagePaths: string[],
+  pageInputs: (string | PageJob)[],
   componentList?: ComponentList,
   globalStylesHtml?: string,
 ): Promise<string[]> => {
-  if (pagePaths.length === 0) return [];
+  if (pageInputs.length === 0) return [];
   if (!componentList) componentList = await listComponents();
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
-  const [openPages, restPages] = partitionByOpenPages(pagePaths);
+  const jobs: PageJob[] = [];
+  for (const input of pageInputs) {
+    if (typeof input === "string") {
+      const expanded = await expandPageToJobs(input);
+      jobs.push(...expanded);
+    } else {
+      jobs.push(input);
+    }
+  }
+  if (jobs.length === 0) return [];
+
+  const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
 
   const results: (TranspilePageResult | null)[] = [];
 
-  // Transpile open pages first, store in memory, and emit transpiled reload event IMMEDIATELY.
-  // This ensures open browser tabs update near instantly without waiting for the rest of the site to finish.
-  if (openPages.length > 0) {
-    const openResults = await Promise.all(
-      openPages.map(async (path) => {
-        const result = await transpilePage(path, componentList, globalStylesHtml);
-        if (result) {
-          if (!BascikConfig.isBuild) {
-            await mem.storePage({
-              relativePagePath: result.relativePagePath,
-              absolutePagePath: result.absolutePagePath,
-              pageContent: result.distHtml,
-              usedComponentsNames: result.usedComponentsNames,
-              fileDependencies: result.fileDependencies,
-            });
-          }
-          eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
-        }
-        return result;
-      }),
+  const runJob = async (job: PageJob) => {
+    const result = await transpilePage(
+      job.pagePath,
+      componentList,
+      globalStylesHtml,
+      job.route,
+      job.preCleanedHtml,
     );
+    if (result) {
+      if (!BascikConfig.isBuild) {
+        await mem.storePage({
+          relativePagePath: result.relativePagePath,
+          absolutePagePath: result.absolutePagePath,
+          pageContent: result.distHtml,
+          usedComponentsNames: result.usedComponentsNames,
+          fileDependencies: result.fileDependencies,
+        });
+      }
+      eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+    }
+    return result;
+  };
+
+  // Transpile open pages first, store in memory, and emit transpiled reload event IMMEDIATELY.
+  if (openJobs.length > 0) {
+    const openResults = await Promise.all(openJobs.map(runJob));
     for (const result of openResults) {
       if (result) {
         results.push(result);
@@ -525,25 +620,8 @@ export const processPageBatch = async (
   }
 
   // Transpile remaining (closed) pages afterwards
-  if (restPages.length > 0) {
-    const restResults = await Promise.all(
-      restPages.map(async (path) => {
-        const result = await transpilePage(path, componentList, globalStylesHtml);
-        if (result) {
-          if (!BascikConfig.isBuild) {
-            await mem.storePage({
-              relativePagePath: result.relativePagePath,
-              absolutePagePath: result.absolutePagePath,
-              pageContent: result.distHtml,
-              usedComponentsNames: result.usedComponentsNames,
-              fileDependencies: result.fileDependencies,
-            });
-          }
-          eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
-        }
-        return result;
-      }),
-    );
+  if (restJobs.length > 0) {
+    const restResults = await Promise.all(restJobs.map(runJob));
     for (const result of restResults) {
       if (result) {
         results.push(result);
@@ -601,22 +679,25 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
 
   let relativePaths: string[] = [];
 
-  if (useWorkers && pageList.length > 0) {
+  const jobBatches = await Promise.all(pageList.map(expandPageToJobs));
+  const allJobs = jobBatches.flat();
+
+  if (useWorkers && allJobs.length > 0) {
     const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
     const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
-    const poolSize = Math.min(cpus().length, pageList.length);
-    const pool = new WorkerPool<string, TranspilePageResult | null>(
+    const poolSize = Math.min(cpus().length, allJobs.length);
+    const pool = new WorkerPool<PageJob, TranspilePageResult | null>(
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
     );
-    const [openPages, restPages] = partitionByOpenPages(pageList);
+    const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: (TranspilePageResult | null)[] = [];
     try {
-      if (openPages.length > 0) {
+      if (openJobs.length > 0) {
         const openResults = await Promise.all(
-          openPages.map(async (path) => {
-            const result = await pool.run(path);
+          openJobs.map(async (job) => {
+            const result = await pool.run(job);
             if (result) {
               if (!BascikConfig.isBuild) {
                 await mem.storePage({
@@ -637,10 +718,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         }
       }
 
-      if (restPages.length > 0) {
+      if (restJobs.length > 0) {
         const restResults = await Promise.all(
-          restPages.map(async (path) => {
-            const result = await pool.run(path);
+          restJobs.map(async (job) => {
+            const result = await pool.run(job);
             if (result) {
               if (!BascikConfig.isBuild) {
                 await mem.storePage({
@@ -668,14 +749,14 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
 
     relativePaths = results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
   } else {
-    relativePaths = await processPageBatch(pageList, componentList, globalStylesHtml);
+    relativePaths = await processPageBatch(allJobs, componentList, globalStylesHtml);
   }
 
   const count = relativePaths.length;
   const elapsed = Math.round(performance.now() - start);
 
   if (BascikConfig.isBuild) {
-    await generateSitemapFiles();
+    await generateSitemapFiles(relativePaths);
   }
 
   console.log(
@@ -694,20 +775,27 @@ export const pageProcessing = (
 ): Promise<string | undefined> => {
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   const next = current.then(async () => {
-    const result = await transpilePage(pagePath, componentList, globalStylesHtml);
-    if (!result) return;
-    const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
-    if (!BascikConfig.isBuild) {
-      await mem.storePage({
-        relativePagePath,
-        absolutePagePath,
-        pageContent: distHtml,
-        usedComponentsNames,
-        fileDependencies,
-      });
+    if (!isDynamicRoute(pagePath)) {
+      const result = await transpilePage(pagePath, componentList, globalStylesHtml);
+      if (!result) return undefined;
+      const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
+      if (!BascikConfig.isBuild) {
+        await mem.storePage({
+          relativePagePath,
+          absolutePagePath,
+          pageContent: distHtml,
+          usedComponentsNames,
+          fileDependencies,
+        });
+      }
+      eventEmitter.emit("transpiled", { relativePagePath });
+      return relativePagePath;
     }
-    eventEmitter.emit("transpiled", { relativePagePath });
-    return relativePagePath;
+
+    const jobs = await expandPageToJobs(pagePath);
+    if (jobs.length === 0) return undefined;
+    const relativePaths = await processPageBatch(jobs, componentList, globalStylesHtml);
+    return relativePaths[0];
   }).finally(() => {
     if (pageProcessingQueues.get(pagePath) === next) {
       pageProcessingQueues.delete(pagePath);
@@ -721,9 +809,12 @@ export const transpilePage = async (
   pagePath: string,
   componentList?: ComponentList,
   globalStylesHtml?: string,
+  route?: RouteEntry | null,
+  preCleanedHtml?: string,
 ): Promise<TranspilePageResult | null> => {
-  const relativePagePath = getRelativePath(pagePath, "pages");
-
+  const relativePagePath = route
+    ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
+    : getRelativePath(pagePath, "pages");
 
   if (!componentList) {
     componentList = await listComponents();
@@ -732,13 +823,21 @@ export const transpilePage = async (
   // Execute <script data-bascik-build> blocks first so that the generated HTML
   // can contain component tags, which will be resolved below.
   let rawHtml: string;
-  try {
-    rawHtml = (await readFile(pagePath)).toString();
-  } catch (err) {
-    console.warn(`[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`);
-    return null;
+  if (preCleanedHtml !== undefined) {
+    rawHtml = preCleanedHtml;
+  } else {
+    try {
+      rawHtml = (await readFile(pagePath)).toString();
+      if (isDynamicRoute(pagePath)) {
+        const routesResult = await executeRoutesScript(rawHtml, pagePath);
+        rawHtml = routesResult.cleanedHtml;
+      }
+    } catch (err) {
+      console.warn(`[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`);
+      return null;
+    }
   }
-  const htmlWithBuildOutput = await executeBuildScripts(rawHtml, pagePath);
+  const htmlWithBuildOutput = await executeBuildScripts(rawHtml, pagePath, route);
 
   // Do NOT minify before component resolution. Minification runs after transpilation
   // so that whitespace-sensitive content (e.g. code inside resolved <pre> blocks
@@ -936,5 +1035,14 @@ export const removePage = async (absolutePagePath: string): Promise<void> => {
   if (!BascikConfig.isBuild) {
     mem.removePage(absolutePagePath);
   }
-  await deleteDistFile(relativePagePath);
+
+  const tracked = templateToGeneratedRelativePaths.get(absolutePagePath);
+  if (tracked) {
+    for (const rel of tracked) {
+      await deleteDistFile(rel);
+    }
+    templateToGeneratedRelativePaths.delete(absolutePagePath);
+  } else {
+    await deleteDistFile(relativePagePath);
+  }
 };

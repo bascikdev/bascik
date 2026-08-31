@@ -142,20 +142,33 @@ class MemoryStore {
   }
 
   removePage(absolutePagePath: string): void {
-    const relativePagePath = getRelativePath(absolutePagePath, "pages");
-    const httpPath = getHttpPath(relativePagePath);
+    const toDelete: string[] = [];
+    for (const [httpPath, page] of this.#files.entries()) {
+      if (page.absolutePagePath === absolutePagePath) {
+        page.usedComponentsSet.forEach((componentName: string) => {
+          this.#components.get(componentName)?.delete(absolutePagePath);
+        });
+        page.fileDependenciesSet?.forEach((depPath: string) => {
+          this.#fileDependencies.get(depPath)?.delete(absolutePagePath);
+        });
+        toDelete.push(httpPath);
+      }
+    }
+    for (const httpPath of toDelete) {
+      this.#files.delete(httpPath);
+    }
+  }
 
-    // Remove page from components sets
+  removeByRelativePath(relativePagePath: string): void {
+    const httpPath = getHttpPath(relativePagePath);
     const page = this.#files.get(httpPath);
     if (!page) return;
     page.usedComponentsSet.forEach((componentName: string) => {
-      this.#components.get(componentName)?.delete(absolutePagePath);
+      this.#components.get(componentName)?.delete(page.absolutePagePath);
     });
     page.fileDependenciesSet?.forEach((depPath: string) => {
-      this.#fileDependencies.get(depPath)?.delete(absolutePagePath);
+      this.#fileDependencies.get(depPath)?.delete(page.absolutePagePath);
     });
-
-    // Remove page from memory
     this.#files.delete(httpPath);
   }
 

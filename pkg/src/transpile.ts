@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
-import { runExecOnBuild, startExecDev } from "./lib/exec.ts";
+import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
 
@@ -10,8 +10,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
   const overallStart = performance.now();
 
   if (BascikConfig.isBuild) {
-    await runExecOnBuild();
+    await runExecPhase("pre");
+    startExecParallel();
     await watchFiles();
+    await runExecPhase("post");
     const totalElapsed = Math.round(performance.now() - overallStart);
     console.log(`\n✓ Build complete in ${totalElapsed}ms`);
   } else {
@@ -24,10 +26,13 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       throw err;
     });
 
+    await runExecPhase("pre");
+    startExecParallel();
     const execReady = startExecDev();
     const url = await serverReady;
 
     await watchFiles();
+    await runExecPhase("post");
     await execReady;
     mem.setBootingDone();
     eventEmitter.emit("boot-done");

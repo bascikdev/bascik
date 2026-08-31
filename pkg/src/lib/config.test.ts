@@ -378,3 +378,51 @@ describe("buildOverrideConfig.prodServer merge", () => {
     expect(cfg.prodServer?.rateLimit).toBe(false);
   });
 });
+
+describe("exec config normalization and merging", () => {
+  it("normalizes an exec entry with no phase to 'pre'", () => {
+    const { BascikConfig: cfg } = initBascikConfig({
+      exec: [{ script: "scripts/gen.js" }],
+    });
+    expect(cfg.exec).toEqual([{ script: "scripts/gen.js", phase: "pre" }]);
+  });
+
+  it("preserves explicit valid phase ('post' and 'parallel')", () => {
+    const { BascikConfig: cfg } = initBascikConfig({
+      exec: [
+        { script: "scripts/a.js", phase: "post" },
+        { script: "scripts/b.js", phase: "parallel" },
+        { script: "scripts/c.js", phase: "pre" },
+      ],
+    });
+    expect(cfg.exec).toEqual([
+      { script: "scripts/a.js", phase: "post" },
+      { script: "scripts/b.js", phase: "parallel" },
+      { script: "scripts/c.js", phase: "pre" },
+    ]);
+  });
+
+  it("warns and falls back to 'pre' when an invalid phase is provided", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const { BascikConfig: cfg } = initBascikConfig({
+      exec: [{ script: "scripts/invalid.js", phase: "invalid-phase" as any }],
+    });
+    expect(cfg.exec).toEqual([{ script: "scripts/invalid.js", phase: "pre" }]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid exec phase "invalid-phase"'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("lets buildOverrideConfig replace exec array during build", () => {
+    const { BascikConfig: cfg } = initBascikConfig(
+      { exec: [{ script: "scripts/dev-only.js" }] },
+      { exec: [{ script: "scripts/build-only.js", phase: "post" }] },
+      { isBuild: true },
+    );
+    expect(cfg.exec).toEqual([
+      { script: "scripts/build-only.js", phase: "post" },
+    ]);
+  });
+});
+

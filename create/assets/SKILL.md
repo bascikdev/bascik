@@ -729,6 +729,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts`, e.g. `"https://example.com"`. |
+| `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_PAGE_FILE` gets a separate cache entry per page automatically.
 
@@ -878,6 +879,37 @@ Useful for debug logging, development overlays, or any browser script that shoul
 
 > **dev vs. build:** `data-bascik-build` executes at transpile time and injects HTML into the page. `data-bascik-dev` runs in the browser, but only in dev mode.
 
+### Dynamic Routes (data-bascik-routes)
+
+Dynamic routes allow you to generate multiple static HTML files from a single template at build time. Use square brackets in the template filename (such as `src/pages/blog/[slug].html` or `src/pages/[category]/[id].html`) and include a `<script data-bascik-routes>` block:
+
+```html
+<!-- src/pages/blog/[slug].html -->
+<script data-bascik-routes>
+  const posts = [
+    { slug: 'hello-world', title: 'Hello World' },
+    { slug: 'second-post', title: 'Second Post' }
+  ];
+  const routes = posts.map(p => ({
+    params: { slug: p.slug },
+    data: p
+  }));
+  console.log(JSON.stringify(routes));
+</script>
+
+<script data-bascik-build>
+  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+  console.log(`<h1>${data.title}</h1>`);
+</script>
+```
+
+Rules:
+* Script must output a valid JSON array of route objects with required `params` (matching all bracket names in the template path) and optional `data`.
+* In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
+* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup.
+* Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
+* `data-bascik-routes` and `data-bascik-server` cannot be combined on the same tag.
+
 ### data-bascik-server
 
 Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Unlike `data-bascik-build` (which executes once at transpile time), server scripts execute on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
@@ -953,13 +985,15 @@ export default defineConfig({
     components: "src/components", // default
   },
   watch: [], // re-transpile all pages when these paths change (dev only)
-  // exec: Optional array of custom build-lifecycle script objects { script: string, watch?: string[] }.
-  // Executed sequentially in array order before page transpilation during --build, and on startup/watched file changes in dev mode.
+  // exec: Optional array of custom build-lifecycle script objects { script: string, phase?: 'pre' | 'post' | 'parallel', watch?: string[] }.
+  // 'pre' (default) runs and is awaited before page transpilation in both build and dev startup.
+  // 'post' runs after all pages finish transpilation.
+  // 'parallel' starts concurrently with page transpilation.
   // Note: The commented examples below demonstrate possible custom build tasks (e.g. search indexes, RSS feeds, social card images).
   // Do NOT add exec entries unless your project actually implements corresponding script files!
   exec: [
-    // Example: { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
-    // Example: { script: 'scripts/generate-sitemap.ts', watch: ['content/'] },
+    // Example: { script: 'scripts/generate-search-index.ts', phase: 'pre', watch: ['content/'] },
+    // Example: { script: 'scripts/generate-sitemap.ts', phase: 'post' },
   ],
   // Critical: custom lifecycle scripts registered in `exec` must write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than `src/` to prevent polluting your source tree or causing infinite watcher re-transpile loops.
   scopeScriptBlocks: true,

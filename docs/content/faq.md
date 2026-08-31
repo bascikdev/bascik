@@ -113,6 +113,12 @@ No. The dev server watches the components directory. Drop a new `.html` (or pair
 
 Yes. Components can use other components inside their markup. Bascik resolves nested components recursively at build time.
 
+## How do I generate pages dynamically from a CMS, database, or API?
+
+Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
+
+The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and prints a JSON array of `{ params, data }` route objects using `console.log()`. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
+
 ## What does Bascik output?
 
 A directory of plain `.html` files (and your assets). No client-side JavaScript framework, no special server required. Any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, or a plain Nginx server) can serve it.

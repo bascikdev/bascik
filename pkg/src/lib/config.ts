@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { config, buildConfig } from "./userConfig.ts";
-import type { BascikConfigOptions } from "./types.ts";
+import type { BascikConfigOptions, ExecEntry, ExecPhase } from "./types.ts";
 
 const args = process.argv.slice(2);
 const isBuild =
@@ -155,6 +155,27 @@ type ConfigInput = Partial<
   minify?: boolean | Partial<BascikConfigOptions["minify"]>;
 };
 
+const VALID_EXEC_PHASES = new Set(["pre", "post", "parallel"]);
+
+const normalizeExec = (
+  exec: ExecEntry[] | undefined,
+): ExecEntry[] | undefined => {
+  if (!exec || !Array.isArray(exec)) return undefined;
+  return exec.map((entry) => {
+    let phase = entry.phase ?? "pre";
+    if (!VALID_EXEC_PHASES.has(phase)) {
+      console.warn(
+        `[bascik:config] Invalid exec phase "${phase}", falling back to "pre"`,
+      );
+      phase = "pre";
+    }
+    return {
+      ...entry,
+      phase: phase as ExecPhase,
+    };
+  });
+};
+
 const normalizeMinify = (
   val: boolean | Partial<BascikConfigOptions["minify"]> | undefined,
 ): Partial<BascikConfigOptions["minify"]> => {
@@ -249,6 +270,9 @@ export const initBascikConfig = (
     isBuild,
     isProdServer: isProdServer,
   };
+  if (BascikConfig.exec) {
+    BascikConfig.exec = normalizeExec(BascikConfig.exec);
+  }
   (["pages", "components"] as const).forEach((key) => {
     BascikConfig.directory[key] = resolve(
       process.cwd(),

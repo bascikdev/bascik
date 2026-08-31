@@ -35,6 +35,7 @@ export const NAV: NavSection[] = [
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
       { href: '/build-scripts', label: 'Build Scripts' },
+      { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/server', label: 'Production Server' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
       { href: '/libraries', label: 'JavaScript Libraries' },

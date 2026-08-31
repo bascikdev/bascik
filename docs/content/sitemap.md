@@ -51,6 +51,13 @@ Each page is converted from its file path to a URL path following these rules:
 | `src/pages/about.html` | `/about` |
 | `src/pages/blog/index.html` | `/blog` |
 | `src/pages/blog/post.html` | `/blog/post` |
+| `src/pages/blog/[slug].html` (dynamic) | `/blog/hello-world`, `/blog/second-post` (concrete generated paths) |
+
+### Dynamic route expansion and percent-encoding
+
+When using [Dynamic Routes](/dynamic-routes), Bascik discovers all concrete HTML pages generated from your templates and adds their final URLs to `sitemap.xml`. The unexpanded template path with literal brackets (such as `/blog/[slug]`) is omitted from the sitemap.
+
+Parameter segments containing non-ASCII or special characters are automatically percent-encoded (for example, `/products/item%20name`) to ensure valid XML sitemap output.
 
 ## Opting out
 

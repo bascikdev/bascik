@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <script data-bascik-routes>
+    const items = [
+      { params: { slug: "alpha" }, data: { title: "Alpha Post", count: 1 } },
+      { params: { slug: "beta" }, data: { title: "Beta Post", count: 2 } },
+      { params: { slug: "author’s-post" }, data: { title: "Unicode Post", count: 3 } }
+    ];
+    console.log(JSON.stringify(items));
+  </script>
+  <script data-bascik-build>
+    const { data } = JSON.parse(process.env.BASCIK_ROUTE);
+    console.log(`<title data-testid="doc-title">${data.title}</title>`);
+  </script>
+</head>
+
+<body>
+  <div data-testid="container">
+    <script data-bascik-build>
+      const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
+      console.log(`<h1 data-testid="post-title">${data.title}</h1><p data-testid="post-slug">${params.slug}</p><span data-testid="post-count">${data.count}</span>`);
+    </script>
+    <script data-bascik-server>
+      console.log('<div data-testid="server-slice">Personalized Slice</div>');
+    </script>
+  </div>
+</body>
+
+</html>

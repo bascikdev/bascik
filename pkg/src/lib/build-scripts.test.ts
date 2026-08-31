@@ -750,6 +750,54 @@ describe("build-script output cache", () => {
     // Only 1 batch call for the 2 uncached scripts
     expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
+
+  it("different route params produce a different cache key so generated pages are not reused", async () => {
+    resolveWith("<p>page-1</p>");
+    mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
+
+    const template = "<script data-bascik-build>makeArticle()</script>";
+    const templatePath = "src/pages/blog/[slug].html";
+
+    await executeBuildScripts(template, templatePath, {
+      params: { slug: "post-1" },
+    });
+
+    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite1).toBeDefined();
+    const cacheKey1 = jsonWrite1![0];
+
+    mockExecFile.mockClear();
+    mockWriteFile.mockClear();
+    mockReadFile.mockClear();
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>page-2</p>");
+
+    await executeBuildScripts(template, templatePath, {
+      params: { slug: "post-2" },
+    });
+
+    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite2).toBeDefined();
+    const cacheKey2 = jsonWrite2![0];
+
+    expect(cacheKey1).not.toEqual(cacheKey2);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes BASCIK_ROUTE to child process when route is provided and omits it for ordinary pages", async () => {
+    resolveWith("");
+    const template = "<script data-bascik-build>x()</script>";
+    const route = { params: { slug: "hello" }, data: { title: "Hello World" } };
+
+    await executeBuildScripts(template, "src/pages/blog/[slug].html", route);
+    const optsWithRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(optsWithRoute.env?.BASCIK_ROUTE).toBe(JSON.stringify(route));
+
+    mockExecFile.mockClear();
+    await executeBuildScripts(template, "src/pages/index.html");
+    const optsWithoutRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(optsWithoutRoute.env?.BASCIK_ROUTE).toBeUndefined();
+  });
 });
 
 // ─── cleanStackTrace ─────────────────────────────────────────────────────────

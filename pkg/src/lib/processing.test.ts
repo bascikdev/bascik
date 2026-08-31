@@ -50,6 +50,7 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(async () => { }),
   mkdir: vi.fn(async () => { }),
+  rm: vi.fn(async () => { }),
 }));
 
 vi.mock("./build-scripts.js", () => ({
@@ -64,6 +65,8 @@ vi.mock("./sitemap.js", () => ({
 vi.mock("./mem.js", () => ({
   mem: {
     storePage: vi.fn(),
+    removePage: vi.fn(),
+    removeByRelativePath: vi.fn(),
     pagesThisComponentIsUsedOn: vi.fn(() => []),
     pagesDependentOnFile: vi.fn(() => []),
     openPages: [] as string[],
@@ -79,13 +82,19 @@ vi.mock("./events.js", () => ({
 vi.mock("./worker-pool.js", () => {
   return {
     WorkerPool: vi.fn().mockImplementation(function (this: any) {
-      this.run = vi.fn(async (pagePath: string) => ({
-        relativePagePath: pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`),
-        absolutePagePath: pagePath,
-        distHtml: "<html></html>",
-        usedComponentsNames: ["my-comp"],
-        fileDependencies: ["scripts/md-renderer.ts"],
-      }));
+      this.run = vi.fn(async (job: any) => {
+        const pagePath = typeof job === "string" ? job : job.pagePath;
+        const relativePagePath = typeof job === "string"
+          ? (pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`))
+          : job.relativePagePath;
+        return {
+          relativePagePath,
+          absolutePagePath: pagePath,
+          distHtml: "<html></html>",
+          usedComponentsNames: ["my-comp"],
+          fileDependencies: ["scripts/md-renderer.ts"],
+        };
+      });
       this.terminate = vi.fn(async () => { });
     }),
   };
@@ -1996,5 +2005,190 @@ describe("transpilePage – inline component <style> extraction & deduplication"
 
     // JSON-LD script is preserved verbatim without IIFE wrapping
     expect(html).toContain('<script type="application/ld+json">{"@type":"Thing"}</script>');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Z: Dynamic Routes Pipeline Expansion
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("dynamic routes pipeline expansion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).inlineStyles = false;
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+  });
+
+  it("leaves non-dynamic pages unaffected (1:1 output)", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const results = await processAllPages({ useWorkers: false });
+    expect(results).toEqual(["pages/index.html"]);
+  });
+
+  it("expands a dynamic route template with 3 routes into 3 distinct pages", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([templatePath]);
+
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [
+        { params: { slug: "post-1" }, data: { title: "Post 1" } },
+        { params: { slug: "post-2" }, data: { title: "Post 2" } },
+        { params: { slug: "post-3" }, data: { title: "Post 3" } },
+      ],
+      cleanedHtml: "<!DOCTYPE html><html><head></head><body><h1>Article</h1></body></html>",
+    });
+
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<script data-bascik-routes></script><!DOCTYPE html><html><head></head><body><h1>Article</h1></body></html>",
+    );
+
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation((html: string) =>
+      Promise.resolve(html),
+    );
+
+    const results = await processAllPages({ useWorkers: false });
+    expect(results).toEqual([
+      "pages/blog/post-1.html",
+      "pages/blog/post-2.html",
+      "pages/blog/post-3.html",
+    ]);
+
+    expect(mem.storePage).toHaveBeenCalledTimes(3);
+    expect(mem.storePage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ relativePagePath: "pages/blog/post-1.html" }),
+    );
+    expect(mem.storePage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ relativePagePath: "pages/blog/post-2.html" }),
+    );
+    expect(mem.storePage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ relativePagePath: "pages/blog/post-3.html" }),
+    );
+    routesSpy.mockRestore();
+  });
+
+  it("passes BASCIK_ROUTE to executeBuildScripts for dynamic pages and null for ordinary pages", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+
+    await transpilePage(
+      templatePath,
+      {},
+      undefined,
+      { params: { slug: "test" }, data: { id: 1 } },
+      "<!DOCTYPE html><html><head></head><body><p>dyn</p></body></html>",
+    );
+
+    expect(executeBuildScripts).toHaveBeenCalledWith(
+      expect.any(String),
+      templatePath,
+      { params: { slug: "test" }, data: { id: 1 } },
+    );
+  });
+
+  it("yields zero pages and does not throw when routes script produces empty routes array", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([templatePath]);
+
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [],
+      cleanedHtml: "<!DOCTYPE html><html><head></head><body><h1>Empty</h1></body></html>",
+    });
+
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>Empty</body></html>");
+
+    const results = await processAllPages({ useWorkers: false });
+    expect(results).toEqual([]);
+    expect(mem.storePage).not.toHaveBeenCalled();
+    routesSpy.mockRestore();
+  });
+
+  it("warns and produces nothing when a bracket filename has no routes script", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([templatePath]);
+
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<!DOCTYPE html><html><head></head><body><h1>No Routes Script</h1></body></html>",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    const results = await processAllPages({ useWorkers: false });
+    expect(results).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('has no <script data-bascik-routes> tag'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("deletes stale outputs from disk and memory when a route disappears on template re-transpile", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    const routesModule = await import("./routes.ts");
+
+    // First run with two routes: a and b
+    const spy1 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "a" } }, { params: { slug: "b" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>dyn</body></html>");
+
+    await pageProcessing(templatePath, {});
+    spy1.mockRestore();
+
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePagePath: "pages/blog/a.html" }),
+    );
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePagePath: "pages/blog/b.html" }),
+    );
+
+    // Second run with only route a (b disappeared)
+    const spy2 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "a" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+
+    const { rm } = await import("node:fs/promises");
+    await pageProcessing(templatePath, {});
+    spy2.mockRestore();
+
+    expect(mem.removeByRelativePath).toHaveBeenCalledWith("pages/blog/b.html");
+    expect(rm).toHaveBeenCalledWith(
+      expect.stringContaining("b.html"),
+    );
+  });
+
+  it("deletes all generated outputs when template is removed via removePage", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    const routesModule = await import("./routes.ts");
+
+    const spy = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "x" } }, { params: { slug: "y" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>dyn</body></html>");
+
+    await pageProcessing(templatePath, {});
+    spy.mockRestore();
+
+    const { rm } = await import("node:fs/promises");
+    (rm as ReturnType<typeof vi.fn>).mockClear();
+
+    await removePage(templatePath);
+
+    expect(mem.removePage).toHaveBeenCalledWith(templatePath);
+    expect(rm).toHaveBeenCalledWith(
+      expect.stringContaining("x.html"),
+    );
+    expect(rm).toHaveBeenCalledWith(
+      expect.stringContaining("y.html"),
+    );
   });
 });

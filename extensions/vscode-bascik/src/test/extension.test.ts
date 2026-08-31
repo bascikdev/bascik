@@ -109,6 +109,32 @@ suite('Extension Integration Suite', () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
+    test('reports error when script has both data-bascik-routes and data-bascik-server', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-routes data-bascik-server>\nconsole.log(1);\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('data-bascik-routes and data-bascik-server cannot both appear'),
+      );
+      assert.ok(match, 'Expected error diagnostic for conflicting routes/server script attributes');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+    });
+
+    test('reports error when script has both data-bascik-routes and data-bascik-build', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-routes data-bascik-build>\nconsole.log(1);\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('data-bascik-routes and data-bascik-build cannot both appear'),
+      );
+      assert.ok(match, 'Expected error diagnostic for conflicting routes/build script attributes');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+    });
+
     test('reports JS compatibility warning in html script tag', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',

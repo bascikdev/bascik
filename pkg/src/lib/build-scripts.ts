@@ -47,6 +47,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import type { RouteEntry } from "./types.ts";
 
 export { cleanStackTrace };
 
@@ -83,19 +84,23 @@ const runModule = async (
 ): Promise<{ stdout: string; stderr: string }> => {
   const sem = childSemaphore();
   await sem.acquire();
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
+    FORCE_COLOR: "0",
+    NO_COLOR: "1",
+    ...extraEnv,
+  };
+  if (!extraEnv.BASCIK_ROUTE) {
+    delete childEnv.BASCIK_ROUTE;
+  }
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
       [path, ...args],
       {
         cwd: process.cwd(),
-        env: {
-          ...process.env,
-          BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
-          FORCE_COLOR: "0",
-          NO_COLOR: "1",
-          ...extraEnv,
-        },
+        env: childEnv as Record<string, string>,
         timeout: BUILD_SCRIPT_TIMEOUT,
         killSignal: "SIGTERM",
       },
@@ -117,6 +122,7 @@ const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
 const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
 const FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
 const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})?`;
+const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
@@ -126,6 +132,11 @@ const BUILD_SCRIPT_RE = new RegExp(
 
 const BUILD_SERVER_CONFLICT_RE = new RegExp(
   String.raw`<script\b(?:\s+${ATTR})*\s+${SERVER_FLAG}(?:\s+${ATTR})*\s*>`,
+  "i",
+);
+
+const BUILD_ROUTES_CONFLICT_RE = new RegExp(
+  String.raw`<script\b(?:\s+${ATTR})*\s+${ROUTES_FLAG}(?:\s+${ATTR})*\s*>`,
   "i",
 );
 
@@ -145,7 +156,7 @@ const BUILD_SCRIPT_TIMEOUT = 60_000;
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 3;
+export const SCRIPT_CACHE_VERSION = 4;
 
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
@@ -171,12 +182,18 @@ const readCachedFile = async (absPath: string, relKey: string): Promise<string> 
   return content;
 };
 
+const ALL_PAGE_SCRIPTS_RE = new RegExp(
+  String.raw`<script\b(?:\s+${ATTR})*\s+(?:${FLAG}|${ROUTES_FLAG})(?:\s+${ATTR})*\s*>([\s\S]*?)<\/script>`,
+  "gi",
+);
+
 /**
  * Extract all local file dependencies referenced by `<script data-bascik-build>`
- * blocks in `html`, recursively scanning referenced local JS/TS/MJS files.
+ * and `<script data-bascik-routes>` blocks in `html`, recursively scanning
+ * referenced local JS/TS/MJS files.
  */
 export const collectAllScriptDeps = async (html: string): Promise<string[]> => {
-  const matches = [...html.matchAll(new RegExp(BUILD_SCRIPT_RE.source, "gi"))];
+  const matches = [...html.matchAll(new RegExp(ALL_PAGE_SCRIPTS_RE.source, "gi"))];
   if (matches.length === 0) return [];
 
   const visited = new Set<string>();
@@ -236,6 +253,7 @@ const computeScriptCacheKey = async (
   isBuild: boolean,
   filePath: string,
   siteUrl: string,
+  routeStr: string = "",
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
@@ -243,6 +261,7 @@ const computeScriptCacheKey = async (
   hash.update(isBuild ? "1" : "0");
   hash.update(filePath);   // BASCIK_PAGE_FILE — varies per page
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
+  hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
 
   const visited = new Set<string>();
   const queue = extractScriptDeps(script);
@@ -310,7 +329,11 @@ const writeScriptCache = async (
  * Find every `<script data-bascik-build>` block in `html`, execute each as a
  * Node.js ESM module, and replace the tag with the script's stdout output.
  */
-export const executeBuildScripts = async (html: string, filePath?: string): Promise<string> => {
+export const executeBuildScripts = async (
+  html: string,
+  filePath?: string,
+  route?: RouteEntry | null,
+): Promise<string> => {
   const matches = [...html.matchAll(BUILD_SCRIPT_RE)];
   if (matches.length === 0) return html;
 
@@ -330,6 +353,7 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
   const useCache = BascikConfig.buildScriptCache !== false;
   const pageFile = filePath ?? "";
   const siteUrl = BascikConfig.siteUrl ?? "";
+  const routeStr = route ? JSON.stringify(route) : "";
 
   interface ScriptTask {
     fullTag: string;
@@ -359,6 +383,16 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
       throw new Error(`${errorMsg}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
     }
 
+    if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
+      let errorMsg = `[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes`;
+      if (filePath) {
+        const prefix = html.slice(0, index);
+        const prefixLines = prefix.split(/\r?\n/);
+        errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`;
+      }
+      throw new Error(`${errorMsg}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
+    }
+
     let trimmedScript = scriptContent.trim();
     if (!trimmedScript) {
       const srcMatch = openTag.match(/\bsrc=["']([^"']+)["']/i);
@@ -374,7 +408,7 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
     }
 
     const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, pageFile, siteUrl)
+      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, pageFile, siteUrl, routeStr)
       : null;
 
     const prefix = html.slice(0, index);
@@ -420,11 +454,14 @@ export const executeBuildScripts = async (html: string, filePath?: string): Prom
     }
 
     const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : "unknown";
-    const extraEnv = {
+    const extraEnv: Record<string, string> = {
       BASCIK_PAGE_FILE: filePath ?? "",
       BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     };
+    if (route) {
+      extraEnv.BASCIK_ROUTE = JSON.stringify(route);
+    }
 
     if (uncachedTasks.length === 1) {
       const task = uncachedTasks[0];
