@@ -190,7 +190,7 @@ src/components/
   alert-box.css   ← scoped to alert-box
 ```
 
-**Subfolder layout** (same tag name regardless of folder):
+**Subfolder layout** (subfolders are allowed for organization, but the filename determines the tag name; duplicate names anywhere in components error):
 ```
 src/components/
   alert-box/

@@ -79,6 +79,14 @@ Yes. Bascik's output is vanilla HTML. Any library that works with HTML works wit
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
+## Can I organize components into subfolders?
+
+Yes. Subfolders are supported for file organization. However, tag names come from the filename only, so subfolders do not create separate namespaces. For example, `src/components/marketing/promo-card.html` registers `<promo-card>`. We recommend keeping the components directory flat unless you have a specific organizational need.
+
+## What happens if two components have the same name?
+
+If two component files define the same tag name (such as `src/components/marketing/card.html` and `src/components/admin/card.html`, or `card.html` and `card.v2.html`), Bascik throws a build error naming both colliding file paths. Duplicate component names are not allowed because tag names come from the filename alone.
+
 ## Why do two builds of the same source produce byte-identical output?
 
 Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.

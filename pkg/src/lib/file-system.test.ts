@@ -127,9 +127,45 @@ describe("deepReadDir", () => {
   it("Reads path", async () => {
     const paths = await deepReadDir("./");
     expect(paths).toEqual([
-      ["dir/dir", "dir/dir/one.html", "dir/dir/one.css"],
-      "dir/one.html",
+      ["dir/dir", "dir/dir/one.css", "dir/dir/one.html"],
       "dir/one.css",
+      "dir/one.html",
+    ]);
+  });
+
+  it("returns entries in byte-wise sorted order at every level", async () => {
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (`${path}` === "test-tree") {
+        return [
+          { name: "zebra.html", isDirectory: () => false },
+          { name: "apple.html", isDirectory: () => false },
+          { name: "B_dir", isDirectory: () => true },
+          { name: "a_dir", isDirectory: () => true },
+          { name: "1_num.html", isDirectory: () => false },
+        ] as any;
+      }
+      if (`${path}` === "test-tree/a_dir") {
+        return [
+          { name: "sub_z.html", isDirectory: () => false },
+          { name: "sub_a.html", isDirectory: () => false },
+        ] as any;
+      }
+      if (`${path}` === "test-tree/B_dir") {
+        return [
+          { name: "item.html", isDirectory: () => false },
+        ] as any;
+      }
+      return [];
+    });
+
+    const flat = await deepReadDirFlat("test-tree");
+    expect(flat).toEqual([
+      "test-tree/1_num.html",
+      "test-tree/B_dir/item.html",
+      "test-tree/a_dir/sub_a.html",
+      "test-tree/a_dir/sub_z.html",
+      "test-tree/apple.html",
+      "test-tree/zebra.html",
     ]);
   });
 
@@ -163,7 +199,7 @@ describe("deepReadDir", () => {
 describe("deepReadDirFlat", () => {
   it("reads path and flattens array", async () => {
     const paths = await deepReadDirFlat("./");
-    expect(paths ?? []).toEqual(["dir", "dir/one.html", "dir/one.css"]);
+    expect(paths ?? []).toEqual(["dir", "dir/one.css", "dir/one.html"]);
   });
 });
 

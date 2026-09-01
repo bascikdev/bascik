@@ -47,6 +47,7 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | Capability | Standard / Spec | Status | Notes |
 | --- | --- | --- | --- |
 | Hyphenated custom element names | WHATWG HTML §4.13.1.2 | ✓ | Component tags with hyphens (e.g. `<my-button>`, `<site-nav>`) follow the WHATWG custom element standard and prevent collisions with native tags. |
+| Unique component filenames | WHATWG HTML §4.13.1.2 | ✓ | Component names are derived strictly from filenames. Subfolders are supported for organization, but duplicate filenames producing the same tag name error at build time. |
 | Single-word component filenames | WHATWG HTML §4.13.1.2 | △ | Single-word component names (e.g. `card.html` -> `<card></card>`) compile for backward compatibility, but Bascik's CLI compiler and VS Code extension issue warnings recommending a hyphenated name (e.g. `my-card.html`). |
 | Native element shadowing guard | WHATWG HTML §4 | ✓ | Bascik maintains a set of 115 native HTML elements and issues a build-time warning if a component filename shadows a native tag (e.g. `header.html` or `dialog.html`). |
 | Exact component tag matching | WHATWG HTML §13.2.5 | ✓ | A component name matches only the complete tag name. A `card` component never claims a longer hyphenated tag such as `<card-header>`. |

@@ -217,20 +217,15 @@ describe("listComponents – component name case normalization", () => {
     expect(result["SiteNav"]).toBeUndefined();
   });
 
-  it("last component wins when two filenames differ only in case", async () => {
+  it("throws duplicate name collision error when two filenames differ only in case", async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/my-card.html",
       "src/components/My-Card.html",
     ]);
-    mockReadFile
-      .mockResolvedValueOnce(Buffer.from("<div>lowercase</div>"))
-      .mockResolvedValueOnce(Buffer.from("<div>uppercase</div>"));
 
-    const result = await listComponents();
-
-    expect(result["my-card"]).toBeDefined();
-    // Only one entry for my-card (not two)
-    expect(Object.keys(result).filter((k) => k === "my-card")).toHaveLength(1);
+    await expect(listComponents()).rejects.toThrowError(
+      /error: two component files both define the tag <my-card>/,
+    );
   });
 });
 
@@ -393,5 +388,72 @@ describe("listComponents – page-aware component build script deferral", () => 
     expect(mockExecuteBuildScripts).toHaveBeenCalled();
     expect(result["mixed-comp"].fileContent).toContain("<p>Static</p>");
     expect(result["mixed-comp"].fileContent).toContain('data-bascik-build="page"');
+  });
+
+  it("throws an error when two component files in subfolders define the same tag name", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/marketing/card.html",
+      "src/components/admin/card.html",
+    ]);
+
+    await expect(listComponents()).rejects.toThrowError(
+      /error: two component files both define the tag <card>[\s\S]*src\/components\/marketing\/card\.html[\s\S]*src\/components\/admin\/card\.html/,
+    );
+  });
+
+  it("lists all colliding file paths when three or more files define the same tag name", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/marketing/card.html",
+      "src/components/admin/card.html",
+      "src/components/blog/card.html",
+    ]);
+
+    await expect(listComponents()).rejects.toThrowError(
+      /src\/components\/marketing\/card\.html[\s\S]*src\/components\/admin\/card\.html[\s\S]*src\/components\/blog\/card\.html/,
+    );
+  });
+
+  it("throws an error when card.html and card.v2.html define the same tag name", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/card.html",
+      "src/components/card.v2.html",
+    ]);
+
+    await expect(listComponents()).rejects.toThrowError(
+      /error: two component files both define the tag <card>/,
+    );
+  });
+
+  it("does not throw an error for a legitimate companion script (card.js beside card.html)", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/card.html",
+      "src/components/card.js",
+    ]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>Card</div>"));
+
+    const result = await listComponents();
+    expect(result["card"]).toBeDefined();
+  });
+
+  it("registers components in subfolders under their filename-derived tag", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/marketing/hero-banner.html",
+    ]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>Hero</div>"));
+
+    const result = await listComponents();
+    expect(result["hero-banner"]).toBeDefined();
+  });
+
+  it("supports two components with different names in different subfolders", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/marketing/promo-card.html",
+      "src/components/admin/user-row.html",
+    ]);
+    mockReadFile.mockResolvedValue(Buffer.from("<div>content</div>"));
+
+    const result = await listComponents();
+    expect(result["promo-card"]).toBeDefined();
+    expect(result["user-row"]).toBeDefined();
   });
 });

@@ -861,7 +861,7 @@ export const getComponentScripts = async (
     const bMain = bBase.replace(/\.(js|ts|mjs)$/, "") === componentBaseName;
     if (aMain && !bMain) return -1;
     if (!aMain && bMain) return 1;
-    return a.localeCompare(b);
+    return a < b ? -1 : a > b ? 1 : 0;
   });
 
   for (const scriptPath of matchingScriptFiles) {

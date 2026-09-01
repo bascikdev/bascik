@@ -188,6 +188,8 @@ export const deepReadDir = async (dirPath: string, isRoot = true): Promise<any[]
   try {
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
+    // Sort directory entries byte-wise at each level for deterministic traversal
+    dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return Promise.all(
       dirents.map(async (dirent: Dirent) => {
         const path = join(dirPath, dirent.name);
