@@ -78,7 +78,7 @@
           console.log(await renderMdRange('./content/props.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
-        <component-demo data-bascik-prop-file="src/pages/index.html">
+        <component-demo data-bascik-prop-file="src/components/feature-card/">
           <div data-bascik-slot="example">
             <feature-card data-bascik-prop-title="Component Props"
               data-bascik-prop-desc="These values are injected into the component template at build time.">
@@ -91,6 +91,26 @@
                 import { pathToFileURL } from 'node:url';
                 const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
                 console.log(await extractDemoBlock('./content/props.md', 'source-usage'));
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="source-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { join } from 'node:path';
+                import { pathToFileURL } from 'node:url';
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                console.log(await extractDemoBlock('./content/props.md', 'source-html'));
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="source-css">
+            <code-block data-bascik-prop-lang="css">
+              <script data-bascik-build>
+                import { join } from 'node:path';
+                import { pathToFileURL } from 'node:url';
+                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                console.log(await extractDemoBlock('./content/props.md', 'source-css'));
               </script>
             </code-block>
           </div>
