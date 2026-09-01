@@ -54,7 +54,7 @@ export const minifyHtml = (htmlString: string): string => {
 
 1. **Comment Stripping**: All HTML comments (`<!-- ... -->`) are removed.
 2. **Whitespace-Sensitive Shielding**: The contents of `<pre>` and `<textarea>` elements are stored in a temporary array and replaced with null-byte placeholders (`\x00P0\x00`). This ensures code blocks and formatted text preserve indentation and newlines.
-3. **Smart Inline Tag Spacing & $O(1)$ Tag-Boundary Scanning**: Whitespace between block-level tags (`</div> <div>`) is collapsed completely (`"></div><div>"`). For inline tags (`a`, `span`, `b`, `strong`, `code`), a single space is preserved between adjacent elements (`"> <"`). Tag boundary matching uses $O(1)$ backwards scanning (`lastIndexOf('<', offset)`) and bounded slices rather than full-string `slice(0, offset)` allocations, avoiding $O(N^2)$ memory churn and V8 garbage collection overhead on large HTML pages.
+3. **Smart Inline Tag Spacing & `O(1)` Tag-Boundary Scanning**: Whitespace between block-level tags (`</div> <div>`) is collapsed completely (`"></div><div>"`). For inline tags (`a`, `span`, `b`, `strong`, `code`), a single space is preserved between adjacent elements (`"> <"`). Tag boundary matching uses `O(1)` backwards scanning (`lastIndexOf('<', offset)`) and bounded slices rather than full-string `slice(0, offset)` allocations, avoiding `O(N^2)` memory churn and V8 garbage collection overhead on large HTML pages.
 4. **Script Consolidation**: Inline `<script>` tags are extracted and re-appended at the end of the document, reducing head blocking and improving HTML parsing performance.
 
 ## CSS Minification (`css-minifier.ts`)
@@ -160,7 +160,7 @@ export const getAttributeNameHash = (attributeName: string): string => {
 
 The output is prefixed with a `b` character to ensure class and ID names always begin with a valid CSS letter identifier rather than a digit (for example, `b2Y4G9eD1K8b`).
 
-### $O(1)$ Hash Memoization (`hashCache`)
+### `O(1)` Hash Memoization (`hashCache`)
 
 To eliminate redundant crypto and string allocations during builds, `getAttributeNameHash` caches computed Base62 hashes in an in-memory `Map<string, string>` (`hashCache`). Subsequent encounters of identical attribute names across pages or components return the cached hash instantly with 0 SHA-256 digests, BigInt conversions, or string creation overhead.
 

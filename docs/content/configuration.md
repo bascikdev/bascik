@@ -131,8 +131,8 @@ Paths to your pages and components directories, relative to the project root.
 
 ```ts
 directory: {
-  pages: 'src/pages',           // default — HTML routes, static assets, and subfolders
-  components: 'src/components', // default — component .html and .css templates
+  pages: 'src/pages',           // default: HTML routes, static assets, and subfolders
+  components: 'src/components', // default: component .html and .css templates
 }
 ```
 

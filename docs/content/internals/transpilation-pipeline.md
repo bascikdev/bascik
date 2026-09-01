@@ -51,7 +51,7 @@ When a page contains multiple uncached `<script data-bascik-build>` blocks:
 3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.
 4. Outputs are mapped back to their corresponding tags, cached on disk, and spliced into the page simultaneously.
 
-This reduces Node child process spawns from $N$ scripts to 1 per page during cold builds.
+This reduces Node child process spawns from N scripts to 1 per page during cold builds.
 
 ### Location
 

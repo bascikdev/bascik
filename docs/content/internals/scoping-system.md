@@ -201,7 +201,7 @@ To fix this, after the HTML attribute pass builds the initial class scope map, a
 This means modifier classes like `btn--active` that are only ever toggled dynamically still get scoped correctly in both CSS and JS without any special annotation:
 
 ```js
-// Works — btn--active is discovered from the classList.add call
+// Works: btn--active is discovered from the classList.add call
 // and scoped in both CSS and JS even though it never appears in class="…"
 el.classList.add("btn--active");
 ```

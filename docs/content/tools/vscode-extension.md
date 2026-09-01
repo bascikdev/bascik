@@ -97,7 +97,7 @@ This warns because runtime property assignment to `id` is not rewritten by the b
 Class-only operations are not flagged, even when the class only appears in JavaScript:
 
 ```js
-// No warning — JS-only class names are automatically discovered and scoped
+// No warning: JS-only class names are automatically discovered and scoped
 el.classList.toggle('active');
 el.classList.replace('loading', 'ready');
 ```
