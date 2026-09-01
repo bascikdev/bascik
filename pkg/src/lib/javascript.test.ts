@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
 import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
 import { minifyJs } from "./js-minifier.ts";
+import type { BascikComponent } from "./types.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -24,7 +25,7 @@ vi.mock("./config.js", () => ({
 const makeComponent = (
   fileContent: string,
   cssFileContent: string | undefined = undefined,
-) => ({
+): BascikComponent => ({
   name: "my-comp",
   fileContent,
   cssFileContent,
@@ -40,6 +41,142 @@ const scopeClass = (attr: string): string => `bascik__my-comp__${attr}`;
 // With deduplicateCss:false classes use instanceId just like id/name attributes.
 const scopeClassPerInstance = (attr: string, id = "test1234"): string =>
   `bascik__my-comp__${id}__${attr}`;
+
+describe("prefixElementAttribute - data-bascik-preserve", () => {
+  it("preserves id, name, and class and strips a bare directive", () => {
+    let component = makeComponent(
+      '<input id="email" name="email" class="field" data-bascik-preserve>',
+    );
+
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+
+    expect(component.fileContent).toBe(
+      '<input id="email" name="email" class="field">',
+    );
+  });
+
+  it("preserves attributes on descendants three levels deep", () => {
+    let component = makeComponent(
+      '<section data-bascik-preserve><div><label><input id="email" name="email" class="field"></label></div></section>',
+    );
+
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+
+    expect(component.fileContent).toBe(
+      '<section><div><label><input id="email" name="email" class="field"></label></div></section>',
+    );
+  });
+
+  it("preserves only name when requested", () => {
+    let component = makeComponent(
+      '<form data-bascik-preserve="name"><input id="email" name="email" class="field"></form>',
+    );
+
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+
+    expect(component.fileContent).toBe(
+      `<form><input id="${scope("email")}" name="email" class="${scopeClass("field")}"></form>`,
+    );
+  });
+
+  it("preserves id and class while name still scopes", () => {
+    let component = makeComponent(
+      '<div data-bascik-preserve="id class"><input id="email" name="email" class="field"></div>',
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toBe(
+      `<div><input id="email" name="${scope("email")}" class="field"></div>`,
+    );
+  });
+
+  it("warns for an unknown token while applying valid tokens", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let component = makeComponent(
+      '<input id="email" name="email" data-bascik-preserve="href name">',
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toBe(`<input id="${scope("email")}" name="email">`);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      '[bascik] warning: data-bascik-preserve ignores unknown token "href".',
+    );
+    warn.mockRestore();
+  });
+
+  it("does not narrow preservation in a descendant", () => {
+    let component = makeComponent(
+      '<div data-bascik-preserve><input id="email" name="email" class="field" data-bascik-preserve="name"></div>',
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toBe(
+      '<div><input id="email" name="email" class="field"></div>',
+    );
+  });
+
+  it("allows a descendant to widen preservation", () => {
+    let component = makeComponent(
+      '<div id="outer" name="outer" class="outer" data-bascik-preserve="name"><input id="email" name="email" class="field" data-bascik-preserve></div>',
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toBe(
+      `<div id="${scope("outer")}" name="outer" class="${scopeClass("outer")}"><input id="email" name="email" class="field"></div>`,
+    );
+  });
+
+  it("uses the same preservation path for configured tag names", () => {
+    let component = makeComponent(
+      '<code id="sample" name="sample" class="sample"><span id="inner" name="inner" class="inner"></span></code>',
+    );
+    component = prefixElementAttribute(component, "id", "test1234", true, ["code"]);
+    component = prefixElementAttribute(component, "name", "test1234", true, ["code"]);
+    component = prefixElementAttribute(component, "class", "test1234", true, ["code"]);
+    expect(component.fileContent).toBe(
+      '<code id="sample" name="sample" class="sample"><span id="inner" name="inner" class="inner"></span></code>',
+    );
+  });
+
+  it("keeps radio names shared within an instance and distinct between instances", () => {
+    const source = '<input type="radio" name="plan"><input type="radio" name="plan">';
+    const first = prefixElementAttribute(makeComponent(source), "name", "first123");
+    const second = prefixElementAttribute(makeComponent(source), "name", "second12");
+    expect(first.fileContent.match(/name="([^"]+)"/g)).toEqual([
+      'name="bascik__my-comp__first123__plan"',
+      'name="bascik__my-comp__first123__plan"',
+    ]);
+    expect(second.fileContent.match(/name="([^"]+)"/g)).toEqual([
+      'name="bascik__my-comp__second12__plan"',
+      'name="bascik__my-comp__second12__plan"',
+    ]);
+  });
+
+  it("deliberately gives up radio isolation when name is preserved", () => {
+    const source = '<fieldset data-bascik-preserve="name"><input type="radio" name="plan"><input type="radio" name="plan"></fieldset>';
+    const first = prefixElementAttribute(makeComponent(source), "name", "first123");
+    const second = prefixElementAttribute(makeComponent(source), "name", "second12");
+    expect(first.fileContent.match(/name="([^"]+)"/g)).toEqual([
+      'name="plan"',
+      'name="plan"',
+    ]);
+    expect(second.fileContent.match(/name="([^"]+)"/g)).toEqual([
+      'name="plan"',
+      'name="plan"',
+    ]);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Existing getElementById / getElementsByClassName coverage (regression)
@@ -966,11 +1103,11 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).toContain(`<code>${codeContent}</code>`);
   });
 
-  it("still scopes attributes on the skip element's own opening tag", () => {
-    // class="cblock-body" on <code> itself is a template attribute and SHOULD be scoped
+  it("preserves attributes on a configured tag's opening tag", () => {
     const c = makeComponent('<code class="cblock-body">literal</code>');
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
-    expect(result.fileContent).toContain(scopeClass("cblock-body"));
+    expect(result.fileContent).toContain('class="cblock-body"');
+    expect(result.fileContent).not.toContain(scopeClass("cblock-body"));
   });
 
   it("does not rewrite class attributes on elements inside a skipped tag", () => {
@@ -980,7 +1117,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     );
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
     expect(result.fileContent).toContain(scopeClass("outer"));
-    expect(result.fileContent).toContain(scopeClass("cblock-body"));
+    expect(result.fileContent).toContain('class="cblock-body"');
     // <div class="inner"> is inside <code> — must not be scoped
     expect(result.fileContent).toContain('class="inner"');
     expect(result.fileContent).not.toContain(scopeClass("inner"));
@@ -1060,7 +1197,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).not.toContain(scopeClass("inner"));
     // Content outside <code> is still scoped
     expect(result.fileContent).toContain(scopeClass("outer"));
-    expect(result.fileContent).toContain(scopeClass("cblock-body"));
+    expect(result.fileContent).toContain('class="cblock-body"');
     // No sentinel may survive in the output
     expect(result.fileContent).not.toContain("BASCIK_SHIELD");
   });

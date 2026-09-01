@@ -255,7 +255,7 @@ scoping: {
     id: true,    // scope id attributes
     name: true,  // scope name attributes
   },
-  preserve: ['code'],      // elements whose inner content is left untouched
+  preserve: ['code'],      // elements and subtrees left unscoped
   deduplicateCss: true,    // deduplicate component CSS output
 }
 ```
@@ -280,11 +280,13 @@ When `false`, every instance gets its own unique per-instance class names (the s
 
 ### `scoping.preserve`
 
-An array of HTML element names whose inner content is left untouched by the scoping pipeline. Attribute values, element-selector class injection, and JS selector rewriting are all skipped for any HTML found *inside* these elements.
+An array of HTML element names whose `id`, `name`, and `class` attributes, contents, and descendants are left untouched by the scoping pipeline.
 
 Defaults to `['code']`.
 
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
+
+For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. See [Preserve Scoping](/preserve).
 
 ### `minify` (BYOMinifier)
 

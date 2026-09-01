@@ -689,7 +689,7 @@ Inherited class names are not scoped, they are treated as global page-level clas
 These two mechanisms serve distinct purposes:
 
 * **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
-* **Preserve element contents (authoring choice):** `scoping.preserve` (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. Multiple tags such as `['pre', 'code']` can be preserved together safely.
+* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names.
 
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:

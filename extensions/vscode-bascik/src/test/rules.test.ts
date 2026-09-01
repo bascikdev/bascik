@@ -12,6 +12,7 @@ suite('Bascik HTML Grammar', () => {
     const directivePattern = new RegExp(grammar.patterns[0].match);
     assert.ok(directivePattern.test('data-bascik-attr-aria-label'));
     assert.ok(directivePattern.test('data-bascik-attr-data-foo'));
+    assert.ok(directivePattern.test('data-bascik-preserve'));
   });
 });
 

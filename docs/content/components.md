@@ -360,7 +360,7 @@ Create a `.css` file or companion script files alongside the `.html` file if you
 </div>
 ```
 
-The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, and slots for consumer-authored markup.
+The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component, and `data-bascik-preserve` for keeping selected `id`, `name`, or `class` values literal. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, slots for consumer-authored markup, and [Preserve Scoping](/preserve) only when an external system must bypass normal scoping.
 
 <!-- demo:source-css-card -->
 ```css

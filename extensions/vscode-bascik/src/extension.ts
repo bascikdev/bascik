@@ -242,6 +242,49 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
+    const preserveDirectiveRegex = /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
+    let preserveMatch: RegExpExecArray | null;
+    while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {
+      if (preserveMatch[1] === undefined) continue;
+      const value = preserveMatch[2] ?? preserveMatch[3] ?? '';
+      for (const preserveToken of value.trim().split(/\s+/).filter(Boolean)) {
+        if (preserveToken === 'id' || preserveToken === 'name' || preserveToken === 'class') continue;
+        const tokenOffset = preserveMatch[0].indexOf(preserveToken);
+        const start = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0));
+        const end = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0) + preserveToken.length);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `Unknown data-bascik-preserve token "${preserveToken}". Valid tokens are id, name, and class.`,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diagnostic.source = 'bascik';
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    const formOpenTagRegex = /<form\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    let formMatch: RegExpExecArray | null;
+    while ((formMatch = formOpenTagRegex.exec(text)) !== null) {
+      const actionMatch = formMatch[0].match(/\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      const action = actionMatch?.[1] ?? actionMatch?.[2];
+      if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
+      const preserveMatch = formMatch[0].match(/\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i);
+      const preservesName = preserveMatch !== null && (
+        preserveMatch[1] === undefined ||
+        (preserveMatch[1] ?? preserveMatch[2] ?? '').trim().split(/\s+/).includes('name')
+      );
+      if (preservesName) continue;
+      const start = document.positionAt(formMatch.index);
+      const end = document.positionAt(formMatch.index + formMatch[0].length);
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        'External form actions require data-bascik-preserve="name" so submitted field names remain literal.',
+        vscode.DiagnosticSeverity.Warning,
+      );
+      diagnostic.source = 'bascik';
+      diagnostics.push(diagnostic);
+    }
+
     const workspaceRoot = getWorkspaceRoot();
     const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
     if (

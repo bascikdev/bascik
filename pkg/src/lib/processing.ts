@@ -85,6 +85,7 @@ import {
   mergeAttributesOntoRoot,
   maskRawTextContent,
 } from "./components.ts";
+import { stripPreserveDirectives } from "./shielding.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
 import { isJavaScriptScript } from "./script-types.ts";
@@ -447,6 +448,7 @@ export const recursivelyTranspile = (
       const instanceId = getUniqueId(8);
       currentStage = "attribute scoping";
       component = applyTransforms(component, buildScopingPipeline(instanceId));
+      component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";
       // Inject props — always call so unused data-bascik-prop-* markers are stripped.

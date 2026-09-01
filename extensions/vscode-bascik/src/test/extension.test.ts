@@ -96,6 +96,43 @@ suite('Extension Integration Suite', () => {
   });
 
   suite('Diagnostics', () => {
+    test('warns when data-bascik-preserve contains an unknown token', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<div data-bascik-preserve="id href"></div>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('Unknown data-bascik-preserve token "href"'),
+      );
+      assert.ok(match, 'Expected warning for an unknown preserve token');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('warns when an external form does not preserve name attributes', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<form action="https://forms.example/submit"><input name="email"></form>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('External form actions require data-bascik-preserve="name"'),
+      );
+      assert.ok(match, 'Expected warning for an external form with scoped names');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('accepts an external form that preserves name attributes', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<form action="https://forms.example/submit" data-bascik-preserve="name"><input name="email"></form>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('External form actions require data-bascik-preserve="name"'),
+      ));
+    });
+
     test('warns when no usage supplies the prop named by an attribute directive', async () => {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       assert.ok(workspaceFolder, 'Workspace folder should be open');

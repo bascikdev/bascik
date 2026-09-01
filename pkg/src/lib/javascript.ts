@@ -96,7 +96,10 @@ import {
   resolveCssImportsSync,
   shieldCssStrings,
 } from "./styles.ts";
-import { shieldElementContents } from "./shielding.ts";
+import {
+  shieldPreservedAttribute,
+  stripPreserveDirectives,
+} from "./shielding.ts";
 import type { BascikComponent } from "./types.ts";
 
 /**
@@ -211,14 +214,14 @@ export const prefixElementAttribute = (
   attribute: "id" | "name" | "class",
   componentInstanceId: string | null = null,
   deduplicateCss: boolean = true,
-  skipElementContents: string[] = [],
+  preservedTags: string[] = [],
 ): BascikComponent => {
   if (!component.fileContent) return component;
 
-  // Shield inner content of skip elements (e.g. <code>, <pre>) from all transforms.
-  const { html: shieldedContent, restore } = shieldElementContents(
+  const { html: shieldedContent, restore } = shieldPreservedAttribute(
     component.fileContent,
-    skipElementContents,
+    attribute,
+    preservedTags,
   );
   component.fileContent = shieldedContent;
   // All class/name/id attrs will get this ID.
@@ -698,6 +701,9 @@ export const prefixElementAttribute = (
 
   // Restore any inner content that was shielded from transforms.
   component.fileContent = restore(component.fileContent);
+  if (attribute === "class") {
+    component.fileContent = stripPreserveDirectives(component.fileContent);
+  }
 
   return component;
 };
