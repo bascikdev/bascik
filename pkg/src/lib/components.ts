@@ -542,6 +542,25 @@ export { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+const decodePropEntities = (value: string): string => value.replace(
+  /&(amp|lt|gt|quot|#39|#x27);/gi,
+  (_match, entity: string) => ({
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    "#39": "'",
+    "#x27": "'",
+  })[entity.toLowerCase()] ?? _match,
+);
+
+const escapePropValue = (value: string): string => value
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
+
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
  * e.g. '<my-comp data-bascik-prop-title="Hello">' → { title: "Hello" }
@@ -551,12 +570,24 @@ export const extractProps = (
 ): Record<string, string> => {
   const props: Record<string, string> = {};
   if (!componentContent) return props;
+  const openingTag = componentContent.match(
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
+  )?.[0];
+  if (!openingTag) return props;
   // Accept both double-quoted and single-quoted prop values,
   // e.g. data-bascik-prop-title="Hi" or data-bascik-prop-title='Hi'.
   const regexp = /data-bascik-prop-([\w-]+)=("[^"]*"|'[^']*')/gi;
   let match;
-  while ((match = regexp.exec(componentContent)) !== null) {
-    props[match[1]] = match[2].slice(1, -1);
+  while ((match = regexp.exec(openingTag)) !== null) {
+    const followingCharacter = openingTag[match.index + match[0].length];
+    if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
+      console.warn(
+        `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
+      );
+      continue;
+    }
+    props[match[1]] = decodePropEntities(match[2].slice(1, -1));
   }
   return props;
 };
@@ -583,6 +614,7 @@ export const injectProps = (
     if (!result.includes(propName)) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
+    const escapedPropValue = escapePropValue(propValue);
     // Match: <tagName [attrsBefore] data-bascik-prop-name[=value] [attrsAfter]>...</tagName>
     // The attr scans are quote-aware so a `>` inside a quoted attribute value
     // (e.g. title="a > b") does not end the opening tag early.
@@ -593,13 +625,15 @@ export const injectProps = (
         "gi",
       ),
       (
-        _match: string,
+        match: string,
         tagName: string,
         attrsBefore: string,
-        _markerValue: string | undefined,
+        markerValue: string | undefined,
         attrsAfter: string,
         _oldContent: string,
-      ) => `<${tagName}${attrsBefore}${attrsAfter}>${propValue}</${tagName}>`,
+      ) => markerValue
+        ? match
+        : `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}</${tagName}>`,
     );
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.

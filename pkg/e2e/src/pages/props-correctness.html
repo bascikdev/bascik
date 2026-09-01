@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Props Correctness</title>
+</head>
+<body>
+  <props-correctness
+    data-bascik-prop-title="First title"
+    data-bascik-prop-label="Parent one"
+    data-bascik-prop-payload="<script>alert(1)</script>">
+    <em data-testid="raw-slot-markup">First raw slot</em>
+    <props-slot-child data-bascik-prop-text="First nested slot"></props-slot-child>
+  </props-correctness>
+
+  <props-correctness
+    data-bascik-prop-title="Second title"
+    data-bascik-prop-label="Parent two"
+    data-bascik-prop-payload="<script>alert(1)</script>">
+    <strong data-testid="raw-slot-markup">Second raw slot</strong>
+    <props-slot-child data-bascik-prop-text="Second nested slot"></props-slot-child>
+  </props-correctness>
+</body>
+</html>

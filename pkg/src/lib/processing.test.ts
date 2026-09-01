@@ -292,6 +292,29 @@ describe("recursivelyTranspile – integration", () => {
     );
   });
 
+  it("does not leak a nested component prop from slot content into its parent", () => {
+    const componentList = {
+      "my-card": {
+        fileName: "components/my-card.html",
+        fileContent:
+          "<article><h2 data-bascik-prop-text>Card fallback</h2><div data-bascik-slot></div></article>",
+      },
+      "my-badge": {
+        fileName: "components/my-badge.html",
+        fileContent: "<span data-bascik-prop-text>Badge fallback</span>",
+      },
+    };
+
+    const { transpiledHtmlBody } = recursivelyTranspile(
+      '<my-card><my-badge data-bascik-prop-text="beta"></my-badge></my-card>',
+      componentList,
+    );
+
+    expect(transpiledHtmlBody).toBe(
+      "<article><h2>Card fallback</h2><span>beta</span></article>",
+    );
+  });
+
   it("tracks usedComponents", () => {
     const componentList = {
       "my-btn": {

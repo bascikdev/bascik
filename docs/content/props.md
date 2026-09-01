@@ -10,6 +10,8 @@ Add a `data-bascik-prop-{name}` attribute (no value) to any element in the compo
 
 Set `data-bascik-prop-{name}="value"` on the component tag. The value is injected into the matching template element.
 
+Prop values are HTML-escaped when injected, so `&`, `<`, `>`, quotes, and apostrophes render as text rather than markup. Use entity-encoded quotes such as `&quot;` or `&#39;` inside the usage attribute. Use a [slot](/slots) when the value should be interpreted as HTML.
+
 <!-- demo:basic-props-html -->
 ```html
 <aside class="alert-box">
@@ -69,6 +71,22 @@ data-bascik-prop-icon-url
 ```
 
 > **Use slots for HTML content.** Props inject plain text values. If you need to inject rich HTML, nested elements, or reusable layout regions, use [slots](/slots) instead.
+
+```html
+<!-- template -->
+<article>
+  <h2 data-bascik-prop-title></h2>
+  <div data-bascik-slot></div>
+</article>
+
+<!-- usage: the prop is text, while the slot remains markup -->
+<feature-card data-bascik-prop-title="Use &lt;strong&gt; safely">
+  <strong>New</strong>
+  <status-badge data-bascik-prop-label="Ready"></status-badge>
+</feature-card>
+```
+
+Props are read only from the component's opening usage tag. A prop declared on a nested component in slot content belongs to that nested component and never leaks into its parent.
 
 ## Why `data-*`?
 

@@ -585,6 +585,8 @@ The only exception is `innerHTML` / `insertAdjacentHTML` HTML string scanning, w
 
 Add `data-bascik-slot` (no value) to any element in the component template. The element is replaced by the slot content at the usage site. Use the element's inner content as fallback when no slot content is provided.
 
+Slot content remains raw HTML, participates in scoping, and may contain nested Bascik components. Use slots, not props, for rich markup.
+
 ```html
 <!-- my-card.html -->
 <div class="card">
@@ -646,7 +648,8 @@ Inject text values into a component at usage time.
 ```
 Props in Bascik follow the same basic idea as React props, but the mechanism is vanilla HTML through `data-bascik-prop-*` attributes.
 The `data-bascik-prop-*` marker is removed from compiled output, while the target element's other attributes are preserved.
-*Props accept text values only. For rich HTML content, use slots.*
+Prop values are HTML-escaped on injection. Entity-encode delimiting quotes in usage attributes. Props are read only from the component's opening tag, so nested component props do not leak upward.
+*Props accept text values only. For rich HTML content or nested components, use slots.*
 
 ---
 

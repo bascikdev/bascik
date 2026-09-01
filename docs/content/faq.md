@@ -129,6 +129,10 @@ No. The dev server watches the components directory. Drop a new `.html` (or pair
 
 Yes. Components can use other components inside their markup. Bascik resolves nested components recursively at build time.
 
+## Why is my prop value showing as escaped text?
+
+Props are text values. Bascik HTML-escapes them during injection so markup from a CMS, database, or API cannot become an executable element or script. If you need rich HTML or a nested component, pass it through a default or named [slot](/slots) instead. Slot content remains markup and participates in component scoping.
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
