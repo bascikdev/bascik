@@ -1,7 +1,45 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdir, rm, writeFile, readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+vi.mock("./config.js", () => ({
+  shouldLog: vi.fn(() => true),
+  BascikConfig: {
+    base: "/",
+    directory: {
+      pages: "src/pages",
+      components: "src/components",
+      out: "dist",
+    },
+    scoping: {
+      attributes: { class: true, id: true, name: true },
+      scriptBlocks: true,
+      inheritAttributes: true,
+      deduplicateCss: true,
+      preserve: ["code"],
+    },
+    isBuild: true,
+    minify: {
+      html: false,
+      css: false,
+      js: false,
+      identifiers: false,
+    },
+    assets: {
+      inlineStyles: false,
+      exclude: [],
+    },
+    logging: {
+      level: "info",
+      requests: true,
+      copies: true,
+      deletes: true,
+      transpiles: true,
+    },
+  },
+}));
+
 import { transpilePage } from "./processing.ts";
 import { BascikConfig } from "./config.ts";
 
