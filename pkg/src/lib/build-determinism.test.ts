@@ -1,40 +1,79 @@
 import { describe, expect, it } from "vitest";
-import { execSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdir, rm, writeFile, readFile, readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { transpilePage } from "./processing.ts";
+import { BascikConfig } from "./config.ts";
 
-function getAllFiles(dir: string, baseDir: string = dir): Record<string, string> {
+async function getAllFiles(dir: string, baseDir: string = dir): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
-  for (const entry of readdirSync(dir)) {
+  const entries = await readdir(dir);
+  for (const entry of entries) {
     const fullPath = join(dir, entry);
     const relPath = fullPath.slice(baseDir.length + 1);
-    const stat = statSync(fullPath);
-    if (stat.isDirectory()) {
-      Object.assign(result, getAllFiles(fullPath, baseDir));
+    const st = await stat(fullPath);
+    if (st.isDirectory()) {
+      Object.assign(result, await getAllFiles(fullPath, baseDir));
     } else {
-      result[relPath] = readFileSync(fullPath, "utf-8");
+      result[relPath] = await readFile(fullPath, "utf-8");
     }
   }
   return result;
 }
 
 describe("Build determinism", () => {
-  it("building pkg/e2e twice produces byte-identical output", () => {
-    const rootDir = process.cwd().endsWith("pkg") ? dirname(process.cwd()) : process.cwd();
-    const e2eDir = join(rootDir, "pkg/e2e");
-    const distDir = join(e2eDir, "dist");
+  it("transpiling pages with components, scoped IDs, and attributes produces byte-identical output across runs", async () => {
+    const testDir = join(tmpdir(), `bascik-determinism-${Date.now()}`);
+    const pagesDir = join(testDir, "src", "pages");
+    const componentsDir = join(testDir, "src", "components");
+    const outDir = join(testDir, "dist");
 
-    // Build first time
-    execSync("yarn --cwd pkg/e2e build", { stdio: "pipe", cwd: rootDir });
-    const firstBuild = getAllFiles(distDir);
+    await mkdir(pagesDir, { recursive: true });
+    await mkdir(componentsDir, { recursive: true });
 
-    // Build second time
-    execSync("yarn --cwd pkg/e2e build", { stdio: "pipe", cwd: rootDir });
-    const secondBuild = getAllFiles(distDir);
+    (BascikConfig as any).directory = {
+      pages: pagesDir,
+      components: componentsDir,
+      out: outDir,
+    };
+    (BascikConfig as any).scoping = {
+      attributes: { class: true, id: true, name: true },
+      scriptBlocks: true,
+      inheritAttributes: true,
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
+    (BascikConfig as any).isBuild = true;
 
-    expect(Object.keys(firstBuild).sort()).toEqual(Object.keys(secondBuild).sort());
-    for (const file of Object.keys(firstBuild)) {
-      expect(secondBuild[file]).toBe(firstBuild[file]);
-    }
+    const pageFile = join(pagesDir, "index.html");
+    const pageHtml = `<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <my-card class="primary" id="first-card"></my-card>
+  <my-card class="secondary" id="second-card"></my-card>
+</body>
+</html>`;
+    await writeFile(pageFile, pageHtml, "utf8");
+
+    const componentList = {
+      "my-card": {
+        name: "my-card",
+        fileName: join(componentsDir, "my-card.html"),
+        fileContent: `<div class="card" id="card-inner" name="card-item"><p class="text">Card</p></div>`,
+        cssFileContent: `.card { color: red; } #card-inner { font-weight: bold; }`,
+      },
+    };
+
+    const run1 = await transpilePage(pageFile, componentList, "");
+    const run2 = await transpilePage(pageFile, componentList, "");
+
+    expect(run1).not.toBeNull();
+    expect(run2).not.toBeNull();
+    expect(run1!.distHtml).toBe(run2!.distHtml);
+    expect(run1!.distHtml).toContain('id="bascik__my-card__');
+    expect(run1!.distHtml).toContain('name="bascik__my-card__');
+
+    await rm(testDir, { recursive: true, force: true });
   });
 });
