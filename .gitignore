@@ -88,3 +88,6 @@ docs/.wrangler
 .yarn/install-state.gz
 .wrangler
 .playwright-mcp/
+
+
+bascik-prompts/

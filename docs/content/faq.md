@@ -65,6 +65,12 @@ If you have two files that differ only in case (for example `my-card.html` and `
 
 > **Convention.** Use lowercase, hyphenated filenames for all components: `site-nav.html`, `feature-card.html`, `alert-box.html`. This matches the HTML custom element convention and avoids any case-collision surprises.
 
+## What happens if I reference a component that doesn't exist?
+
+During a build, Bascik emits a warning naming the unresolved tag, and the tag ships to the output unchanged. The build does not fail.
+
+However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party web components such as `<model-viewer>` and `<ion-icon>` currently fail `--check` (an upcoming update changes this validation to emit a warning instead).
+
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 
 Yes. Bascik's output is vanilla HTML. Any library that works with HTML works with Bascik. Drop a `<script>` tag in and it loads like it always has. See the [JavaScript Libraries](/libraries) page for examples.

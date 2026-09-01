@@ -672,6 +672,13 @@ If a component template contains multiple root elements, inherited attributes ar
 
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance: `inheritAttributes: false` in `bascik.config.ts`.
 
+### Internal Masking vs. Preserving Element Contents
+
+These two mechanisms serve distinct purposes:
+
+* **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
+* **Preserve element contents (authoring choice):** The `skipTranspilingElementContents` option (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. *(Note: this option is renamed to `scoping.preserve` in an upcoming configuration update; the rename is not yet implemented)*.
+
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:
 ```html
@@ -973,6 +980,17 @@ export const build = defineConfig({
 });
 ```
 
+### Anti-Pattern: Defaults-Only Configuration
+
+Create `bascik.config.ts` only when a value differs from the default. If the configuration file would contain only defaults, **do not create the file**.
+
+```ts
+// DO NOT write this. Every value here is already the default for `bascik --build`.
+export const build = {
+  minify: true,
+};
+```
+
 ### Full Configuration Reference (Built-In Defaults)
 
 You do not need to populate default options in `bascik.config.ts`. The reference below displays all available configuration options populated with their built-in default values for illustrative purposes only:
@@ -1061,6 +1079,7 @@ export const build = defineConfig({
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:
+* **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `siteUrl`, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
 * **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. `siteUrl`, custom `exec` scripts, or `build` minification rules).
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
@@ -1102,9 +1121,11 @@ src/
 * **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified at build time when `minify.css` / `minify.js` are enabled in `bascik.config.ts`. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can also be assigned to `minify.css` and `minify.js`.
 * **No Passthrough Configuration:** No asset pipelines, passthrough copy configuration, or public folder settings are needed.
 
-### Custom 404 & 500 Pages
-* **404 Page (`src/pages/404.html`):** If you create a `404.html` file in your pages directory, the dev server and `bascik --serve` automatically serve it as a fallback for any non-existent routes with a `404` status code. When you build for production (`bascik --build`), this is compiled to `dist/404.html` which is recognized by standard static hosts (GitHub Pages, Vercel, Netlify).
-* **500 Page Support:** If the server encounters runtime compilation errors, it responds with a proper `500` error block to prevent server crashes.
+### Custom 404 & 500 Error Pages
+* **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --serve` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
+* **500 Error Pages in Static vs. Server Contexts:**
+  * **Static builds (`bascik --build`):** A 500 error page is meaningless in a fully static build, because static web hosts serve their own error pages if an infrastructure or server issue occurs. Do not port a 500 error page from Next.js, Remix, or any server-rendered framework into a static Bascik site.
+  * **Production server (`bascik --serve`):** Custom `src/pages/500.html` support under `bascik --serve` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
 
 ---
 
@@ -1204,7 +1225,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated; no writes to `dist/` happen during dev mode.
+On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, pages are served from memory and compiled HTML is not written to `dist/`, while static assets are copied to `dist/`. Note: this dev-mode disk write gap is a known inconsistency being addressed in an upcoming update.
 
 #### 2. Watching for File Changes (Watch Mode)
 While the dev server is active, Bascik watches your file system and incrementally updates your build as files are added, updated, or removed:
@@ -1300,7 +1321,7 @@ Commit this file so all contributors get the correct behavior automatically. Alt
 
 #### 5. Inspecting `dist/` Output
 
-Both the dev server and `bascik --build` write compiled HTML to `dist/` on disk, this is the ground truth of what Bascik produced. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
+`bascik --build` writes compiled HTML and static assets to `dist/` on disk, this is the ground truth of what Bascik produced for production. In dev mode (`bascik`), static assets are copied to `dist/`, but HTML pages are served directly from memory and not written to disk. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
 
 ```
 src/pages/about.html       →  dist/about.html
@@ -1683,6 +1704,17 @@ Full guide: `/switch/from-vue`. Key Vue-specific mappings:
 | `vue-router` | One `.html` per route in `src/pages/` |
 | `onMounted` data fetch | `<script data-bascik-build>` |
 
+### Migrating Existing Sitemap & Robots Files
+
+When migrating an existing website to Bascik, follow this procedure for existing `sitemap.xml` and `robots.txt` files:
+
+1. **Open and inspect the existing files:** Read the existing `sitemap.xml` and `robots.txt`.
+2. **Determine if custom directives exist:** Decide whether they contain anything Bascik would not generate automatically: hand-curated URLs, `Disallow` rules for paths that still exist, a `Sitemap:` pointer to an external index, or crawl directives specific to a single bot.
+3. **If they contain nothing special, delete them:** Delete the old files and let Bascik generate fresh ones automatically at build time. Do not copy them into `src/pages/`, and do not set `generate.sitemap: false` or `generate.robots: false` in `bascik.config.ts`.
+4. **If they contain custom directives, keep the authored file:** Keep the authored file in `src/pages/`, turn off the matching generator in `bascik.config.ts` (`generate: { sitemap: false }` or `generate: { robots: false }`), and add a comment in the config explaining why.
+
+**Failure Mode Warning:** Copying old sitemap and robots files into `src/pages/` while disabling Bascik's built-in generation looks superficially correct, but silently freezes the sitemap at the old site's URL list forever as new pages are created or routes change.
+
 ---
 
 ## 18. Key Constraints & Rules for AI Code Generation (MUST FOLLOW)
@@ -1718,3 +1750,7 @@ Bascik logs a warning and still loads the component, but it will replace every o
 
 **What happens with uppercase letters in a component filename (e.g. `My-Card.html`)?**
 Component names are normalized to lowercase at load time. `My-Card.html` registers as `my-card` and is referenced as `<my-card>`. If two files differ only in case, the last one loaded wins. Convention: always use lowercase, hyphenated filenames.
+
+**What happens if I reference a component that doesn't exist?**
+During a build (`bascik --build`), Bascik emits a warning naming the unresolved tag, and the tag ships to the HTML output unchanged without failing the build. However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party custom elements (such as `<model-viewer>` or `<ion-icon>`) currently cause `--check` to fail (an upcoming update changes this validation to emit a warning instead).
+
