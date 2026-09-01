@@ -933,8 +933,9 @@ Dynamic routes allow you to generate multiple static HTML files from a single te
 
 Rules:
 * Script must output a valid JSON array of route objects with required `params` (matching all bracket names in the template path) and optional `data`.
+* Route parameters must be URL-safe tokens; characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed.
 * In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
-* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup.
+* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup. Route collisions with static pages or other templates cause build errors.
 * Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
 * `data-bascik-routes`, `data-bascik-build`, and `data-bascik-server` are mutually exclusive and cannot be combined on the same tag.
 

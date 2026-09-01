@@ -681,16 +681,41 @@ export const processPageBatch = async (
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
   const jobs: PageJob[] = [];
+  const pathToSource = new Map<string, string>();
+
   for (const input of pageInputs) {
     if (typeof input === "string") {
       try {
         const expanded = await expandPageToJobs(input);
-        jobs.push(...expanded);
+        for (const job of expanded) {
+          const outKey = job.relativePagePath.toLowerCase();
+          const existing = pathToSource.get(outKey);
+          if (existing && existing !== input) {
+            throw new Error(
+              `Route conflict: "${existing}" and "${input}" both produce output path "${job.relativePagePath}".`,
+            );
+          }
+          pathToSource.set(outKey, input);
+          jobs.push(job);
+        }
       } catch (error) {
         pageErrors.push(normalizePageError(input, error, "expand routes"));
       }
     } else {
-      jobs.push(input);
+      const outKey = input.relativePagePath.toLowerCase();
+      const existing = pathToSource.get(outKey);
+      if (existing && existing !== input.pagePath) {
+        pageErrors.push(
+          normalizePageError(
+            input.pagePath,
+            new Error(`Route conflict: "${existing}" and "${input.pagePath}" both produce output path "${input.relativePagePath}".`),
+            "expand routes",
+          ),
+        );
+      } else {
+        pathToSource.set(outKey, input.pagePath);
+        jobs.push(input);
+      }
     }
   }
   if (jobs.length === 0) {

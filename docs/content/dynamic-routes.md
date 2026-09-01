@@ -113,9 +113,11 @@ Dynamic routes automatically integrate into Bascik's built-in sitemap generator 
 
 ## Error Handling and Diagnostics
 
-Bascik validates routes scripts and parameter mappings during the build:
+Bascik validates routes scripts, route parameters, and output destinations during the build:
 
-- **Empty Route List:** If the routes script outputs an empty array `[]`, Bascik logs a warning and skips generation for that template.
+- **Collision Detection:** If a dynamic route and a static page resolve to the same output path (e.g. `src/pages/blog/hello.html` and `src/pages/blog/[slug].html` with `slug: "hello"`), or if two dynamic templates produce colliding paths, Bascik fails the build with an error naming both sources.
+- **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected with descriptive warnings.
+- **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
 - **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik throws an error indicating that parameter `id` was not supplied.
 - **Invalid Output Format:** If the script prints text that is not valid JSON or does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the received output.
 - **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
