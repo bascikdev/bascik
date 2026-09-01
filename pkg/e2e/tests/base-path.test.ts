@@ -40,6 +40,7 @@ test('static builds rewrite root-relative URLs under a non-root base', async () 
     await mkdir(join(fixtureDir, 'src/components'), { recursive: true });
     await mkdir(pagesDir, { recursive: true });
     await writeFile(join(fixtureDir, 'bascik.config.ts'), `export default { base: '/sub/' };`);
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(pagesDir, 'index.html'), pageHtml);
     await writeFile(join(fixtureDir, 'src/pages/styles.css'), `.hero{background:url(/hero.png)} .icon{mask:url(#icon)}`);
     await writeFile(join(fixtureDir, 'src/pages/site.webmanifest'), JSON.stringify({
@@ -79,6 +80,7 @@ test('an explicit root base produces byte-identical static output', async () => 
   try {
     await mkdir(join(fixtureDir, 'src/components'), { recursive: true });
     await mkdir(join(fixtureDir, 'src/pages'), { recursive: true });
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     await writeFile(join(fixtureDir, 'src/pages/index.html'), pageHtml);
 
     await runBuild(fixtureDir);

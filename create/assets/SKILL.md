@@ -765,7 +765,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
 
 **To disable:** set `buildScriptCache: false` in your config (useful when debugging a script that reads external state not tracked by the cache key).
 
@@ -1127,7 +1127,7 @@ When creating or modifying `bascik.config.ts`:
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
-* **Use `base` for subdirectory deployments:** Set a normalized path such as `base: '/docs/'`. Do not use a full URL, and do not expect Bascik to rewrite paths assembled inside JavaScript. Use the build-time `BASCIK_BASE` value for those paths.
+* **Use `base` for subdirectory deployments:** Set a literal path prefix such as `base: '/docs/'`. Do not include a query, fragment, percent escape, backslash, or dot segment, and do not use a full URL. Bascik does not rewrite paths assembled inside JavaScript; use the build-time `BASCIK_BASE` value for those paths.
 
 **`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
 

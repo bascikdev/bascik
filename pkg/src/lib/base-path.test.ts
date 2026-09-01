@@ -104,6 +104,24 @@ describe("rewriteHtmlBasePaths", () => {
     expect(once).toBe(`<a href="#local-id">Local</a><a href="/sub/about">About</a>`);
     expect(rewriteHtmlBasePaths(once, "/sub/")).toBe(once);
   });
+
+  it("rewrites active tags without changing markup-like text", () => {
+    const html = [
+      `<!-- <img src="/comment.png"> -->`,
+      `<script>const template = '<img src="/script.png">';</script>`,
+      `<textarea><img src="/textarea.png"></textarea>`,
+      `<img alt="greater > than" src="/active.png">`,
+    ].join("");
+
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      [
+        `<!-- <img src="/comment.png"> -->`,
+        `<script>const template = '<img src="/script.png">';</script>`,
+        `<textarea><img src="/textarea.png"></textarea>`,
+        `<img alt="greater > than" src="/sub/active.png">`,
+      ].join(""),
+    );
+  });
 });
 
 describe("rewriteCssBasePaths", () => {
@@ -111,6 +129,13 @@ describe("rewriteCssBasePaths", () => {
     const css = `@import "/theme.css"; a{background:url(/a.png)} b{background-image:image-set('/b.png' 1x, url("/c.png") 2x)}`;
     expect(rewriteCssBasePaths(css, "/sub/")).toBe(
       `@import "/sub/theme.css"; a{background:url(/sub/a.png)} b{background-image:image-set('/sub/b.png' 1x, url("/sub/c.png") 2x)}`,
+    );
+  });
+
+  it("rewrites quoted URLs containing whitespace", () => {
+    const css = `a{background:url("/hero image.png")}b{background:url('/second image.png')}`;
+    expect(rewriteCssBasePaths(css, "/sub/")).toBe(
+      `a{background:url("/sub/hero image.png")}b{background:url('/sub/second image.png')}`,
     );
   });
 

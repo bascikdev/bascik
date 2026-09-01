@@ -1180,6 +1180,7 @@ export const transpilePage = async (
       content +
       distHtml.slice(tag.closeIndex);
   }
+  distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 

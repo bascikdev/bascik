@@ -782,6 +782,17 @@ describe("transpilePage – base path transform", () => {
     expect(result?.distHtml).toContain("url(/sub/hero.png)");
     expect(result?.distHtml).toContain('new EventSource("/sub/bascik-live-reload")');
   });
+
+  it("rewrites inline styles on document root elements", async () => {
+    (BascikConfig as any).base = "/sub/";
+    const html = '<!DOCTYPE html><html style="background:url(/page.png)"><head></head><body style="background:url(\'/body.png\')"><p>Body</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+
+    const result = await transpilePage(PAGE_PATH, {});
+
+    expect(result?.distHtml).toContain('style="background:url(/sub/page.png)"');
+    expect(result?.distHtml).toContain("style=\"background:url('/sub/body.png')\"");
+  });
 });
 
 describe("pageProcessing – inlineStyles", () => {

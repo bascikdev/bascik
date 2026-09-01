@@ -1,3 +1,5 @@
+import { createContentShield, shieldElementContents } from "./shielding.ts";
+
 const URL_ATTRIBUTES = new Set([
   "action",
   "data",
@@ -9,6 +11,7 @@ const URL_ATTRIBUTES = new Set([
 
 const SRCSET_ATTRIBUTES = new Set(["imagesrcset", "srcset"]);
 const URL_META_PROPERTIES = new Set(["og:image", "og:url", "twitter:image"]);
+const HTML_OPENING_TAG_PATTERN = /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
 const joinBasePath = (value: string, base: string): string =>
   `${base}${value.slice(1)}`;
@@ -120,11 +123,16 @@ export const rewriteCssBasePaths = (css: string, base: string): string => {
   if (base === "/") return css;
 
   let result = css.replace(
-    /url\(\s*(["']?)([^"')\s]+)\1\s*\)/gi,
-    (match, quote: string, value: string) =>
-      shouldRewriteBasePath(value, base)
-        ? `url(${quote}${joinBasePath(value, base)}${quote})`
-        : match,
+    /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')\s]+))\s*\)/gi,
+    (match, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+      const value = doubleValue ?? singleValue ?? unquotedValue ?? "";
+      const quote = doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : "";
+      return (
+        shouldRewriteBasePath(value, base)
+          ? `url(${quote}${joinBasePath(value, base)}${quote})`
+          : match
+      );
+    },
   );
   result = result.replace(
     /(@import\s+)(["'])([^"']+)\2/gi,
@@ -137,6 +145,7 @@ export const rewriteCssBasePaths = (css: string, base: string): string => {
 };
 
 const getAttributeValue = (tag: string, attribute: string): string | undefined => {
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const pattern = new RegExp(
     `\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
     "i",
@@ -178,12 +187,22 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
 export const rewriteHtmlBasePaths = (html: string, base: string): string => {
   if (base === "/") return html;
 
-  const withCss = html.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+  const commentShield = createContentShield(html);
+  const withoutComments = html.replace(
+    /<!--[\s\S]*?(?:-->|$)/g,
+    (comment) => commentShield.hide(comment),
+  );
+  const withCss = withoutComments.replace(
+    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style>)/gi,
     (_match, open: string, css: string, close: string) =>
       `${rewriteTagAttributes(open, base)}${rewriteCssBasePaths(css, base)}${close}`,
   );
-  return withCss.replace(/<[^!/?][^>]*>/g, (tag) => rewriteTagAttributes(tag, base));
+  const shielded = shieldElementContents(withCss, ["script", "style", "textarea", "title"]);
+  const rewritten = shielded.html.replace(
+    HTML_OPENING_TAG_PATTERN,
+    (tag) => rewriteTagAttributes(tag, base),
+  );
+  return commentShield.restore(shielded.restore(rewritten));
 };
 
 export const rewriteManifestBasePaths = (source: string, base: string): string => {

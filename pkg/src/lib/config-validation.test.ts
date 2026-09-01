@@ -397,6 +397,20 @@ describe("base normalization", () => {
     expect(errors[0].message).toContain("not a URL");
   });
 
+  it.each([
+    "/docs?mode=preview",
+    "/docs#top",
+    "/../docs",
+    "/docs/./preview",
+    "docs\\preview",
+    "/docs\u0000preview",
+  ])("rejects a base that is not a URL path prefix: %j", (base) => {
+    const errors = validateConfigShape({ base });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("base");
+    expect(errors[0].message).toContain("path prefix");
+  });
+
   it("accepts normalizable base values", () => {
     expect(validateConfigShape({ base: "/sub" })).toHaveLength(0);
     expect(validateConfigShape({ base: "sub" })).toHaveLength(0);
