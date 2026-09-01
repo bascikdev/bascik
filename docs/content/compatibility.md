@@ -37,6 +37,7 @@ Bascik operates as a zero-runtime build-time compiler and HTTP delivery server. 
 | MIME Types | IETF RFC 9239 / IANA | Baseline: Widely Available | Current standard `text/javascript; charset=utf-8` media types |
 | Live Reload & Events | WHATWG EventSource | Baseline: Widely Available | Server-Sent Events (SSE) `/bascik-live-reload` endpoint |
 | Sitemaps & Robots | Sitemaps 0.9 / IETF RFC 9309 | Standard Protocols | Canonical XML sitemap and robots exclusion directives |
+| Content Security Policy | W3C CSP Level 3 | Baseline: Widely Available | SHA-256 hash manifests (`dist/.bascik/csp-hashes.json`) for inline scripts and styles; per-request nonces intentionally unsupported for static caching |
 
 ---
 

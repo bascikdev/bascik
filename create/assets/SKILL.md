@@ -1067,7 +1067,7 @@ export default defineConfig({
     sitemap: true,
     robots: true,
     sitemapLastmod: false,
-    cspHashes: false,
+    cspHashes: false,       // writes dist/.bascik/csp-hashes.json with exact sha256 hashes for inline blocks
     manifest: false,
   },
   pipeline: {

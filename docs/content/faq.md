@@ -97,7 +97,11 @@ Bascik builds are fully deterministic. Component instance IDs (used for scoped `
 
 ## What is `dist/.bascik/`?
 
-`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
+`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`, `generate.cspHashes: true` writes `dist/.bascik/csp-hashes.json`, and static builds with server scripts write `dist/.bascik/server-scripts.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
+
+## How do I use a strict Content Security Policy with Bascik?
+
+Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
 
 ## How do local script references (`<script src="...">`) work inside a component?
 

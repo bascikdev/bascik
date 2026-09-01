@@ -104,6 +104,7 @@ import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 import { extractServerScriptsToSidecar } from "./server-sidecar.ts";
+import { cspHashCollector } from "./csp-hashes.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -1204,6 +1205,7 @@ export const transpilePage = async (
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
   distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath);
+  cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 

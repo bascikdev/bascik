@@ -10,6 +10,7 @@ import { formatDuration } from "./lib/format.ts";
 import { manifestCollector } from "./lib/manifest.ts";
 import { readVersion } from "./lib/version.ts";
 import { serverSidecarRegistry } from "./lib/server-sidecar.ts";
+import { cspHashCollector } from "./lib/csp-hashes.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -40,6 +41,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     if (sidecarPath) {
       await manifestCollector.recordFileFromDisk(sidecarPath);
     }
+    const cspPath = await cspHashCollector.writeCspHashes();
+    if (cspPath) {
+      await manifestCollector.recordFileFromDisk(cspPath);
+    }
     await manifestCollector.writeManifest(version);
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
@@ -64,6 +69,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const sidecarPath = await serverSidecarRegistry.writeSidecar(version);
     if (sidecarPath) {
       await manifestCollector.recordFileFromDisk(sidecarPath);
+    }
+    const cspPath = await cspHashCollector.writeCspHashes();
+    if (cspPath) {
+      await manifestCollector.recordFileFromDisk(cspPath);
     }
     await manifestCollector.writeManifest(version);
     await execReady;

@@ -41,6 +41,26 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 }
 ```
 
+### Generating strict Content Security Policy headers
+
+Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support strict CSP configurations without using `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
+
+Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. You can convert the manifest into host headers (e.g. a Cloudflare Pages `_headers` file) using an `exec` script with `phase: 'post'`:
+
+```js
+// scripts/generate-csp-headers.ts
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const hashes = JSON.parse(readFileSync('dist/.bascik/csp-hashes.json', 'utf8'));
+let headers = '';
+for (const [path, pageHashes] of Object.entries(hashes)) {
+  const scriptSrc = pageHashes.scripts.map((h) => `'${h}'`).join(' ');
+  const styleSrc = pageHashes.styles.map((h) => `'${h}'`).join(' ');
+  headers += `${path}\n  Content-Security-Policy: script-src 'self' ${scriptSrc}; style-src 'self' ${styleSrc}\n\n`;
+}
+writeFileSync('dist/_headers', headers);
+```
+
 ### Excluded source files
 
 To keep deployment artifacts clean, the following files are excluded from static asset copying and are never copied to `dist/`:
