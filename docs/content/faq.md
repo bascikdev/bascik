@@ -81,7 +81,9 @@ No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly th
 
 ## Can I organize components into subfolders?
 
-Yes. Subfolders are supported for file organization. However, tag names come from the filename only, so subfolders do not create separate namespaces. For example, `src/components/marketing/promo-card.html` registers `<promo-card>`. We recommend keeping the components directory flat unless you have a specific organizational need.
+Yes. You can organize `src/components/` however you prefer: completely flat, grouped by feature or section (e.g. `src/components/marketing/promo-card.html`), or in dedicated per-component directories (e.g. `src/components/alert-box/alert-box.html`).
+
+Tag names come from the filename only, so subfolders do not create separate namespaces. `src/components/marketing/promo-card.html` registers `<promo-card>`. Choose whichever folder structure fits your project, ensuring each component file has a unique name.
 
 ## What happens if two components have the same name?
 

@@ -20,8 +20,7 @@ import { eventEmitter, registerShutdownHandler } from "./events.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
-    await copyStaticAssets();
-    await processAllPages();
+    await Promise.all([copyStaticAssets(), processAllPages()]);
     return;
   }
 
@@ -93,15 +92,9 @@ export const watchFiles = async () => {
         removePage(path).then(() => processAllPages()).catch(onWatchError);
       })
       .on("unlinkDir", (path: string, _stats?: Stats) => deleteDistDir(path).catch(onWatchError))
-      .on("ready", async () => {
+      .on("ready", () => {
         initialScanDone = true;
-        try {
-          await copyStaticAssets();
-          await processAllPages();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
+        Promise.all([copyStaticAssets(), processAllPages()]).then(() => resolve()).catch(reject);
       }));
   });
 

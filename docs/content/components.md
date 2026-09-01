@@ -414,7 +414,7 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 
 ## Subfolder Layout
 
-For components with multiple files or categories, subfolders keep things tidy. Name the subfolder and the files inside it clearly:
+Organize components into subfolders whenever it helps keep your project tidy. You can group by feature, section, or per-component folders containing companion files:
 
 ```text
 src/components/
@@ -423,11 +423,17 @@ src/components/
     promo-card.css
   admin/
     user-row.html
+  alert-box/
+    alert-box.html
+    alert-box.css
+    alert-box.ts
 ```
 
-Bascik derives the tag name from the filename only, not from the directory path. Subfolders do not create separate namespaces, so `marketing/promo-card.html` registers the tag `<promo-card>`. If two files anywhere in the components directory resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`), Bascik raises a build error naming both conflicting paths.
+Bascik derives the tag name from the filename only, not from the directory path. Subfolders do not create separate namespaces, so `marketing/promo-card.html` registers `<promo-card>`, `admin/user-row.html` registers `<user-row>`, and `alert-box/alert-box.html` registers `<alert-box>`.
 
-> **Keep it flat unless you need organization.** Because tag names come from filenames and subfolders do not namespace components, keeping `src/components/` flat is recommended unless you have a large project with distinct file groupings.
+If two files anywhere in `src/components/` resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`), Bascik raises a build error naming both conflicting paths.
+
+> **Flexible organization.** Organize `src/components/` flat, in feature folders, or in per-component directories. Choose whichever layout fits your workflow and keep filenames unique across the tree.
 
 > **No restart needed.** The dev server watches `src/components/` for new and changed files. Drop in a new `.html` or `.css` file and all affected pages re-transpile and reload automatically.
 
