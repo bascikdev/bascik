@@ -150,7 +150,7 @@ describe("getDirectoryPath", () => {
 describe("getDistPagePath", () => {
   it("should return dist page path for given page path", () => {
     const pagePath = "/pages/myPage.html";
-    const expectedDistPath = "dist/pages/myPage.html";
+    const expectedDistPath = "dist/myPage.html";
     const result = getDistPagePath(pagePath);
     expect(result).toEqual(expectedDistPath);
   });
@@ -169,9 +169,65 @@ describe("getDistPagePath", () => {
 });
 
 describe("toDistPath", () => {
+  it("getRelativePath returns the tail when the pages segment appears twice in the path", () => {
+    expect(getRelativePath("/Users/x/my-pages/pages/assets/logo.png", "pages")).toBe(
+      "pages/assets/logo.png",
+    );
+  });
+
+  it.each([
+    ["pages/x.html", "pages/x.html"],
+    ["src/pages/x.html", "pages/x.html"],
+    ["/p/src/pages/x.html", "pages/x.html"],
+    ["C:\\p\\src\\pages\\x.html", "pages/x.html"],
+    ["x.html", "pages/x.html"],
+    ["/srv/pages/demo/src/pages/x.html", "pages/x.html"],
+    ["pages/blog/", "pages/blog/"],
+    ["pages/index/deep.html", "pages/index/deep.html"],
+    ["pages/résumé #100%.html", "pages/résumé #100%.html"],
+    ["pages//blog///post.html", "pages/blog/post.html"],
+  ])("normalizes %s relative to the logical pages directory", (input, expected) => {
+    expect(getRelativePath(input, "pages")).toBe(expected);
+  });
+
+  it("honors a custom configured pages directory", () => {
+    const previousPages = BascikConfig.directory.pages;
+    (BascikConfig.directory as { pages: string }).pages = "src/html";
+    try {
+      expect(getRelativePath("/project/src/html/blog/index.html", "pages")).toBe(
+        "pages/blog/index.html",
+      );
+      expect(toDistPath("/project/src/html/blog/index.html")).toBe("dist/blog/index.html");
+    } finally {
+      (BascikConfig.directory as { pages: string }).pages = previousPages;
+    }
+  });
+
+  it("maps a source inside an absolute configured pages directory", () => {
+    const previousPages = BascikConfig.directory.pages;
+    (BascikConfig.directory as { pages: string }).pages = "/workspace/project/src/pages";
+    try {
+      expect(toDistPath("/workspace/project/src/pages/blog/post.html")).toBe(
+        "dist/blog/post.html",
+      );
+    } finally {
+      (BascikConfig.directory as { pages: string }).pages = previousPages;
+    }
+  });
+
   it("resolves relative pages paths to dist paths", () => {
     expect(toDistPath("pages/about.html")).toBe("dist/about.html");
     expect(toDistPath("pages/css/styles.css")).toBe("dist/css/styles.css");
+  });
+
+  it.each([
+    ["src/pages/x.html", "dist/x.html"],
+    ["/srv/pages/demo/src/pages/x.html", "dist/x.html"],
+    ["pages/blog/", "dist/blog/"],
+    ["pages/résumé #100%.html", "dist/résumé #100%.html"],
+    ["pages//blog///post.html", "dist/blog/post.html"],
+  ])("maps supported source shape %s into the output directory", (input, expected) => {
+    expect(toDistPath(input)).toBe(expected);
   });
 
   it("handles paths already starting with pages/ or components/ even when config directory differs", () => {
@@ -193,9 +249,25 @@ describe("toDistPath", () => {
     expect(toDistPath("dist/about.html")).toBe("dist/about.html");
     expect(toDistPath("/workspace/project/dist/css/styles.css")).toBe("dist/css/styles.css");
   });
+
+  it.each([
+    ["pages/../source.html"],
+    ["../pages/source.html"],
+    ["source.html"],
+    ["/workspace/project/source.html"],
+    ["C:\\workspace\\project\\source.html"],
+    ["dist"],
+  ])("refuses unsafe output target %s", (input) => {
+    expect(() => toDistPath(input)).toThrow(/outside.*output directory/i);
+  });
 });
 
 describe("deleteDistFile", () => {
+  it("refuses a target outside the output directory", async () => {
+    await expect(deleteDistFile("source.html")).rejects.toThrow(/outside.*output directory/i);
+    expect(rm).not.toHaveBeenCalled();
+  });
+
   it("logs relative Bascik paths for page deletions and calls rm on dist path", async () => {
     const pagePath = "/workspace/project/pages/about.html";
     await deleteDistFile(pagePath);
@@ -210,6 +282,11 @@ describe("deleteDistFile", () => {
 });
 
 describe("deleteDistDir", () => {
+  it("refuses a target outside the output directory", async () => {
+    await expect(deleteDistDir("pages")).rejects.toThrow(/outside.*output directory/i);
+    expect(rm).not.toHaveBeenCalled();
+  });
+
   it("logs relative Bascik paths for directory deletions and calls rm on dist dir", async () => {
     const dirPath = "/workspace/project/pages/assets";
     await deleteDistDir(dirPath);

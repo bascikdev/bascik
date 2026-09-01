@@ -1,5 +1,5 @@
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
-import { join, dirname, resolve, relative } from "node:path";
+import { join, dirname, resolve, relative, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
@@ -8,23 +8,27 @@ import { minifyCss } from "./styles.ts";
 import { minifyJs } from "./javascript.ts";
 
 /** Resolve an absolute path to a `parentDir/...` relative path, normalizing separators. */
-export const getRelativePath = (path: string, parentDir: string): string => {
+export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
   const normalizedPath = path.replace(/\\/g, "/");
-  const parentPath = (parentDir === "pages"
+  const configuredDir = (parentDir === "pages"
     ? BascikConfig.directory.pages
     : BascikConfig.directory.components
   ).replace(/\\/g, "/");
+
+  if (normalizedPath === parentDir || normalizedPath === configuredDir) {
+    return parentDir;
+  }
 
   if (normalizedPath.startsWith(`${parentDir}/`)) {
     const relative = normalizedPath.slice(parentDir.length + 1).replace(/^\.?\//, "").replace(/^\//, "");
     return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
   }
 
-  const suffix = normalizedPath.includes(`${parentPath}/`)
-    ? normalizedPath.split(`${parentPath}/`)[1]
-    : normalizedPath.startsWith(`${parentPath}/`)
-      ? normalizedPath.slice(parentPath.length + 1)
-      : normalizedPath;
+  const configuredDirMarker = `${configuredDir}/`;
+  const markerIndex = normalizedPath.lastIndexOf(configuredDirMarker);
+  const suffix = markerIndex >= 0
+    ? normalizedPath.slice(markerIndex + configuredDirMarker.length)
+    : normalizedPath;
 
   const relative = (suffix ?? "").replace(/^\.?\//, "").replace(/^\//, "");
   return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
@@ -240,10 +244,9 @@ export const getDirectoryPath = (pagePath: string): string => {
 
 export const getDistPagePath = (pagePath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
-  const normalized = pagePath.replace(/\\/g, "/");
-  const pathParts = normalized.split("/");
-  pathParts[0] = outDirRel;
-  return pathParts.join("/");
+  const normalized = pagePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const relativePagePath = normalized.replace(/^pages\//, "");
+  return `${outDirRel}/${relativePagePath}`;
 };
 
 /**
@@ -254,14 +257,50 @@ export const getDistPagePath = (pagePath: string): string => {
  */
 export const toDistPath = (srcPath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
-  const normalizedSrc = srcPath.replace(/\\/g, "/");
-  if (normalizedSrc.startsWith(`${outDirRel}/`)) return normalizedSrc;
+  const normalizedSrc = srcPath.replace(/\\/g, "/").replace(/\/+/g, "/");
+  let targetPath = "";
+  if (normalizedSrc.startsWith(`${outDirRel}/`)) targetPath = normalizedSrc;
   if (normalizedSrc.includes(`/${outDirRel}/`)) {
-    return `${outDirRel}/${normalizedSrc.split(`/${outDirRel}/`)[1]}`;
+    targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedSrc.lastIndexOf(`/${outDirRel}/`) + outDirRel.length + 2)}`;
+  } else if (!targetPath) {
+    const sourceSegments = normalizedSrc.split("/");
+    const configuredPagesDir = BascikConfig.directory.pages.replace(/\\/g, "/").replace(/\/+$/, "");
+    const configuredComponentsDir = BascikConfig.directory.components.replace(/\\/g, "/").replace(/\/+$/, "");
+    const hasConfiguredRoot = (configuredDir: string): boolean => {
+      const root = configuredDir.replace(/^\/+|\/+$/g, "");
+      return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
+    };
+    const hasSourceRoot =
+      normalizedSrc.startsWith("pages/") ||
+      normalizedSrc.startsWith("components/") ||
+      hasConfiguredRoot(configuredPagesDir) ||
+      hasConfiguredRoot(configuredComponentsDir);
+    const isAbsoluteSource = normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
+    if (
+      sourceSegments.includes("..") ||
+      !normalizedSrc.includes("/") ||
+      (isAbsoluteSource && !hasSourceRoot)
+    ) {
+      throw new OutputPathError(srcPath);
+    }
+    const rel = getRelativePath(srcPath, "pages");
+    targetPath = rel.replace(/^pages[\/]/, `${outDirRel}/`);
   }
-  const rel = getRelativePath(srcPath, "pages");
-  return rel.replace(/^pages[\/]/, `${outDirRel}/`);
+
+  const outputRoot = resolve(BascikConfig.directory.out);
+  const resolvedTarget = resolve(targetPath);
+  const relativeTarget = relative(outputRoot, resolvedTarget);
+  if (!relativeTarget || relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+    throw new OutputPathError(srcPath);
+  }
+  return targetPath;
 };
+
+class OutputPathError extends Error {
+  constructor(srcPath: string) {
+    super(`Refusing path outside the configured output directory: ${srcPath}`);
+  }
+}
 
 const canLogDevEvent = (
   flag: boolean | undefined,
@@ -279,6 +318,7 @@ export const deleteDistFile = async (pagePath: string): Promise<void> => {
       console.log(`deleted file: ${displayRelativePath(pagePath)}`);
     }
   } catch (error) {
+    if (error instanceof OutputPathError) throw error;
     // File doesn't exist, that's ok.
     // Don't check prior, per node.js doc's say not to because race conditions
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -297,6 +337,7 @@ export const deleteDistDir = async (dirPath: string): Promise<void> => {
     }
     await rm(distDirPath, { recursive: true, force: true });
   } catch (error) {
+    if (error instanceof OutputPathError) throw error;
     // File doesn't exist, that's ok.
     // Don't check prior, per node.js doc's say not to because race conditions
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;

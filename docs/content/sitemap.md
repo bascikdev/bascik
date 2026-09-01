@@ -53,9 +53,11 @@ Each page is converted from its file path to a URL path following these rules:
 | --- | --- |
 | `src/pages/index.html` | `/` |
 | `src/pages/about.html` | `/about` |
-| `src/pages/blog/index.html` | `/blog` |
+| `src/pages/blog/index.html` | `/blog/` |
 | `src/pages/blog/post.html` | `/blog/post` |
 | `src/pages/blog/[slug].html` (dynamic) | `/blog/hello-world`, `/blog/second-post` (concrete generated paths) |
+
+Directory index URLs include a trailing slash. The sitemap uses the same canonical path as the development and production servers, so crawlers reach the page directly instead of following a redirect from `/blog` to `/blog/`.
 
 ### Dynamic route expansion and percent-encoding
 

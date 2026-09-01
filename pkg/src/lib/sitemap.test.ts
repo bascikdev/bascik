@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { pagePathToUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
+import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
+import { getHttpPath } from "./paths.ts";
 import { listPages } from "./file-system.ts";
 import { writeFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
@@ -41,29 +42,40 @@ afterEach(() => {
   }
 });
 
-describe("pagePathToUrlPath", () => {
+describe("canonical sitemap paths", () => {
   it("maps root index.html to /", () => {
-    expect(pagePathToUrlPath("pages/index.html")).toBe("/");
+    expect(encodeUrlPath(getHttpPath("pages/index.html"))).toBe("/");
   });
 
   it("maps a top-level page to /slug", () => {
-    expect(pagePathToUrlPath("pages/about.html")).toBe("/about");
+    expect(encodeUrlPath(getHttpPath("pages/about.html"))).toBe("/about");
   });
 
   it("maps a nested page to /section/slug", () => {
-    expect(pagePathToUrlPath("pages/blog/post.html")).toBe("/blog/post");
+    expect(encodeUrlPath(getHttpPath("pages/blog/post.html"))).toBe("/blog/post");
   });
 
   it("maps a nested index to the parent path", () => {
-    expect(pagePathToUrlPath("pages/blog/index.html")).toBe("/blog");
+    expect(encodeUrlPath(getHttpPath("pages/blog/index.html"))).toBe("/blog/");
+  });
+
+  it("drops index only when it is the final path segment", () => {
+    expect(encodeUrlPath(getHttpPath("pages/index/deep.html"))).toBe("/index/deep");
   });
 
   it("handles deeply nested paths", () => {
-    expect(pagePathToUrlPath("pages/docs/api/reference.html")).toBe("/docs/api/reference");
+    expect(encodeUrlPath(getHttpPath("pages/docs/api/reference.html"))).toBe("/docs/api/reference");
   });
 
-  it("percent-encodes non-ASCII characters in path segments", () => {
-    expect(pagePathToUrlPath("pages/blog/author’s-post.html")).toBe(
+  it("percent-encodes sitemap segments and round-trips to the server path", () => {
+    const canonicalPath = getHttpPath("pages/blog/résumé #100%.html");
+    const sitemapPath = encodeUrlPath(canonicalPath);
+    expect(sitemapPath).toBe("/blog/r%C3%A9sum%C3%A9%20%23100%25");
+    expect(decodeURIComponent(sitemapPath)).toBe(canonicalPath);
+  });
+
+  it("percent-encodes typographic punctuation", () => {
+    expect(encodeUrlPath(getHttpPath("pages/blog/author’s-post.html"))).toBe(
       "/blog/author%E2%80%99s-post",
     );
   });

@@ -55,5 +55,19 @@ describe("getHttpPath", () => {
     expect(getHttpPath("///src/pages/deeply//nested///index.html")).toBe("/deeply/nested/");
     expect(getHttpPath("pages/sub-pages/index.html")).toBe("/sub-pages/");
   });
+
+  it("honors a custom pages directory", () => {
+    expect(getHttpPath("/project/src/html/blog/index.html", "src/html")).toBe("/blog/");
+  });
+
+  it.each([
+    ["pages/index/deep.html", "/index/deep"],
+    ["pages/résumé #100%.html", "/résumé #100%"],
+    ["pages//blog///index.html", "/blog/"],
+    ["/srv/src/pages/demo/src/pages/post.html", "/post"],
+    ["pages/blog/", "/blog/"],
+  ])("canonicalizes %s", (input, expected) => {
+    expect(getHttpPath(input)).toBe(expected);
+  });
 });
 

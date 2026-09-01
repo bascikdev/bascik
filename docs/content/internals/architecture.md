@@ -147,6 +147,10 @@ Spinning up the pool has a fixed cost, each worker loads the transpiler's module
 
 In dev mode, `pageProcessing()` writes the transpiled HTML to the in-memory store and emits the `"transpiled"` event before writing anything to disk. The HTTP/2 server can serve the updated page immediately. Disk writes are skipped entirely in dev, `dist/` is only written during `--build`.
 
+### Canonical page paths
+
+`paths.ts` is the single source of truth for converting page filenames into canonical URL paths. The in-memory server key, `BASCIK_PAGE_PATH` build-script value, and sitemap generator all use the same conversion. Directory indexes use a trailing slash, so `src/pages/blog/index.html` becomes `/blog/`. Sitemap serialization percent-encodes each segment after canonicalization, while the server decodes incoming paths before lookup.
+
 ### Process-isolated script execution
 
 Both `<script data-bascik-build>` (run at build time) and `<script data-bascik-server>` (run at request time) are executed in complete isolation. Instead of using `eval` or Node's `vm` module, which can leak state or restrict standard Node.js APIs, Bascik writes script content to a temporary `.mjs` file on disk and runs it as a standalone Node.js subprocess. This process-level isolation ensures that user scripts cannot pollute the memory of the compiler or server, natively supports ES modules, top-level `await`, dynamic imports, and captures stdout cleanly before removing the temporary files. To maintain accurate debugging diagnostics across process boundaries, Bascik appends `//# sourceURL` directives and cleans child-process stack traces, mapping temporary `.mjs` paths and line offsets back to the original source file.
