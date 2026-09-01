@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
+const baseFixtureDir = join(e2eDir, 'base-fixture');
 
 export default defineConfig({
   testDir: './tests',
@@ -26,7 +27,11 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     headless: true,
   },
-  webServer: {
+  projects: [
+    { name: 'default', testIgnore: '**/base-serving.test.ts' },
+    { name: 'base-server-http2', testMatch: '**/base-serving.test.ts', use: { baseURL: 'https://localhost:9553' } },
+  ],
+  webServer: [{
     command: [
       `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build`,
       `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9444 node ${pkgDir}/dist/index.js --server`,
@@ -37,5 +42,16 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     stdout: 'pipe',
     stderr: 'pipe',
-  },
+  }, {
+    command: [
+      `BASCIK_SITE_URL=https://localhost:9553 node ${pkgDir}/dist/index.js --build`,
+      `BASCIK_ENABLE_TLS=true BASCIK_SERVER_PORT=9553 node ${pkgDir}/dist/index.js --server`,
+    ].join(' && '),
+    cwd: baseFixtureDir,
+    url: 'https://localhost:9553/sub/',
+    reuseExistingServer: false,
+    ignoreHTTPSErrors: true,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  }],
 });

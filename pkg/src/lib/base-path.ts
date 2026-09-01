@@ -19,8 +19,21 @@ export const shouldRewriteBasePath = (value: string, base: string): boolean =>
   !value.startsWith("//") &&
   !value.startsWith(base);
 
-const rewriteUrl = (value: string, base: string): string =>
+export const withBasePath = (value: string, base: string): string =>
   shouldRewriteBasePath(value, base) ? joinBasePath(value, base) : value;
+
+export const stripBasePath = (pathname: string, base: string): string | null => {
+  if (base === "/") return pathname;
+  const prefix = base.slice(0, -1);
+  if (pathname === prefix || pathname === base) return "/";
+  return pathname.startsWith(base) ? pathname.slice(prefix.length) : null;
+};
+
+export const composeSiteUrl = (siteUrl: string, base: string, pathname: string): string => {
+  const normalizedSiteUrl = siteUrl.replace(/\/+$/, "");
+  const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${normalizedSiteUrl}${withBasePath(normalizedPathname, base)}`;
+};
 
 export const rewriteSrcsetBasePaths = (srcset: string, base: string): string => {
   if (base === "/") return srcset;
@@ -47,7 +60,7 @@ export const rewriteSrcsetBasePaths = (srcset: string, base: string): string => 
     ) {
       position++;
     }
-    result += rewriteUrl(srcset.slice(urlStart, position), base);
+    result += withBasePath(srcset.slice(urlStart, position), base);
 
     const descriptorStart = position;
     while (position < srcset.length && srcset[position] !== ",") position++;
@@ -146,13 +159,13 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
       let rewritten = value;
 
       if (URL_ATTRIBUTES.has(name)) {
-        rewritten = rewriteUrl(value, base);
+        rewritten = withBasePath(value, base);
       } else if (SRCSET_ATTRIBUTES.has(name)) {
         rewritten = rewriteSrcsetBasePaths(value, base);
       } else if (name === "style") {
         rewritten = rewriteCssBasePaths(value, base);
       } else if (name === "content" && metaProperty && URL_META_PROPERTIES.has(metaProperty)) {
-        rewritten = rewriteUrl(value, base);
+        rewritten = withBasePath(value, base);
       }
 
       if (rewritten === value) return match;
@@ -180,13 +193,13 @@ export const rewriteManifestBasePaths = (source: string, base: string): string =
     const manifest = JSON.parse(source) as Record<string, unknown>;
     for (const key of ["start_url", "scope"] as const) {
       if (typeof manifest[key] === "string") {
-        manifest[key] = rewriteUrl(manifest[key], base);
+        manifest[key] = withBasePath(manifest[key], base);
       }
     }
     if (Array.isArray(manifest.icons)) {
       for (const icon of manifest.icons) {
         if (icon && typeof icon === "object" && typeof icon.src === "string") {
-          icon.src = rewriteUrl(icon.src, base);
+          icon.src = withBasePath(icon.src, base);
         }
       }
     }

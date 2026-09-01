@@ -8,7 +8,7 @@ import { getLiveReloadScript } from "./live-reload.ts";
  * the build completes or when the user focuses the tab.
  */
 
-export const BOOT_PAGE_HTML = Buffer.from(`<!DOCTYPE html>
+export const getBootPageHtml = (liveReloadUrl = "/bascik-live-reload?boot=1"): Buffer => Buffer.from(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -29,6 +29,8 @@ p{margin:0;font-size:.875rem;opacity:.5}
   <div class="spinner"></div>
   <p>Building site\u2026</p>
 </div>
-${getLiveReloadScript("/bascik-live-reload?boot=1")}
+${getLiveReloadScript(liveReloadUrl)}
 </body>
 </html>`);
+
+export const BOOT_PAGE_HTML = getBootPageHtml();

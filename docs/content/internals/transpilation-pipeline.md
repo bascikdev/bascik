@@ -75,8 +75,9 @@ The key is the SHA-256 hex digest of:
 5. The page file path (`BASCIK_PAGE_FILE`).
 6. The page route path (`BASCIK_PAGE_PATH`), which guarantees page-aware component scripts derive distinct cache keys per page.
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
-8. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
-9. The full content of every local file the script references, concatenated in order.
+8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
+9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
+10. The full content of every local file the script references, concatenated in order.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`), which scans the script source for quoted path literals matching `content/*.md` or `scripts/*.{mjs,js,ts}` patterns:
 

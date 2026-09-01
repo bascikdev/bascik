@@ -4,11 +4,11 @@
  */
 import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
-import { join, extname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, extname, resolve } from 'node:path';
 
 const port = Number(process.argv[2] ?? 4200);
-const distDir = join(fileURLToPath(import.meta.url), '..', 'dist');
+const distDir = resolve(process.argv[3] ?? 'dist');
+const base = process.argv[4] ?? '/';
 
 const mime: Record<string, string> = {
   '.html': 'text/html',
@@ -24,6 +24,15 @@ createServer((req, res) => {
   try {
     url = decodeURIComponent(rawUrl);
   } catch { }
+  if (base !== '/') {
+    const prefix = base.replace(/\/$/, '');
+    if (url === prefix || url === base) url = '/';
+    else if (url.startsWith(base)) url = url.slice(prefix.length);
+    else {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      return res.end('404 Not Found');
+    }
+  }
   let p = join(distDir, url === '/' ? 'index.html' : url);
   if (url.endsWith('/') && url !== '/') p = join(p, 'index.html');
   if (!p.endsWith('.html') && existsSync(p + '.html')) p += '.html';

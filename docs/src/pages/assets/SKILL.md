@@ -754,6 +754,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
 | `BASCIK_SITE_URL` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` env var, or `.env`. Absent when unset, never an empty string. |
+| `BASCIK_BASE` | Normalized deployment base from config. Always present and defaults to `/`. Use it when a build script must expose the prefix for JavaScript-built URLs. |
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
@@ -977,6 +978,8 @@ Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if bo
 
 Bascik validates the config before anything reads it and reports every problem together: each error names the key, the received value, and the expectation. Unknown keys are rejected with a "did you mean" suggestion, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.exec[].script`, `pipeline.watchPaths`, `assets.inlineStyles`, TLS key/cert files) are checked for existence. `base` is normalized to a leading and trailing slash (`docs` becomes `/docs/`); only a full URL is rejected.
 
+`base` defaults to `/`, which is a complete output and routing no-op. A non-root value such as `/docs/` rewrites root-relative HTML, CSS, and web app manifest URLs, serves dev and production-server requests below that prefix, and is included in sitemap, robots, and canonical URLs. Requests outside the prefix return `404`. Bascik does not rewrite URLs constructed in JavaScript; emit `BASCIK_BASE` from a build script when client code needs the prefix.
+
 ### The site URL is not a config key
 
 `siteUrl` is a per-deployment value, so it never goes in `bascik.config.ts` (setting it there is an error). Three sources, in precedence order:
@@ -1124,6 +1127,7 @@ When creating or modifying `bascik.config.ts`:
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
+* **Use `base` for subdirectory deployments:** Set a normalized path such as `base: '/docs/'`. Do not use a full URL, and do not expect Bascik to rewrite paths assembled inside JavaScript. Use the build-time `BASCIK_BASE` value for those paths.
 
 **`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
 

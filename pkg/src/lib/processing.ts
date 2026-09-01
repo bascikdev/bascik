@@ -67,7 +67,7 @@ import {
   deepReadDirFlat,
 } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
   invalidateComponentListCache,
@@ -101,7 +101,7 @@ import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
-import { rewriteCssBasePaths, rewriteHtmlBasePaths } from "./base-path.ts";
+import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -1138,7 +1138,7 @@ export const transpilePage = async (
   }
 
   if (!BascikConfig.isBuild) {
-    transpiledHtmlBody = `${transpiledHtmlBody}${LIVE_RELOAD_SCRIPT}`;
+    transpiledHtmlBody = `${transpiledHtmlBody}${getLiveReloadScript(withBasePath("/bascik-live-reload", BascikConfig.base))}`;
   }
 
   // Minify the body AFTER component resolution so that <pre> blocks from resolved

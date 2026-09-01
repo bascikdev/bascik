@@ -780,6 +780,7 @@ describe("transpilePage – base path transform", () => {
     expect(result?.distHtml).toContain('href="#local-id"');
     expect(result?.distHtml).toContain('href="/sub/about"');
     expect(result?.distHtml).toContain("url(/sub/hero.png)");
+    expect(result?.distHtml).toContain('new EventSource("/sub/bascik-live-reload")');
   });
 });
 

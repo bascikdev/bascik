@@ -59,6 +59,8 @@ Each page is converted from its file path to a URL path following these rules:
 
 Directory index URLs include a trailing slash. The sitemap uses the same canonical path as the development and production servers, so crawlers reach the page directly instead of following a redirect from `/blog` to `/blog/`.
 
+When `base` is not `/`, every generated absolute URL composes `BASCIK_SITE_URL`, the normalized base, and the page path. For example, `BASCIK_SITE_URL=https://example.com`, `base: '/docs/'`, and `src/pages/about.html` produce `https://example.com/docs/about`. The `Sitemap:` line in `robots.txt` uses the same composition and never adds a doubled slash.
+
 ### Dynamic route expansion and percent-encoding
 
 When using [Dynamic Routes](/dynamic-routes), Bascik discovers all concrete HTML pages generated from your templates and adds their final URLs to `sitemap.xml`. The unexpanded template path with literal brackets (such as `/blog/[slug]`) is omitted from the sitemap.

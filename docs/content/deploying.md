@@ -74,7 +74,7 @@ That covers GitHub Pages, Netlify, Cloudflare Pages, AWS S3, Vercel, and any oth
 
 **Custom 404 page.** Name your page `src/pages/404.html`. After building, `dist/404.html` is the standard location for custom 404 pages recognized by GitHub Pages, Netlify, Cloudflare Pages, and Vercel.
 
-**Root-relative paths.** The build output uses root-relative paths. Serve the site at the domain root, or configure your host's base path setting to match.
+**Root-relative paths.** The default `base: '/'` targets the domain root. Set `base` when the host mounts the site below the root.
 
 **Build command.** If your host runs a build command for you, use `npx bascik --build` or `bascik --build` (if installed as a dev dependency). Set the output directory to `dist/`.
 
@@ -105,6 +105,25 @@ jobs:
 ```
 
 `dist/` is the artifact to upload or deploy.
+
+### Subdirectory deploys
+
+Set `base` when the site is published at a path such as `https://example.com/docs/` instead of the domain root. GitHub Pages project sites are a common example: a repository named `my-site` is normally published at `https://account.github.io/my-site/`.
+
+```ts
+// bascik.config.ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  base: '/my-site/',
+});
+```
+
+Bascik normalizes the leading and trailing slash, rewrites root-relative HTML, CSS, and web app manifest URLs during the build, and serves pages and static assets below the same prefix in development and with `bascik --server`. Generated sitemap, robots, and canonical URLs compose the site URL, base, and page path in that order.
+
+Requests outside the configured prefix return `404 Not Found`. With `base: '/my-site/'`, request `/my-site/about`, not `/about`. This strict behavior matches a static host and catches incorrect links during local preview. Live reload also connects through the prefix automatically.
+
+A custom domain mapped to the project site usually serves it from `/`, so leave the default `base: '/'` in that deployment shape.
 
 ## Using the production server
 

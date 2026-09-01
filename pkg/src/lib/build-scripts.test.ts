@@ -25,6 +25,7 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
+    base: "/",
     isBuild: false,
     scripts: { cache: { enabled: true }, onBuildScriptError: "error" },
     directory: { pages: "src/pages", components: "src/components", out: "dist" },
@@ -879,6 +880,25 @@ describe("build-script output cache", () => {
     expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
     expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
     expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
+  });
+
+  it("passes BASCIK_BASE to child processes and defaults to root", async () => {
+    resolveWith("<p>ok</p>");
+    const template = "<script data-bascik-build>x()</script>";
+
+    await executeBuildScripts(template, "src/pages/index.html");
+    const rootOptions = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(rootOptions.env?.BASCIK_BASE).toBe("/");
+
+    mockExecFile.mockClear();
+    (BascikConfig as any).base = "/sub/";
+    try {
+      await executeBuildScripts(template, "src/pages/about.html");
+      const subOptions = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      expect(subOptions.env?.BASCIK_BASE).toBe("/sub/");
+    } finally {
+      (BascikConfig as any).base = "/";
+    }
   });
 });
 

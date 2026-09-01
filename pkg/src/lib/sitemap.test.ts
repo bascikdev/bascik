@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
+import { composeSiteUrl } from "./base-path.ts";
 import { getHttpPath } from "./paths.ts";
 import { listPages } from "./file-system.ts";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -9,6 +10,7 @@ import { BascikConfig } from "./config.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
+    base: "/",
     generate: { sitemap: true, robots: true },
     directory: { pages: "/project/src/pages", components: "/project/src/components", out: "dist" },
     isBuild: true,
@@ -103,6 +105,13 @@ describe("buildSitemapXml", () => {
     expect(xml).not.toContain("//blog");
   });
 
+  it("composes the site URL, base, and page path", () => {
+    const xml = buildSitemapXml("https://example.com/", ["/", "/about"], "/sub/");
+    expect(xml).toContain("<loc>https://example.com/sub/</loc>");
+    expect(xml).toContain("<loc>https://example.com/sub/about</loc>");
+    expect(xml).not.toContain("/sub//");
+  });
+
   it("strips trailing slash from base URL to prevent double slashes in sitemap", () => {
     const xml = buildSitemapXml("https://example.com/", ["/", "/about"]);
     expect(xml).toContain("<loc>https://example.com/</loc>");
@@ -179,6 +188,22 @@ describe("buildRobotsTxt", () => {
     const robots = buildRobotsTxt("https://example.com/");
     expect(robots).toContain("Sitemap: https://example.com/sitemap.xml");
     expect(robots).not.toContain("//sitemap.xml");
+  });
+
+  it("includes the configured base in the sitemap URL", () => {
+    expect(buildRobotsTxt("https://example.com/", "/sub/")).toContain(
+      "Sitemap: https://example.com/sub/sitemap.xml",
+    );
+  });
+});
+
+describe("composeSiteUrl", () => {
+  it.each([
+    ["https://example.com", "/", "/about", "https://example.com/about"],
+    ["https://example.com/", "/sub/", "/about", "https://example.com/sub/about"],
+    ["https://example.com/", "/sub/", "/", "https://example.com/sub/"],
+  ])("composes %s, %s, and %s", (siteUrl, base, pagePath, expected) => {
+    expect(composeSiteUrl(siteUrl, base, pagePath)).toBe(expected);
   });
 });
 
