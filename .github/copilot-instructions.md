@@ -304,8 +304,8 @@ The project uses **Vitest 4** (`"vitest": "^4.1.10"`). Vitest 4 introduced break
 
 Always choose clear, unambiguous names. When something could be confused with another concept, add the disambiguating word rather than abbreviating. Examples:
 
-- `isProdServer` not `isServe` (there is both a dev server and a prod server)
-- `BASCIK_PROD_SERVER` not `BASCIK_SERVE` (the env var mirrors the concept)
+- `isProdServer` (there is both a dev server and a prod server)
+- `BASCIK_PROD_SERVER` (the env var mirrors the concept)
 - Prefer the full word over a contraction when the shorter form is ambiguous in context
 
 ## TypeScript Type Checking

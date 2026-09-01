@@ -24,7 +24,7 @@ ensureEnvironmentReady();
 
 // The CLI mode comes from the ONE argv parser in cli.ts, the same parser
 // index.ts uses to pick the action, so the action and the resolved config can
-// never drift (the removed --serve spelling, for example, is rejected by both).
+// never drift: a flag the parser rejects can never reach the config.
 const cliDecision = resolveCliAction(process.argv.slice(2));
 const isBuild =
   cliDecision.action === "build" || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;

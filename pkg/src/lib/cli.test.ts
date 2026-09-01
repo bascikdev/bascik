@@ -73,13 +73,14 @@ describe("cli helper tests", () => {
       expect(decision.errorMessage).toContain('Did you mean "--build"?');
     });
 
-    it("suggests --server for the renamed --serve flag", () => {
-      // Regression anchor for the parser/config desync: config used to treat
-      // --serve as the production server while the CLI rejected it. One
-      // parser now drives both, so the action and the mode can never drift.
-      const decision = resolveCliAction(["--serve"]);
+    it("suggests --server for a near-miss flag", () => {
+      // Regression anchor for the parser/config desync: config used to derive
+      // its mode from its own argv scan, so a spelling the CLI rejected could
+      // still flip the config. One parser now drives both, and an unknown
+      // near-match flag gets a suggestion from the generic machinery.
+      const decision = resolveCliAction(["--serverr"]);
       expect(decision.action).toBe("error");
-      expect(decision.errorMessage).toContain("--serve");
+      expect(decision.errorMessage).toContain("--serverr");
       expect(decision.errorMessage).toContain('Did you mean "--server"?');
     });
 
