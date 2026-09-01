@@ -50,6 +50,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import os from "node:os";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { serverSidecarRegistry } from "./server-sidecar.ts";
 
 export { cleanStackTrace };
 
@@ -74,7 +75,7 @@ export interface ServerRequest {
 // character — this prevents a match when "data-bascik-server" appears only
 // inside an attribute value such as title="run data-bascik-server later".
 const createServerScriptRegex = (): RegExp =>
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gi;
+  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gi;
 
 // Strip ANSI terminal color sequences so server-side HTML injection never leaks
 // terminal formatting from CI or Netlify build environments into the page output.
@@ -101,7 +102,7 @@ const SERVER_ROUTES_CONFLICT_RE = new RegExp(
   "i",
 );
 
-/** Return `true` if `html` contains at least one `data-bascik-server` block. */
+/** Return `true` if `html` contains at least one `data-bascik-server` block or placeholder. */
 export const htmlHasServerScripts = (html: string): boolean => {
   return createServerScriptRegex().test(html);
 };
@@ -182,16 +183,29 @@ export const executeServerScripts = async (
 
   const scriptJobs: ScriptJob[] = matches.map((match) => {
     const fullTag = match[0];
-    const scriptContent = match[1];
+    let scriptContent = match[1] ?? match[2] ?? "";
     const index = match.index!;
     const length = fullTag.length;
+
+    const idMatch = fullTag.match(/\bdata-bascik-server-id=["']([^"']+)["']/i);
+    if (idMatch) {
+      const entry = serverSidecarRegistry.getScript(idMatch[1]);
+      if (entry) {
+        scriptContent = entry.source;
+      } else {
+        throw new Error(
+          `[bascik] Server script placeholder "${idMatch[1]}" could not be resolved from sidecar. ` +
+          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+        );
+      }
+    }
 
     const prefix = html.slice(0, index);
     const lines = prefix.split(/\r?\n/);
     const lineOffset = lines.length;
 
     // Server-script open tag
-    const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+    const openTag = fullTag.slice(0, fullTag.length - (match[1] ?? match[2] ?? "").length - "</script>".length);
     if (SERVER_BUILD_CONFLICT_RE.test(openTag)) {
       let errorMsg = `[bascik] error: <script> tag has both data-bascik-server and data-bascik-build`;
       if (filePath) {

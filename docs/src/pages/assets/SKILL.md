@@ -963,7 +963,8 @@ Bascik intentionally does not inject a global `escapeHtml()` helper into every s
 
 Rules:
 * Top-level `import` and `await` are supported.
-* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --server` or the dev server.
+* `data-bascik-server` blocks are stripped from emitted HTML into a sidecar file (`dist/.bascik/server-scripts.json`) leaving an inert placeholder (`<script type="text/bascik-server">`), so Node server source is never shipped to browsers in static builds.
+* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute on each request.
 * They are NOT executed during `bascik --build` itself.
 * Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
 * On error, a warning is logged and the tag is replaced with an empty string.

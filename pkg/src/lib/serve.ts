@@ -21,6 +21,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, extname, relative, resolve } from "node:path";
 import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
+import { serverSidecarRegistry } from "./server-sidecar.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -63,6 +64,13 @@ const loadDistIntoMemory = async (): Promise<void> => {
       `[bascik] --server: no HTML pages found in ${outDirRel}/. ` +
       "Run `bascik --build` first.",
     );
+  }
+
+  const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
+  try {
+    await serverSidecarRegistry.loadSidecar(sidecarPath);
+  } catch {
+    // Sidecar may not exist if no pages used server scripts
   }
 
   await Promise.all(

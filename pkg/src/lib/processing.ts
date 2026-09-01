@@ -103,6 +103,7 @@ import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
+import { extractServerScriptsToSidecar } from "./server-sidecar.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -1202,6 +1203,7 @@ export const transpilePage = async (
       distHtml.slice(tag.closeIndex);
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
+  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 

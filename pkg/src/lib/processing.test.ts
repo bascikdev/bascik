@@ -1967,7 +1967,7 @@ describe("transpilePage – minify.js branch coverage", () => {
     expect(result!.distHtml).toContain(jsonLd);
   });
 
-  it("does not minify data-bascik-server scripts", async () => {
+  it("replaces data-bascik-server scripts with inert sidecar placeholder and preserves source in sidecar", async () => {
     const serverCode = "const   x   =   require('fs');";
     const html =
       `<!DOCTYPE html><html><head></head><body>` +
@@ -1976,7 +1976,8 @@ describe("transpilePage – minify.js branch coverage", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
     expect(result).not.toBeNull();
-    expect(result!.distHtml).toContain(serverCode);
+    expect(result!.distHtml).not.toContain(serverCode);
+    expect(result!.distHtml).toContain('type="text/bascik-server"');
   });
 
   it("does not minify external scripts (with src attribute)", async () => {
