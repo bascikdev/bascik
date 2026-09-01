@@ -57,7 +57,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `html-minifier.ts` | Built-in HTML minifier that strips HTML comments and collapses unnecessary whitespace between tags in production builds. |
 | `http.ts` | Plaintext HTTP/1.1 server (`node:http`) used by default in development and cleartext environments. |
 | `http2.ts` | TLS-enabled HTTP/2 server (`node:http2`) used when `enableTls: true` is configured. |
-| `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html`, `src/components/`, and `bascik.config.js`, and patches `package.json` with `"type": "module"` and dev/build scripts. |
+| `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html` and `src/components/`, ensures `.gitignore` includes `dist/` and `node_modules/.cache/bascik/`, and patches `package.json` with `"type": "module"` (when absent), an `@bascik/bascik` dependency, and dev/build scripts. |
 | `javascript.ts` | The scoping transforms: `prefixElementAttribute` (rewrites HTML attributes, JS DOM selectors, and CSS) and `namespaceScriptTags` (wraps scripts in IIFEs with `sourceURL` annotations and line positioning). |
 | `js-minifier.ts` | Lightweight, built-in JavaScript minifier that strips comments and collapses safe whitespace without breaking statement boundaries (ASI). |
 | `live-reload.ts` | Injected client-side script that establishes an EventSource connection to the dev server to reload pages when they are updated. |

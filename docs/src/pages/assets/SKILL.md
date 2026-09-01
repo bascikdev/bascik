@@ -1173,7 +1173,7 @@ To start again:  cd my-site && npm run dev
 npm install @bascik/bascik
 ```
 
-Then run `bascik init` to scaffold the starter files and folder structure, or add the scripts manually to `package.json`:
+Then run `bascik init` to scaffold starter files (`src/pages/index.html`, `src/components/`), append `.gitignore` entries (`dist/`, `node_modules/.cache/bascik/`), and patch `package.json` (`"type": "module"` when absent plus standard scripts and dependency), or add the scripts manually to `package.json`:
 
 ```json
 {

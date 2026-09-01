@@ -14,7 +14,7 @@ Bascik looks for its config in the project root only, in this order:
 2. `bascik.config.js`
 3. `bascik.config.ts`
 
-When both files exist, `bascik.config.js` wins. This is deliberate: a `.js` file written by `bascik init` would otherwise silently shadow your `.ts` config. If your `.ts` file appears to be ignored, check for a stray `.js` file next to it.
+When both files exist, `bascik.config.js` wins. This is deliberate because many JavaScript-first projects keep a `.js` config alongside TypeScript files. If your `.ts` file appears to be ignored, check for a stray `.js` file next to it.
 
 Only these two filenames are supported: no `.mjs`, `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
 
