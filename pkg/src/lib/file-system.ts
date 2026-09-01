@@ -232,12 +232,15 @@ export const getDistPagePath = (pagePath: string): string => {
  */
 export const toDistPath = (srcPath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
+  const outputRoot = resolve(BascikConfig.directory.out);
+  const normalizedOutputRoot = outputRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedSrc = srcPath.replace(/\\/g, "/").replace(/\/+/g, "/");
   let targetPath = "";
-  if (normalizedSrc.startsWith(`${outDirRel}/`)) targetPath = normalizedSrc;
-  if (normalizedSrc.includes(`/${outDirRel}/`)) {
-    targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedSrc.lastIndexOf(`/${outDirRel}/`) + outDirRel.length + 2)}`;
-  } else if (!targetPath) {
+  if (normalizedSrc.startsWith(`${outDirRel}/`)) {
+    targetPath = normalizedSrc;
+  } else if (normalizedSrc.startsWith(`${normalizedOutputRoot}/`)) {
+    targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedOutputRoot.length + 1)}`;
+  } else {
     const sourceSegments = normalizedSrc.split("/");
     const configuredPagesDir = BascikConfig.directory.pages.replace(/\\/g, "/").replace(/\/+$/, "");
     const configuredComponentsDir = BascikConfig.directory.components.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -262,7 +265,6 @@ export const toDistPath = (srcPath: string): string => {
     targetPath = rel.replace(/^pages[\/]/, `${outDirRel}/`);
   }
 
-  const outputRoot = resolve(BascikConfig.directory.out);
   const resolvedTarget = resolve(targetPath);
   const relativeTarget = relative(outputRoot, resolvedTarget);
   if (!relativeTarget || relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {

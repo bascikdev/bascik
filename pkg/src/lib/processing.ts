@@ -335,25 +335,33 @@ const MAX_SUBSTITUTIONS = 10_000;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
 
 export class PageProcessingError extends Error {
+  readonly pagePath: string;
+  readonly stage: string;
+
   constructor(
-    public readonly pagePath: string,
-    public readonly stage: string,
+    pagePath: string,
+    stage: string,
     cause: unknown,
   ) {
     const causeMessage = cause instanceof Error ? cause.message : String(cause);
     super(`${stage}: ${causeMessage}`, { cause });
     this.name = "PageProcessingError";
+    this.pagePath = pagePath;
+    this.stage = stage;
   }
 }
 
 export class PageProcessingAggregateError extends AggregateError {
-  constructor(public readonly pageErrors: PageProcessingError[]) {
+  readonly pageErrors: PageProcessingError[];
+
+  constructor(pageErrors: PageProcessingError[]) {
     const details = pageErrors
       .map(({ pagePath, stage, message }) =>
         `  ${pagePath}\n    ${stage}: ${message.replace(`${stage}: `, "")}`)
       .join("\n");
     super(pageErrors, `Build failed with ${pageErrors.length} page errors:\n${details}`);
     this.name = "PageProcessingAggregateError";
+    this.pageErrors = pageErrors;
   }
 }
 
@@ -364,6 +372,13 @@ const normalizePageError = (
 ): PageProcessingError => error instanceof PageProcessingError
     ? error
     : new PageProcessingError(pagePath, stage, error);
+
+const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
+  if (pageErrors.length === 0) return;
+  const aggregateError = new PageProcessingAggregateError(pageErrors);
+  if (BascikConfig.isBuild) throw aggregateError;
+  console.error(aggregateError.message);
+};
 
 export const recursivelyTranspile = (
   transpiledHtmlBody: string,
@@ -633,26 +648,37 @@ export const processPageBatch = async (
   pageInputs: (string | PageJob)[],
   componentList?: ComponentList,
   globalStylesHtml?: string,
+  initialPageErrors: PageProcessingError[] = [],
 ): Promise<string[]> => {
-  if (pageInputs.length === 0) return [];
+  const pageErrors = [...initialPageErrors];
+  if (pageInputs.length === 0) {
+    reportPageErrors(pageErrors);
+    return [];
+  }
   if (!componentList) componentList = await listComponents();
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
   const jobs: PageJob[] = [];
   for (const input of pageInputs) {
     if (typeof input === "string") {
-      const expanded = await expandPageToJobs(input);
-      jobs.push(...expanded);
+      try {
+        const expanded = await expandPageToJobs(input);
+        jobs.push(...expanded);
+      } catch (error) {
+        pageErrors.push(normalizePageError(input, error, "expand routes"));
+      }
     } else {
       jobs.push(input);
     }
   }
-  if (jobs.length === 0) return [];
+  if (jobs.length === 0) {
+    reportPageErrors(pageErrors);
+    return [];
+  }
 
   const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
 
   const results: (TranspilePageResult | null)[] = [];
-  const pageErrors: PageProcessingError[] = [];
 
   const runJob = async (job: PageJob) => {
     const result = await transpilePage(
@@ -702,11 +728,7 @@ export const processPageBatch = async (
     await runJobs(restJobs);
   }
 
-  if (pageErrors.length > 0) {
-    const aggregateError = new PageProcessingAggregateError(pageErrors);
-    if (BascikConfig.isBuild) throw aggregateError;
-    console.error(aggregateError.message);
-  }
+  reportPageErrors(pageErrors);
 
   return results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
 };
@@ -758,7 +780,15 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
 
   let relativePaths: string[] = [];
 
-  const jobBatches = await Promise.all(pageList.map(expandPageToJobs));
+  const expansionErrors: PageProcessingError[] = [];
+  const jobBatches = await Promise.all(pageList.map(async (pagePath) => {
+    try {
+      return await expandPageToJobs(pagePath);
+    } catch (error) {
+      expansionErrors.push(normalizePageError(pagePath, error, "expand routes"));
+      return [];
+    }
+  }));
   const allJobs = jobBatches.flat();
 
   if (useWorkers && allJobs.length > 0) {
@@ -772,7 +802,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: (TranspilePageResult | null)[] = [];
-    const pageErrors: PageProcessingError[] = [];
+    const pageErrors: PageProcessingError[] = [...expansionErrors];
     try {
       if (openJobs.length > 0) {
         const openResults = await Promise.all(
@@ -834,11 +864,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         }
       }
 
-      if (pageErrors.length > 0) {
-        const aggregateError = new PageProcessingAggregateError(pageErrors);
-        if (BascikConfig.isBuild) throw aggregateError;
-        console.error(aggregateError.message);
-      }
+      reportPageErrors(pageErrors);
     } finally {
       // Always terminate — otherwise a rejected job leaves worker threads
       // alive and the CLI hangs on exit instead of reporting the failure.
@@ -847,7 +873,12 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
 
     relativePaths = results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
   } else {
-    relativePaths = await processPageBatch(allJobs, componentList, globalStylesHtml);
+    relativePaths = await processPageBatch(
+      allJobs,
+      componentList,
+      globalStylesHtml,
+      expansionErrors,
+    );
   }
 
   const count = relativePaths.length;

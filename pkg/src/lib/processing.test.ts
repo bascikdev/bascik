@@ -2259,10 +2259,12 @@ describe("transpilePage – inline component <style> extraction & deduplication"
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("dynamic routes pipeline expansion", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = false;
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
   it("leaves non-dynamic pages unaffected (1:1 output)", async () => {
@@ -2316,6 +2318,62 @@ describe("dynamic routes pipeline expansion", () => {
       3,
       expect.objectContaining({ relativePagePath: "pages/blog/post-3.html" }),
     );
+    routesSpy.mockRestore();
+  });
+
+  it("aggregates multiple dynamic route expansion failures in build mode", async () => {
+    const pages = [
+      "src/pages/blog/[slug].html",
+      "src/pages/products/[id].html",
+      "src/pages/index.html",
+    ];
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript")
+      .mockImplementation(async (_html, pagePath) => {
+        throw new Error(`invalid routes in ${pagePath}`);
+      });
+
+    let buildError: unknown;
+    try {
+      await processAllPages({ useWorkers: false });
+    } catch (error) {
+      buildError = error;
+    } finally {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      routesSpy.mockRestore();
+    }
+
+    expect(buildError).toBeInstanceOf(AggregateError);
+    const message = (buildError as Error).message;
+    expect(message).toContain("src/pages/blog/[slug].html");
+    expect(message).toContain("src/pages/products/[id].html");
+    expect(message).toContain("expand routes");
+  });
+
+  it("completes a dev batch when multiple dynamic route expansions fail", async () => {
+    const pages = [
+      "src/pages/blog/[slug].html",
+      "src/pages/products/[id].html",
+      "src/pages/index.html",
+    ];
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript")
+      .mockImplementation(async (_html, pagePath) => {
+        throw new Error(`invalid routes in ${pagePath}`);
+      });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    const result = await processAllPages({ useWorkers: false });
+
+    expect(result).toEqual(["pages/index.html"]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/blog/[slug].html"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/products/[id].html"));
+    errorSpy.mockRestore();
     routesSpy.mockRestore();
   });
 

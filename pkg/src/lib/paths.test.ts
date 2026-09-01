@@ -31,6 +31,11 @@ describe("getHttpPath", () => {
     expect(getHttpPath("pages/pages-about.html")).toBe("/pages-about");
   });
 
+  it("preserves a nested directory named pages", () => {
+    expect(getHttpPath("pages/blog/pages/post.html")).toBe("/blog/pages/post");
+    expect(getHttpPath("pages/blog/pages/index.html")).toBe("/blog/pages/");
+  });
+
   it("handles Windows backslash path separators", () => {
     expect(getHttpPath("pages\\index.html")).toBe("/");
     expect(getHttpPath("pages\\about.html")).toBe("/about");

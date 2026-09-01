@@ -272,13 +272,11 @@ yarn test       # vitest watch mode (@bascik/bascik)
 yarn docs:dev   # docs dev server (bascik-docs)
 ```
 
-### VS Code Sandbox: Commands That Need Network Will Hang
+### VS Code Sandbox and Command Permissions
 
-The agent runs inside a VS Code sandbox. Commands that bind to a port or make outbound connections (Playwright E2E tests, `yarn dev`, `curl`) hang indefinitely when run inside the sandbox. Do **not** retry these commands with slight variations: they will all hang.
+The agent can run all project commands, including commands that bind to ports or make outbound connections, such as Playwright E2E tests, `yarn dev`, and `curl`.
 
-- **Unit tests** (`yarn unit:all` or `npx vitest run`) work fine; no network is needed.
-- **E2E tests** (`npx playwright test`) require network and must be run by the user in a normal terminal outside the sandbox. Tell the user to run them and report the output.
-- If a sandboxed terminal command hangs, accept it and move on. Do not loop.
+If one of these commands hangs or cannot access the required resource, the command may be running with sandbox restrictions instead of full permissions. Stop the command and ask the user for permission to rerun it with the required access. Do not retry the same command or minor variations inside the sandbox.
 
 ### Token-Efficient Test Execution & Output Parsing
 

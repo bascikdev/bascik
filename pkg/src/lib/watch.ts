@@ -33,7 +33,7 @@ export const watchFiles = async () => {
   w(chokidar
     .watch([BascikConfig.directory.pages], {
       ignored: (path: string, stats?: Stats): boolean =>
-        !!(stats?.isFile() && !isStaticAssetPath(path)),
+        !!(stats?.isFile() && !isInlineStylesheet(path) && !isStaticAssetPath(path)),
       ignoreInitial: true,
       persistent: !BascikConfig.isBuild,
     })
@@ -66,7 +66,12 @@ export const watchFiles = async () => {
         }
       } catch (err) { onWatchError(err); }
     })
-    .on("unlink", (path) => deleteDistFile(path).catch(onWatchError))
+    .on("unlink", (path) => {
+      const operation = isInlineStylesheet(path)
+        ? processAllPages()
+        : deleteDistFile(path);
+      operation.catch(onWatchError);
+    })
     .on("unlinkDir", (path) => deleteDistDir(path).catch(onWatchError)));
 
   // Transpile pages as they change

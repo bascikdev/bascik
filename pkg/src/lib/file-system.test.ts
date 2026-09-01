@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { resolve } from "node:path";
 import {
   deepReadDir,
   deepReadDirFlat,
@@ -284,6 +285,10 @@ describe("toDistPath", () => {
     expect(toDistPath("/workspace/project/pages/css/styles.css")).toBe("dist/css/styles.css");
   });
 
+  it("does not treat an ancestor named dist as the configured output directory", () => {
+    expect(toDistPath("/Users/dist/project/src/pages/blog.html")).toBe("dist/blog.html");
+  });
+
   it("resolves Windows backslash paths to dist paths", () => {
     expect(toDistPath("pages\\css\\styles.css")).toBe("dist/css/styles.css");
     expect(toDistPath("C:\\workspace\\project\\pages\\about.html")).toBe("dist/about.html");
@@ -291,7 +296,7 @@ describe("toDistPath", () => {
 
   it("preserves paths that are already inside dist", () => {
     expect(toDistPath("dist/about.html")).toBe("dist/about.html");
-    expect(toDistPath("/workspace/project/dist/css/styles.css")).toBe("dist/css/styles.css");
+    expect(toDistPath(resolve("dist/css/styles.css"))).toBe("dist/css/styles.css");
   });
 
   it.each([

@@ -262,6 +262,18 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     expect(eventEmitter.emit).not.toHaveBeenCalledWith("asset-changed");
   });
 
+  it("does not ignore an inline stylesheet when inlineStyles is true", () => {
+    (BascikConfig as any).assets = { inlineStyles: true };
+    mockIsInlineStylesheet.mockReturnValue(true);
+    mockIsStaticAssetPath.mockReturnValue(false);
+    const ignored = mockWatch.mock.calls[0][1].ignored as (
+      path: string,
+      stats: { isFile: () => boolean },
+    ) => boolean;
+
+    expect(ignored("/project/src/pages/styles.css", { isFile: () => true })).toBe(false);
+  });
+
   it("calls processAllPages when an inline stylesheet is added and inlineStyles is true", async () => {
     (BascikConfig as any).assets = { inlineStyles: true };
     mockIsInlineStylesheet.mockReturnValue(true);
@@ -271,6 +283,19 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     await handler?.("/path/to/style.css");
     expect(processAllPages).toHaveBeenCalledTimes(1);
     expect(eventEmitter.emit).not.toHaveBeenCalledWith("asset-changed");
+  });
+
+  it("rebuilds pages when an inline stylesheet is deleted", async () => {
+    (BascikConfig as any).assets = { inlineStyles: true };
+    mockIsInlineStylesheet.mockReturnValue(true);
+    mockProcessAllPages.mockClear();
+    mockDeleteDistFile.mockClear();
+    const handler = getHandler(0, "unlink");
+
+    await handler?.("/project/src/pages/styles.css");
+
+    expect(processAllPages).toHaveBeenCalledOnce();
+    expect(deleteDistFile).not.toHaveBeenCalled();
   });
 
   it("calls processAllPages when matching inlineStyles array on change", async () => {
