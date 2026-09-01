@@ -15,7 +15,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `node ${pkgIndex} --build && node ${pkgIndex} --serve`,
+    command: `BASCIK_SITE_URL=https://bascik.dev node ${pkgIndex} --build && node ${pkgIndex} --serve`,
     cwd: join(e2eDir, '..'),
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,

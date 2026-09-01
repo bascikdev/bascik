@@ -147,3 +147,9 @@ This is by design and is how Bascik's component scoping works.
 When you use a component multiple times on a page, each instance of that component includes its corresponding `<script>` block in the expanded output. Because class names are scoped to the component name rather than an individual instance ID (which allows CSS rules to be deduplicated into a single `<style>` block), component scripts that query elements by class name or use DOM traversal produce identical JavaScript code for every instance.
 
 Each script tag is isolated in its own IIFE so variables never leak into the global scope. Having one script tag per component instance guarantees that every instance receives its behavior without requiring a runtime framework, component registry, or bundling step.
+
+## Why is `siteUrl` an environment variable and not a config option?
+
+Because the site URL changes per deployment, not per project. Staging, production, and preview deploys of the same checked-in source need different values, and putting the URL in `bascik.config.ts` would force CI to mutate a tracked file (or maintain per-branch forks of it) just to build for a different origin.
+
+Bascik follows the standard precedence chain instead: `--site-url` flag, then the `BASCIK_SITE_URL` environment variable, then a `.env` file. Each environment sets its own value and the config file stays untouched. See [Configuration precedence](/configuration#configuration-precedence).

@@ -95,7 +95,7 @@ Bascik injects environment variables into every `data-bascik-build` execution su
 | `BASCIK_SOURCE_FILE`| Absolute path to the file currently being transpiled (page or component template) |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
-| `BASCIK_SITE_URL` | The `siteUrl` defined in `bascik.config.ts` |
+| `BASCIK_SITE_URL` | The site URL from `--site-url`, the environment, or `.env`; absent when unset |
 
 Page-aware helpers derive canonical tags, Open Graph metadata, breadcrumbs, and schema markup from these variables.
 

@@ -232,7 +232,7 @@ Because Bascik adds no runtime scripts of its own, every `<script>` tag in your 
 
 Lighthouse's SEO audit checks for a short list of meta tags and structural signals. All of them are vanilla HTML attributes, nothing to install or configure.
 
-Bascik also helps with one of the easy-to-miss SEO assets: once `siteUrl` is set, `bascik --build` generates `dist/sitemap.xml` for you by default. That gives crawlers a complete list of your pages without adding another plugin or build step.
+Bascik also helps with one of the easy-to-miss SEO assets: once `BASCIK_SITE_URL` is set, `bascik --build` generates `dist/sitemap.xml` for you by default. That gives crawlers a complete list of your pages without adding another plugin or build step.
 
 ```html
 <head>

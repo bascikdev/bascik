@@ -11,7 +11,7 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | `BASCIK_PAGE_PATH` | `data-bascik-build`, `data-bascik-routes` | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`). |
 | `BASCIK_TEMPLATE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages). Fallback: `BASCIK_SOURCE_FILE`. |
 | `BASCIK_PAGE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components. |
-| `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The `siteUrl` defined in `bascik.config.ts` (e.g. `https://bascik.dev`). Empty string if unset. |
+| `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
 | `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
 | `BASCIK_ROUTE` | `data-bascik-build` (dynamic routes) | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`. |
 | `BASCIK_REQUEST` | `data-bascik-server` | JSON string of `{ path, method, headers, searchParams }` representing the incoming HTTP request. |
@@ -56,7 +56,7 @@ const pageMarkup = await readFile(process.env.BASCIK_PAGE_FILE!, 'utf8');
 
 ### `BASCIK_SITE_URL` and `BASCIK_PAGES_DIR`
 
-`BASCIK_SITE_URL` provides the domain configured in `bascik.config.ts`, while `BASCIK_PAGES_DIR` provides the resolved directory containing page templates. Together with `BASCIK_PAGE_PATH`, they enable automatic canonical URL and structured data generation:
+`BASCIK_SITE_URL` provides the deployment origin set via `--site-url`, the environment, or a `.env` file, while `BASCIK_PAGES_DIR` provides the resolved directory containing page templates. Together with `BASCIK_PAGE_PATH`, they enable automatic canonical URL and structured data generation:
 
 ```ts
 // src/lib/canonical.ts

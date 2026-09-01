@@ -17,8 +17,10 @@ export default defineConfig({
   },
   webServer: {
     // 1. Build the fixture site using the current pkg dist.
+    //    BASCIK_SITE_URL is set through the harness (not a checked-in .env or
+    //    config key) so the tests prove the environment-variable path works.
     // 2. Serve dist/ with the minimal static file server.
-    command: `node ${pkgDir}/dist/index.js --build && node server.ts 4200`,
+    command: `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build && node server.ts 4200`,
     cwd: e2eDir,
     url: 'http://localhost:4200/scope-test',
     reuseExistingServer: false,

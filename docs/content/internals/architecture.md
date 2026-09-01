@@ -50,6 +50,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `config.ts` | Loads and merges `bascik.config.ts`, default config, and build overrides into a single frozen `BascikConfig` object consumed everywhere else. |
 | `css-minifier.ts` | Built-in CSS minifier that collapses whitespace, strips comments, and compresses component `<style>` blocks and global `.css` files. |
 | `defineConfig.ts` | Provides the `defineConfig` helper function to offer autocomplete and type safety when writing `bascik.config.ts`. |
+| `environment.ts` | Loads `.env` files (default `./.env` plus repeatable `--env-file`) without clobbering real environment variables, and resolves the site URL from `--site-url`, `BASCIK_SITE_URL`, or `.env`. |
 | `events.ts` | A simple Node.js `EventEmitter` shared between the watch system, processing pipeline, and HTTP servers to signal live-reload and build events. |
 | `exec.ts` | Runs commands from the `exec` configuration list sequentially on build or during file-watching changes. |
 | `file-system.ts` | File-system helpers: recursive directory listing, path resolution between source and dist, copying static assets. |
@@ -70,7 +71,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `serve.ts` | Production server entrypoint (`bascik --serve`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
 | `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls`, runs shared request handlers, and manages server instances. |
-| `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `siteUrl` is configured and `generate.sitemap` / `generate.robots` are enabled (both default to `true`). |
+| `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
 | `types.ts` | Central TypeScript type definitions: `BascikComponent`, `ComponentList`, `TranspileResult`, `TranspilePageResult`, `BascikConfigOptions`, `StoredPage`. |

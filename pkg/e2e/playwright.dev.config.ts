@@ -25,7 +25,9 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `BASCIK_SERVER_PORT=9443 node ${pkgDir}/dist/index.js`,
+    // BASCIK_SITE_URL matches the value the build-time configs use so the
+    // build-script env assertions behave identically in dev mode.
+    command: `BASCIK_SERVER_PORT=9443 BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js`,
     cwd: e2eDir,
     url: 'http://localhost:9443/scope-test',
     reuseExistingServer: false,

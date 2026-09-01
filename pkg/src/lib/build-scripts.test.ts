@@ -199,8 +199,37 @@ describe("executeBuildScripts", () => {
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
     expect(opts.env?.BASCIK_TEMPLATE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
-    expect(opts.env?.BASCIK_SITE_URL).toBe("");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
+  });
+
+  it("omits BASCIK_SITE_URL from child env when unset, so scripts can distinguish unset from empty", async () => {
+    resolveWith("");
+    const saved = process.env.BASCIK_SITE_URL;
+    delete process.env.BASCIK_SITE_URL;
+    try {
+      await executeBuildScripts("<script data-bascik-build>x</script>");
+      const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      expect(opts.env && "BASCIK_SITE_URL" in opts.env).toBe(false);
+    } finally {
+      if (saved !== undefined) process.env.BASCIK_SITE_URL = saved;
+    }
+  });
+
+  it("passes BASCIK_SITE_URL to child env when set", async () => {
+    resolveWith("");
+    const saved = process.env.BASCIK_SITE_URL;
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    try {
+      await executeBuildScripts("<script data-bascik-build>x</script>");
+      const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+      expect(opts.env?.BASCIK_SITE_URL).toBe("https://example.com");
+    } finally {
+      if (saved === undefined) {
+        delete process.env.BASCIK_SITE_URL;
+      } else {
+        process.env.BASCIK_SITE_URL = saved;
+      }
+    }
   });
 
   it("passes a timeout to execFile so hung scripts don't hang the build", async () => {

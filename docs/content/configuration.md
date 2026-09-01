@@ -15,7 +15,7 @@ Because Bascik is zero-config, you only need to specify settings that differ fro
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+  generate: { sitemapLastmod: true },
 });
 
 // Production build overrides (applied only during `bascik --build` and `bascik --server`)
@@ -28,6 +28,44 @@ export const build = defineConfig({
   },
 });
 ```
+
+## Configuration Precedence
+
+Most Bascik settings live in `bascik.config.ts`, but per-deployment values like the site URL come from the environment. The full precedence chain is:
+
+```text
+CLI flag  >  real environment variable  >  .env file  >  config file  >  built-in default
+```
+
+Most specific and most ephemeral wins. The config file is checked into git and shared by everyone, the environment is per-deployment, and a flag is per-invocation.
+
+This mirrors the tools you already know:
+
+- **Node `--env-file`:** "If the same variable is defined in the environment and in the file, the value from the environment takes precedence." Multiple `--env-file` arguments are allowed, and subsequent files override variables defined in previous files.
+- **Node configuration priority:** command-line options and `NODE_OPTIONS` beat dotenv `NODE_OPTIONS`, which beats the configuration file.
+- **npm:** CLI flags, then `npm_config_*` env vars, then project `.npmrc`, then user `.npmrc`, then global `.npmrc`, then built-in defaults.
+- **dotenv:** `override: false` is the default, so a `.env` file never clobbers a real environment variable.
+
+### The site URL
+
+`siteUrl` is **not a config key**. It is a per-deployment value, and putting it in a checked-in file would force CI to mutate source in order to build for staging. Three sources, in precedence order:
+
+```text
+--site-url flag  >  BASCIK_SITE_URL env var  >  .env file
+```
+
+```sh
+# 1. Per-invocation flag
+bascik --build --site-url https://staging.example.com
+
+# 2. Environment variable
+BASCIK_SITE_URL=https://example.com bascik --build
+
+# 3. .env file in the project root (loaded automatically when present)
+echo 'BASCIK_SITE_URL=https://example.com' >> .env
+```
+
+The value must be an absolute `http` or `https` URL; anything else is rejected with an error naming what was received. Bascik loads `./.env` automatically and silently skips it when absent. Pass `--env-file <path>` (repeatable, later files win) to load additional files; a missing explicit file is an error.
 
 ## Full Configuration Reference (Built-In Defaults)
 
@@ -106,7 +144,6 @@ export default defineConfig({
     deletes: true,
     transpiles: true,
   },
-  siteUrl: undefined,     // e.g. 'https://example.com' (required for sitemap generation)
   base: '/',
 });
 
@@ -327,7 +364,7 @@ Exporting `dev`, `build`, or `server` mode configuration objects lets you specif
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'https://example.com',
+  generate: { sitemapLastmod: true },
 });
 
 export const dev = defineConfig({

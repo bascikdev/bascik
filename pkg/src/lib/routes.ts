@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import type { RouteEntry } from "./types.ts";
@@ -408,17 +409,22 @@ export const executeRoutesScript = async (
 
   const sourceUrlComment = filePath ? `\n//# sourceURL=${relPath}` : "";
 
-  const extraEnv = {
+  const siteUrl = getSiteUrl();
+  const extraEnv: Record<string, string> = {
     BASCIK_TEMPLATE_FILE: filePath ?? "",
     BASCIK_SOURCE_FILE: filePath ?? "",
     BASCIK_PAGE_FILE: filePath ?? "",
     BASCIK_PAGE_PATH: filePath
       ? computePagePath(filePath, BascikConfig.directory?.pages ?? "src/pages")
       : "",
-    BASCIK_SITE_URL: (BascikConfig as any).siteUrl ?? "",
     BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
   };
+  // Only set BASCIK_SITE_URL when a value exists: an absent key lets scripts
+  // distinguish "unset" from "empty".
+  if (siteUrl !== undefined) {
+    extraEnv.BASCIK_SITE_URL = siteUrl;
+  }
 
   let stdout = "";
   let stderr = "";

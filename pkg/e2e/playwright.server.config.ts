@@ -28,7 +28,7 @@ export default defineConfig({
   },
   webServer: {
     command: [
-      `node ${pkgDir}/dist/index.js --build`,
+      `BASCIK_SITE_URL=http://localhost:4200 node ${pkgDir}/dist/index.js --build`,
       `BASCIK_ENABLE_TLS=false BASCIK_SERVER_PORT=9443 node ${pkgDir}/dist/index.js --server`,
     ].join(' && '),
     cwd: e2eDir,

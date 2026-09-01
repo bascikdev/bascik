@@ -10,7 +10,7 @@ Bascik makes this possible by injecting environment variables into every `data-b
 | `BASCIK_SOURCE_FILE` | Absolute path to the file currently being transpiled (this is the file containing the executing `<script data-bascik-build>`, whether it's a page or a nested component template) |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled (always points to the page shell, even when compiling a nested component) |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
-| `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts` |
+| `BASCIK_SITE_URL` | The site URL from `--site-url`, the environment, or `.env` |
 
 A build script reads these and computes whatever it needs, without the page knowing anything about the logic. See [Environment Variables](/environment-variables) for the complete reference of all variables available in Bascik scripts.
 

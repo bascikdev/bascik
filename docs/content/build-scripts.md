@@ -244,12 +244,26 @@ export async function renderCards(jsonPath) {
 
 ## Environment Variables
 
-Environment variables set in your shell or a `.env` file (loaded with a tool like [dotenv](https://github.com/motdotla/dotenv)) are available via `process.env`. Use this for API keys, deployment URLs, or feature flags that should be baked into the build without shipping to the browser:
+Environment variables set in your shell or a `.env` file (Bascik loads `./.env` automatically at startup; no dependency needed) are available via `process.env`. Use this for API keys, deployment URLs, or feature flags that should be baked into the build without shipping to the browser:
 
 ```html
 <script data-bascik-build>
   const apiUrl = process.env.API_URL ?? 'https://api.example.com';
   console.log(`<meta name="api-url" content="${apiUrl}" />`);
+</script>
+```
+
+### `BASCIK_SITE_URL` is both an input and an output
+
+As an **input**, you set the site URL for the build via `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (see [Configuration precedence](/configuration#configuration-precedence)). As an **output**, Bascik forwards the resolved value to every build script as `BASCIK_SITE_URL`, so scripts can emit absolute canonical or Open Graph URLs.
+
+When no source provides a value, the variable is **absent** from the script's environment rather than set to an empty string, so scripts can distinguish "unset" from "empty":
+
+```html
+<script data-bascik-build>
+  if ('BASCIK_SITE_URL' in process.env) {
+    console.log(`<link rel="canonical" href="${process.env.BASCIK_SITE_URL}/about" />`);
+  }
 </script>
 ```
 
@@ -286,7 +300,7 @@ Bascik caches build script output to `node_modules/.cache/bascik/script-cache/` 
 
 - The script body
 - The contents of any local `scripts/` or `content/` files the script imports
-- The `isBuild` flag and `siteUrl`
+- The `isBuild` flag and the site URL (`BASCIK_SITE_URL`)
 
 If a dependency file changes (because you edited it or switched branches), the cache entry is invalid and the script re-runs automatically.
 

@@ -28,6 +28,18 @@ export const importUserConfig = async (
   return (await import(pathToFileURL(configPath).href)) as UserConfigModule;
 };
 
+const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
+  if (typeof cfg === "object" && cfg !== null && "siteUrl" in cfg) {
+    throw new Error(
+      `[bascik] error: \`siteUrl\` is not a bascik.config option (found in the ${exportName} export).\n` +
+      `  The site URL is a per-deployment value. Set it one of these ways:\n` +
+      `    BASCIK_SITE_URL=https://example.com bascik --build\n` +
+      `    echo 'BASCIK_SITE_URL=https://example.com' >> .env\n` +
+      `    bascik --build --site-url https://example.com`,
+    );
+  }
+};
+
 /** Load and validate the project's bascik.config, if present. */
 export const loadUserConfig = async (
   configPath: string,
@@ -44,12 +56,17 @@ export const loadUserConfig = async (
     const rawDev = mod?.dev;
     const rawBuild = mod?.build;
     const rawServer = mod?.server;
-    return {
+    const result = {
       config: typeof rawConfig === "object" && rawConfig !== null ? rawConfig : {},
       dev: typeof rawDev === "object" && rawDev !== null ? rawDev : {},
       build: typeof rawBuild === "object" && rawBuild !== null ? rawBuild : {},
       server: typeof rawServer === "object" && rawServer !== null ? rawServer : {},
     };
+    rejectRemovedKeys(result.config, "default");
+    rejectRemovedKeys(result.dev, "dev");
+    rejectRemovedKeys(result.build, "build");
+    rejectRemovedKeys(result.server, "server");
+    return result;
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
       console.warn("[bascik] No bascik.config found. Using defaults.");

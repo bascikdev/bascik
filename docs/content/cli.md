@@ -76,7 +76,28 @@ bascik --build  # production: transpile to dist/ only
 bascik --serve  # production server: serve a pre-built dist/ with HTTP
 bascik --check  # static analysis: validate pages and components without building
 bascik --build --log [path]  # optional build log; defaults to .bascik/build.log
+bascik --build --site-url https://example.com  # set the site URL for this run
+bascik --build --env-file .env.staging         # load env vars from a file
 ```
+
+## Environment files and the site URL
+
+Bascik loads `./.env` automatically when it exists and skips it silently when it does not. Pass `--env-file <path>` to load additional or alternative files:
+
+```sh
+bascik --build --env-file .env.staging
+bascik --build --env-file .env.base --env-file .env.staging  # later files win
+```
+
+An explicitly passed `--env-file` that does not exist is an error, mirroring Node's own `--env-file` versus `--env-file-if-exists` distinction. A real environment variable always beats a value from any file.
+
+The site URL (used for `sitemap.xml`, `robots.txt`, and `BASCIK_SITE_URL` in build scripts) follows the precedence chain:
+
+```text
+--site-url flag  >  BASCIK_SITE_URL env var  >  .env file
+```
+
+See [Configuration](/configuration#configuration-precedence) for details.
 
 ## Build logs
 

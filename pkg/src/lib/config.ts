@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { config, modeOverrides } from "./userConfig.ts";
+import { ensureEnvironmentReady } from "./environment.ts";
 import type {
   BascikConfigOptions,
   UserConfig,
@@ -10,6 +11,11 @@ import type {
 } from "./types.ts";
 
 const args = process.argv.slice(2);
+
+// Load .env files and apply --site-url before anything reads the environment.
+// A missing explicitly-passed --env-file fails here, at startup.
+ensureEnvironmentReady();
+
 const isBuild =
   args.includes("--build") || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
 const isProdServer =

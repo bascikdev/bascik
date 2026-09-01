@@ -101,16 +101,19 @@ Tests navigate to pages on the active server and assert against the live browser
 
 ## Fixture Design
 
-`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The only non-default values set are the site URL and the production server port:
+`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The site URL is supplied per run through the `BASCIK_SITE_URL` environment variable in each Playwright `webServer` command, and the production server port is set via a `server` mode override:
 
 ```ts
 // pkg/e2e/bascik.config.ts
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'http://localhost:4200',
-  useWorkers: true,
-  prodServer: { port: 9443 },
+  pipeline: { workers: true },
+  minify: { identifiers: false },
+});
+
+export const server = defineConfig({
+  http: { port: 9443 },
 });
 ```
 

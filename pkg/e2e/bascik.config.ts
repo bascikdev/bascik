@@ -7,7 +7,6 @@ import autoprefixer from 'autoprefixer';
 import { transform } from 'esbuild';
 
 export default defineConfig({
-  siteUrl: 'http://localhost:4200',
   pipeline: {
     watchPaths: ['src/content/'],
     workers: true,

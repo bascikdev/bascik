@@ -68,5 +68,27 @@ describe("cli helper tests", () => {
       expect(decision.action).toBe("error");
       expect(decision.unknownFlags).toContain("--builds");
     });
+
+    it("should recognize --site-url and --env-file in both forms", () => {
+      expect(
+        resolveCliAction(["--build", "--site-url", "https://example.com"]).action,
+      ).toBe("build");
+      expect(
+        resolveCliAction(["--build", "--site-url=https://example.com"]).action,
+      ).toBe("build");
+      expect(resolveCliAction(["--build", "--env-file", ".env.staging"]).action)
+        .toBe("build");
+      expect(resolveCliAction(["--build", "--env-file=.env.staging"]).action)
+        .toBe("build");
+    });
+
+    it("should recognize repeated --env-file flags", () => {
+      const decision = resolveCliAction([
+        "--build",
+        "--env-file=.env.a",
+        "--env-file=.env.b",
+      ]);
+      expect(decision.action).toBe("build");
+    });
   });
 });

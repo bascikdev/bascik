@@ -1,17 +1,21 @@
 # Sitemap & robots.txt
 
-Bascik generates a `sitemap.xml` and `robots.txt` automatically at build time. Set your site URL in the config and both files appear in `dist/` alongside your compiled pages with no plugins, no extra steps.
+Bascik generates a `sitemap.xml` and `robots.txt` automatically at build time. Set your site URL and both files appear in `dist/` alongside your compiled pages with no plugins, no extra steps.
 
-Sitemap generation is on by default. To enable it, set `siteUrl` in your config:
+Sitemap generation is on by default. The site URL is a per-deployment value, so it comes from the environment rather than the config file:
 
-```ts
-// bascik.config.ts
-export default {
-  siteUrl: 'https://example.com',
-};
+```sh
+# Environment variable
+BASCIK_SITE_URL=https://example.com bascik --build
+
+# Or a .env file in the project root (loaded automatically)
+echo 'BASCIK_SITE_URL=https://example.com' >> .env
+
+# Or a per-invocation flag (overrides both)
+bascik --build --site-url https://example.com
 ```
 
-That's all, `generate.sitemap` and `generate.robots` both default to `true`, so no other change is needed.
+That's all, `generate.sitemap` and `generate.robots` both default to `true`, so no other change is needed. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
 
 ## What gets generated
 
@@ -65,7 +69,6 @@ Control sitemap and robots.txt generation independently via the `generate` optio
 
 ```js
 export default {
-  siteUrl: 'https://example.com',
   generate: {
     sitemap: true,  // default
     robots: true,   // default
@@ -77,12 +80,11 @@ Set either to `false` to skip that file:
 
 ```js
 export default {
-  siteUrl: 'https://example.com',
   generate: { sitemap: true, robots: false }, // skip robots.txt
 };
 ```
 
-If `generate.sitemap` or `generate.robots` is `true` but `siteUrl` is not set, Bascik logs a warning and skips generation; it cannot produce absolute URLs without a base URL.
+If `generate.sitemap` or `generate.robots` is `true` but no site URL is available from any source, the build **fails** with an error showing how to set `BASCIK_SITE_URL`. It cannot produce absolute URLs without a base URL, and a warning on every zero-config build would train you to ignore Bascik warnings.
 
 ## Build-only
 

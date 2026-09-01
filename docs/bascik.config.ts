@@ -7,7 +7,6 @@ export default defineConfig({
       { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
     ],
   },
-  siteUrl: 'https://bascik.dev',
   assets: {
     inlineStyles: ['src/css/styles.css'],
   },

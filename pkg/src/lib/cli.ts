@@ -34,7 +34,15 @@ const KNOWN_FLAGS = new Set([
   "--version",
   "-v",
   "--log",
+  "--site-url",
+  "--env-file",
 ]);
+
+/** Flags that also accept an inline `--flag=value` form. */
+const VALUE_FLAG_PREFIXES = ["--site-url=", "--env-file="];
+
+const isKnownFlag = (arg: string): boolean =>
+  KNOWN_FLAGS.has(arg) || VALUE_FLAG_PREFIXES.some((p) => arg.startsWith(p));
 
 /** Positional subcommands the CLI understands. */
 const KNOWN_SUBCOMMANDS = new Set(["init"]);
@@ -85,9 +93,7 @@ export const filterNodeArgs = (args: string[]): string[] => {
 export const resolveCliAction = (args: string[]): CliDecision => {
   const filtered = filterNodeArgs(args);
 
-  const unknownFlags = filtered.filter(
-    (a) => a.startsWith("-") && !KNOWN_FLAGS.has(a),
-  );
+  const unknownFlags = filtered.filter((a) => a.startsWith("-") && !isKnownFlag(a));
 
   if (unknownFlags.length > 0) {
     return { action: "error", unknownFlags };
@@ -124,6 +130,9 @@ Options:
   --server        Serve output directory over HTTP/2 (production server)
   --check         Validate the project (pages, components, config)
   --log [path]    Write build output to a log file (default: .bascik/build.log)
+  --site-url <url>   Set the site URL for this run (overrides BASCIK_SITE_URL and .env)
+  --env-file <path>  Load env vars from a file (repeatable; later files win).
+                     Defaults to ./.env when present, silently skipped when not
   -h, --help      Show this help text
   -v, --version   Show the installed Bascik version
 `;

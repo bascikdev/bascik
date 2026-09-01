@@ -94,4 +94,25 @@ describe("loadUserConfig", () => {
     const p = await writeConfig(`throw "custom string error";`);
     await expect(loadUserConfig(p)).rejects.toThrow("custom string error");
   });
+
+  it("rejects a siteUrl key in the default export with a teaching error", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `export default { siteUrl: 'https://example.com' };`,
+    );
+    await expect(loadUserConfig(p)).rejects.toThrow(
+      /`siteUrl` is not a bascik\.config option/,
+    );
+    await expect(loadUserConfig(p)).rejects.toThrow(/BASCIK_SITE_URL/);
+  });
+
+  it("rejects a siteUrl key in a mode export", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `export const build = { siteUrl: 'https://example.com' };`,
+    );
+    await expect(loadUserConfig(p)).rejects.toThrow(
+      /`siteUrl` is not a bascik\.config option/,
+    );
+  });
 });

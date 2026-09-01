@@ -737,7 +737,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_PAGE_FILE` | Absolute path of the current page file (e.g. `/project/src/pages/about.html`). Use this to generate page-specific output like canonical URLs. |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
-| `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts`, e.g. `"https://example.com"`. |
+| `BASCIK_SITE_URL` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` env var, or `.env`. Absent when unset, never an empty string. |
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
@@ -953,9 +953,19 @@ Rules:
 
 ## 9. Configuration (`bascik.config.ts`)
 
-Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `siteUrl`, custom `exec` build scripts, or production `build` minification overrides).
+Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `generate.sitemapLastmod`, custom `exec` build scripts, or production `build` minification overrides).
 
 Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs.
+
+### The site URL is not a config key
+
+`siteUrl` is a per-deployment value, so it never goes in `bascik.config.ts` (setting it there is an error). Three sources, in precedence order:
+
+```text
+--site-url flag  >  BASCIK_SITE_URL env var  >  .env file
+```
+
+The value must be an absolute `http` or `https` URL. Bascik loads `./.env` automatically (silently skipped when absent); `--env-file <path>` is repeatable with later files winning, and a missing explicit file is an error. A real environment variable always beats a file value. When `generate.sitemap` or `generate.robots` is enabled (both default to `true`) and no source provides the URL, the build fails with a message showing all three ways to set it.
 
 ### Minimal Configuration Example (Recommended)
 
@@ -966,7 +976,7 @@ When creating or editing `bascik.config.ts`, only include options that differ fr
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+  generate: { sitemapLastmod: true },
 });
 
 // Applied only during `bascik --build` and `bascik --serve`.
@@ -1068,7 +1078,6 @@ export default defineConfig({
     deletes: true,
     transpiles: true,
   },
-  siteUrl: 'https://example.com',
   base: '/',
 });
 
@@ -1086,8 +1095,8 @@ export const build = defineConfig({
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:
-* **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `siteUrl`, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
-* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. `siteUrl`, custom `exec` scripts, or `build` minification rules).
+* **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `generate` toggles, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
+* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. custom `exec` scripts or `build` minification rules).
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
 * **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
@@ -1095,7 +1104,7 @@ When creating or modifying `bascik.config.ts`:
 * **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
-* **Set `siteUrl` for production features:** Configure `siteUrl` (e.g. `'https://example.com'`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled.
+* **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
 
 **`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
 

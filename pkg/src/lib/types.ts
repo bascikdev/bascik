@@ -244,7 +244,6 @@ export type UserConfig = {
     apiTimeout?: number;
   };
   logging?: Partial<LoggingOptions>;
-  siteUrl?: string;
   base?: string;
 };
 
