@@ -420,6 +420,22 @@ describe("recursivelyTranspile – recursion guard", () => {
     const { usedComponents } = recursivelyTranspile(usage, singleComponent);
     expect(usedComponents).toHaveLength(20);
   });
+
+  it("throws when component expansion exceeds the recursion safety limit", () => {
+    const componentList = {
+      "recursive-card": {
+        fileName: "components/recursive-card.html",
+        fileContent: `${"x".repeat(50 * 1024 * 1024 + 1)}<recursive-card></recursive-card>`,
+      },
+    };
+
+    expect(() => recursivelyTranspile(
+      "<recursive-card></recursive-card>",
+      componentList,
+      [],
+      PAGE_PATH,
+    )).toThrow(/component expansion.*safety limits/i);
+  });
 });
 
 describe("recursivelyTranspile – idempotence", () => {
@@ -963,6 +979,100 @@ describe("pageProcessing – live-reload script injection", () => {
     expect(pageContent).toContain("/bascik-live-reload");
   });
 
+  it("writes transpiled pages to the output directory in dev mode", async () => {
+    const { writeFile } = await import("node:fs/promises");
+
+    await pageProcessing(PAGE_PATH, {});
+
+    await vi.waitFor(() => {
+      expect(writeFile).toHaveBeenCalledWith(
+        expect.stringContaining("dist"),
+        expect.stringContaining("/bascik-live-reload"),
+      );
+    });
+  });
+
+  it("makes the page available before its dev disk write completes", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    let finishWrite!: () => void;
+    const writePending = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writePending);
+
+    const processingPromise = pageProcessing(PAGE_PATH, {});
+    await vi.waitFor(() => expect(mem.storePage).toHaveBeenCalledOnce());
+    try {
+      expect(writeFile).toHaveBeenCalledOnce();
+      const relativePagePath = await processingPromise;
+      expect(relativePagePath).toBe("pages/index.html");
+    } finally {
+      finishWrite();
+      await processingPromise;
+    }
+  });
+
+  it("runs an already queued rebuild after the preceding page job rejects", async () => {
+    let finishBrokenRead!: (html: string) => void;
+    const brokenRead = new Promise<string>((resolve) => {
+      finishBrokenRead = resolve;
+    });
+    (readFile as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(brokenRead)
+      .mockResolvedValueOnce(PAGE_HTML);
+
+    const brokenProcessing = pageProcessing(PAGE_PATH, {});
+    const fixedProcessing = pageProcessing(PAGE_PATH, {});
+    finishBrokenRead("<html><head></head></html>");
+
+    await expect(brokenProcessing).rejects.toThrow(/validate markup/);
+    await expect(fixedProcessing).resolves.toBe("pages/index.html");
+  });
+
+  it("serializes concurrent writes for the same page", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    let finishFirstWrite!: () => void;
+    const firstWritePending = new Promise<void>((resolve) => {
+      finishFirstWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(firstWritePending)
+      .mockResolvedValueOnce(undefined);
+
+    const firstProcessing = pageProcessing(PAGE_PATH, {});
+    await firstProcessing;
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+
+    const secondProcessing = pageProcessing(PAGE_PATH, {});
+    await Promise.resolve();
+    expect(writeFile).toHaveBeenCalledTimes(1);
+
+    finishFirstWrite();
+    await secondProcessing;
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(2));
+  });
+
+  it("waits for the disk write in build mode", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    let finishWrite!: () => void;
+    const writePending = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writePending);
+    let processingResolved = false;
+
+    const processingPromise = pageProcessing(PAGE_PATH, {}).then((result) => {
+      processingResolved = true;
+      return result;
+    });
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledOnce());
+    expect(processingResolved).toBe(false);
+
+    finishWrite();
+    await expect(processingPromise).resolves.toBe("pages/index.html");
+  });
+
   it("does not inject the live-reload script in build mode", async () => {
     (BascikConfig as Record<string, unknown>).isBuild = true;
     const { writeFile } = await import("node:fs/promises");
@@ -1135,13 +1245,12 @@ describe("transpilePage – missing body", () => {
     (BascikConfig as any).isBuild = false;
   });
 
-  it("returns null and warns when page has no <body> tag", async () => {
+  it("rejects when page has no <body> tag", async () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><head></head></html>");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    const result = await transpilePage(PAGE_PATH, {});
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("does not contain"));
-    warnSpy.mockRestore();
+
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toThrow(
+      /validate markup.*does not contain a non-empty <body>/i,
+    );
   });
 });
 
@@ -1215,33 +1324,40 @@ describe("transpilePage – build mode file system error handling", () => {
     (BascikConfig as Record<string, unknown>).isBuild = false;
   });
 
-  it("logs an error when mkdir fails", async () => {
+  it("rejects when mkdir fails", async () => {
     const { mkdir } = await import("node:fs/promises");
-    (mkdir as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("EACCES: permission denied"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    await transpilePage(PAGE_PATH, {});
-    expect(errorSpy).toHaveBeenCalledWith("Make directory error", expect.any(Error));
-    errorSpy.mockRestore();
+    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    (mkdir as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
+
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
+      pagePath: PAGE_PATH,
+      stage: "create output directory",
+      cause: error,
+    });
   });
 
-  it("logs an error when writeFile fails with a non-ENOENT code", async () => {
+  it("rejects when writeFile fails with EACCES", async () => {
     const { writeFile } = await import("node:fs/promises");
-    const err = Object.assign(new Error("EACCES"), { code: "EACCES" });
-    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    await transpilePage(PAGE_PATH, {});
-    expect(errorSpy).toHaveBeenCalledWith("Write file error", expect.any(Error));
-    errorSpy.mockRestore();
+    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
+
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
+      pagePath: PAGE_PATH,
+      stage: "write output",
+      cause: error,
+    });
   });
 
-  it("silently ignores writeFile failures with ENOENT code", async () => {
+  it("rejects when writeFile fails with ENOENT", async () => {
     const { writeFile } = await import("node:fs/promises");
-    const err = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    await transpilePage(PAGE_PATH, {});
-    expect(errorSpy).not.toHaveBeenCalledWith("Write file error", expect.anything());
-    errorSpy.mockRestore();
+    const error = Object.assign(new Error("ENOENT: output directory missing"), { code: "ENOENT" });
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
+
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({
+      pagePath: PAGE_PATH,
+      stage: "write output",
+      cause: error,
+    });
   });
 });
 
@@ -1359,6 +1475,42 @@ describe("processAllPages – side effects", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     await processAllPages();
     expect(mem.storePage).not.toHaveBeenCalled();
+  });
+
+  it("completes a dev batch and stores good pages when another page fails", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([
+      "src/pages/broken.html",
+      "src/pages/working.html",
+    ]);
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) =>
+      path.endsWith("broken.html") ? "<html><head></head></html>" : PAGE_HTML
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(processAllPages({ useWorkers: false })).resolves.toEqual([
+      "pages/working.html",
+    ]);
+    expect(mem.storePage).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/broken.html"));
+    errorSpy.mockRestore();
+  });
+
+  it("reports an asynchronous dev page write failure without rejecting the batch", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const { writeFile } = await import("node:fs/promises");
+    const writeError = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(writeError);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(processAllPages({ useWorkers: false })).resolves.toEqual([
+      "pages/index.html",
+    ]);
+    await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("src/pages/index.html"),
+      expect.objectContaining({ cause: writeError }),
+    ));
+    errorSpy.mockRestore();
   });
 
   it("processes pages using workers when useWorkers option is true and passes fileDependencies to storePage", async () => {
@@ -1573,15 +1725,13 @@ describe("processAllPages – build mode sitemap", () => {
     expect(generateSitemapFiles).not.toHaveBeenCalled();
   });
 
-  it("still calls generateSitemapFiles even when some pages fail to transpile", async () => {
+  it("rejects and does not generate sitemap files when a page fails", async () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/bad.html"]);
-    // Page with no body → transpilePage returns null
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><head></head></html>");
     const { generateSitemapFiles } = await import("./sitemap.ts");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    await processAllPages();
-    expect(generateSitemapFiles).toHaveBeenCalledOnce();
-    warnSpy.mockRestore();
+
+    await expect(processAllPages()).rejects.toThrow(/src\/pages\/bad\.html/);
+    expect(generateSitemapFiles).not.toHaveBeenCalled();
   });
 
   it("calls generateSitemapFiles before printing the summary line", async () => {
@@ -1597,6 +1747,61 @@ describe("processAllPages – build mode sitemap", () => {
     await processAllPages();
     expect(callOrder).toEqual(["sitemap", "summary"]);
     consoleSpy.mockRestore();
+  });
+
+  it("aggregates page failures with each page path and stage", async () => {
+    const pages = ["alpha.html", "beta.html", "gamma.html", "delta.html"]
+      .map((name) => `src/pages/${name}`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const { writeFile } = await import("node:fs/promises");
+    (writeFile as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      throw new Error(`cannot write ${path}`);
+    });
+
+    let buildError: unknown;
+    try {
+      await processAllPages({ useWorkers: false });
+    } catch (error) {
+      buildError = error;
+    } finally {
+      (writeFile as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    }
+
+    expect(buildError).toBeInstanceOf(AggregateError);
+    const message = (buildError as Error).message;
+    expect(message).toContain("Build failed with 4 page errors");
+    expect(message).toContain("write output");
+    for (const page of pages) expect(message).toContain(page);
+    const { generateSitemapFiles } = await import("./sitemap.ts");
+    expect(generateSitemapFiles).not.toHaveBeenCalled();
+  });
+
+  it("aggregates all worker page failures before terminating the pool", async () => {
+    const pages = ["alpha.html", "beta.html", "gamma.html", "delta.html"]
+      .map((name) => `src/pages/${name}`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    const { WorkerPool } = await import("./worker-pool.ts");
+    const terminate = vi.fn(async () => { });
+    (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+      this.run = vi.fn(async (job: { pagePath: string }) => {
+        throw new Error(`worker failed for ${job.pagePath}`);
+      });
+      this.terminate = terminate;
+    });
+
+    let buildError: unknown;
+    try {
+      await processAllPages({ useWorkers: true });
+    } catch (error) {
+      buildError = error;
+    }
+
+    expect(buildError).toBeInstanceOf(AggregateError);
+    const message = (buildError as Error).message;
+    expect(message).toContain("Build failed with 4 page errors");
+    for (const page of pages) expect(message).toContain(page);
+    expect(terminate).toHaveBeenCalledOnce();
   });
 });
 
@@ -2054,10 +2259,12 @@ describe("transpilePage – inline component <style> extraction & deduplication"
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("dynamic routes pipeline expansion", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     (BascikConfig as Record<string, unknown>).inlineStyles = false;
     (BascikConfig as Record<string, unknown>).isBuild = false;
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
   });
 
   it("leaves non-dynamic pages unaffected (1:1 output)", async () => {
@@ -2111,6 +2318,62 @@ describe("dynamic routes pipeline expansion", () => {
       3,
       expect.objectContaining({ relativePagePath: "pages/blog/post-3.html" }),
     );
+    routesSpy.mockRestore();
+  });
+
+  it("aggregates multiple dynamic route expansion failures in build mode", async () => {
+    const pages = [
+      "src/pages/blog/[slug].html",
+      "src/pages/products/[id].html",
+      "src/pages/index.html",
+    ];
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript")
+      .mockImplementation(async (_html, pagePath) => {
+        throw new Error(`invalid routes in ${pagePath}`);
+      });
+
+    let buildError: unknown;
+    try {
+      await processAllPages({ useWorkers: false });
+    } catch (error) {
+      buildError = error;
+    } finally {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      routesSpy.mockRestore();
+    }
+
+    expect(buildError).toBeInstanceOf(AggregateError);
+    const message = (buildError as Error).message;
+    expect(message).toContain("src/pages/blog/[slug].html");
+    expect(message).toContain("src/pages/products/[id].html");
+    expect(message).toContain("expand routes");
+  });
+
+  it("completes a dev batch when multiple dynamic route expansions fail", async () => {
+    const pages = [
+      "src/pages/blog/[slug].html",
+      "src/pages/products/[id].html",
+      "src/pages/index.html",
+    ];
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    const routesModule = await import("./routes.ts");
+    const routesSpy = vi.spyOn(routesModule, "executeRoutesScript")
+      .mockImplementation(async (_html, pagePath) => {
+        throw new Error(`invalid routes in ${pagePath}`);
+      });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    const result = await processAllPages({ useWorkers: false });
+
+    expect(result).toEqual(["pages/index.html"]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/blog/[slug].html"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("src/pages/products/[id].html"));
+    errorSpy.mockRestore();
     routesSpy.mockRestore();
   });
 

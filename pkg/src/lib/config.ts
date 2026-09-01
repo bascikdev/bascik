@@ -123,7 +123,6 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
     pages: "src/pages",
     components: "src/components",
     out: "dist",
-    public: undefined,
     api: "src/api",
   },
   scoping: {

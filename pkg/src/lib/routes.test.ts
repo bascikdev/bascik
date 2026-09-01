@@ -316,4 +316,10 @@ describe("computePagePath", () => {
     expect(computePagePath("src/pages/blog/post.html", "src/pages")).toBe("/blog/post");
     expect(computePagePath("blog/index.html", "pages")).toBe("/blog/");
   });
+
+  it("uses the last configured pages directory occurrence", () => {
+    expect(
+      computePagePath("/srv/src/pages/demo/src/pages/blog/index.html", "src/pages"),
+    ).toBe("/blog/");
+  });
 });

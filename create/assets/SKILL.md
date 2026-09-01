@@ -1018,7 +1018,6 @@ export default defineConfig({
     pages: 'src/pages',
     components: 'src/components',
     out: 'dist',
-    public: undefined,
     api: 'src/api',
   },
   scoping: {
@@ -1128,7 +1127,7 @@ export const build = defineConfig({
 ```
 src/
   components/           ← component .html (+ optional .css) templates
-  pages/                ← HTML routes, static assets, and subfolders
+  pages/                ← HTML routes and publishable assets
     index.html          → dist/index.html
     css/styles.css      → dist/css/styles.css (auto-minified)
     js/main.js          → dist/js/main.js (auto-minified)
@@ -1137,9 +1136,11 @@ src/
 ```
 
 ### Static Assets and Subdirectories
-* **Any Asset or Folder in `src/pages/`:** You can create any subfolders (`css/`, `js/`, `images/`, `fonts/`, `downloads/`) inside `src/pages/`. All non-`.html` files (CSS, JS, images, fonts, PDFs, JSON, etc.) are automatically copied to `dist/` replicating their exact directory structure.
+* **One Publish Tree:** Put images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets under `directory.pages`. Colocate them with a route or use shared subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with relative structure preserved.
+* **Project-Specific Exclusions:** `assets.exclude` adds glob exclusions matched relative to `directory.pages`. Keep tests and source-only helpers outside the publish tree.
 * **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified at build time when `minify.css` / `minify.js` are enabled in `bascik.config.ts`. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can also be assigned to `minify.css` and `minify.js`.
-* **No Passthrough Configuration:** No asset pipelines, passthrough copy configuration, or public folder settings are needed.
+* **Built-In Deny-List:** Dotfiles, dot-directories, `node_modules`, `.html`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test/spec files, and inlined stylesheets never copy. This deny-list always applies, including when `assets.exclude` is configured.
+* **External Copying:** When assets must come from a separate source tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
 ### Custom 404 & 500 Error Pages
 * **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
@@ -1224,6 +1225,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
 * **Graceful shutdown:** SIGTERM and SIGINT stop accepting connections, destroy all open sessions and live-reload SSE connections, and drain in-flight requests before exiting. Force-exits after 10 seconds if anything hasn't drained.
 * **Path traversal protection:** static asset URLs are validated against `dist/`; requests that escape with `/../` sequences get `400 Bad Request`.
+* **Hidden-path protection:** after URL decoding, any request path containing a segment that starts with `.` gets `404 Not Found` before static file lookup.
 
 **Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
 
@@ -1249,7 +1251,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, pages are served from memory and compiled HTML is not written to `dist/`, while static assets are copied to `dist/`. Note: this dev-mode disk write gap is a known inconsistency being addressed in an upcoming update.
+On startup, Bascik cleans `directory.out` before pre-phase lifecycle scripts run, then computes the full component list and global styles **once** and transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, Bascik stores each page in memory first, then writes its compiled HTML to `dist/` asynchronously. Serving never waits for that disk write.
 
 #### 2. Watching for File Changes (Watch Mode)
 While the dev server is active, Bascik watches your file system and incrementally updates your build as files are added, updated, or removed:
@@ -1274,7 +1276,17 @@ While the dev server is active, Bascik watches your file system and incrementall
   ```
 
 #### 3. Transpilation & Build Errors
-If you introduce a syntax mistake or a runtime error inside a custom build script, Bascik prevents the server from crashing, gracefully logs a descriptive error with the file and exact line/column location, and continues running.
+Development and production builds handle page failures differently. The dev server logs a failed page, completes boot, continues serving healthy pages, and retries the failed page on the next save. A production `bascik --build` waits for every page job, reports all failures together, and exits nonzero rather than reporting success with missing output.
+
+Hard build failures include a missing or unreadable configured pages directory, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored.
+
+```terminal
+Build failed with 2 page errors:
+  src/pages/about.html
+    validate markup: Page does not contain a non-empty <body> element
+  src/pages/blog/post.html
+    write output: EACCES: permission denied
+```
 
 * **Component Transpilation Failure:** If a component markup or CSS scoping parser fails during transpilation:
   ```terminal
@@ -1291,6 +1303,7 @@ If you introduce a syntax mistake or a runtime error inside a custom build scrip
   ```terminal
   [bascik] Unresolved component tag in "pages/about.html": <my-mistyped> - no matching component file found. Run `bascik --check` for a full report.
   ```
+  Use `bascik --check` as the strict CI gate for unresolved component references.
 
 #### 4. Static Analysis (`bascik --check`)
 Run `bascik --check` from your project root to validate pages and component files without starting the dev server or writing any output:
@@ -1345,7 +1358,7 @@ Commit this file so all contributors get the correct behavior automatically. Alt
 
 #### 5. Inspecting `dist/` Output
 
-`bascik --build` writes compiled HTML and static assets to `dist/` on disk, this is the ground truth of what Bascik produced for production. In dev mode (`bascik`), static assets are copied to `dist/`, but HTML pages are served directly from memory and not written to disk. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
+Both `bascik --build` and dev mode (`bascik`) write compiled HTML and static assets to `dist/` on disk. Dev stores pages in memory before issuing asynchronous disk writes, so the server can return updated pages immediately while `dist/` remains available for inspection. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
 
 ```
 src/pages/about.html       →  dist/about.html

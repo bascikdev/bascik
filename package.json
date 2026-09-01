@@ -20,7 +20,7 @@
     "pkg:e2e:prod": "yarn workspace @bascik/bascik e2e:prod",
     "pkg:e2e:prod:http1": "yarn workspace @bascik/bascik e2e:prod:http1",
     "pkg:e2e:prod:http2": "yarn workspace @bascik/bascik e2e:prod:http2",
-    "pkg:e2e:all": "yarn pkg:e2e && yarn pkg:e2e:prod",
+    "pkg:e2e:all": "yarn pkg:e2e && yarn pkg:e2e:dev && yarn pkg:e2e:prod",
     "pkg:coverage": "yarn workspace @bascik/bascik coverage",
     "pkg:cover": "yarn pkg:coverage",
     "pkg:test": "yarn workspace @bascik/bascik test",

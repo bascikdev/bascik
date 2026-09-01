@@ -6,6 +6,7 @@ const {
   _mockStartExecParallel,
   _mockStartExecDev,
   _mockStartServer,
+  _mockRm,
   _callOrder,
 } = vi.hoisted(() => {
   const _callOrder: string[] = [];
@@ -28,8 +29,15 @@ const {
       _callOrder.push("startServer");
       return "http://localhost:8080";
     }),
+    _mockRm: vi.fn().mockImplementation(async () => {
+      _callOrder.push("cleanOutput");
+    }),
   };
 });
+
+vi.mock("node:fs/promises", () => ({
+  rm: _mockRm,
+}));
 
 vi.mock("./lib/watch.js", () => ({
   watchFiles: _mockWatchFiles,
@@ -54,16 +62,22 @@ vi.mock("./lib/events.js", () => ({
 }));
 
 vi.mock("./lib/config.js", () => ({
-  BascikConfig: { isBuild: false },
+  BascikConfig: {
+    isBuild: false,
+    directory: { out: "dist" },
+  },
 }));
 
 import { runTranspile } from "./transpile.ts";
 import { BascikConfig } from "./lib/config.ts";
+import { mem } from "./lib/mem.ts";
+import { eventEmitter } from "./lib/events.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _callOrder.length = 0;
+    (BascikConfig as any).directory.out = "dist";
   });
 
   it("runs build pipeline with pre -> watchFiles -> post order and logs complete timing", async () => {
@@ -79,6 +93,7 @@ describe("runTranspile", () => {
 
     // Verify ordering: pre -> watchFiles -> post
     expect(_callOrder).toEqual([
+      "cleanOutput",
       "runExecPhase:pre",
       "startExecParallel",
       "watchFiles",
@@ -100,6 +115,8 @@ describe("runTranspile", () => {
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
+    expect(mem.setBootingDone).toHaveBeenCalledOnce();
+    expect(eventEmitter.emit).toHaveBeenCalledWith("boot-done");
 
     // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
     const preIndex = _callOrder.indexOf("runExecPhase:pre");
@@ -109,10 +126,43 @@ describe("runTranspile", () => {
     expect(preIndex).toBeGreaterThanOrEqual(0);
     expect(watchIndex).toBeGreaterThan(preIndex);
     expect(postIndex).toBeGreaterThan(watchIndex);
+    expect(_callOrder).toEqual([
+      "cleanOutput",
+      "runExecPhase:pre",
+      "startExecParallel",
+      "startServer",
+      "startExecDev",
+      "watchFiles",
+      "runExecPhase:post",
+    ]);
 
     expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/));
     expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
     logSpy.mockRestore();
+  });
+
+  it("cleans the output directory before pre exec in dev and build modes", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+
+    for (const isBuild of [false, true]) {
+      _callOrder.length = 0;
+      (BascikConfig as any).isBuild = isBuild;
+      await runTranspile();
+
+      expect(_callOrder.indexOf("cleanOutput")).toBe(0);
+      expect(_callOrder.indexOf("cleanOutput")).toBeLessThan(
+        _callOrder.indexOf("runExecPhase:pre"),
+      );
+    }
+
+    logSpy.mockRestore();
+  });
+
+  it("rejects an output directory outside the project root before deleting it", async () => {
+    (BascikConfig as any).directory.out = "../outside";
+
+    await expect(runTranspile()).rejects.toThrow(/outside the project root/);
+    expect(_mockRm).not.toHaveBeenCalled();
   });
 
   it("handles server startup error gracefully when exitOnError is false", async () => {

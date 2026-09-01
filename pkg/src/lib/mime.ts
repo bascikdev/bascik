@@ -10,12 +10,10 @@ export const MIME_MAP = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".mjs", "text/javascript; charset=utf-8"],
   [".cjs", "text/javascript; charset=utf-8"],
-  [".ts", "text/typescript; charset=utf-8"],
 
   // JSON / Data
   [".json", "application/json; charset=utf-8"],
   [".geojson", "application/geo+json; charset=utf-8"],
-  [".map", "application/json; charset=utf-8"],
 
   // Images
   [".png", "image/png"],
@@ -74,17 +72,8 @@ export const MIME_MAP = new Map([
   [".ppt", "application/vnd.ms-powerpoint"],
   [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
 
-  // Markup / Config
-  [".yaml", "application/x-yaml; charset=utf-8"],
-  [".yml", "application/x-yaml; charset=utf-8"],
-  [".toml", "application/toml; charset=utf-8"],
-  [".ini", "text/plain; charset=utf-8"],
-  [".md", "text/markdown; charset=utf-8"],
-
   // Web Assembly & Others
   [".wasm", "application/wasm"],
-  [".lock", "text/plain; charset=utf-8"],
-  [".env", "text/plain; charset=utf-8"],
 
   // Icons & Manifest
   [".webmanifest", "application/manifest+json; charset=utf-8"],
@@ -93,14 +82,6 @@ export const MIME_MAP = new Map([
 
   // Other Applications
   [".rtf", "application/rtf"],
-  [".sh", "application/x-sh"],
-  [".c", "text/x-c; charset=utf-8"],
-  [".cpp", "text/x-c; charset=utf-8"],
-  [".h", "text/x-c; charset=utf-8"],
-  [".java", "text/x-java-source; charset=utf-8"],
-  [".py", "text/x-python; charset=utf-8"],
-  [".rb", "text/x-ruby; charset=utf-8"],
-  [".go", "text/x-go; charset=utf-8"],
 
   // Mobile App Files
   [".apk", "application/vnd.android.package-archive"],

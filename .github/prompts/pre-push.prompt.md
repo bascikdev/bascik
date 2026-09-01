@@ -12,7 +12,7 @@ Run these steps in order before pushing.
    - Run `yarn check:standards` to check web standards with webhint.
    - Run Jelly static analysis (`jelly --obj-spread pkg/src/index.ts`) and Semgrep (`semgrep --error --config p/default`) if installed locally to catch static analysis and security issues before pushing.
 4. Run typechecks, checks, unit tests, Playwright E2E tests, and Lighthouse CLI audits across all monorepo packages using token-efficient reporters:
-   - Run `yarn test:all` to verify typechecks (`typecheck:all`), web standards (`check:all`), unit tests (`unit:all`), E2E tests (`e2e:all`), and Lighthouse audits (`docs:lighthouse`) across pkg, docs, create, and extensions/vscode-bascik. Playwright E2E tests are configured with concise `--reporter=line` output.
+   - Run `yarn test:all` to verify typechecks (`typecheck:all`), web standards (`check:all`), unit tests (`unit:all`), E2E tests (`e2e:all`), and Lighthouse audits (`docs:lighthouse`) across pkg, docs, create, and extensions/vscode-bascik. `e2e:all` must run static build, live dev server, production HTTP/1.1, and production HTTP/2 configurations. Playwright E2E tests are configured with concise `--reporter=line` output.
    - Lighthouse CLI (`docs:lighthouse`) runs the same underlying engine (axe-core / Chrome Lighthouse) as DevTools. Review Lighthouse output and reports in `.lighthouseci/`.
    - Parse test results efficiently: check pass/fail status first. If any audit or test fails or drops below threshold, inspect and fix all flagged issues before pushing—including ARIA role/children attributes, color contrast ratios, console errors, broken schema scripts, and performance bottlenecks.
 5. `yarn coverage:all`

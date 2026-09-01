@@ -57,10 +57,18 @@ test.describe('sitemap.xml', () => {
     expect(text).not.toContain('/index</loc>');
   });
 
-  test('maps pages/nested/index.html to /nested (strip trailing /index)', async ({ request }) => {
+  test('maps pages/nested/index.html to the canonical trailing-slash URL', async ({ request }) => {
     const resp = await request.get('/sitemap.xml');
     const text = await resp.text();
-    expect(text).toContain('<loc>http://localhost:4200/nested</loc>');
+    expect(text).toContain('<loc>http://localhost:4200/nested/</loc>');
+  });
+
+  test('percent-encodes filenames using the URL served by every server mode', async ({ request }) => {
+    const resp = await request.get('/sitemap.xml');
+    const text = await resp.text();
+    expect(text).toContain(
+      '<loc>http://localhost:4200/nested/r%C3%A9sum%C3%A9%20%23100%25</loc>',
+    );
   });
 
   test('does not include the 404 page', async ({ request }) => {

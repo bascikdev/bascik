@@ -17,7 +17,7 @@ const pkgDir = join(e2eDir, '..');
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/dev-server-reload.test.ts'],
+  testIgnore: ['**/dev-server-reload.test.ts', '**/dist-lifecycle.test.ts'],
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

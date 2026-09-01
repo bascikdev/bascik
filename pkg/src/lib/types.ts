@@ -100,7 +100,6 @@ export interface DirectoryOptions {
   pages: string;
   components: string;
   out: string;
-  public?: string;
   api: string;
 }
 

@@ -24,7 +24,7 @@
  * ```
  */
 
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -46,31 +46,11 @@ export const escapeXml = (value: string): string =>
     .replace(/'/g, "&apos;");
 
 /**
- * Convert a relative page path (e.g. `pages/blog/post.html`) to an absolute
- * URL path (e.g. `/blog/post`) suitable for use in a sitemap.
- *
- * Rules:
- *  - Strip the leading `pages/` segment.
- *  - Strip the `.html` extension.
- *  - `/index` at the end of a path becomes `/`.
- *  - `index.html` at the root becomes `/`.
- *  - Percent-encode each path segment for non-ASCII characters.
+ * Percent-encode each segment of an already canonical URL path for a sitemap.
+ * Empty segments are retained so directory-index trailing slashes remain canonical.
  */
-export const pagePathToUrlPath = (relativePath: string): string => {
-  const clean = relativePath
-    .replace(/^pages\//, "")
-    .replace(/\.html$/, "");
-
-  if (clean === "" || clean === "index") return "/";
-
-  const segments = clean
-    .split("/")
-    .filter((s) => s.length > 0 && s !== "index")
-    .map((s) => encodeURIComponent(s));
-
-  if (segments.length === 0) return "/";
-  return `/${segments.join("/")}`;
-};
+export const encodeUrlPath = (urlPath: string): string =>
+  urlPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 
 /**
  * True when a relative page path resolves to the site's 404 page
@@ -142,6 +122,7 @@ export const generateSitemapFiles = async (
 
   const baseUrl = siteUrl.replace(/\/+$/, ""); // trim trailing slash
 
+  await mkdir(BascikConfig.directory.out, { recursive: true });
   const writes: Promise<void>[] = [];
 
   if (doSitemap) {
@@ -152,7 +133,7 @@ export const generateSitemapFiles = async (
       .map((p) => (p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`))
       // Exclude the 404 page — it is an error document, not a crawlable URL.
       .filter((rel) => !is404Page(rel))
-      .map(pagePathToUrlPath)
+      .map((relativePath) => encodeUrlPath(getHttpPath(relativePath)))
       .sort();
     const sitemapXml = buildSitemapXml(baseUrl, urlPaths);
     const sitemapPath = join(BascikConfig.directory.out, "sitemap.xml");

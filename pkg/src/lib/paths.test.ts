@@ -31,6 +31,11 @@ describe("getHttpPath", () => {
     expect(getHttpPath("pages/pages-about.html")).toBe("/pages-about");
   });
 
+  it("preserves a nested directory named pages", () => {
+    expect(getHttpPath("pages/blog/pages/post.html")).toBe("/blog/pages/post");
+    expect(getHttpPath("pages/blog/pages/index.html")).toBe("/blog/pages/");
+  });
+
   it("handles Windows backslash path separators", () => {
     expect(getHttpPath("pages\\index.html")).toBe("/");
     expect(getHttpPath("pages\\about.html")).toBe("/about");
@@ -54,6 +59,20 @@ describe("getHttpPath", () => {
     expect(getHttpPath("C:\\my-project\\src\\pages\\docs\\pages-guide.html")).toBe("/docs/pages-guide");
     expect(getHttpPath("///src/pages/deeply//nested///index.html")).toBe("/deeply/nested/");
     expect(getHttpPath("pages/sub-pages/index.html")).toBe("/sub-pages/");
+  });
+
+  it("honors a custom pages directory", () => {
+    expect(getHttpPath("/project/src/html/blog/index.html", "src/html")).toBe("/blog/");
+  });
+
+  it.each([
+    ["pages/index/deep.html", "/index/deep"],
+    ["pages/résumé #100%.html", "/résumé #100%"],
+    ["pages//blog///index.html", "/blog/"],
+    ["/srv/src/pages/demo/src/pages/post.html", "/post"],
+    ["pages/blog/", "/blog/"],
+  ])("canonicalizes %s", (input, expected) => {
+    expect(getHttpPath(input)).toBe(expected);
   });
 });
 

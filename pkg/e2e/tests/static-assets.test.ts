@@ -8,6 +8,10 @@
  *   4. Configured inlineStyles ARE NOT copied as standalone static files to dist/
  */
 import { test, expect } from '@playwright/test';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const SECRET_MARKER = 'BASCIK_E2E_ASSET_LEAK_MARKER';
 
 test.describe('Static Assets & Inlined Styles handling', () => {
 
@@ -28,6 +32,30 @@ test.describe('Static Assets & Inlined Styles handling', () => {
   test('does NOT serve test files (*.test.ts) from src/pages/', async ({ request }) => {
     const res = await request.get('/sample.test.ts');
     expect(res.status()).toBe(404);
+  });
+
+  test('does not ship denied source assets', async ({ request }) => {
+    for (const path of ['/.env', '/secret.js.map']) {
+      const response = await request.get(path);
+      expect(response.status()).toBe(404);
+    }
+  });
+
+  test('serves page assets whose extension is outside MIME_MAP', async ({ request }) => {
+    const response = await request.get('/templates/card.hbs');
+    expect(response.status()).toBe(200);
+    await expect(response.text()).resolves.toContain('unknown extension asset fixture');
+  });
+
+  test('does not write the secret marker anywhere in build output', async () => {
+    const distDirectory = join(import.meta.dirname, '..', 'dist');
+    const entries = await readdir(distDirectory, { recursive: true, withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile());
+    const contents = await Promise.all(
+      files.map((entry) => readFile(join(entry.parentPath, entry.name)).catch(() => Buffer.alloc(0))),
+    );
+
+    expect(contents.some((content) => content.includes(SECRET_MARKER))).toBe(false);
   });
 
   test('inlines configured inlineStyles into HTML page <head>', async ({ page }) => {

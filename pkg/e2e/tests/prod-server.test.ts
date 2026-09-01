@@ -18,6 +18,12 @@
  *   npx playwright test --config e2e/playwright.server-http2.config.ts
  */
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const e2eDir = fileURLToPath(new URL('..', import.meta.url));
+const scopeTestOutputPath = join(e2eDir, 'dist/scope-test.html');
 
 test.describe('Production Server (`bascik --server`) Engine', () => {
 
@@ -39,6 +45,14 @@ test.describe('Production Server (`bascik --server`) Engine', () => {
 
     const banner = page.locator('#bascik-live-reload-banner');
     await expect(banner).not.toBeAttached();
+  });
+
+  test('does not clean the existing build output on server startup', async ({ request }) => {
+    const outputBeforeRequest = await readFile(scopeTestOutputPath, 'utf8');
+    const response = await request.get('/scope-test');
+
+    expect(response.status()).toBe(200);
+    await expect(readFile(scopeTestOutputPath, 'utf8')).resolves.toBe(outputBeforeRequest);
   });
 
   // ── 2. Security Headers & HTTP/2 ──────────────────────────────────────────

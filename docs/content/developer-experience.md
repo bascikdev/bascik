@@ -33,6 +33,16 @@ transpiled: pages/index.html in 0.4ms (modified component: <user-badge>)
 
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.
 
+### Recovering from a Broken Page
+
+A syntax error, missing `<body>`, or other page-level transpilation failure does not terminate the dev server. Initial boot still completes, successfully compiled pages remain available, and the failed route returns an error response instead of remaining on the boot screen. Bascik logs the source path, stage, and error message.
+
+Fix and save the page normally. Page rebuilds recover from earlier rejected jobs, so the corrected page is transpiled and served without restarting the process.
+
+### Inspecting Dev Output
+
+Dev mode writes each transpiled HTML page to `dist/` after placing it in the in-memory page store. Open files such as `dist/index.html` to inspect the latest compiled markup while the server is running. The disk write is asynchronous, so browser requests receive the updated in-memory page without waiting for file I/O.
+
 ### Open-Page Prioritization for Instant Feedback
 
 When you edit a shared component or a global stylesheet used across many pages, Bascik does not make your active browser tab wait for the entire site to recompile. The dev server tracks which pages currently have active live-reload browser tabs connected. It partitions the rebuild queue, transpiles the open page(s) first, stores them in memory, and emits the live-reload signal immediately. Your visible browser window updates in milliseconds while any remaining background pages finish compiling afterwards.

@@ -5,6 +5,7 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
+import { getHttpPath } from "./paths.ts";
 import type { RouteEntry } from "./types.ts";
 
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
@@ -107,33 +108,11 @@ export const computePagePath = (
   pagesDir: string = BascikConfig.directory?.pages ?? "src/pages",
   dynamicRoute?: { params?: Record<string, string | number> } | RouteEntry | null,
 ): string => {
-  const normPage = pageFilePath.replace(/\\/g, "/");
-  const normPagesDir = pagesDir.replace(/\\/g, "/").replace(/\/$/, "");
-
-  let relPath: string;
-  if (normPagesDir && normPage.includes(normPagesDir)) {
-    const idx = normPage.indexOf(normPagesDir);
-    relPath = normPage.slice(idx + normPagesDir.length).replace(/^\/+/, "");
-  } else {
-    relPath = normPage.replace(/^\/+/, "");
-  }
-
-  let withoutExt = relPath.replace(/\.html$/i, "");
-
+  let resolvedPagePath = pageFilePath;
   if (dynamicRoute && dynamicRoute.params) {
-    withoutExt = resolveRoutePath(withoutExt, dynamicRoute.params);
+    resolvedPagePath = resolveRoutePath(resolvedPagePath, dynamicRoute.params);
   }
-
-  if (withoutExt === "index" || withoutExt === "") {
-    return "/";
-  }
-
-  if (withoutExt.endsWith("/index")) {
-    const dir = withoutExt.slice(0, -"/index".length);
-    return `/${dir}/`;
-  }
-
-  return `/${withoutExt}`;
+  return getHttpPath(resolvedPagePath, pagesDir);
 };
 
 /** Parse + validate routes-script stdout. Returns valid entries and warning strings. */

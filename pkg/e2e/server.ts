@@ -24,6 +24,7 @@ createServer((req, res) => {
     url = decodeURIComponent(rawUrl);
   } catch { }
   let p = join(distDir, url === '/' ? 'index.html' : url);
+  if (url.endsWith('/') && url !== '/') p = join(p, 'index.html');
   if (!p.endsWith('.html') && existsSync(p + '.html')) p += '.html';
   if (!existsSync(p)) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });

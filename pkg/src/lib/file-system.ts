@@ -1,30 +1,37 @@
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
-import { join, dirname, resolve, relative } from "node:path";
+import { join, dirname, resolve, relative, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { minifyCss } from "./styles.ts";
 import { minifyJs } from "./javascript.ts";
+import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
+
+export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
 /** Resolve an absolute path to a `parentDir/...` relative path, normalizing separators. */
-export const getRelativePath = (path: string, parentDir: string): string => {
+export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
   const normalizedPath = path.replace(/\\/g, "/");
-  const parentPath = (parentDir === "pages"
+  const configuredDir = (parentDir === "pages"
     ? BascikConfig.directory.pages
     : BascikConfig.directory.components
   ).replace(/\\/g, "/");
+
+  if (normalizedPath === parentDir || normalizedPath === configuredDir) {
+    return parentDir;
+  }
 
   if (normalizedPath.startsWith(`${parentDir}/`)) {
     const relative = normalizedPath.slice(parentDir.length + 1).replace(/^\.?\//, "").replace(/^\//, "");
     return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
   }
 
-  const suffix = normalizedPath.includes(`${parentPath}/`)
-    ? normalizedPath.split(`${parentPath}/`)[1]
-    : normalizedPath.startsWith(`${parentPath}/`)
-      ? normalizedPath.slice(parentPath.length + 1)
-      : normalizedPath;
+  const configuredDirMarker = `${configuredDir}/`;
+  const markerIndex = normalizedPath.lastIndexOf(configuredDirMarker);
+  const suffix = markerIndex >= 0
+    ? normalizedPath.slice(markerIndex + configuredDirMarker.length)
+    : normalizedPath;
 
   const relative = (suffix ?? "").replace(/^\.?\//, "").replace(/^\//, "");
   return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
@@ -47,7 +54,6 @@ const displayRelativePath = (path: string): string => {
   if (normalized.startsWith(`${componentsDir}/`)) {
     return normalized;
   }
-
   const outDirRel = relative(process.cwd(), BascikConfig.directory.out) || "dist";
   return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(new RegExp(`^${outDirRel}/`), "");
 };
@@ -161,18 +167,19 @@ export const listPages = async () => {
 
 // Taken from https://stackoverflow.com/a/71166133/1469690
 // Returns any[] because the recursive structure cannot be expressed as a fixed-depth generic.
-export const deepReadDir = async (dirPath: string): Promise<any[]> => {
+export const deepReadDir = async (dirPath: string, isRoot = true): Promise<any[]> => {
   try {
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
     return Promise.all(
       dirents.map(async (dirent: Dirent) => {
         const path = join(dirPath, dirent.name);
-        return dirent.isDirectory() ? await deepReadDir(path) : path;
+        return dirent.isDirectory() ? await deepReadDir(path, false) : path;
       }),
     );
   } catch (error) {
-    console.error("Failed to read directory %s", dirPath, error);
+    if (isRoot) throw error;
+    console.warn("Failed to read subdirectory %s", dirPath, error);
     return [];
   }
 };
@@ -187,49 +194,21 @@ export const deepReadDirFlat = async (
   dirPath: string,
   filter?: RegExp,
 ): Promise<string[]> => {
-  try {
-    const files = (await deepReadDir(dirPath)).flat(
-      Number.POSITIVE_INFINITY,
-    ) as string[];
-    if (!filter) return files;
-    return files.filter((filePath) => `${filePath}`.match(filter));
-  } catch (error) {
-    console.error("Error Reading Directory", error);
-    return [];
-  }
-};
-
-export const isInlineStylesheet = (path: string): boolean => {
-  const inlineStyles = BascikConfig.assets?.inlineStyles;
-  if (!inlineStyles) return false;
-  if (!path.endsWith(".css")) return false;
-  if (inlineStyles === true) return true;
-  if (Array.isArray(inlineStyles)) {
-    const normalizedPath = path.replace(/\\/g, "/");
-    return inlineStyles.some((stylePath) => {
-      const normalizedStyle = stylePath.replace(/\\/g, "/");
-      return (
-        normalizedPath === normalizedStyle ||
-        normalizedPath.endsWith("/" + normalizedStyle) ||
-        normalizedStyle.endsWith("/" + normalizedPath)
-      );
-    });
-  }
-  return false;
+  const files = (await deepReadDir(dirPath)).flat(
+    Number.POSITIVE_INFINITY,
+  ) as string[];
+  if (!filter) return files;
+  return files.filter((filePath) => `${filePath}`.match(filter));
 };
 
 export const copyStaticAssets = async (): Promise<void> => {
-  const allFiles = await deepReadDirFlat(BascikConfig.directory.pages);
-  const staticAssetFiles = allFiles.filter(
-    (filePath) =>
-      /\.[a-zA-Z0-9]+$/.test(filePath) &&
-      !filePath.endsWith(".html") &&
-      !filePath.endsWith(".ts") &&
-      !/\.(test|spec)\.[a-zA-Z0-9]+$/.test(filePath) &&
-      !isInlineStylesheet(filePath),
-  );
+  const pagesRoot = BascikConfig.directory.pages;
+  const allPageFiles = await deepReadDirFlat(pagesRoot);
+  const pageAssetFiles = allPageFiles.filter((filePath) =>
+    isStaticAssetPath(filePath, pagesRoot, true));
+
   await Promise.all(
-    staticAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
+    pageAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
   );
 };
 
@@ -240,10 +219,9 @@ export const getDirectoryPath = (pagePath: string): string => {
 
 export const getDistPagePath = (pagePath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
-  const normalized = pagePath.replace(/\\/g, "/");
-  const pathParts = normalized.split("/");
-  pathParts[0] = outDirRel;
-  return pathParts.join("/");
+  const normalized = pagePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const relativePagePath = normalized.replace(/^pages\//, "");
+  return `${outDirRel}/${relativePagePath}`;
 };
 
 /**
@@ -254,14 +232,52 @@ export const getDistPagePath = (pagePath: string): string => {
  */
 export const toDistPath = (srcPath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
-  const normalizedSrc = srcPath.replace(/\\/g, "/");
-  if (normalizedSrc.startsWith(`${outDirRel}/`)) return normalizedSrc;
-  if (normalizedSrc.includes(`/${outDirRel}/`)) {
-    return `${outDirRel}/${normalizedSrc.split(`/${outDirRel}/`)[1]}`;
+  const outputRoot = resolve(BascikConfig.directory.out);
+  const normalizedOutputRoot = outputRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedSrc = srcPath.replace(/\\/g, "/").replace(/\/+/g, "/");
+  let targetPath = "";
+  if (normalizedSrc.startsWith(`${outDirRel}/`)) {
+    targetPath = normalizedSrc;
+  } else if (normalizedSrc.startsWith(`${normalizedOutputRoot}/`)) {
+    targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedOutputRoot.length + 1)}`;
+  } else {
+    const sourceSegments = normalizedSrc.split("/");
+    const configuredPagesDir = BascikConfig.directory.pages.replace(/\\/g, "/").replace(/\/+$/, "");
+    const configuredComponentsDir = BascikConfig.directory.components.replace(/\\/g, "/").replace(/\/+$/, "");
+    const hasConfiguredRoot = (configuredDir: string): boolean => {
+      const root = configuredDir.replace(/^\/+|\/+$/g, "");
+      return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
+    };
+    const hasSourceRoot =
+      normalizedSrc.startsWith("pages/") ||
+      normalizedSrc.startsWith("components/") ||
+      hasConfiguredRoot(configuredPagesDir) ||
+      hasConfiguredRoot(configuredComponentsDir);
+    const isAbsoluteSource = normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
+    if (
+      sourceSegments.includes("..") ||
+      !normalizedSrc.includes("/") ||
+      (isAbsoluteSource && !hasSourceRoot)
+    ) {
+      throw new OutputPathError(srcPath);
+    }
+    const rel = getRelativePath(srcPath, "pages");
+    targetPath = rel.replace(/^pages[\/]/, `${outDirRel}/`);
   }
-  const rel = getRelativePath(srcPath, "pages");
-  return rel.replace(/^pages[\/]/, `${outDirRel}/`);
+
+  const resolvedTarget = resolve(targetPath);
+  const relativeTarget = relative(outputRoot, resolvedTarget);
+  if (!relativeTarget || relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+    throw new OutputPathError(srcPath);
+  }
+  return targetPath;
 };
+
+class OutputPathError extends Error {
+  constructor(srcPath: string) {
+    super(`Refusing path outside the configured output directory: ${srcPath}`);
+  }
+}
 
 const canLogDevEvent = (
   flag: boolean | undefined,
@@ -279,6 +295,7 @@ export const deleteDistFile = async (pagePath: string): Promise<void> => {
       console.log(`deleted file: ${displayRelativePath(pagePath)}`);
     }
   } catch (error) {
+    if (error instanceof OutputPathError) throw error;
     // File doesn't exist, that's ok.
     // Don't check prior, per node.js doc's say not to because race conditions
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
@@ -297,6 +314,7 @@ export const deleteDistDir = async (dirPath: string): Promise<void> => {
     }
     await rm(distDirPath, { recursive: true, force: true });
   } catch (error) {
+    if (error instanceof OutputPathError) throw error;
     // File doesn't exist, that's ok.
     // Don't check prior, per node.js doc's say not to because race conditions
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;

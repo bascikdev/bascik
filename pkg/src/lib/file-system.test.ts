@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { resolve } from "node:path";
 import {
   deepReadDir,
   deepReadDirFlat,
@@ -15,6 +16,7 @@ import {
   copyStaticAssets,
   isInlineStylesheet,
 } from "./file-system.ts";
+import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 
@@ -103,6 +105,23 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => {
+  vi.mocked(readdir).mockImplementation(async () => [
+    {
+      name: "./dir",
+      isDirectory: isDirMock,
+    },
+    {
+      name: "./dir/one.html",
+      isDirectory: vi.fn(() => false),
+    },
+    {
+      name: "./dir/one.css",
+      isDirectory: vi.fn(() => false),
+    },
+  ] as any);
+});
+
 describe("deepReadDir", () => {
   it("Reads path", async () => {
     const paths = await deepReadDir("./");
@@ -111,6 +130,32 @@ describe("deepReadDir", () => {
       "dir/one.html",
       "dir/one.css",
     ]);
+  });
+
+  it("rejects when the configured root directory cannot be read", async () => {
+    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    vi.mocked(readdir).mockRejectedValueOnce(error);
+
+    await expect(deepReadDir("pages")).rejects.toBe(error);
+  });
+
+  it("warns and continues when a subdirectory disappears during recursion", async () => {
+    const missingError = Object.assign(new Error("ENOENT: directory disappeared"), { code: "ENOENT" });
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (`${path}` === "pages") {
+        return [{ name: "removed", isDirectory: () => true }] as any;
+      }
+      throw missingError;
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    await expect(deepReadDir("pages")).resolves.toEqual([[]]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to read subdirectory %s",
+      "pages/removed",
+      missingError,
+    );
+    warnSpy.mockRestore();
   });
 });
 
@@ -150,7 +195,7 @@ describe("getDirectoryPath", () => {
 describe("getDistPagePath", () => {
   it("should return dist page path for given page path", () => {
     const pagePath = "/pages/myPage.html";
-    const expectedDistPath = "dist/pages/myPage.html";
+    const expectedDistPath = "dist/myPage.html";
     const result = getDistPagePath(pagePath);
     expect(result).toEqual(expectedDistPath);
   });
@@ -169,9 +214,65 @@ describe("getDistPagePath", () => {
 });
 
 describe("toDistPath", () => {
+  it("getRelativePath returns the tail when the pages segment appears twice in the path", () => {
+    expect(getRelativePath("/Users/x/my-pages/pages/assets/logo.png", "pages")).toBe(
+      "pages/assets/logo.png",
+    );
+  });
+
+  it.each([
+    ["pages/x.html", "pages/x.html"],
+    ["src/pages/x.html", "pages/x.html"],
+    ["/p/src/pages/x.html", "pages/x.html"],
+    ["C:\\p\\src\\pages\\x.html", "pages/x.html"],
+    ["x.html", "pages/x.html"],
+    ["/srv/pages/demo/src/pages/x.html", "pages/x.html"],
+    ["pages/blog/", "pages/blog/"],
+    ["pages/index/deep.html", "pages/index/deep.html"],
+    ["pages/résumé #100%.html", "pages/résumé #100%.html"],
+    ["pages//blog///post.html", "pages/blog/post.html"],
+  ])("normalizes %s relative to the logical pages directory", (input, expected) => {
+    expect(getRelativePath(input, "pages")).toBe(expected);
+  });
+
+  it("honors a custom configured pages directory", () => {
+    const previousPages = BascikConfig.directory.pages;
+    (BascikConfig.directory as { pages: string }).pages = "src/html";
+    try {
+      expect(getRelativePath("/project/src/html/blog/index.html", "pages")).toBe(
+        "pages/blog/index.html",
+      );
+      expect(toDistPath("/project/src/html/blog/index.html")).toBe("dist/blog/index.html");
+    } finally {
+      (BascikConfig.directory as { pages: string }).pages = previousPages;
+    }
+  });
+
+  it("maps a source inside an absolute configured pages directory", () => {
+    const previousPages = BascikConfig.directory.pages;
+    (BascikConfig.directory as { pages: string }).pages = "/workspace/project/src/pages";
+    try {
+      expect(toDistPath("/workspace/project/src/pages/blog/post.html")).toBe(
+        "dist/blog/post.html",
+      );
+    } finally {
+      (BascikConfig.directory as { pages: string }).pages = previousPages;
+    }
+  });
+
   it("resolves relative pages paths to dist paths", () => {
     expect(toDistPath("pages/about.html")).toBe("dist/about.html");
     expect(toDistPath("pages/css/styles.css")).toBe("dist/css/styles.css");
+  });
+
+  it.each([
+    ["src/pages/x.html", "dist/x.html"],
+    ["/srv/pages/demo/src/pages/x.html", "dist/x.html"],
+    ["pages/blog/", "dist/blog/"],
+    ["pages/résumé #100%.html", "dist/résumé #100%.html"],
+    ["pages//blog///post.html", "dist/blog/post.html"],
+  ])("maps supported source shape %s into the output directory", (input, expected) => {
+    expect(toDistPath(input)).toBe(expected);
   });
 
   it("handles paths already starting with pages/ or components/ even when config directory differs", () => {
@@ -184,6 +285,10 @@ describe("toDistPath", () => {
     expect(toDistPath("/workspace/project/pages/css/styles.css")).toBe("dist/css/styles.css");
   });
 
+  it("does not treat an ancestor named dist as the configured output directory", () => {
+    expect(toDistPath("/Users/dist/project/src/pages/blog.html")).toBe("dist/blog.html");
+  });
+
   it("resolves Windows backslash paths to dist paths", () => {
     expect(toDistPath("pages\\css\\styles.css")).toBe("dist/css/styles.css");
     expect(toDistPath("C:\\workspace\\project\\pages\\about.html")).toBe("dist/about.html");
@@ -191,11 +296,27 @@ describe("toDistPath", () => {
 
   it("preserves paths that are already inside dist", () => {
     expect(toDistPath("dist/about.html")).toBe("dist/about.html");
-    expect(toDistPath("/workspace/project/dist/css/styles.css")).toBe("dist/css/styles.css");
+    expect(toDistPath(resolve("dist/css/styles.css"))).toBe("dist/css/styles.css");
+  });
+
+  it.each([
+    ["pages/../source.html"],
+    ["../pages/source.html"],
+    ["source.html"],
+    ["/workspace/project/source.html"],
+    ["C:\\workspace\\project\\source.html"],
+    ["dist"],
+  ])("refuses unsafe output target %s", (input) => {
+    expect(() => toDistPath(input)).toThrow(/outside.*output directory/i);
   });
 });
 
 describe("deleteDistFile", () => {
+  it("refuses a target outside the output directory", async () => {
+    await expect(deleteDistFile("source.html")).rejects.toThrow(/outside.*output directory/i);
+    expect(rm).not.toHaveBeenCalled();
+  });
+
   it("logs relative Bascik paths for page deletions and calls rm on dist path", async () => {
     const pagePath = "/workspace/project/pages/about.html";
     await deleteDistFile(pagePath);
@@ -210,6 +331,11 @@ describe("deleteDistFile", () => {
 });
 
 describe("deleteDistDir", () => {
+  it("refuses a target outside the output directory", async () => {
+    await expect(deleteDistDir("pages")).rejects.toThrow(/outside.*output directory/i);
+    expect(rm).not.toHaveBeenCalled();
+  });
+
   it("logs relative Bascik paths for directory deletions and calls rm on dist dir", async () => {
     const dirPath = "/workspace/project/pages/assets";
     await deleteDistDir(dirPath);
@@ -231,6 +357,66 @@ describe("copyReplicatePath", () => {
 });
 
 describe("copyStaticAssets", () => {
+  it("does not copy built-in denied files from the pages directory", async () => {
+    const file = (name: string) => ({
+      name,
+      isDirectory: vi.fn(() => false),
+    });
+    const directory = (name: string) => ({
+      name,
+      isDirectory: vi.fn(() => true),
+    });
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (`${path}` === "pages") {
+        return [
+          file(".env"),
+          file("bundle.js.map"),
+          file(".DS_Store"),
+          file(".gitignore"),
+          file("helper.mjs"),
+          file("README.md"),
+          file("logo.svg"),
+          directory("node_modules"),
+        ] as any;
+      }
+      if (`${path}` === "pages/node_modules") {
+        return [directory("pkg")] as any;
+      }
+      if (`${path}` === "pages/node_modules/pkg") {
+        return [file("index.js")] as any;
+      }
+      return [];
+    });
+
+    await copyStaticAssets();
+
+    const copiedSources = vi.mocked(copyFile).mock.calls.map(([source]) => source);
+    expect(copiedSources).toEqual(["pages/logo.svg"]);
+  });
+
+  it("applies assets.exclude relative to pages while allowing unknown extensions", () => {
+    (BascikConfig as any).assets = {
+      inlineStyles: false,
+      exclude: ["private/**", "*.jsonc"],
+    };
+
+    try {
+      expect(isStaticAssetPath("pages/templates/card.hbs", "pages")).toBe(true);
+      expect(isStaticAssetPath("pages/private/card.hbs", "pages")).toBe(false);
+      expect(isStaticAssetPath("pages/settings.jsonc", "pages")).toBe(false);
+      expect(isStaticAssetPath("pages/public/settings.jsonc", "pages")).toBe(true);
+      expect(isStaticAssetPath("pages/.hidden/allowed.svg", "pages")).toBe(false);
+      expect(
+        isStaticAssetPath(
+          "/Users/example/.work/project/pages/logo.svg",
+          "/Users/example/.work/project/pages",
+        ),
+      ).toBe(true);
+    } finally {
+      (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    }
+  });
+
   it("copies non-HTML static assets and ignores HTML, TS, and test files", async () => {
     vi.mocked(readFile)
       .mockResolvedValueOnce("body { color: red; }" as any)
@@ -438,16 +624,11 @@ describe("getRelativePath – additional branches", () => {
 });
 
 describe("deepReadDir – error path", () => {
-  it("returns empty array when readdir rejects", async () => {
-    vi.mocked(readdir).mockRejectedValueOnce(new Error("EACCES"));
-    vi.spyOn(console, "error").mockImplementation(() => { });
-    const result = await deepReadDir("./secret");
-    expect(result).toEqual([]);
-    expect(console.error).toHaveBeenCalledWith(
-      "Failed to read directory %s",
-      "./secret",
-      expect.any(Error),
-    );
+  it("propagates a configured root read failure", async () => {
+    const error = new Error("EACCES");
+    vi.mocked(readdir).mockRejectedValueOnce(error);
+
+    await expect(deepReadDir("./secret")).rejects.toBe(error);
   });
 });
 
