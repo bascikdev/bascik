@@ -2,6 +2,8 @@
 
 Bascik's build output is a standard folder of static HTML, CSS, and JavaScript files. `bascik --build` writes everything to `dist/`, and that folder can be served by any static host or CDN without additional configuration.
 
+Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
+
 Every dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it.
 
 ## Per-environment values: the site URL
@@ -24,6 +26,40 @@ Running `bascik --build` produces:
 - **Static assets**: eligible images, fonts, downloads, and other files from `src/pages/`, preserving their relative paths
 
 The output uses root-relative paths (e.g. `/css/styles.css`). Files must be served from an HTTP server; opening them directly with `file://` will break asset loading.
+
+### Consuming the build manifest
+
+When `generate.manifest: true` is configured, Bascik outputs `dist/.bascik/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
+
+```js
+// Example deploy-layer script reading dist/.bascik/manifest.json
+import { readFileSync } from 'node:fs';
+
+const manifest = JSON.parse(readFileSync('dist/.bascik/manifest.json', 'utf8'));
+for (const [relPath, info] of Object.entries(manifest.files)) {
+  console.log(`Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`);
+}
+```
+
+### Generating strict Content Security Policy headers
+
+Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support strict CSP configurations without using `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
+
+Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. You can convert the manifest into host headers (e.g. a Cloudflare Pages `_headers` file) using an `exec` script with `phase: 'post'`:
+
+```js
+// scripts/generate-csp-headers.ts
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const hashes = JSON.parse(readFileSync('dist/.bascik/csp-hashes.json', 'utf8'));
+let headers = '';
+for (const [path, pageHashes] of Object.entries(hashes)) {
+  const scriptSrc = pageHashes.scripts.map((h) => `'${h}'`).join(' ');
+  const styleSrc = pageHashes.styles.map((h) => `'${h}'`).join(' ');
+  headers += `${path}\n  Content-Security-Policy: script-src 'self' ${scriptSrc}; style-src 'self' ${styleSrc}\n\n`;
+}
+writeFileSync('dist/_headers', headers);
+```
 
 ### Excluded source files
 

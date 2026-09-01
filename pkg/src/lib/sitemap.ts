@@ -24,14 +24,16 @@
  * ```
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { listPages } from "./file-system.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { composeSiteUrl } from "./base-path.ts";
+import { manifestCollector } from "./manifest.ts";
 
 /**
  * Escape the five XML metacharacters for safe interpolation into `<loc>` etc.
@@ -63,11 +65,37 @@ export const is404Page = (relativePath: string): boolean =>
   getHttpPath(relativePath) === "/404";
 
 /**
- * Build the XML sitemap string from an array of URL paths.
+ * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.
  */
-export const buildSitemapXml = (siteUrl: string, urlPaths: string[], base = "/"): string => {
-  const urls = urlPaths
-    .map((path) => `  <url>\n    <loc>${escapeXml(composeSiteUrl(siteUrl, base, path))}</loc>\n  </url>`)
+export const isPageExcludedFromSitemap = async (pageFilePath: string): Promise<boolean> => {
+  try {
+    const content = await readFile(pageFilePath, "utf8");
+    return /<meta\b[^>]*\bname=["']bascik-sitemap["'][^>]*\bcontent=["']exclude["']/i.test(content) ||
+      /<meta\b[^>]*\bcontent=["']exclude["'][^>]*\bname=["']bascik-sitemap["']/i.test(content);
+  } catch {
+    return false;
+  }
+};
+
+export interface SitemapUrlEntry {
+  path: string;
+  lastmod?: string;
+}
+
+/**
+ * Build the XML sitemap string from an array of URL paths or entries.
+ */
+export const buildSitemapXml = (
+  siteUrl: string,
+  entries: (string | SitemapUrlEntry)[],
+  base = "/",
+): string => {
+  const urls = entries
+    .map((entry) => {
+      const path = typeof entry === "string" ? entry : entry.path;
+      const lastmodTag = typeof entry === "object" && entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : "";
+      return `  <url>\n    <loc>${escapeXml(composeSiteUrl(siteUrl, base, path))}</loc>${lastmodTag}\n  </url>`;
+    })
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
 };
@@ -106,7 +134,7 @@ export const buildMissingSiteUrlError = (features: string[]): string => {
 export const generateSitemapFiles = async (
   transpiledPaths?: string[],
 ): Promise<void> => {
-  const { sitemap: doSitemap, robots: doRobots } = BascikConfig.generate;
+  const { sitemap: doSitemap, robots: doRobots, sitemapLastmod } = BascikConfig.generate;
   if (!doSitemap && !doRobots) return;
 
   const siteUrl = getSiteUrl();
@@ -117,22 +145,71 @@ export const generateSitemapFiles = async (
     throw new Error(buildMissingSiteUrlError(features));
   }
 
+  const pagesDir = resolve(process.cwd(), BascikConfig.directory.pages);
+  const authoredRobotsPath = join(pagesDir, "robots.txt");
+  const authoredSitemapPath = join(pagesDir, "sitemap.xml");
+
+  const hasAuthoredRobots = existsSync(authoredRobotsPath);
+  const hasAuthoredSitemap = existsSync(authoredSitemapPath);
+
+  if (doRobots && hasAuthoredRobots) {
+    console.warn(
+      `warning: ${relative(process.cwd(), authoredRobotsPath)} exists, so generate.robots did not write ${join(BascikConfig.directory.out, "robots.txt")}.\n` +
+      `  - To keep your authored file and silence this warning, set generate.robots: false\n` +
+      `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredRobotsPath)}\n` +
+      `  - Your authored robots.txt should include its own "Sitemap:" line`,
+    );
+  }
+
+  if (doSitemap && hasAuthoredSitemap) {
+    console.warn(
+      `warning: ${relative(process.cwd(), authoredSitemapPath)} exists, so generate.sitemap did not write ${join(BascikConfig.directory.out, "sitemap.xml")}.\n` +
+      `  - To keep your authored file and silence this warning, set generate.sitemap: false\n` +
+      `  - To use Bascik's generated file, delete ${relative(process.cwd(), authoredSitemapPath)}`,
+    );
+  }
+
   await mkdir(BascikConfig.directory.out, { recursive: true });
   const writes: Promise<void>[] = [];
 
-  if (doSitemap) {
-    const rawPaths =
-      transpiledPaths ??
-      (await listPages()).map((p) => getRelativePath(p, "pages"));
-    const urlPaths = rawPaths
+  if (doSitemap && !hasAuthoredSitemap) {
+    const allPagePaths = await listPages();
+    const rawPaths = transpiledPaths ?? allPagePaths.map((p) => getRelativePath(p, "pages"));
+
+    const validPaths = rawPaths
       .map((p) => (p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`))
-      // Exclude the 404 page — it is an error document, not a crawlable URL.
-      .filter((rel) => !is404Page(rel))
-      .map((relativePath) => encodeUrlPath(getHttpPath(relativePath)))
-      .sort();
-    const sitemapXml = buildSitemapXml(siteUrl, urlPaths, BascikConfig.base);
+      .filter((rel) => !is404Page(rel));
+
+    // Remove duplicates and filter excluded meta
+    const uniqueRawPaths = Array.from(new Set(validPaths));
+    const entries: SitemapUrlEntry[] = [];
+
+    for (const relPath of uniqueRawPaths) {
+      const pageFile = resolve(pagesDir, relPath.replace(/^pages[\\/]/, ""));
+      if (existsSync(pageFile)) {
+        const isExcluded = await isPageExcludedFromSitemap(pageFile);
+        if (isExcluded) continue;
+      }
+
+      const encodedPath = encodeUrlPath(getHttpPath(relPath));
+      let lastmod: string | undefined;
+      if (sitemapLastmod && existsSync(pageFile)) {
+        try {
+          const stat = statSync(pageFile);
+          lastmod = stat.mtime.toISOString().split("T")[0];
+        } catch {
+          // ignore
+        }
+      }
+      entries.push({ path: encodedPath, lastmod });
+    }
+
+    entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+
+    const sitemapXml = buildSitemapXml(siteUrl, entries, BascikConfig.base);
     const sitemapPath = join(BascikConfig.directory.out, "sitemap.xml");
     const sitemapRel = relative(process.cwd(), sitemapPath);
+    manifestCollector.recordFile(sitemapPath, sitemapXml);
     writes.push(
       writeFile(sitemapPath, sitemapXml, "utf8").then(() =>
         console.log(`generated: ${sitemapRel}`),
@@ -140,10 +217,11 @@ export const generateSitemapFiles = async (
     );
   }
 
-  if (doRobots) {
+  if (doRobots && !hasAuthoredRobots) {
     const robotsTxt = buildRobotsTxt(siteUrl, BascikConfig.base);
     const robotsPath = join(BascikConfig.directory.out, "robots.txt");
     const robotsRel = relative(process.cwd(), robotsPath);
+    manifestCollector.recordFile(robotsPath, robotsTxt);
     writes.push(
       writeFile(robotsPath, robotsTxt, "utf8").then(() =>
         console.log(`generated: ${robotsRel}`),

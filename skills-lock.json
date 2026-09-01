@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "19b6942c9cbcf9b9e3000fc497f8f156b8251d66055de806017e4aaa651e0c7b"
+    },
+    "specmap": {
+      "source": "mozilla-firefox/firefox",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/specmap/SKILL.md",
+      "computedHash": "588f7c071895c1cad04b8acb66a0d9c1beb2f931ebb2d013564218ca959267c6"
+    },
+    "vitest": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/vitest/SKILL.md",
+      "computedHash": "943d436114c677802426741980146c07560bf375297666b03062444f4b98a785"
+    }
+  }
+}

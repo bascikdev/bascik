@@ -248,6 +248,21 @@ describe("parseRouteList", () => {
     expect(routes).toEqual([{ params: { slug: "valid-name" } }]);
     expect(warnings.length).toBe(8);
   });
+
+  it("warns and skips item with leading dots, #, %, and Windows reserved device names", () => {
+    const stdout = JSON.stringify([
+      { params: { slug: ".hidden" } },
+      { params: { slug: "hash#frag" } },
+      { params: { slug: "con" } },
+      { params: { slug: "prn" } },
+      { params: { slug: "aux" } },
+      { params: { slug: "nul" } },
+      { params: { slug: "valid" } },
+    ]);
+    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    expect(routes).toEqual([{ params: { slug: "valid" } }]);
+    expect(warnings.length).toBe(6);
+  });
 });
 
 describe("dedupeRoutes", () => {

@@ -1,4 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  existsSync: vi.fn((_p?: any) => false),
+  statSync: vi.fn((_p?: any) => ({ mtime: new Date("2026-08-15T12:00:00Z") })),
+  readFile: vi.fn(async (_p?: any) => ""),
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: mocks.existsSync,
+  statSync: mocks.statSync,
+  readFileSync: vi.fn(() => ""),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn(async () => { }),
+  writeFile: vi.fn(async () => { }),
+  readFile: mocks.readFile,
+}));
+
 import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
 import { composeSiteUrl } from "./base-path.ts";
 import { getHttpPath } from "./paths.ts";
@@ -11,15 +30,10 @@ import { BascikConfig } from "./config.ts";
 vi.mock("./config.js", () => ({
   BascikConfig: {
     base: "/",
-    generate: { sitemap: true, robots: true },
+    generate: { sitemap: true, robots: true, sitemapLastmod: false },
     directory: { pages: "/project/src/pages", components: "/project/src/components", out: "dist" },
     isBuild: true,
   },
-}));
-
-vi.mock("node:fs/promises", () => ({
-  mkdir: vi.fn(async () => { }),
-  writeFile: vi.fn(async () => { }),
 }));
 
 vi.mock("./file-system.js", () => ({
@@ -356,5 +370,114 @@ describe("generateSitemapFiles – early-return branches", () => {
     );
     expect(String(robotsCall?.[1])).toContain("https://example.com/sitemap.xml");
     expect(String(robotsCall?.[1])).not.toContain("https://example.com//sitemap.xml");
+  });
+
+  it("warns and skips generated robots.txt when authored src/pages/robots.txt exists", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      return String(p).endsWith("pages/robots.txt") || String(p).endsWith("pages\\robots.txt");
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    await generateSitemapFiles();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("robots.txt exists, so generate.robots did not write"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Your authored robots.txt should include its own \"Sitemap:\" line"),
+    );
+
+    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(false);
+  });
+
+  it("warns and skips generated sitemap.xml when authored src/pages/sitemap.xml exists", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      return String(p).endsWith("pages/sitemap.xml") || String(p).endsWith("pages\\sitemap.xml");
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    await generateSitemapFiles();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("sitemap.xml exists, so generate.sitemap did not write"),
+    );
+
+    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    expect(writtenPaths.some((p) => p.includes("sitemap.xml"))).toBe(false);
+  });
+
+  it("ignores nested src/pages/about/robots.txt and generates dist/robots.txt", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      return String(p).includes("about/robots.txt");
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    await generateSitemapFiles();
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    const writtenPaths = vi.mocked(writeFile).mock.calls.map(([f]) => String(f));
+    expect(writtenPaths.some((p) => p.includes("robots.txt"))).toBe(true);
+  });
+
+  it("excludes pages with <meta name='bascik-sitemap' content='exclude'>", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      return true;
+    });
+    mocks.readFile.mockImplementation(async (p: any) => {
+      if (String(p).includes("redirect.html")) {
+        return '<meta name="bascik-sitemap" content="exclude"><p>Redirect</p>';
+      }
+      return '<p>Normal</p>';
+    });
+
+    const transpiledPaths = ["pages/index.html", "pages/redirect.html"];
+    await generateSitemapFiles(transpiledPaths);
+
+    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    expect(sitemapCall).toBeDefined();
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/</loc>");
+    expect(xml).not.toContain("redirect");
+  });
+
+  it("includes <lastmod> when generate.sitemapLastmod is enabled", async () => {
+    (BascikConfig as any).generate.sitemapLastmod = true;
+    mocks.existsSync.mockImplementation((p: any) => {
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      return true;
+    });
+    mocks.statSync.mockReturnValue({
+      mtime: new Date("2026-08-15T12:00:00Z"),
+    } as any);
+
+    const transpiledPaths = ["pages/index.html"];
+    await generateSitemapFiles(transpiledPaths);
+
+    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    expect(sitemapCall).toBeDefined();
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<lastmod>2026-08-15</lastmod>");
+  });
+
+  it("deduplicates duplicate route paths in sitemap.xml", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      return false;
+    });
+    const transpiledPaths = [
+      "pages/index.html",
+      "pages/index.html",
+      "pages/blog/post.html",
+      "pages/blog/post.html",
+    ];
+    await generateSitemapFiles(transpiledPaths);
+
+    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    expect(sitemapCall).toBeDefined();
+    const xml = String(sitemapCall?.[1]);
+    const matches = xml.match(/<loc>/g);
+    expect(matches).toHaveLength(2);
   });
 });

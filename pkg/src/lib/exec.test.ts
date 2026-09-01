@@ -153,8 +153,7 @@ describe("startExecDev", () => {
 
     const watcher = getWatcher(0);
     watcher.handlers.all();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 70));
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(mockEventEmit).toHaveBeenCalledWith("asset-changed");
@@ -168,5 +167,50 @@ describe("startExecDev", () => {
     const watcher = getWatcher(0);
     shutdown();
     expect(watcher.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes cwd, args, and merged env with Bascik context variables to child process", async () => {
+    cfg.pipeline.exec = [
+      {
+        script: "scripts/build.ts",
+        cwd: "custom-dir",
+        args: ["--format", "json"],
+        env: { CUSTOM_VAR: "custom_val" },
+      },
+    ];
+    await runExecPhase("pre");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      ["scripts/build.ts", "--format", "json"],
+      expect.objectContaining({
+        cwd: expect.stringContaining("custom-dir"),
+        env: expect.objectContaining({
+          CUSTOM_VAR: "custom_val",
+          BASCIK_BASE: "/",
+          BASCIK_PAGES_DIR: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("fails the build when a parallel script fails", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
+    setNextExitCode(1);
+
+    await expect(startExecParallel()).rejects.toThrow(/exited with code 1/);
+  });
+
+  it("debounces rapid watch triggers into a single re-run", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all();
+    watcher.handlers.all();
+    watcher.handlers.all();
+    await new Promise((r) => setTimeout(r, 70));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
 });

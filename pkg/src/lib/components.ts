@@ -170,6 +170,32 @@ export const listComponents = async (): Promise<ComponentList> => {
   const componentScriptFileNames = (componentFileNames as string[]).filter(
     (fileName) => fileName.match(/\.(js|ts|mjs)$/) && !fileName.match(/\.(test|spec)\.(js|ts|mjs)$/),
   );
+  // Check for duplicate component names across files
+  const nameToFilePaths = new Map<string, string[]>();
+  for (const fileName of componentHtmlFileNames) {
+    const componentName = fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+    const existing = nameToFilePaths.get(componentName) ?? [];
+    existing.push(fileName);
+    nameToFilePaths.set(componentName, existing);
+  }
+
+  const collisions: string[] = [];
+  for (const [tag, paths] of nameToFilePaths.entries()) {
+    if (paths.length > 1) {
+      const formattedPaths = paths.map((p) => `  ${p}`).join("\n");
+      collisions.push(
+        `error: two component files both define the tag <${tag}>\n` +
+        `${formattedPaths}\n` +
+        `  Component names come from the filename, so subfolders do not create separate\n` +
+        `  namespaces. Rename one file, for example marketing-${tag}.html.`,
+      );
+    }
+  }
+
+  if (collisions.length > 0) {
+    throw new Error(collisions.join("\n\n"));
+  }
+
   const components = await Promise.all(
     componentHtmlFileNames.map(async (fileName) => {
       // Name the file name without the extension.
@@ -421,7 +447,7 @@ export const getFirstComponent = (
 
   const componentNames = Object.keys(componentList)
     .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-    .sort((a, b) => b.length - a.length || a.localeCompare(b));
+    .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
   const namesKey = componentNames.join("\0");
   let cached = componentRegexCache.get(componentList);
   if (!cached || cached.namesKey !== namesKey) {

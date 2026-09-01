@@ -1,27 +1,100 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
-import type { ExecPhase } from './types.ts';
+import { getSiteUrl } from './environment.ts';
+import type { ExecEntry, ExecPhase } from './types.ts';
 
-const runScript = (scriptPath: string): Promise<number> => {
+const activeChildren = new Set<ChildProcess>();
+
+registerShutdownHandler(async () => {
+  if (activeChildren.size === 0) return;
+  for (const child of activeChildren) {
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // ignore
+    }
+  }
+  await new Promise((r) => setTimeout(r, 200));
+  for (const child of activeChildren) {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // ignore
+    }
+  }
+});
+
+const runScript = (entry: ExecEntry | string): Promise<number> => {
+  const scriptPath = typeof entry === 'string' ? entry : entry.script;
+  const entryObj = typeof entry === 'string' ? { script: entry } : entry;
+
   const start = performance.now();
   console.log(`(started) exec: ${scriptPath}`);
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
+
+  const cwd = entryObj.cwd ? resolve(process.cwd(), entryObj.cwd) : process.cwd();
+  const args = entryObj.args ?? [];
+  const timeoutMs = entryObj.timeout ?? 60_000;
+
+  const siteUrl = getSiteUrl() ?? '';
+  const pagesDir = resolve(process.cwd(), BascikConfig.directory?.pages ?? 'src/pages');
+  const componentsDir = resolve(process.cwd(), BascikConfig.directory?.components ?? 'src/components');
+
+  const resolvedScript = resolve(cwd, scriptPath);
+  if (resolvedScript.startsWith(pagesDir) || resolvedScript.startsWith(componentsDir)) {
+    console.warn(`[bascik] warning: exec script "${scriptPath}" is located inside source directories (pages/components). Keep exec scripts in scripts/ or project root.`);
+  }
+
+  const childEnv: Record<string, string> = {
+    ...process.env,
+    BASCIK_BUILD: BascikConfig.isBuild ? '1' : '0',
+    BASCIK_PAGES_DIR: pagesDir,
+    BASCIK_BASE: BascikConfig.base ?? '/',
+    ...(siteUrl ? { BASCIK_SITE_URL: siteUrl } : {}),
+    ...(entryObj.env ?? {}),
+  };
+
+  return new Promise((resolvePromise, rejectPromise) => {
+    let timer: NodeJS.Timeout | null = null;
+    const child = spawn(process.execPath, [scriptPath, ...args], {
       stdio: 'inherit',
-      cwd: process.cwd(),
+      cwd,
+      env: childEnv,
     });
+
+    activeChildren.add(child);
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          if (activeChildren.has(child)) {
+            child.kill('SIGKILL');
+          }
+        }, 500).unref();
+        rejectPromise(new Error(`[bascik] exec "${scriptPath}" timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    }
+
     child.on('close', (code) => {
+      activeChildren.delete(child);
+      if (timer) clearTimeout(timer);
       const elapsed = performance.now() - start;
       if (code === 0) {
         console.log(`(completed) exec: ${scriptPath} in ${formatDuration(elapsed)}`);
-        resolve(elapsed);
+        resolvePromise(elapsed);
       } else {
-        reject(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
+        rejectPromise(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));
       }
     });
-    child.on('error', reject);
+
+    child.on('error', (err) => {
+      activeChildren.delete(child);
+      if (timer) clearTimeout(timer);
+      rejectPromise(err);
+    });
   });
 };
 
@@ -34,27 +107,29 @@ export const runExecPhase = async (phase: ExecPhase): Promise<{ count: number; t
 
   const start = performance.now();
   for (const entry of matching) {
-    await runScript(entry.script);
+    await runScript(entry);
   }
   const totalElapsed = performance.now() - start;
   return { count: matching.length, totalElapsed };
 };
 
-/** Start parallel exec entries without awaiting their completion. */
-export const startExecParallel = (): void => {
+/** Run parallel exec entries concurrently and await their completion before continuing. */
+export const startExecParallel = async (): Promise<void> => {
   const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return;
   const matching = entries.filter((e) => e.phase === 'parallel');
-  for (const entry of matching) {
-    runScript(entry.script).catch((err) => {
-      console.error('[bascik] parallel exec error:', err);
-    });
-  }
+  if (!matching.length) return;
+
+  await Promise.all(
+    matching.map(async (entry) => {
+      await runScript(entry);
+    }),
+  );
 };
 
 /**
  * Fire watch-enabled exec entries async on dev startup and set up chokidar
- * re-run watchers. Build-only entries (no `watch`) are skipped.
+ * re-run watchers with debounce. Build-only entries (no `watch`) are skipped.
  * Returns a Promise that resolves when initial watched exec tasks finish.
  */
 export const startExecDev = (): Promise<void> => {
@@ -70,28 +145,32 @@ export const startExecDev = (): Promise<void> => {
       if (!entry.watch) continue;
       let running = false;
       let pending = false;
+      let debounceTimer: NodeJS.Timeout | null = null;
 
       const triggerRun = () => {
-        if (running) {
-          pending = true;
-          return;
-        }
-        running = true;
-        runScript(entry.script)
-          .then(() => eventEmitter.emit('asset-changed'))
-          .catch((err) => console.error('[bascik] exec error:', err))
-          .finally(() => {
-            running = false;
-            if (pending) {
-              pending = false;
-              triggerRun();
-            }
-          });
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (running) {
+            pending = true;
+            return;
+          }
+          running = true;
+          runScript(entry)
+            .then(() => eventEmitter.emit('asset-changed'))
+            .catch((err) => console.error('[bascik] exec error:', err))
+            .finally(() => {
+              running = false;
+              if (pending) {
+                pending = false;
+                triggerRun();
+              }
+            });
+        }, 50);
       };
 
       // Non-blocking startup run: no reload needed on first run
       running = true;
-      const initialRun = runScript(entry.script)
+      const initialRun = runScript(entry)
         .catch((err) => console.error('[bascik] exec error:', err))
         .finally(() => {
           running = false;
@@ -108,7 +187,10 @@ export const startExecDev = (): Promise<void> => {
         .on('all', () => {
           triggerRun();
         });
-      registerShutdownHandler(() => watcher.close());
+      registerShutdownHandler(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        return watcher.close();
+      });
     }
 
     return Promise.all(initialRuns).then(() => { });

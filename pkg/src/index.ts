@@ -5,25 +5,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
+import { readVersion } from "./lib/version.ts";
 
-// Read the installed package version from package.json.
-export const readVersion = async (baseDir?: string): Promise<string> => {
-  const here = baseDir ?? dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
-    join(here, "../package.json"),
-    join(here, "../../package.json"),
-    join(here, "package.json"),
-  ]) {
-    try {
-      const raw = await readFile(candidate, "utf8");
-      const version = (JSON.parse(raw) as { version?: string }).version;
-      if (version) return version;
-    } catch {
-      // Try the next candidate path.
-    }
-  }
-  return "unknown";
-};
+export { readVersion };
 
 export const resolveBuildLogPath = (args: string[]): string | undefined => {
   return resolveCliAction(args).flags.log;

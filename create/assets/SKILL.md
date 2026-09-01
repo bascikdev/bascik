@@ -19,6 +19,8 @@ This file contains the **complete, centralized documentation and development ski
 * **Scopes CSS class names, element selectors, `@keyframes`, and CSS custom properties** per component so they never collide.
 * **Rewrites DOM selector calls** (`getElementById`, `querySelector`, etc.) in component scripts to match scoped attribute names.
 * **Wraps component scripts in IIFEs** so variables do not leak between components.
+* **Derives instance IDs deterministically** from page path, component name, and ordinal index, ensuring byte-identical builds across repeated runs.
+* **Internal build metadata in `dist/.bascik/`:** Build-internal artifacts (such as `dist/.bascik/manifest.json` when `generate.manifest` is enabled) are stored in dot-prefixed paths within `dist/`. These are never served over HTTP because requests containing dot-segments always return 404.
 * **Outputs a `dist/` directory of plain `.html` files** with zero runtime dependencies and no client-side JS added by Bascik itself.
 
 ### What Bascik Does NOT Do
@@ -189,7 +191,7 @@ src/components/
   alert-box.css   ← scoped to alert-box
 ```
 
-**Subfolder layout** (same tag name regardless of folder):
+**Subfolder layout** (subfolders are allowed for organization, but the filename determines the tag name; duplicate names anywhere in components error):
 ```
 src/components/
   alert-box/
@@ -765,9 +767,21 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script.
 
-**To disable:** set `buildScriptCache: false` in your config (useful when debugging a script that reads external state not tracked by the cache key).
+**Excluding scripts from cache:** Statically scanned cache keys cannot detect runtime network calls, `readdir` directory reads, or dynamic computed file paths. For scripts reading from external APIs or computed paths, exclude them via `scripts.cache.exclude`:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  scripts: {
+    cache: {
+      enabled: true,
+      exclude: ['src/pages/live-feed/**', 'src/components/api-cards/**'],
+    },
+  },
+});
+```
 
 **To bust the entire cache** (e.g. after upgrading a build-time npm dependency):
 
@@ -931,8 +945,9 @@ Dynamic routes allow you to generate multiple static HTML files from a single te
 
 Rules:
 * Script must output a valid JSON array of route objects with required `params` (matching all bracket names in the template path) and optional `data`.
+* Route parameters must be URL-safe tokens; characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed.
 * In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
-* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup.
+* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup. Route collisions with static pages or other templates cause build errors.
 * Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
 * `data-bascik-routes`, `data-bascik-build`, and `data-bascik-server` are mutually exclusive and cannot be combined on the same tag.
 
@@ -961,7 +976,8 @@ Bascik intentionally does not inject a global `escapeHtml()` helper into every s
 
 Rules:
 * Top-level `import` and `await` are supported.
-* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --server` or the dev server.
+* `data-bascik-server` blocks are stripped from emitted HTML into a sidecar file (`dist/.bascik/server-scripts.json`) leaving an inert placeholder (`<script type="text/bascik-server">`), so Node server source is never shipped to browsers in static builds.
+* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute on each request.
 * They are NOT executed during `bascik --build` itself.
 * Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
 * On error, a warning is logged and the tag is replaced with an empty string.
@@ -1064,7 +1080,7 @@ export default defineConfig({
     sitemap: true,
     robots: true,
     sitemapLastmod: false,
-    cspHashes: false,
+    cspHashes: false,       // writes dist/.bascik/csp-hashes.json with exact sha256 hashes for inline blocks
     manifest: false,
   },
   pipeline: {
@@ -1124,7 +1140,7 @@ When creating or modifying `bascik.config.ts`:
 * **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
 * **Do NOT invent non-existent `exec` scripts:** `exec` is only for executing existing custom pre-build script files. If no custom script file exists in the workspace, leave `exec` as an empty array `[]` or omit it.
 * **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
-* **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
+* **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`. Exec scripts receive Bascik context environment variables (`BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_BASE`, `BASCIK_SITE_URL`). Do not rely on `phase: 'parallel'` for content that page compilation depends on.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
 * **Use `base` for subdirectory deployments:** Set a literal path prefix such as `base: '/docs/'`. Do not include a query, fragment, percent escape, backslash, or dot segment, and do not use a full URL. Bascik does not rewrite paths assembled inside JavaScript; use the build-time `BASCIK_BASE` value for those paths.
@@ -1770,7 +1786,7 @@ When migrating an existing website to Bascik, follow this procedure for existing
 1. **Open and inspect the existing files:** Read the existing `sitemap.xml` and `robots.txt`.
 2. **Determine if custom directives exist:** Decide whether they contain anything Bascik would not generate automatically: hand-curated URLs, `Disallow` rules for paths that still exist, a `Sitemap:` pointer to an external index, or crawl directives specific to a single bot.
 3. **If they contain nothing special, delete them:** Delete the old files and let Bascik generate fresh ones automatically at build time. Do not copy them into `src/pages/`, and do not set `generate.sitemap: false` or `generate.robots: false` in `bascik.config.ts`.
-4. **If they contain custom directives, keep the authored file:** Keep the authored file in `src/pages/`, turn off the matching generator in `bascik.config.ts` (`generate: { sitemap: false }` or `generate: { robots: false }`), and add a comment in the config explaining why.
+4. **If they contain custom directives, keep the authored file:** Keep the authored file in `src/pages/`, turn off the matching generator in `bascik.config.ts` (`generate: { sitemap: false }` or `generate: { robots: false }`), and add a comment in the config explaining why. Authored files in `src/pages/` take precedence over generated ones; if generation remains enabled, Bascik preserves the authored file and emits a warning. To exclude individual redirect-only pages from `sitemap.xml`, use `<meta name="bascik-sitemap" content="exclude">` in the page template.
 
 **Failure Mode Warning:** Copying old sitemap and robots files into `src/pages/` while disabling Bascik's built-in generation looks superficially correct, but silently freezes the sitemap at the old site's URL list forever as new pages are created or routes change.
 

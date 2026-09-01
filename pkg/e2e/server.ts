@@ -24,6 +24,13 @@ createServer((req, res) => {
   try {
     url = decodeURIComponent(rawUrl);
   } catch { }
+
+  // Deny dotfiles and dot-directories (e.g. /.env, /.bascik/manifest.json)
+  if (url.split('/').some((segment) => segment.startsWith('.'))) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('404 Not Found');
+  }
+
   if (base !== '/') {
     const prefix = base.replace(/\/$/, '');
     if (url === prefix || url === base) url = '/';

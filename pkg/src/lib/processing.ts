@@ -93,7 +93,7 @@ import { minifyJs } from "./js-minifier.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
-import { getUniqueId } from "./names.ts";
+import { deriveInstanceId, getUniqueId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
@@ -102,6 +102,9 @@ import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
+import { manifestCollector } from "./manifest.ts";
+import { extractServerScriptsToSidecar, serverSidecarRegistry } from "./server-sidecar.ts";
+import { cspHashCollector } from "./csp-hashes.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -389,10 +392,14 @@ export const recursivelyTranspile = (
   componentList: ComponentList,
   usedComponents: BascikComponent[] = [],
   filePath?: string,
+  instanceState?: { ordinalMap: Map<string, number>; issuedIds: Set<string> },
 ): TranspileResult => {
   if (filePath && !transpiledHtmlBody.includes("<!--bascik-source-file:")) {
     transpiledHtmlBody = `<!--bascik-source-file:${filePath}-->${transpiledHtmlBody}<!--bascik-source-file-end:${filePath}-->`;
   }
+
+  const ordinalMap = instanceState?.ordinalMap ?? new Map<string, number>();
+  const issuedIds = instanceState?.issuedIds ?? new Set<string>();
 
   // Iterative implementation — avoids keeping O(N) copies of the growing HTML
   // string simultaneously on the call stack (each recursive frame held its own
@@ -446,7 +453,14 @@ export const recursivelyTranspile = (
       component.fileContent = injectPropAttributes(component.fileContent, props);
 
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
-      const instanceId = getUniqueId(8);
+      const currentOrdinal = (ordinalMap.get(component.name) ?? 0) + 1;
+      ordinalMap.set(component.name, currentOrdinal);
+      const instanceId = deriveInstanceId(
+        filePath || "page",
+        component.name,
+        currentOrdinal,
+        issuedIds,
+      );
       currentStage = "attribute scoping";
       component = applyTransforms(component, buildScopingPipeline(instanceId));
       component.fileContent = stripPreserveDirectives(component.fileContent);
@@ -626,6 +640,7 @@ const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> =
     throw new PageProcessingError(result.absolutePagePath, "create output directory", error);
   }
   const distPagePath = getDistPagePath(result.relativePagePath);
+  manifestCollector.recordFile(distPagePath, result.distHtml);
   try {
     await writeFile(distPagePath, result.distHtml);
   } catch (error) {
@@ -666,16 +681,41 @@ export const processPageBatch = async (
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
   const jobs: PageJob[] = [];
+  const pathToSource = new Map<string, string>();
+
   for (const input of pageInputs) {
     if (typeof input === "string") {
       try {
         const expanded = await expandPageToJobs(input);
-        jobs.push(...expanded);
+        for (const job of expanded) {
+          const outKey = job.relativePagePath.toLowerCase();
+          const existing = pathToSource.get(outKey);
+          if (existing && existing !== input) {
+            throw new Error(
+              `Route conflict: "${existing}" and "${input}" both produce output path "${job.relativePagePath}".`,
+            );
+          }
+          pathToSource.set(outKey, input);
+          jobs.push(job);
+        }
       } catch (error) {
         pageErrors.push(normalizePageError(input, error, "expand routes"));
       }
     } else {
-      jobs.push(input);
+      const outKey = input.relativePagePath.toLowerCase();
+      const existing = pathToSource.get(outKey);
+      if (existing && existing !== input.pagePath) {
+        pageErrors.push(
+          normalizePageError(
+            input.pagePath,
+            new Error(`Route conflict: "${existing}" and "${input.pagePath}" both produce output path "${input.relativePagePath}".`),
+            "expand routes",
+          ),
+        );
+      } else {
+        pathToSource.set(outKey, input.pagePath);
+        jobs.push(input);
+      }
     }
   }
   if (jobs.length === 0) {
@@ -817,6 +857,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             try {
               const result = await pool.run(job);
               if (result) {
+                if (result.serverScripts) {
+                  serverSidecarRegistry.recordScripts(result.serverScripts);
+                }
                 if (!BascikConfig.isBuild) {
                   await mem.storePage({
                     relativePagePath: result.relativePagePath,
@@ -847,6 +890,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             try {
               const result = await pool.run(job);
               if (result) {
+                if (result.serverScripts) {
+                  serverSidecarRegistry.recordScripts(result.serverScripts);
+                }
                 if (!BascikConfig.isBuild) {
                   await mem.storePage({
                     relativePagePath: result.relativePagePath,
@@ -1013,11 +1059,17 @@ export const transpilePage = async (
     );
   }
 
+  const instanceState = {
+    ordinalMap: new Map<string, number>(),
+    issuedIds: new Set<string>(),
+  };
+
   let { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
     body,
     componentList,
     [],
     pagePath,
+    instanceState,
   );
 
   let bodyPasses = 0;
@@ -1031,6 +1083,7 @@ export const transpilePage = async (
       componentList,
       usedComponents,
       pagePath,
+      instanceState,
     );
     transpiledHtmlBody = nextPass.transpiledHtmlBody;
     usedComponents = nextPass.usedComponents;
@@ -1042,7 +1095,7 @@ export const transpilePage = async (
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
-  } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath);
+  } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath, instanceState);
 
   let headPasses = 0;
   while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
@@ -1055,6 +1108,7 @@ export const transpilePage = async (
       componentList,
       headUsedComponents,
       pagePath,
+      instanceState,
     );
     transpiledHeadContent = nextPassHead.transpiledHtmlBody;
     headUsedComponents = nextPassHead.usedComponents;
@@ -1181,6 +1235,9 @@ export const transpilePage = async (
       distHtml.slice(tag.closeIndex);
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
+  const serverScripts: Record<string, { id: string; source: string }> = {};
+  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts);
+  cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 
@@ -1220,6 +1277,7 @@ export const transpilePage = async (
     distHtml,
     usedComponentsNames: allUsedComponents.map(({ name }) => name),
     fileDependencies,
+    serverScripts,
   };
 };
 

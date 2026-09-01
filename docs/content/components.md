@@ -414,16 +414,26 @@ The directive family also includes `data-bascik-attr-{attribute}="{propName}"` f
 
 ## Subfolder Layout
 
-For components with multiple files, a subfolder keeps things tidy. Name the subfolder and the files inside it the same:
+Organize components into subfolders whenever it helps keep your project tidy. You can group by feature, section, or per-component folders containing companion files:
 
 ```text
 src/components/
-  feature-card/
-    feature-card.html
-    feature-card.css
+  marketing/
+    promo-card.html
+    promo-card.css
+  admin/
+    user-row.html
+  alert-box/
+    alert-box.html
+    alert-box.css
+    alert-box.ts
 ```
 
-Bascik derives the tag name from the `.html` filename, not the folder. `feature-card/feature-card.html` still produces `<feature-card>`.
+Bascik derives the tag name from the filename only, not from the directory path. Subfolders do not create separate namespaces, so `marketing/promo-card.html` registers `<promo-card>`, `admin/user-row.html` registers `<user-row>`, and `alert-box/alert-box.html` registers `<alert-box>`.
+
+If two files anywhere in `src/components/` resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`), Bascik raises a build error naming both conflicting paths.
+
+> **Flexible organization.** Organize `src/components/` flat, in feature folders, or in per-component directories. Choose whichever layout fits your workflow and keep filenames unique across the tree.
 
 > **No restart needed.** The dev server watches `src/components/` for new and changed files. Drop in a new `.html` or `.css` file and all affected pages re-transpile and reload automatically.
 

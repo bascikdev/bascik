@@ -23,10 +23,17 @@ test.describe('data-bascik-server — request-time script execution', () => {
 
   // ─── Static baseline ─────────────────────────────────────────────────────
 
-  test('static content before and after server scripts is preserved', async ({ page }) => {
+  test('static content before and after server scripts is preserved and logs no browser console error', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') {
+        consoleErrors.push(msg.text());
+      }
+    });
     await page.goto('/server-scripts-test');
     await expect(page.locator('#static-before')).toHaveText('static-before');
     await expect(page.locator('#static-after')).toHaveText('static-after');
+    expect(consoleErrors).toHaveLength(0);
   });
 
   // ─── Request headers ─────────────────────────────────────────────────────

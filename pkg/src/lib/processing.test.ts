@@ -111,11 +111,14 @@ vi.mock("./worker-pool.js", () => {
   };
 });
 
-vi.mock("./names.js", () => ({
-  getUniqueId: vi.fn(() => "test1234"),
-  minifyAttributeName: vi.fn((name) => name),
-  getAttributeNameHash: vi.fn((name) => name),
-}));
+vi.mock("./names.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    minifyAttributeName: vi.fn((name) => name),
+    getAttributeNameHash: vi.fn((name) => name),
+  };
+});
 
 vi.mock("./components.js", async (importOriginal) => {
   const actual = await importOriginal() as any;
@@ -1964,7 +1967,7 @@ describe("transpilePage – minify.js branch coverage", () => {
     expect(result!.distHtml).toContain(jsonLd);
   });
 
-  it("does not minify data-bascik-server scripts", async () => {
+  it("replaces data-bascik-server scripts with inert sidecar placeholder and preserves source in sidecar", async () => {
     const serverCode = "const   x   =   require('fs');";
     const html =
       `<!DOCTYPE html><html><head></head><body>` +
@@ -1973,7 +1976,8 @@ describe("transpilePage – minify.js branch coverage", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, {});
     expect(result).not.toBeNull();
-    expect(result!.distHtml).toContain(serverCode);
+    expect(result!.distHtml).not.toContain(serverCode);
+    expect(result!.distHtml).toContain('type="text/bascik-server"');
   });
 
   it("does not minify external scripts (with src attribute)", async () => {
@@ -2374,10 +2378,6 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
       deduplicateCss: true,
       preserve: ["code"],
     };
-    (getUniqueId as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce("first111")
-      .mockReturnValueOnce("second22");
-
     const componentList = {
       "bound-field": {
         fileName: "components/bound-field.html",
@@ -2391,11 +2391,61 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
       componentList,
     ).transpiledHtmlBody;
 
-    expect(result).toContain('id="bascik__bound-field__first111__field"');
-    expect(result).toContain('id="bascik__bound-field__second22__field"');
-    expect(result).toContain('name="bascik__bound-field__first111__group"');
-    expect(result).toContain('name="bascik__bound-field__second22__group"');
+    const idMatches = result.match(/id="bascik__bound-field__([0-9a-f]+)__field"/g);
+    expect(idMatches).toHaveLength(2);
+    expect(idMatches![0]).not.toBe(idMatches![1]);
+
+    const nameMatches = result.match(/name="bascik__bound-field__([0-9a-f]+)__group"/g);
+    expect(nameMatches).toHaveLength(2);
+    expect(nameMatches![0]).not.toBe(nameMatches![1]);
+
     expect(result.match(/class="bascik__bound-field__control"/g)).toHaveLength(2);
+  });
+
+  it("transpiling the same page twice produces byte-identical output", () => {
+    (BascikConfig as any).scoping = {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
+    const componentList = {
+      "card-item": {
+        name: "card-item",
+        fileName: "components/card-item.html",
+        fileContent: '<div id="card-box" name="card-field"><h1 class="title">Title</h1></div>',
+      },
+    };
+    const pageHtml = '<card-item></card-item><card-item></card-item>';
+    const first = recursivelyTranspile(pageHtml, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    const second = recursivelyTranspile(pageHtml, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    expect(first).toBe(second);
+  });
+
+  it("adding a component earlier shifts later IDs predictably and repeatedly", () => {
+    (BascikConfig as any).scoping = {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
+    const componentList = {
+      "card-item": {
+        name: "card-item",
+        fileName: "components/card-item.html",
+        fileContent: '<div id="card-box" name="card-field"></div>',
+      },
+    };
+    const pageHtml1 = '<card-item></card-item>';
+    const pageHtml2 = '<card-item></card-item><card-item></card-item>';
+    const run1 = recursivelyTranspile(pageHtml2, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    const run2 = recursivelyTranspile(pageHtml2, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    expect(run1).toBe(run2);
+
+    const single = recursivelyTranspile(pageHtml1, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    expect(run1.startsWith(single)).toBe(true);
   });
 });
 

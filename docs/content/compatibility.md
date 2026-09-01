@@ -37,6 +37,7 @@ Bascik operates as a zero-runtime build-time compiler and HTTP delivery server. 
 | MIME Types | IETF RFC 9239 / IANA | Baseline: Widely Available | Current standard `text/javascript; charset=utf-8` media types |
 | Live Reload & Events | WHATWG EventSource | Baseline: Widely Available | Server-Sent Events (SSE) `/bascik-live-reload` endpoint |
 | Sitemaps & Robots | Sitemaps 0.9 / IETF RFC 9309 | Standard Protocols | Canonical XML sitemap and robots exclusion directives |
+| Content Security Policy | W3C CSP Level 3 | Baseline: Widely Available | SHA-256 hash manifests (`dist/.bascik/csp-hashes.json`) for inline scripts and styles; per-request nonces intentionally unsupported for static caching |
 
 ---
 
@@ -47,13 +48,16 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | Capability | Standard / Spec | Status | Notes |
 | --- | --- | --- | --- |
 | Hyphenated custom element names | WHATWG HTML §4.13.1.2 | ✓ | Component tags with hyphens (e.g. `<my-button>`, `<site-nav>`) follow the WHATWG custom element standard and prevent collisions with native tags. |
+| Unique component filenames | WHATWG HTML §4.13.1.2 | ✓ | Component names are derived strictly from filenames. Subfolders are supported for organization, but duplicate filenames producing the same tag name error at build time. |
 | Single-word component filenames | WHATWG HTML §4.13.1.2 | △ | Single-word component names (e.g. `card.html` -> `<card></card>`) compile for backward compatibility, but Bascik's CLI compiler and VS Code extension issue warnings recommending a hyphenated name (e.g. `my-card.html`). |
 | Native element shadowing guard | WHATWG HTML §4 | ✓ | Bascik maintains a set of 115 native HTML elements and issues a build-time warning if a component filename shadows a native tag (e.g. `header.html` or `dialog.html`). |
 | Exact component tag matching | WHATWG HTML §13.2.5 | ✓ | A component name matches only the complete tag name. A `card` component never claims a longer hyphenated tag such as `<card-header>`. |
 | Custom `data-*` attributes | WHATWG HTML §3.2.6.6 | ✓ | Internal directives (`data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-preserve`, `data-bascik-slot`, `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) strictly conform to XML NCName lower-case naming syntax. |
+| URL-safe dynamic route parameters | WHATWG URL | ✓ | Dynamic route parameters reject illegal filename and URL characters (`#`, `%`, `&`, `'`, `+`, spaces, leading dots, Windows device names) to ensure predictable static serving. |
 | Self-closing custom tags | WHATWG HTML §13.1.2 | ✓ | In HTML source code, custom tags can use self-closing syntax with or without a space (`<my-comp />` or `<my-comp/>`). Both forms balance correctly when nested inside a paired instance and expand at build time into standard HTML. |
 | Multiple top-level HTML elements | WHATWG HTML | ✓ | Supported naturally without requiring single wrapper elements or fragment tags. All root elements are inserted in document order. Inherited usage attributes merge onto the first content element after leading text, `<link>`, or `<meta>` nodes. Root opening tags are parsed quote-aware, so `>` inside an attribute value remains intact. |
 | Multiple `<style>` blocks | WHATWG HTML §4.2.6 | ✓ | Extracted and combined with any companion `.css` file before scoping and deduplication. *Note:* Using multiple `<style>` tags in a single component file is supported, but using a single stylesheet pattern per component is recommended for maintainability. |
+| Deterministic instance IDs | WHATWG HTML | ✓ | Instance IDs for scoped `id` and `name` attributes are derived deterministically from (page path, component name, ordinal index), ensuring byte-identical builds across repeated runs. |
 | Multiple `<script>` blocks | WHATWG HTML §4.12 | ✓ | Client `<script>` blocks are each wrapped in an independent IIFE. Recommended for clean, maintainable code when separating unrelated logic within a component. Build (`data-bascik-build`), server (`data-bascik-server`), and data scripts (e.g. `type="application/ld+json"`) are processed according to their script type. |
 | Raw-text comments and nested scripts | WHATWG HTML §4.12 | ✓ | Comments and comment-like text inside `<pre>`, `<textarea>`, and scripts are shielded before HTML comments are stripped. Scripts nested inside containers remain in place. |
 | Raw-text document closing tags | WHATWG HTML §13.2.5 | ✓ | Literal `</body>` text inside `<textarea>` and `</head>` text inside `<script>` do not terminate document extraction or duplicate the remaining page during reassembly. |

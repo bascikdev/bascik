@@ -3,7 +3,9 @@ import {
   minifyAttributeName,
   getAttributeNameHash,
   clearHashCache,
+  deriveInstanceId,
   getUniqueId,
+  makeEtag,
   toBase62,
 } from "./names.ts";
 import { BascikConfig } from "./config.ts";
@@ -68,7 +70,11 @@ describe("minifyAttributeName", () => {
   });
 });
 
-describe("getUniqueId", () => {
+describe("getUniqueId and genuine randomness audit", () => {
+  // Audit of genuine-randomness call sites outside component scoping:
+  // - getUniqueId: generic cryptographically secure random hex utility (used for TLS material, nonces, random IDs where randomness is explicitly requested)
+  // - makeEtag: content-hash ETag generator based on SHA-256 (remains non-deterministic/dependent strictly on buffer bytes)
+  // - Math.random: used for unique temporary filenames in script runners (build-scripts, routes, server-scripts)
   it("returns a lowercase hex string of the requested length", () => {
     const id = getUniqueId(8);
     expect(id).toMatch(/^[0-9a-f]{8}$/);
@@ -79,9 +85,52 @@ describe("getUniqueId", () => {
     expect(id).toMatch(/^[0-9a-f]{7}$/);
   });
 
-  it("returns different values on each call", () => {
+  it("returns different values on each call (genuine randomness)", () => {
     const id1 = getUniqueId(8);
     const id2 = getUniqueId(8);
     expect(id1).not.toBe(id2);
+  });
+
+  it("makeEtag produces strong SHA-256 etag without modification", () => {
+    const etag1 = makeEtag(Buffer.from("hello world"));
+    const etag2 = makeEtag(Buffer.from("hello world"));
+    expect(etag1).toBe(etag2);
+    expect(etag1).toMatch(/^"[a-zA-Z0-9_-]{27}"$/);
+  });
+});
+
+describe("deriveInstanceId", () => {
+  it("returns 8 lowercase hex characters", () => {
+    const id = deriveInstanceId("src/pages/index.html", "card-item", 1);
+    expect(id).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  it("assigns different IDs to two instances of one component on the same page", () => {
+    const issued = new Set<string>();
+    const id1 = deriveInstanceId("src/pages/index.html", "card-item", 1, issued);
+    const id2 = deriveInstanceId("src/pages/index.html", "card-item", 2, issued);
+    expect(id1).not.toBe(id2);
+  });
+
+  it("assigns different IDs to the same component at the same ordinal on two different pages", () => {
+    const id1 = deriveInstanceId("src/pages/index.html", "card-item", 1);
+    const id2 = deriveInstanceId("src/pages/about.html", "card-item", 1);
+    expect(id1).not.toBe(id2);
+  });
+
+  it("resolves forced collisions deterministically without emitting duplicates", () => {
+    const issued = new Set<string>();
+    // Pre-seed collision
+    const naturalId = deriveInstanceId("src/pages/index.html", "card-item", 1);
+    issued.add(naturalId);
+
+    const resolvedId = deriveInstanceId("src/pages/index.html", "card-item", 1, issued);
+    expect(resolvedId).toMatch(/^[0-9a-f]{8}$/);
+    expect(resolvedId).not.toBe(naturalId);
+
+    // Repeat to ensure deterministic resolution
+    const issued2 = new Set<string>([naturalId]);
+    const resolvedId2 = deriveInstanceId("src/pages/index.html", "card-item", 1, issued2);
+    expect(resolvedId2).toBe(resolvedId);
   });
 });

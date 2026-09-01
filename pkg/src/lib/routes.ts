@@ -6,13 +6,21 @@ import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
+import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
 import type { RouteEntry } from "./types.ts";
+
+export { stripAnsiEscapeCodes };
 
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
 const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
 
 /** Match invalid filename / path traversal characters in route param values. */
-const INVALID_PARAM_CHARS_RE = /[<>:"/\\|?*\x00-\x1F]/;
+const INVALID_PARAM_CHARS_RE = /[<>:"/\\|?*\x00-\x1F#%&'+ ]/;
+const WINDOWS_RESERVED_NAMES = new Set([
+  "con", "prn", "aux", "nul",
+  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+]);
 
 const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
 const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
@@ -37,38 +45,6 @@ const ROUTES_SERVER_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
-
-const stripAnsiEscapeCodes = (value: string): string =>
-  value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
-    .replace(/\u001B[@-Z\\-_]/g, "");
-
-const runModule = (
-  path: string,
-  extraEnv: Record<string, string> = {},
-): Promise<{ stdout: string; stderr: string }> => {
-  return new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [path],
-      {
-        cwd: process.cwd(),
-        env: {
-          ...process.env,
-          FORCE_COLOR: "0",
-          NO_COLOR: "1",
-          ...extraEnv,
-        },
-        timeout: 60_000,
-        killSignal: "SIGTERM",
-      },
-      (err, stdout, stderr) => {
-        if (err) reject(Object.assign(err, { stdout, stderr }));
-        else resolve({ stdout, stderr });
-      },
-    );
-  });
-};
 
 /** True when any path segment is a [param] placeholder. */
 export const isDynamicRoute = (pagePath: string): boolean => {
@@ -197,9 +173,25 @@ export const parseRouteList = (
         break;
       }
 
+      if (strVal.startsWith(".")) {
+        warnings.push(
+          `Route item at index ${i} has leading dot in param "${paramName}": "${strVal}"`,
+        );
+        valid = false;
+        break;
+      }
+
+      if (WINDOWS_RESERVED_NAMES.has(strVal.toLowerCase())) {
+        warnings.push(
+          `Route item at index ${i} uses Windows reserved device name in param "${paramName}": "${strVal}"`,
+        );
+        valid = false;
+        break;
+      }
+
       if (INVALID_PARAM_CHARS_RE.test(strVal)) {
         warnings.push(
-          `Route item at index ${i} contains illegal filename characters in param "${paramName}": "${strVal}"`,
+          `Route item at index ${i} contains illegal filename or URL characters in param "${paramName}": "${strVal}"`,
         );
         valid = false;
         break;
@@ -470,7 +462,7 @@ export const executeRoutesScript = async (
   }
 
   if (dedupedRoutes.length === 0) {
-    console.log(`[bascik] routes template "${relPath}" produced 0 routes`);
+    console.warn(`[bascik] warning: routes template "${relPath}" produced 0 routes.`);
   }
 
   return { routes: dedupedRoutes, cleanedHtml };

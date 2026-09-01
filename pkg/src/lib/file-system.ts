@@ -8,6 +8,7 @@ import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
+import { manifestCollector } from "./manifest.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
@@ -119,6 +120,7 @@ export async function copyReplicatePath(
       }
       const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
       const minifiedHash = createHash("sha256").update(minified).digest("hex");
+      manifestCollector.recordFile(destPath, minified);
       if (minifiedHash === destHash) return;
       await writeFile(destPath, minified);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
@@ -132,6 +134,7 @@ export async function copyReplicatePath(
         : rewriteManifestBasePaths(source, BascikConfig.base);
       const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
       const transformedHash = createHash("sha256").update(transformed).digest("hex");
+      manifestCollector.recordFile(destPath, transformed);
       if (transformedHash === destHash) return;
       await writeFile(destPath, transformed);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
@@ -154,6 +157,7 @@ export async function copyReplicatePath(
       }
       const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
       const minifiedHash = createHash("sha256").update(minified).digest("hex");
+      manifestCollector.recordFile(destPath, minified);
       if (minifiedHash === destHash) return;
       await writeFile(destPath, minified);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
@@ -167,6 +171,7 @@ export async function copyReplicatePath(
       // The dest file might not exist, so return null
       calculateFileHash(destPath).catch(() => null),
     ]);
+    await manifestCollector.recordFileFromDisk(src);
     if (srcHash === destHash) return;
     await copyFile(src, destPath);
     if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
@@ -188,6 +193,8 @@ export const deepReadDir = async (dirPath: string, isRoot = true): Promise<any[]
   try {
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
+    // Sort directory entries byte-wise at each level for deterministic traversal
+    dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return Promise.all(
       dirents.map(async (dirent: Dirent) => {
         const path = join(dirPath, dirent.name);

@@ -79,6 +79,44 @@ Yes. Bascik's output is vanilla HTML. Any library that works with HTML works wit
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
+## Can I organize components into subfolders?
+
+Yes. You can organize `src/components/` however you prefer: completely flat, grouped by feature or section (e.g. `src/components/marketing/promo-card.html`), or in dedicated per-component directories (e.g. `src/components/alert-box/alert-box.html`).
+
+Tag names come from the filename only, so subfolders do not create separate namespaces. `src/components/marketing/promo-card.html` registers `<promo-card>`. Choose whichever folder structure fits your project, ensuring each component file has a unique name.
+
+## What happens if two components have the same name?
+
+If two component files define the same tag name (such as `src/components/marketing/card.html` and `src/components/admin/card.html`, or `card.html` and `card.v2.html`), Bascik throws a build error naming both colliding file paths. Duplicate component names are not allowed because tag names come from the filename alone.
+
+## Why did my hand-written robots.txt get overwritten?
+
+In earlier versions of Bascik, generated files could overwrite authored ones. Bascik now checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`) before generating files. If an authored file exists, Bascik preserves it and emits a warning with steps to configure `generate.robots: false` or delete the authored file.
+
+## Why do two builds of the same source produce byte-identical output?
+
+Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
+
+## What is `dist/.bascik/`?
+
+`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`, `generate.cspHashes: true` writes `dist/.bascik/csp-hashes.json`, and static builds with server scripts write `dist/.bascik/server-scripts.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
+
+## How do I use a strict Content Security Policy with Bascik?
+
+Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
+
+## Why did my dynamic route 404?
+
+Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.
+
+## Why is my build script output stale?
+
+Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.
+
+## Why did my `parallel` exec script's output not appear?
+
+In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts.
+
 ## How do local script references (`<script src="...">`) work inside a component?
 
 When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.
