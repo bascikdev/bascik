@@ -9,6 +9,15 @@ vi.mock("./userConfig.js", () => ({
 
 import { defaultConfig, BascikConfig, initBascikConfig, normalizeScopableOption, deepMerge } from "./config.ts";
 
+// Filesystem stub for initBascikConfig calls whose configs reference script
+// paths that do not exist on disk. Validation injects the filesystem; there
+// is no global skip flag.
+const allowAllFs = {
+  existsSync: () => true,
+  isDirectory: () => true,
+  isReadableFile: () => true,
+};
+
 describe("defaultConfig", () => {
   it("has scoping options", () => {
     expect(defaultConfig.scoping.scriptBlocks).toBe(true);
@@ -185,22 +194,30 @@ describe("dev vs build vs server mode overrides and defaults", () => {
 
 describe("exec config normalization and merging", () => {
   it("normalizes an exec entry with no phase to 'pre'", () => {
-    const { BascikConfig: cfg } = initBascikConfig({
-      pipeline: { exec: [{ script: "scripts/gen.js" }] },
-    });
+    const { BascikConfig: cfg } = initBascikConfig(
+      { pipeline: { exec: [{ script: "scripts/gen.js" }] } },
+      {},
+      {},
+      { fs: allowAllFs },
+    );
     expect(cfg.pipeline.exec).toEqual([{ script: "scripts/gen.js", phase: "pre" }]);
   });
 
   it("preserves explicit valid phase ('post' and 'parallel')", () => {
-    const { BascikConfig: cfg } = initBascikConfig({
-      pipeline: {
-        exec: [
-          { script: "scripts/a.js", phase: "post" },
-          { script: "scripts/b.js", phase: "parallel" },
-          { script: "scripts/c.js", phase: "pre" },
-        ],
+    const { BascikConfig: cfg } = initBascikConfig(
+      {
+        pipeline: {
+          exec: [
+            { script: "scripts/a.js", phase: "post" },
+            { script: "scripts/b.js", phase: "parallel" },
+            { script: "scripts/c.js", phase: "pre" },
+          ],
+        },
       },
-    });
+      {},
+      {},
+      { fs: allowAllFs },
+    );
     expect(cfg.pipeline.exec).toEqual([
       { script: "scripts/a.js", phase: "post" },
       { script: "scripts/b.js", phase: "parallel" },
@@ -208,16 +225,22 @@ describe("exec config normalization and merging", () => {
     ]);
   });
 
-  it("warns and falls back to 'pre' when an invalid phase is provided", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    const { BascikConfig: cfg } = initBascikConfig({
-      pipeline: { exec: [{ script: "scripts/invalid.js", phase: "invalid-phase" as any }] },
-    });
-    expect(cfg.pipeline.exec).toEqual([{ script: "scripts/invalid.js", phase: "pre" }]);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid exec phase "invalid-phase"'),
-    );
-    warnSpy.mockRestore();
+  it("rejects an invalid phase in the validation pass, naming key and value", () => {
+    let thrown: Error | undefined;
+    try {
+      initBascikConfig(
+        { pipeline: { exec: [{ script: "scripts/invalid.js", phase: "invalid-phase" as any }] } },
+        {},
+        {},
+        { fs: allowAllFs },
+      );
+    } catch (err) {
+      thrown = err as Error;
+    }
+    expect(thrown).toBeDefined();
+    expect(thrown!.message).toContain("pipeline.exec[0].phase");
+    expect(thrown!.message).toContain("invalid-phase");
+    expect(thrown!.message).toContain('"pre", "post", or "parallel"');
   });
 
   it("lets buildOverrideConfig replace exec array during build", () => {
@@ -225,6 +248,7 @@ describe("exec config normalization and merging", () => {
       { pipeline: { exec: [{ script: "scripts/dev-only.js" }] } },
       { pipeline: { exec: [{ script: "scripts/build-only.js", phase: "post" }] } },
       { isBuild: true },
+      { fs: allowAllFs },
     );
     expect(cfg.pipeline.exec).toEqual([
       { script: "scripts/build-only.js", phase: "post" },

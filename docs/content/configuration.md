@@ -6,6 +6,30 @@ However, Bascik is also **highly configurable** for both development and product
 
 To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` also works and takes precedence if both files exist.
 
+## Configuration Validation
+
+Bascik validates your configuration at startup, before anything reads it. Every problem is reported together in one aggregated error rather than one fix at a time. Each entry names the key, the received value, and what was expected:
+
+```text
+Configuration errors in bascik.config.ts
+
+  http.port                70000
+                           expected an integer between 1 and 65535
+
+  minify.js                "esbuild"
+                           expected true, false, or a function
+
+  scripts.onBuildScriptErr unknown key
+                           did you mean "scripts.onBuildScriptError"?
+
+  pipeline.exec[0].script  scripts/gen-data.ts
+                           file does not exist
+
+4 configuration errors
+```
+
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `directory.public`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted; only a full URL is rejected.
+
 ## Minimal Configuration Example (Recommended)
 
 Because Bascik is zero-config, you only need to specify settings that differ from built-in defaults. Keep your `bascik.config.ts` clean and minimal:

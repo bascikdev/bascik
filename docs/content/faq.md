@@ -153,3 +153,16 @@ Each script tag is isolated in its own IIFE so variables never leak into the glo
 Because the site URL changes per deployment, not per project. Staging, production, and preview deploys of the same checked-in source need different values, and putting the URL in `bascik.config.ts` would force CI to mutate a tracked file (or maintain per-branch forks of it) just to build for a different origin.
 
 Bascik follows the standard precedence chain instead: `--site-url` flag, then the `BASCIK_SITE_URL` environment variable, then a `.env` file. Each environment sets its own value and the config file stays untouched. See [Configuration precedence](/configuration#configuration-precedence).
+
+## Why did my build fail with a configuration error?
+
+Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.
+
+Common causes:
+
+- **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
+- **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
+- **A path that does not exist**, such as an `exec` script, a `watchPaths` entry, or a TLS certificate file.
+- **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
+
+Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).

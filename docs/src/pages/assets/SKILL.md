@@ -957,6 +957,10 @@ Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file 
 
 Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs.
 
+### Configuration is validated at startup
+
+Bascik validates the config before anything reads it and reports every problem together: each error names the key, the received value, and the expectation. Unknown keys are rejected with a "did you mean" suggestion, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.exec[].script`, `pipeline.watchPaths`, `assets.inlineStyles`, TLS key/cert files) are checked for existence. `base` is normalized to a leading and trailing slash (`docs` becomes `/docs/`); only a full URL is rejected.
+
 ### The site URL is not a config key
 
 `siteUrl` is a per-deployment value, so it never goes in `bascik.config.ts` (setting it there is an error). Three sources, in precedence order:

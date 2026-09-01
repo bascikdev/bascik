@@ -1,6 +1,12 @@
 import { resolve } from "node:path";
 import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
+import {
+  formatConfigErrors,
+  normalizeBasePath,
+  validateUserConfig,
+  type ConfigValidationDeps,
+} from "./config-validation.ts";
 import type {
   BascikConfigOptions,
   UserConfig,
@@ -221,25 +227,15 @@ const deepFreeze = <T>(value: T): Readonly<T> => {
   return value;
 };
 
-const VALID_EXEC_PHASES = new Set(["pre", "post", "parallel"]);
-
 const normalizeExec = (
   exec: ExecEntry[] | undefined,
 ): ExecEntry[] | undefined => {
   if (!exec || !Array.isArray(exec)) return undefined;
-  return exec.map((entry) => {
-    let phase = entry.phase ?? "pre";
-    if (!VALID_EXEC_PHASES.has(phase)) {
-      console.warn(
-        `[bascik:config] Invalid exec phase "${phase}", falling back to "pre"`,
-      );
-      phase = "pre";
-    }
-    return {
-      ...entry,
-      phase: phase as ExecPhase,
-    };
-  });
+  // Unknown phases never reach here: config validation rejects them first.
+  return exec.map((entry) => ({
+    ...entry,
+    phase: (entry.phase ?? "pre") as ExecPhase,
+  }));
 };
 
 /**
@@ -255,11 +251,19 @@ export const initBascikConfig = (
   userConfig: UserConfig = {},
   modeOverrides: { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig = {},
   flags: { isBuild?: boolean; isProdServer?: boolean } = {},
+  deps: ConfigValidationDeps = {},
 ) => {
   const safeUserConfig = typeof userConfig === "object" && userConfig !== null ? userConfig : {};
   const isBuild = flags.isBuild ?? false;
   const isProdServer = flags.isProdServer ?? false;
   const activeMode: "dev" | "build" | "server" = isBuild ? "build" : isProdServer ? "server" : "dev";
+
+  // Validate every config layer before anything consumes it. All problems
+  // report together in one aggregated error rather than one fix-at-a-time.
+  const validationErrors = validateUserConfig(safeUserConfig, modeOverrides, deps);
+  if (validationErrors.length > 0) {
+    throw new Error(formatConfigErrors(validationErrors));
+  }
 
   let activeOverride: UserConfig = {};
   if (typeof modeOverrides === "object" && modeOverrides !== null) {
@@ -323,6 +327,9 @@ export const initBascikConfig = (
   const BascikConfig: BascikConfigOptions = {
     ...merged,
     directory: resolvedDirectory,
+    // Validated above as a non-URL path; normalize missing slashes rather
+    // than rejecting a value like "docs" that has one clear meaning.
+    base: normalizeBasePath(merged.base),
     scripts: {
       ...merged.scripts,
       cache: normalizedCache,
