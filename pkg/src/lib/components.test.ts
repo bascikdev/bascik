@@ -336,6 +336,24 @@ describe("getTag – self-closing", () => {
       innerContent: "inner",
     });
   });
+
+  it("ignores a spaced self-closing child when balancing a paired parent", () => {
+    const html = "<my-list><my-list /></my-list>";
+    expect(getTag(html, "my-list")).toMatchObject({
+      content: html,
+      innerContent: "<my-list />",
+    });
+  });
+
+  it("balances deeply nested self-closing children with or without spaces", () => {
+    const html =
+      "<my-list><my-list><my-list /><my-list/></my-list><my-list /></my-list>";
+    expect(getTag(html, "my-list")).toMatchObject({
+      content: html,
+      innerContent:
+        "<my-list><my-list /><my-list/></my-list><my-list />",
+    });
+  });
 });
 
 describe("replaceTag – self-closing", () => {
@@ -880,6 +898,38 @@ describe("mergeAttributesOntoRoot", () => {
     const html = '<script>console.log(1);</script>\n  <div class="card">Card</div>\n<aside>Sidebar</aside>';
     const result = mergeAttributesOntoRoot(html, { class: "active" });
     expect(result).toBe('<script>console.log(1);</script>\n  <div class="card active">Card</div>\n<aside>Sidebar</aside>');
+  });
+
+  it("merges after a quoted greater-than sign in a root attribute", () => {
+    expect(
+      mergeAttributesOntoRoot('<div title="a > b">Card</div>', {
+        "aria-label": "featured",
+      }),
+    ).toBe('<div title="a > b" aria-label="featured">Card</div>');
+  });
+
+  it("merges onto the first element after a leading text node", () => {
+    expect(mergeAttributesOntoRoot("Intro text<div>Card</div>", { class: "active" })).toBe(
+      'Intro text<div class="active">Card</div>',
+    );
+  });
+
+  it.each(["link", "meta"])(
+    "merges onto the first content element after a leading <%s>",
+    (tagName) => {
+      const leading = tagName === "link" ? '<link rel="stylesheet" href="/a.css">' : '<meta charset="utf-8">';
+      expect(mergeAttributesOntoRoot(`${leading}<div>Card</div>`, { class: "active" })).toBe(
+        `${leading}<div class="active">Card</div>`,
+      );
+    },
+  );
+
+  it("merges usage and root style declarations", () => {
+    expect(
+      mergeAttributesOntoRoot('<div style="color: red;">Card</div>', {
+        style: "font-weight: bold;",
+      }),
+    ).toBe('<div style="color: red; font-weight: bold;">Card</div>');
   });
 });
 

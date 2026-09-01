@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
+import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -718,6 +719,30 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('cost $&amp; tax');
+  });
+
+  it("reassembles a body containing a literal closing tag in textarea content exactly once", async () => {
+    const html =
+      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toBe(
+      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>' +
+        LIVE_RELOAD_SCRIPT +
+        "</body></html>",
+    );
+  });
+
+  it("reassembles a head containing a literal closing tag in script content exactly once", async () => {
+    const html =
+      '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toBe(
+      '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
+        LIVE_RELOAD_SCRIPT +
+        "</body></html>",
+    );
   });
 });
 

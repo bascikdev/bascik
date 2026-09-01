@@ -465,7 +465,7 @@ When utilizing your components inside pages or other components, choose self-clo
 </hello-card>
 ```
 
-If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. Both forms compile to the exact same output.
+If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. A space before `/>` is optional, so `<site-nav />` and `<site-nav/>` compile identically, including when nested inside another instance of the same component. Paired and self-closing forms compile to the exact same output.
 
 ## Multiple Root Elements
 

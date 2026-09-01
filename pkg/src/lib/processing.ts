@@ -995,7 +995,8 @@ export const transpilePage = async (
   // from components like <code-block>) is preserved by minifyHtml's <pre> handling.
 
   // Gets all the text between the <body></body> tags
-  const { innerContent: body } = getTag(htmlWithBuildOutput, "body");
+  const bodyTag = getTag(htmlWithBuildOutput, "body");
+  const { innerContent: body } = bodyTag;
 
   if (!body) {
     throw new PageProcessingError(
@@ -1029,7 +1030,8 @@ export const transpilePage = async (
   }
 
   // Also transpile the <head> so components can be used there (e.g. shared <meta> tags)
-  const { innerContent: headRaw } = getTag(htmlWithBuildOutput, "head");
+  const headTag = getTag(htmlWithBuildOutput, "head");
+  const { innerContent: headRaw } = headTag;
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
@@ -1147,22 +1149,23 @@ export const transpilePage = async (
     transpiledHead = await minifyScriptTagsInHtml(transpiledHead, jsMinifier);
   }
 
-  // Puts our processed markup back between the <body></body> tags.
-  // The open tag is matched with attributes (`<body[^>]*>`) and preserved
-  // verbatim — `<body class="dark">` or `<head data-x>` must not silently
-  // drop the processed content (which is what a bare-<body>-only replace did).
-  let distHtml = htmlWithBuildOutput
-    // Use function replacements so that $1, $2, $& etc. in transpiledHtmlBody/Head
-    // are never interpreted as back-reference patterns.  The open tags are matched
-    // with attributes (`<body[^>]*>`) so e.g. `<body class="dark">` is preserved.
-    .replace(
-      /(<body[^>]*>)[\s\S]*?(<\/body>)/i,
-      (_m, open, close) => `${open}${transpiledHtmlBody}${close}`,
-    )
-    .replace(
-      /(<head[^>]*>)[\s\S]*?(<\/head>)/i,
-      (_m, open, close) => `${open}${transpiledHead}${close}`,
-    );
+  const replacements = [
+    { tag: bodyTag, content: transpiledHtmlBody },
+    { tag: headTag, content: transpiledHead },
+  ].filter(
+    (replacement): replacement is {
+      tag: typeof bodyTag & { contentStart: number; closeIndex: number };
+      content: string;
+    } => replacement.tag.contentStart !== undefined && replacement.tag.closeIndex !== undefined,
+  ).sort((a, b) => b.tag.contentStart - a.tag.contentStart);
+
+  let distHtml = htmlWithBuildOutput;
+  for (const { tag, content } of replacements) {
+    distHtml =
+      distHtml.slice(0, tag.contentStart) +
+      content +
+      distHtml.slice(tag.closeIndex);
+  }
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 

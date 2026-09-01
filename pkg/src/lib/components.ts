@@ -485,7 +485,12 @@ export const getTag = (
   tagName: string,
   componentList?: ComponentList,
   masked?: string,
-): Partial<BascikComponent> => {
+): Partial<BascikComponent> & {
+  startIndex?: number;
+  contentStart?: number;
+  closeIndex?: number;
+  endIndex?: number;
+} => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Try paired tags: <tagName ...>content</tagName>
@@ -501,13 +506,24 @@ export const getTag = (
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
       const closeTagMatch = closeTagRegexp.exec(htmlString.slice(closeIndex));
       if (closeTagMatch) {
-        const returnObj = {
+        const returnObj: Partial<BascikComponent> & {
+          startIndex?: number;
+          contentStart?: number;
+          closeIndex?: number;
+          endIndex?: number;
+        } = {
           content: htmlString.slice(
             openTag.start,
             closeIndex + closeTagMatch[0].length,
           ),
           innerContent: htmlString.slice(openTag.end, closeIndex),
         };
+        Object.defineProperties(returnObj, {
+          startIndex: { value: openTag.start },
+          contentStart: { value: openTag.end },
+          closeIndex: { value: closeIndex },
+          endIndex: { value: closeIndex + closeTagMatch[0].length },
+        });
         if (!componentList) return returnObj;
         return { ...returnObj, ...componentList[tagName.toLowerCase()] };
       }
@@ -665,7 +681,7 @@ const findMatchingClose = (
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return -1;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openRe = new RegExp(`<${tn}[\\s>]`, "gi");
+  const openRe = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const closeRe = new RegExp(`<\\/${tn}>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
@@ -684,7 +700,9 @@ const findMatchingClose = (
       if (depth === 0) return closeMatch.index;
       pos = closeMatch.index + closeMatch[0].length;
     } else {
-      depth++;
+      if (!/\/\s*>$/.test(openMatch[0])) {
+        depth++;
+      }
       pos = openMatch.index + openMatch[0].length;
     }
   }
@@ -892,37 +910,69 @@ export const mergeAttributesOntoRoot = (
   attrs: Record<string, string>,
 ): string => {
   if (!Object.keys(attrs).length) return html;
-  return html.replace(
-    /^((?:\s*(?:<!--[\s\S]*?-->|<(?:script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/(?:script|style)\s*>))*\s*)(<[a-zA-Z][\w-]*)((?:\s[^>]*?)?)(\s*\/?>)/i,
-    (_match: string, leading: string, tagName: string, existing: string, close: string) => {
-      let attrStr = existing || "";
-      const existingNames = new Set<string>();
-      const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
-      let match: RegExpExecArray | null;
-      while ((match = attrRegex.exec(attrStr)) !== null) {
-        existingNames.add(match[1].toLowerCase());
-      }
+  const masked = maskRawTextContent(html);
+  const tagRegex = new RegExp(`<([a-zA-Z][\\w-]*)(?:${ATTR_VALUE})>`, "gi");
+  const metadataTags = new Set(["link", "meta", "script", "style"]);
+  let rootMatch: RegExpExecArray | null = null;
+  let candidate: RegExpExecArray | null;
+  while ((candidate = tagRegex.exec(masked)) !== null) {
+    if (!metadataTags.has(candidate[1].toLowerCase())) {
+      rootMatch = candidate;
+      break;
+    }
+  }
+  if (!rootMatch) return html;
 
-      for (const [name, value] of Object.entries(attrs)) {
-        if (name === "class" && value) {
-          if (/class="/.test(attrStr)) {
-            attrStr = attrStr.replace(
-              /class="([^"]*)"/,
-              (_, cls) => `class="${cls} ${value}"`,
-            );
-          } else if (/class='/.test(attrStr)) {
-            attrStr = attrStr.replace(
-              /class='([^']*)'/,
-              (_, cls) => `class='${cls} ${value}'`,
-            );
-          } else {
-            attrStr += ` class="${value}"`;
-          }
-        } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
-          attrStr += ` ${name}="${value}"`;
-        }
+  const rootTag = html.slice(rootMatch.index, rootMatch.index + rootMatch[0].length);
+  const rootParts = /^<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)(\s*\/?>)$/i.exec(rootTag);
+  if (!rootParts) return html;
+  const [, tagName, existing, close] = rootParts;
+  let attrStr = existing || "";
+  const existingNames = new Set<string>();
+  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRegex.exec(attrStr)) !== null) {
+    existingNames.add(match[1].toLowerCase());
+  }
+
+  for (const [name, value] of Object.entries(attrs)) {
+    if (name === "class" && value) {
+      if (/class="/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /class="([^"]*)"/,
+          (_, classes) => `class="${classes} ${value}"`,
+        );
+      } else if (/class='/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /class='([^']*)'/,
+          (_, classes) => `class='${classes} ${value}'`,
+        );
+      } else {
+        attrStr += ` class="${value}"`;
       }
-      return `${leading}${tagName}${attrStr}${close}`;
-    },
+    } else if (name === "style" && value) {
+      if (/style="/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /style="([^"]*)"/,
+          (_, style) => `style="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+        );
+      } else if (/style='/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /style='([^']*)'/,
+          (_, style) => `style='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+        );
+      } else {
+        attrStr += ` style="${value}"`;
+      }
+    } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
+      attrStr += ` ${name}="${value}"`;
+    }
+  }
+
+  const mergedRoot = `<${tagName}${attrStr}${close}`;
+  return (
+    html.slice(0, rootMatch.index) +
+    mergedRoot +
+    html.slice(rootMatch.index + rootTag.length)
   );
 };
