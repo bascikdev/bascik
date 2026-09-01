@@ -16,7 +16,7 @@ On startup (and whenever a component is added), the watch system calls `processA
 2. **Prioritize open pages first.** In dev mode, `partitionByOpenPages()` separates pages into those currently open in active browser tabs and background pages. Active pages are transpiled, committed to `MemoryStore`, and have their `"transpiled"` reload events emitted immediately, so open browser windows update without waiting for the full site to compile.
 3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. If `useWorkers: true` is set in `bascik.config.ts`, a `WorkerPool` is created instead with `Math.min(os.cpus().length, pageCount)` workers, and each worker is initialized with the shared `componentList` and `globalStylesHtml` via `workerData`. The worker pool also processes the prioritized open pages first before dispatching remaining background pages. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so this only pays off for larger sites or CPU-heavy per-page work, see the [`useWorkers`](/configuration#useworkers) config option.
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
-5. **Write HTML to disk only in build mode.** In dev mode, pages are served entirely from the in-memory store and HTML pages are not written to `dist/` (though static assets are copied to `dist/`), so the server is ready as soon as memory is populated.
+5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
 
 ## Phase 1: Page Phase (`pageProcessing`)
 
@@ -30,14 +30,14 @@ The page phase prepares the source HTML document and orchestrates the component 
 6. **Inject live-reload script.** In dev mode only, a small `<script>` that opens a Server-Sent Events connection to `/bascik-live-reload` is appended to the body.
 7. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs *after* component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 8. **Reassemble HTML.** The resolved body and head are placed back into the original HTML document structure.
-9. **Write output.** In build mode, the finished HTML is written to `dist/`. In dev mode, HTML pages are not written to disk (static assets are copied to `dist/`), and the result is stored in the in-memory page store so the HTTP/2 server can serve it instantly.
+9. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
 10. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
 
-### Incremental Disk Writes and `dist/` Persistence
+### Output Directory Lifecycle
 
-Build mode (`bascik --build`) writes transpiled files incrementally into `dist/`. It does not clear or delete the `dist/` directory before populating it.
+Dev and build runs remove `directory.out` before pre-phase lifecycle scripts execute, then repopulate it from the current source tree. This prevents deleted pages, renamed assets, and removed dynamic routes from surviving as stale deployment output. Cleaning happens before pre-phase scripts so files those scripts intentionally generate in `dist/` remain available to the rest of the run. Production server mode (`bascik --server`) reads an existing build and never cleans it.
 
-If source files are deleted from `src/pages/` between separate build runs, their previously compiled output in `dist/` remains until `dist/` is cleaned manually. In dev mode (`bascik`), the active file watcher listens for deletion events (`unlink` and `unlinkDir`) and removes corresponding files from `dist/` dynamically during the dev session.
+During a dev session, the active file watcher also removes corresponding output files when it receives deletion events (`unlink` and `unlinkDir`).
 
 ## Build Script Output Cache & Batch Execution
 

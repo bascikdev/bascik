@@ -139,6 +139,16 @@ The script runs in Node.js at build time, queries your headless CMS, database, o
 
 A directory of plain `.html` files (and your assets). No client-side JavaScript framework, no special server required. Any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, or a plain Nginx server) can serve it.
 
+## Why did my deleted page keep showing up in `dist/`?
+
+Current Bascik versions clean `directory.out` at the start of every dev and build run, before pre-phase lifecycle scripts execute. A page, renamed asset, or removed dynamic route from an earlier run should therefore not remain in the new output. `bascik --server` does not clean because it serves an existing build.
+
+If stale output remains, confirm that the command is running from the expected project root and that `directory.out` points to the directory you are inspecting.
+
+## Can I see the transpiled HTML during development?
+
+Yes. Dev mode stores the updated page in memory first so it can be served immediately, then writes the same transpiled HTML to `directory.out` asynchronously. You can inspect `dist/index.html` or the corresponding nested output file while the dev server runs without adding disk latency to page serving.
+
 ## How does Bascik handle bad markup or invalid code? Does it crash?
 
 No, Bascik is designed to be highly resilient and hard to crash. Because it uses robust, regular-expression-based scoping and depth-counter checks rather than rigid AST parses, invalid markup or buggy script code will not crash the build or the dev server. Here is how different scenarios are handled:

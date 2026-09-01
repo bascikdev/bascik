@@ -963,6 +963,97 @@ describe("pageProcessing – live-reload script injection", () => {
     expect(pageContent).toContain("/bascik-live-reload");
   });
 
+  it("writes transpiled pages to the output directory in dev mode", async () => {
+    const { writeFile } = await import("node:fs/promises");
+
+    await pageProcessing(PAGE_PATH, {});
+
+    await vi.waitFor(() => {
+      expect(writeFile).toHaveBeenCalledWith(
+        expect.stringContaining("dist"),
+        expect.stringContaining("/bascik-live-reload"),
+      );
+    });
+  });
+
+  it("makes the page available before its dev disk write completes", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    let finishWrite!: () => void;
+    const writePending = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writePending);
+
+    const processingPromise = pageProcessing(PAGE_PATH, {});
+    await vi.waitFor(() => expect(mem.storePage).toHaveBeenCalledOnce());
+    try {
+      expect(writeFile).toHaveBeenCalledOnce();
+      const relativePagePath = await processingPromise;
+      expect(relativePagePath).toBe("pages/index.html");
+    } finally {
+      finishWrite();
+      await processingPromise;
+    }
+  });
+
+  it("logs a dev write failure without rejecting page availability", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const error = Object.assign(new Error("EACCES"), { code: "EACCES" });
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(pageProcessing(PAGE_PATH, {})).resolves.toBe("pages/index.html");
+    await vi.waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Write file error", error);
+    });
+
+    errorSpy.mockRestore();
+  });
+
+  it("serializes concurrent writes for the same page", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    let finishFirstWrite!: () => void;
+    const firstWritePending = new Promise<void>((resolve) => {
+      finishFirstWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(firstWritePending)
+      .mockResolvedValueOnce(undefined);
+
+    const firstProcessing = pageProcessing(PAGE_PATH, {});
+    await firstProcessing;
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+
+    const secondProcessing = pageProcessing(PAGE_PATH, {});
+    await Promise.resolve();
+    expect(writeFile).toHaveBeenCalledTimes(1);
+
+    finishFirstWrite();
+    await secondProcessing;
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(2));
+  });
+
+  it("waits for the disk write in build mode", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    let finishWrite!: () => void;
+    const writePending = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writePending);
+    let processingResolved = false;
+
+    const processingPromise = pageProcessing(PAGE_PATH, {}).then((result) => {
+      processingResolved = true;
+      return result;
+    });
+    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledOnce());
+    expect(processingResolved).toBe(false);
+
+    finishWrite();
+    await expect(processingPromise).resolves.toBe("pages/index.html");
+  });
+
   it("does not inject the live-reload script in build mode", async () => {
     (BascikConfig as Record<string, unknown>).isBuild = true;
     const { writeFile } = await import("node:fs/promises");

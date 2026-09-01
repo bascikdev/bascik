@@ -564,6 +564,37 @@ export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string |
   return [open, rest];
 };
 
+const pageProcessingQueues = new Map<string, Promise<unknown>>();
+
+const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> => {
+  const directoryPath = getDirectoryPath(result.relativePagePath);
+  try {
+    await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
+  } catch (error) {
+    console.error("Make directory error", error);
+  }
+  const distPagePath = getDistPagePath(result.relativePagePath);
+  try {
+    await writeFile(distPagePath, result.distHtml);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("Write file error", error);
+    }
+  }
+};
+
+const queueTranspiledPageWrite = (result: TranspilePageResult): Promise<void> => {
+  const pagePath = result.absolutePagePath;
+  const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
+  const queued = current.catch(() => { }).then(() => writeTranspiledPage(result)).finally(() => {
+    if (pageProcessingQueues.get(pagePath) === queued) {
+      pageProcessingQueues.delete(pagePath);
+    }
+  });
+  pageProcessingQueues.set(pagePath, queued);
+  return queued;
+};
+
 export const processPageBatch = async (
   pageInputs: (string | PageJob)[],
   componentList?: ComponentList,
@@ -605,6 +636,7 @@ export const processPageBatch = async (
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
         });
+        void queueTranspiledPageWrite(result);
       }
       eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
     }
@@ -709,6 +741,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
                   usedComponentsNames: result.usedComponentsNames,
                   fileDependencies: result.fileDependencies,
                 });
+                void queueTranspiledPageWrite(result);
               }
               eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
             }
@@ -733,6 +766,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
                   usedComponentsNames: result.usedComponentsNames,
                   fileDependencies: result.fileDependencies,
                 });
+                void queueTranspiledPageWrite(result);
               }
               eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
             }
@@ -768,43 +802,67 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   return relativePaths;
 };
 
-const pageProcessingQueues = new Map<string, Promise<unknown>>();
-
 export const pageProcessing = (
   pagePath: string,
   componentList?: ComponentList,
   globalStylesHtml?: string,
 ): Promise<string | undefined> => {
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
+  let resolveAvailable!: (relativePagePath: string | undefined) => void;
+  let rejectAvailable!: (error: unknown) => void;
+  const available = new Promise<string | undefined>((resolvePromise, rejectPromise) => {
+    resolveAvailable = resolvePromise;
+    rejectAvailable = rejectPromise;
+  });
   const next = current.then(async () => {
-    if (!isDynamicRoute(pagePath)) {
-      const result = await transpilePage(pagePath, componentList, globalStylesHtml);
-      if (!result) return undefined;
-      const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
-      if (!BascikConfig.isBuild) {
-        await mem.storePage({
-          relativePagePath,
-          absolutePagePath,
-          pageContent: distHtml,
-          usedComponentsNames,
-          fileDependencies,
-        });
+    try {
+      if (!isDynamicRoute(pagePath)) {
+        const result = await transpilePage(pagePath, componentList, globalStylesHtml);
+        if (!result) {
+          resolveAvailable(undefined);
+          return undefined;
+        }
+        const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
+        if (!BascikConfig.isBuild) {
+          await mem.storePage({
+            relativePagePath,
+            absolutePagePath,
+            pageContent: distHtml,
+            usedComponentsNames,
+            fileDependencies,
+          });
+        }
+        eventEmitter.emit("transpiled", { relativePagePath });
+        resolveAvailable(relativePagePath);
+        if (!BascikConfig.isBuild) {
+          await writeTranspiledPage(result);
+        }
+        return relativePagePath;
       }
-      eventEmitter.emit("transpiled", { relativePagePath });
-      return relativePagePath;
-    }
 
-    const jobs = await expandPageToJobs(pagePath);
-    if (jobs.length === 0) return undefined;
-    const relativePaths = await processPageBatch(jobs, componentList, globalStylesHtml);
-    return relativePaths[0];
+      const jobs = await expandPageToJobs(pagePath);
+      if (jobs.length === 0) {
+        resolveAvailable(undefined);
+        return undefined;
+      }
+      const relativePaths = await processPageBatch(jobs, componentList, globalStylesHtml);
+      resolveAvailable(relativePaths[0]);
+      return relativePaths[0];
+    } catch (error) {
+      rejectAvailable(error);
+      throw error;
+    }
+  }, (error) => {
+    rejectAvailable(error);
+    throw error;
   }).finally(() => {
     if (pageProcessingQueues.get(pagePath) === next) {
       pageProcessingQueues.delete(pagePath);
     }
   });
   pageProcessingQueues.set(pagePath, next);
-  return next as Promise<string | undefined>;
+  void next.catch(() => { });
+  return available;
 };
 
 export const transpilePage = async (
@@ -1029,22 +1087,14 @@ export const transpilePage = async (
     }
   }
 
-  // Only write to disk during build. Dev server serves from memory.
   if (BascikConfig.isBuild) {
-    const directoryPath = getDirectoryPath(relativePagePath);
-    try {
-      await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
-    } catch (error) {
-      console.error("Make directory error", error);
-    }
-    const distPagePath = getDistPagePath(relativePagePath);
-    try {
-      await writeFile(distPagePath, distHtml);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.error("Write file error", error);
-      }
-    }
+    await writeTranspiledPage({
+      relativePagePath,
+      absolutePagePath: pagePath,
+      distHtml,
+      usedComponentsNames: allUsedComponents.map(({ name }) => name),
+      fileDependencies,
+    });
   }
 
   if (BascikConfig.logging?.transpiles !== false) {

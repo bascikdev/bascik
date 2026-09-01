@@ -1251,7 +1251,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, pages are served from memory and compiled HTML is not written to `dist/`, while static assets are copied to `dist/`. Note: this dev-mode disk write gap is a known inconsistency being addressed in an upcoming update.
+On startup, Bascik cleans `directory.out` before pre-phase lifecycle scripts run, then computes the full component list and global styles **once** and transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, Bascik stores each page in memory first, then writes its compiled HTML to `dist/` asynchronously. Serving never waits for that disk write.
 
 #### 2. Watching for File Changes (Watch Mode)
 While the dev server is active, Bascik watches your file system and incrementally updates your build as files are added, updated, or removed:
@@ -1347,7 +1347,7 @@ Commit this file so all contributors get the correct behavior automatically. Alt
 
 #### 5. Inspecting `dist/` Output
 
-`bascik --build` writes compiled HTML and static assets to `dist/` on disk, this is the ground truth of what Bascik produced for production. In dev mode (`bascik`), static assets are copied to `dist/`, but HTML pages are served directly from memory and not written to disk. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
+Both `bascik --build` and dev mode (`bascik`) write compiled HTML and static assets to `dist/` on disk. Dev stores pages in memory before issuing asynchronous disk writes, so the server can return updated pages immediately while `dist/` remains available for inspection. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
 
 ```
 src/pages/about.html       →  dist/about.html

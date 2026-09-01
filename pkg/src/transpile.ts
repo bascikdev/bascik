@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { rm } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
 import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
@@ -8,6 +9,22 @@ import { eventEmitter } from "./lib/events.ts";
 import { formatDuration } from "./lib/format.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
+  const projectRoot = resolve(process.cwd());
+  const outputDirectory = resolve(projectRoot, BascikConfig.directory.out);
+  const relativeOutputDirectory = relative(projectRoot, outputDirectory);
+  if (
+    relativeOutputDirectory === "" ||
+    relativeOutputDirectory === ".." ||
+    relativeOutputDirectory.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+    isAbsolute(relativeOutputDirectory)
+  ) {
+    throw new Error(
+      `Refusing to clean output directory outside the project root: ${outputDirectory}`,
+    );
+  }
+  // Targeted builds added by prompt 33 must skip this full output clean.
+  await rm(outputDirectory, { recursive: true, force: true });
+
   const overallStart = performance.now();
 
   if (BascikConfig.isBuild) {
@@ -18,6 +35,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
+    await runExecPhase("pre");
+    startExecParallel();
     const { startServer } = await import("./lib/server.ts");
     const serverReady = startServer().catch((err) => {
       console.error("Server startup failed:", err);
@@ -27,8 +46,6 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       throw err;
     });
 
-    await runExecPhase("pre");
-    startExecParallel();
     const execReady = startExecDev();
     const url = await serverReady;
 

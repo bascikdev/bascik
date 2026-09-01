@@ -29,6 +29,7 @@ const staticCssPath = join(e2eDir, 'src/pages/dev-static-test.css');
 const contentDocPath = join(e2eDir, 'src/content/watch-doc.md');
 const subfolderPagePath = join(e2eDir, 'src/pages/subfolder/route-test.html');
 const inlinedGlobalCssPath = join(e2eDir, 'src/css/inlined-global.css');
+const scopeTestOutputPath = join(e2eDir, 'dist/scope-test.html');
 
 const dynamicCreatedCompPath = join(e2eDir, 'src/components/dynamic-created-comp.html');
 const dynamicHeadMetaCompPath = join(e2eDir, 'src/components/dynamic-head-meta.html');
@@ -82,6 +83,16 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
       return scripts.some((s) => s.textContent?.includes('/bascik-live-reload'));
     });
     expect(hasLiveReloadScript).toBe(true);
+  });
+
+  test('serves a page while its transpiled HTML is available in dist', async ({ page }) => {
+    const response = await page.goto('/scope-test');
+    expect(response?.status()).toBe(200);
+
+    await expect.poll(async () => {
+      const output = await readFile(scopeTestOutputPath, 'utf8').catch(() => '');
+      return output.includes('/bascik-live-reload');
+    }).toBe(true);
   });
 
   test('SSE endpoint responds with event-stream content-type and no-cache headers', async () => {

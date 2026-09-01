@@ -101,6 +101,19 @@ describe("serveProduction", () => {
     log.mockRestore();
   });
 
+  it("does not clean existing output when starting the production server", async () => {
+    const sentinelPath = join(workDir, "dist", "keep-me.txt");
+    await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
+    await writeFile(sentinelPath, "preserved");
+    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+
+    await serveProduction();
+
+    await expect(import("node:fs/promises").then(({ readFile }) => readFile(sentinelPath, "utf8")))
+      .resolves.toBe("preserved");
+    log.mockRestore();
+  });
+
   it("uses singular 'page' in the log message when exactly one page is loaded", async () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>only</h1>");
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
