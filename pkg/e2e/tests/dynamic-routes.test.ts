@@ -40,4 +40,14 @@ test.describe('dynamic routes', () => {
       await expect(serverElement).toHaveText('Personalized Slice');
     }
   });
+
+  test('supports unquoted src attribute in routes and build scripts', async ({ page }) => {
+    const res1 = await page.goto('/unquoted-routes/item-1');
+    expect(res1?.status()).toBe(200);
+    await expect(page.getByTestId('unquoted-item-title')).toHaveText('First Unquoted Item');
+
+    const res2 = await page.goto('/unquoted-routes/item-2');
+    expect(res2?.status()).toBe(200);
+    await expect(page.getByTestId('unquoted-item-title')).toHaveText('Second Unquoted Item');
+  });
 });

@@ -375,9 +375,9 @@ export const executeRoutesScript = async (
 
   let trimmedScript = scriptContent.trim();
   if (!trimmedScript) {
-    const srcMatch = openTag.match(/\bsrc=["']([^"']+)["']/i);
+    const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     if (srcMatch) {
-      const srcPath = srcMatch[1];
+      const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
       const resolvedPath = filePath
         ? resolve(dirname(filePath), srcPath)
         : resolve(process.cwd(), srcPath);

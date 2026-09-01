@@ -375,7 +375,7 @@ describe("executeBuildScripts", () => {
     (BascikConfig as any).onScriptError = undefined;
   });
 
-  it("reads script content from src file when script tag body is empty", async () => {
+  it("reads script content from double-quoted src file when script tag body is empty", async () => {
     mockReadFile.mockResolvedValueOnce('console.log("<h1>External Build Header</h1>");');
     resolveWith("<h1>External Build Header</h1>");
 
@@ -384,6 +384,28 @@ describe("executeBuildScripts", () => {
 
     expect(mockReadFile).toHaveBeenCalled();
     expect(result).toBe("<h1>External Build Header</h1>");
+  });
+
+  it("reads script content from single-quoted src file", async () => {
+    mockReadFile.mockResolvedValueOnce('console.log("<h1>Single Quoted</h1>");');
+    resolveWith("<h1>Single Quoted</h1>");
+
+    const html = "<script data-bascik-build src='helper.ts'></script>";
+    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+
+    expect(mockReadFile).toHaveBeenCalled();
+    expect(result).toBe("<h1>Single Quoted</h1>");
+  });
+
+  it("reads script content from unquoted src file and handles spaces around equals", async () => {
+    mockReadFile.mockResolvedValueOnce('console.log("<h1>Unquoted Header</h1>");');
+    resolveWith("<h1>Unquoted Header</h1>");
+
+    const html = '<script data-bascik-build src = ./helper.ts></script>';
+    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+
+    expect(mockReadFile).toHaveBeenCalled();
+    expect(result).toBe("<h1>Unquoted Header</h1>");
   });
 
   it("respects onScriptError: error", async () => {

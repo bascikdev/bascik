@@ -8,9 +8,9 @@
     },
     "statements": {
       "total": 3846,
-      "covered": 3555,
+      "covered": 3556,
       "skipped": 0,
-      "pct": 92.43
+      "pct": 92.45
     },
     "functions": {
       "total": 515,
@@ -19,10 +19,10 @@
       "pct": 92.23
     },
     "branches": {
-      "total": 2219,
-      "covered": 1835,
+      "total": 2225,
+      "covered": 1842,
       "skipped": 0,
-      "pct": 82.69
+      "pct": 82.78
     },
     "branchesTrue": {
       "total": 0,

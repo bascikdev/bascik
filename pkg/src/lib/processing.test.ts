@@ -2191,6 +2191,71 @@ describe("dynamic routes pipeline expansion", () => {
       expect.stringContaining("y.html"),
     );
   });
+
+  it("cleans up all generated outputs when a routes script returns 0 routes on re-transpile", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    const routesModule = await import("./routes.ts");
+
+    // First run: produces x.html and y.html
+    const spy1 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "x" } }, { params: { slug: "y" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>dyn</body></html>");
+
+    await pageProcessing(templatePath, {});
+    spy1.mockRestore();
+
+    // Second run: returns 0 routes
+    const spy2 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+
+    const { rm } = await import("node:fs/promises");
+    (rm as ReturnType<typeof vi.fn>).mockClear();
+
+    await pageProcessing(templatePath, {});
+    spy2.mockRestore();
+
+    expect(mem.removeByRelativePath).toHaveBeenCalledWith("pages/blog/x.html");
+    expect(mem.removeByRelativePath).toHaveBeenCalledWith("pages/blog/y.html");
+    expect(rm).toHaveBeenCalledWith(expect.stringContaining("x.html"));
+    expect(rm).toHaveBeenCalledWith(expect.stringContaining("y.html"));
+  });
+
+  it("cleans up old parameter outputs when route parameters are completely replaced on re-transpile", async () => {
+    const templatePath = "src/pages/blog/[slug].html";
+    const routesModule = await import("./routes.ts");
+
+    // First run: produces old1.html
+    const spy1 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "old1" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>dyn</body></html>");
+
+    await pageProcessing(templatePath, {});
+    spy1.mockRestore();
+
+    // Second run: produces new1.html
+    const spy2 = vi.spyOn(routesModule, "executeRoutesScript").mockResolvedValueOnce({
+      routes: [{ params: { slug: "new1" } }],
+      cleanedHtml: "<html><body>dyn</body></html>",
+    });
+
+    const { rm } = await import("node:fs/promises");
+    (rm as ReturnType<typeof vi.fn>).mockClear();
+
+    await pageProcessing(templatePath, {});
+    spy2.mockRestore();
+
+    expect(mem.removeByRelativePath).toHaveBeenCalledWith("pages/blog/old1.html");
+    expect(rm).toHaveBeenCalledWith(expect.stringContaining("old1.html"));
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({ relativePagePath: "pages/blog/new1.html" }),
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

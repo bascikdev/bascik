@@ -226,4 +226,52 @@ describe("executeRoutesScript", () => {
     );
     warnSpy.mockRestore();
   });
+
+  it("supports unquoted src attribute in routes script tag", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+    (BascikConfig as any).onScriptError = "warn";
+
+    const html = `<script data-bascik-routes src=./unquoted-routes.ts></script>`;
+    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    expect(result.routes).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[bascik] warning: Failed to read routes script src "%s":',
+      "./unquoted-routes.ts",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("supports single-quoted src attribute in routes script tag", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+    (BascikConfig as any).onScriptError = "warn";
+
+    const html = `<script data-bascik-routes src='./single-quoted-routes.ts'></script>`;
+    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    expect(result.routes).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[bascik] warning: Failed to read routes script src "%s":',
+      "./single-quoted-routes.ts",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("supports unquoted src attribute with spaces around equals in routes script tag", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    mockReadFile.mockRejectedValueOnce(new Error("File not found"));
+    (BascikConfig as any).onScriptError = "warn";
+
+    const html = `<script data-bascik-routes src = ./spaced-unquoted-routes.ts></script>`;
+    const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
+    expect(result.routes).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[bascik] warning: Failed to read routes script src "%s":',
+      "./spaced-unquoted-routes.ts",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
 });
