@@ -257,7 +257,9 @@ export const listComponents = async (): Promise<ComponentList> => {
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
-        minifiedContent = minifyHtml(cleanedContent);
+        minifiedContent = BascikConfig.minify?.html
+          ? minifyHtml(cleanedContent)
+          : cleanedContent;
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
         if (behavior === "error") {
@@ -515,10 +517,10 @@ export const getTag = (
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const selfClosingPattern = new RegExp(
-      `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
-      "i",
-    );
+  const selfClosingPattern = new RegExp(
+    `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
+    "i",
+  );
   const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
   if (selfClosingMatch) {
     const returnObj = {
@@ -633,8 +635,8 @@ export const injectProps = (
         attrsAfter: string,
         _oldContent: string,
       ) => markerValue
-        ? match
-        : `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}</${tagName}>`,
+          ? match
+          : `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}</${tagName}>`,
     );
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.

@@ -288,6 +288,8 @@ Defaults to `['code']`.
 
 Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
 
+`minify.html: false` disables HTML minification for both page templates and component templates. Component whitespace and script placement remain as authored when it is off.
+
 Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, terser, or Node's built-in TypeScript type stripper:
 
 ```ts

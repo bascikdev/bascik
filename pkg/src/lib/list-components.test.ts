@@ -44,6 +44,7 @@ import { listComponents, minifyHtml, invalidateComponentListCache } from "./comp
 import { deepReadDirFlat } from "./file-system.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { readFile } from "node:fs/promises";
+import { BascikConfig } from "./config.ts";
 
 const mockDeepReadDirFlat = deepReadDirFlat as ReturnType<typeof vi.fn>;
 const mockExecuteBuildScripts = executeBuildScripts as ReturnType<typeof vi.fn>;
@@ -52,6 +53,7 @@ const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   invalidateComponentListCache();
+  BascikConfig.minify.html = false;
   // Default: executeBuildScripts is a pass-through (no build scripts in HTML)
   mockExecuteBuildScripts.mockImplementation(async (html: string) => html);
   // Default: no CSS file exists alongside the component
@@ -138,6 +140,7 @@ describe("listComponents – build script execution order", () => {
   });
 
   it("still minifies the resolved HTML after build scripts run", async () => {
+    BascikConfig.minify.html = true;
     // executeBuildScripts returns HTML with whitespace; minifyHtml collapses it
     const rawHtml = "<nav><script data-bascik-build>gen()</script></nav>";
     const resolvedHtml =

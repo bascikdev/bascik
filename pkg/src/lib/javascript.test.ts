@@ -1384,6 +1384,18 @@ describe("prefixElementAttribute – auto-generated instance id", () => {
 });
 
 describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
+  it("does not add an IIFE or sourceURL to external scripts", () => {
+    const component = {
+      name: "my-comp",
+      fileName: "src/components/my-comp.html",
+      fileContent: '<script src="x.js"></script>',
+    };
+
+    expect(namespaceScriptTags(component).fileContent).toBe(
+      '<script src="x.js"></script>',
+    );
+  });
+
   it("preserves exact line numbers of inner JS code relative to original HTML file", () => {
     const fileContent =
       "<html>\n" +                  // line 1

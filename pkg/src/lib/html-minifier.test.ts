@@ -40,6 +40,31 @@ describe("extractScriptTags", () => {
 });
 
 describe("minifyHtml", () => {
+  it("does not strip the document tail when a script contains an HTML comment opener", () => {
+    const html = '<div><script>const sample = "<!--";</script><p>after</p><!-- real --></div>';
+    expect(minifyHtml(html)).toContain("<p>after</p>");
+  });
+
+  it("keeps a script nested inside pre in its original position", () => {
+    const html = "<pre><script>const sample = 1;</script></pre><p>after</p>";
+    expect(minifyHtml(html)).toBe(html);
+  });
+
+  it("preserves comments inside pre elements", () => {
+    const html = "<pre><!-- example --><code>sample</code></pre>";
+    expect(minifyHtml(html)).toBe(html);
+  });
+
+  it("does not relocate data-bascik-routes scripts", () => {
+    const html = "<div><script data-bascik-routes>routes()</script></div>";
+    expect(minifyHtml(html)).toBe(html);
+  });
+
+  it("recognizes spaced type module attributes as JavaScript", () => {
+    const html = '<div><script type = "module">export default 1;</script></div>';
+    expect(extractScriptTags(html)).toBe('<script type = "module">export default 1;</script>');
+  });
+
   it("removes comments from HTML", () => {
     const htmlString = "<!-- comment --><div>content</div>";
     expect(minifyHtml(htmlString)).toEqual("<div>content</div>");

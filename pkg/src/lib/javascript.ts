@@ -77,6 +77,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
+import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import {
   addElementClassesInHtml,
   addIdClassesInHtml,
@@ -835,18 +836,16 @@ export const namespaceScriptTags = (
       const cleanOpen = open.replace(/\s*data-bascik-source=["']([^"']+)["']/i, "");
 
       // Check for type attribute
-      const typeMatch = cleanOpen.match(/type\s*=\s*["']?([^"'>\s]+)["']?/i);
-      const isJsType = !typeMatch || [
-        "text/javascript",
-        "module",
-        "application/javascript",
-        "text/ecmascript",
-        "application/ecmascript",
-      ].includes(typeMatch[1].toLowerCase());
+      const type = getScriptType(cleanOpen);
+      const isJsType = isJavaScriptScript(cleanOpen);
 
-      const shouldWrap = !typeMatch || typeMatch[1].toLowerCase() === "text/javascript";
+      const isExternal = /\bsrc\s*=/i.test(cleanOpen);
+      const shouldWrap = !isExternal &&
+        (type === undefined || type === "text/javascript");
 
       const targetPath = customSourcePath || (component.fileName ? relative(process.cwd(), component.fileName).replace(/\\/g, "/") : null);
+
+      if (isExternal) return match;
 
       if (!shouldWrap) {
         // If type is present and not text/javascript, leave unchanged.

@@ -732,12 +732,11 @@ describe("pageProcessing – inlineStyles", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // The only <style> block should be the empty component CSS one
     const styleMatches = [...pageContent.matchAll(/<style>/gi)];
-    expect(styleMatches).toHaveLength(1);
+    expect(styleMatches).toHaveLength(0);
   });
 
-  it("inlines a single stylesheet into the <head> before component styles", async () => {
+  it("inlines a single stylesheet into the head without an empty component style", async () => {
     (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)          // page read
@@ -745,10 +744,7 @@ describe("pageProcessing – inlineStyles", () => {
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('body { color: red; }');
-    // Global <style> must appear before the component <style>
-    const globalIdx = pageContent.indexOf('body { color: red; }');
-    const compIdx = pageContent.lastIndexOf('<style>');
-    expect(globalIdx).toBeLessThan(compIdx);
+    expect([...pageContent.matchAll(/<style>/gi)]).toHaveLength(1);
   });
 
   it("concatenates multiple stylesheets into one <style> block", async () => {
@@ -761,9 +757,8 @@ describe("pageProcessing – inlineStyles", () => {
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('.a { color: red; }');
     expect(pageContent).toContain('.b { color: blue; }');
-    // Two <style> blocks: one global, one component
     const styleCount = [...pageContent.matchAll(/<style>/gi)].length;
-    expect(styleCount).toBe(2);
+    expect(styleCount).toBe(1);
   });
 
   it("logs a warning and continues when an inlineStyles file cannot be read", async () => {
@@ -1862,6 +1857,25 @@ describe("transpilePage – minify.js branch coverage", () => {
     const result = await transpilePage(PAGE_PATH, {});
     expect(result).not.toBeNull();
     expect(result!.distHtml).not.toContain("var   x");
+  });
+
+  it("minifies inline module script content", async () => {
+    const html =
+      '<!DOCTYPE html><html><head></head><body>' +
+      '<script type="module">const   value   =   1;</script>' +
+      '</body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result).not.toBeNull();
+    expect(result!.distHtml).not.toContain("const   value");
+  });
+
+  it("does not emit an empty component style block", async () => {
+    const html = '<!DOCTYPE html><html><head></head><body><p>content</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result).not.toBeNull();
+    expect(result!.distHtml).not.toMatch(/<style>\s*<\/style>/);
   });
 
   it("does not minify application/ld+json scripts", async () => {
