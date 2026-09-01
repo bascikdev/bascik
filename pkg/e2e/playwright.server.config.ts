@@ -15,10 +15,13 @@ import { join } from 'node:path';
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
+const prodServerTestIgnore = [
+  '**/dev-server-reload.test.ts',
+  '**/dist-lifecycle.test.ts',
+];
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/dev-server-reload.test.ts', '**/dist-lifecycle.test.ts'],
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
@@ -28,7 +31,7 @@ export default defineConfig({
     headless: true,
   },
   projects: [
-    { name: 'default', testIgnore: '**/base-serving.test.ts' },
+    { name: 'default', testIgnore: [...prodServerTestIgnore, '**/base-serving.test.ts'] },
     { name: 'base-server', testMatch: '**/base-serving.test.ts', use: { baseURL: 'http://localhost:9552' } },
   ],
   webServer: [{

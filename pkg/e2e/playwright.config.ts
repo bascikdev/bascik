@@ -5,10 +5,15 @@ import { join } from 'node:path';
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
+const staticTestIgnore = [
+  '**/server-scripts.test.ts',
+  '**/dev-server-reload.test.ts',
+  '**/prod-server.test.ts',
+  '**/preserve-server-form.test.ts',
+];
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/server-scripts.test.ts', '**/dev-server-reload.test.ts', '**/prod-server.test.ts', '**/preserve-server-form.test.ts'],
   workers: 4,
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
@@ -17,7 +22,7 @@ export default defineConfig({
     headless: true,
   },
   projects: [
-    { name: 'default', testIgnore: '**/base-serving.test.ts' },
+    { name: 'default', testIgnore: [...staticTestIgnore, '**/base-serving.test.ts'] },
     { name: 'base-static', testMatch: '**/base-serving.test.ts', use: { baseURL: 'http://localhost:9550' } },
   ],
   webServer: [{

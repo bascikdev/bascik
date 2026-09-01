@@ -1521,6 +1521,8 @@ The E2E suite lives in `pkg/e2e/` and supports four execution modes:
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
+Keep each mode's `testIgnore` list on its `default` project. Playwright project arrays replace matching top-level arrays instead of extending them, which can silently select server-only tests in the wrong mode. The config-selection unit test must cover all four project exclusion lists.
+
 The fixture config sets `minify.identifiers: false` so Playwright selectors can use readable scoped names like `bascik__my-comp__btn` instead of opaque hashes. However, in production builds (where `minify.identifiers: true` is enabled), Bascik compiles and minifies element IDs and class names. Consequently, relying on raw CSS selectors like `page.locator('.my-class')` or `page.locator('#my-id')` will fail because those identifiers are hashed and compressed.
 
 To handle this, keep a clear distinction between compiler testing and application testing:

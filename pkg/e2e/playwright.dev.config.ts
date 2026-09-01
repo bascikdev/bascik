@@ -25,7 +25,6 @@ const devServerTestIgnore = [
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: devServerTestIgnore,
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

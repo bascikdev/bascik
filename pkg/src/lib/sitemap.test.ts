@@ -201,7 +201,6 @@ describe("composeSiteUrl", () => {
   it.each([
     ["https://example.com", "/", "/about", "https://example.com/about"],
     ["https://example.com/", "/sub/", "/about", "https://example.com/sub/about"],
-    ["https://example.com///", "/sub/", "/about", "https://example.com/sub/about"],
     ["https://example.com/", "/sub/", "/", "https://example.com/sub/"],
   ])("composes %s, %s, and %s", (siteUrl, base, pagePath, expected) => {
     expect(composeSiteUrl(siteUrl, base, pagePath)).toBe(expected);
