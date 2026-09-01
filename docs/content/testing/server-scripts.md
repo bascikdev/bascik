@@ -8,7 +8,7 @@ Server scripts (`<script data-bascik-server>`) execute in Node.js at request tim
 | --- | --- | --- |
 | **Execution Time** | Once at compile time (`bascik --build`) | On every incoming HTTP request (`bascik --server`) |
 | **Data Sources** | Local Markdown/JSON files, build-time env vars, static APIs | Database queries, session cookies, request headers, query parameters |
-| **Testing Strategy** | Mock build env vars (`BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`), test static outputs in `dist/` | Unit test pure handlers, mock database connections, test request-time parsers |
+| **Testing Strategy** | Mock build env vars (`BASCIK_TEMPLATE_FILE`, `BASCIK_PAGE_FILE`), test static outputs in `dist/` | Unit test pure handlers, mock database connections, test request-time parsers |
 | **Detailed Guide** | [Build Scripts Testing](/testing/build-scripts) | [Server Scripts Testing](/testing/server-scripts) |
 
 ## Architecture & Directory Structure

@@ -7,10 +7,11 @@
  * Creates:
  *  - src/pages/index.html   — starter HTML page
  *  - src/components/        — empty components directory
- *  - bascik.config.js       — minimal project config
+ *  - .gitignore additions    — dist/ and node_modules/.cache/bascik/
  *
  * Updates package.json (if present):
- *  - Adds "type": "module" (required for bascik.config.js ES syntax)
+ *  - Adds "type": "module" only when absent (never rewrites "commonjs")
+ *  - Adds @bascik/bascik dependency when missing
  *  - Adds "dev" and "build" scripts if not already defined
  */
 
@@ -31,25 +32,7 @@ const INDEX_HTML = `<!DOCTYPE html>
 </html>
 `;
 
-const BASCIK_CONFIG = `// Bascik works without this file — defaults are src/pages and src/components.
-// Uncomment to customize directories or other options.
-// Full reference: https://bascik.dev/configuration
-//
-// import { defineConfig } from '@bascik/bascik/config';
-// export default defineConfig({
-//   directory: { pages: 'src/pages', components: 'src/components' },
-// });
-
-// Applied only during \`bascik --build\` and \`bascik --server\`.
-export const build = {
-  minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
-  },
-};
-`;
+const REQUIRED_GITIGNORE_ENTRIES = ["dist/", "node_modules/.cache/bascik/"];
 
 /** Write a file only if it does not already exist. Returns true when written. */
 async function writeIfAbsent(path: string, content: string): Promise<boolean> {
@@ -68,7 +51,7 @@ export async function initProject(): Promise<void> {
   const pagesDir = join(cwd, "src", "pages");
   const componentsDir = join(cwd, "src", "components");
   const indexPath = join(pagesDir, "index.html");
-  const configPath = join(cwd, "bascik.config.js");
+  const gitignorePath = join(cwd, ".gitignore");
   const pkgPath = join(cwd, "package.json");
 
   // Ensure directories exist
@@ -83,12 +66,8 @@ export async function initProject(): Promise<void> {
       : "  skipped: src/pages/index.html (already exists)",
   );
 
-  const wroteConfig = await writeIfAbsent(configPath, BASCIK_CONFIG);
-  console.log(
-    wroteConfig
-      ? "  created: bascik.config.js"
-      : "  skipped: bascik.config.js (already exists)",
-  );
+  await ensureGitignoreEntries(gitignorePath, REQUIRED_GITIGNORE_ENTRIES);
+  console.log("  updated: .gitignore (dist/, node_modules/.cache/bascik/)");
 
   // Update package.json
   let pkgRaw: string;
@@ -111,10 +90,26 @@ export async function initProject(): Promise<void> {
 
   const changes: string[] = [];
 
-  // Require ESM for bascik.config.js
-  if (pkg.type !== "module") {
+  if (pkg.type === "commonjs") {
+    throw new Error(
+      "[bascik] init aborted: package.json sets \"type\": \"commonjs\". " +
+      "Bascik config uses ESM syntax, so update this project manually if you want to migrate.",
+    );
+  }
+
+  // Use ESM for future bascik.config.ts support when package type is absent.
+  if (pkg.type === undefined) {
     pkg.type = "module";
     changes.push('"type": "module"');
+  }
+
+  if (typeof pkg.dependencies !== "object" || pkg.dependencies === null) {
+    pkg.dependencies = {};
+  }
+  const dependencies = pkg.dependencies as Record<string, string>;
+  if (!dependencies["@bascik/bascik"]) {
+    dependencies["@bascik/bascik"] = "latest";
+    changes.push('"@bascik/bascik" dependency');
   }
 
   // Add dev/build scripts
@@ -148,5 +143,32 @@ Done! Start the dev server with:
 
   npm run dev
   yarn dev
+
+Configuration is optional. Create bascik.config.ts only when you need
+to change a default: https://bascik.dev/configuration
 `);
+}
+
+async function ensureGitignoreEntries(path: string, entries: string[]): Promise<void> {
+  let current = "";
+  try {
+    current = await readFile(path, "utf8");
+  } catch {
+    current = "";
+  }
+
+  const normalized = current.replace(/\r\n/g, "\n");
+  const lines = normalized.length > 0 ? normalized.split("\n") : [];
+  const existing = new Set(lines.map((line) => line.trim()));
+  const toAppend = entries.filter((entry) => !existing.has(entry));
+  if (toAppend.length === 0) {
+    return;
+  }
+
+  let next = normalized;
+  if (next.length > 0 && !next.endsWith("\n")) {
+    next += "\n";
+  }
+  next += toAppend.join("\n") + "\n";
+  await writeFile(path, next, "utf8");
 }

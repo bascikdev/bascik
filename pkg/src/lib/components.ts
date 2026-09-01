@@ -11,7 +11,6 @@ import type { BascikComponent, ComponentList } from "./types.ts";
 // Warn if a component name shadows a native HTML element
 export const NATIVE_HTML_ELEMENTS = new Set([
   "a",
-
   "abbr",
   "address",
   "area",

@@ -30,11 +30,10 @@ const isBuild =
   cliDecision.action === "build" || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
 const isProdServer =
   cliDecision.action === "server" ||
-  parseInt(process.env.BASCIK_SERVER ?? process.env.BASCIK_PROD_SERVER ?? "0") === 1;
+  parseInt(process.env.BASCIK_SERVER ?? "0") === 1;
 
 process.env.BASCIK_BUILD = isBuild ? "1" : "0";
 process.env.BASCIK_SERVER = isProdServer ? "1" : "0";
-process.env.BASCIK_PROD_SERVER = isProdServer ? "1" : "0";
 
 export const normalizeScopableOption = (
   val: ScopableConfig | undefined,

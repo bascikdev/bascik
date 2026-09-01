@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import chokidar from 'chokidar';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
@@ -53,18 +52,6 @@ export const startExecParallel = (): void => {
   }
 };
 
-/** Run all exec entries in order. Used during `--build`. */
-export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: number }> => {
-  const entries = BascikConfig.pipeline?.exec;
-  if (!entries?.length) return { count: 0, totalElapsed: 0 };
-  const start = performance.now();
-  for (const entry of entries) {
-    await runScript(entry.script);
-  }
-  const totalElapsed = performance.now() - start;
-  return { count: entries.length, totalElapsed };
-};
-
 /**
  * Fire watch-enabled exec entries async on dev startup and set up chokidar
  * re-run watchers. Build-only entries (no `watch`) are skipped.
@@ -73,21 +60,38 @@ export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: n
 export const startExecDev = (): Promise<void> => {
   const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return Promise.resolve();
-  const initialRuns: Promise<unknown>[] = [];
+  const watchedEntries = entries.filter((entry) => !!entry.watch);
+  if (watchedEntries.length === 0) return Promise.resolve();
 
-  for (const entry of entries) {
-    if (!entry.watch) continue;
-    let running = false;
-    let pending = false;
+  return import('chokidar').then(({ default: chokidar }) => {
+    const initialRuns: Promise<unknown>[] = [];
 
-    const triggerRun = () => {
-      if (running) {
-        pending = true;
-        return;
-      }
+    for (const entry of watchedEntries) {
+      if (!entry.watch) continue;
+      let running = false;
+      let pending = false;
+
+      const triggerRun = () => {
+        if (running) {
+          pending = true;
+          return;
+        }
+        running = true;
+        runScript(entry.script)
+          .then(() => eventEmitter.emit('asset-changed'))
+          .catch((err) => console.error('[bascik] exec error:', err))
+          .finally(() => {
+            running = false;
+            if (pending) {
+              pending = false;
+              triggerRun();
+            }
+          });
+      };
+
+      // Non-blocking startup run: no reload needed on first run
       running = true;
-      runScript(entry.script)
-        .then(() => eventEmitter.emit('asset-changed'))
+      const initialRun = runScript(entry.script)
         .catch((err) => console.error('[bascik] exec error:', err))
         .finally(() => {
           running = false;
@@ -96,29 +100,17 @@ export const startExecDev = (): Promise<void> => {
             triggerRun();
           }
         });
-    };
+      initialRuns.push(initialRun);
 
-    // Non-blocking startup run: no reload needed on first run
-    running = true;
-    const initialRun = runScript(entry.script)
-      .catch((err) => console.error('[bascik] exec error:', err))
-      .finally(() => {
-        running = false;
-        if (pending) {
-          pending = false;
+      const patterns = Array.isArray(entry.watch) ? entry.watch : [entry.watch];
+      const watcher = chokidar
+        .watch(patterns, { ignoreInitial: true })
+        .on('all', () => {
           triggerRun();
-        }
-      });
-    initialRuns.push(initialRun);
+        });
+      registerShutdownHandler(() => watcher.close());
+    }
 
-    const patterns = Array.isArray(entry.watch) ? entry.watch : [entry.watch];
-    const watcher = chokidar
-      .watch(patterns, { ignoreInitial: true })
-      .on('all', () => {
-        triggerRun();
-      });
-    registerShutdownHandler(() => watcher.close());
-  }
-
-  return Promise.all(initialRuns).then(() => { });
+    return Promise.all(initialRuns).then(() => { });
+  });
 };

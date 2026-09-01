@@ -757,7 +757,7 @@ describe("build-script output cache", () => {
     warnSpy.mockRestore();
   });
 
-  it("throws and identifies the failed script in a batch when onScriptError is 'error'", async () => {
+  it("throws and identifies the failed script in a batch when onBuildScriptError is 'error'", async () => {
     resolveWith(
       JSON.stringify([
         { id: 0, ok: true, stdout: "<span>Success</span>" },

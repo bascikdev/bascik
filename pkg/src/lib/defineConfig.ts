@@ -1,5 +1,7 @@
 import type { UserConfig } from "./types.ts";
 
+export type * from "./types.ts";
+
 /** Public type for bascik.config.ts — use with `defineConfig`. */
 export type BascikConfig = UserConfig;
 

@@ -6,20 +6,24 @@
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
   "type": "module",
+  "types": "./dist/lib/defineConfig.d.ts",
   "files": [
     "bin/",
     "dist/",
-    "src/",
+    "LICENSE",
     "README.md",
     "CHANGELOG.md"
   ],
   "bin": "bin/bascik.js",
   "exports": {
-    "./config": {
-      "types": "./src/lib/defineConfig.ts",
+    ".": {
+      "types": "./dist/lib/defineConfig.d.ts",
       "default": "./dist/lib/defineConfig.js"
     },
-    "./*": "./*"
+    "./config": {
+      "types": "./dist/lib/defineConfig.d.ts",
+      "default": "./dist/lib/defineConfig.js"
+    }
   },
   "engines": {
     "node": ">=22.18.0"

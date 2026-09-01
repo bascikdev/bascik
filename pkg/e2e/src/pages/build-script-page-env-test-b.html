@@ -11,7 +11,7 @@
        The cache key must differ (filePath component) so this page
        renders its own path, not the other page's cached output. -->
   <script data-bascik-build>
-    console.log('<p id="page-file">' + (process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '') + '</p>');
+    console.log('<p id="page-file">' + (process.env.BASCIK_TEMPLATE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '') + '</p>');
     console.log('<p id="site-url">' + (process.env.BASCIK_SITE_URL ?? '') + '</p>');
   </script>
 </body>

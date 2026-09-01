@@ -837,7 +837,7 @@ describe("startHttp2Server – rate limiting", () => {
     }
   });
 
-  it("does not throttle requests when rateLimit is disabled in prodServer config", async () => {
+  it("does not throttle requests when rateLimit is disabled", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.rateLimit = false;
     mockMem.getPage.mockReturnValue(makePage());
@@ -1681,7 +1681,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
 
   it("logs access for ordinary page requests (logging.requests defaults to true)", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).devServer = { logging: { level: "info", requests: true } };
+    (BascikConfig as any).logging = { level: "info", requests: true };
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();

@@ -475,7 +475,6 @@ export const executeBuildScripts = async (
     const relPath = activeFile ? relative(process.cwd(), activeFile).replace(/\\/g, "/") : "unknown";
     const extraEnv: Record<string, string> = {
       BASCIK_TEMPLATE_FILE: sourceFile,
-      BASCIK_SOURCE_FILE: sourceFile, // preserved for backward-compatibility fallback
       BASCIK_PAGE_FILE: pageFile,
       BASCIK_PAGE_PATH: pagePath,
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),

@@ -108,7 +108,7 @@ This prioritization operates identically whether running on the main thread or a
 
 ## Production Server Mode (`bascik --server`)
 
-When launched with `bascik --server` or `BASCIK_PROD_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
+When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
 
 ### Serving from `dist/`
 
