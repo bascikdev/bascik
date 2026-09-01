@@ -178,3 +178,16 @@ export const rewriteUsemapReferencesInHtml = (
   });
   return restore(rewritten);
 };
+
+/** Rewrite url(#id) fragments in a CSS string. */
+export const rewriteIdReferencesInCss = (
+  css: string,
+  resolve: (originalId: string) => string | null,
+): string => {
+  const shield = createContentShield(css);
+  const shieldedCss = css.replace(
+    /\/\*[\s\S]*?(?:\*\/|$)/g,
+    (comment) => shield.hide(comment),
+  );
+  return shield.restore(rewriteUrlFragments(shieldedCss, resolve));
+};

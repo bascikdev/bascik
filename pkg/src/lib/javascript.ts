@@ -103,6 +103,7 @@ import {
 import {
   collectDeclaredIds,
   rewriteIdReferencesInHtml,
+  rewriteIdReferencesInCss,
   rewriteUsemapReferencesInHtml,
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
@@ -245,8 +246,26 @@ export const prefixElementAttribute = (
   // selector queries like querySelector('.myClass') naturally target only the
   // current instance's elements, at the cost of per-instance CSS blocks.
   // IDs and names always keep the instanceId so multiple instances have unique DOM nodes.
+  if (attribute === "class" && component.scopedIdNames) {
+    const resolveScopedId = (originalId: string): string | null =>
+      component.scopedIdNames?.[originalId] ?? null;
+    const cssSources = [
+      component.cssFileContent
+        ? resolveCssImportsSync(component.cssFileContent, component.fileName)
+        : "",
+      component.fileContent.includes("<style")
+        ? extractInlineStyles(component.fileContent).css
+        : "",
+    ].filter(Boolean);
+    component.requiresPerInstanceCss = cssSources.some(
+      (css) => rewriteIdReferencesInCss(css, resolveScopedId) !== css,
+    );
+  }
+  // One shared stylesheet cannot target different per-instance IDs, so these components opt out of deduplication.
   const scopeKey =
-    attribute === "class" && deduplicateCss ? component.name : componentInstanceName;
+    attribute === "class" && deduplicateCss && !component.requiresPerInstanceCss
+      ? component.name
+      : componentInstanceName;
   const attributesToReplace: Array<{
     attributeName: string;
     obfuscatedAttributeName: string;
@@ -328,6 +347,7 @@ export const prefixElementAttribute = (
         ? scopedIds.get(originalId) ?? null
         : null,
     );
+    component.scopedIdNames = Object.fromEntries(scopedIds);
   }
   if (attribute === "name" && attributesToReplace.length > 0) {
     const scopedNames = new Map(
@@ -644,6 +664,12 @@ export const prefixElementAttribute = (
         component.cssFileContent,
         component.fileName,
       );
+      if (component.scopedIdNames) {
+        component.cssFileContent = rewriteIdReferencesInCss(
+          component.cssFileContent,
+          (originalId) => component.scopedIdNames?.[originalId] ?? null,
+        );
+      }
       // Handle basic replacement of classnames in css file.
       // Shield string literals and url(...) contents first so dots inside
       // them (file extensions, domains) are never mistaken for class selectors:

@@ -233,6 +233,29 @@ The lab styles `#signal`. Output → CSS shows its generated class selector; Out
 
 > **Specificity note:** Converting `#id` to a class drops specificity from `(0,1,0,0)` to `(0,0,1,0)`. `[id]` and `[id="…"]` attribute-selector forms are stripped at compile time, use a class selector instead.
 
+## CSS Fragment References
+
+Bascik rewrites fragment-only `url(#id)` values when the ID is declared in the same component. This supports SVG gradients, masks, filters, clip paths, markers, fills, strokes, and other CSS properties that accept a local fragment URL:
+
+```html
+<svg>
+  <defs><linearGradient id="brand-gradient"></linearGradient></defs>
+  <rect class="brand-shape"></rect>
+</svg>
+```
+
+```css
+.brand-shape {
+  fill: url(#brand-gradient);
+}
+```
+
+Quoted fragments such as `url('#brand-gradient')` and `url("#brand-gradient")` work the same way. Bascik leaves real URLs such as `url(/images/shape.svg)`, data URLs, remote URLs, and cross-document fragments such as `url(sprite.svg#icon)` byte-identical. Fragment rewriting runs before later base-path URL processing, so the two transforms do not claim the same value.
+
+IDs are scoped per component instance. Under the default `deduplicateCss: true`, one shared stylesheet cannot point to two different instance IDs. Bascik therefore emits per-instance CSS only for components containing a resolvable CSS fragment reference. This is the correct option because sharing the referenced ID across instances would emit invalid duplicate IDs. Components without CSS fragment references continue to deduplicate normally. With `deduplicateCss: false`, the existing per-instance CSS path handles fragments without any additional opt-out.
+
+References to IDs inside a preserved subtree remain literal. Use [Preserve Scoping](/preserve) when another tool owns the SVG ID graph.
+
 ## CSS Custom Properties
 
 `--var-name` declarations in a component's CSS are automatically scoped. All `var(--var-name)` references within the same file are updated to match, so custom properties stay isolated to their component.

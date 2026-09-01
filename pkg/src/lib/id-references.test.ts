@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectDeclaredIds,
   rewriteIdReferencesInHtml,
+  rewriteIdReferencesInCss,
 } from "./id-references.ts";
 
 describe("collectDeclaredIds", () => {
@@ -165,6 +166,80 @@ describe("rewriteIdReferencesInHtml", () => {
     const source = '<!-- <label for="local"></label> --><label for="local"></label>';
     expect(rewrite(source)).toBe(
       '<!-- <label for="local"></label> --><label for="scoped-local"></label>',
+    );
+  });
+});
+
+describe("rewriteIdReferencesInCss", () => {
+  const rewriteCss = (css: string): string =>
+    rewriteIdReferencesInCss(css, (id) =>
+      id === "local" || id === "$&" ? `scoped-${id}` : null,
+    );
+
+  it("rewrites url(#grad) to match a scoped svg gradient id", () => {
+    expect(
+      rewriteIdReferencesInCss(
+        ".icon { fill: url(#grad); }",
+        (id) => id === "grad" ? "bascik__icon__instance__grad" : null,
+      ),
+    ).toBe(".icon { fill: url(#bascik__icon__instance__grad); }");
+  });
+
+  it.each([
+    "filter",
+    "clip-path",
+    "mask",
+    "fill",
+    "stroke",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+  ])("rewrites a local fragment used by %s", (property) => {
+    expect(rewriteCss(`.icon { ${property}: url(#local); }`)).toBe(
+      `.icon { ${property}: url(#scoped-local); }`,
+    );
+  });
+
+  it.each([
+    ["single quotes", "url('#local')", "url('#scoped-local')"],
+    ["double quotes", 'url("#local")', 'url("#scoped-local")'],
+    ["extra whitespace", "url( #local )", "url( #scoped-local )"],
+  ])("preserves %s while rewriting the fragment", (_name, source, expected) => {
+    expect(rewriteCss(`a { fill: ${source}; }`)).toBe(`a { fill: ${expected}; }`);
+  });
+
+  it.each([
+    "url(/img/x.png)",
+    "url(https://example.com/x.svg)",
+    "url(data:image/svg+xml,%3Csvg%3E)",
+    "url(sprite.svg#icon)",
+    "url()",
+  ])("leaves a non-fragment URL byte-identical: %s", (url) => {
+    const source = `.icon { background: ${url}; }`;
+    expect(rewriteCss(source)).toBe(source);
+  });
+
+  it("leaves unresolved fragments byte-identical", () => {
+    const source = ".icon { fill: url(#external); }";
+    expect(rewriteCss(source)).toBe(source);
+  });
+
+  it("does not rewrite url fragments inside CSS comments", () => {
+    const source = "/* fill: url(#local) */ .icon { fill: url(#local); }";
+    expect(rewriteCss(source)).toBe(
+      "/* fill: url(#local) */ .icon { fill: url(#scoped-local); }",
+    );
+  });
+
+  it("rewrites multiple local fragments independently", () => {
+    expect(rewriteCss("a { fill: url(#local); filter: url(#external); }")).toBe(
+      "a { fill: url(#scoped-local); filter: url(#external); }",
+    );
+  });
+
+  it("preserves replacement tokens in resolved IDs", () => {
+    expect(rewriteCss("a { fill: url(#$&); }")).toBe(
+      "a { fill: url(#scoped-$&); }",
     );
   });
 });

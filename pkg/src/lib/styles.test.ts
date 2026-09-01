@@ -31,6 +31,9 @@ import {
   hoistCssImports,
 } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
+import { prefixElementAttribute } from "./javascript.ts";
+import { BascikConfig } from "./config.ts";
+import type { BascikComponent } from "./types.ts";
 
 const css = `
 .navigation ul {
@@ -503,6 +506,34 @@ describe("scopeCssCustomProperties – @property declarations", () => {
 });
 
 describe("deduplicateCss", () => {
+  it("emits every instance that contains a CSS fragment reference", () => {
+    const usedComponents = [
+      {
+        name: "svg-icon",
+        cssFileContent: ".bascik__svg-icon__first__icon{fill:url(#first-gradient)}",
+        requiresPerInstanceCss: true,
+      },
+      {
+        name: "svg-icon",
+        cssFileContent: ".bascik__svg-icon__second__icon{fill:url(#second-gradient)}",
+        requiresPerInstanceCss: true,
+      },
+    ];
+    const css = deduplicateCss(usedComponents);
+    expect(css).toContain("first-gradient");
+    expect(css).toContain("second-gradient");
+  });
+
+  it("still deduplicates ordinary components when fragment components opt out", () => {
+    const usedComponents = [
+      { name: "card", cssFileContent: ".card{}" },
+      { name: "card", cssFileContent: ".card{}" },
+      { name: "svg-icon", cssFileContent: ".first{}", requiresPerInstanceCss: true },
+      { name: "svg-icon", cssFileContent: ".second{}", requiresPerInstanceCss: true },
+    ];
+    expect(deduplicateCss(usedComponents)).toBe(".card{} .first{} .second{}");
+  });
+
   it("returns CSS for each unique component once", () => {
     const usedComponents = [
       { name: "my-btn", cssFileContent: ".btn{color:red}" },
@@ -534,6 +565,81 @@ describe("deduplicateCss", () => {
       { name: "a", cssFileContent: ".a{}" },
     ];
     expect(deduplicateCss(usedComponents)).toBe(".a{} .b{}");
+  });
+});
+
+describe("CSS ID fragment integration", () => {
+  it("rewrites url(#grad) to match a scoped svg gradient id", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
+  it("uses normal per-instance CSS when global deduplication is false", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", false);
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+  });
+
+  it("leaves a fragment for a preserved ID untouched", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg data-bascik-preserve="id"><linearGradient id="grad"></linearGradient></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain("url(#grad)");
+    expect(component.requiresPerInstanceCss).toBeUndefined();
+  });
+
+  it("uses the declaration hash in CSS when identifiers are minified", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      let component: BascikComponent = {
+        name: "svg-icon",
+        fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+        cssFileContent: ".icon { fill: url(#grad); }",
+      };
+      component = prefixElementAttribute(component, "id", "first123");
+      const scopedId = component.fileContent.match(/id="([^"]+)"/)?.[1];
+      component = prefixElementAttribute(component, "class", "first123", true);
+      expect(component.cssFileContent).toContain(`url(#${scopedId})`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("keeps real URLs byte-identical while rewriting local fragments", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { background: url(/img/x.png); mask: url(sprite.svg#icon); fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain("url(/img/x.png)");
+    expect(component.cssFileContent).toContain("url(sprite.svg#icon)");
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
   });
 });
 

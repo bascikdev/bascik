@@ -149,6 +149,10 @@ Bascik scopes `name` per component instance so repeated radio groups remain inde
 
 Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time. Keep the label and control together or target a literal page-shell ID. See [Scoped JavaScript](/scoped-javascript#html-id-references).
 
+## Why is my inline SVG gradient not showing?
+
+Declare the gradient ID and its CSS `url(#id)` reference in the same component. Bascik rewrites the fragment to the instance-scoped ID and automatically emits per-instance CSS for that component. Cross-document fragments such as `url(sprite.svg#icon)` are intentionally untouched. For an SVG ID graph owned by another tool, use [Preserve Scoping](/preserve). See [Scoped Styles](/scoped-styles#css-fragment-references).
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.

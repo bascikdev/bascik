@@ -1091,7 +1091,10 @@ export const scopeInlineStyleTags = (
  * component is used multiple times on the same page.
  */
 export const deduplicateCss = (
-  usedComponents: Pick<BascikComponent, "name" | "cssFileContent">[],
+  usedComponents: Pick<
+    BascikComponent,
+    "name" | "cssFileContent" | "requiresPerInstanceCss"
+  >[],
   dedup: boolean = true,
 ): string => {
   let combined: string;
@@ -1104,7 +1107,8 @@ export const deduplicateCss = (
   } else {
     const seen = new Set<string>();
     combined = usedComponents
-      .filter(({ name }) => {
+      .filter(({ name, requiresPerInstanceCss }) => {
+        if (requiresPerInstanceCss) return true;
         if (seen.has(name)) return false;
         seen.add(name);
         return true;

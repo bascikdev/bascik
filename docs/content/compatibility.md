@@ -87,6 +87,8 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | SVG `<use href>` and `xlink:href` | ✓ | Fragment-only references to local SVG IDs are rewritten. |
 | SVG presentation attributes | ✓ | `fill`, `stroke`, `mask`, `clip-path`, `filter`, `marker-start`, `marker-mid`, and `marker-end` rewrite local `url(#id)` fragments. |
 | Inline `style` attributes | ✓ | Local `url(#id)` fragments are rewritten. Component `<style>` blocks and stylesheets are covered separately by CSS scoping. |
+| CSS `url(#id)` fragments | ✓ | Local fragments in component stylesheets and `<style>` blocks are rewritten for properties including `fill`, `stroke`, `clip-path`, `mask`, `filter`, and marker properties. Components with resolvable fragments automatically emit per-instance CSS. |
+| CSS cross-document fragments | ✓ | Values such as `url(other.svg#icon)` are deliberately untouched because the fragment belongs to another document. Real, remote, and data URLs also remain unchanged. |
 | `usemap` on `<img>` | ✓ | Resolves against a local `<map name>`, not an ID, and follows `scoping.attributes.name`. |
 | Cross-component ID references | ✗ | IDs are scoped per instance, so references cannot resolve safely across component boundaries at build time. They remain unchanged. |
 | Preserved subtrees | ✓ | References and declarations inside `scoping.preserve` tags or `data-bascik-preserve` subtrees remain literal. |
@@ -133,7 +135,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 
 | Feature                   | Status | Notes                                                                                                                    |
 | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| CSS deduplication         | ✓     | When a component is used multiple times on a page, its CSS is injected only once.                                        |
+| CSS deduplication         | ✓     | Component CSS is normally injected once per type. Components containing resolvable `url(#id)` references emit per-instance CSS so each stylesheet targets that instance's scoped ID. |
 | `minify.identifiers`      | ✓     | In production builds, verbose names like `bascik__site-nav__a1b2c3__logo` are hashed to short strings (e.g. `ba1b2c3d`) for name compression. |
 | `minify.css`              | ✓     | Whitespace in the compiled `<style>` block is collapsed.                                                                 |
 | Comments                  | ✓     | Stripped before processing.                                                                                              |

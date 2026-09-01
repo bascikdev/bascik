@@ -267,6 +267,8 @@ All class names, element selectors, `#id` selectors, `@keyframes`, `@layer`, `@c
 
 These rewrites compose normally in one component: bare element selectors receive generated classes, locally declared custom properties and their `var()` references are renamed together, and keyframe declarations stay synchronized with `animation` references.
 
+Fragment-only CSS references such as `fill: url(#gradient)` are rewritten when the ID is declared in the same component. Quoted fragment forms are supported. Real URLs, data URLs, remote URLs, and cross-document fragments such as `url(sprite.svg#icon)` remain unchanged. Because IDs are per instance, a component with a resolvable CSS fragment automatically emits per-instance CSS even when `deduplicateCss: true`; components without fragments still deduplicate normally. Fragment rewriting runs before base-path URL processing.
+
 ```css
 /* site-nav.css: source */
 .nav a {
