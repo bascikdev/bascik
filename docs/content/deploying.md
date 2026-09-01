@@ -2,6 +2,17 @@
 
 Bascik's build output is a standard folder of static HTML, CSS, and JavaScript files. `bascik --build` writes everything to `dist/`, and that folder can be served by any static host or CDN without additional configuration.
 
+## Per-environment values: the site URL
+
+The site URL is a per-deployment value, so it is not a config-file key. Set `BASCIK_SITE_URL` in each environment's configuration (CI variables, container env, a `.env` file on the target) and the same checked-in source builds for staging and production without mutating anything:
+
+```sh
+BASCIK_SITE_URL=https://staging.example.com bascik --build   # staging
+BASCIK_SITE_URL=https://example.com bascik --build           # production
+```
+
+A `--site-url` flag and an automatic `./.env` file are also available; see [Configuration](/configuration#configuration-precedence) for the precedence chain. Builds that generate a sitemap or robots.txt fail when no source provides the URL, so a misconfigured environment surfaces immediately instead of shipping a broken sitemap.
+
 ## What's in `dist/`
 
 Running `bascik --build` produces:
@@ -27,7 +38,7 @@ To keep deployment artifacts clean, the following files are excluded from static
 To preview your built site locally before deploying, run Bascik's built-in production server:
 
 ```sh
-bascik --serve
+bascik --server
 ```
 
 Or preview with any third-party static HTTP server:
@@ -79,6 +90,8 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npx bascik --build
+        env:
+          BASCIK_SITE_URL: https://example.com
       # Upload dist/ to your host here
 ```
 
@@ -90,12 +103,12 @@ If your site uses `data-bascik-server` scripts for per-request dynamic content, 
 
 ```sh
 bascik --build   # compile to dist/
-bascik --serve   # start the HTTP server; runs server scripts per request
+bascik --server   # start the HTTP server; runs server scripts per request
 ```
 
 See [Production Server](/server) for full documentation on server scripts and the request context API.
 
-> **Plaintext HTTP by default.** Bascik's server runs as a plaintext HTTP/1.1 server by default on port `8080`. Most cloud platforms (Heroku, Fly.io, AWS ECS, Render, etc.) terminate TLS at the edge and forward cleartext HTTP to your container. If your platform passes TLS through to the container or you want HTTP/2, set `enableTls: true` under `prodServer` in your `bascik.config.ts`.
+> **Plaintext HTTP by default.** Bascik's server runs as a plaintext HTTP/1.1 server by default on port `8080`. Most cloud platforms (Heroku, Fly.io, AWS ECS, Render, etc.) terminate TLS at the edge and forward cleartext HTTP to your container. If your platform passes TLS through to the container or you want HTTP/2, set `http.tls.enabled: true` in your `bascik.config.ts`.
 
 ### Server configuration
 
@@ -103,10 +116,10 @@ Configure the port and TLS in `bascik.config.ts` before building:
 
 ```ts
 export default {
-  prodServer: {
+  http: {
     port: 8080,
-    hostname: '0.0.0.0',    // bind all interfaces; required in containers
-    enableTls: false,       // set to true for TLS-enabled HTTP/2
+    hostname: '0.0.0.0',          // bind all interfaces; required in containers
+    tls: { enabled: false },      // set to true for TLS-enabled HTTP/2
   },
 };
 ```
@@ -118,15 +131,16 @@ When `keyFile` and `certFile` are omitted, Bascik generates certificates automat
 A two-stage Dockerfile keeps the final image lean:
 
 ```dockerfile
-# Stage 1 — build
+# Stage 1: build
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG BASCIK_SITE_URL=https://example.com
 RUN npx bascik --build
 
-# Stage 2 — serve
+# Stage 2: serve
 FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -134,10 +148,12 @@ RUN npm ci
 COPY --from=build /app/dist ./dist
 COPY bascik.config.ts .
 EXPOSE 8080
-CMD ["npx", "bascik", "--serve"]
+CMD ["npx", "bascik", "--server"]
 ```
 
-If `enableTls: true` is set, you can supply a real certificate by mounting it at runtime:
+The `ARG` makes the site URL a build-time input, so the same Dockerfile builds staging and production images with different `--build-arg BASCIK_SITE_URL=...` values.
+
+If `http.tls.enabled: true` is set, you can supply a real certificate by mounting it at runtime:
 
 ```sh
 docker run -p 8443:8443 \
@@ -150,7 +166,7 @@ Bascik looks for `bascik-privkey.pem` and `bascik-cert.pem` in the working direc
 
 ### PaaS (Railway, Render, Fly.io, etc.)
 
-Set the start command to `bascik --build && bascik --serve`, point the platform's health check at the server port, and configure the port via the `serve.port` setting to match the port the platform expects to expose.
+Set the start command to `bascik --build && bascik --server`, point the platform's health check at the server port, and configure the port via the `http.port` setting to match the port the platform expects to expose. Set `BASCIK_SITE_URL` in the platform's environment variables so the sitemap and robots.txt carry the public origin.
 
 ### VPS or bare metal
 
@@ -167,10 +183,11 @@ Type=simple
 User=www-data
 WorkingDirectory=/srv/my-site
 ExecStartPre=/usr/bin/npx bascik --build
-ExecStart=/usr/bin/npx bascik --serve
+ExecStart=/usr/bin/npx bascik --server
 Restart=on-failure
 RestartSec=5s
 Environment=NODE_ENV=production
+Environment=BASCIK_SITE_URL=https://example.com
 
 [Install]
 WantedBy=multi-user.target

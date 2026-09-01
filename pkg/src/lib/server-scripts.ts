@@ -260,8 +260,8 @@ export const executeServerScripts = async (
           const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : request.path;
           const cleanedMsg = cleanStackTrace(msg, tmpPath, relPath, job.startLine);
           const errorMsg = `[bascik] server script error at "${request.path}":\n${cleanedMsg}`;
-          const behavior = BascikConfig.onScriptError ?? "error";
-          if (behavior === "halt" || behavior === "error") {
+          const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
+          if (behavior === "error") {
             console.error(errorMsg);
             throw new Error(errorMsg);
           } else {

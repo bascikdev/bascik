@@ -16,9 +16,13 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
   BascikConfig: {
-    scopeScriptBlocks: true,
-    inheritAttributes: true,
-    scopeAttribute: { class: true, id: true, name: true },
+    scoping: {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    },
     isBuild: true,
     minify: {
       html: false,
@@ -26,24 +30,33 @@ vi.mock("./config.js", () => ({
       js: false,
       identifiers: false,
     },
-    deduplicateCss: true,
-    inlineStyles: false,
+    assets: {
+      inlineStyles: false,
+      exclude: [],
+    },
     directory: {
       pages: "src/pages",
       components: "src/components",
+      out: "dist",
     },
   },
 }));
 
 describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", () => {
   beforeEach(() => {
-    (BascikConfig as Record<string, unknown>).isBuild = true;
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: true, id: true, name: true };
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
   });
 
   afterEach(() => {
-    (BascikConfig as Record<string, unknown>).minify = { html: false, css: false, js: false };
+    (BascikConfig as any).minify = { html: false, css: false, js: false, identifiers: false };
   });
 
   it("minifies JavaScript with esbuild via minify.js", async () => {

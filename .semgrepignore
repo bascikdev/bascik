@@ -1,0 +1,33 @@
+# Scoped Semgrep exclusions for intentional patterns and known false positives.
+# Keep this file minimal and revisit periodically.
+
+# CI workflow action tags are managed centrally; pinning policy handled separately.
+.github/workflows/ci.yml
+.github/workflows/release.yml
+
+# Scaffold generator writes static templates; false-positive script-tag heuristic.
+create/src/scaffold.ts
+
+# Test fixtures and docs utilities that intentionally exercise script/regex behavior.
+docs/src/lib/faq-schema.test.ts
+docs/src/lib/md-renderer.ts
+docs/src/pages/libraries.html
+
+# VS Code extension rules intentionally compile regex patterns from controlled rule tables.
+extensions/vscode-bascik/src/extension.ts
+extensions/vscode-bascik/src/rules.ts
+
+# Local TLS bypass is required for localhost/self-signed HTTP/2 coverage probes.
+pkg/bin/update-e2e-coverage.ts
+
+# E2E fixture content and tests with intentional dynamic/script patterns.
+pkg/e2e/src/components/head-meta/head-meta.html
+pkg/src/lib/components.test.ts
+
+# Core library hotspots use controlled dynamic regex construction and intentional script assembly.
+pkg/src/lib/components.ts
+pkg/src/lib/file-system.ts
+pkg/src/lib/javascript.ts
+pkg/src/lib/processing.ts
+pkg/src/lib/stack-trace.ts
+pkg/src/lib/styles.ts

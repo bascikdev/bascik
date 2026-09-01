@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "bascik --serve",
+      "startServerCommand": "bascik --server",
       "startServerReadyPattern": "Loaded \\d+ pages? from dist/",
       "url": [
         "http://localhost:8080/",

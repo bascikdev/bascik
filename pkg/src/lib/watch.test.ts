@@ -111,8 +111,14 @@ vi.mock("./config.js", () => ({
     directory: {
       pages: "/project/src/pages",
       components: "/project/src/components",
+      out: "dist",
     },
-    watch: [],
+    pipeline: {
+      watchPaths: [],
+    },
+    assets: {
+      inlineStyles: false,
+    },
     isBuild: false,
   },
 }));
@@ -153,7 +159,7 @@ import { eventEmitter } from "./events.ts";
 beforeEach(() => {
   resetMocks();
   clearWatchers();
-  (BascikConfig as any).inlineStyles = false;
+  (BascikConfig as any).assets = { inlineStyles: false };
 });
 
 // ─── Helper: get a named event handler from a given watcher index ─────────────
@@ -245,7 +251,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("calls processAllPages when an inline stylesheet changes and inlineStyles is true", async () => {
-    (BascikConfig as any).inlineStyles = true;
+    (BascikConfig as any).assets = { inlineStyles: true };
     mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
@@ -256,7 +262,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("calls processAllPages when an inline stylesheet is added and inlineStyles is true", async () => {
-    (BascikConfig as any).inlineStyles = true;
+    (BascikConfig as any).assets = { inlineStyles: true };
     mockIsInlineStylesheet.mockReturnValue(true);
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
@@ -267,7 +273,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("calls processAllPages when matching inlineStyles array on change", async () => {
-    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    (BascikConfig as any).assets = { inlineStyles: ["src/css/styles.css"] };
     mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
@@ -278,7 +284,7 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
   });
 
   it("emits asset-changed when a non-matching stylesheet changes", async () => {
-    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    (BascikConfig as any).assets = { inlineStyles: ["src/css/styles.css"] };
     mockIsInlineStylesheet.mockImplementation((p: string) => p.endsWith("styles.css"));
     mockProcessAllPages.mockClear();
     mockEventEmit.mockClear();
@@ -532,19 +538,19 @@ describe("watchFiles – isBuild = true", () => {
 
 describe("watchFiles – extra watch paths (watcher 3)", () => {
   beforeEach(async () => {
-    (BascikConfig as any).watch = ["/extra/watch/path"];
+    (BascikConfig as any).pipeline = { watchPaths: ["/extra/watch/path"] };
     await watchFiles();
   });
 
   afterEach(() => {
-    (BascikConfig as any).watch = [];
+    (BascikConfig as any).pipeline = { watchPaths: [] };
   });
 
   it("creates a fourth watcher when watch paths are set", () => {
     expect(mockWatch).toHaveBeenCalledTimes(4);
   });
 
-  it("watches BascikConfig.watch paths", () => {
+  it("watches BascikConfig.pipeline.watchPaths paths", () => {
     expect(mockWatch.mock.calls[3][0]).toEqual(["/extra/watch/path"]);
   });
 
@@ -577,19 +583,19 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
 
 describe("watchFiles – inlineStyles paths", () => {
   beforeEach(async () => {
-    (BascikConfig as any).inlineStyles = ["src/css/inlined.css"];
+    (BascikConfig as any).assets = { inlineStyles: ["src/css/inlined.css"] };
     await watchFiles();
   });
 
   afterEach(() => {
-    (BascikConfig as any).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false };
   });
 
   it("creates an extra watcher when inlineStyles array is configured", () => {
     expect(mockWatch).toHaveBeenCalledTimes(4);
   });
 
-  it("watches BascikConfig.inlineStyles paths", () => {
+  it("watches BascikConfig.assets.inlineStyles paths", () => {
     expect(mockWatch.mock.calls[3][0]).toEqual(["src/css/inlined.css"]);
   });
 

@@ -7,11 +7,21 @@ import autoprefixer from 'autoprefixer';
 import { transform } from 'esbuild';
 
 export default defineConfig({
-  siteUrl: 'http://localhost:4200',
-  watch: ['src/content/'],
-  useWorkers: true,
-  onScriptError: 'warn',
-  inlineStyles: ['src/css/inlined-global.css'],
+  pipeline: {
+    watchPaths: ['src/content/'],
+    workers: true,
+    exec: [
+      { script: 'scripts/generate-manifest.ts' },
+    ],
+  },
+  scripts: {
+    onBuildScriptError: 'warn',
+    onRoutesScriptError: 'warn',
+    onServerScriptError: 'warn',
+  },
+  assets: {
+    inlineStyles: ['src/css/inlined-global.css'],
+  },
   minify: {
     identifiers: false,
     css: async (css) => {
@@ -23,11 +33,13 @@ export default defineConfig({
       return result.code;
     },
   },
-  exec: [
-    { script: 'scripts/generate-manifest.ts' },
-  ],
-  prodServer: {
-    port: Number(process.env.BASCIK_SERVE_PORT) || 9443,
-    enableTls: process.env.BASCIK_ENABLE_TLS === 'true',
+});
+
+export const server = defineConfig({
+  http: {
+    port: Number(process.env.BASCIK_SERVER_PORT) || 9443,
+    tls: {
+      enabled: process.env.BASCIK_ENABLE_TLS === 'true',
+    },
   },
 });

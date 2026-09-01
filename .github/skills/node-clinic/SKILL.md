@@ -40,7 +40,7 @@ When working in this repository (`@bascik/bascik`), pre-configured npm/yarn prof
 | :--- | :--- | :--- | :--- | :--- |
 | **Static Build (`--build`)** | `yarn --cwd pkg profile:clinic:doctor-docs-build` | `yarn --cwd pkg profile:clinic:flame-docs-build` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-build` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-build` |
 | **Dev Server (watch mode)** | `yarn --cwd pkg profile:clinic:doctor-docs-dev` | `yarn --cwd pkg profile:clinic:flame-docs-dev` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-dev` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-dev` |
-| **Production Server (`--serve`)** | `yarn --cwd pkg profile:clinic:doctor-docs-serve` | `yarn --cwd pkg profile:clinic:flame-docs-serve` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-serve` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-serve` |
+| **Production Server (`--server`)** | `yarn --cwd pkg profile:clinic:doctor-docs-serve` | `yarn --cwd pkg profile:clinic:flame-docs-serve` | `yarn --cwd pkg profile:clinic:bubbleprof-docs-serve` | `yarn --cwd pkg profile:clinic:heapprofiler-docs-serve` |
 
 Generated reports are saved into `docs/dist/profile-clinic-<tool>-<mode>/`.
 

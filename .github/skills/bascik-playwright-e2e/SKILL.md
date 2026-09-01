@@ -15,8 +15,8 @@ Bascik validates runtime behavior against four distinct server and compilation e
 | :--- | :--- | :--- |
 | `pkg/e2e/playwright.config.ts` | **Static Production** | Tests static HTML file serving from `dist/` |
 | `pkg/e2e/playwright.dev.config.ts` | **Dev Server (Watch/SSE)** | Tests live reload, file watcher triggers, dev SSE stream |
-| `pkg/e2e/playwright.server.config.ts` | **Production HTTP/1.1** | Tests `bascik --serve` over HTTP/1.1 |
-| `pkg/e2e/playwright.server-http2.config.ts` | **Production HTTP/2** | Tests `bascik --serve` over secure HTTP/2 with TLS |
+| `pkg/e2e/playwright.server.config.ts` | **Production HTTP/1.1** | Tests `bascik --server` over HTTP/1.1 |
+| `pkg/e2e/playwright.server-http2.config.ts` | **Production HTTP/2** | Tests `bascik --server` over secure HTTP/2 with TLS |
 
 ---
 

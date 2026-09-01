@@ -6,6 +6,44 @@ However, Bascik is also **highly configurable** for both development and product
 
 To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` also works and takes precedence if both files exist.
 
+## Config File Discovery
+
+Bascik looks for its config in the project root only, in this order:
+
+1. `--config <path>` (or `--config=<path>`): load a specific file. An explicitly passed path that does not exist is an error, mirroring the `--env-file` behavior.
+2. `bascik.config.js`
+3. `bascik.config.ts`
+
+When both files exist, `bascik.config.js` wins. This is deliberate because many JavaScript-first projects keep a `.js` config alongside TypeScript files. If your `.ts` file appears to be ignored, check for a stray `.js` file next to it.
+
+Only these two filenames are supported: no `.mjs`, `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
+
+TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
+
+## Configuration Validation
+
+Bascik validates your configuration at startup, before anything reads it. Every problem is reported together in one aggregated error rather than one fix at a time. Each entry names the key, the received value, and what was expected:
+
+```text
+Configuration errors in bascik.config.ts
+
+  http.port                70000
+                           expected an integer between 1 and 65535
+
+  minify.js                "esbuild"
+                           expected true, false, or a function
+
+  scripts.onBuildScriptErr unknown key
+                           did you mean "scripts.onBuildScriptError"?
+
+  pipeline.exec[0].script  scripts/gen-data.ts
+                           file does not exist
+
+4 configuration errors
+```
+
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `directory.public`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted; only a full URL is rejected.
+
 ## Minimal Configuration Example (Recommended)
 
 Because Bascik is zero-config, you only need to specify settings that differ from built-in defaults. Keep your `bascik.config.ts` clean and minimal:
@@ -15,10 +53,10 @@ Because Bascik is zero-config, you only need to specify settings that differ fro
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+  generate: { sitemapLastmod: true },
 });
 
-// Production build overrides (applied only during `bascik --build` and `bascik --serve`)
+// Production build overrides (applied only during `bascik --build` and `bascik --server`)
 export const build = defineConfig({
   minify: {
     html: true,
@@ -28,6 +66,54 @@ export const build = defineConfig({
   },
 });
 ```
+
+## Configuration Precedence
+
+Most Bascik settings live in `bascik.config.ts`, but per-deployment values like the site URL come from the environment. The full precedence chain is:
+
+```text
+CLI flag  >  real environment variable  >  .env file  >  config file  >  built-in default
+```
+
+Most specific and most ephemeral wins. The config file is checked into git and shared by everyone, the environment is per-deployment, and a flag is per-invocation.
+
+The flags that override specific config keys:
+
+| Flag | Env var | Config key |
+| --- | --- | --- |
+| `--port <n>` | `BASCIK_SERVER_PORT` | `http.port` |
+| `--host <name>` | `BASCIK_SERVER_HOST` | `http.hostname` |
+| `--log-level <level>` | `BASCIK_LOG_LEVEL` | `logging.level` |
+
+See [Command Line Interface](/cli#cli-reference) for the full flag reference.
+
+This mirrors the tools you already know:
+
+- **Node `--env-file`:** "If the same variable is defined in the environment and in the file, the value from the environment takes precedence." Multiple `--env-file` arguments are allowed, and subsequent files override variables defined in previous files.
+- **Node configuration priority:** command-line options and `NODE_OPTIONS` beat dotenv `NODE_OPTIONS`, which beats the configuration file.
+- **npm:** CLI flags, then `npm_config_*` env vars, then project `.npmrc`, then user `.npmrc`, then global `.npmrc`, then built-in defaults.
+- **dotenv:** `override: false` is the default, so a `.env` file never clobbers a real environment variable.
+
+### The site URL
+
+`siteUrl` is **not a config key**. It is a per-deployment value, and putting it in a checked-in file would force CI to mutate source in order to build for staging. Three sources, in precedence order:
+
+```text
+--site-url flag  >  BASCIK_SITE_URL env var  >  .env file
+```
+
+```sh
+# 1. Per-invocation flag
+bascik --build --site-url https://staging.example.com
+
+# 2. Environment variable
+BASCIK_SITE_URL=https://example.com bascik --build
+
+# 3. .env file in the project root (loaded automatically when present)
+echo 'BASCIK_SITE_URL=https://example.com' >> .env
+```
+
+The value must be an absolute `http` or `https` URL; anything else is rejected with an error naming what was received. Bascik loads `./.env` automatically and silently skips it when absent. Pass `--env-file <path>` (repeatable, later files win) to load additional files; a missing explicit file is an error.
 
 ## Full Configuration Reference (Built-In Defaults)
 
@@ -41,65 +127,72 @@ export default defineConfig({
   directory: {
     pages: 'src/pages',
     components: 'src/components',
+    out: 'dist',
+    public: undefined,
+    api: 'src/api',
   },
-  watch: [],
-  exec: [
-    // { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
-  ],
-
-  scopeScriptBlocks: true,
-  inheritAttributes: true,
-  scopeAttribute: {
-    class: true,
-    id: true,
-    name: true,
+  scoping: {
+    scriptBlocks: true,
+    inheritAttributes: true,
+    attributes: {
+      class: true,
+      id: true,
+      name: true,
+    },
+    preserve: ['code'],
+    deduplicateCss: true,
   },
-  skipTranspilingElementContents: ['code'],
-
-  deduplicateCss: true,
   minify: {
-    html: false,        // false in dev; true in --build and --serve
-    css: false,         // false in dev; true in --build and --serve
-    js: false,          // false in dev; true in --build and --serve
-    identifiers: false, // false in dev; true in --build and --serve
+    html: false,        // false in dev; true in --build and --server
+    css: false,         // false in dev; true in --build and --server
+    js: false,          // false in dev; true in --build and --server
+    identifiers: false, // false in dev; true in --build and --server
   },
-  inlineStyles: false,  // false | true | ['src/css/styles.css']
-
-  cacheHttp: false,     // false in dev; true in --serve
-
-  siteUrl: undefined,   // e.g. 'https://example.com' (required for sitemap generation)
+  assets: {
+    inlineStyles: false,
+    exclude: [],
+  },
   generate: {
     sitemap: true,
     robots: true,
+    sitemapLastmod: false,
+    cspHashes: false,
+    manifest: false,
   },
-
-  useWorkers: false,
-  buildScriptCache: true,
-  onScriptError: 'warn', // 'warn' in dev; 'error' in --build and --serve
-  onMinifyError: 'warn', // 'warn' in dev; 'error' in --build and --serve
-
-  devServer: {
-    logging: {
-      level: 'info',      // silent | error | warn | info | debug
-      requests: true,
-      copies: true,
-      deletes: true,
-      transpiles: true,
+  pipeline: {
+    watchPaths: [],
+    exec: [],
+    workers: false,
+  },
+  scripts: {
+    cache: { enabled: true },
+    onBuildScriptError: 'error',
+    onRoutesScriptError: 'error',
+    onServerScriptError: 'error',
+    timeout: 30000,
+  },
+  onMinifyError: 'warn', // 'warn' in dev; 'error' in --build and --server
+  http: {
+    port: undefined,      // auto-selected port
+    hostname: 'localhost',// use '0.0.0.0' to bind all interfaces
+    tls: {
+      enabled: false,     // set true for HTTP/2 HTTPS
     },
+    rateLimit: true,
+    trustProxy: false,
+    cacheControl: 'public, max-age=3600',
+    compression: true,
+    maxBodySize: 1048576,
+    apiTimeout: 10000,
   },
-
-  prodServer: {
-    port: 8080,           // default (8080 HTTP, 8443 HTTPS)
-    hostname: 'localhost', // use '0.0.0.0' to bind all interfaces
-    enableTls: false,     // default; set true for HTTP/2 HTTPS
-    scriptTimeout: 30000, // max execution time (ms) per server script
-    keyFile: undefined,   // path to TLS private key when enableTls is true
-    certFile: undefined,  // path to TLS certificate when enableTls is true
-    logging: {
-      level: 'info',      // silent | error | warn | info | debug
-      requests: true,     // log each request as 'GET / ... 200 17ms'
-    },
+  logging: {
+    level: 'info',        // silent | error | warn | info | debug
+    requests: true,
+    copies: true,
+    deletes: true,
+    transpiles: true,
   },
+  base: '/',
 });
 
 export const build = defineConfig({
@@ -116,90 +209,83 @@ export const build = defineConfig({
 
 Here are just a few ways Bascik puts architectural choices back in your hands:
 
-- **Style Deduplication (`deduplicateCss`):** Choose between clean, single-definition scoped stylesheets for optimal payload sizes, or individual per-instance styling for seamless local script querying.
+- **Style Deduplication (`scoping.deduplicateCss`):** Choose between clean, single-definition scoped stylesheets for optimal payload sizes, or individual per-instance styling for seamless local script querying.
 - **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently. You can even plug in your own custom async minifiers (like esbuild or terser) or configure Node's built-in type stripper for native TypeScript compilation.
-- **Granular Attribute Scoping (`scopeAttribute`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
-- **Parallel Builds (`useWorkers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects.
-- **Error Behavior (`onScriptError`):** Choose whether to halt the entire build on template script errors, or output inline compiler warnings and keep going.
-- **Environment Overrides (`build`):** Easily define production-only overrides (such as minifying identifier names or inlining stylesheets) while keeping development logs detailed and verbose.
+- **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
+- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects.
+- **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
+- **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
 
 ## Configuration Reference
 
 ### `directory`
 
-Paths to your pages and components directories, relative to the project root.
+Paths to your pages, components, output, public assets, and API routes directories, relative to the project root.
 
 ```ts
 directory: {
-  pages: 'src/pages',           // default — HTML routes, static assets, and subfolders
-  components: 'src/components', // default — component .html and .css templates
+  pages: 'src/pages',           // default: HTML routes, static assets, and subfolders
+  components: 'src/components', // default: component .html and .css templates
+  out: 'dist',                  // default: output build directory
+  public: undefined,            // default: optional public asset directory
+  api: 'src/api',               // default: API route handlers directory
 }
 ```
 
-> **Asset Mirroring and Exclusions:** Any subfolders and static asset files inside `pages` (such as `images/`, `fonts/`, favicons, or standalone `css/` and `js/` files) are automatically copied to `dist/` preserving their folder structure. CSS and JS files in `pages` are minified during build when `minify.css` / `minify.js` are enabled.
+> **Asset Mirroring and Exclusions:** Any subfolders and static asset files inside `pages` (such as `images/`, `fonts/`, favicons, or standalone `css/` and `js/` files) are automatically copied to `directory.out` preserving their folder structure. CSS and JS files in `pages` are minified during build when `minify.css` / `minify.js` are enabled.
 >
-> The following files are **excluded** from static asset copying and are never copied to `dist/`:
+> The following files are **excluded** from static asset copying and are never copied to `directory.out`:
 > - `.html` page templates (transpiled into compiled HTML output pages)
 > - `.ts` files (treated as build or server helper scripts)
 > - Test files matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
-> - Inlined stylesheets specified in `inlineStyles` (injected directly into HTML `<head>` blocks)
+> - Inlined stylesheets specified in `assets.inlineStyles` (injected directly into HTML `<head>` blocks)
 > - All files in `src/components/` (treated as source-only component templates and styles)
 
-### `scopeScriptBlocks`
+### `scoping`
 
-Wrap component `<script>` tags in an IIFE and rewrite scoped attribute references. Set to `false` if you want raw unmodified script output.
-
-```ts
-scopeScriptBlocks: true // default
-```
-
-### `inheritAttributes`
-
-Control whether non-`data-bascik-*` attributes on a component usage tag are merged onto the component root element. Defaults to `true`.
+Control component scoping behaviors, attribute scoping, element content preservation, and style deduplication.
 
 ```ts
-inheritAttributes: true // default
-```
-
-### `scopeAttribute`
-
-Control which HTML attribute types are scoped independently. Useful if you're using Tailwind (`class: false`) or don't need name scoping.
-
-```ts
-scopeAttribute: {
-  class: true, // default
-  id: true,    // default
-  name: true,  // default
+scoping: {
+  scriptBlocks: true,      // wrap component <script> tags in IIFEs
+  inheritAttributes: true, // merge usage tag attributes onto component root
+  attributes: {
+    class: true, // scope class attributes
+    id: true,    // scope id attributes
+    name: true,  // scope name attributes
+  },
+  preserve: ['code'],      // elements whose inner content is left untouched
+  deduplicateCss: true,    // deduplicate component CSS output
 }
 ```
 
-### `deduplicateCss`
+### `scoping.scriptBlocks`
+
+Wrap component `<script>` tags in an IIFE and rewrite scoped attribute references. Set to `false` if you want raw unmodified script output.
+
+### `scoping.inheritAttributes`
+
+Control whether non-`data-bascik-*` attributes on a component usage tag are merged onto the component root element. Defaults to `true`.
+
+### `scoping.attributes`
+
+Control which HTML attribute types are scoped independently. Useful if you're using Tailwind (`class: false`) or don't need name scoping.
+
+### `scoping.deduplicateCss`
 
 When `true` (default), all instances of the same component share the same scoped class names so the compiled `<style>` block is emitted only once per component type, regardless of how many times the component appears on the page.
 
 When `false`, every instance gets its own unique per-instance class names (the same scheme used for `id` scoping). This means a `querySelector('.myClass')` inside a component script will naturally target only elements inside that specific instance, but each instance emits its own `<style>` block.
 
-```ts
-deduplicateCss: true // default
-```
+### `scoping.preserve`
 
-> **Further Reading & Trade-offs:** For a full side-by-side trade-off breakdown, visual comparison of generated HTML/CSS payloads, and script-querying guides, see the [deduplicateCss Trade-Off Comparison on the Scoped Styles page](/scoped-styles#deduplicatecss-trade-off-comparison).
+An array of HTML element names whose inner content is left untouched by the scoping pipeline. Attribute values, element-selector class injection, and JS selector rewriting are all skipped for any HTML found *inside* these elements.
 
-### `skipTranspilingElementContents`
-
-An array of HTML element names whose inner content is left untouched by the scoping pipeline. Attribute values, element-selector class injection, and JS selector rewriting are all skipped for any HTML found *inside* these elements. The elements' own opening-tag attributes (e.g. `class="cblock-body"` on `<code>` itself) are still scoped normally.
-
-Defaults to `["code"]`: the typical element used to display literal code examples. Add `"pre"` only if your templates contain raw text inside `<pre>` blocks that aren't wrapped in `<code>` and whose content has attribute patterns you don't want scoped. Note: when `"pre"` is in the list, attributes on elements *inside* `<pre>` (such as `class="cblock-body"` on a `<code>` child) are also excluded from scoping.
-
-```ts
-skipTranspilingElementContents: ['code'] // default
-```
-
-Set to an empty array to disable the protection entirely, or extend the list for other elements whose contents should be preserved as-is.
+Defaults to `['code']`.
 
 ### `minify` (BYOMinifier)
 
-Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --serve`.
+Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
 
 Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, terser, or Node's built-in TypeScript type stripper:
 
@@ -225,233 +311,112 @@ export const build = defineConfig({
 });
 ```
 
-Only applies to inline scripts (those without a `src` attribute) and to `.js` files copied into `dist/`. Non-JS script types such as `application/ld+json` are always left untouched.
-
-To strip TypeScript from component scripts, pass Node's built-in `stripTypeScriptTypes` to `minify.js`. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
-
 ### `minify.identifiers`
 
-Hash generated class, ID, and name attributes (name compression or mangling) to short alphanumeric strings instead of the verbose `bascik__component__id__name` format. Enabled by default in builds.
+Hash generated class, ID, and name attributes to short alphanumeric strings instead of the verbose `bascik__component__id__name` format. Enabled by default in builds.
+
+### `assets`
+
+Asset pipeline configuration.
 
 ```ts
-minify: {
-  identifiers: true // production default
+assets: {
+  inlineStyles: ['src/css/styles.css'], // global stylesheets to inline into <head>
+  exclude: [],                          // glob patterns for asset copying exclusion
 }
-// bascik__my-nav__ab12cd34__navigation
-// becomes: b2Y4G9eD1K8b
-```
-
-### `cacheHttp`
-
-Controls HTTP caching on server responses. Defaults to `false` in dev mode and `true` in `--serve` (production) mode, you rarely need to set this explicitly.
-
-When `true`, HTML pages receive an `ETag` header and the server returns `304 Not Modified` for unchanged content. Static assets get `Cache-Control: public, max-age=3600`. When `false`, responses include `Cache-Control: no-store` so browsers always fetch fresh content.
-
-Set `cacheHttp: false` explicitly when running `--serve` behind a CDN that manages its own caching.
-
-### Build logs
-
-Bascik can write a copy of the build output to a file when you enable it from the CLI. This is meant for debugging and CI diagnosis, not as a normal project artifact.
-
-```sh
-bascik --build --log
-bascik --build --log ./logs/build.log
-```
-
-The default path is `.bascik/build.log`. If you omit `--log`, Bascik does not create a file automatically. Terminal output remains the primary source of build diagnostics.
-
-### `devServer`
-
-Control the noise level of the development server's status output. The `level` field applies to all dev-server status events; individual toggles let you silence only the logs you do not want.
-
-```ts
-devServer: {
-  logging: {
-    level: 'info',      // silent | error | warn | info | debug
-    requests: true,     // log each page request as 'serving: ...'
-    copies: true,       // log each static file copied into dist/
-    deletes: true,      // log each dist/ file or dir deleted
-    transpiles: true,   // log each page transpile
-  },
-}
-```
-
-Use `level: 'warn'` or `level: 'silent'` to suppress the high-volume status lines when you are focused on application logic rather than build output.
-
-### `prodServer`
-
-Configure the HTTP server started by `bascik --serve` and `bascik` (dev mode). `port`, `hostname`, `enableTls`, `rateLimit`, `scriptTimeout`, `keyFile`, and `certFile` are read in both modes. `bascik --build` does not start a server and ignores this block.
-
-```ts
-prodServer: {
-  port: 8080,              // default (8080 for HTTP, 8443 for HTTPS)
-  hostname: 'localhost',   // default; set '0.0.0.0' to bind all interfaces
-  enableTls: false,        // default; set true for encrypted HTTP/2 (HTTPS)
-  rateLimit: true,         // default; enable per-IP rate limiting (500 req / 10s)
-  scriptTimeout: 30000,    // max execution time (ms) per server script (default: 30000)
-  keyFile: 'bascik-privkey.pem',  // path to TLS private key when enableTls: true
-  certFile: 'bascik-cert.pem',    // path to TLS certificate when enableTls: true
-  logging: {
-    level: 'info',        // silent | error | warn | info | debug
-    requests: true,       // log each request as 'GET / ... 200 17ms'
-  },
-}
-```
-
-See [Production Server](/server) for the full guide.
-
-### `siteUrl`
-
-The canonical base URL of your deployed site (e.g. `'https://example.com'`). Required for sitemap generation. Trailing slashes are trimmed automatically.
-
-```ts
-siteUrl: 'https://example.com'
 ```
 
 ### `generate`
 
-Control which files are written to `dist/` during `bascik --build`. Both default to `true`. Requires `siteUrl` to be set.
+Control which build artifacts are generated during `bascik --build`.
 
 ```ts
 generate: {
-  sitemap: true, // write dist/sitemap.xml
-  robots: true,  // write dist/robots.txt
+  sitemap: true,         // write sitemap.xml
+  robots: true,          // write robots.txt
+  sitemapLastmod: false, // include lastmod timestamps
+  cspHashes: false,      // generate CSP hash manifest
+  manifest: false,       // write build manifest
 }
 ```
 
-See [Sitemap & robots.txt](/sitemap) for a full walkthrough.
+### `pipeline`
 
-### `watch`
-
-An array of directories or files that, when changed in dev mode, trigger a full re-transpile of all pages. Useful for utility scripts, data files, or image directories that pages depend on at build time.
+Pipeline options for file watching, build scripts execution, and concurrency.
 
 ```ts
-watch: ['scripts/', 'data/'],
-```
-
-Has no effect during `bascik --build`.
-
-### `exec`
-
-Scripts to run as part of the build/dev lifecycle. Each entry has a `script` path (relative to the project root, run with the same `node` binary), an optional `phase`, and an optional `watch` array.
-
-- **`phase`** (optional): Execution phase controlling when the script runs relative to page transpilation. Defaults to `'pre'`.
-  - `'pre'` (default): Runs before page transpilation begins. In both `--build` and `dev` startup, `pre` scripts are awaited sequentially before pages transpile. This is the default because build scripts frequently fetch dynamic data (CMS feeds, localized string bundles, or route manifests) required by `<script data-bascik-build>` blocks or dynamic routes during page compilation. Defaulting to `'pre'` guarantees data safety and eliminates cold-build race conditions.
-  - `'post'`: Runs after all pages finish transpilation and sitemaps are generated. Ideal for post-processing, build artifact verification, or deployment packaging.
-  - `'parallel'`: Initiates concurrently with page transpilation without blocking the start of page processing. Ideal for independent generation tasks (such as search indexes, LLM manifests, or social share images) that do not produce data needed during page compilation.
-- **With `watch`**: runs on dev startup according to its phase and re-runs whenever a watched file changes, followed by a live-reload. Also runs during `--build`.
-- **Without `watch`**: build-only, skipped in dev.
-
-> **Output location recommendation.** Lifecycle scripts executed by `exec` should write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than into source directories (`src/`). Writing generated files into `src/` can pollute your source tree with build artifacts and cause unnecessary `git` diffs or pre-push sync steps.
-
-```ts
-exec: [
-  { script: 'scripts/fetch-content.ts', phase: 'pre', watch: ['content/'] },
-  { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
-  { script: 'scripts/verify-build.ts', phase: 'post' },
-]
-```
-
-> **Production Overrides:** Array properties like `exec` are replaced entirely when overridden in `export const build`. If you define `exec` inside `export const build`, list all scripts that should run during production builds.
-
-### `inlineStyles`
-
-Controls which global stylesheets Bascik reads and injects as `<style>` tags into every page's `<head>` during transpilation. When `minify.css` is true the content is minified before injection. Global styles are placed before component styles so component rules take precedence.
-
-- `false`: inline nothing
-- `true`: inline every `.css` file under `directory.pages`
-- `string[]`: inline only the listed stylesheet paths
-
-```ts
-inlineStyles: false // default
-inlineStyles: true
-inlineStyles: ['src/css/styles.css']
-```
-
-This eliminates the render-blocking `<link rel="stylesheet">` request, the CSS arrives in the same HTTP response as the HTML. It pairs naturally with `build` to minify only in production:
-
-```ts
-import { defineConfig } from '@bascik/bascik/config';
-
-export default defineConfig({
-  inlineStyles: ['src/css/styles.css'],
-  minify: { css: false },
-});
-
-export const build = defineConfig({
-  minify: { css: true },
-});
-```
-
-> **When to inline.** Stylesheets under ~15 KB (gzipped) are good candidates. Larger stylesheets are better loaded asynchronously or split into critical and non-critical parts.
-
-### `useWorkers`
-
-Transpile pages across a pool of CPU-core worker threads instead of sequentially on the main thread.
-
-```ts
-useWorkers: false // default
-useWorkers: true
-```
-
-Spinning up the worker pool has a fixed cost, each worker loads the transpiler's module graph independently, which takes roughly 15-250ms in total depending on machine and cache state (all workers load in parallel, so this is a one-time fixed delay, not a per-page cost). For small sites, or sites without slow per-page work, this fixed cost outweighs the benefit of spreading pages across cores, and sequential transpilation on the main thread finishes first.
-
-> **When to enable.** Turn this on for larger sites (dozens of pages or more) doing CPU-heavy work per page, complex CSS/JS scoping across many components. It will not help much on sites whose slow parts are I/O-bound (e.g. `<script data-bascik-build>` blocks that fetch data or spawn subprocesses), since that work is already asynchronous regardless of which thread initiates it. Combine with `buildScriptCache: true` (the default) for the biggest speedup: workers handle parallel page transpilation while the cache eliminates redundant child-process spawns for unchanged scripts.
-
-### `buildScriptCache`
-
-Cache `<script data-bascik-build>` output on disk so unchanged scripts skip the Node.js child-process spawn on subsequent builds or server restarts.
-
-```ts
-buildScriptCache: true  // default
-buildScriptCache: false // disable for debugging
-```
-
-Cache entries live in `node_modules/.cache/bascik/script-cache/`. The cache key covers the script content, dev/build mode, the source file path (`BASCIK_SOURCE_FILE`), the site URL, and the content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files the script references as quoted path literals. This means the cache self-invalidates on a per-script basis: editing one Markdown file only invalidates scripts that reference that file.
-
-To bust the entire cache manually, for example after upgrading a build-time npm dependency whose output changed:
-
-```sh
-rm -rf node_modules/.cache/bascik/script-cache
-```
-
-Set to `false` when debugging a script that reads external state not covered by the cache key (e.g. a live API call or a file referenced by a dynamic path).
-
-### `onScriptError`
-
-Action to take when a `<script data-bascik-build>` or `<script data-bascik-server>` block fails to execute.
-
-- `"warn"` (default in dev): Log a detailed warning to `console.warn` and continue transpilation, replacing the script tag's output with an empty string so the dev server stays running.
-- `"error"` (default in `--build` and `--serve`): Log a detailed compilation error with line and column numbers to `console.error` and throw an exception to halt compilation.
-- `"halt"`: Alias for `"error"`. Throws an exception and halts compilation immediately.
-
-```ts
-onScriptError: "warn" // default in dev; "error" in build/prod-server
-```
-
-### `onMinifyError`
-
-Action to take when minification (HTML, CSS, or JS) fails due to invalid syntax or execution error.
-
-- `"warn"` (default in dev): Log a warning to `console.warn` and proceed with unminified content so the dev server stays running.
-- `"error"` (default in `--build` and `--serve`): Log a failure message to `console.error` and throw an exception to halt compilation immediately.
-- `"halt"`: Alias for `"error"`. Throws an exception and halts compilation immediately.
-
-```ts
-onMinifyError: "warn" // default in dev; "error" in build/prod-server
-```
-
-## `build`
-
-Exporting a `build` object lets you set options that apply during `bascik --build` and `bascik --serve` (production server), overriding the default export. A common pattern is to enable minification options or additional lifecycle scripts only in production:
-
-```ts
-import { defineConfig } from '@bascik/bascik/config';
-
-export default defineConfig({
-  exec: [
-    { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
+pipeline: {
+  watchPaths: ['scripts/', 'data/'], // extra paths to watch in dev mode
+  exec: [                            // lifecycle scripts
+    { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
   ],
+  workers: false,                    // enable multi-threaded worker pool
+}
+```
+
+### `scripts`
+
+Script execution configuration and error handling.
+
+```ts
+scripts: {
+  cache: { enabled: true },     // cache build script output
+  onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
+  onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
+  onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
+  timeout: 30000,               // execution timeout in ms
+}
+```
+
+### `http`
+
+Configure the HTTP/HTTPS server started by `bascik` and `bascik --server`.
+
+```ts
+http: {
+  port: 8080,               // HTTP port (default: auto)
+  hostname: 'localhost',    // hostname to bind
+  tls: {
+    enabled: false,         // enable HTTP/2 TLS
+    keyFile: undefined,     // path to TLS private key
+    certFile: undefined,    // path to TLS certificate
+  },
+  rateLimit: true,          // per-IP rate limiting
+  trustProxy: false,        // trust X-Forwarded-* headers
+  cacheControl: 'public, max-age=3600',
+  compression: true,
+  maxBodySize: 1048576,
+  apiTimeout: 10000,
+}
+```
+
+### `logging`
+
+Log levels and verbosity configuration.
+
+```ts
+logging: {
+  level: 'info',       // silent | error | warn | info | debug
+  requests: true,      // log HTTP requests
+  copies: true,        // log asset copies
+  deletes: true,       // log asset deletions
+  transpiles: true,    // log page transpilation
+}
+```
+
+## Mode Overrides (`dev`, `build`, `server`)
+
+Exporting `dev`, `build`, or `server` mode configuration objects lets you specify mode-specific overrides that merge on top of `default`:
+
+```ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  generate: { sitemapLastmod: true },
+});
+
+export const dev = defineConfig({
+  logging: { level: 'debug' },
 });
 
 export const build = defineConfig({
@@ -461,12 +426,12 @@ export const build = defineConfig({
     js: true,
     identifiers: true,
   },
-  exec: [
-    { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
-    { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
-    { script: 'scripts/generate-og-images.ts', phase: 'parallel' },
-  ],
+});
+
+export const server = defineConfig({
+  http: {
+    port: 9443,
+    tls: { enabled: true },
+  },
 });
 ```
-
-> **Array Replacement vs Object Merging:** Nested configuration objects (such as `minify`, `directory`, `scopeAttribute`, and `devServer`) merge shallowly with default options. Array properties (such as `exec`, `watch`, and `inlineStyles`) are treated as atomic values and **replaced entirely** when specified in `export const build`. Any script omitted from `build.exec` will not execute during production builds.

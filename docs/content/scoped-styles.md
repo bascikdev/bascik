@@ -246,7 +246,7 @@ The lab declares `--signal-color` and uses it for the animated indicator. Its Ou
 Define your design tokens once in a global stylesheet, then consume them inside any component. Because the component never declares those properties locally, Bascik leaves the `var()` references as-is and they resolve from the global stylesheet at render time.
 
 ```css
-/* src/styles.css — design tokens, linked in every page <head> */
+/* src/styles.css: design tokens, linked in every page <head> */
 :root {
   --brand:     #d3ff8d;
   --card-bg:   #1e2022;
@@ -259,7 +259,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 <style>
   .card {
     padding: 24px 28px;
-    background: var(--card-bg);    /* global — Bascik leaves untouched */
+    background: var(--card-bg);    /* global: Bascik leaves untouched */
     border-top: 3px solid var(--brand);
     border-radius: 10px;
   }
@@ -274,7 +274,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 ```
 
 ```css
-/* dist/ output — class names scoped, var() refs preserved */
+/* dist/ output: class names scoped, var() refs preserved */
 .bascik__brand-card__card {
   padding: 24px 28px;
   background: var(--card-bg);
@@ -448,7 +448,7 @@ export const build = defineConfig({
 });
 ```
 
-When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build` and `bascik --serve`.
+When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build` and `bascik --server`.
 
 ## How Scoping Works
 

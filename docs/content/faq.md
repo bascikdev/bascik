@@ -65,6 +65,12 @@ If you have two files that differ only in case (for example `my-card.html` and `
 
 > **Convention.** Use lowercase, hyphenated filenames for all components: `site-nav.html`, `feature-card.html`, `alert-box.html`. This matches the HTML custom element convention and avoids any case-collision surprises.
 
+## What happens if I reference a component that doesn't exist?
+
+During a build, Bascik emits a warning naming the unresolved tag, and the tag ships to the output unchanged. The build does not fail.
+
+However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party web components such as `<model-viewer>` and `<ion-icon>` currently fail `--check` (an upcoming update changes this validation to emit a warning instead).
+
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 
 Yes. Bascik's output is vanilla HTML. Any library that works with HTML works with Bascik. Drop a `<script>` tag in and it loads like it always has. See the [JavaScript Libraries](/libraries) page for examples.
@@ -130,7 +136,7 @@ No, Bascik is designed to be highly resilient and hard to crash. Because it uses
 - **Unclosed Component Tags:** If a component tag is unclosed, for example `<my-component>` with no closing `</my-component>` tag, Bascik safely falls back to treating it as a self-closing tag, compiles it with empty inner content, and proceeds. The VS Code extension also issues a warning so you can fix it easily.
 - **Unclosed or Invalid Standard HTML:** Bascik does not use a rigid HTML/XML AST parser for standard elements. If you have unclosed or invalid native HTML tags (such as `<div>` or `<p>`), they are passed directly to the output files untouched. This allows the browser's native parser to handle the layout, ensuring that standard markup errors never crash your build processes.
 - **Component Transpilation Failures:** Each component transpilation step is wrapped in a `try-catch` block. If a component fails to compile, Bascik logs a detailed error with line and column numbers to `console.error`, removes the failed component tag, and continues compiling the rest of the page.
-- **Build-time & Server-side Scripts (`data-bascik-build` / `data-bascik-server`):** If a script block fails to execute due to syntax errors or runtime exceptions, Bascik logs the detailed error to `console.error` and halts compilation (by default). You can customize this behavior using the `onScriptError` option in `bascik.config.ts` to log a warning instead.
+- **Build-time & Server-side Scripts (`data-bascik-build` / `data-bascik-server`):** If a script block fails to execute due to syntax errors or runtime exceptions, Bascik logs the detailed error to `console.error` and stops by default. You can tune behavior separately with `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` in `bascik.config.ts`.
 - **Client-side / Browser-side JavaScript:** Standard scripts are wrapped in an IIFE for scoping, but they are not parsed or executed during the build. If there is a syntax error or a logical bug in your browser-side JavaScript, it is compiled as-is and sent to the client browser, where the error will be printed in the browser's developer console without affecting your server or build processes.
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 
@@ -141,3 +147,28 @@ This is by design and is how Bascik's component scoping works.
 When you use a component multiple times on a page, each instance of that component includes its corresponding `<script>` block in the expanded output. Because class names are scoped to the component name rather than an individual instance ID (which allows CSS rules to be deduplicated into a single `<style>` block), component scripts that query elements by class name or use DOM traversal produce identical JavaScript code for every instance.
 
 Each script tag is isolated in its own IIFE so variables never leak into the global scope. Having one script tag per component instance guarantees that every instance receives its behavior without requiring a runtime framework, component registry, or bundling step.
+
+## Why is `siteUrl` an environment variable and not a config option?
+
+Because the site URL changes per deployment, not per project. Staging, production, and preview deploys of the same checked-in source need different values, and putting the URL in `bascik.config.ts` would force CI to mutate a tracked file (or maintain per-branch forks of it) just to build for a different origin.
+
+Bascik follows the standard precedence chain instead: `--site-url` flag, then the `BASCIK_SITE_URL` environment variable, then a `.env` file. Each environment sets its own value and the config file stays untouched. See [Configuration precedence](/configuration#configuration-precedence).
+
+## Why is my `bascik.config.ts` being ignored?
+
+Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
+
+Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
+
+## Why did my build fail with a configuration error?
+
+Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.
+
+Common causes:
+
+- **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
+- **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
+- **A path that does not exist**, such as an `exec` script, a `watchPaths` entry, or a TLS certificate file.
+- **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
+
+Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).

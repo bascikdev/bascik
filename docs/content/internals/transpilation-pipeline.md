@@ -16,7 +16,7 @@ On startup (and whenever a component is added), the watch system calls `processA
 2. **Prioritize open pages first.** In dev mode, `partitionByOpenPages()` separates pages into those currently open in active browser tabs and background pages. Active pages are transpiled, committed to `MemoryStore`, and have their `"transpiled"` reload events emitted immediately, so open browser windows update without waiting for the full site to compile.
 3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. If `useWorkers: true` is set in `bascik.config.ts`, a `WorkerPool` is created instead with `Math.min(os.cpus().length, pageCount)` workers, and each worker is initialized with the shared `componentList` and `globalStylesHtml` via `workerData`. The worker pool also processes the prioritized open pages first before dispatching remaining background pages. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so this only pays off for larger sites or CPU-heavy per-page work, see the [`useWorkers`](/configuration#useworkers) config option.
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
-5. **Write to disk only in build mode.** In dev mode, pages are served entirely from the in-memory store, no `dist/` writes happen, so the server is ready as soon as memory is populated.
+5. **Write HTML to disk only in build mode.** In dev mode, pages are served entirely from the in-memory store and HTML pages are not written to `dist/` (though static assets are copied to `dist/`), so the server is ready as soon as memory is populated.
 
 ## Phase 1: Page Phase (`pageProcessing`)
 
@@ -30,7 +30,7 @@ The page phase prepares the source HTML document and orchestrates the component 
 6. **Inject live-reload script.** In dev mode only, a small `<script>` that opens a Server-Sent Events connection to `/bascik-live-reload` is appended to the body.
 7. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs *after* component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 8. **Reassemble HTML.** The resolved body and head are placed back into the original HTML document structure.
-9. **Write output.** In build mode, the finished HTML is written to `dist/`. In dev mode, no disk write occurs, the result is stored in the in-memory page store so the HTTP/2 server can serve it instantly.
+9. **Write output.** In build mode, the finished HTML is written to `dist/`. In dev mode, HTML pages are not written to disk (static assets are copied to `dist/`), and the result is stored in the in-memory page store so the HTTP/2 server can serve it instantly.
 10. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
 
 ### Incremental Disk Writes and `dist/` Persistence
@@ -51,7 +51,7 @@ When a page contains multiple uncached `<script data-bascik-build>` blocks:
 3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.
 4. Outputs are mapped back to their corresponding tags, cached on disk, and spliced into the page simultaneously.
 
-This reduces Node child process spawns from $N$ scripts to 1 per page during cold builds.
+This reduces Node child process spawns from N scripts to 1 per page during cold builds.
 
 ### Location
 

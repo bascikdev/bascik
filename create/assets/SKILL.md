@@ -672,6 +672,13 @@ If a component template contains multiple root elements, inherited attributes ar
 
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance: `inheritAttributes: false` in `bascik.config.ts`.
 
+### Internal Masking vs. Preserving Element Contents
+
+These two mechanisms serve distinct purposes:
+
+* **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
+* **Preserve element contents (authoring choice):** The `skipTranspilingElementContents` option (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. *(Note: this option is renamed to `scoping.preserve` in an upcoming configuration update; the rename is not yet implemented)*.
+
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:
 ```html
@@ -715,7 +722,7 @@ Components work inside `<head>` to organize metadata and shared links:
 * Use `console.log()` or `process.stdout.write()` to output HTML.
 * Build scripts run before component resolution, so their output can contain component tags.
 * All build scripts on a page execute concurrently via `Promise.all` (capped by a memory semaphore), and output is assembled in document order once all scripts complete.
-* On error, behavior is controlled by `onScriptError` in `bascik.config.ts`: `'warn'` (default in dev: log warning to stderr and replace tag with `""`), `'error'` (default in `--build` and `--serve`: log error to stderr and throw exception to stop build), or `'halt'` (alias for `'error'`).
+* On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'` or `'error'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`.
 * **Stack Trace Remapping:** For both `<script data-bascik-build>` and `<script data-bascik-server>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
 * **Hard error:** combining `data-bascik-build` and `data-bascik-server` on the same tag throws and aborts the build. A script runs at build time or at request time, not both.
 
@@ -730,7 +737,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_PAGE_FILE` | Absolute path of the current page file (e.g. `/project/src/pages/about.html`). Use this to generate page-specific output like canonical URLs. |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
-| `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts`, e.g. `"https://example.com"`. |
+| `BASCIK_SITE_URL` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` env var, or `.env`. Absent when unset, never an empty string. |
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
@@ -937,7 +944,7 @@ Bascik intentionally does not inject a global `escapeHtml()` helper into every s
 
 Rules:
 * Top-level `import` and `await` are supported.
-* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --serve` or the dev server.
+* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --server` or the dev server.
 * They are NOT executed during `bascik --build` itself.
 * Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
 * On error, a warning is logged and the tag is replaced with an empty string.
@@ -946,9 +953,23 @@ Rules:
 
 ## 9. Configuration (`bascik.config.ts`)
 
-Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `siteUrl`, custom `exec` build scripts, or production `build` minification overrides).
+Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `generate.sitemapLastmod`, custom `exec` build scripts, or production `build` minification overrides).
 
 Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs.
+
+### Configuration is validated at startup
+
+Bascik validates the config before anything reads it and reports every problem together: each error names the key, the received value, and the expectation. Unknown keys are rejected with a "did you mean" suggestion, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.exec[].script`, `pipeline.watchPaths`, `assets.inlineStyles`, TLS key/cert files) are checked for existence. `base` is normalized to a leading and trailing slash (`docs` becomes `/docs/`); only a full URL is rejected.
+
+### The site URL is not a config key
+
+`siteUrl` is a per-deployment value, so it never goes in `bascik.config.ts` (setting it there is an error). Three sources, in precedence order:
+
+```text
+--site-url flag  >  BASCIK_SITE_URL env var  >  .env file
+```
+
+The value must be an absolute `http` or `https` URL. Bascik loads `./.env` automatically (silently skipped when absent); `--env-file <path>` is repeatable with later files winning, and a missing explicit file is an error. A real environment variable always beats a file value. When `generate.sitemap` or `generate.robots` is enabled (both default to `true`) and no source provides the URL, the build fails with a message showing all three ways to set it.
 
 ### Minimal Configuration Example (Recommended)
 
@@ -959,10 +980,10 @@ When creating or editing `bascik.config.ts`, only include options that differ fr
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'https://example.com', // required for sitemaps, robots.txt, and canonical URLs
+  generate: { sitemapLastmod: true },
 });
 
-// Applied only during `bascik --build` and `bascik --serve`.
+// Applied only during `bascik --build` and `bascik --server`.
 export const build = defineConfig({
   minify: {
     html: true,
@@ -971,6 +992,17 @@ export const build = defineConfig({
     identifiers: true,
   },
 });
+```
+
+### Anti-Pattern: Defaults-Only Configuration
+
+Create `bascik.config.ts` only when a value differs from the default. If the configuration file would contain only defaults, **do not create the file**.
+
+```ts
+// DO NOT write this. Every value here is already the default for `bascik --build`.
+export const build = {
+  minify: true,
+};
 ```
 
 ### Full Configuration Reference (Built-In Defaults)
@@ -983,71 +1015,77 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   directory: {
-    pages: "src/pages", // default
-    components: "src/components", // default
+    pages: 'src/pages',
+    components: 'src/components',
+    out: 'dist',
+    public: undefined,
+    api: 'src/api',
   },
-  watch: [], // re-transpile all pages when these paths change (dev only)
-  // exec: Optional array of custom build-lifecycle script objects { script: string, phase?: 'pre' | 'post' | 'parallel', watch?: string[] }.
-  // 'pre' (default) runs and is awaited before page transpilation in both build and dev startup.
-  // 'post' runs after all pages finish transpilation.
-  // 'parallel' starts concurrently with page transpilation.
-  // Note: The commented examples below demonstrate possible custom build tasks (e.g. search indexes, RSS feeds, social card images).
-  // Do NOT add exec entries unless your project actually implements corresponding script files!
-  exec: [
-    // Example: { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
-    // Example: { script: 'scripts/generate-sitemap.ts', phase: 'post' },
-  ],
-  // Critical: custom lifecycle scripts registered in `exec` must write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than `src/` to prevent polluting your source tree or causing infinite watcher re-transpile loops.
-  scopeScriptBlocks: true,
-  inheritAttributes: true,
-  scopeAttribute: {
-    class: true,
-    id: true,
-    name: true,
+  scoping: {
+    scriptBlocks: true,
+    inheritAttributes: true,
+    attributes: {
+      class: true,
+      id: true,
+      name: true,
+    },
+    preserve: ['code'],
+    deduplicateCss: true,
   },
-  deduplicateCss: true,
-  skipTranspilingElementContents: ['code'], // don't scope inside these elements
   minify: {
     html: false,
     css: false,
     js: false,
-    identifiers: false, // false in dev; true in --build and --serve
+    identifiers: false,
   },
-  inlineStyles: false, // false | true | ['src/css/styles.css']
-  cacheHttp: false, // dev default; automatically true in --serve mode
-  siteUrl: 'https://example.com',
+  assets: {
+    inlineStyles: false,
+    exclude: [],
+  },
   generate: {
-    sitemap: true, // write dist/sitemap.xml
-    robots: true,  // write dist/robots.txt
+    sitemap: true,
+    robots: true,
+    sitemapLastmod: false,
+    cspHashes: false,
+    manifest: false,
   },
-  useWorkers: false,       // true: transpile pages across CPU-core worker threads
-  buildScriptCache: true,  // false: disable disk cache for <script data-bascik-build>
-  onScriptError: 'warn',   // 'warn' (default in dev) | 'error' (default in build/prod-server) | 'halt'
-  onMinifyError: 'warn',   // 'warn' (default in dev) | 'error' (default in build/prod-server) | 'halt'
-  devServer: {
-    logging: {
-      level: 'info',    // silent | error | warn | info | debug
-      requests: true,
-      copies: true,
-      deletes: true,
-      transpiles: true,
+  pipeline: {
+    watchPaths: [],
+    exec: [],
+    workers: false,
+  },
+  scripts: {
+    cache: { enabled: true },
+    onBuildScriptError: 'error',
+    onRoutesScriptError: 'error',
+    onServerScriptError: 'error',
+    timeout: 30000,
+  },
+  onMinifyError: 'warn',
+  http: {
+    port: undefined,
+    hostname: 'localhost',
+    tls: {
+      enabled: false,
     },
+    rateLimit: true,
+    trustProxy: false,
+    cacheControl: 'public, max-age=3600',
+    compression: true,
+    maxBodySize: 1048576,
+    apiTimeout: 10000,
   },
-  prodServer: {
-    enableTls: false,     // default; set true for HTTP/2 HTTPS
-    port: 8080,           // default (8080 HTTP, 8443 HTTPS)
-    hostname: 'localhost', // use '0.0.0.0' to bind all interfaces (containers/proxies)
-    scriptTimeout: 30000, // max execution time (ms) per server script (default: 30000)
-    keyFile: '/etc/ssl/site.key',  // optional: provide your own TLS cert
-    certFile: '/etc/ssl/site.crt', // optional: provide your own TLS cert
-    logging: {
-      level: 'info',    // silent | error | warn | info | debug
-      requests: true,
-    },
+  logging: {
+    level: 'info',
+    requests: true,
+    copies: true,
+    deletes: true,
+    transpiles: true,
   },
+  base: '/',
 });
 
-// Applied only during `bascik --build` and `bascik --serve`.
+// Applied only during `bascik --build` and `bascik --server`.
 export const build = defineConfig({
   minify: {
     html: true,
@@ -1061,7 +1099,8 @@ export const build = defineConfig({
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:
-* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. `siteUrl`, custom `exec` scripts, or `build` minification rules).
+* **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `generate` toggles, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
+* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. custom `exec` scripts or `build` minification rules).
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
 * **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
@@ -1069,7 +1108,7 @@ When creating or modifying `bascik.config.ts`:
 * **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
-* **Set `siteUrl` for production features:** Configure `siteUrl` (e.g. `'https://example.com'`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled.
+* **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
 
 **`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
 
@@ -1102,9 +1141,11 @@ src/
 * **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified at build time when `minify.css` / `minify.js` are enabled in `bascik.config.ts`. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can also be assigned to `minify.css` and `minify.js`.
 * **No Passthrough Configuration:** No asset pipelines, passthrough copy configuration, or public folder settings are needed.
 
-### Custom 404 & 500 Pages
-* **404 Page (`src/pages/404.html`):** If you create a `404.html` file in your pages directory, the dev server and `bascik --serve` automatically serve it as a fallback for any non-existent routes with a `404` status code. When you build for production (`bascik --build`), this is compiled to `dist/404.html` which is recognized by standard static hosts (GitHub Pages, Vercel, Netlify).
-* **500 Page Support:** If the server encounters runtime compilation errors, it responds with a proper `500` error block to prevent server crashes.
+### Custom 404 & 500 Error Pages
+* **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
+* **500 Error Pages in Static vs. Server Contexts:**
+  * **Static builds (`bascik --build`):** A 500 error page is meaningless in a fully static build, because static web hosts serve their own error pages if an infrastructure or server issue occurs. Do not port a 500 error page from Next.js, Remix, or any server-rendered framework into a static Bascik site.
+  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
 
 ---
 
@@ -1132,7 +1173,7 @@ To start again:  cd my-site && npm run dev
 npm install @bascik/bascik
 ```
 
-Then run `bascik init` to scaffold the starter files and folder structure, or add the scripts manually to `package.json`:
+Then run `bascik init` to scaffold starter files (`src/pages/index.html`, `src/components/`), append `.gitignore` entries (`dist/`, `node_modules/.cache/bascik/`), and patch `package.json` (`"type": "module"` when absent plus standard scripts and dependency), or add the scripts manually to `package.json`:
 
 ```json
 {
@@ -1149,31 +1190,35 @@ Then run `bascik init` to scaffold the starter files and folder structure, or ad
 ```sh
 bascik                        # dev: transpile, start plaintext HTTP server at http://localhost:8080, watch
 bascik --build                # production: transpile to dist/ only
-bascik --build --log [path]   # write build output to a log file (default: .bascik/build.log)
-bascik --serve                # production preview/server: serve a pre-built dist/ folder
-bascik --check                # static analysis: validate pages and components without building
+bascik --build --log [path]   # write build output to a log file (default: .bascik/build.log; only valid with --build)
+bascik --server               # production server: serve a pre-built dist/ folder
+bascik --check                # static analysis: validate pages, components, and config without building
 ```
 
-**`bascik --serve`:** starts the HTTP/2 server against a pre-built `dist/` directory. **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --serve`. Unlike the dev server, `--serve` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+More flags: `--config <path>` (load a specific config file), `--port <n>`, `--host <name>`, `--log-level <silent|error|warn|info|debug>`, `--site-url <url>`, and `--env-file <path>` (repeatable). Every value flag accepts both `--flag value` and `--flag=value`. Precedence: a flag beats the environment variable (`BASCIK_SERVER_PORT`, `BASCIK_SERVER_HOST`, `BASCIK_LOG_LEVEL`), which beats the config file. The parser rejects `--build` combined with `--server`, unknown flags, and stray positionals: `bascik build` (no dashes) errors with a `Did you mean "--build"?` suggestion instead of silently starting the dev server.
 
-**`prodServer` config block:** configure the production server in `bascik.config.ts`:
+**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+
+**`http` config block:** configure the server in `bascik.config.ts`:
 ```ts
 export default {
-  cacheHttp: true,       // default in --serve; false in dev
-  prodServer: {
+  http: {
     port: 8080,            // default (8080 HTTP, 8443 HTTPS)
     hostname: 'localhost', // set '0.0.0.0' to bind all interfaces
-    enableTls: false,      // default; set true for HTTP/2 HTTPS
-    keyFile: 'bascik-privkey.pem',
-    certFile: 'bascik-cert.pem',
+    httpCache: true,       // default in --server; false in dev
+    tls: {
+      enabled: false,      // default; set true for HTTP/2 HTTPS
+      keyFile: 'bascik-privkey.pem',
+      certFile: 'bascik-cert.pem',
+    },
   },
 };
 ```
-When `enableTls: true` is set, TLS certs are generated automatically (mkcert if available, openssl fallback) when `keyFile`/`certFile` are absent. Provide your own certs from a public CA for production.
+When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert if available, openssl fallback) when `keyFile`/`certFile` are absent. Provide your own certs from a public CA for production.
 
-**`cacheHttp`:** defaults to `true` in `--serve` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
+**`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
 
-**Production hardening (automatic in `--serve`):**
+**Production hardening (automatic in `--server`):**
 * **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`. When serving over HTTPS/TLS (`enableTls: true` or `x-forwarded-proto: https`), `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS) is automatically included per RFC 6797.
 * **URL routing (dev and production):** pages are served at their filename without the `.html` extension. `dist/about.html` is at `/about`, `dist/blog/post.html` is at `/blog/post`, `dist/index.html` is at `/`. Unmatched paths fall through to `/404` if a `dist/404.html` exists.
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
@@ -1183,8 +1228,8 @@ When `enableTls: true` is set, TLS certs are generated automatically (mkcert if 
 **Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
 
 * **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service.
-* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --serve`).
-* **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --serve` and bind port `8080`.
+* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`).
+* **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
 When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.
 
@@ -1204,7 +1249,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated; no writes to `dist/` happen during dev mode.
+On startup, Bascik computes the full component list and global styles **once**, then transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, pages are served from memory and compiled HTML is not written to `dist/`, while static assets are copied to `dist/`. Note: this dev-mode disk write gap is a known inconsistency being addressed in an upcoming update.
 
 #### 2. Watching for File Changes (Watch Mode)
 While the dev server is active, Bascik watches your file system and incrementally updates your build as files are added, updated, or removed:
@@ -1300,7 +1345,7 @@ Commit this file so all contributors get the correct behavior automatically. Alt
 
 #### 5. Inspecting `dist/` Output
 
-Both the dev server and `bascik --build` write compiled HTML to `dist/` on disk, this is the ground truth of what Bascik produced. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
+`bascik --build` writes compiled HTML and static assets to `dist/` on disk, this is the ground truth of what Bascik produced for production. In dev mode (`bascik`), static assets are copied to `dist/`, but HTML pages are served directly from memory and not written to disk. The `dist/` structure mirrors `src/pages/` with the leading directory stripped:
 
 ```
 src/pages/about.html       →  dist/about.html
@@ -1312,7 +1357,7 @@ What to check in compiled output:
 * **Scoped class names:** attributes like `class="bascik__site-nav__nav"` (or a short hash with `minify.identifiers`) confirm CSS scoping ran correctly.
 * **Injected `<style>` block:** the `<head>` should contain one combined `<style>` with CSS from all components used on that page.
 * **Build script output:** `<script data-bascik-build>` is replaced with stdout; if missing, check the terminal for a `[bascik] build script error` line.
-* **Server script output:** `<script data-bascik-server>` is replaced at request time; if output is missing on a live request, check the terminal for a `[bascik] server script error` line. Remember these scripts run in Node.js, not the browser, they require `bascik --serve` or the dev server to execute.
+* **Server script output:** `<script data-bascik-server>` is replaced at request time; if output is missing on a live request, check the terminal for a `[bascik] server script error` line. Remember these scripts run in Node.js, not the browser, they require `bascik --server` or the dev server to execute.
 * **Slot and prop values:** verify fallback and injected text appear in the right place.
 
 The browser's **View Source** (or DevTools **Sources** panel) is equivalent to reading `dist/` and is often faster during development.
@@ -1439,8 +1484,8 @@ yarn pkg:e2e:prod:http2         # run TLS HTTP/2 prod server suite
 
 The E2E suite lives in `pkg/e2e/` and supports four execution modes:
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
-2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --serve` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
-3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --serve` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
+2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
+3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
 The fixture config sets `minify.identifiers: false` so Playwright selectors can use readable scoped names like `bascik__my-comp__btn` instead of opaque hashes. However, in production builds (where `minify.identifiers: true` is enabled), Bascik compiles and minifies element IDs and class names. Consequently, relying on raw CSS selectors like `page.locator('.my-class')` or `page.locator('#my-id')` will fail because those identifiers are hashed and compressed.
@@ -1683,6 +1728,17 @@ Full guide: `/switch/from-vue`. Key Vue-specific mappings:
 | `vue-router` | One `.html` per route in `src/pages/` |
 | `onMounted` data fetch | `<script data-bascik-build>` |
 
+### Migrating Existing Sitemap & Robots Files
+
+When migrating an existing website to Bascik, follow this procedure for existing `sitemap.xml` and `robots.txt` files:
+
+1. **Open and inspect the existing files:** Read the existing `sitemap.xml` and `robots.txt`.
+2. **Determine if custom directives exist:** Decide whether they contain anything Bascik would not generate automatically: hand-curated URLs, `Disallow` rules for paths that still exist, a `Sitemap:` pointer to an external index, or crawl directives specific to a single bot.
+3. **If they contain nothing special, delete them:** Delete the old files and let Bascik generate fresh ones automatically at build time. Do not copy them into `src/pages/`, and do not set `generate.sitemap: false` or `generate.robots: false` in `bascik.config.ts`.
+4. **If they contain custom directives, keep the authored file:** Keep the authored file in `src/pages/`, turn off the matching generator in `bascik.config.ts` (`generate: { sitemap: false }` or `generate: { robots: false }`), and add a comment in the config explaining why.
+
+**Failure Mode Warning:** Copying old sitemap and robots files into `src/pages/` while disabling Bascik's built-in generation looks superficially correct, but silently freezes the sitemap at the old site's URL list forever as new pages are created or routes change.
+
 ---
 
 ## 18. Key Constraints & Rules for AI Code Generation (MUST FOLLOW)
@@ -1718,3 +1774,7 @@ Bascik logs a warning and still loads the component, but it will replace every o
 
 **What happens with uppercase letters in a component filename (e.g. `My-Card.html`)?**
 Component names are normalized to lowercase at load time. `My-Card.html` registers as `my-card` and is referenced as `<my-card>`. If two files differ only in case, the last one loaded wins. Convention: always use lowercase, hyphenated filenames.
+
+**What happens if I reference a component that doesn't exist?**
+During a build (`bascik --build`), Bascik emits a warning naming the unresolved tag, and the tag ships to the HTML output unchanged without failing the build. However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party custom elements (such as `<model-viewer>` or `<ion-icon>`) currently cause `--check` to fail (an upcoming update changes this validation to emit a warning instead).
+

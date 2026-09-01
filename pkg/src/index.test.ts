@@ -1,68 +1,69 @@
 import { describe, it, expect, vi } from "vitest";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
   it("starts the dev server when called with no args", () => {
-    expect(resolveCliAction([])).toEqual({ action: "dev" });
+    expect(resolveCliAction([])).toMatchObject({ action: "dev" });
   });
 
   it("maps --help to help", () => {
-    expect(resolveCliAction(["--help"])).toEqual({ action: "help" });
+    expect(resolveCliAction(["--help"])).toMatchObject({ action: "help" });
   });
 
   it("maps -h to help", () => {
-    expect(resolveCliAction(["-h"])).toEqual({ action: "help" });
+    expect(resolveCliAction(["-h"])).toMatchObject({ action: "help" });
   });
 
   it("maps --version to version", () => {
-    expect(resolveCliAction(["--version"])).toEqual({ action: "version" });
+    expect(resolveCliAction(["--version"])).toMatchObject({ action: "version" });
   });
 
   it("maps -v to version", () => {
-    expect(resolveCliAction(["-v"])).toEqual({ action: "version" });
+    expect(resolveCliAction(["-v"])).toMatchObject({ action: "version" });
   });
 
   it("maps init to init", () => {
-    expect(resolveCliAction(["init"])).toEqual({ action: "init" });
+    expect(resolveCliAction(["init"])).toMatchObject({ action: "init" });
   });
 
   it("maps --check to check", () => {
-    expect(resolveCliAction(["--check"])).toEqual({ action: "check" });
+    expect(resolveCliAction(["--check"])).toMatchObject({ action: "check" });
   });
 
-  it("maps --serve to serve", () => {
-    expect(resolveCliAction(["--serve"])).toEqual({ action: "prodServer" });
+  it("maps --server to server", () => {
+    expect(resolveCliAction(["--server"])).toMatchObject({ action: "server" });
   });
 
   it("maps --build to build", () => {
-    expect(resolveCliAction(["--build"])).toEqual({ action: "build" });
+    expect(resolveCliAction(["--build"])).toMatchObject({ action: "build" });
   });
 
   it("accepts --log alongside --build", () => {
-    expect(resolveCliAction(["--build", "--log"])).toEqual({ action: "build" });
+    expect(resolveCliAction(["--build", "--log"])).toMatchObject({ action: "build" });
   });
 
   it("accepts --log with a custom path", () => {
-    expect(resolveCliAction(["--build", "--log", "./logs/build.log"])).toEqual({
+    expect(resolveCliAction(["--build", "--log", "./logs/build.log"])).toMatchObject({
       action: "build",
     });
   });
 
   it("returns error with the offending flag for a single unknown flag", () => {
-    expect(resolveCliAction(["--frobnicate"])).toEqual({
-      action: "error",
-      unknownFlags: ["--frobnicate"],
-    });
+    const decision = resolveCliAction(["--frobnicate"]);
+    expect(decision.action).toBe("error");
+    expect(decision.unknownFlags).toEqual(["--frobnicate"]);
+    expect(decision.errorMessage).toContain("--frobnicate");
   });
 
   it("collects multiple unknown flags", () => {
-    expect(resolveCliAction(["--nope", "-x"])).toEqual({
-      action: "error",
-      unknownFlags: ["--nope", "-x"],
-    });
+    const decision = resolveCliAction(["--build", "--nope", "-x"]);
+    expect(decision.action).toBe("error");
+    expect(decision.unknownFlags).toEqual(["--nope", "-x"]);
   });
 
   it("treats unknown short flags as errors", () => {
@@ -70,26 +71,36 @@ describe("resolveCliAction", () => {
   });
 
   it("errors on unknown flags even when a known flag is also present", () => {
-    expect(resolveCliAction(["--build", "--bogus"])).toEqual({
-      action: "error",
-      unknownFlags: ["--bogus"],
-    });
+    const decision = resolveCliAction(["--build", "--bogus"]);
+    expect(decision.action).toBe("error");
+    expect(decision.unknownFlags).toEqual(["--bogus"]);
   });
 
   it("prefers help over other known flags", () => {
-    expect(resolveCliAction(["--build", "--help"])).toEqual({ action: "help" });
+    expect(resolveCliAction(["--build", "--help"])).toMatchObject({ action: "help" });
   });
 
   it("prefers version over other known flags", () => {
-    expect(resolveCliAction(["--serve", "-v"])).toEqual({ action: "version" });
+    expect(resolveCliAction(["--server", "-v"])).toMatchObject({ action: "version" });
   });
 
   it("accepts init alongside a known flag", () => {
-    expect(resolveCliAction(["init", "--check"])).toEqual({ action: "init" });
+    expect(resolveCliAction(["init", "--check"])).toMatchObject({ action: "init" });
   });
 
-  it("ignores non-flag positional args", () => {
-    expect(resolveCliAction(["somepath"])).toEqual({ action: "dev" });
+  it("rejects non-flag positional args instead of silently starting the dev server", () => {
+    // Regression anchor: `bascik somepath` used to fall through to a watching
+    // dev server. Unknown positionals are now an error.
+    const decision = resolveCliAction(["somepath"]);
+    expect(decision.action).toBe("error");
+    expect(decision.errorMessage).toContain('"somepath"');
+  });
+
+  it("rejects the --build --server combination", () => {
+    const decision = resolveCliAction(["--build", "--server"]);
+    expect(decision.action).toBe("error");
+    expect(decision.errorMessage).toContain("--build");
+    expect(decision.errorMessage).toContain("--server");
   });
 });
 
@@ -97,16 +108,37 @@ describe("CLI_USAGE", () => {
   it("documents all recognized flags and the init subcommand", () => {
     for (const token of [
       "--build",
-      "--serve",
+      "--server",
       "--check",
       "--help",
       "-h",
       "--version",
       "-v",
+      "--log",
+      "--site-url",
+      "--env-file",
+      "--config",
+      "--port",
+      "--host",
+      "--log-level",
       "init",
     ]) {
       expect(CLI_USAGE).toContain(token);
     }
+  });
+
+  it("describes --server honestly (HTTP/1.1 by default, HTTP/2 with TLS)", () => {
+    const serverLine = CLI_USAGE.split("\n").find((l) => l.includes("--server"));
+    expect(serverLine).toBeDefined();
+    expect(serverLine).toContain("HTTP/1.1");
+    expect(serverLine).not.toMatch(/over HTTP\/2\b(?!.*HTTP\/1\.1)/);
+  });
+
+  it("states that --log only applies to --build", () => {
+    const logIndex = CLI_USAGE.indexOf("--log [path]");
+    expect(logIndex).toBeGreaterThan(-1);
+    const logBlurb = CLI_USAGE.slice(logIndex, CLI_USAGE.indexOf("--port"));
+    expect(logBlurb).toContain("--build");
   });
 });
 
@@ -126,6 +158,7 @@ describe("index.ts CLI runner functions", () => {
     expect(resolveBuildLogPath(["--build"])).toBeUndefined();
     expect(resolveBuildLogPath(["--build", "--log"])).toBe(".bascik/build.log");
     expect(resolveBuildLogPath(["--build", "--log", "custom.log"])).toBe("custom.log");
+    expect(resolveBuildLogPath(["--build", "--log=inline.log"])).toBe("inline.log");
   });
 
   it("runCli handles help and version flags", async () => {
@@ -156,12 +189,12 @@ describe("index.ts CLI runner functions", () => {
     await rm(dirname(tmpLogPath), { recursive: true, force: true }).catch(() => { });
   });
 
-  it("runCli executes subcommands init, check, prodServer, and dev/build", async () => {
+  it("runCli executes subcommands init, check, server, and dev/build", async () => {
     const { runCli } = await import("./index.ts");
 
     const initSpy = vi.spyOn(await import("./lib/init.ts"), "initProject").mockResolvedValueOnce(undefined);
     const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce(true);
-    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serveProduction").mockResolvedValueOnce("http://localhost:8080");
+    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serverProduction").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
     const initRes = await runCli(["init"], { exitOnFinish: false });
@@ -172,13 +205,89 @@ describe("index.ts CLI runner functions", () => {
     expect(checkRes.action).toBe("check");
     expect(checkSpy).toHaveBeenCalled();
 
-    const serveRes = await runCli(["--serve"], { exitOnFinish: false });
-    expect(serveRes.action).toBe("prodServer");
+    const serveRes = await runCli(["--server"], { exitOnFinish: false });
+    expect(serveRes.action).toBe("server");
     expect(serveSpy).toHaveBeenCalled();
 
     const buildRes = await runCli(["--build"], { exitOnFinish: false });
     expect(buildRes.action).toBe("build");
     expect(transpileSpy).toHaveBeenCalled();
+  });
+
+  it("prints a clean error (no unhandled rejection banner, no Node stack) when the config fails to load", async () => {
+    // Regression anchor: a syntax error in bascik.config must surface as one
+    // clean [bascik] line, not a top-level unhandled rejection with a stack.
+    // Spawning the real CLI is the honest test: the bug lives at the module
+    // top-level boundary, which in-process tests cannot reach.
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cli-err-"));
+    try {
+      await writeFile(
+        join(dir, "bascik.config.js"),
+        "this is not valid javascript {{{",
+        "utf8",
+      );
+      const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
+      const result = spawnSync(process.execPath, [cliPath, "--build"], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Failed to load bascik.config");
+      expect(result.stderr).not.toMatch(/unhandled|Unhandled/);
+      expect(result.stderr).not.toMatch(/\n\s+at\s/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it("prints a clean error (no unhandled rejection banner, no Node stack) when --server finds no dist/", async () => {
+    // Regression anchor: the `--server` guard message in serve.ts used to
+    // surface as an unhandled top-level rejection with a full stack trace.
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cli-serve-"));
+    try {
+      const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
+      const result = spawnSync(process.execPath, [cliPath, "--server"], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("could not read");
+      expect(result.stderr).toContain("bascik --build");
+      expect(result.stderr).not.toMatch(/unhandled|Unhandled/);
+      expect(result.stderr).not.toMatch(/\n\s+at\s/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it("runCli reports conflicting flags as a clean error", async () => {
+    const { runCli } = await import("./index.ts");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    try {
+      const res = await runCli(["--build", "--server"], { exitOnFinish: false });
+      expect(res).toEqual({ action: "error", exitCode: 1 });
+      const printed = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(printed).toContain("--build");
+      expect(printed).toContain("--server");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("runCli propagates init and check failures to the single error boundary", async () => {
+    const { runCli } = await import("./index.ts");
+
+    const initSpy = vi
+      .spyOn(await import("./lib/init.ts"), "initProject")
+      .mockRejectedValueOnce(new Error("init boom"));
+    await expect(runCli(["init"], { exitOnFinish: false })).rejects.toThrow("init boom");
+    expect(initSpy).toHaveBeenCalled();
+
+    const checkSpy = vi
+      .spyOn(await import("./lib/check.ts"), "checkProject")
+      .mockRejectedValueOnce(new Error("check boom"));
+    await expect(runCli(["--check"], { exitOnFinish: false })).rejects.toThrow("check boom");
+    expect(checkSpy).toHaveBeenCalled();
   });
 });
 

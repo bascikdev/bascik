@@ -1,6 +1,6 @@
 # Server Architecture
 
-Bascik's server infrastructure powers both local development (`bascik`) and per-request production serving (`bascik --serve`). Designed as a modular 4-tier pipeline, the server handles request routing, static file serving, `data-bascik-server` request script execution, live reload SSE streams, in-memory caching, port environment overrides, and security hardening.
+Bascik's server infrastructure powers both local development (`bascik`) and per-request production serving (`bascik --server`). Designed as a modular 4-tier pipeline, the server handles request routing, static file serving, `data-bascik-server` request script execution, live reload SSE streams, in-memory caching, port environment overrides, and security hardening.
 
 ## Modular Architecture (`server.ts`, `http.ts`, `http2.ts`, `pki.ts`)
 
@@ -67,7 +67,7 @@ During local development, `bascik` compiles pages into memory and starts the wat
 
 The `MemoryStore` class manages rendered pages during development without writing intermediate files to disk on every edit:
 
-- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs $O(1)$ exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
+- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
 - `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
@@ -106,9 +106,9 @@ Bascik solves this with open-page priority batching (`partitionByOpenPages` in `
 
 This prioritization operates identically whether running on the main thread or across multi-threaded workers via `WorkerPool` (`useWorkers: true`).
 
-## Production Server Mode (`bascik --serve`)
+## Production Server Mode (`bascik --server`)
 
-When launched with `bascik --serve` or `BASCIK_PROD_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
+When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
 
 ### Serving from `dist/`
 
@@ -137,7 +137,7 @@ Production mode enforces a rate limit of **500 requests per 10-second window per
 
 ## Development vs Production Comparison
 
-| Capability | Development (`bascik`) | Production (`bascik --serve`) |
+| Capability | Development (`bascik`) | Production (`bascik --server`) |
 | --- | --- | --- |
 | Entry Module | `transpile.ts` | `serve.ts` |
 | Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
@@ -191,6 +191,6 @@ The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving 
 Server behavior is validated through Playwright E2E suites across four environment configurations:
 
 - `playwright.dev.config.ts`: Dev server (`bascik`) live reload, watchers, and boot page.
-- `playwright.server.config.ts`: Production server (`bascik --serve`) over HTTP/1.1.
+- `playwright.server.config.ts`: Production server (`bascik --server`) over HTTP/1.1.
 - `playwright.server-http2.config.ts`: Production server over encrypted HTTP/2 (HTTPS).
 - `playwright.config.ts`: Static build output serving.

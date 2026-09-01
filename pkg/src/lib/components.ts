@@ -11,7 +11,6 @@ import type { BascikComponent, ComponentList } from "./types.ts";
 // Warn if a component name shadows a native HTML element
 export const NATIVE_HTML_ELEMENTS = new Set([
   "a",
-
   "abbr",
   "address",
   "area",
@@ -261,7 +260,7 @@ export const listComponents = async (): Promise<ComponentList> => {
         minifiedContent = minifyHtml(cleanedContent);
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
-        if (behavior === "halt" || behavior === "error") {
+        if (behavior === "error") {
           console.error(`[bascik] HTML minification failed for component "${fileName}":`, minErr);
           throw minErr;
         }

@@ -1,5 +1,5 @@
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, relative } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
@@ -48,7 +48,8 @@ const displayRelativePath = (path: string): string => {
     return normalized;
   }
 
-  return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(/^dist\//, "");
+  const outDirRel = relative(process.cwd(), BascikConfig.directory.out) || "dist";
+  return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(new RegExp(`^${outDirRel}/`), "");
 };
 
 /** Stream-hash a file using SHA-256. Only used for change detection. */
@@ -99,7 +100,7 @@ export async function copyReplicatePath(
         minified = await minifyFn((await readFile(src)).toString());
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
-        if (behavior === "halt" || behavior === "error") {
+        if (behavior === "error") {
           console.error(`[bascik] CSS minification failed for ${src}:`, minErr);
           throw minErr;
         }
@@ -110,7 +111,7 @@ export async function copyReplicatePath(
       const minifiedHash = createHash("sha256").update(minified).digest("hex");
       if (minifiedHash === destHash) return;
       await writeFile(destPath, minified);
-      if (canLogDevEvent(BascikConfig.devServer?.logging?.copies, "info")) {
+      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
         console.log("copied (minified):", displayRelativePath(src));
       }
       return;
@@ -121,7 +122,7 @@ export async function copyReplicatePath(
         minified = await minifyFn((await readFile(src)).toString());
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
-        if (behavior === "halt" || behavior === "error") {
+        if (behavior === "error") {
           console.error(`[bascik] JS minification failed for ${src}:`, minErr);
           throw minErr;
         }
@@ -132,7 +133,7 @@ export async function copyReplicatePath(
       const minifiedHash = createHash("sha256").update(minified).digest("hex");
       if (minifiedHash === destHash) return;
       await writeFile(destPath, minified);
-      if (canLogDevEvent(BascikConfig.devServer?.logging?.copies, "info")) {
+      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
         console.log("copied (minified):", displayRelativePath(src));
       }
       return;
@@ -145,7 +146,7 @@ export async function copyReplicatePath(
     ]);
     if (srcHash === destHash) return;
     await copyFile(src, destPath);
-    if (canLogDevEvent(BascikConfig.devServer?.logging?.copies, "info")) {
+    if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
       console.log("copied:", displayRelativePath(src));
     }
   } catch (err) {
@@ -199,12 +200,13 @@ export const deepReadDirFlat = async (
 };
 
 export const isInlineStylesheet = (path: string): boolean => {
-  if (!BascikConfig.inlineStyles) return false;
+  const inlineStyles = BascikConfig.assets?.inlineStyles;
+  if (!inlineStyles) return false;
   if (!path.endsWith(".css")) return false;
-  if (BascikConfig.inlineStyles === true) return true;
-  if (Array.isArray(BascikConfig.inlineStyles)) {
+  if (inlineStyles === true) return true;
+  if (Array.isArray(inlineStyles)) {
     const normalizedPath = path.replace(/\\/g, "/");
-    return BascikConfig.inlineStyles.some((stylePath) => {
+    return inlineStyles.some((stylePath) => {
       const normalizedStyle = stylePath.replace(/\\/g, "/");
       return (
         normalizedPath === normalizedStyle ||
@@ -227,7 +229,7 @@ export const copyStaticAssets = async (): Promise<void> => {
       !isInlineStylesheet(filePath),
   );
   await Promise.all(
-    staticAssetFiles.map((filePath) => copyReplicatePath(filePath, "dist")),
+    staticAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
   );
 };
 
@@ -237,9 +239,10 @@ export const getDirectoryPath = (pagePath: string): string => {
 };
 
 export const getDistPagePath = (pagePath: string): string => {
+  const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
   const normalized = pagePath.replace(/\\/g, "/");
   const pathParts = normalized.split("/");
-  pathParts[0] = "dist";
+  pathParts[0] = outDirRel;
   return pathParts.join("/");
 };
 
@@ -250,20 +253,21 @@ export const getDistPagePath = (pagePath: string): string => {
  * handed us an absolute or relative path.
  */
 export const toDistPath = (srcPath: string): string => {
+  const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
   const normalizedSrc = srcPath.replace(/\\/g, "/");
-  if (normalizedSrc.startsWith("dist/")) return normalizedSrc;
-  if (normalizedSrc.includes("/dist/")) {
-    return `dist/${normalizedSrc.split("/dist/")[1]}`;
+  if (normalizedSrc.startsWith(`${outDirRel}/`)) return normalizedSrc;
+  if (normalizedSrc.includes(`/${outDirRel}/`)) {
+    return `${outDirRel}/${normalizedSrc.split(`/${outDirRel}/`)[1]}`;
   }
   const rel = getRelativePath(srcPath, "pages");
-  return rel.replace(/^pages[\/]/, "dist/");
+  return rel.replace(/^pages[\/]/, `${outDirRel}/`);
 };
 
 const canLogDevEvent = (
   flag: boolean | undefined,
   level: "info" | "debug" = "info",
 ) => {
-  const configLevel = BascikConfig.devServer?.logging?.level ?? "info";
+  const configLevel = BascikConfig.logging?.level ?? "info";
   return (flag ?? true) && shouldLog(configLevel, level);
 };
 
@@ -271,7 +275,7 @@ export const deleteDistFile = async (pagePath: string): Promise<void> => {
   try {
     const distPagePath = toDistPath(pagePath);
     await rm(distPagePath);
-    if (canLogDevEvent(BascikConfig.devServer?.logging?.deletes, "info")) {
+    if (canLogDevEvent(BascikConfig.logging?.deletes, "info")) {
       console.log(`deleted file: ${displayRelativePath(pagePath)}`);
     }
   } catch (error) {
@@ -288,9 +292,10 @@ export const deleteDistDir = async (dirPath: string): Promise<void> => {
     // recursive means delete directory
     // force means delete the file inside
     await rm(distDirPath, { recursive: true, force: true });
-    if (canLogDevEvent(BascikConfig.devServer?.logging?.deletes, "info")) {
+    if (canLogDevEvent(BascikConfig.logging?.deletes, "info")) {
       console.log(`deleted dir: ${displayRelativePath(dirPath)}`);
     }
+    await rm(distDirPath, { recursive: true, force: true });
   } catch (error) {
     // File doesn't exist, that's ok.
     // Don't check prior, per node.js doc's say not to because race conditions

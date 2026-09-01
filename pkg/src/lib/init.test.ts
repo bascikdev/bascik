@@ -21,12 +21,6 @@ vi.spyOn(console, "log").mockImplementation(() => { });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Make access() throw (file does not exist). */
-const fileAbsent = () => mockAccess.mockRejectedValue(new Error("ENOENT"));
-
-/** Make access() resolve (file exists). */
-const filePresent = () => mockAccess.mockResolvedValue(undefined);
-
 /** Return the content written to writeFile for the given path suffix. */
 const writtenTo = (suffix: string): string | undefined => {
   for (const call of mockWriteFile.mock.calls) {
@@ -63,18 +57,17 @@ describe("initProject", () => {
     expect(html).toContain("<!DOCTYPE html>");
   });
 
-  it("writes bascik.config.js when absent", async () => {
+  it("does not create bascik.config.js", async () => {
     await initProject();
     const cfg = writtenTo("bascik.config.js");
-    expect(cfg).toBeDefined();
-    expect(cfg).toContain("export const build");
+    expect(cfg).toBeUndefined();
   });
 
   it("skips index.html when it already exists", async () => {
-    // Make only index.html present; config absent.
+    // Make only index.html present.
     mockAccess
       .mockResolvedValueOnce(undefined) // index.html exists
-      .mockRejectedValue(new Error("ENOENT")); // bascik.config.js absent
+      .mockRejectedValue(new Error("ENOENT"));
 
     await initProject();
 
@@ -82,19 +75,7 @@ describe("initProject", () => {
     expect(html).toBeUndefined();
   });
 
-  it("skips bascik.config.js when it already exists", async () => {
-    // index.html absent, config present
-    mockAccess
-      .mockRejectedValueOnce(new Error("ENOENT")) // index.html absent
-      .mockResolvedValueOnce(undefined); // bascik.config.js exists
-
-    await initProject();
-
-    const cfg = writtenTo("bascik.config.js");
-    expect(cfg).toBeUndefined();
-  });
-
-  it('adds type:module and dev/build scripts to package.json', async () => {
+  it('adds type:module, dependency, and dev/build scripts to package.json', async () => {
     mockReadFile.mockResolvedValue('{"name":"my-app"}');
 
     await initProject();
@@ -103,6 +84,7 @@ describe("initProject", () => {
     expect(pkgWrite).toBeDefined();
     const parsed = JSON.parse(pkgWrite!);
     expect(parsed.type).toBe("module");
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("latest");
     expect(parsed.scripts.dev).toBe("bascik");
     expect(parsed.scripts.build).toBe("bascik --build");
   });
@@ -112,6 +94,7 @@ describe("initProject", () => {
       JSON.stringify({
         name: "my-app",
         type: "module",
+        dependencies: { "@bascik/bascik": "latest" },
         scripts: { dev: "bascik", build: "bascik --build" },
       }),
     );
@@ -135,6 +118,26 @@ describe("initProject", () => {
     const parsed = JSON.parse(pkgWrite!);
     expect(parsed.scripts.dev).toBe("bascik"); // untouched
     expect(parsed.scripts.build).toBe("bascik --build"); // added
+    expect(parsed.dependencies["@bascik/bascik"]).toBe("latest");
+  });
+
+  it("refuses to overwrite package type commonjs", async () => {
+    mockReadFile.mockResolvedValue('{"name":"my-app","type":"commonjs"}');
+    await expect(initProject()).rejects.toThrow("init aborted");
+  });
+
+  it("appends .gitignore entries without clobbering existing content", async () => {
+    // access(index) throws, .gitignore read succeeds.
+    mockReadFile
+      .mockResolvedValueOnce("node_modules/\n")
+      .mockResolvedValueOnce('{"name":"my-app"}');
+
+    await initProject();
+
+    const gitignore = writtenTo(".gitignore");
+    expect(gitignore).toContain("node_modules/");
+    expect(gitignore).toContain("dist/");
+    expect(gitignore).toContain("node_modules/.cache/bascik/");
   });
 
   it("skips package.json when it cannot be read", async () => {

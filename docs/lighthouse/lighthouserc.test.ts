@@ -20,7 +20,7 @@ describe('Lighthouse CI configuration', () => {
     const config = JSON.parse(raw);
 
     const collect = config.ci.collect;
-    expect(collect.startServerCommand).toBe('bascik --serve');
+    expect(collect.startServerCommand).toBe('bascik --server');
     expect(Array.isArray(collect.url)).toBe(true);
     expect(collect.url).toEqual([
       'http://localhost:8080/',
@@ -37,7 +37,7 @@ describe('Lighthouse CI configuration', () => {
     expect(config.ci).toBeDefined();
 
     const collect = config.ci.collect;
-    expect(collect.startServerCommand).toBe('bascik --serve');
+    expect(collect.startServerCommand).toBe('bascik --server');
     expect(collect.url).toEqual([
       'http://localhost:8080/?theme=light',
       'http://localhost:8080/getting-started?theme=light',

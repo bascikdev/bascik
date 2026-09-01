@@ -76,10 +76,10 @@ test.describe('BASCIK_PAGE_FILE env var is passed to build scripts', () => {
     expect(text).not.toContain('build-script-page-env-test-b.html');
   });
 
-  test('build script receives BASCIK_SITE_URL from config', async ({ page }) => {
+  test('build script receives BASCIK_SITE_URL from the environment', async ({ page }) => {
     await page.goto('/build-script-page-env-test');
     const text = await page.locator('#site-url').textContent();
-    // The e2e fixture config sets siteUrl: 'http://localhost:4200'
+    // The webServer command sets BASCIK_SITE_URL=http://localhost:4200
     expect(text).toContain('localhost:4200');
   });
 });

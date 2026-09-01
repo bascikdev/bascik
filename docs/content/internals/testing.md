@@ -39,7 +39,7 @@ yarn pkg:e2e
 # Dev server suite (runs full E2E test suite + live-reload tests against bascik --dev)
 yarn pkg:e2e:dev
 
-# Production server suite (runs both HTTP/1.1 cleartext and HTTP/2 TLS server script tests against bascik --serve)
+# Production server suite (runs both HTTP/1.1 cleartext and HTTP/2 TLS server script tests against bascik --server)
 yarn pkg:e2e:prod
 
 # Or run HTTP/1.1 and HTTP/2 prod server suites individually:
@@ -62,10 +62,10 @@ npx playwright test --config e2e/playwright.config.ts e2e/tests/css-scoping.test
 # Run dev server live-reload tests against bascik --dev
 npx playwright test --config e2e/playwright.dev.config.ts e2e/tests/dev-server-reload.test.ts
 
-# Run HTTP/1.1 prod server tests against bascik --serve
+# Run HTTP/1.1 prod server tests against bascik --server
 npx playwright test --config e2e/playwright.server.config.ts e2e/tests/prod-server.test.ts
 
-# Run HTTP/2 prod server tests against bascik --serve
+# Run HTTP/2 prod server tests against bascik --server
 npx playwright test --config e2e/playwright.server-http2.config.ts e2e/tests/prod-server.test.ts
 
 # Open the Playwright UI for interactive debugging
@@ -93,24 +93,27 @@ pkg/e2e/
 The E2E suite supports four execution modes:
 
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
-2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --serve` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
-3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --serve` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
+2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
+3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
 Tests navigate to pages on the active server and assert against the live browser DOM.
 
 ## Fixture Design
 
-`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The only non-default values set are the site URL and the production server port:
+`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The site URL is supplied per run through the `BASCIK_SITE_URL` environment variable in each Playwright `webServer` command, and the production server port is set via a `server` mode override:
 
 ```ts
 // pkg/e2e/bascik.config.ts
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  siteUrl: 'http://localhost:4200',
-  useWorkers: true,
-  prodServer: { port: 9443 },
+  pipeline: { workers: true },
+  minify: { identifiers: false },
+});
+
+export const server = defineConfig({
+  http: { port: 9443 },
 });
 ```
 

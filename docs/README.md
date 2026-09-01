@@ -64,7 +64,7 @@ Because the documentation site is built in production mode with identifier minif
 
 To catch performance, accessibility, best practices, and SEO regressions locally before deployment, the documentation site includes Lighthouse CI CLI (`@lhci/cli`) pre-configured in `lighthouse/lighthouserc.json`.
 
-The audits build the production bundle, start Bascik's production server (`bascik --serve`), and test the documentation routes against strict score thresholds.
+The audits build the production bundle, start Bascik's production server (`bascik --server`), and test the documentation routes against strict score thresholds.
 
 ```sh
 # Fast default audit across core routes (/, /getting-started, /components)

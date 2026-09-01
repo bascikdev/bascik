@@ -56,7 +56,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -138,11 +138,12 @@ export const getFilePosition = (
 };
 
 const resolveInlineStyles = async (): Promise<string[]> => {
-  if (BascikConfig.inlineStyles === true) {
+  const inlineStyles = BascikConfig.assets?.inlineStyles;
+  if (inlineStyles === true) {
     return (await deepReadDirFlat(BascikConfig.directory.pages, /\.css$/i)).sort();
   }
-  if (Array.isArray(BascikConfig.inlineStyles)) {
-    return BascikConfig.inlineStyles;
+  if (Array.isArray(inlineStyles)) {
+    return inlineStyles;
   }
   return [];
 };
@@ -160,7 +161,7 @@ const resolveCssMinifier = (): ((code: string) => Promise<string>) | null => {
       return await fn(code);
     } catch (err) {
       const behavior = BascikConfig.onMinifyError ?? "error";
-      if (behavior === "halt" || behavior === "error") {
+      if (behavior === "error") {
         console.error("[bascik] CSS minification failed:", err);
         throw err;
       }
@@ -207,7 +208,7 @@ const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => 
       return await fn(code);
     } catch (err) {
       const behavior = BascikConfig.onMinifyError ?? "error";
-      if (behavior === "halt" || behavior === "error") {
+      if (behavior === "error") {
         console.error("[bascik] JS minification failed:", err);
         throw err;
       }
@@ -270,17 +271,17 @@ const applyTransforms = (
  * component instance, filtered by the current BascikConfig flags.
  */
 const buildScopingPipeline = (instanceId: string): ComponentTransform[] => {
-  const skip = BascikConfig.skipTranspilingElementContents;
+  const skip = BascikConfig.scoping?.preserve ?? ["code"];
   return (
     [
-      BascikConfig.scopeAttribute.id &&
+      BascikConfig.scoping?.attributes?.id &&
       ((c: BascikComponent) => prefixElementAttribute(c, "id", instanceId, true, skip)),
-      BascikConfig.scopeAttribute.name &&
+      BascikConfig.scoping?.attributes?.name &&
       ((c: BascikComponent) => prefixElementAttribute(c, "name", instanceId, true, skip)),
-      BascikConfig.scopeAttribute.class &&
+      BascikConfig.scoping?.attributes?.class &&
       ((c: BascikComponent) =>
-        prefixElementAttribute(c, "class", instanceId, BascikConfig.deduplicateCss, skip)),
-      BascikConfig.scopeScriptBlocks && namespaceScriptTags,
+        prefixElementAttribute(c, "class", instanceId, BascikConfig.scoping?.deduplicateCss ?? true, skip)),
+      BascikConfig.scoping?.scriptBlocks && namespaceScriptTags,
     ] as (ComponentTransform | false)[]
   ).filter((t): t is ComponentTransform => Boolean(t));
 };
@@ -419,7 +420,7 @@ export const recursivelyTranspile = (
 
       currentStage = "attribute inheritance";
       // Merge non-bascik attributes from the usage tag onto the component root element.
-      if (BascikConfig.inheritAttributes) {
+      if (BascikConfig.scoping?.inheritAttributes) {
         const inheritableAttrs = extractInheritableAttributes(component.content);
         transpiledTag = mergeAttributesOntoRoot(transpiledTag, inheritableAttrs);
       }
@@ -668,7 +669,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   console.log("Starting transpiling...");
   invalidateComponentListCache();
-  const useWorkers = options?.useWorkers ?? BascikConfig.useWorkers ?? false;
+  const useWorkers = options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
   // Parallel processing of pages
   const [pages, componentList, globalStylesHtml] = await Promise.all([
@@ -929,7 +930,7 @@ export const transpilePage = async (
   }
 
   // Deduplicate CSS — each component's styles included only once even if used many times
-  const componentCss = deduplicateCss([...usedComponents, ...headUsedComponents], BascikConfig.deduplicateCss);
+  const componentCss = deduplicateCss([...usedComponents, ...headUsedComponents], BascikConfig.scoping?.deduplicateCss ?? true);
 
   // Read and inline any global stylesheets configured via `inlineStyles`.
   // Global styles are injected before component styles so component rules win.
@@ -982,7 +983,7 @@ export const transpilePage = async (
       transpiledHtmlBody = minifyHtml(transpiledHtmlBody);
     } catch (err) {
       const behavior = BascikConfig.onMinifyError ?? "error";
-      if (behavior === "halt" || behavior === "error") {
+      if (behavior === "error") {
         console.error(`[bascik] HTML minification failed for "${relativePagePath}":`, err);
         throw err;
       }
@@ -1032,7 +1033,7 @@ export const transpilePage = async (
   if (BascikConfig.isBuild) {
     const directoryPath = getDirectoryPath(relativePagePath);
     try {
-      await mkdir(`dist/${directoryPath}`, { recursive: true });
+      await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
     } catch (error) {
       console.error("Make directory error", error);
     }
@@ -1046,8 +1047,8 @@ export const transpilePage = async (
     }
   }
 
-  if (BascikConfig.devServer?.logging?.transpiles !== false) {
-    const configLevel = BascikConfig.devServer?.logging?.level ?? "info";
+  if (BascikConfig.logging?.transpiles !== false) {
+    const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
       const elapsed = performance.now() - start;
       console.log(`transpiled: ${relativePagePath} in ${formatDuration(elapsed)}`);

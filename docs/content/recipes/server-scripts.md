@@ -42,7 +42,7 @@ Import it from any server script:
 
   const tab = escapeHtml(searchParams.tab ?? 'overview');
   const user = escapeHtml(headers['x-display-name'] ?? 'Guest');
-  console.log(`<p>${user} &mdash; ${tab}</p>`);
+  console.log(`<p>${user} - ${tab}</p>`);
 </script>
 ```
 

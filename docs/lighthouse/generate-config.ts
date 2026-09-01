@@ -28,7 +28,7 @@ export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:80
   const config = {
     ci: {
       collect: {
-        startServerCommand: 'bascik --serve',
+        startServerCommand: 'bascik --server',
         startServerReadyPattern: 'Loaded \\d+ pages? from dist/',
         url: allUrls,
         numberOfRuns: 1,
@@ -55,7 +55,7 @@ export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:80
   const lightConfig = {
     ci: {
       collect: {
-        startServerCommand: 'bascik --serve',
+        startServerCommand: 'bascik --server',
         startServerReadyPattern: 'Loaded \\d+ pages? from dist/',
         url: lightUrls,
         numberOfRuns: 1,

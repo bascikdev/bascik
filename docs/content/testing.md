@@ -116,7 +116,7 @@ describe('getCanonicalUrl', () => {
 
 ### 4. Request-Time Server Scripts (`data-bascik-server`)
 
-Server scripts execute dynamically on incoming HTTP/1.1 and HTTP/2 requests when running `bascik --serve`. Isolate request processing, query parameter parsing, and backend database integrations in pure TypeScript services so they can be unit-tested without launching an active HTTP server:
+Server scripts execute dynamically on incoming HTTP/1.1 and HTTP/2 requests when running `bascik --server`. Isolate request processing, query parameter parsing, and backend database integrations in pure TypeScript services so they can be unit-tested without launching an active HTTP server:
 
 ```ts
 // src/components/weather-widget/weather-service.test.ts
@@ -138,8 +138,8 @@ Playwright tests run against real browser engines (Chromium, Firefox, WebKit) ac
 
 - **Static Production**: `bascik --build` served via static web server.
 - **Dev Server**: `bascik --dev` testing live-reload and SSE connection stability.
-- **HTTP/1.1 Production Server**: `bascik --serve` testing cleartext request-time server scripts.
-- **HTTP/2 Production Server**: `bascik --serve` testing TLS-encrypted server scripts and multiplexed streaming.
+- **HTTP/1.1 Production Server**: `bascik --server` testing cleartext request-time server scripts.
+- **HTTP/2 Production Server**: `bascik --server` testing TLS-encrypted server scripts and multiplexed streaming.
 
 Because production builds compress and minify class names and element IDs when `minify.identifiers: true`, always use explicit `data-testid` attributes and `page.getByTestId(...)` selectors in application E2E tests:
 

@@ -1,5 +1,5 @@
 /**
- * E2E tests for the Bascik Production Server (`bascik --serve`).
+ * E2E tests for the Bascik Production Server (`bascik --server`).
  *
  * Runs against both HTTP/1.1 cleartext (`playwright.server.config.ts`) and
  * HTTP/2 TLS (`playwright.server-http2.config.ts`) production server instances.
@@ -19,7 +19,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-test.describe('Production Server (`bascik --serve`) Engine', () => {
+test.describe('Production Server (`bascik --server`) Engine', () => {
 
   // ── 1. Clean HTML Output ───────────────────────────────────────────────────
 

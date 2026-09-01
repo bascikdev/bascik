@@ -1,9 +1,11 @@
 /**
  * e2e tests for sitemap.xml and robots.txt generation.
  *
- * The e2e bascik.config.ts includes `siteUrl: 'http://localhost:4200'`, which
- * triggers Bascik to write dist/sitemap.xml and dist/robots.txt at the end of
- * `--build`. These tests verify the generated files are correct.
+ * The webServer command in playwright.config.ts sets
+ * `BASCIK_SITE_URL=http://localhost:4200` through the environment (not a
+ * checked-in .env or config key), which triggers Bascik to write
+ * dist/sitemap.xml and dist/robots.txt at the end of `--build`. These tests
+ * verify the generated files are correct.
  *
  * The static server (server.ts) serves dist/ files so both files are
  * accessible via plain HTTP GET requests.
@@ -23,6 +25,20 @@ test.describe('sitemap.xml', () => {
     const resp = await request.get('/sitemap.xml');
     const text = await resp.text();
     expect(text).toContain('http://localhost:4200');
+  });
+
+  test('every <loc> is an absolute URL with the BASCIK_SITE_URL origin', async ({ request }) => {
+    const resp = await request.get('/sitemap.xml');
+    const text = await resp.text();
+    const locs = (text.match(/<loc>[^<]+<\/loc>/g) ?? []).map(l =>
+      l.replace(/<\/?loc>/g, '')
+    );
+    expect(locs.length).toBeGreaterThan(0);
+    for (const loc of locs) {
+      const url = URL.parse(loc);
+      expect(url, `<loc>${loc}</loc> is not a valid absolute URL`).not.toBeNull();
+      expect(url?.origin).toBe('http://localhost:4200');
+    }
   });
 
   test('contains at least one page URL', async ({ request }) => {

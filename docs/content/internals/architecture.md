@@ -50,13 +50,14 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `config.ts` | Loads and merges `bascik.config.ts`, default config, and build overrides into a single frozen `BascikConfig` object consumed everywhere else. |
 | `css-minifier.ts` | Built-in CSS minifier that collapses whitespace, strips comments, and compresses component `<style>` blocks and global `.css` files. |
 | `defineConfig.ts` | Provides the `defineConfig` helper function to offer autocomplete and type safety when writing `bascik.config.ts`. |
+| `environment.ts` | Loads `.env` files (default `./.env` plus repeatable `--env-file`) without clobbering real environment variables, and resolves the site URL from `--site-url`, `BASCIK_SITE_URL`, or `.env`. |
 | `events.ts` | A simple Node.js `EventEmitter` shared between the watch system, processing pipeline, and HTTP servers to signal live-reload and build events. |
 | `exec.ts` | Runs commands from the `exec` configuration list sequentially on build or during file-watching changes. |
 | `file-system.ts` | File-system helpers: recursive directory listing, path resolution between source and dist, copying static assets. |
 | `html-minifier.ts` | Built-in HTML minifier that strips HTML comments and collapses unnecessary whitespace between tags in production builds. |
 | `http.ts` | Plaintext HTTP/1.1 server (`node:http`) used by default in development and cleartext environments. |
 | `http2.ts` | TLS-enabled HTTP/2 server (`node:http2`) used when `enableTls: true` is configured. |
-| `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html`, `src/components/`, and `bascik.config.js`, and patches `package.json` with `"type": "module"` and dev/build scripts. |
+| `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html` and `src/components/`, ensures `.gitignore` includes `dist/` and `node_modules/.cache/bascik/`, and patches `package.json` with `"type": "module"` (when absent), an `@bascik/bascik` dependency, and dev/build scripts. |
 | `javascript.ts` | The scoping transforms: `prefixElementAttribute` (rewrites HTML attributes, JS DOM selectors, and CSS) and `namespaceScriptTags` (wraps scripts in IIFEs with `sourceURL` annotations and line positioning). |
 | `js-minifier.ts` | Lightweight, built-in JavaScript minifier that strips comments and collapses safe whitespace without breaking statement boundaries (ASI). |
 | `live-reload.ts` | Injected client-side script that establishes an EventSource connection to the dev server to reload pages when they are updated. |
@@ -67,10 +68,10 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
-| `serve.ts` | Production server entrypoint (`bascik --serve`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
+| `serve.ts` | Production server entrypoint (`bascik --server`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
 | `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls`, runs shared request handlers, and manages server instances. |
-| `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `siteUrl` is configured and `generate.sitemap` / `generate.robots` are enabled (both default to `true`). |
+| `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
 | `types.ts` | Central TypeScript type definitions: `BascikComponent`, `ComponentList`, `TranspileResult`, `TranspilePageResult`, `BascikConfigOptions`, `StoredPage`. |
@@ -88,7 +89,7 @@ index.ts
   │     └── init.ts
   ├── (--check only)
   │     └── check.ts ← components.ts, file-system.ts
-  ├── (--serve / prod server)
+  ├── (--server / prod server)
   │     └── serve.ts → server.ts
   └── transpile.ts
         ├── config.ts ← userConfig.ts ← bascik.config.ts / bascik.config.js
@@ -128,7 +129,7 @@ Bascik has a single runtime dependency: [chokidar](https://github.com/paulmillr/
 
 Bascik does not use abstract syntax trees (ASTs), DOM parsers (e.g. `htmlparser2`, `parse5`), or heavy browser emulation environments (such as JSDOM or Puppeteer) during transpilation. Early prototypes explored these paths but quickly hit significant barriers: JSDOM and browser-level emulation added enormous CPU and memory overhead, while full AST construction introduced complex tree-traversal bottlenecks that severely limited performance.
 
-Instead, Bascik uses high-performance, raw-string manipulation powered by targeted regular expressions combined with temporary content masking (e.g. shielding `<script>`, `<style>`, and `<textarea>` tags). Fast `.includes()` string-existence guards skip regex execution when target markers are absent, and HTML tag boundary scans use $O(1)$ backwards offset lookups (`lastIndexOf`) rather than full-string slicing to eliminate $O(N^2)$ heap allocations. This regex-first strategy keeps compile times down to single-digit milliseconds per page, ensures zero external package bloat, and aligns with the project philosophy of being lightweight and fast. The [Scoping Compatibility](/compatibility) page documents the known limitations and edge cases of this regex approach.
+Instead, Bascik uses high-performance, raw-string manipulation powered by targeted regular expressions combined with temporary content masking (e.g. shielding `<script>`, `<style>`, and `<textarea>` tags). Fast `.includes()` string-existence guards skip regex execution when target markers are absent, and HTML tag boundary scans use `O(1)` backwards offset lookups (`lastIndexOf`) rather than full-string slicing to eliminate `O(N^2)` heap allocations. This regex-first strategy keeps compile times down to single-digit milliseconds per page, ensures zero external package bloat, and aligns with the project philosophy of being lightweight and fast. The [Scoping Compatibility](/compatibility) page documents the known limitations and edge cases of this regex approach.
 
 ### Native TypeScript and ESM Compilation
 

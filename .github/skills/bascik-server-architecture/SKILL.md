@@ -5,13 +5,13 @@ description: Architecture, debugging, and maintenance of Bascik's built-in HTTP/
 
 # Bascik Server Architecture: HTTP/1.1, HTTP/2, TLS & SSE
 
-Bascik includes a zero-dependency server implemented in `pkg/src/lib/server.ts` and `pkg/src/lib/serve.ts` that powers both the development server (with live-reload) and production serving (`bascik --serve`).
+Bascik includes a zero-dependency server implemented in `pkg/src/lib/server.ts` and `pkg/src/lib/serve.ts` that powers both the development server (with live-reload) and production serving (`bascik --server`).
 
 ---
 
 ## 1. Dev Server vs. Prod Server Architecture
 
-| Feature | Dev Server (`bascik`) | Prod Server (`bascik --serve`) |
+| Feature | Dev Server (`bascik`) | Prod Server (`bascik --server`) |
 | :--- | :--- | :--- |
 | **Purpose** | Local authoring, watching, live-reloading | High-throughput static & dynamic serving |
 | **Live Reload / SSE** | Injects SSE client script into HTML pages | Disabled |
@@ -29,7 +29,7 @@ Bascik supports secure serving with ALPN (Application-Layer Protocol Negotiation
 * **ALPN Protocols:** Advertises `['h2', 'http/1.1']` to clients.
 * **Fallback Behavior:** If a client does not support HTTP/2 or requests plain HTTP/1.1, the server handles it seamlessly via `http2.createSecureServer({ allowHTTP1: true })`.
 * **Disabling TLS for Testing:**
-  Set `BASCIK_ENABLE_TLS=false` or `--no-tls` when testing environments that cannot handle self-signed certificates without complex trust stores.
+  Set `BASCIK_ENABLE_TLS=false` when testing environments that cannot handle self-signed certificates without complex trust stores. (There is no `--no-tls` flag; the environment variable is the only switch.)
 
 ---
 
