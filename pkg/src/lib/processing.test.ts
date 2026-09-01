@@ -729,8 +729,8 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
     const result = await transpilePage(PAGE_PATH, {});
     expect(result?.distHtml).toBe(
       '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>' +
-        LIVE_RELOAD_SCRIPT +
-        "</body></html>",
+      LIVE_RELOAD_SCRIPT +
+      "</body></html>",
     );
   });
 
@@ -741,8 +741,8 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
     const result = await transpilePage(PAGE_PATH, {});
     expect(result?.distHtml).toBe(
       '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
-        LIVE_RELOAD_SCRIPT +
-        "</body></html>",
+      LIVE_RELOAD_SCRIPT +
+      "</body></html>",
     );
   });
 });
@@ -2339,7 +2339,7 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
     };
     const result = recursivelyTranspile(
       '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>' +
-        '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>',
+      '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>',
       componentList,
     ).transpiledHtmlBody;
 
