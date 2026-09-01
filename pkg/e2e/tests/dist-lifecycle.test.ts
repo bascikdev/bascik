@@ -37,11 +37,15 @@ const runBuild = (cwd: string): Promise<void> => new Promise((resolve, reject) =
 test('a fresh build removes output for a deleted source page', async () => {
   const fixtureDir = join(e2eDir, `.dist-lifecycle-${process.pid}-${Date.now()}`);
   const pagesDir = join(fixtureDir, 'src/pages');
+  const componentsDir = join(fixtureDir, 'src/components');
   const stalePagePath = join(pagesDir, 'stale.html');
   const staleOutputPath = join(fixtureDir, 'dist/stale.html');
 
   try {
-    await mkdir(pagesDir, { recursive: true });
+    await Promise.all([
+      mkdir(pagesDir, { recursive: true }),
+      mkdir(componentsDir, { recursive: true }),
+    ]);
     await writeFile(join(pagesDir, 'index.html'), '<!doctype html><html><body>home</body></html>');
     await writeFile(stalePagePath, '<!doctype html><html><body>stale</body></html>');
 
