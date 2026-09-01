@@ -76,7 +76,7 @@ vi.mock("chokidar", () => ({ default: { watch: mockWatch } }));
 vi.mock("./events.js", () => ({ eventEmitter: { emit: mockEventEmit }, registerShutdownHandler: mockRegisterShutdownHandler }));
 
 vi.mock("./config.js", () => ({
-  BascikConfig: { exec: undefined },
+  BascikConfig: { pipeline: { exec: undefined } },
 }));
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
@@ -84,13 +84,13 @@ vi.mock("./config.js", () => ({
 import { BascikConfig } from "./config.ts";
 import { runExecPhase, startExecParallel, startExecDev, runExecOnBuild } from "./exec.ts";
 
-const cfg = BascikConfig as { exec: typeof BascikConfig.exec };
+const cfg = BascikConfig as { pipeline: { exec: typeof BascikConfig.pipeline.exec } };
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   resetMocks();
-  cfg.exec = undefined;
+  cfg.pipeline.exec = undefined;
 });
 
 describe("runExecPhase", () => {
@@ -101,14 +101,14 @@ describe("runExecPhase", () => {
   });
 
   it("does nothing when no entries match the phase", async () => {
-    cfg.exec = [{ script: "scripts/post.ts", phase: "post" }];
+    cfg.pipeline.exec = [{ script: "scripts/post.ts", phase: "post" }];
     const res = await runExecPhase("pre");
     expect(res.count).toBe(0);
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it("spawns only entries matching the specified phase", async () => {
-    cfg.exec = [
+    cfg.pipeline.exec = [
       { script: "scripts/pre.ts", phase: "pre" },
       { script: "scripts/post.ts", phase: "post" },
       { script: "scripts/parallel.ts", phase: "parallel" },
@@ -122,7 +122,7 @@ describe("runExecPhase", () => {
   });
 
   it("defaults entries with undefined phase to 'pre'", async () => {
-    cfg.exec = [{ script: "scripts/default.ts" }];
+    cfg.pipeline.exec = [{ script: "scripts/default.ts" }];
     const res = await runExecPhase("pre");
     expect(res.count).toBe(1);
     expect(mockSpawn).toHaveBeenCalledWith(process.execPath, ["scripts/default.ts"], expect.anything());
@@ -147,7 +147,7 @@ describe("runExecPhase", () => {
       return proc;
     });
 
-    cfg.exec = [
+    cfg.pipeline.exec = [
       { script: "a.ts", phase: "post" },
       { script: "b.ts", phase: "post" },
     ];
@@ -157,14 +157,14 @@ describe("runExecPhase", () => {
 
   it("rejects when a script exits with a non-zero code", async () => {
     setNextExitCode(1);
-    cfg.exec = [{ script: "fail.ts", phase: "pre" }];
+    cfg.pipeline.exec = [{ script: "fail.ts", phase: "pre" }];
     await expect(runExecPhase("pre")).rejects.toThrow('exec "fail.ts" exited with code 1');
   });
 });
 
 describe("startExecParallel", () => {
   it("spawns parallel entries without awaiting completion", () => {
-    cfg.exec = [
+    cfg.pipeline.exec = [
       { script: "scripts/par1.ts", phase: "parallel" },
       { script: "scripts/pre.ts", phase: "pre" },
       { script: "scripts/par2.ts", phase: "parallel" },
@@ -184,13 +184,13 @@ describe("runExecOnBuild", () => {
   });
 
   it("does nothing when exec is empty", async () => {
-    cfg.exec = [];
+    cfg.pipeline.exec = [];
     await runExecOnBuild();
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it("spawns each script with the current node binary", async () => {
-    cfg.exec = [{ script: "scripts/a.ts" }, { script: "scripts/b.ts" }];
+    cfg.pipeline.exec = [{ script: "scripts/a.ts" }, { script: "scripts/b.ts" }];
     await runExecOnBuild();
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(mockSpawn).toHaveBeenNthCalledWith(1, process.execPath, ["scripts/a.ts"], expect.objectContaining({ stdio: "inherit" }));
@@ -216,20 +216,20 @@ describe("runExecOnBuild", () => {
       return proc;
     });
 
-    cfg.exec = [{ script: "a.ts" }, { script: "b.ts" }];
+    cfg.pipeline.exec = [{ script: "a.ts" }, { script: "b.ts" }];
     await runExecOnBuild();
     expect(order).toEqual(["spawn:a.ts", "close:a.ts", "spawn:b.ts", "close:b.ts"]);
   });
 
   it("rejects when a script exits with a non-zero code", async () => {
     setNextExitCode(1);
-    cfg.exec = [{ script: "fail.ts" }];
+    cfg.pipeline.exec = [{ script: "fail.ts" }];
     await expect(runExecOnBuild()).rejects.toThrow('exec "fail.ts" exited with code 1');
   });
 
   it("runs both watch-enabled and build-only entries and logs progress", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
-    cfg.exec = [
+    cfg.pipeline.exec = [
       { script: "scripts/a.ts", watch: ["content/"] },
       { script: "scripts/b.ts" },
     ];
@@ -250,21 +250,21 @@ describe("startExecDev", () => {
   });
 
   it("skips entries without watch", () => {
-    cfg.exec = [{ script: "scripts/build-only.ts" }];
+    cfg.pipeline.exec = [{ script: "scripts/build-only.ts" }];
     startExecDev();
     expect(mockSpawn).not.toHaveBeenCalled();
     expect(mockWatch).not.toHaveBeenCalled();
   });
 
   it("fires watched entries async on startup", async () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     expect(mockSpawn).toHaveBeenCalledWith(process.execPath, ["scripts/gen.ts"], expect.anything());
   });
 
   it("does not emit asset-changed on startup run", async () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
     await Promise.resolve();
     await Promise.resolve();
@@ -273,7 +273,7 @@ describe("startExecDev", () => {
   });
 
   it("sets up a chokidar watcher for each watched entry", () => {
-    cfg.exec = [
+    cfg.pipeline.exec = [
       { script: "scripts/a.ts", watch: ["content/"] },
       { script: "scripts/b.ts", watch: "data/" },
     ];
@@ -284,20 +284,20 @@ describe("startExecDev", () => {
   });
 
   it("returns a promise that resolves when initial watched scripts complete", async () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     const devPromise = startExecDev();
     await expect(devPromise).resolves.toBeUndefined();
     expect(mockSpawn).toHaveBeenCalledWith(process.execPath, ["scripts/gen.ts"], expect.anything());
   });
 
   it("normalizes a string watch value to an array", () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: "content/" }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: "content/" }];
     startExecDev();
     expect(mockWatch).toHaveBeenCalledWith(["content/"], expect.anything());
   });
 
   it("re-runs the script and emits asset-changed on file change", async () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
 
     // Drain startup: close fires, catch pass-through, finally clears running
@@ -315,7 +315,7 @@ describe("startExecDev", () => {
   });
 
   it("queues and runs a pending watch trigger if triggered while running", async () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
 
     // Drain startup so running = false
@@ -348,7 +348,7 @@ describe("startExecDev", () => {
   it("logs an error but does not emit asset-changed when the re-run script fails", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     setNextExitCode(1);
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
 
     // Drain startup (exits with code 1, .catch logs, .finally clears flag)
@@ -367,7 +367,7 @@ describe("startExecDev", () => {
   });
 
   it("registers a shutdown handler that closes the watcher", () => {
-    cfg.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     startExecDev();
     expect(mockRegisterShutdownHandler).toHaveBeenCalledTimes(1);
     const shutdownFn = mockRegisterShutdownHandler.mock.calls[0][0];

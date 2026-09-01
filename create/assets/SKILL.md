@@ -1001,71 +1001,78 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   directory: {
-    pages: "src/pages", // default
-    components: "src/components", // default
+    pages: 'src/pages',
+    components: 'src/components',
+    out: 'dist',
+    public: undefined,
+    api: 'src/api',
   },
-  watch: [], // re-transpile all pages when these paths change (dev only)
-  // exec: Optional array of custom build-lifecycle script objects { script: string, phase?: 'pre' | 'post' | 'parallel', watch?: string[] }.
-  // 'pre' (default) runs and is awaited before page transpilation in both build and dev startup.
-  // 'post' runs after all pages finish transpilation.
-  // 'parallel' starts concurrently with page transpilation.
-  // Note: The commented examples below demonstrate possible custom build tasks (e.g. search indexes, RSS feeds, social card images).
-  // Do NOT add exec entries unless your project actually implements corresponding script files!
-  exec: [
-    // Example: { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
-    // Example: { script: 'scripts/generate-sitemap.ts', phase: 'post' },
-  ],
-  // Critical: custom lifecycle scripts registered in `exec` must write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than `src/` to prevent polluting your source tree or causing infinite watcher re-transpile loops.
-  scopeScriptBlocks: true,
-  inheritAttributes: true,
-  scopeAttribute: {
-    class: true,
-    id: true,
-    name: true,
+  scoping: {
+    scriptBlocks: true,
+    inheritAttributes: true,
+    attributes: {
+      class: true,
+      id: true,
+      name: true,
+    },
+    preserve: ['code'],
+    deduplicateCss: true,
   },
-  deduplicateCss: true,
-  skipTranspilingElementContents: ['code'], // don't scope inside these elements
   minify: {
     html: false,
     css: false,
     js: false,
-    identifiers: false, // false in dev; true in --build and --serve
+    identifiers: false,
   },
-  inlineStyles: false, // false | true | ['src/css/styles.css']
-  cacheHttp: false, // dev default; automatically true in --serve mode
-  siteUrl: 'https://example.com',
+  assets: {
+    inlineStyles: false,
+    exclude: [],
+  },
   generate: {
-    sitemap: true, // write dist/sitemap.xml
-    robots: true,  // write dist/robots.txt
+    sitemap: true,
+    robots: true,
+    sitemapLastmod: false,
+    cspHashes: false,
+    manifest: false,
   },
-  useWorkers: false,       // true: transpile pages across CPU-core worker threads
-  buildScriptCache: true,  // false: disable disk cache for <script data-bascik-build>
-  onScriptError: 'warn',   // 'warn' (default in dev) | 'error' (default in build/prod-server) | 'halt'
-  onMinifyError: 'warn',   // 'warn' (default in dev) | 'error' (default in build/prod-server) | 'halt'
-  devServer: {
-    logging: {
-      level: 'info',    // silent | error | warn | info | debug
-      requests: true,
-      copies: true,
-      deletes: true,
-      transpiles: true,
+  pipeline: {
+    watchPaths: [],
+    exec: [],
+    workers: false,
+  },
+  scripts: {
+    cache: { enabled: true },
+    onBuildScriptError: 'error',
+    onRoutesScriptError: 'error',
+    onServerScriptError: 'error',
+    timeout: 30000,
+  },
+  onMinifyError: 'warn',
+  http: {
+    port: undefined,
+    hostname: 'localhost',
+    tls: {
+      enabled: false,
     },
+    rateLimit: true,
+    trustProxy: false,
+    cacheControl: 'public, max-age=3600',
+    compression: true,
+    maxBodySize: 1048576,
+    apiTimeout: 10000,
   },
-  prodServer: {
-    enableTls: false,     // default; set true for HTTP/2 HTTPS
-    port: 8080,           // default (8080 HTTP, 8443 HTTPS)
-    hostname: 'localhost', // use '0.0.0.0' to bind all interfaces (containers/proxies)
-    scriptTimeout: 30000, // max execution time (ms) per server script (default: 30000)
-    keyFile: '/etc/ssl/site.key',  // optional: provide your own TLS cert
-    certFile: '/etc/ssl/site.crt', // optional: provide your own TLS cert
-    logging: {
-      level: 'info',    // silent | error | warn | info | debug
-      requests: true,
-    },
+  logging: {
+    level: 'info',
+    requests: true,
+    copies: true,
+    deletes: true,
+    transpiles: true,
   },
+  siteUrl: 'https://example.com',
+  base: '/',
 });
 
-// Applied only during `bascik --build` and `bascik --serve`.
+// Applied only during `bascik --build` and `bascik --server`.
 export const build = defineConfig({
   minify: {
     html: true,

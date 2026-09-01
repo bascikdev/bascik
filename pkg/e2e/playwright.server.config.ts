@@ -1,9 +1,9 @@
 /**
- * Playwright config for running E2E tests against the Bascik HTTP/1.1 Production Server (`bascik --serve`).
+ * Playwright config for running E2E tests against the Bascik HTTP/1.1 Production Server (`bascik --server`).
  *
  * Runs the full E2E test suite (scoping, slots, CSS, JS, components, DOM, etc.)
  * plus `data-bascik-server` script execution and prod server HTTP/1.1 tests
- * directly against cleartext `bascik --serve`.
+ * directly against cleartext `bascik --server`.
  *
  * Run with:
  *   npx playwright test --config e2e/playwright.server.config.ts
@@ -29,7 +29,7 @@ export default defineConfig({
   webServer: {
     command: [
       `node ${pkgDir}/dist/index.js --build`,
-      `BASCIK_ENABLE_TLS=false BASCIK_SERVE_PORT=9443 node ${pkgDir}/dist/index.js --serve`,
+      `BASCIK_ENABLE_TLS=false BASCIK_SERVER_PORT=9443 node ${pkgDir}/dist/index.js --server`,
     ].join(' && '),
     cwd: e2eDir,
     url: 'http://localhost:9443/server-scripts-test',

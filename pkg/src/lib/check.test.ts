@@ -14,7 +14,10 @@ vi.mock("./config.js", async (importOriginal) => {
   return {
     BascikConfig: {
       ...original.BascikConfig,
-      skipTranspilingElementContents: ["code"],
+      scoping: {
+        ...original.BascikConfig?.scoping,
+        preserve: ["code"],
+      },
     },
   };
 });

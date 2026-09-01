@@ -264,7 +264,7 @@ const computeScriptCacheKey = async (
   hash.update(String(SCRIPT_CACHE_VERSION));
   hash.update(script);
   hash.update(isBuild ? "1" : "0");
-  hash.update(filePath);   // BASCIK_SOURCE_FILE
+  hash.update(filePath);   // BASCIK_TEMPLATE_FILE
   hash.update(pageFile);   // BASCIK_PAGE_FILE
   hash.update(pagePath);   // BASCIK_PAGE_PATH — varies per page for page-aware scripts
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
@@ -364,10 +364,10 @@ export const executeBuildScripts = async (
     mkdir(cacheDir, { recursive: true }),
   ]);
 
-  const useCache = BascikConfig.buildScriptCache !== false;
+  const useCache = BascikConfig.scripts?.cache?.enabled !== false;
   const sourceFile = options?.sourceFile ?? filePath ?? "";
   const pageFile = options?.pageFile ?? filePath ?? "";
-  const siteUrl = BascikConfig.siteUrl ?? "";
+  const siteUrl = (BascikConfig as any).siteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
   const pagePath = options?.pagePath ?? (pageFile ? computePagePath(pageFile, BascikConfig.directory?.pages ?? "src/pages", route) : "");
 
@@ -472,10 +472,11 @@ export const executeBuildScripts = async (
 
     const relPath = activeFile ? relative(process.cwd(), activeFile).replace(/\\/g, "/") : "unknown";
     const extraEnv: Record<string, string> = {
-      BASCIK_SOURCE_FILE: sourceFile,
+      BASCIK_TEMPLATE_FILE: sourceFile,
+      BASCIK_SOURCE_FILE: sourceFile, // preserved for backward-compatibility fallback
       BASCIK_PAGE_FILE: pageFile,
       BASCIK_PAGE_PATH: pagePath,
-      BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
+      BASCIK_SITE_URL: (BascikConfig as any).siteUrl ?? "",
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     };
     if (route) {
@@ -500,8 +501,8 @@ export const executeBuildScripts = async (
           const lines = prefix.split(/\r?\n/);
           errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
         }
-        const behavior = BascikConfig.onScriptError ?? "error";
-        if (behavior === "halt" || behavior === "error") {
+        const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+        if (behavior === "error") {
           console.error(`${errorMsg}:\n${cleanedMsg}`);
           throw new Error(`${errorMsg}:\n${cleanedMsg}`);
         } else {
@@ -559,8 +560,8 @@ export const executeBuildScripts = async (
                 const lines = prefix.split(/\r?\n/);
                 errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
               }
-              const behavior = BascikConfig.onScriptError ?? "error";
-              if (behavior === "halt" || behavior === "error") {
+              const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+              if (behavior === "error") {
                 console.error(`${errorMsg}:\n${cleanedMsg}`);
                 throw new Error(`${errorMsg}:\n${cleanedMsg}`);
               } else {
@@ -587,8 +588,8 @@ export const executeBuildScripts = async (
                 const lines = prefix.split(/\r?\n/);
                 errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
               }
-              const behavior = BascikConfig.onScriptError ?? "error";
-              if (behavior === "halt" || behavior === "error") {
+              const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+              if (behavior === "error") {
                 console.error(`${errorMsg}:\n${cleanedMsg}`);
                 throw new Error(`${errorMsg}:\n${cleanedMsg}`);
               } else {
@@ -609,8 +610,8 @@ export const executeBuildScripts = async (
             const lines = prefix.split(/\r?\n/);
             errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
           }
-          const behavior = BascikConfig.onScriptError ?? "error";
-          if (behavior === "halt" || behavior === "error") {
+          const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+          if (behavior === "error") {
             console.error(`${errorMsg}:\n${cleanedMsg}`);
             throw new Error(`${errorMsg}:\n${cleanedMsg}`);
           } else {

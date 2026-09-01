@@ -409,12 +409,13 @@ export const executeRoutesScript = async (
   const sourceUrlComment = filePath ? `\n//# sourceURL=${relPath}` : "";
 
   const extraEnv = {
+    BASCIK_TEMPLATE_FILE: filePath ?? "",
     BASCIK_SOURCE_FILE: filePath ?? "",
     BASCIK_PAGE_FILE: filePath ?? "",
     BASCIK_PAGE_PATH: filePath
       ? computePagePath(filePath, BascikConfig.directory?.pages ?? "src/pages")
       : "",
-    BASCIK_SITE_URL: BascikConfig.siteUrl ?? "",
+    BASCIK_SITE_URL: (BascikConfig as any).siteUrl ?? "",
     BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
     BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
   };
@@ -436,8 +437,8 @@ export const executeRoutesScript = async (
       const lns = pfx.split(/\r?\n/);
       errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
     }
-    const behavior = BascikConfig.onScriptError ?? "error";
-    if (behavior === "halt" || behavior === "error") {
+    const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
+    if (behavior === "error") {
       console.error(`${errorMsg}:\n${cleanedMsg}`);
       throw new Error(`${errorMsg}:\n${cleanedMsg}`);
     } else {
@@ -462,8 +463,8 @@ export const executeRoutesScript = async (
       const lns = pfx.split(/\r?\n/);
       errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
     }
-    const behavior = BascikConfig.onScriptError ?? "error";
-    if (behavior === "halt" || behavior === "error") {
+    const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
+    if (behavior === "error") {
       console.error(`${errorMsg}:\n${parseError}`);
       throw new Error(`${errorMsg}:\n${parseError}`);
     } else {

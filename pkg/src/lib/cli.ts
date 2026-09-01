@@ -11,7 +11,7 @@
 export type CliAction =
   | "init"
   | "check"
-  | "prodServer"
+  | "server"
   | "build"
   | "dev"
   | "help"
@@ -27,7 +27,7 @@ export interface CliDecision {
 /** Long-form flags the CLI understands. */
 const KNOWN_FLAGS = new Set([
   "--build",
-  "--serve",
+  "--server",
   "--check",
   "--help",
   "-h",
@@ -104,8 +104,8 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   if (filtered.includes("--check")) {
     return { action: "check" };
   }
-  if (filtered.includes("--serve")) {
-    return { action: "prodServer" };
+  if (filtered.includes("--server")) {
+    return { action: "server" };
   }
   if (filtered.includes("--build")) {
     return { action: "build" };
@@ -120,8 +120,8 @@ Commands:
 
 Options:
   (no flags)      Start the dev server with watch mode
-  --build         Transpile all pages to dist/ (production build)
-  --serve         Serve the dist/ folder over HTTP/2 (production preview)
+  --build         Transpile all pages to output directory (production build)
+  --server        Serve output directory over HTTP/2 (production server)
   --check         Validate the project (pages, components, config)
   --log [path]    Write build output to a log file (default: .bascik/build.log)
   -h, --help      Show this help text

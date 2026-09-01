@@ -45,8 +45,17 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    prodServer: {
-      enableTls: true,
+    directory: {
+      out: "dist",
+    },
+    http: {
+      tls: {
+        enabled: true,
+      },
+    },
+    logging: {
+      level: "info",
+      requests: true,
     },
   },
   shouldLog: vi.fn(() => true),

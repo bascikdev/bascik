@@ -5,13 +5,13 @@ description: Architecture, debugging, and maintenance of Bascik's built-in HTTP/
 
 # Bascik Server Architecture: HTTP/1.1, HTTP/2, TLS & SSE
 
-Bascik includes a zero-dependency server implemented in `pkg/src/lib/server.ts` and `pkg/src/lib/serve.ts` that powers both the development server (with live-reload) and production serving (`bascik --serve`).
+Bascik includes a zero-dependency server implemented in `pkg/src/lib/server.ts` and `pkg/src/lib/serve.ts` that powers both the development server (with live-reload) and production serving (`bascik --server`).
 
 ---
 
 ## 1. Dev Server vs. Prod Server Architecture
 
-| Feature | Dev Server (`bascik`) | Prod Server (`bascik --serve`) |
+| Feature | Dev Server (`bascik`) | Prod Server (`bascik --server`) |
 | :--- | :--- | :--- |
 | **Purpose** | Local authoring, watching, live-reloading | High-throughput static & dynamic serving |
 | **Live Reload / SSE** | Injects SSE client script into HTML pages | Disabled |

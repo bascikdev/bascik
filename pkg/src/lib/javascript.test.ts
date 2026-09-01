@@ -5,8 +5,16 @@ import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minif
 vi.mock("./config.js", () => ({
   BascikConfig: {
     minify: { identifiers: false },
-    scopeAttribute: { class: true, id: true, name: true },
-    deduplicateCss: true,
+    scoping: {
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    },
+    directory: {
+      pages: "src/pages",
+      components: "src/components",
+      out: "dist",
+    },
   },
 }));
 

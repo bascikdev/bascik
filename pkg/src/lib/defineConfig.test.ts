@@ -4,7 +4,9 @@ import { defineConfig, type BascikConfig } from "./defineConfig.ts";
 describe("defineConfig", () => {
   it("returns the exact config object passed to it", () => {
     const config: BascikConfig = {
-      scopeScriptBlocks: true,
+      scoping: {
+        scriptBlocks: true,
+      },
       directory: {
         pages: "src/pages",
         components: "src/components",
@@ -12,7 +14,7 @@ describe("defineConfig", () => {
     };
     const result = defineConfig(config);
     expect(result).toBe(config);
-    expect(result.scopeScriptBlocks).toBe(true);
+    expect(result.scoping?.scriptBlocks).toBe(true);
     expect(result.directory?.pages).toBe("src/pages");
   });
 });

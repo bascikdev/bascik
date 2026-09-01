@@ -261,7 +261,7 @@ export const listComponents = async (): Promise<ComponentList> => {
         minifiedContent = minifyHtml(cleanedContent);
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
-        if (behavior === "halt" || behavior === "error") {
+        if (behavior === "error") {
           console.error(`[bascik] HTML minification failed for component "${fileName}":`, minErr);
           throw minErr;
         }

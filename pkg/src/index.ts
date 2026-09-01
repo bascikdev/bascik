@@ -103,10 +103,10 @@ export const runCli = async (
       exit(ok ? 0 : 1);
       return { action: "check", exitCode: ok ? 0 : 1 };
     }
-    case "prodServer": {
-      const { serveProduction } = await import("./lib/serve.ts");
-      await serveProduction();
-      return { action: "prodServer", exitCode: 0 };
+    case "server": {
+      const { serverProduction } = await import("./lib/serve.ts");
+      await serverProduction();
+      return { action: "server", exitCode: 0 };
     }
     case "dev":
     case "build":

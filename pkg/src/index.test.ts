@@ -33,8 +33,8 @@ describe("resolveCliAction", () => {
     expect(resolveCliAction(["--check"])).toEqual({ action: "check" });
   });
 
-  it("maps --serve to serve", () => {
-    expect(resolveCliAction(["--serve"])).toEqual({ action: "prodServer" });
+  it("maps --server to server", () => {
+    expect(resolveCliAction(["--server"])).toEqual({ action: "server" });
   });
 
   it("maps --build to build", () => {
@@ -81,7 +81,7 @@ describe("resolveCliAction", () => {
   });
 
   it("prefers version over other known flags", () => {
-    expect(resolveCliAction(["--serve", "-v"])).toEqual({ action: "version" });
+    expect(resolveCliAction(["--server", "-v"])).toEqual({ action: "version" });
   });
 
   it("accepts init alongside a known flag", () => {
@@ -97,7 +97,7 @@ describe("CLI_USAGE", () => {
   it("documents all recognized flags and the init subcommand", () => {
     for (const token of [
       "--build",
-      "--serve",
+      "--server",
       "--check",
       "--help",
       "-h",
@@ -156,12 +156,12 @@ describe("index.ts CLI runner functions", () => {
     await rm(dirname(tmpLogPath), { recursive: true, force: true }).catch(() => { });
   });
 
-  it("runCli executes subcommands init, check, prodServer, and dev/build", async () => {
+  it("runCli executes subcommands init, check, server, and dev/build", async () => {
     const { runCli } = await import("./index.ts");
 
     const initSpy = vi.spyOn(await import("./lib/init.ts"), "initProject").mockResolvedValueOnce(undefined);
     const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce(true);
-    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serveProduction").mockResolvedValueOnce("http://localhost:8080");
+    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serverProduction").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
     const initRes = await runCli(["init"], { exitOnFinish: false });
@@ -172,8 +172,8 @@ describe("index.ts CLI runner functions", () => {
     expect(checkRes.action).toBe("check");
     expect(checkSpy).toHaveBeenCalled();
 
-    const serveRes = await runCli(["--serve"], { exitOnFinish: false });
-    expect(serveRes.action).toBe("prodServer");
+    const serveRes = await runCli(["--server"], { exitOnFinish: false });
+    expect(serveRes.action).toBe("server");
     expect(serveSpy).toHaveBeenCalled();
 
     const buildRes = await runCli(["--build"], { exitOnFinish: false });

@@ -25,7 +25,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `BASCIK_SERVE_PORT=9443 node ${pkgDir}/dist/index.js`,
+    command: `BASCIK_SERVER_PORT=9443 node ${pkgDir}/dist/index.js`,
     cwd: e2eDir,
     url: 'http://localhost:9443/scope-test',
     reuseExistingServer: false,

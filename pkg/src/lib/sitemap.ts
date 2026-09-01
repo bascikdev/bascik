@@ -23,6 +23,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { listPages } from "./file-system.ts";
 import { getRelativePath } from "./file-system.ts";
@@ -109,7 +110,8 @@ export const generateSitemapFiles = async (
   const { sitemap: doSitemap, robots: doRobots } = BascikConfig.generate;
   if (!doSitemap && !doRobots) return;
 
-  if (!BascikConfig.siteUrl) {
+  const siteUrl = (BascikConfig as any).siteUrl;
+  if (!siteUrl) {
     console.warn(
       "[bascik] generate: `siteUrl` is not set in bascik.config.ts — skipping sitemap/robots generation. " +
       "Set `siteUrl: 'https://example.com'` to enable.",
@@ -117,7 +119,7 @@ export const generateSitemapFiles = async (
     return;
   }
 
-  const baseUrl = BascikConfig.siteUrl.replace(/\/+$/, ""); // trim trailing slash
+  const baseUrl = siteUrl.replace(/\/+$/, ""); // trim trailing slash
 
   const writes: Promise<void>[] = [];
 
@@ -132,18 +134,22 @@ export const generateSitemapFiles = async (
       .map(pagePathToUrlPath)
       .sort();
     const sitemapXml = buildSitemapXml(baseUrl, urlPaths);
+    const sitemapPath = join(BascikConfig.directory.out, "sitemap.xml");
+    const sitemapRel = relative(process.cwd(), sitemapPath);
     writes.push(
-      writeFile("dist/sitemap.xml", sitemapXml, "utf8").then(() =>
-        console.log("generated: dist/sitemap.xml"),
+      writeFile(sitemapPath, sitemapXml, "utf8").then(() =>
+        console.log(`generated: ${sitemapRel}`),
       ),
     );
   }
 
   if (doRobots) {
     const robotsTxt = buildRobotsTxt(baseUrl);
+    const robotsPath = join(BascikConfig.directory.out, "robots.txt");
+    const robotsRel = relative(process.cwd(), robotsPath);
     writes.push(
-      writeFile("dist/robots.txt", robotsTxt, "utf8").then(() =>
-        console.log("generated: dist/robots.txt"),
+      writeFile(robotsPath, robotsTxt, "utf8").then(() =>
+        console.log(`generated: ${robotsRel}`),
       ),
     );
   }

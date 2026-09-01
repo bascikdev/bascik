@@ -26,8 +26,8 @@ vi.mock("node:fs/promises", () => ({
 vi.mock("./config.js", () => ({
   BascikConfig: {
     isBuild: false,
-    buildScriptCache: true,
-    directory: { pages: "src/pages", components: "src/components" },
+    scripts: { cache: { enabled: true }, onBuildScriptError: "error" },
+    directory: { pages: "src/pages", components: "src/components", out: "dist" },
   },
 }));
 
@@ -68,6 +68,7 @@ const rejectWith = (message: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   clearBuildScriptCaches();
+  (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
 });
 
 describe("executeBuildScripts", () => {
@@ -123,8 +124,8 @@ describe("executeBuildScripts", () => {
     expect(unlink).toHaveBeenCalledTimes(1);
   });
 
-  it("replaces the script tag with empty string on execution error when onScriptError is 'warn'", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("replaces the script tag with empty string on execution error when onBuildScriptError is 'warn'", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     rejectWith("syntax error");
     const html =
       "<p>before</p><script data-bascik-build>bad code</script><p>after</p>";
@@ -132,15 +133,13 @@ describe("executeBuildScripts", () => {
     expect(result).toContain("<p>before</p>");
     expect(result).toContain("<p>after</p>");
     expect(result).not.toContain("data-bascik-build");
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("still removes the temp file when execution fails", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     rejectWith("error");
     await executeBuildScripts("<script data-bascik-build>bad</script>");
     expect(unlink).toHaveBeenCalledTimes(1);
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("processes multiple build scripts in order", async () => {
@@ -198,7 +197,7 @@ describe("executeBuildScripts", () => {
       "/abs/project/src/pages/guides/intro.html",
     );
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
-    expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
+    expect(opts.env?.BASCIK_TEMPLATE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_SITE_URL).toBe("");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
@@ -215,8 +214,8 @@ describe("executeBuildScripts", () => {
     expect(opts.killSignal).toBeTruthy();
   });
 
-  it("handles a timeout kill gracefully: warns and removes the tag when onScriptError is 'warn'", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("handles a timeout kill gracefully: warns and removes the tag when onBuildScriptError is 'warn'", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     mockExecFile.mockImplementation(
       (
@@ -240,7 +239,6 @@ describe("executeBuildScripts", () => {
     expect(result).not.toContain("data-bascik-build");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("matches a script tag when an attribute value contains `>`", async () => {
@@ -355,16 +353,8 @@ describe("executeBuildScripts", () => {
     expect(result).toBe("<p>ok</p>");
   });
 
-  it("respects onScriptError: halt", async () => {
-    (BascikConfig as any).onScriptError = "halt";
-    rejectWith("failed script execution");
-    const html = "<script data-bascik-build>bad()</script>";
-    await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
-    (BascikConfig as any).onScriptError = undefined;
-  });
-
-  it("respects onScriptError: warn", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("respects onBuildScriptError: warn", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     rejectWith("failed script execution");
     const html = "<script data-bascik-build>bad()</script>";
@@ -372,7 +362,6 @@ describe("executeBuildScripts", () => {
     expect(result).toBe("");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("reads script content from double-quoted src file when script tag body is empty", async () => {
@@ -408,19 +397,18 @@ describe("executeBuildScripts", () => {
     expect(result).toBe("<h1>Unquoted Header</h1>");
   });
 
-  it("respects onScriptError: error", async () => {
-    (BascikConfig as any).onScriptError = "error";
+  it("respects onBuildScriptError: error", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     rejectWith("failed script execution");
     const html = "<script data-bascik-build>bad()</script>";
     await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("formats the error messages cleanly, removing command failure and node internals", async () => {
-    (BascikConfig as any).onScriptError = "error";
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     mockExecFile.mockImplementation(
@@ -447,7 +435,6 @@ describe("executeBuildScripts", () => {
     expect(errorLog).not.toContain("node:internal");
 
     errorSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 });
 
@@ -574,14 +561,14 @@ describe("build-script output cache", () => {
   });
 
   it("does not write a cache entry when the script fails", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+    (BascikConfig.scripts as any).onBuildScriptError = "warn";
     rejectWith("syntax error");
     await executeBuildScripts("<script data-bascik-build>bad()</script>");
     const jsonCall = mockWriteFile.mock.calls.find(
       ([path]) => String(path).endsWith(".json"),
     );
     expect(jsonCall).toBeUndefined();
-    (BascikConfig as any).onScriptError = undefined;
+    (BascikConfig.scripts as any).onBuildScriptError = "error";
   });
 
   it("returns cached output and skips execFile on a cache hit", async () => {
@@ -708,8 +695,8 @@ describe("build-script output cache", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 
-  it("skips cache reads and writes entirely when buildScriptCache is false", async () => {
-    (BascikConfig as Record<string, unknown>).buildScriptCache = false;
+  it("skips cache reads and writes entirely when scripts.cache.enabled is false", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: false } };
     resolveWith("<p>no-cache</p>");
     const result = await executeBuildScripts(
       "<script data-bascik-build>nodeps()</script>",
@@ -718,11 +705,11 @@ describe("build-script output cache", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(1);
     const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
     expect(jsonWrites.length).toBe(0);
-    (BascikConfig as Record<string, unknown>).buildScriptCache = true;
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: true } };
   });
 
-  it("handles batch execution when one script fails and onScriptError is 'warn'", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("handles batch execution when one script fails and onBuildScriptError is 'warn'", async () => {
+    (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     resolveWith(
@@ -739,7 +726,6 @@ describe("build-script output cache", () => {
     expect(result).toBe("<div><span>Success</span></div>");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("throws and identifies the failed script in a batch when onScriptError is 'error'", async () => {
@@ -863,7 +849,7 @@ describe("build-script output cache", () => {
     const opts2 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
     expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
     expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
-    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
+    expect(opts2.env?.BASCIK_TEMPLATE_FILE).toBe("src/components/pagination.html");
   });
 });
 

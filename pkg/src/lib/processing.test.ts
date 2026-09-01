@@ -8,9 +8,13 @@ import { BascikConfig } from "./config.ts";
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
   BascikConfig: {
-    scopeScriptBlocks: false,
-    inheritAttributes: true,
-    scopeAttribute: { class: false, id: false, name: false },
+    scoping: {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: false, id: false, name: false },
+      deduplicateCss: true,
+      preserve: ["code"],
+    },
     isBuild: false,
     minify: {
       html: false,
@@ -18,21 +22,25 @@ vi.mock("./config.js", () => ({
       js: false,
       identifiers: false,
     },
-    deduplicateCss: true,
-    inlineStyles: false,
+    assets: {
+      inlineStyles: false,
+      exclude: [],
+    },
     directory: {
       pages: "src/pages",
       components: "src/components",
-      watch: [],
+      out: "dist",
     },
-    devServer: {
-      logging: {
-        level: "info",
-        requests: true,
-        copies: true,
-        deletes: true,
-        transpiles: true,
-      },
+    pipeline: {
+      watchPaths: [],
+      workers: false,
+    },
+    logging: {
+      level: "info",
+      requests: true,
+      copies: true,
+      deletes: true,
+      transpiles: true,
     },
   },
 }));
@@ -487,7 +495,7 @@ describe("recursivelyTranspile – named slot fallback content", () => {
 
 describe("recursivelyTranspile – attribute inheritance", () => {
   beforeEach(() => {
-    (BascikConfig as Record<string, unknown>).inheritAttributes = true;
+    (BascikConfig as any).scoping = { ...(BascikConfig as any).scoping, inheritAttributes: true };
   });
 
   it("merges class from usage tag onto component root element", () => {
@@ -534,7 +542,7 @@ describe("recursivelyTranspile – attribute inheritance", () => {
   });
 
   it("can disable attribute inheritance via config", () => {
-    (BascikConfig as Record<string, unknown>).inheritAttributes = false;
+    (BascikConfig as any).scoping = { ...(BascikConfig as any).scoping, inheritAttributes: false };
     const componentList = {
       "site-nav": {
         fileName: "components/site-nav.html",
@@ -644,7 +652,7 @@ const PAGE_PATH = 'src/pages/index.html';
 describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (BascikConfig.minify as any).css = false;
   });
 
@@ -677,7 +685,7 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
 describe("pageProcessing – inlineStyles", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (BascikConfig.minify as any).css = false;
   });
 
@@ -691,7 +699,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("inlines a single stylesheet into the <head> before component styles", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
+    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)          // page read
       .mockResolvedValueOnce('body { color: red; }'); // inlineStyles file
@@ -705,7 +713,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("concatenates multiple stylesheets into one <style> block", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['a.css', 'b.css'];
+    (BascikConfig as any).assets = { inlineStyles: ['a.css', 'b.css'], exclude: [] };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
       .mockResolvedValueOnce('.a { color: red; }')
@@ -720,7 +728,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("logs a warning and continues when an inlineStyles file cannot be read", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['missing.css'];
+    (BascikConfig as any).assets = { inlineStyles: ['missing.css'], exclude: [] };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
       .mockRejectedValueOnce(new Error('ENOENT'));
@@ -735,7 +743,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS when minify.css is true", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
+    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (BascikConfig.minify as any).css = true;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
@@ -747,7 +755,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("minifies inlined CSS using a custom minify.css function", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = ['src/css/styles.css'];
+    (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (BascikConfig.minify as any).css = async (css: string) => `/* custom */ ${css.trim()}`;
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)
@@ -758,7 +766,7 @@ describe("pageProcessing – inlineStyles", () => {
   });
 
   it("inlines every page stylesheet when inlineStyles is true", async () => {
-    (BascikConfig as Record<string, unknown>).inlineStyles = true;
+    (BascikConfig as any).assets = { inlineStyles: true, exclude: [] };
     const { deepReadDirFlat } = await import("./file-system.ts");
     (deepReadDirFlat as ReturnType<typeof vi.fn>).mockResolvedValue([
       "src/pages/css/a.css",
@@ -782,7 +790,7 @@ describe("pageProcessing – inlineStyles", () => {
 describe("selectivelyProcessPagesForWatchPath", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (mem.pagesDependentOnFile as ReturnType<typeof vi.fn>).mockReturnValue([]);
   });
 
@@ -939,14 +947,14 @@ describe("processPageBatch – open page priority & instant reloading", () => {
 describe("pageProcessing – live-reload script injection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
     (BascikConfig.minify as any).css = false;
-    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (BascikConfig as any).isBuild = false;
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
   });
 
   afterEach(() => {
-    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (BascikConfig as any).isBuild = false;
   });
 
   it("injects the live-reload script in dev mode", async () => {
@@ -1123,8 +1131,8 @@ describe("getFilePosition", () => {
 describe("transpilePage – missing body", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
-    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (BascikConfig as any).isBuild = false;
   });
 
   it("returns null and warns when page has no <body> tag", async () => {
@@ -1144,8 +1152,8 @@ describe("transpilePage – missing body", () => {
 describe("transpilePage – unresolved component tag warning", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
-    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (BascikConfig as any).isBuild = false;
   });
 
   it("warns when a hyphenated tag has no matching component file", async () => {
@@ -1734,13 +1742,25 @@ describe("recursivelyTranspile – non-Error thrown in component processing", ()
 describe("transpilePage – inline component <style> extraction & deduplication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (BascikConfig as Record<string, unknown>).inlineStyles = false;
-    (BascikConfig as Record<string, unknown>).isBuild = false;
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: true, id: true, name: true };
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    (BascikConfig as any).isBuild = false;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
   });
 
   afterEach(() => {
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: false, id: false, name: false };
+    (BascikConfig as any).scoping = {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: false, id: false, name: false },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
   });
 
   it("extracts inline <style> from component HTML, scopes it, places in <head>, and strips from <body>", async () => {
@@ -1851,9 +1871,14 @@ describe("transpilePage – inline component <style> extraction & deduplication"
   });
 
   it("handles components with multiple root level HTML elements and merges inherited attributes onto the first root", async () => {
-    (BascikConfig as Record<string, unknown>).isBuild = true;
-    (BascikConfig as Record<string, unknown>).inheritAttributes = true;
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: true, id: true, name: true };
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
     const pageHtml = '<!DOCTYPE html><html><head></head><body><comp-multi-root class="outer-class" data-testid="multi"></comp-multi-root></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
 
@@ -1890,8 +1915,14 @@ describe("transpilePage – inline component <style> extraction & deduplication"
   });
 
   it("handles components with multiple <style> tags", async () => {
-    (BascikConfig as Record<string, unknown>).isBuild = true;
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: true, id: true, name: true };
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
     const pageHtml = '<!DOCTYPE html><html><head></head><body><comp-multi-styles></comp-multi-styles></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
 
@@ -1941,10 +1972,14 @@ describe("transpilePage – inline component <style> extraction & deduplication"
   });
 
   it("correctly handles a component with leading <script>, multiple root elements, and attribute inheritance", async () => {
-    (BascikConfig as Record<string, unknown>).isBuild = true;
-    (BascikConfig as Record<string, unknown>).inheritAttributes = true;
-    (BascikConfig as Record<string, unknown>).scopeScriptBlocks = true;
-    (BascikConfig as Record<string, unknown>).scopeAttribute = { class: true, id: true, name: true };
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
     const pageHtml = '<!DOCTYPE html><html><head></head><body><comp-script-multi class="active-card" id="card-1"></comp-script-multi></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
 
@@ -1977,8 +2012,14 @@ describe("transpilePage – inline component <style> extraction & deduplication"
   });
 
   it("handles components with multiple <script> tags", async () => {
-    (BascikConfig as Record<string, unknown>).isBuild = true;
-    (BascikConfig as Record<string, unknown>).scopeScriptBlocks = true;
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
     const pageHtml = '<!DOCTYPE html><html><head></head><body><comp-multi-scripts></comp-multi-scripts></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
 

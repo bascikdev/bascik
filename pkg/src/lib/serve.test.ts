@@ -12,6 +12,22 @@ vi.mock("./server.js", () => ({
   startServer: startServerMock,
 }));
 
+vi.mock("./config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./config.js")>();
+  return {
+    ...actual,
+    get BascikConfig() {
+      return {
+        ...actual.BascikConfig,
+        directory: {
+          ...actual.BascikConfig.directory,
+          out: join(process.cwd(), "dist"),
+        },
+      };
+    },
+  };
+});
+
 describe("serveProduction", () => {
   let workDir: string;
   let originalCwd: string;
@@ -32,7 +48,7 @@ describe("serveProduction", () => {
   it("throws a helpful error when dist/ does not exist", async () => {
     await rm(join(workDir, "dist"), { recursive: true, force: true });
     await expect(serveProduction()).rejects.toThrow(
-      /could not read dist\/ directory/,
+      /could not read .*dist\/ directory/,
     );
     await expect(serveProduction()).rejects.toThrow(/bascik --build/);
     expect(startServerMock).not.toHaveBeenCalled();

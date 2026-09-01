@@ -226,29 +226,31 @@ For guidance on deploying to static hosts or running the production server, see 
 
 ## Production server
 
-`bascik --serve` starts the same HTTP server used for development, but pointed at a pre-built `dist/` directory. Run `--build` first, then `--serve`:
+`bascik --server` starts the HTTP server pointed at a pre-built output directory. Run `--build` first, then `--server`:
 
 ```sh
-bascik --build && bascik --serve
+bascik --build && bascik --server
 ```
 
 The production server:
 
 - Serves pre-compiled pages from `dist/` without watching for source changes.
 - Has no live-reload SSE endpoint.
-- Executes `data-bascik-server` script blocks on every request, just like the dev server.
+- Executes `data-bascik-server` script blocks on every request.
 
 ### Configuring the server
 
-Use the `prodServer` key in `bascik.config.ts` to customize the server for both dev and production:
+Use the `http` key in `bascik.config.ts` to customize the server:
 
 ```ts
 // bascik.config.ts
 export default {
-  prodServer: {
+  http: {
     port: 8080,
     hostname: '0.0.0.0',   // bind all interfaces (needed in containers)
-    enableTls: false,      // set to true to run over encrypted HTTP/2 (HTTPS)
+    tls: {
+      enabled: false,      // set to true to run over encrypted HTTP/2 (HTTPS)
+    },
   },
 };
 ```

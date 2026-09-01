@@ -62,12 +62,24 @@ vi.mock("./mem.js", () => ({
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
   BascikConfig: {
-    cacheHttp: false,
-    isProdServer: false,
-    directory: { pages: "src/pages", components: "src/components" },
-    prodServer: {
-      enableTls: true, // Maintain HTTP/2 mock-stream behavior as default in test
+    http: {
+      httpCache: false,
+      tls: {
+        enabled: true,
+      },
+      rateLimit: true,
+      hostname: "localhost",
+      port: 8443,
     },
+    scripts: {
+      timeout: 30000,
+    },
+    logging: {
+      level: "info",
+      requests: true,
+    },
+    isProdServer: false,
+    directory: { pages: "src/pages", components: "src/components", out: "dist" },
   },
 }));
 
@@ -358,7 +370,7 @@ describe("startHttp2Server – stream handler", () => {
     expect(stream.end).toHaveBeenCalledWith(page.content);
   });
 
-  it("sets no-cache headers when BascikConfig.cacheHttp is false", async () => {
+  it("sets no-cache headers when BascikConfig.http.httpCache is false", async () => {
     const page = makePage({ content: Buffer.from("<html></html>") });
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
@@ -654,7 +666,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   it("returns 304 when If-None-Match matches and cacheHttp is enabled", async () => {
     const { BascikConfig } = await import("./config.ts");
     // Temporarily set cacheHttp to true for this test
-    (BascikConfig as any).cacheHttp = true;
+    (BascikConfig as any).http.httpCache = true;
 
     const page = makePage({ content: Buffer.from("<html>Cached</html>") });
     mockMem.getPage.mockReturnValue(page);
@@ -674,7 +686,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     );
     expect(stream2.end).toHaveBeenCalledWith();
 
-    (BascikConfig as any).cacheHttp = false;
+    (BascikConfig as any).http.httpCache = false;
   });
 
   it("does not return 304 when cacheHttp is false (no-store mode)", async () => {
@@ -699,7 +711,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
 
   it("sets an ETag header on static asset responses", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).cacheHttp = true;
+    (BascikConfig as any).http.httpCache = true;
     const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
     const handler = getStreamHandler()!;
@@ -710,12 +722,12 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ etag: expect.stringMatching(/^W\/"[0-9a-z]+-[0-9a-z]+"$/) }),
     );
-    (BascikConfig as any).cacheHttp = false;
+    (BascikConfig as any).http.httpCache = false;
   });
 
   it("returns 304 for a static asset when If-None-Match matches", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).cacheHttp = true;
+    (BascikConfig as any).http.httpCache = true;
     // Stat returns deterministic values so the ETag is predictable
     const mtimeMs = 1_705_000_000_000;
     const size = 1_024;
@@ -827,7 +839,7 @@ describe("startHttp2Server – rate limiting", () => {
 
   it("does not throttle requests when rateLimit is disabled in prodServer config", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).prodServer.rateLimit = false;
+    (BascikConfig as any).http.rateLimit = false;
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
 
@@ -841,7 +853,7 @@ describe("startHttp2Server – rate limiting", () => {
         );
       }
     }
-    (BascikConfig as any).prodServer.rateLimit = true;
+    (BascikConfig as any).http.rateLimit = true;
   });
 });
 
@@ -937,12 +949,12 @@ describe("onError and server resiliency edge cases", () => {
     const { BascikConfig } = await import("./config.ts");
 
     // HTTP/1.1 mode
-    (BascikConfig as any).prodServer.enableTls = false;
+    (BascikConfig as any).http.tls = { enabled: false };
     const http1Origin = await startServer();
     expect(http1Origin).toBeDefined();
 
     // HTTP/2 TLS mode
-    (BascikConfig as any).prodServer.enableTls = true;
+    (BascikConfig as any).http.tls = { enabled: true };
     const http2Origin = await startServer();
     expect(http2Origin).toBeDefined();
   });
@@ -1682,7 +1694,7 @@ describe("startHttp2Server – logAccess skip conditions", () => {
 
   it("skips logging when logging.requests is false", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).devServer = { logging: { level: "info", requests: false } };
+    (BascikConfig as any).logging = { level: "info", requests: false };
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -1691,13 +1703,13 @@ describe("startHttp2Server – logAccess skip conditions", () => {
       String(c[0]).includes("GET") && String(c[0]).includes("/about"),
     );
     expect(accessLines).toHaveLength(0);
-    (BascikConfig as any).devServer = { logging: { level: "info", requests: true } };
+    (BascikConfig as any).logging = { level: "info", requests: true };
   });
 
-  it("uses prodServer.logging config when isProdServer is true", async () => {
+  it("uses logging config when isProdServer is true", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
-    (BascikConfig as any).prodServer = { logging: { level: "info", requests: true } };
+    (BascikConfig as any).logging = { level: "info", requests: true };
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -1781,13 +1793,13 @@ describe("startHttp2Server – query string and trailing-slash routing", () => {
 describe("startHttp2Server – static asset cache-control (cacheHttp=true)", () => {
   beforeEach(async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).cacheHttp = true;
+    (BascikConfig as any).http.httpCache = true;
     await startHttp2Server();
   });
 
   afterEach(async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).cacheHttp = false;
+    (BascikConfig as any).http.httpCache = false;
   });
 
   it("adds cache-control public + etag for static assets when cacheHttp is true", async () => {
@@ -1898,17 +1910,16 @@ describe("startHttp2Server – server-scripts execution", () => {
 describe("startHttp2Server – custom cert config error", () => {
   it("throws when custom cert files are configured but missing", async () => {
     const { BascikConfig } = await import("./config.ts");
-    (BascikConfig as any).prodServer = {
-      ...BascikConfig.prodServer,
+    (BascikConfig as any).http.tls = {
       certFile: "custom-cert.pem",
       keyFile: "custom-key.pem",
-      enableTls: true,
+      enabled: true,
     };
     const { access } = await import("node:fs/promises");
     (access as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("ENOENT"));
 
     await expect(startHttp2Server()).rejects.toThrow("Custom TLS certificate files");
-    (BascikConfig as any).prodServer = { port: 8443, hostname: "localhost", enableTls: true };
+    (BascikConfig as any).http.tls = { enabled: true };
     (access as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   });
 });

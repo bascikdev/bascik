@@ -54,20 +54,24 @@ By filtering out the noise of internal V8 loader frames and child process execut
 
 ### Configuring Error Behavior
 
-You can control how script failures affect your build using the `onScriptError` option in `bascik.config.ts`:
+You can control how script failures affect your build using the `scripts` error options in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
 export default {
-  onScriptError: 'error', // 'error' | 'warn' | 'halt'
+  scripts: {
+    onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
+    onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
+    onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
+  },
 };
 ```
 
 Bascik supports three error modes:
 
-- `'warn'` (default in dev): Logs a warning to `stderr` and replaces the failing script tag with an empty string so the dev server stays active while you edit.
-- `'error'` (default in `--build` and `--serve`): Logs the error to `stderr` and throws an exception to immediately stop the build/transpilation step.
-- `'halt'`: Alias for `'error'`. Throws an exception and stops compilation immediately.
+- `'error'` (default): Logs the error to `stderr` and throws an exception to immediately stop execution.
+- `'warn'`: Logs a warning to `stderr` and continues execution with an empty string replacement so the dev server stays active while you edit.
+- `'ignore'`: Silently ignores script execution errors.
 
 ### Conflict Errors
 

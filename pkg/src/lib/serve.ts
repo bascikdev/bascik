@@ -18,8 +18,9 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { join, extname, resolve } from "node:path";
+import { join, extname, relative, resolve } from "node:path";
 import { mem } from "./mem.ts";
+import { BascikConfig } from "./config.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -39,18 +40,19 @@ const collectHtmlFiles = async (dir: string): Promise<string[]> => {
 };
 
 /**
- * Read every HTML page from `dist/` and store it in the in-memory page store
- * so the HTTP/2 server can serve them.  The same memory store and server used
+ * Read every HTML page from output directory and store it in the in-memory page store
+ * so the HTTP/2 server can serve them. The same memory store and server used
  * for dev mode is reused here — no second server implementation needed.
  */
 const loadDistIntoMemory = async (): Promise<void> => {
-  const distDir = resolve(process.cwd(), "dist");
+  const distDir = resolve(BascikConfig.directory.out);
+  const outDirRel = relative(process.cwd(), distDir) || "dist";
   let htmlFiles: string[];
   try {
     htmlFiles = await collectHtmlFiles(distDir);
   } catch (err) {
     throw new Error(
-      `[bascik] --serve: could not read dist/ directory.\n` +
+      `[bascik] --server: could not read ${outDirRel}/ directory.\n` +
       `Run \`bascik --build\` first to generate the production build.\n` +
       `(${(err as Error).message})`,
     );
@@ -58,7 +60,7 @@ const loadDistIntoMemory = async (): Promise<void> => {
 
   if (htmlFiles.length === 0) {
     console.warn(
-      "[bascik] --serve: no HTML pages found in dist/. " +
+      `[bascik] --server: no HTML pages found in ${outDirRel}/. ` +
       "Run `bascik --build` first.",
     );
   }
@@ -66,9 +68,6 @@ const loadDistIntoMemory = async (): Promise<void> => {
   await Promise.all(
     htmlFiles.map(async (absPath) => {
       // Derive a relativePagePath in the "pages/..." format that getHttpPath expects.
-      // e.g. dist/about.html        → pages/about.html        → HTTP /about
-      //      dist/blog/post.html    → pages/blog/post.html    → HTTP /blog/post
-      //      dist/index.html        → pages/index.html        → HTTP /
       const distRelative = absPath.slice(distDir.length).replace(/\\/g, "/"); // normalize Windows separators
       const relativePagePath = `pages${distRelative}`;
 
@@ -78,23 +77,23 @@ const loadDistIntoMemory = async (): Promise<void> => {
         relativePagePath,
         absolutePagePath: absPath,
         pageContent: content,
-        // dist/ pages have no component tracking; this is not needed at serve time
         usedComponentsNames: [],
       });
     }),
   );
 
-  console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from dist/`);
+  console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`);
 };
 
 /**
- * Entry point for `bascik --serve`.
- * Loads `dist/` into memory and starts the production HTTP/2 server.
+ * Entry point for `bascik --server`.
+ * Loads output directory into memory and starts the production HTTP/2 server.
  */
-export const serveProduction = async (): Promise<string> => {
+export const serverProduction = async (): Promise<string> => {
   await loadDistIntoMemory();
   const { startServer } = await import("./server.ts");
   const url = await startServer();
   if (url) console.log(`Server running at ${url}`);
   return url;
 };
+export const serveProduction = serverProduction;

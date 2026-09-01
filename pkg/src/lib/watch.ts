@@ -52,7 +52,7 @@ export const watchFiles = async () => {
             await processAllPages();
           }
         } else {
-          await copyReplicatePath(path, "dist");
+          await copyReplicatePath(path, BascikConfig.directory.out);
           if (!BascikConfig.isBuild) {
             eventEmitter.emit("asset-changed");
           }
@@ -66,7 +66,7 @@ export const watchFiles = async () => {
             await processAllPages();
           }
         } else {
-          await copyReplicatePath(path, "dist");
+          await copyReplicatePath(path, BascikConfig.directory.out);
           // Reload any currently-open page when a static asset changes
           if (!BascikConfig.isBuild) {
             eventEmitter.emit("asset-changed");
@@ -128,9 +128,10 @@ export const watchFiles = async () => {
     }));
 
   // Re-transpile all pages when user-specified extra paths change (dev only)
-  if (!BascikConfig.isBuild && BascikConfig.watch.length) {
+  const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
+  if (!BascikConfig.isBuild && watchPaths.length) {
     w(chokidar
-      .watch(BascikConfig.watch, {
+      .watch(watchPaths, {
         ignoreInitial: true,
         persistent: true,
       })
@@ -149,9 +150,10 @@ export const watchFiles = async () => {
   }
 
   // Re-transpile all pages when inlined global stylesheets change (dev only)
-  if (!BascikConfig.isBuild && Array.isArray(BascikConfig.inlineStyles) && BascikConfig.inlineStyles.length) {
+  const inlineStyles = BascikConfig.assets?.inlineStyles;
+  if (!BascikConfig.isBuild && Array.isArray(inlineStyles) && inlineStyles.length) {
     w(chokidar
-      .watch(BascikConfig.inlineStyles, {
+      .watch(inlineStyles, {
         ignoreInitial: true,
         persistent: true,
       })

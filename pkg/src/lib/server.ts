@@ -28,7 +28,7 @@ export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> 
   const isHttps = req && req.headers
     ? req.headers[":scheme"] === "https" || req.headers["x-forwarded-proto"] === "https"
     : false;
-  if (isHttps || (BascikConfig.isProdServer && BascikConfig.prodServer?.enableTls)) {
+  if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
       ...SECURITY_HEADERS,
       "strict-transport-security": "max-age=31536000; includeSubDomains",
@@ -127,7 +127,7 @@ export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest
 };
 
 export const createRequestHandler = () => {
-  const distDir = resolve(process.cwd(), "dist");
+  const distDir = resolve(BascikConfig.directory.out);
 
   return async (req: BascikRequest, res: BascikResponse) => {
     const start = performance.now();
@@ -136,9 +136,7 @@ export const createRequestHandler = () => {
 
     const logAccess = () => {
       if (responseStatus === 0) return;
-      const logging = BascikConfig.isProdServer
-        ? (BascikConfig.prodServer?.logging ?? { level: "info", requests: true })
-        : (BascikConfig.devServer?.logging ?? { level: "info", requests: true });
+      const logging = BascikConfig.logging;
       if (logging.requests === false) return;
       if (!shouldLog(logging.level ?? "info", "info")) return;
       const elapsed = performance.now() - start;
@@ -151,7 +149,7 @@ export const createRequestHandler = () => {
 
     try {
       // ── Rate limiting ────────────────────────────────────────────────────
-      if (BascikConfig.isProdServer && BascikConfig.prodServer?.rateLimit !== false && isRateLimited(req.remoteIp)) {
+      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
         responseStatus = 429;
         res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
         res.end("Too Many Requests");
@@ -224,7 +222,7 @@ export const createRequestHandler = () => {
         }
 
         const etag = makeStatEtag(fileStat.mtimeMs, fileStat.size);
-        if (BascikConfig.cacheHttp !== false && req.headers["if-none-match"] === etag) {
+        if (BascikConfig.http.httpCache !== false && req.headers["if-none-match"] === etag) {
           responseStatus = 304;
           res.respond(304, { etag, ...secHeaders });
           res.end();
@@ -236,7 +234,7 @@ export const createRequestHandler = () => {
           "content-length": fileStat.size,
           ...secHeaders,
         };
-        if (BascikConfig.cacheHttp !== false) {
+        if (BascikConfig.http.httpCache !== false) {
           staticHeaders["etag"] = etag;
           staticHeaders["cache-control"] = "public, max-age=3600";
         } else {
@@ -392,7 +390,7 @@ export const createRequestHandler = () => {
         ...secHeaders,
       };
 
-      if (BascikConfig.cacheHttp === false) {
+      if (BascikConfig.http.httpCache === false) {
         responseHeaders["cache-control"] =
           "no-store, no-cache, must-revalidate, proxy-revalidate";
         responseHeaders["pragma"] = "no-cache";
@@ -416,7 +414,7 @@ export const createRequestHandler = () => {
           method: req.method ?? "GET",
           headers: requestHeaders,
           searchParams,
-        }, BascikConfig.prodServer?.scriptTimeout ?? DEFAULT_SCRIPT_TIMEOUT_MS, page.absolutePagePath);
+        }, BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS, page.absolutePagePath);
         const htmlBuf = Buffer.from(html);
         responseHeaders["cache-control"] = "private, no-store";
         responseHeaders["content-length"] = htmlBuf.byteLength;
@@ -426,7 +424,7 @@ export const createRequestHandler = () => {
 
       // ── ETag + conditional GET (skip for no-store pages) ─────────────────
       const etag = page.etag ?? makeEtag(page.content);
-      if (BascikConfig.cacheHttp !== false && req.headers["if-none-match"] === etag) {
+      if (BascikConfig.http.httpCache !== false && req.headers["if-none-match"] === etag) {
         responseStatus = 304;
         res.respond(304, { etag, ...secHeaders });
         return res.end();
@@ -462,11 +460,11 @@ export const startServerInstance = async (
   protocol: "http" | "https",
   onShutdown?: () => void
 ): Promise<string> => {
-  const hostname = BascikConfig.prodServer?.hostname ?? "localhost";
+  const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
-  const envPortStr = process.env.BASCIK_SERVE_PORT || process.env.PORT;
+  const envPortStr = process.env.BASCIK_SERVER_PORT || process.env.BASCIK_SERVE_PORT || process.env.PORT;
   const envPort = envPortStr ? parseInt(envPortStr, 10) : undefined;
-  const rawStartPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.prodServer?.port ?? defaultPort);
+  const rawStartPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.http.port ?? defaultPort);
   const startPort = (!isNaN(rawStartPort) && rawStartPort > 0) ? rawStartPort : defaultPort;
   let origin = "";
 
@@ -546,7 +544,7 @@ export const startServerInstance = async (
 };
 
 export const startServer = async (): Promise<string> => {
-  const enableTls = !!BascikConfig.prodServer?.enableTls;
+  const enableTls = !!BascikConfig.http.tls?.enabled;
   if (enableTls) {
     const { createSelfSignedCert } = await import("./pki.ts");
     await createSelfSignedCert();

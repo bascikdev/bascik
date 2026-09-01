@@ -36,7 +36,7 @@ import type { ComponentList } from "./types.ts";
  * errors.
  */
 const stripElementContents = (html: string): string => {
-  const extra = (BascikConfig.skipTranspilingElementContents ?? [])
+  const extra = (BascikConfig.scoping?.preserve ?? [])
     .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
     .filter(Boolean);
   const protectedTags = ["script", "style", "textarea", ...extra];

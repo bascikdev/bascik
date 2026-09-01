@@ -60,8 +60,8 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
 
 export const startHttp2Server = async (): Promise<string> => {
   const { keyPath, certPath } = await ensureCertificates({
-    keyFile: BascikConfig.prodServer?.keyFile,
-    certFile: BascikConfig.prodServer?.certFile,
+    keyFile: BascikConfig.http.tls?.keyFile,
+    certFile: BascikConfig.http.tls?.certFile,
   });
 
   const key = await readFile(keyPath);

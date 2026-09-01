@@ -28,7 +28,7 @@ const runScript = (scriptPath: string): Promise<number> => {
 
 /** Run exec entries matching the specified phase sequentially in array order. */
 export const runExecPhase = async (phase: ExecPhase): Promise<{ count: number; totalElapsed: number }> => {
-  const entries = BascikConfig.exec;
+  const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return { count: 0, totalElapsed: 0 };
   const matching = entries.filter((e) => (e.phase ?? 'pre') === phase);
   if (!matching.length) return { count: 0, totalElapsed: 0 };
@@ -43,7 +43,7 @@ export const runExecPhase = async (phase: ExecPhase): Promise<{ count: number; t
 
 /** Start parallel exec entries without awaiting their completion. */
 export const startExecParallel = (): void => {
-  const entries = BascikConfig.exec;
+  const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return;
   const matching = entries.filter((e) => e.phase === 'parallel');
   for (const entry of matching) {
@@ -55,7 +55,7 @@ export const startExecParallel = (): void => {
 
 /** Run all exec entries in order. Used during `--build`. */
 export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: number }> => {
-  const entries = BascikConfig.exec;
+  const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return { count: 0, totalElapsed: 0 };
   const start = performance.now();
   for (const entry of entries) {
@@ -71,7 +71,7 @@ export const runExecOnBuild = async (): Promise<{ count: number; totalElapsed: n
  * Returns a Promise that resolves when initial watched exec tasks finish.
  */
 export const startExecDev = (): Promise<void> => {
-  const entries = BascikConfig.exec;
+  const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return Promise.resolve();
   const initialRuns: Promise<unknown>[] = [];
 

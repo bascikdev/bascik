@@ -27,16 +27,18 @@ vi.mock("./config.js", () => ({
     directory: {
       pages: "pages",
       components: "components",
+      out: "dist",
     },
     minify: { css: false, js: false, html: false },
-    devServer: {
-      logging: {
-        level: "info",
-        requests: true,
-        copies: true,
-        deletes: true,
-        transpiles: true,
-      },
+    logging: {
+      level: "info",
+      requests: true,
+      copies: true,
+      deletes: true,
+      transpiles: true,
+    },
+    assets: {
+      inlineStyles: false,
     },
   },
   shouldLog: (configuredLevel: string | undefined, eventLevel = "info") => {
@@ -240,47 +242,47 @@ describe("copyStaticAssets", () => {
     expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.html");
   });
 
-  it("ignores inlined stylesheets specified in BascikConfig.inlineStyles", async () => {
-    (BascikConfig as any).inlineStyles = ["pages/dir/one.css"];
+  it("ignores inlined stylesheets specified in BascikConfig.assets.inlineStyles", async () => {
+    (BascikConfig as any).assets = { inlineStyles: ["pages/dir/one.css"] };
 
     try {
       await copyStaticAssets();
       expect(console.log).not.toHaveBeenCalledWith("copied:", "pages/dir/one.css");
     } finally {
-      (BascikConfig as any).inlineStyles = false;
+      (BascikConfig as any).assets = { inlineStyles: false };
     }
   });
 });
 
 describe("isInlineStylesheet", () => {
   it("returns false when inlineStyles is false or empty", () => {
-    (BascikConfig as any).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false };
     expect(isInlineStylesheet("src/css/styles.css")).toBe(false);
 
-    (BascikConfig as any).inlineStyles = [];
+    (BascikConfig as any).assets = { inlineStyles: [] };
     expect(isInlineStylesheet("src/css/styles.css")).toBe(false);
   });
 
   it("returns true when inlineStyles is boolean true and file is .css", () => {
-    (BascikConfig as any).inlineStyles = true;
+    (BascikConfig as any).assets = { inlineStyles: true };
     expect(isInlineStylesheet("src/css/styles.css")).toBe(true);
     expect(isInlineStylesheet("src/css/main.js")).toBe(false);
-    (BascikConfig as any).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false };
   });
 
   it("correctly matches relative and absolute path variants for configured inlineStyles", () => {
-    (BascikConfig as any).inlineStyles = ["src/css/styles.css"];
+    (BascikConfig as any).assets = { inlineStyles: ["src/css/styles.css"] };
     expect(isInlineStylesheet("src/css/styles.css")).toBe(true);
     expect(isInlineStylesheet("/Users/project/src/css/styles.css")).toBe(true);
     expect(isInlineStylesheet("styles.css")).toBe(true);
-    (BascikConfig as any).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false };
   });
 
   it("does not falsely match substring filenames like other-styles.css when configured with styles.css", () => {
-    (BascikConfig as any).inlineStyles = ["styles.css"];
+    (BascikConfig as any).assets = { inlineStyles: ["styles.css"] };
     expect(isInlineStylesheet("src/css/other-styles.css")).toBe(false);
     expect(isInlineStylesheet("my-styles.css")).toBe(false);
-    (BascikConfig as any).inlineStyles = false;
+    (BascikConfig as any).assets = { inlineStyles: false };
   });
 });
 
@@ -466,12 +468,12 @@ describe("deleteDistFile – error handling", () => {
   });
 
   it("does not log when deletes logging is disabled", async () => {
-    (BascikConfig.devServer!.logging as any).deletes = false;
+    (BascikConfig.logging as any).deletes = false;
     try {
       await deleteDistFile("pages/about.html");
       expect(console.log).not.toHaveBeenCalled();
     } finally {
-      (BascikConfig.devServer!.logging as any).deletes = true;
+      (BascikConfig.logging as any).deletes = true;
     }
   });
 });

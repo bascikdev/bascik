@@ -15,7 +15,13 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    onScriptError: "error",
+    scripts: {
+      onServerScriptError: "error",
+      timeout: 30000,
+    },
+    directory: {
+      out: "dist",
+    },
   },
 }));
 
@@ -145,15 +151,15 @@ describe("executeServerScripts", () => {
   });
 
   it("still removes the temp file when execution fails", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     rejectWith("syntax error");
     await executeServerScripts("<script data-bascik-server>bad</script>", baseRequest);
     expect(unlink).toHaveBeenCalledTimes(1);
-    (BascikConfig as any).onScriptError = "error";
+    (BascikConfig as any).scripts = { onServerScriptError: "error" };
   });
 
-  it("replaces the script tag with empty string on execution error when onScriptError is 'warn'", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("replaces the script tag with empty string on execution error when onServerScriptError is 'warn'", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     rejectWith("ReferenceError: x is not defined");
     const html =
       "<p>before</p><script data-bascik-server>bad code</script><p>after</p>";
@@ -161,7 +167,7 @@ describe("executeServerScripts", () => {
     expect(result).toContain("<p>before</p>");
     expect(result).toContain("<p>after</p>");
     expect(result).not.toContain("data-bascik-server");
-    (BascikConfig as any).onScriptError = "error";
+    (BascikConfig as any).scripts = { onServerScriptError: "error" };
   });
 
   it("passes BASCIK_REQUEST JSON to the child process env", async () => {
@@ -211,18 +217,8 @@ describe("executeServerScripts", () => {
     expect(result).toBe("<p>Price: $100 | Code: $& | Total: $$50</p>");
   });
 
-  it("throws an error when onScriptError is set to 'halt'", async () => {
-    (BascikConfig as any).onScriptError = "halt";
-    rejectWith("fatal crash");
-    const html = "<script data-bascik-server>throw new Error()</script>";
-    await expect(executeServerScripts(html, baseRequest)).rejects.toThrow(
-      /server script error/,
-    );
-    (BascikConfig as any).onScriptError = "error"; // restore default
-  });
-
-  it("logs a warning when onScriptError is set to 'warn'", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("logs a warning when onServerScriptError is set to 'warn'", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     rejectWith("non-fatal error");
     const html = "<script data-bascik-server>bad()</script>";
@@ -232,7 +228,7 @@ describe("executeServerScripts", () => {
       expect.stringContaining("[bascik] server script error"),
     );
     warnSpy.mockRestore();
-    (BascikConfig as any).onScriptError = "error"; // restore default
+    (BascikConfig as any).scripts = { onServerScriptError: "error" }; // restore default
   });
 
   it("forwards stderr output from the child process to process.stderr.write", async () => {
@@ -418,16 +414,8 @@ describe("executeServerScripts", () => {
     expect(written.indexOf("escapeHtml")).toBe(-1);
   });
 
-  it("respects onScriptError: halt", async () => {
-    (BascikConfig as any).onScriptError = "halt";
-    rejectWith("failed script execution");
-    const html = "<script data-bascik-server>bad()</script>";
-    await expect(executeServerScripts(html, baseRequest)).rejects.toThrow(/server script error/);
-    (BascikConfig as any).onScriptError = undefined;
-  });
-
-  it("respects onScriptError: warn", async () => {
-    (BascikConfig as any).onScriptError = "warn";
+  it("respects onServerScriptError: warn", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     rejectWith("failed script execution");
     const html = "<script data-bascik-server>bad()</script>";
@@ -435,7 +423,7 @@ describe("executeServerScripts", () => {
     expect(result).toBe("");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
+    (BascikConfig as any).scripts = { onServerScriptError: "error" };
   });
 
   it("appends //# sourceURL comment with filePath when provided, or request path as fallback", async () => {
@@ -450,15 +438,14 @@ describe("executeServerScripts", () => {
     expect(written).toContain("//# sourceURL=src/pages/dashboard.html");
   });
 
-  it("respects onScriptError: error", async () => {
-    (BascikConfig as any).onScriptError = "error";
+  it("respects onServerScriptError: error", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "error" };
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     rejectWith("failed script execution");
     const html = "<script data-bascik-server>bad()</script>";
     await expect(executeServerScripts(html, baseRequest)).rejects.toThrow(/server script error/);
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
-    (BascikConfig as any).onScriptError = undefined;
   });
 
   it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {

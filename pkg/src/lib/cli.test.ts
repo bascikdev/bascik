@@ -5,7 +5,7 @@ describe("cli helper tests", () => {
   describe("filterNodeArgs", () => {
     it("should keep standard bascik flags", () => {
       expect(filterNodeArgs(["--build"])).toEqual(["--build"]);
-      expect(filterNodeArgs(["--serve"])).toEqual(["--serve"]);
+      expect(filterNodeArgs(["--server"])).toEqual(["--server"]);
       expect(filterNodeArgs(["--check"])).toEqual(["--check"]);
     });
 
@@ -27,9 +27,9 @@ describe("cli helper tests", () => {
         "other-module.js",
         "--import",
         "tsx",
-        "--serve",
+        "--server",
       ];
-      expect(filterNodeArgs(args)).toEqual(["--serve"]);
+      expect(filterNodeArgs(args)).toEqual(["--server"]);
     });
 
     it("should filter out Node diagnostic and experimental flags", () => {
