@@ -9,7 +9,7 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | Variable | Available In | Description |
 | --- | --- | --- |
 | `BASCIK_PAGE_PATH` | `data-bascik-build`, `data-bascik-routes` | Normalized root-relative URL path for the page being transpiled (e.g. `/getting-started`, `/switch/from-vue`, `/`, `/blog/hello-world`). |
-| `BASCIK_TEMPLATE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages). |
+| `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages). |
 | `BASCIK_PAGE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components. |
 | `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
 | `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
@@ -38,13 +38,13 @@ const currentPath = process.env.BASCIK_PAGE_PATH;
 const isCurrent = currentPath === '/components';
 ```
 
-### `BASCIK_TEMPLATE_FILE` vs `BASCIK_PAGE_FILE`
+### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 
-When a build script runs directly inside a page (`src/pages/about.html`), both `BASCIK_TEMPLATE_FILE` and `BASCIK_PAGE_FILE` point to `/absolute/path/to/src/pages/about.html`.
+When a build script runs directly inside a page (`src/pages/about.html`), both `BASCIK_SOURCE_FILE` and `BASCIK_PAGE_FILE` point to `/absolute/path/to/src/pages/about.html`.
 
 When a component (`src/components/author-bio/author-bio.html`) contains a page-aware build script (`<script data-bascik-build="page">`), the variables provide distinct locations:
 
-- `BASCIK_TEMPLATE_FILE`: The path to the component file `/absolute/path/to/src/components/author-bio/author-bio.html`.
+- `BASCIK_SOURCE_FILE`: The path to the component file `/absolute/path/to/src/components/author-bio/author-bio.html`.
 - `BASCIK_PAGE_FILE`: The path to the page shell importing the component `/absolute/path/to/src/pages/about.html`.
 
 ```ts
@@ -90,7 +90,7 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 <!-- src/pages/products/[category]/[id].html -->
 <script data-bascik-routes>
   // Access template file location and pages directory
-  const templatePath = process.env.BASCIK_TEMPLATE_FILE;
+  const templatePath = process.env.BASCIK_SOURCE_FILE;
 
   const routes = await fetchProductManifest();
   console.log(JSON.stringify(routes));
@@ -98,7 +98,7 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 ```
 
 Dynamic route scripts receive:
-- `BASCIK_TEMPLATE_FILE` and `BASCIK_PAGE_FILE`: Path to the template file.
+- `BASCIK_SOURCE_FILE` and `BASCIK_PAGE_FILE`: Path to the template file.
 - `BASCIK_PAGE_PATH`: Raw template route path (e.g. `/products/[category]/[id]`).
 - `BASCIK_PAGES_DIR`: Absolute pages directory.
 - `BASCIK_SITE_URL`: Configured site URL.

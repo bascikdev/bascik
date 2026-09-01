@@ -9,9 +9,9 @@
 <body>
   <!-- Both this page and build-script-page-env-test-b.html use the same
        script content. The cache must key per-page so each gets its own
-       BASCIK_TEMPLATE_FILE value rather than a stale hit from the other page. -->
+       BASCIK_SOURCE_FILE value rather than a stale hit from the other page. -->
   <script data-bascik-build>
-    console.log('<p id="page-file">' + (process.env.BASCIK_TEMPLATE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '') + '</p>');
+    console.log('<p id="page-file">' + (process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '') + '</p>');
     console.log('<p id="site-url">' + (process.env.BASCIK_SITE_URL ?? '') + '</p>');
   </script>
 </body>

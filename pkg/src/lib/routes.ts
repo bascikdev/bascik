@@ -411,7 +411,7 @@ export const executeRoutesScript = async (
 
   const siteUrl = getSiteUrl();
   const extraEnv: Record<string, string> = {
-    BASCIK_TEMPLATE_FILE: filePath ?? "",
+    BASCIK_SOURCE_FILE: filePath ?? "",
     BASCIK_PAGE_FILE: filePath ?? "",
     BASCIK_PAGE_PATH: filePath
       ? computePagePath(filePath, BascikConfig.directory?.pages ?? "src/pages")

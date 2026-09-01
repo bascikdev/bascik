@@ -197,7 +197,7 @@ describe("executeBuildScripts", () => {
       "/abs/project/src/pages/guides/intro.html",
     );
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
-    expect(opts.env?.BASCIK_TEMPLATE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
+    expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
   });
@@ -878,7 +878,7 @@ describe("build-script output cache", () => {
     const opts2 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
     expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
     expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
-    expect(opts2.env?.BASCIK_TEMPLATE_FILE).toBe("src/components/pagination.html");
+    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
   });
 });
 

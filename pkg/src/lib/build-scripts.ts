@@ -265,7 +265,7 @@ const computeScriptCacheKey = async (
   hash.update(String(SCRIPT_CACHE_VERSION));
   hash.update(script);
   hash.update(isBuild ? "1" : "0");
-  hash.update(filePath);   // BASCIK_TEMPLATE_FILE
+  hash.update(filePath);   // BASCIK_SOURCE_FILE
   hash.update(pageFile);   // BASCIK_PAGE_FILE
   hash.update(pagePath);   // BASCIK_PAGE_PATH — varies per page for page-aware scripts
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
@@ -474,7 +474,7 @@ export const executeBuildScripts = async (
 
     const relPath = activeFile ? relative(process.cwd(), activeFile).replace(/\\/g, "/") : "unknown";
     const extraEnv: Record<string, string> = {
-      BASCIK_TEMPLATE_FILE: sourceFile,
+      BASCIK_SOURCE_FILE: sourceFile,
       BASCIK_PAGE_FILE: pageFile,
       BASCIK_PAGE_PATH: pagePath,
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),

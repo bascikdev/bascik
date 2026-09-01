@@ -70,7 +70,7 @@ The key is the SHA-256 hex digest of:
 1. The cache version integer.
 2. The trimmed script content.
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
-4. The source file path (`BASCIK_TEMPLATE_FILE`).
+4. The source file path (`BASCIK_SOURCE_FILE`).
 5. The page file path (`BASCIK_PAGE_FILE`).
 6. The page route path (`BASCIK_PAGE_PATH`), which guarantees page-aware component scripts derive distinct cache keys per page.
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.

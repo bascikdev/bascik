@@ -9,7 +9,7 @@ Keep `<script data-bascik-build>` blocks inside your `.html` files thin by deleg
 ```text
 src/
   lib/
-    canonical.ts              ← page-aware helper (reads BASCIK_TEMPLATE_FILE or BASCIK_PAGE_FILE)
+    canonical.ts              ← page-aware helper (reads BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE)
     canonical.test.ts         ← Vitest unit tests with mocked environment variables
     md-renderer.ts            ← Markdown rendering helper
     md-renderer.test.ts       ← Vitest unit tests
@@ -92,7 +92,7 @@ Bascik injects environment variables into every `data-bascik-build` execution su
 | Variable | Value |
 | --- | --- |
 | `BASCIK_PAGE_PATH` | Normalized root-relative route path of the page shell (e.g. `/getting-started`, `/`) |
-| `BASCIK_TEMPLATE_FILE`| Absolute path to the file currently being transpiled (page or component template) |
+| `BASCIK_SOURCE_FILE`| Absolute path to the file currently being transpiled (page or component template) |
 | `BASCIK_PAGE_FILE` | Absolute path to the HTML page currently being compiled |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory |
 | `BASCIK_SITE_URL` | The site URL from `--site-url`, the environment, or `.env`; absent when unset |
@@ -107,7 +107,7 @@ Test page-aware functions in Vitest by setting `process.env` values in test case
 // src/lib/canonical.ts
 export function getCanonicalUrl(): string {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_TEMPLATE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
 
   if (!siteUrl || !pageFile || !pagesDir) return '';
@@ -143,17 +143,17 @@ describe('getCanonicalUrl', () => {
   });
 
   it('generates canonical tag for index pages', () => {
-    process.env.BASCIK_TEMPLATE_FILE = '/app/src/pages/index.html';
+    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/index.html';
     expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/" />');
   });
 
   it('generates canonical tag for nested routes', () => {
-    process.env.BASCIK_TEMPLATE_FILE = '/app/src/pages/blog/post.html';
+    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/blog/post.html';
     expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/blog/post" />');
   });
 
   it('returns empty string when required environment variables are missing', () => {
-    delete process.env.BASCIK_TEMPLATE_FILE;
+    delete process.env.BASCIK_SOURCE_FILE;
     delete process.env.BASCIK_PAGE_FILE;
     expect(getCanonicalUrl()).toBe('');
   });
