@@ -10,6 +10,7 @@ import { getUniqueId } from "./names.ts";
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
   BascikConfig: {
+    base: "/",
     scoping: {
       scriptBlocks: false,
       inheritAttributes: true,
@@ -743,6 +744,42 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
       LIVE_RELOAD_SCRIPT +
       "</body></html>",
     );
+  });
+});
+
+describe("transpilePage – base path transform", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (BascikConfig as any).base = "/";
+    (BascikConfig as any).isBuild = false;
+  });
+
+  afterEach(() => {
+    (BascikConfig as any).base = "/";
+  });
+
+  it("keeps output byte-identical when base is root", async () => {
+    const html = '<!DOCTYPE html><html><head><link href="/app.css"></head><body><a href="/about">About</a></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toBe(html.replace("</body>", `${LIVE_RELOAD_SCRIPT}</body>`));
+  });
+
+  it("rewrites final component and page URLs after fragment ID references", async () => {
+    (BascikConfig as any).base = "/sub/";
+    const html = '<!DOCTYPE html><html><head><style>.hero{background:url(/hero.png)}</style></head><body><nav-links></nav-links></body></html>';
+    const componentList = {
+      "nav-links": {
+        name: "nav-links",
+        fileName: "src/components/nav-links.html",
+        fileContent: '<div><a href="#local-id">Local</a><a href="/about">About</a></div>',
+      },
+    };
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, componentList);
+    expect(result?.distHtml).toContain('href="#local-id"');
+    expect(result?.distHtml).toContain('href="/sub/about"');
+    expect(result?.distHtml).toContain("url(/sub/hero.png)");
   });
 });
 

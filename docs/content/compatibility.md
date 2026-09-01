@@ -96,6 +96,22 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 
 ---
 
+## Base Path Rewriting
+
+When `base` is not `/`, Bascik prefixes root-relative authored URLs at build time. The transform runs after local ID references are scoped, so fragment references are final before path rewriting begins.
+
+| Location or value | Status | Notes |
+| --- | --- | --- |
+| HTML URL attributes | ✓ | Rewrites root-relative `href`, `src`, `poster`, `data`, `action`, and `formaction` values. Known social metadata fields `og:image`, `og:url`, and `twitter:image` are also rewritten. |
+| `srcset` and `imagesrcset` | ✓ | Rewrites each root-relative candidate while preserving descriptors, whitespace, trailing commas, and data URLs containing commas. |
+| Inline, hoisted, and copied CSS | ✓ | Rewrites root-relative `url()`, string-form `@import`, and `image-set()` candidates in style attributes, style blocks, component CSS, inlined CSS, and copied stylesheets. |
+| Web app manifests | ✓ | Rewrites `start_url`, `scope`, and each `icons[].src` in `.webmanifest` and `manifest.json` files. |
+| Absolute, protocol-relative, scheme, fragment, and relative URLs | ✓ | Values such as `https://example.com/x`, `//cdn.example.com/x`, `data:`, `mailto:`, `#section`, `./x`, and `../x` remain byte-identical. Values already prefixed by `base` are unchanged. |
+| Root base `/` | ✓ | The transform is skipped completely, preserving byte-identical output and existing build cost. |
+| URLs constructed in JavaScript | ✕ | Static analysis cannot safely identify runtime path construction such as `fetch('/api/' + id)`, so Bascik deliberately leaves JavaScript URL values unchanged. |
+
+---
+
 ## CSS Scoping
 
 CSS scoping applies to `.css` files paired with a component's HTML file. Place the `.css` file in the same directory as the component and give it the same base name.

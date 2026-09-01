@@ -26,6 +26,7 @@ isDirMock.mockImplementationOnce(() => true);
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
+    base: "/",
     directory: {
       pages: "pages",
       components: "components",
@@ -353,6 +354,48 @@ describe("copyReplicatePath", () => {
     await copyReplicatePath("/workspace/project/pages/css/styles.css", "dist");
 
     expect(console.log).toHaveBeenCalledWith("copied:", "pages/css/styles.css");
+  });
+
+  it("rewrites root-relative URLs in copied stylesheets without minification", async () => {
+    (BascikConfig as any).base = "/sub/";
+    vi.mocked(readFile).mockReset();
+    vi.mocked(writeFile).mockReset();
+    vi.mocked(copyFile).mockReset();
+    vi.mocked(readFile)
+      .mockResolvedValueOnce(".hero { background: url(/hero.png) }" as any)
+      .mockRejectedValueOnce(new Error("ENOENT"));
+
+    try {
+      await copyReplicatePath("pages/css/styles.css", "dist");
+      expect(writeFile).toHaveBeenCalledWith(
+        resolve("dist/css/styles.css"),
+        ".hero { background: url(/sub/hero.png) }",
+      );
+      expect(copyFile).not.toHaveBeenCalled();
+    } finally {
+      (BascikConfig as any).base = "/";
+    }
+  });
+
+  it("rewrites web app manifest URLs", async () => {
+    (BascikConfig as any).base = "/sub/";
+    vi.mocked(readFile).mockReset();
+    vi.mocked(writeFile).mockReset();
+    vi.mocked(readFile)
+      .mockResolvedValueOnce('{"start_url":"/","scope":"/","icons":[{"src":"/icon.png"}]}' as any)
+      .mockRejectedValueOnce(new Error("ENOENT"));
+
+    try {
+      await copyReplicatePath("pages/site.webmanifest", "dist");
+      const written = vi.mocked(writeFile).mock.calls[0][1] as string;
+      expect(JSON.parse(written)).toEqual({
+        start_url: "/sub/",
+        scope: "/sub/",
+        icons: [{ src: "/sub/icon.png" }],
+      });
+    } finally {
+      (BascikConfig as any).base = "/";
+    }
   });
 });
 

@@ -101,6 +101,7 @@ import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
+import { rewriteCssBasePaths, rewriteHtmlBasePaths } from "./base-path.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -1087,13 +1088,20 @@ export const transpilePage = async (
   }
 
   // Deduplicate CSS — each component's styles included only once even if used many times
-  const componentCss = deduplicateCss([...usedComponents, ...headUsedComponents], BascikConfig.scoping?.deduplicateCss ?? true);
+  let componentCss = deduplicateCss([...usedComponents, ...headUsedComponents], BascikConfig.scoping?.deduplicateCss ?? true);
 
   // Read and inline any global stylesheets configured via `inlineStyles`.
   // Global styles are injected before component styles so component rules win.
   if (globalStylesHtml === undefined) {
     globalStylesHtml = await resolveInlineStylesHtml();
   }
+
+  // Component scoping finalizes ID references first. Base paths then leave
+  // fragment-only references untouched and run before minification.
+  transpiledHtmlBody = rewriteHtmlBasePaths(transpiledHtmlBody, BascikConfig.base);
+  transpiledHeadContent = rewriteHtmlBasePaths(transpiledHeadContent, BascikConfig.base);
+  globalStylesHtml = rewriteHtmlBasePaths(globalStylesHtml, BascikConfig.base);
+  componentCss = rewriteCssBasePaths(componentCss, BascikConfig.base);
 
   const cssMinifier = resolveCssMinifier();
   const isMinifyHtml = BascikConfig.minify?.html ?? false;
