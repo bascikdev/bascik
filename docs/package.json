@@ -10,8 +10,8 @@
   "scripts": {
     "dev": "BASCIK_SITE_URL=https://bascik.dev bascik",
     "build": "BASCIK_SITE_URL=https://bascik.dev bascik --build",
-    "serve": "bascik --serve",
-    "preview": "bascik --serve",
+    "serve": "bascik --server",
+    "preview": "bascik --server",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "pkg-dev": "node --inspect --watch-path=./bascik.config.ts --watch-path=../../pkg/src ../../pkg/src/transpile.ts",
     "generate:llms": "node scripts/generate-llms-txt.ts",

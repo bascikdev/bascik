@@ -77,6 +77,16 @@ CLI flag  >  real environment variable  >  .env file  >  config file  >  built-i
 
 Most specific and most ephemeral wins. The config file is checked into git and shared by everyone, the environment is per-deployment, and a flag is per-invocation.
 
+The flags that override specific config keys:
+
+| Flag | Env var | Config key |
+| --- | --- | --- |
+| `--port <n>` | `BASCIK_SERVER_PORT` | `http.port` |
+| `--host <name>` | `BASCIK_SERVER_HOST` | `http.hostname` |
+| `--log-level <level>` | `BASCIK_LOG_LEVEL` | `logging.level` |
+
+See [Command Line Interface](/cli#cli-reference) for the full flag reference.
+
 This mirrors the tools you already know:
 
 - **Node `--env-file`:** "If the same variable is defined in the environment and in the file, the value from the environment takes precedence." Multiple `--env-file` arguments are allowed, and subsequent files override variables defined in previous files.

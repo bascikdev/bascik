@@ -75,18 +75,18 @@
     "dev": "bascik",
     "profile:0x:docs-build": "cd ../docs && 0x -o -D dist/profile-0x-build -- node ../pkg/bin/bascik.js --build",
     "profile:0x:docs-dev": "cd ../docs && 0x -o -D dist/profile-0x-dev -- node ../pkg/bin/bascik.js",
-    "profile:0x:docs-serve": "cd ../docs && 0x -o -D dist/profile-0x-serve -- node ../pkg/bin/bascik.js --serve",
+    "profile:0x:docs-serve": "cd ../docs && 0x -o -D dist/profile-0x-serve -- node ../pkg/bin/bascik.js --server",
     "profile:clinic:doctor-docs-build": "cd ../docs && clinic doctor --dest dist/profile-clinic-doctor-build -- node ../pkg/bin/bascik.js --build",
     "profile:clinic:doctor-docs-dev": "cd ../docs && clinic doctor --dest dist/profile-clinic-doctor-dev -- node ../pkg/bin/bascik.js",
-    "profile:clinic:doctor-docs-serve": "cd ../docs && clinic doctor --dest dist/profile-clinic-doctor-serve -- node ../pkg/bin/bascik.js --serve",
+    "profile:clinic:doctor-docs-serve": "cd ../docs && clinic doctor --dest dist/profile-clinic-doctor-serve -- node ../pkg/bin/bascik.js --server",
     "profile:clinic:bubbleprof-docs-build": "cd ../docs && clinic bubbleprof --dest dist/profile-clinic-bubbleprof-build -- node ../pkg/bin/bascik.js --build",
     "profile:clinic:bubbleprof-docs-dev": "cd ../docs && clinic bubbleprof --dest dist/profile-clinic-bubbleprof-dev -- node ../pkg/bin/bascik.js",
-    "profile:clinic:bubbleprof-docs-serve": "cd ../docs && clinic bubbleprof --dest dist/profile-clinic-bubbleprof-serve -- node ../pkg/bin/bascik.js --serve",
+    "profile:clinic:bubbleprof-docs-serve": "cd ../docs && clinic bubbleprof --dest dist/profile-clinic-bubbleprof-serve -- node ../pkg/bin/bascik.js --server",
     "profile:clinic:flame-docs-build": "cd ../docs && clinic flame --dest dist/profile-clinic-flame-build -- node ../pkg/bin/bascik.js --build",
     "profile:clinic:flame-docs-dev": "cd ../docs && clinic flame --dest dist/profile-clinic-flame-dev -- node ../pkg/bin/bascik.js",
-    "profile:clinic:flame-docs-serve": "cd ../docs && clinic flame --dest dist/profile-clinic-flame-serve -- node ../pkg/bin/bascik.js --serve",
+    "profile:clinic:flame-docs-serve": "cd ../docs && clinic flame --dest dist/profile-clinic-flame-serve -- node ../pkg/bin/bascik.js --server",
     "profile:clinic:heapprofiler-docs-build": "cd ../docs && clinic heapprofiler --dest dist/profile-clinic-heapprofiler-build -- node ../pkg/bin/bascik.js --build",
     "profile:clinic:heapprofiler-docs-dev": "cd ../docs && clinic heapprofiler --dest dist/profile-clinic-heapprofiler-dev -- node ../pkg/bin/bascik.js",
-    "profile:clinic:heapprofiler-docs-serve": "cd ../docs && clinic heapprofiler --dest dist/profile-clinic-heapprofiler-serve -- node ../pkg/bin/bascik.js --serve"
+    "profile:clinic:heapprofiler-docs-serve": "cd ../docs && clinic heapprofiler --dest dist/profile-clinic-heapprofiler-serve -- node ../pkg/bin/bascik.js --server"
   }
 }

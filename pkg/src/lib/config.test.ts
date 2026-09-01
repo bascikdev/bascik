@@ -222,6 +222,34 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   });
 });
 
+describe("CLI flag overrides (flag > env var > config file)", () => {
+  it("applies port, host, and logLevel above the merged config", () => {
+    const userConfig = {
+      http: { port: 3000, hostname: "config-host" },
+      logging: { level: "info" as const },
+    };
+    const { BascikConfig: cfg } = initBascikConfig(userConfig, {}, {
+      port: 4321,
+      host: "flag-host",
+      logLevel: "debug",
+    });
+    expect(cfg.http.port).toBe(4321);
+    expect(cfg.http.hostname).toBe("flag-host");
+    expect(cfg.logging.level).toBe("debug");
+  });
+
+  it("leaves config-file values in place when no overrides are passed", () => {
+    const { BascikConfig: cfg } = initBascikConfig(
+      { http: { port: 3000, hostname: "config-host" }, logging: { level: "warn" as const } },
+      {},
+      {},
+    );
+    expect(cfg.http.port).toBe(3000);
+    expect(cfg.http.hostname).toBe("config-host");
+    expect(cfg.logging.level).toBe("warn");
+  });
+});
+
 describe("exec config normalization and merging", () => {
   it("normalizes an exec entry with no phase to 'pre'", () => {
     const { BascikConfig: cfg } = initBascikConfig(

@@ -103,7 +103,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'npx bascik --build && npx bascik --serve 8080',
+    command: 'npx bascik --build && npx bascik --server --port 8080',
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
   },

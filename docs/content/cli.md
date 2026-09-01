@@ -71,15 +71,41 @@ Select **Y** for both and you're live at `http://localhost:8080` with no extra c
 ## CLI reference
 
 ```sh
-bascik          # dev: transpile, start plaintext HTTP dev server, watch
-bascik --build  # production: transpile to dist/ only
-bascik --serve  # production server: serve a pre-built dist/ with HTTP
-bascik --check  # static analysis: validate pages and components without building
-bascik --build --log [path]  # optional build log; defaults to .bascik/build.log
-bascik --build --site-url https://example.com  # set the site URL for this run
-bascik --build --env-file .env.staging         # load env vars from a file
-bascik --build --config ./conf/bascik.config.js  # load config from a specific file
+bascik           # dev: transpile, start plaintext HTTP dev server, watch
+bascik --build   # production: transpile to dist/ only
+bascik --server  # production server: serve a pre-built dist/ over HTTP/1.1
+                 # (HTTP/2 when http.tls.enabled is set)
+bascik --check   # static analysis: validate pages, components, and config without building
 ```
+
+| Flag | Description |
+| --- | --- |
+| `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
+| `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
+| `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
+| `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
+| `--site-url <url>` | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`) |
+| `--env-file <path>` | Load env vars from a file (repeatable; later files win) |
+| `--config <path>` | Load the config from a specific file instead of `./bascik.config.js` or `./bascik.config.ts` |
+| `-h`, `--help` | Show the help text |
+| `-v`, `--version` | Show the installed Bascik version |
+
+Every value-taking flag accepts both forms:
+
+```sh
+bascik --build --port 4321
+bascik --build --port=4321
+```
+
+Rules the parser enforces:
+
+- `--build` and `--server` cannot be combined. Run the build first, then serve the output.
+- Unknown flags are rejected, as are positional arguments other than `init`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server.
+- A flag that takes a value requires one (`--config` with no path is an error); a flag that takes none rejects one (`--build=yes` is an error).
+- Repeating a boolean flag is a no-op. For value flags the last occurrence wins; `--env-file` appends.
+- A flag always beats the matching environment variable, which beats the config file. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
+
+Unrecognized flags that appear before the first Bascik flag are treated as Node.js runtime flags and ignored, so profilers and wrappers (`0x`, `clinic`, `--inspect`) never break the CLI.
 
 ## Environment files and the site URL
 
@@ -109,7 +135,7 @@ bascik --build --log
 bascik --build --log ./logs/build.log
 ```
 
-The terminal output still stays as the primary log, and the file is an optional diagnostic artifact. If you do not pass `--log`, Bascik does not create a build log file.
+`--log` is only valid together with `--build`; passing it to the dev server or `--server` is an error. The terminal output still stays as the primary log, and the file is an optional diagnostic artifact. If you do not pass `--log`, Bascik does not create a build log file.
 
 ## Starting the dev server
 

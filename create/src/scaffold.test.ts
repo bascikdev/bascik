@@ -124,7 +124,7 @@ describe("VITE_CONFIG", () => {
 describe("PLAYWRIGHT_CONFIG", () => {
   it("configures port 8080 webServer and base URL", () => {
     expect(PLAYWRIGHT_CONFIG).toContain("http://localhost:8080");
-    expect(PLAYWRIGHT_CONFIG).toContain("npx bascik --build && npx bascik --serve 8080");
+    expect(PLAYWRIGHT_CONFIG).toContain("npx bascik --build && npx bascik --server --port 8080");
   });
 });
 

@@ -14,11 +14,17 @@
  * when missing. Explicit `--env-file=<path>` flags are repeatable, later files
  * override earlier ones, and a missing explicit path is an error (mirroring
  * Node's `--env-file` versus `--env-file-if-exists` distinction).
+ *
+ * Server and logging flag overrides (`--port`, `--host`, `--log-level`) are
+ * also applied here, written into the environment (BASCIK_SERVER_PORT,
+ * BASCIK_SERVER_HOST, BASCIK_LOG_LEVEL) so worker threads, which do not
+ * inherit `process.argv`, see the same effective settings.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
+import { resolveCliAction } from "./cli.ts";
 
 export const SITE_URL_ENV_VAR = "BASCIK_SITE_URL";
 
@@ -27,31 +33,14 @@ export interface EnvFlags {
   envFiles: string[];
 }
 
-/** Extract `--site-url` and repeatable `--env-file` from raw CLI args. */
+/**
+ * Extract `--site-url` and repeatable `--env-file` from raw CLI args.
+ * Delegates to the one CLI parser in cli.ts so flag forms (`--flag value`
+ * and `--flag=value`) can never drift between modules.
+ */
 export const parseEnvFlags = (args: string[]): EnvFlags => {
-  const envFiles: string[] = [];
-  let siteUrl: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--site-url") {
-      const next = args[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
-        siteUrl = next;
-        i++;
-      }
-    } else if (arg.startsWith("--site-url=")) {
-      siteUrl = arg.slice("--site-url=".length);
-    } else if (arg === "--env-file") {
-      const next = args[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
-        envFiles.push(next);
-        i++;
-      }
-    } else if (arg.startsWith("--env-file=")) {
-      envFiles.push(arg.slice("--env-file=".length));
-    }
-  }
-  return { siteUrl, envFiles };
+  const { flags } = resolveCliAction(args);
+  return { siteUrl: flags.siteUrl, envFiles: flags.envFiles };
 };
 
 /**
@@ -142,10 +131,22 @@ export const bootEnvironment = (
   args: string[] = process.argv.slice(2),
   cwd: string = process.cwd(),
 ): void => {
-  const flags = parseEnvFlags(args);
+  const { flags } = resolveCliAction(args);
   loadEnvFiles(flags.envFiles, cwd);
   if (flags.siteUrl !== undefined) {
     process.env[SITE_URL_ENV_VAR] = flags.siteUrl;
+  }
+  // Server and logging overrides travel through the environment because
+  // worker threads do not inherit process.argv. A flag overwrites any
+  // pre-existing variable: flag > env var > config file.
+  if (flags.port !== undefined) {
+    process.env.BASCIK_SERVER_PORT = String(flags.port);
+  }
+  if (flags.host !== undefined) {
+    process.env.BASCIK_SERVER_HOST = flags.host;
+  }
+  if (flags.logLevel !== undefined) {
+    process.env.BASCIK_LOG_LEVEL = flags.logLevel;
   }
 };
 

@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
+import { resolveCliAction } from "./cli.ts";
 import {
   formatConfigErrors,
   normalizeBasePath,
@@ -16,17 +17,19 @@ import type {
   ScopableOptions,
 } from "./types.ts";
 
-const args = process.argv.slice(2);
-
-// Load .env files and apply --site-url before anything reads the environment.
-// A missing explicitly-passed --env-file fails here, at startup.
+// Load .env files and apply CLI flag overrides (--site-url, --port, --host,
+// --log-level) into the environment before anything reads it. A missing
+// explicitly-passed --env-file fails here, at startup.
 ensureEnvironmentReady();
 
+// The CLI mode comes from the ONE argv parser in cli.ts, the same parser
+// index.ts uses to pick the action, so the action and the resolved config can
+// never drift (the removed --serve spelling, for example, is rejected by both).
+const cliDecision = resolveCliAction(process.argv.slice(2));
 const isBuild =
-  args.includes("--build") || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
+  cliDecision.action === "build" || parseInt(process.env.BASCIK_BUILD ?? "0") === 1;
 const isProdServer =
-  args.includes("--server") ||
-  args.includes("--serve") ||
+  cliDecision.action === "server" ||
   parseInt(process.env.BASCIK_SERVER ?? process.env.BASCIK_PROD_SERVER ?? "0") === 1;
 
 process.env.BASCIK_BUILD = isBuild ? "1" : "0";
@@ -267,6 +270,7 @@ const normalizeExec = (
  *
  * Layer order (lowest → highest precedence):
  *   defaultConfig → activeModeDefaultConfig → safeUserConfig → activeOverride
+ *   → CLI flag / env var overrides (`flags.port`, `flags.host`, `flags.logLevel`)
  *
  * Exported (pure) so tests can exercise the merge logic directly without
  * relying on module-cache manipulation of the argv/env-derived singleton.
@@ -274,7 +278,13 @@ const normalizeExec = (
 export const initBascikConfig = (
   userConfig: UserConfig = {},
   modeOverrides: { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig = {},
-  flags: { isBuild?: boolean; isProdServer?: boolean } = {},
+  flags: {
+    isBuild?: boolean;
+    isProdServer?: boolean;
+    port?: number;
+    host?: string;
+    logLevel?: LogLevel;
+  } = {},
   deps: ConfigValidationDeps = {},
 ) => {
   const safeUserConfig = typeof userConfig === "object" && userConfig !== null ? userConfig : {};
@@ -333,6 +343,19 @@ export const initBascikConfig = (
     };
   }
 
+  // CLI flag / env var overrides beat every config-file layer
+  // (flag > env var > config file).
+  if (flags.port !== undefined || flags.host !== undefined) {
+    merged.http = {
+      ...merged.http,
+      ...(flags.port !== undefined ? { port: flags.port } : {}),
+      ...(flags.host !== undefined ? { hostname: flags.host } : {}),
+    };
+  }
+  if (flags.logLevel !== undefined) {
+    merged.logging = { ...merged.logging, level: flags.logLevel };
+  }
+
   const rawCache = merged.scripts?.cache;
   const normalizedCache = normalizeScopableOption(
     typeof rawCache === "boolean" || typeof rawCache === "object" ? rawCache : true,
@@ -369,8 +392,36 @@ export const initBascikConfig = (
   return { BascikConfig: deepFreeze(deepClone(BascikConfig)) };
 };
 
+// Flag values were written into the environment by ensureEnvironmentReady
+// above (worker threads do not inherit process.argv), so this one env read
+// covers both the flag and the plain env var, with the flag winning.
+const envLogLevel = process.env.BASCIK_LOG_LEVEL;
+if (envLogLevel !== undefined && !(LOG_LEVELS as readonly string[]).includes(envLogLevel)) {
+  throw new Error(
+    `[bascik] error: invalid BASCIK_LOG_LEVEL "${envLogLevel}".\n` +
+    `  Expected one of: ${LOG_LEVELS.join(", ")}.`,
+  );
+}
+// Lenient like server.ts: a malformed port env var is ignored, not fatal.
+const envPortRaw = process.env.BASCIK_SERVER_PORT;
+const envPortParsed = envPortRaw ? Number.parseInt(envPortRaw, 10) : undefined;
+const envPort =
+  envPortParsed !== undefined &&
+    Number.isInteger(envPortParsed) &&
+    envPortParsed >= 1 &&
+    envPortParsed <= 65535
+    ? envPortParsed
+    : undefined;
+const envHost = process.env.BASCIK_SERVER_HOST?.trim() || undefined;
+
 export const { BascikConfig } = initBascikConfig(
   config ?? {},
   modeOverrides ?? {},
-  { isBuild, isProdServer },
+  {
+    isBuild,
+    isProdServer,
+    port: envPort,
+    host: envHost,
+    logLevel: envLogLevel as LogLevel | undefined,
+  },
 );

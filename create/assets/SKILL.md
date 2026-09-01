@@ -1190,31 +1190,35 @@ Then run `bascik init` to scaffold the starter files and folder structure, or ad
 ```sh
 bascik                        # dev: transpile, start plaintext HTTP server at http://localhost:8080, watch
 bascik --build                # production: transpile to dist/ only
-bascik --build --log [path]   # write build output to a log file (default: .bascik/build.log)
-bascik --serve                # production preview/server: serve a pre-built dist/ folder
-bascik --check                # static analysis: validate pages and components without building
+bascik --build --log [path]   # write build output to a log file (default: .bascik/build.log; only valid with --build)
+bascik --server               # production server: serve a pre-built dist/ folder
+bascik --check                # static analysis: validate pages, components, and config without building
 ```
 
-**`bascik --serve`:** starts the HTTP/2 server against a pre-built `dist/` directory. **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --serve`. Unlike the dev server, `--serve` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+More flags: `--config <path>` (load a specific config file), `--port <n>`, `--host <name>`, `--log-level <silent|error|warn|info|debug>`, `--site-url <url>`, and `--env-file <path>` (repeatable). Every value flag accepts both `--flag value` and `--flag=value`. Precedence: a flag beats the environment variable (`BASCIK_SERVER_PORT`, `BASCIK_SERVER_HOST`, `BASCIK_LOG_LEVEL`), which beats the config file. The parser rejects `--build` combined with `--server`, unknown flags, and stray positionals: `bascik build` (no dashes) errors with a `Did you mean "--build"?` suggestion instead of silently starting the dev server.
 
-**`prodServer` config block:** configure the production server in `bascik.config.ts`:
+**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+
+**`http` config block:** configure the server in `bascik.config.ts`:
 ```ts
 export default {
-  cacheHttp: true,       // default in --serve; false in dev
-  prodServer: {
+  http: {
     port: 8080,            // default (8080 HTTP, 8443 HTTPS)
     hostname: 'localhost', // set '0.0.0.0' to bind all interfaces
-    enableTls: false,      // default; set true for HTTP/2 HTTPS
-    keyFile: 'bascik-privkey.pem',
-    certFile: 'bascik-cert.pem',
+    httpCache: true,       // default in --server; false in dev
+    tls: {
+      enabled: false,      // default; set true for HTTP/2 HTTPS
+      keyFile: 'bascik-privkey.pem',
+      certFile: 'bascik-cert.pem',
+    },
   },
 };
 ```
-When `enableTls: true` is set, TLS certs are generated automatically (mkcert if available, openssl fallback) when `keyFile`/`certFile` are absent. Provide your own certs from a public CA for production.
+When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert if available, openssl fallback) when `keyFile`/`certFile` are absent. Provide your own certs from a public CA for production.
 
-**`cacheHttp`:** defaults to `true` in `--serve` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
+**`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
 
-**Production hardening (automatic in `--serve`):**
+**Production hardening (automatic in `--server`):**
 * **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`. When serving over HTTPS/TLS (`enableTls: true` or `x-forwarded-proto: https`), `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS) is automatically included per RFC 6797.
 * **URL routing (dev and production):** pages are served at their filename without the `.html` extension. `dist/about.html` is at `/about`, `dist/blog/post.html` is at `/blog/post`, `dist/index.html` is at `/`. Unmatched paths fall through to `/404` if a `dist/404.html` exists.
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
@@ -1224,8 +1228,8 @@ When `enableTls: true` is set, TLS certs are generated automatically (mkcert if 
 **Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
 
 * **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service.
-* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --serve`).
-* **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --serve` and bind port `8080`.
+* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`).
+* **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
 When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.
 

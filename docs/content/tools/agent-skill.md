@@ -64,12 +64,3 @@ The skill covers:
 - Folder structure and naming conventions
 
 > **Keeping it current.** `SKILL.md` is regenerated from the same Markdown source files that power this docs site. When the docs update, so does the skill file.
-
-## Recommended Models
-
-Using the Bascik skill in VS Code Copilot, the following models have been shown to perform exceptionally well with Bascik:
-
-- **Gemini 3.6 Flash**: Fast and accurate for component generation and general editing tasks.
-- **Claude Sonnet 4.6**: Excellent for complex reasoning, debugging scoping constraints, and refactoring.
-
-*As of August 19, 2026.*

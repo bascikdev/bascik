@@ -58,7 +58,7 @@
     "ext:cover": "yarn ext:coverage",
     "ext:test": "yarn workspace bascik-vscode test",
     "ext:update-coverage": "yarn ext:coverage",
-    "check:spelling": "codespell -L teY,directroy,scirpt,erorr --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
+    "check:spelling": "codespell -L teY,directroy,scirpt,erorr,buld --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
     "check:all": "yarn check:spelling && yarn check:standards",

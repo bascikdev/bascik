@@ -226,6 +226,36 @@ describe("bootEnvironment", () => {
       /--env-file .* does not exist/,
     );
   });
+
+  it("writes --port, --host, and --log-level into the environment so workers inherit them", async () => {
+    const dir = await makeDir();
+    const saved = {
+      port: process.env.BASCIK_SERVER_PORT,
+      host: process.env.BASCIK_SERVER_HOST,
+      level: process.env.BASCIK_LOG_LEVEL,
+    };
+    delete process.env.BASCIK_SERVER_PORT;
+    delete process.env.BASCIK_SERVER_HOST;
+    delete process.env.BASCIK_LOG_LEVEL;
+    try {
+      bootEnvironment(
+        ["--build", "--port", "4321", "--host=0.0.0.0", "--log-level", "debug"],
+        dir,
+      );
+      expect(process.env.BASCIK_SERVER_PORT).toBe("4321");
+      expect(process.env.BASCIK_SERVER_HOST).toBe("0.0.0.0");
+      expect(process.env.BASCIK_LOG_LEVEL).toBe("debug");
+    } finally {
+      for (const [key, value] of Object.entries({
+        BASCIK_SERVER_PORT: saved.port,
+        BASCIK_SERVER_HOST: saved.host,
+        BASCIK_LOG_LEVEL: saved.level,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
 });
 
 describe("getSiteUrl", () => {

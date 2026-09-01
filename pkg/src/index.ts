@@ -26,10 +26,7 @@ export const readVersion = async (baseDir?: string): Promise<string> => {
 };
 
 export const resolveBuildLogPath = (args: string[]): string | undefined => {
-  const logIndex = args.indexOf("--log");
-  if (logIndex === -1) return undefined;
-  const nextArg = args[logIndex + 1];
-  return nextArg && !nextArg.startsWith("-") ? nextArg : ".bascik/build.log";
+  return resolveCliAction(args).flags.log;
 };
 
 export const setupBuildLogging = async (buildLogPath: string): Promise<string> => {
@@ -68,7 +65,7 @@ export const runCli = async (
   };
 
   const decision = resolveCliAction(args);
-  const buildLogPath = resolveBuildLogPath(args);
+  const buildLogPath = decision.flags.log;
 
   if (decision.action === "build" && buildLogPath) {
     await setupBuildLogging(buildLogPath);
@@ -82,10 +79,10 @@ export const runCli = async (
       console.log(await readVersion());
       return { action: "version", exitCode: 0 };
     case "error": {
-      const flags = decision.unknownFlags ?? [];
-      console.error(
-        `Error: unknown flag${flags.length > 1 ? "s" : ""}: ${flags.join(", ")}\n`,
-      );
+      const message =
+        decision.errorMessage ??
+        `Error: unknown flag${(decision.unknownFlags ?? []).length > 1 ? "s" : ""}: ${(decision.unknownFlags ?? []).join(", ")}`;
+      console.error(`${message}\n`);
       console.error(CLI_USAGE);
       exit(1);
       return { action: "error", exitCode: 1 };

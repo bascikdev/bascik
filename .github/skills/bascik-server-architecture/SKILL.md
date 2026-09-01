@@ -29,7 +29,7 @@ Bascik supports secure serving with ALPN (Application-Layer Protocol Negotiation
 * **ALPN Protocols:** Advertises `['h2', 'http/1.1']` to clients.
 * **Fallback Behavior:** If a client does not support HTTP/2 or requests plain HTTP/1.1, the server handles it seamlessly via `http2.createSecureServer({ allowHTTP1: true })`.
 * **Disabling TLS for Testing:**
-  Set `BASCIK_ENABLE_TLS=false` or `--no-tls` when testing environments that cannot handle self-signed certificates without complex trust stores.
+  Set `BASCIK_ENABLE_TLS=false` when testing environments that cannot handle self-signed certificates without complex trust stores. (There is no `--no-tls` flag; the environment variable is the only switch.)
 
 ---
 

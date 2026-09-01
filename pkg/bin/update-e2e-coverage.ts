@@ -12,7 +12,7 @@
  *   6. dev server    (boot → HTTP requests → file-touch watch events → kill)
  *                    Covers mem.ts, pki.ts, http2.ts, server-scripts.ts,
  *                    and processing.ts dev-mode functions
- *   7. --serve       (isServe=true branches in config.ts; index.ts serve action)
+ *   7. --server      (isProdServer=true branches in config.ts; index.ts server action)
  */
 
 import { execSync, spawn } from 'node:child_process';
@@ -163,11 +163,11 @@ await new Promise<void>((resolve) => {
   });
 });
 
-// ── Step 7: --serve (isServe=true branches in config.ts, http2 serve paths) ──
+// ── Step 7: --server (isProdServer=true branches in config.ts, http2 serve paths) ──
 
-console.log('[7/7] --serve + HTTP/2 requests');
+console.log('[7/7] --server + HTTP/2 requests');
 await new Promise<void>((resolve) => {
-  const serveProc = spawn('node', [cli, '--serve'], {
+  const serveProc = spawn('node', [cli, '--server'], {
     cwd: e2eDir, env, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let serveReady = false;
