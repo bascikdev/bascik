@@ -376,7 +376,7 @@ describe("generateSitemapFiles – early-return branches", () => {
     mocks.existsSync.mockImplementation((p: any) => {
       return String(p).endsWith("pages/robots.txt") || String(p).endsWith("pages\\robots.txt");
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     await generateSitemapFiles();
 
@@ -395,7 +395,7 @@ describe("generateSitemapFiles – early-return branches", () => {
     mocks.existsSync.mockImplementation((p: any) => {
       return String(p).endsWith("pages/sitemap.xml") || String(p).endsWith("pages\\sitemap.xml");
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     await generateSitemapFiles();
 
@@ -411,7 +411,7 @@ describe("generateSitemapFiles – early-return branches", () => {
     mocks.existsSync.mockImplementation((p: any) => {
       return String(p).includes("about/robots.txt");
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     await generateSitemapFiles();
 

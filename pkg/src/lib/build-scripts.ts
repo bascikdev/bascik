@@ -49,71 +49,11 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
+import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
+import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
 import type { RouteEntry } from "./types.ts";
 
-export { cleanStackTrace };
-
-// Limits concurrent child-process spawns based on available memory.
-// Initialized lazily on first use so freemem() reflects the live state at startup.
-class Semaphore {
-  private slots: number;
-  private readonly queue: Array<() => void> = [];
-  constructor(limit: number) { this.slots = limit; }
-  acquire(): Promise<void> {
-    if (this.slots > 0) { this.slots--; return Promise.resolve(); }
-    return new Promise(resolve => this.queue.push(resolve));
-  }
-  release(): void {
-    const next = this.queue.shift();
-    if (next) next(); else this.slots++;
-  }
-}
-
-const MEM_PER_CHILD = 100 * 1024 * 1024; // ~100 MB per Node child process
-let _sem: Semaphore | undefined;
-const childSemaphore = () => _sem ??= new Semaphore(
-  // freemem() is near-zero on macOS (compressed/inactive memory isn't "free"),
-  // so floor at 25% of total RAM to avoid artificially serializing on dev machines.
-  Math.max(1, Math.floor(Math.max(freemem() * 0.6, totalmem() * 0.25) / MEM_PER_CHILD))
-);
-
-// Manual promise wrapper so tests can mock execFile with a plain vi.fn()
-// without needing to simulate Node's promisify.custom symbol.
-const runModule = async (
-  path: string,
-  extraEnv: Record<string, string> = {},
-  args: string[] = [],
-): Promise<{ stdout: string; stderr: string }> => {
-  const sem = childSemaphore();
-  await sem.acquire();
-  const childEnv: Record<string, string | undefined> = {
-    ...process.env,
-    BASCIK_BUILD: BascikConfig.isBuild ? "1" : "0",
-    FORCE_COLOR: "0",
-    NO_COLOR: "1",
-    ...extraEnv,
-  };
-  if (!extraEnv.BASCIK_ROUTE) {
-    delete childEnv.BASCIK_ROUTE;
-  }
-  return new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [path, ...args],
-      {
-        cwd: process.cwd(),
-        env: childEnv as Record<string, string>,
-        timeout: BUILD_SCRIPT_TIMEOUT,
-        killSignal: "SIGTERM",
-      },
-      (err, stdout, stderr) => {
-        sem.release();
-        if (err) reject(Object.assign(err, { stdout, stderr }));
-        else resolve({ stdout, stderr });
-      },
-    );
-  });
-};
+export { cleanStackTrace, stripAnsiEscapeCodes };
 
 // Quote-aware open-tag scanning.  An attribute is a bare name with an
 // optional `="..."`/`='...'`/`=bare` value; `>` inside a quoted value must
@@ -143,13 +83,6 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
-
-// Strip ANSI terminal color sequences so build-time HTML injection never leaks
-// Netlify/CI color escapes (e.g. FORCE_COLOR=1) into the final page markup.
-const stripAnsiEscapeCodes = (value: string): string =>
-  value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
-    .replace(/\u001B[@-Z\\-_]/g, "");
 
 /** Per-build-script execution timeout (ms). Keeps a hung script from hanging the build forever. */
 const BUILD_SCRIPT_TIMEOUT = 60_000;
@@ -366,14 +299,16 @@ export const executeBuildScripts = async (
     mkdir(tempDir, { recursive: true }),
     mkdir(cacheDir, { recursive: true }),
   ]);
+  await pruneScriptCache(cacheDir);
 
-  const useCache = BascikConfig.scripts?.cache?.enabled !== false;
   const sourceFile = options?.sourceFile ?? filePath ?? "";
   const pageFile = options?.pageFile ?? filePath ?? "";
   const resolvedSiteUrl = getSiteUrl();
   const siteUrl = resolvedSiteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
   const pagePath = options?.pagePath ?? (pageFile ? computePagePath(pageFile, BascikConfig.directory?.pages ?? "src/pages", route) : "");
+
+  const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
 
   interface ScriptTask {
     fullTag: string;
@@ -579,53 +514,22 @@ export const executeBuildScripts = async (
             }
           }
         } else {
-          // Fallback if runner did not produce JSON (e.g. mocked execFile in tests)
-          for (const task of uncachedTasks) {
-            try {
-              const { stdout: singleStdout, stderr: singleStderr } = await runModule(task.tmpPath, extraEnv);
-              if (singleStderr) process.stderr.write(singleStderr);
-              const output = stripAnsiEscapeCodes(singleStdout);
-              if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
-              task.output = output;
-            } catch (singleErr) {
-              const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-              let errorMsg = `[bascik] build script error`;
-              const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
-              if (filePath) {
-                const prefix = html.slice(0, task.index);
-                const lines = prefix.split(/\r?\n/);
-                errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
-              }
-              const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-              if (behavior === "error") {
-                console.error(`${errorMsg}:\n${cleanedMsg}`);
-                throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-              } else {
-                console.warn(`${errorMsg}:\n${cleanedMsg}`);
-              }
-              task.output = "";
-            }
-          }
+          // If the runner process failed or output envelope was corrupted, fail loudly without re-executing
+          const errorMsg = `[bascik] build script runner failed to return valid JSON results.\nStdout: ${stdout}\nStderr: ${stderr}`;
+          console.error(errorMsg);
+          throw new Error(errorMsg);
         }
       } catch (err) {
-        // Fallback or runner failure handling
-        const msg = err instanceof Error ? err.message : String(err);
-        for (const task of uncachedTasks) {
-          let errorMsg = `[bascik] build script error`;
-          const cleanedMsg = cleanStackTrace(msg, task.tmpPath, relPath, task.startLine);
-          if (filePath) {
-            const prefix = html.slice(0, task.index);
-            const lines = prefix.split(/\r?\n/);
-            errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+        // Runner failure handling: report error per failing script without double wrapping
+        const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
+        if (behavior === "error") {
+          throw err;
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(msg);
+          for (const task of uncachedTasks) {
+            if (task.output === undefined) task.output = "";
           }
-          const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-          if (behavior === "error") {
-            console.error(`${errorMsg}:\n${cleanedMsg}`);
-            throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-          } else {
-            console.warn(`${errorMsg}:\n${cleanedMsg}`);
-          }
-          task.output = "";
         }
       } finally {
         await Promise.all(

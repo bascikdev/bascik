@@ -767,9 +767,21 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script.
 
-**To disable:** set `buildScriptCache: false` in your config (useful when debugging a script that reads external state not tracked by the cache key).
+**Excluding scripts from cache:** Statically scanned cache keys cannot detect runtime network calls, `readdir` directory reads, or dynamic computed file paths. For scripts reading from external APIs or computed paths, exclude them via `scripts.cache.exclude`:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  scripts: {
+    cache: {
+      enabled: true,
+      exclude: ['src/pages/live-feed/**', 'src/components/api-cards/**'],
+    },
+  },
+});
+```
 
 **To bust the entire cache** (e.g. after upgrading a build-time npm dependency):
 
