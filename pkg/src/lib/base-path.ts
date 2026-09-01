@@ -33,7 +33,9 @@ export const stripBasePath = (pathname: string, base: string): string | null => 
 };
 
 export const composeSiteUrl = (siteUrl: string, base: string, pathname: string): string => {
-  const normalizedSiteUrl = siteUrl.replace(/\/+$/, "");
+  let siteUrlEnd = siteUrl.length;
+  while (siteUrlEnd > 0 && siteUrl[siteUrlEnd - 1] === "/") siteUrlEnd--;
+  const normalizedSiteUrl = siteUrl.slice(0, siteUrlEnd);
   const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
   return `${normalizedSiteUrl}${withBasePath(normalizedPathname, base)}`;
 };
