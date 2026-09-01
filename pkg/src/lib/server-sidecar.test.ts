@@ -77,4 +77,12 @@ describe("server-scripts sidecar", () => {
       /Server script placeholder "unknown_id" could not be resolved from sidecar/,
     );
   });
+
+  it("supports recording multiple scripts via recordScripts (worker thread IPC parity)", () => {
+    serverSidecarRegistry.clear();
+    serverSidecarRegistry.recordScripts({
+      script_1: { id: "script_1", source: "console.log('from_worker');" },
+    });
+    expect(serverSidecarRegistry.getScript("script_1")?.source).toBe("console.log('from_worker');");
+  });
 });

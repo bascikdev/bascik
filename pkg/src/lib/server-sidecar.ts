@@ -20,6 +20,12 @@ class ServerSidecarRegistry {
     this.scripts.set(id, { id, source });
   }
 
+  recordScripts(scripts: Record<string, ServerScriptEntry>): void {
+    for (const [id, entry] of Object.entries(scripts)) {
+      this.scripts.set(id, entry);
+    }
+  }
+
   getScript(id: string): ServerScriptEntry | undefined {
     if (this.loadedSidecar && this.loadedSidecar[id]) {
       return this.loadedSidecar[id];
@@ -89,11 +95,12 @@ export const serverSidecarRegistry = new ServerSidecarRegistry();
 
 /**
  * Replace all <script data-bascik-server> tags in `html` with inert placeholders
- * and record each script's source in the serverSidecarRegistry.
+ * and record each script's source in the serverSidecarRegistry (and optional outMap).
  */
 export const extractServerScriptsToSidecar = (
   html: string,
   pagePath: string = "page",
+  outMap?: Record<string, ServerScriptEntry>,
 ): string => {
   let scriptOrdinal = 0;
   return html.replace(
@@ -102,6 +109,9 @@ export const extractServerScriptsToSidecar = (
       scriptOrdinal++;
       const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
       serverSidecarRegistry.recordScript(id, scriptContent);
+      if (outMap) {
+        outMap[id] = { id, source: scriptContent };
+      }
       return `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
     },
   );

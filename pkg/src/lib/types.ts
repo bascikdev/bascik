@@ -69,6 +69,7 @@ export interface TranspilePageResult {
   distHtml: string;
   usedComponentsNames: string[];
   fileDependencies?: string[];
+  serverScripts?: Record<string, { id: string; source: string }>;
 }
 export interface MinifyOptions {
   /**

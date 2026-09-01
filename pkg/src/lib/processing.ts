@@ -103,7 +103,7 @@ import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
-import { extractServerScriptsToSidecar } from "./server-sidecar.ts";
+import { extractServerScriptsToSidecar, serverSidecarRegistry } from "./server-sidecar.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
 import type {
   BascikComponent,
@@ -857,6 +857,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             try {
               const result = await pool.run(job);
               if (result) {
+                if (result.serverScripts) {
+                  serverSidecarRegistry.recordScripts(result.serverScripts);
+                }
                 if (!BascikConfig.isBuild) {
                   await mem.storePage({
                     relativePagePath: result.relativePagePath,
@@ -887,6 +890,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
             try {
               const result = await pool.run(job);
               if (result) {
+                if (result.serverScripts) {
+                  serverSidecarRegistry.recordScripts(result.serverScripts);
+                }
                 if (!BascikConfig.isBuild) {
                   await mem.storePage({
                     relativePagePath: result.relativePagePath,
@@ -1229,7 +1235,8 @@ export const transpilePage = async (
       distHtml.slice(tag.closeIndex);
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
-  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath);
+  const serverScripts: Record<string, { id: string; source: string }> = {};
+  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts);
   cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
@@ -1270,6 +1277,7 @@ export const transpilePage = async (
     distHtml,
     usedComponentsNames: allUsedComponents.map(({ name }) => name),
     fileDependencies,
+    serverScripts,
   };
 };
 
