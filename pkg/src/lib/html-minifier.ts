@@ -7,18 +7,42 @@
  * contents verbatim, and consolidates script tags at the end of the output.
  */
 
-export const extractScriptTags = (htmlString: string): string => {
-  const html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
-  const pattern = new RegExp(
-    `<script(?:(?!(?:type=["'](?!(?:text\\/javascript|application\\/javascript|module)(?:["'\\s]|$))[^"']*["']|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
-    "gi"
+import { isJavaScriptScript } from "./script-types.ts";
+import { createContentShield } from "./shielding.ts";
+
+const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
+
+const shieldSensitiveContent = (htmlString: string): {
+  html: string;
+  restore: (value: string) => string;
+} => {
+  const shield = createContentShield(htmlString);
+  let html = htmlString.replace(
+    /<(pre|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
+    (match) => shield.hide(match),
   );
-  const arr = [...html.matchAll(pattern)];
+  html = html.replace(
+    SCRIPT_TAG_PATTERN,
+    (_match, open: string, body: string, close: string) =>
+      `${open}${shield.hide(body)}${close}`,
+  );
+  return { html, restore: shield.restore };
+};
+
+const isExtractableScript = (openTag: string): boolean =>
+  !/\b(?:data-bascik-build|data-bascik-server|data-bascik-routes)\b/i.test(openTag) &&
+  isJavaScriptScript(openTag);
+
+export const extractScriptTags = (htmlString: string): string => {
+  const shielded = shieldSensitiveContent(htmlString);
+  const html = shielded.html.replace(/<!--[\s\S]*?-->/g, "");
+  const arr = [...html.matchAll(SCRIPT_TAG_PATTERN)]
+    .filter((script) => isExtractableScript(script[1]));
   if (!arr.length) return "";
-  return arr
+  return shielded.restore(arr
     .map((script) => script[0])
     .join("\n")
-    .trim();
+    .trim());
 };
 
 export const INLINE_TAGS = new Set([
@@ -96,27 +120,19 @@ const getNextTagName = (str: string, ltIndex: number): string => {
 };
 
 export const minifyHtml = (htmlString: string): string => {
-  let html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
+  const shielded = shieldSensitiveContent(htmlString);
+  let html = shielded.html.replace(/<!--[\s\S]*?-->/g, "");
   const scriptTags = extractScriptTags(html);
   if (scriptTags) {
-    const pattern = new RegExp(
-      `<script(?:(?!(?:type=["'](?!(?:text\\/javascript|application\\/javascript|module)(?:["'\\s]|$))[^"']*["']|data-bascik-build|data-bascik-server))[^>])*>([\\s\\S]*?)<\\/script>`,
-      "gi"
-    );
-    html = html.replace(pattern, "").trim();
+    html = html.replace(
+      SCRIPT_TAG_PATTERN,
+      (match, open: string) => isExtractableScript(open) ? "" : match,
+    ).trim();
   }
   // Preserve content of whitespace-sensitive elements before collapsing whitespace.
   // Without this, code inside <pre> blocks has its newlines and indentation stripped,
   // breaking the visual display of code examples in the browser. Non-extracted scripts
   // (such as data-bascik-server or application/ld+json) are also preserved verbatim.
-  const preserved: string[] = [];
-  html = html.replace(
-    /<(pre|textarea|script)\b[^>]*>[\s\S]*?<\/\1>/gi,
-    (match) => {
-      preserved.push(match);
-      return `\x00P${preserved.length - 1}\x00`;
-    },
-  );
   html = html.replace(/\n/g, " ").replace(/\s\s+/g, " ");
   html = html.replace(/>\s+</g, (match, offset, fullString) => {
     const prevTag = getPrevTagName(fullString, offset);
@@ -128,18 +144,17 @@ export const minifyHtml = (htmlString: string): string => {
     }
     return "><";
   });
-  if (preserved.length) {
-    // Collapse any whitespace that landed between a tag boundary and a placeholder
-    // after newline removal (e.g. "<div> \x00P0\x00 <" → "<div>\x00P0\x00<").
-    html = html.replace(/>\s+(\x00P\d+\x00)/g, ">$1");
-    html = html.replace(/(\x00P\d+\x00)\s+</g, "$1<");
-    html = html.replace(
-      /\x00P(\d+)\x00/g,
-      (_: string, i: string) => preserved[parseInt(i, 10)],
-    );
-  }
+  html = html.replace(
+    />\s+(\x00BASCIK_SHIELD_\d+\x00)/g,
+    (_match, token: string) => `>${token}`,
+  );
+  html = html.replace(
+    /(\x00BASCIK_SHIELD_\d+\x00)\s+</g,
+    (_match, token: string) => `${token}<`,
+  );
+  html = shielded.restore(html);
   if (scriptTags) {
-    html += `\n${scriptTags}`;
+    html += `\n${shielded.restore(scriptTags)}`;
   }
   return html;
 };

@@ -1,9 +1,8 @@
 /**
  * e2e tests for repeated prop keys in the attr-props fixture page.
  *
- * NOTE: Bascik props inject plain text into element *content* only.
- * Attribute-level prop injection (e.g. setting href, src, placeholder via a prop)
- * is NOT supported — props always replace inner text, never attribute values.
+ * NOTE: This suite covers props injected into element content. Attribute
+ * destinations are covered separately by attribute-binding.test.ts.
  *
  * This test suite focuses on a distinct scenario not covered by props.test.ts:
  * the same prop key used in multiple elements within a single component template.

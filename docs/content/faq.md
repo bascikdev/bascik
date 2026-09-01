@@ -129,6 +129,30 @@ No. The dev server watches the components directory. Drop a new `.html` (or pair
 
 Yes. Components can use other components inside their markup. Bascik resolves nested components recursively at build time.
 
+## Why is my prop value showing as escaped text?
+
+Props are text values. Bascik HTML-escapes them during injection so markup from a CMS, database, or API cannot become an executable element or script. If you need rich HTML or a nested component, pass it through a default or named [slot](/slots) instead. Slot content remains markup and participates in component scoping.
+
+## How do I put a prop into an attribute?
+
+Add `data-bascik-attr-{attribute}="{propName}"` to the target element in the component template. For example, `<a data-bascik-attr-href="link">` reads `data-bascik-prop-link="/about"` from the component usage and emits `<a href="/about">`. This works on non-root elements, unlike attribute inheritance. It is a build-time `data-*` directive, not a variable or templating expression. See [Props](/props#put-a-prop-in-an-attribute).
+
+## How do I use a third-party widget that looks up an element by ID?
+
+Add a bare `data-bascik-preserve` directive to the widget mount point. Its literal ID and subtree remain unscoped, so calls such as `turnstile.render('widget-mount')` can find it. Bascik removes the directive from compiled output. See [Preserve Scoping](/preserve).
+
+## Why are my form field names hashed?
+
+Bascik scopes `name` per component instance so repeated radio groups remain independent. For a form that posts to an external service requiring literal keys, add `data-bascik-preserve="name"` to the form. This deliberately gives up radio-group isolation inside that preserved subtree, so do not disable name scoping site-wide. See [Preserve Scoping](/preserve).
+
+## Why is my `<label for>` not working?
+
+Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time. Keep the label and control together or target a literal page-shell ID. See [Scoped JavaScript](/scoped-javascript#html-id-references).
+
+## Why is my inline SVG gradient not showing?
+
+Declare the gradient ID and its CSS `url(#id)` reference in the same component. Bascik rewrites the fragment to the instance-scoped ID and automatically emits per-instance CSS for that component. Cross-document fragments such as `url(sprite.svg#icon)` are intentionally untouched. For an SVG ID graph owned by another tool, use [Preserve Scoping](/preserve). See [Scoped Styles](/scoped-styles#css-fragment-references).
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
@@ -162,6 +186,10 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **Client-side / Browser-side JavaScript:** Standard scripts are wrapped in an IIFE for scoping, but they are not parsed or executed during the build. If there is a syntax error or a logical bug in your browser-side JavaScript, it is compiled as-is and sent to the client browser, where the error will be printed in the browser's developer console without affecting your server or build processes.
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
+
+## Why did part of my page disappear after HTML minification?
+
+Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification.
 
 ## Why do I see multiple identical script tags in my page output?
 

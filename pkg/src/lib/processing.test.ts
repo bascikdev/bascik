@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
+import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { getUniqueId } from "./names.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -111,7 +113,6 @@ vi.mock("./worker-pool.js", () => {
 vi.mock("./names.js", () => ({
   getUniqueId: vi.fn(() => "test1234"),
   minifyAttributeName: vi.fn((name) => name),
-  obfuscateAttributeName: vi.fn((name) => name),
   getAttributeNameHash: vi.fn((name) => name),
 }));
 
@@ -289,6 +290,29 @@ describe("recursivelyTranspile – integration", () => {
     );
     expect(transpiledHtmlBody).toBe(
       "<div class='outer'><span>inner</span></div>",
+    );
+  });
+
+  it("does not leak a nested component prop from slot content into its parent", () => {
+    const componentList = {
+      "my-card": {
+        fileName: "components/my-card.html",
+        fileContent:
+          "<article><h2 data-bascik-prop-text>Card fallback</h2><div data-bascik-slot></div></article>",
+      },
+      "my-badge": {
+        fileName: "components/my-badge.html",
+        fileContent: "<span data-bascik-prop-text>Badge fallback</span>",
+      },
+    };
+
+    const { transpiledHtmlBody } = recursivelyTranspile(
+      '<my-card><my-badge data-bascik-prop-text="beta"></my-badge></my-card>',
+      componentList,
+    );
+
+    expect(transpiledHtmlBody).toBe(
+      "<article><h2>Card fallback</h2><span>beta</span></article>",
     );
   });
 
@@ -696,6 +720,30 @@ describe("pageProcessing – $-pattern safety in body/head reassembly", () => {
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('cost $&amp; tax');
   });
+
+  it("reassembles a body containing a literal closing tag in textarea content exactly once", async () => {
+    const html =
+      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toBe(
+      '<!DOCTYPE html><html><head><title>Test</title></head><body><textarea></body></textarea><p>tail</p>' +
+      LIVE_RELOAD_SCRIPT +
+      "</body></html>",
+    );
+  });
+
+  it("reassembles a head containing a literal closing tag in script content exactly once", async () => {
+    const html =
+      '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toBe(
+      '<!DOCTYPE html><html><head><script>const closing = "</head>";</script><title>Test</title></head><body><p>body</p>' +
+      LIVE_RELOAD_SCRIPT +
+      "</body></html>",
+    );
+  });
 });
 
 describe("pageProcessing – inlineStyles", () => {
@@ -709,12 +757,11 @@ describe("pageProcessing – inlineStyles", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // The only <style> block should be the empty component CSS one
     const styleMatches = [...pageContent.matchAll(/<style>/gi)];
-    expect(styleMatches).toHaveLength(1);
+    expect(styleMatches).toHaveLength(0);
   });
 
-  it("inlines a single stylesheet into the <head> before component styles", async () => {
+  it("inlines a single stylesheet into the head without an empty component style", async () => {
     (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (readFile as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(PAGE_HTML)          // page read
@@ -722,10 +769,7 @@ describe("pageProcessing – inlineStyles", () => {
     await pageProcessing(PAGE_PATH, {});
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('body { color: red; }');
-    // Global <style> must appear before the component <style>
-    const globalIdx = pageContent.indexOf('body { color: red; }');
-    const compIdx = pageContent.lastIndexOf('<style>');
-    expect(globalIdx).toBeLessThan(compIdx);
+    expect([...pageContent.matchAll(/<style>/gi)]).toHaveLength(1);
   });
 
   it("concatenates multiple stylesheets into one <style> block", async () => {
@@ -738,9 +782,8 @@ describe("pageProcessing – inlineStyles", () => {
     const { pageContent } = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(pageContent).toContain('.a { color: red; }');
     expect(pageContent).toContain('.b { color: blue; }');
-    // Two <style> blocks: one global, one component
     const styleCount = [...pageContent.matchAll(/<style>/gi)].length;
-    expect(styleCount).toBe(2);
+    expect(styleCount).toBe(1);
   });
 
   it("logs a warning and continues when an inlineStyles file cannot be read", async () => {
@@ -1841,6 +1884,25 @@ describe("transpilePage – minify.js branch coverage", () => {
     expect(result!.distHtml).not.toContain("var   x");
   });
 
+  it("minifies inline module script content", async () => {
+    const html =
+      '<!DOCTYPE html><html><head></head><body>' +
+      '<script type="module">const   value   =   1;</script>' +
+      '</body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result).not.toBeNull();
+    expect(result!.distHtml).not.toContain("const   value");
+  });
+
+  it("does not emit an empty component style block", async () => {
+    const html = '<!DOCTYPE html><html><head></head><body><p>content</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result).not.toBeNull();
+    expect(result!.distHtml).not.toMatch(/<style>\s*<\/style>/);
+  });
+
   it("does not minify application/ld+json scripts", async () => {
     const jsonLd = '{"@context":"https://schema.org","@type":"WebSite"}';
     const html =
@@ -2251,6 +2313,40 @@ describe("transpilePage – inline component <style> extraction & deduplication"
 
     // JSON-LD script is preserved verbatim without IIFE wrapping
     expect(html).toContain('<script type="application/ld+json">{"@type":"Thing"}</script>');
+  });
+});
+
+describe("recursivelyTranspile – prop attribute scoping", () => {
+  it("scopes injected id and name per instance while deduplicating class", () => {
+    (BascikConfig as any).scoping = {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
+    (getUniqueId as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce("first111")
+      .mockReturnValueOnce("second22");
+
+    const componentList = {
+      "bound-field": {
+        fileName: "components/bound-field.html",
+        fileContent:
+          '<input data-bascik-attr-id="id" data-bascik-attr-name="name" data-bascik-attr-class="class">',
+      },
+    };
+    const result = recursivelyTranspile(
+      '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>' +
+      '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>',
+      componentList,
+    ).transpiledHtmlBody;
+
+    expect(result).toContain('id="bascik__bound-field__first111__field"');
+    expect(result).toContain('id="bascik__bound-field__second22__field"');
+    expect(result).toContain('name="bascik__bound-field__first111__group"');
+    expect(result).toContain('name="bascik__bound-field__second22__group"');
+    expect(result.match(/class="bascik__bound-field__control"/g)).toHaveLength(2);
   });
 });
 

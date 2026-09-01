@@ -1,0 +1,10 @@
+<div id="widget-mount" data-testid="widget-mount" data-bascik-preserve></div>
+
+<form action="/preserve-test" method="post" data-testid="external-form" data-bascik-preserve="name">
+  <input name="email" value="person@example.com" data-testid="preserved-email">
+  <button type="submit" data-testid="submit-preserved-form">Submit</button>
+</form>
+
+<script>
+  document.getElementById("widget-mount").textContent = "Widget mounted";
+</script>

@@ -49,16 +49,50 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | Hyphenated custom element names | WHATWG HTML §4.13.1.2 | ✓ | Component tags with hyphens (e.g. `<my-button>`, `<site-nav>`) follow the WHATWG custom element standard and prevent collisions with native tags. |
 | Single-word component filenames | WHATWG HTML §4.13.1.2 | △ | Single-word component names (e.g. `card.html` -> `<card></card>`) compile for backward compatibility, but Bascik's CLI compiler and VS Code extension issue warnings recommending a hyphenated name (e.g. `my-card.html`). |
 | Native element shadowing guard | WHATWG HTML §4 | ✓ | Bascik maintains a set of 115 native HTML elements and issues a build-time warning if a component filename shadows a native tag (e.g. `header.html` or `dialog.html`). |
-| Custom `data-*` attributes | WHATWG HTML §3.2.6.6 | ✓ | Internal directives (`data-bascik-prop-*`, `data-bascik-slot`, `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) strictly conform to XML NCName lower-case naming syntax. |
-| Self-closing custom tags | WHATWG HTML §13.1.2 | ✓ | In HTML source code, custom tags can use self-closing syntax (`<my-comp />`). Bascik expands them at build time into standard paired `<my-comp></my-comp>` elements before emitting output HTML. |
-| Multiple top-level HTML elements | WHATWG HTML | ✓ | Supported naturally without requiring single wrapper elements or fragment tags. All root elements are inserted in document order. Inherited usage attributes merge onto the first root HTML element. |
+| Exact component tag matching | WHATWG HTML §13.2.5 | ✓ | A component name matches only the complete tag name. A `card` component never claims a longer hyphenated tag such as `<card-header>`. |
+| Custom `data-*` attributes | WHATWG HTML §3.2.6.6 | ✓ | Internal directives (`data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-preserve`, `data-bascik-slot`, `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) strictly conform to XML NCName lower-case naming syntax. |
+| Self-closing custom tags | WHATWG HTML §13.1.2 | ✓ | In HTML source code, custom tags can use self-closing syntax with or without a space (`<my-comp />` or `<my-comp/>`). Both forms balance correctly when nested inside a paired instance and expand at build time into standard HTML. |
+| Multiple top-level HTML elements | WHATWG HTML | ✓ | Supported naturally without requiring single wrapper elements or fragment tags. All root elements are inserted in document order. Inherited usage attributes merge onto the first content element after leading text, `<link>`, or `<meta>` nodes. Root opening tags are parsed quote-aware, so `>` inside an attribute value remains intact. |
 | Multiple `<style>` blocks | WHATWG HTML §4.2.6 | ✓ | Extracted and combined with any companion `.css` file before scoping and deduplication. *Note:* Using multiple `<style>` tags in a single component file is supported, but using a single stylesheet pattern per component is recommended for maintainability. |
 | Multiple `<script>` blocks | WHATWG HTML §4.12 | ✓ | Client `<script>` blocks are each wrapped in an independent IIFE. Recommended for clean, maintainable code when separating unrelated logic within a component. Build (`data-bascik-build`), server (`data-bascik-server`), and data scripts (e.g. `type="application/ld+json"`) are processed according to their script type. |
+| Raw-text comments and nested scripts | WHATWG HTML §4.12 | ✓ | Comments and comment-like text inside `<pre>`, `<textarea>`, and scripts are shielded before HTML comments are stripped. Scripts nested inside containers remain in place. |
+| Raw-text document closing tags | WHATWG HTML §13.2.5 | ✓ | Literal `</body>` text inside `<textarea>` and `</head>` text inside `<script>` do not terminate document extraction or duplicate the remaining page during reassembly. |
 | Global class passthrough | WHATWG HTML | ✓ | Class names in component HTML that are not declared in the component's stylesheet (such as global utility classes like `skip-link`, `flex`, `hidden`) pass through as unscoped global classes so global stylesheets continue to match them. |
+| Class attribute whitespace | WHATWG HTML §2.3.7 | ✓ | Class tokens are normalized across spaces, tabs, and newlines. Leading, trailing, and repeated whitespace never creates an empty scoped token. |
 | Slot fallback semantics | WHATWG DOM §4 | ✓ | Default and named slots preserve their inner placeholder markup when no replacement content is passed from the parent template. |
-| Raw-text content shielding | WHATWG HTML §13.1.2 | ✓ | Inner content of `<pre>`, `<textarea>`, `<script>`, `<style>`, and `<code>` blocks are shielded during compilation using sentinel tokens so code examples and literal tags (e.g. `<my-card>` in Markdown or JSON-LD) are never evaluated as active tags. |
+| Prop value escaping | WHATWG HTML §13.2.5 | ✓ | Prop values are HTML-escaped on injection. Entity-encoded quotes round-trip as text; slots are the raw-markup path. |
+| Prop-to-attribute binding | WHATWG HTML §3.2.6.6 | ✓ | `data-bascik-attr-{attribute}="{propName}"` binds a supplied prop to plain and hyphenated attributes, then removes the directive. Missing props add nothing; existing targets warn and are replaced. Bound `id`, `name`, and `class` values use normal scoping rules. |
+| Nested prop boundary | WHATWG HTML §3.2.6.6 | ✓ | Props are extracted only from a component's opening usage tag, so declarations on nested components inside slot content never leak into the parent. |
+| Tag-level preserve | WHATWG HTML §13.1.2 | ✓ | `scoping.preserve` keeps each configured tag's `id`, `name`, and `class` attributes, contents, and descendants unscoped through shared restorable shielding. |
+| Element-level preserve | WHATWG HTML §3.2.6.6 | ✓ | `data-bascik-preserve` applies to one subtree. A bare directive preserves `id`, `name`, and `class`; a space-separated value preserves only listed attributes. The directive is removed from output. |
+| Internal raw-text mask | WHATWG HTML §13.1.2 | ✓ | Internal scans use a hardcoded same-length discard mask for scripts, styles, textareas, and comments. It is not configurable and is distinct from author-facing preservation. |
 | Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. |
 | `<meta>` tag preservation | WHATWG HTML §4.2.5 | ✓ | Standard metadata attributes on `<meta>` tags (e.g. `name="viewport"`, `name="description"`) are shielded from attribute scoping. |
+
+---
+
+## ID References
+
+When an `id` declaration is scoped, Bascik rewrites references that resolve to that declaration in the same component. Unresolved references remain byte-identical so components can still target literal page-level IDs.
+
+| Reference | Status | Notes |
+| --- | --- | --- |
+| `for` on `<label>` | ✓ | Rewritten as one ID so label activation continues to focus the scoped control. |
+| `form`, `list`, `popovertarget`, `commandfor` | ✓ | Each single-ID reference is rewritten when its target is declared locally. |
+| `aria-activedescendant`, `aria-errormessage` | ✓ | Single-ID ARIA references resolve locally. |
+| `aria-labelledby`, `aria-describedby`, `aria-controls`, `aria-owns`, `aria-flowto`, `aria-details` | ✓ | Space-separated tokens resolve independently; nonlocal tokens remain unchanged. |
+| `itemref` | ✓ | Space-separated microdata item IDs resolve independently. |
+| `headers` on `<td>` and `<th>` | ✓ | Space-separated header IDs resolve independently. |
+| `for` on `<output>` | ✓ | Treated as a space-separated ID list, unlike the single-ID `<label for>`. |
+| Fragment links on `<a>` and `<area>` | ✓ | Fragment-only values such as `href="#section"` resolve locally. Bare hashes and other-document URLs remain unchanged. |
+| SVG `<use href>` and `xlink:href` | ✓ | Fragment-only references to local SVG IDs are rewritten. |
+| SVG presentation attributes | ✓ | `fill`, `stroke`, `mask`, `clip-path`, `filter`, `marker-start`, `marker-mid`, and `marker-end` rewrite local `url(#id)` fragments. |
+| Inline `style` attributes | ✓ | Local `url(#id)` fragments are rewritten. Component `<style>` blocks and stylesheets are covered separately by CSS scoping. |
+| CSS `url(#id)` fragments | ✓ | Local fragments in component stylesheets and `<style>` blocks are rewritten for properties including `fill`, `stroke`, `clip-path`, `mask`, `filter`, and marker properties. Components with resolvable fragments automatically emit per-instance CSS. |
+| CSS cross-document fragments | ✓ | Values such as `url(other.svg#icon)` are deliberately untouched because the fragment belongs to another document. Real, remote, and data URLs also remain unchanged. |
+| `usemap` on `<img>` | ✓ | Resolves against a local `<map name>`, not an ID, and follows `scoping.attributes.name`. |
+| Cross-component ID references | ✗ | IDs are scoped per instance, so references cannot resolve safely across component boundaries at build time. They remain unchanged. |
+| Preserved subtrees | ✓ | References and declarations inside `scoping.preserve` tags or `data-bascik-preserve` subtrees remain literal. |
 
 ---
 
@@ -79,7 +113,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | `@keyframes` name                                  | `@keyframes spin {}`                    | ✓     | Name scoped; `animation:` and `animation-name:` references updated to match                                                                                                                                                                                                               |
 | `@media` query                                     | `@media (max-width: 600px) {}`          | ✓     | Media condition untouched; class names inside scoped normally                                                                                                                                                                                                                             |
 | `@supports`                                        | `@supports (display: grid) { .foo {} }` | ✓     | Class names inside `@supports` blocks are scoped normally.                                                                                                                                                                                                                                |
-| `@layer`                                           | `@layer base { .foo {} }`               | ✓     | Layer name scoped in all forms: declaration blocks, single-name and comma-list ordering statements.                                                                                                                                                                                       |
+| `@layer`                                           | `@layer base { .foo {} }`               | ✓     | Layer names are scoped in declaration blocks and single-name or comma-list ordering statements, including leading-hyphen names such as `--utils`.                                                                                                                                          |
 | `@container`                                       | `@container sidebar (min-width: …) {}`  | ✓     | Container names declared via `container-name:` or the `container:` shorthand are scoped; `@container name (…)` queries updated to match. Unnamed queries untouched.                                                                                                                       |
 | CSS custom properties                              | `--brand: #d3ff8d` / `var(--brand)`     | ✓     | Declarations and all `var()` references in the same file scoped together. `var(--prop, fallback)` is fully supported, the fallback value is preserved and the property name is scoped.                                                                                                   |
 | Multiple `animation:` values                       | `animation: a 1s, b 2s`                 | ✓     | Both keyframe name references are scoped when an `animation:` shorthand lists more than one animation.                                                                                                                                                                                    |
@@ -102,7 +136,7 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 
 | Feature                   | Status | Notes                                                                                                                    |
 | ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| CSS deduplication         | ✓     | When a component is used multiple times on a page, its CSS is injected only once.                                        |
+| CSS deduplication         | ✓     | Component CSS is normally injected once per type. Components containing resolvable `url(#id)` references emit per-instance CSS so each stylesheet targets that instance's scoped ID. |
 | `minify.identifiers`      | ✓     | In production builds, verbose names like `bascik__site-nav__a1b2c3__logo` are hashed to short strings (e.g. `ba1b2c3d`) for name compression. |
 | `minify.css`              | ✓     | Whitespace in the compiled `<style>` block is collapsed.                                                                 |
 | Comments                  | ✓     | Stripped before processing.                                                                                              |
@@ -128,6 +162,7 @@ Bascik rewrites DOM selector references inside component `<script>` tags to matc
 | `<script>` (no type)                                     | ✓     | Wrapped in an IIFE to prevent variable leakage between components.                                                                                                                                                                                          |
 | `<script type="text/javascript">`                        | ✓     | Wrapped in an IIFE.                                                                                                                                                                                                                                         |
 | `<script type="module">`                                 | ✓     | Not wrapped in an IIFE (modules are already isolated by spec). DOM selector references still rewritten.                                                                                                                                                     |
+| JavaScript MIME type minification                         | ✓     | Inline scripts with no type or `text/javascript`, `module`, `application/javascript`, `text/ecmascript`, and `application/ecmascript` are minified when `minify.js` is enabled. External scripts are left empty and unchanged. |
 | `<script type="application/json">` (and any non-JS type) | ✓     | Left completely untouched.                                                                                                                                                                                                                                  |
 | `<script data-bascik-build>`                             | ✓     | Executed at **transpile time** as a Node.js ESM module. The script's stdout is injected in place of the tag. Runs in both dev and build modes. Use `console.log()` / `process.stdout.write()` to output HTML. Top-level `import` and `await` are supported. |
 | `<script data-bascik-routes>`                            | ✓     | Executed at **build time** inside bracket templates (e.g. `[slug].html`). Standard output is parsed as a JSON array of `{ params, data? }` objects to expand the template into concrete static HTML pages. |

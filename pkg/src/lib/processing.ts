@@ -74,8 +74,8 @@ import {
   replaceTag,
   getFirstComponent,
   getTag,
-  minifyHtml,
   extractProps,
+  injectPropAttributes,
   injectProps,
   extractNamedSlotContent,
   extractDefaultSlotContent,
@@ -85,9 +85,13 @@ import {
   mergeAttributesOntoRoot,
   maskRawTextContent,
 } from "./components.ts";
+import { stripPreserveDirectives } from "./shielding.ts";
+import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
+import { isJavaScriptScript } from "./script-types.ts";
 import { minifyJs } from "./js-minifier.ts";
-import { deduplicateCss, minifyCss } from "./styles.ts";
+import { deduplicateCss } from "./styles.ts";
+import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
 import { getUniqueId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
@@ -232,8 +236,7 @@ const minifyScriptTagsInHtml = async (
   while ((m = regex.exec(html)) !== null) {
     const [full, open, code, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
-    const typeMatch = open.match(/type\s*=\s*["']?([^"'>\s]+)["']?/i);
-    if (typeMatch && typeMatch[1].toLowerCase() !== "text/javascript") continue;
+    if (!isJavaScriptScript(open)) continue;
     // Server scripts run at request time in Node.js — skip them here
     if (/\bdata-bascik-server\b/i.test(open)) continue;
     // Skip external scripts — no inline content to minify
@@ -438,14 +441,17 @@ export const recursivelyTranspile = (
     let currentStage = "";
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
+      const props = extractProps(component.content);
+      component.fileContent = injectPropAttributes(component.fileContent, props);
+
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
       const instanceId = getUniqueId(8);
       currentStage = "attribute scoping";
       component = applyTransforms(component, buildScopingPipeline(instanceId));
+      component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";
       // Inject props — always call so unused data-bascik-prop-* markers are stripped.
-      const props = extractProps(component.content);
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
@@ -995,7 +1001,8 @@ export const transpilePage = async (
   // from components like <code-block>) is preserved by minifyHtml's <pre> handling.
 
   // Gets all the text between the <body></body> tags
-  const { innerContent: body } = getTag(htmlWithBuildOutput, "body");
+  const bodyTag = getTag(htmlWithBuildOutput, "body");
+  const { innerContent: body } = bodyTag;
 
   if (!body) {
     throw new PageProcessingError(
@@ -1029,7 +1036,8 @@ export const transpilePage = async (
   }
 
   // Also transpile the <head> so components can be used there (e.g. shared <meta> tags)
-  const { innerContent: headRaw } = getTag(htmlWithBuildOutput, "head");
+  const headTag = getTag(htmlWithBuildOutput, "head");
+  const { innerContent: headRaw } = headTag;
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
@@ -1092,10 +1100,10 @@ export const transpilePage = async (
 
   const formattedComponentCss = cssMinifier ? await cssMinifier(componentCss) : componentCss;
 
-  let transpiledHead = `${transpiledHeadContent}${globalStylesHtml}
-    <style>
-    ${formattedComponentCss}
-    </style>`;
+  const componentStyleBlock = formattedComponentCss
+    ? `\n    <style>\n    ${formattedComponentCss}\n    </style>`
+    : "";
+  let transpiledHead = `${transpiledHeadContent}${globalStylesHtml}${componentStyleBlock}`;
   // Compress the entire head (removes newlines, collapses whitespace in inline <style> tags too)
 
   if (cssMinifier) {
@@ -1147,22 +1155,23 @@ export const transpilePage = async (
     transpiledHead = await minifyScriptTagsInHtml(transpiledHead, jsMinifier);
   }
 
-  // Puts our processed markup back between the <body></body> tags.
-  // The open tag is matched with attributes (`<body[^>]*>`) and preserved
-  // verbatim — `<body class="dark">` or `<head data-x>` must not silently
-  // drop the processed content (which is what a bare-<body>-only replace did).
-  let distHtml = htmlWithBuildOutput
-    // Use function replacements so that $1, $2, $& etc. in transpiledHtmlBody/Head
-    // are never interpreted as back-reference patterns.  The open tags are matched
-    // with attributes (`<body[^>]*>`) so e.g. `<body class="dark">` is preserved.
-    .replace(
-      /(<body[^>]*>)[\s\S]*?(<\/body>)/i,
-      (_m, open, close) => `${open}${transpiledHtmlBody}${close}`,
-    )
-    .replace(
-      /(<head[^>]*>)[\s\S]*?(<\/head>)/i,
-      (_m, open, close) => `${open}${transpiledHead}${close}`,
-    );
+  const replacements = [
+    { tag: bodyTag, content: transpiledHtmlBody },
+    { tag: headTag, content: transpiledHead },
+  ].filter(
+    (replacement): replacement is {
+      tag: typeof bodyTag & { contentStart: number; closeIndex: number };
+      content: string;
+    } => replacement.tag.contentStart !== undefined && replacement.tag.closeIndex !== undefined,
+  ).sort((a, b) => b.tag.contentStart - a.tag.contentStart);
+
+  let distHtml = htmlWithBuildOutput;
+  for (const { tag, content } of replacements) {
+    distHtml =
+      distHtml.slice(0, tag.contentStart) +
+      content +
+      distHtml.slice(tag.closeIndex);
+  }
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 

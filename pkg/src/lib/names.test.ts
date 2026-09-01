@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   minifyAttributeName,
-  obfuscateAttributeName,
   getAttributeNameHash,
   clearHashCache,
   getUniqueId,
@@ -59,14 +58,12 @@ describe("getAttributeNameHash", () => {
 describe("minifyAttributeName", () => {
   it("returns the name unchanged when minify.identifiers is false", () => {
     expect(minifyAttributeName("my-class")).toBe("my-class");
-    expect(obfuscateAttributeName("my-class")).toBe("my-class");
   });
 
   it("returns the hash when minify.identifiers is true", () => {
     (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers = true;
     const minified = minifyAttributeName("my-class");
     expect(minified).toMatch(/^b[0-9a-zA-Z]{11}$/);
-    expect(obfuscateAttributeName("my-class")).toBe(minified);
     (BascikConfig as { minify: { identifiers: boolean } }).minify.identifiers = false;
   });
 });
@@ -77,10 +74,9 @@ describe("getUniqueId", () => {
     expect(id).toMatch(/^[0-9a-f]{8}$/);
   });
 
-  it("rounds an odd length up to the nearest even number", () => {
-    // length=7 → rounds to 8 → randomBytes(4) → 8 hex chars
+  it("returns exactly the requested odd length", () => {
     const id = getUniqueId(7);
-    expect(id).toMatch(/^[0-9a-f]{8}$/);
+    expect(id).toMatch(/^[0-9a-f]{7}$/);
   });
 
   it("returns different values on each call", () => {

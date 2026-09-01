@@ -1,0 +1,7 @@
+<div class="card " data-testid="class-token-card">
+  <span id="class-token-status" data-testid="class-token-status">pending</span>
+</div>
+<script>
+  const emptyValue = "";
+  document.getElementById("class-token-status").textContent = emptyValue === "" ? "ready" : "corrupt";
+</script>

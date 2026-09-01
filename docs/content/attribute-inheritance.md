@@ -8,6 +8,8 @@ When Bascik transpiles a component, it reads the usage tag, extracts any inherit
 
 If a component template contains multiple root elements (for example, a heading followed by a paragraph), inherited attributes are merged onto the **first** root HTML element in the component template.
 
+Leading text nodes and metadata elements such as `<link>` and `<meta>` remain in place and do not consume inherited attributes. Bascik continues to the first content element, even when its quoted attribute values contain `>`.
+
 The demo above shows the usage tag and component template separately under Source, then combines them under Output → HTML.
 
 ## Class Merging
@@ -15,6 +17,8 @@ The demo above shows the usage tag and component template separately under Sourc
 When the root element already has a scoped `class`, the inherited class is **appended** rather than replacing it.
 
 In the demo output, the scoped `inherit-card` class and usage-site `featured-card` class both remain on the root `<article>`.
+
+When both the component root and usage tag define `style`, Bascik appends the usage declarations after the root declarations. Normal CSS cascade rules therefore let the usage declaration win when both set the same property.
 
 ## What Gets Inherited
 
@@ -26,6 +30,8 @@ Common use cases:
 - **Accessibility:** `aria-label`, `role`, `aria-hidden`
 - **Testing hooks:** `data-testid`, `data-cy`
 - **Custom data:** any `data-*` attribute except `data-bascik-*`
+
+Attribute inheritance is root-only. To send a prop to an attribute on a non-root element, use [`data-bascik-attr-{attribute}="{propName}"`](/props#put-a-prop-in-an-attribute). Use slots when the consumer should provide the element or richer markup itself.
 
 ## What Happens with `id`
 

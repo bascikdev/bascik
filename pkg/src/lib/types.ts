@@ -42,6 +42,10 @@ export interface BascikComponent {
   innerContent?: string;
   /** Position of the tag in the HTML string */
   index?: number;
+  /** Internal original-to-scoped ID map shared with later CSS processing. */
+  scopedIdNames?: Record<string, string>;
+  /** Internal flag for component instances whose CSS references per-instance IDs. */
+  requiresPerInstanceCss?: boolean;
 }
 
 export type ComponentList = Record<string, Omit<BascikComponent, "name">>;

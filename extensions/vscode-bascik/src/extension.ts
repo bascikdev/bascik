@@ -40,6 +40,42 @@ function findComponentMap(workspaceRoot: string): Map<string, string> {
   return components;
 }
 
+function findHtmlFiles(workspaceRoot: string): string[] {
+  const files: string[] = [];
+  const stack = [path.join(workspaceRoot, 'src')];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || !fs.existsSync(current)) continue;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.html')) {
+        files.push(fullPath);
+      }
+    }
+  }
+  return files;
+}
+
+function componentUsageSuppliesProp(
+  workspaceRoot: string,
+  componentName: string,
+  propName: string,
+): boolean {
+  const escapedComponentName = componentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedPropName = propName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const usageRegex = new RegExp(
+    `<${escapedComponentName}(?![\\w-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    'gi',
+  );
+  const propRegex = new RegExp(`\\sdata-bascik-prop-${escapedPropName}\\s*=`, 'i');
+  return findHtmlFiles(workspaceRoot).some((filePath) => {
+    const html = fs.readFileSync(filePath, 'utf8');
+    return Array.from(html.matchAll(usageRegex)).some((match) => propRegex.test(match[0]));
+  });
+}
+
 function getWorkspaceRoot(): string | undefined {
   const folder = vscode.workspace.workspaceFolders?.[0];
   return folder?.uri.fsPath;
@@ -126,6 +162,14 @@ function findMatchingClose(
   return -1;
 }
 
+function maskHtmlRawTextContents(html: string): string {
+  return html.replace(
+    /(<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+    (_match, openTag: string, _tagName: string, content: string, closeTag: string) =>
+      `${openTag}${' '.repeat(content.length)}${closeTag}`,
+  );
+}
+
 function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Diagnostic[] {
   const { languageId } = document;
 
@@ -135,6 +179,9 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
 
   const text = document.getText();
   const diagnostics: vscode.Diagnostic[] = [];
+  const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
+  const isComponentDocument =
+    document.uri.scheme === 'file' && normalizedDocumentPath.includes('/src/components/');
 
   // Warn if a component file name in src/components is not hyphenated per WHATWG HTML §4.13
   if (languageId === 'html' && document.uri.scheme === 'file') {
@@ -206,6 +253,117 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
+    if (isComponentDocument) {
+      const referenceScanText = maskHtmlRawTextContents(text)
+        .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => ' '.repeat(comment.length));
+      const declaredIds = new Set(
+        Array.from(referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi))
+          .map((match) => match[1] ?? match[2])
+          .filter((id): id is string => Boolean(id)),
+      );
+      const idReferenceAttributeRegex = /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+      let idReferenceMatch: RegExpExecArray | null;
+      while ((idReferenceMatch = idReferenceAttributeRegex.exec(referenceScanText)) !== null) {
+        const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? '';
+        for (const id of value.trim().split(/\s+/).filter(Boolean)) {
+          if (declaredIds.has(id)) continue;
+          const valueOffset = idReferenceMatch[0].indexOf(id);
+          const start = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0));
+          const end = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0) + id.length);
+          const diagnostic = new vscode.Diagnostic(
+            new vscode.Range(start, end),
+            `ID reference "${id}" is not declared in this component and will be left unscoped.`,
+            vscode.DiagnosticSeverity.Information,
+          );
+          diagnostic.source = 'bascik';
+          diagnostics.push(diagnostic);
+        }
+      }
+      const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)')/gi;
+      let fragmentReferenceMatch: RegExpExecArray | null;
+      while ((fragmentReferenceMatch = fragmentReferenceRegex.exec(referenceScanText)) !== null) {
+        const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2];
+        if (!id || declaredIds.has(id)) continue;
+        const idOffset = fragmentReferenceMatch[0].indexOf(id);
+        const start = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0));
+        const end = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0) + id.length);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `ID reference "${id}" is not declared in this component and will be left unscoped.`,
+          vscode.DiagnosticSeverity.Information,
+        );
+        diagnostic.source = 'bascik';
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    const preserveDirectiveRegex = /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
+    let preserveMatch: RegExpExecArray | null;
+    while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {
+      if (preserveMatch[1] === undefined) continue;
+      const value = preserveMatch[2] ?? preserveMatch[3] ?? '';
+      for (const preserveToken of value.trim().split(/\s+/).filter(Boolean)) {
+        if (preserveToken === 'id' || preserveToken === 'name' || preserveToken === 'class') continue;
+        const tokenOffset = preserveMatch[0].indexOf(preserveToken);
+        const start = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0));
+        const end = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0) + preserveToken.length);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `Unknown data-bascik-preserve token "${preserveToken}". Valid tokens are id, name, and class.`,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diagnostic.source = 'bascik';
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    const formOpenTagRegex = /<form\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    let formMatch: RegExpExecArray | null;
+    while (isComponentDocument && (formMatch = formOpenTagRegex.exec(text)) !== null) {
+      const actionMatch = formMatch[0].match(/\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      const action = actionMatch?.[1] ?? actionMatch?.[2];
+      if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
+      const preserveMatch = formMatch[0].match(/\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i);
+      const preservesName = preserveMatch !== null && (
+        preserveMatch[1] === undefined ||
+        (preserveMatch[1] ?? preserveMatch[2] ?? '').trim().split(/\s+/).includes('name')
+      );
+      if (preservesName) continue;
+      const start = document.positionAt(formMatch.index);
+      const end = document.positionAt(formMatch.index + formMatch[0].length);
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        'External form actions require data-bascik-preserve="name" so submitted field names remain literal.',
+        vscode.DiagnosticSeverity.Warning,
+      );
+      diagnostic.source = 'bascik';
+      diagnostics.push(diagnostic);
+    }
+
+    const workspaceRoot = getWorkspaceRoot();
+    if (
+      workspaceRoot &&
+      isComponentDocument
+    ) {
+      const componentName = normalizeComponentName(document.uri.fsPath);
+      const directiveRegex = /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi;
+      let directiveMatch: RegExpExecArray | null;
+      while ((directiveMatch = directiveRegex.exec(text)) !== null) {
+        const targetName = directiveMatch[1];
+        const propName = directiveMatch[2] ?? directiveMatch[3];
+        if (componentUsageSuppliesProp(workspaceRoot, componentName, propName)) continue;
+        const start = document.positionAt(directiveMatch.index);
+        const end = document.positionAt(directiveMatch.index + directiveMatch[0].length);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `data-bascik-attr-${targetName} references prop "${propName}", but no <${componentName}> usage supplies data-bascik-prop-${propName}.`,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diagnostic.source = 'bascik';
+        diagnostics.push(diagnostic);
+      }
+    }
+
     let scriptMatch: RegExpExecArray | null;
     while ((scriptMatch = scriptBlockRe.exec(text)) !== null) {
       const openTag = scriptMatch[1];
@@ -371,7 +529,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(refreshDiagnostics),
-    vscode.workspace.onDidChangeTextDocument((event) => refreshDiagnostics(event.document)),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      refreshDiagnostics(event.document);
+      if (event.document.languageId === 'html') {
+        for (const document of vscode.workspace.textDocuments) {
+          if (document !== event.document && document.languageId === 'html') {
+            refreshDiagnostics(document);
+          }
+        }
+      }
+    }),
   );
 }
 

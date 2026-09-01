@@ -31,6 +31,7 @@ export const NAV: NavSection[] = [
       { href: '/components', label: 'Components' },
       { href: '/scoped-styles', label: 'Scoped Styles' },
       { href: '/scoped-javascript', label: 'Scoped JavaScript' },
+      { href: '/preserve', label: 'Preserve Scoping' },
       { href: '/slots', label: 'Slots' },
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },

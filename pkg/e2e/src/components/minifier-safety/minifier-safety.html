@@ -1,0 +1,6 @@
+<section data-testid="minifier-safety">
+  <script type="application/ld+json" data-testid="json-ld">{"description":"<!-- remains data"}</script>
+  <p data-testid="document-tail">Content after data script</p>
+  <pre data-testid="script-sample"><script data-testid="nested-script">const sampleOnly = "inside pre";</script></pre>
+  <script src="/minifier-external.js" data-testid="external-script"></script>
+</section>

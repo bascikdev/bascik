@@ -22,6 +22,7 @@ pkg/bin/update-e2e-coverage.ts
 
 # E2E fixture content and tests with intentional dynamic/script patterns.
 pkg/e2e/src/components/head-meta/head-meta.html
+pkg/e2e/src/components/preserve-demo/preserve-demo.html
 pkg/src/lib/components.test.ts
 
 # Core library hotspots use controlled dynamic regex construction and intentional script assembly.

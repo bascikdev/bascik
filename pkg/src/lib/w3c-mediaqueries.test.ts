@@ -18,9 +18,9 @@ import {
   scopeLayerNames,
   scopeContainerNames,
   scopeInlineStyleTags,
-  minifyCss,
   shieldCssStrings,
 } from './styles.ts';
+import { minifyCss } from './css-minifier.ts';
 
 describe('W3C Media Queries 20120229 & Media Queries 4 Conformance', () => {
   const componentName = 'media-box';

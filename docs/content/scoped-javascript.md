@@ -34,6 +34,22 @@ Place the same component on a page more than once and each instance runs indepen
 
 The two counters at the top of this page are the same component. Change either count, then inspect Output → HTML and Output → JS to compare their unique instance IDs.
 
+## HTML ID References
+
+Bascik keeps HTML relationships synchronized with scoped IDs. References such as `<label for>`, ARIA ID attributes, fragment-only links, SVG fragment attributes, and inline `style="...url(#id)"` values are rewritten automatically when the target ID is declared in the same component.
+
+```html
+<label for="email">Email</label>
+<input id="email" aria-describedby="email-help">
+<p id="email-help">Use your work address.</p>
+```
+
+Each component instance receives its own scoped IDs, and every local reference points to the matching target in that instance. With identifier minification enabled, references reuse the exact declaration hash.
+
+References that do not resolve in the same component remain byte-identical. This preserves component links to literal page-shell IDs, but a reference to an ID declared by another component cannot be scoped safely because that target is instance-specific. Keep related declarations and references in one component, move the target to the page shell, or use [Preserve Scoping](/preserve) when an external system owns the literal ID.
+
+`usemap` is the exception to the ID rule: `<img usemap="#choices">` points to `<map name="choices">`, so it is rewritten only when `name` scoping is enabled.
+
 ## Pitfall: Class-Based DOM Lookups
 
 Because class names are shared across all instances of the same component (for CSS deduplication), `document.querySelector('.my-class')` always returns the **first** matching element in the document. When the same component appears more than once, every instance's script ends up targeting the first instance's elements.

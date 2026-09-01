@@ -6,6 +6,7 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
+import { maskElementContents } from "./shielding.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -257,7 +258,9 @@ export const listComponents = async (): Promise<ComponentList> => {
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
-        minifiedContent = minifyHtml(cleanedContent);
+        minifiedContent = BascikConfig.minify?.html
+          ? minifyHtml(cleanedContent)
+          : cleanedContent;
       } catch (minErr) {
         const behavior = BascikConfig.onMinifyError ?? "error";
         if (behavior === "error") {
@@ -328,15 +331,7 @@ export const maskRawTextContent = (htmlString: string): string => {
     );
   }
   if (hasRawTags) {
-    masked = masked.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `(<(script|style|textarea)(?:${ATTR_VALUE})>)([\\s\\S]*?)(<\\/\\2\\s*>)`,
-        "gi",
-      ),
-      (_m, open: string, _tag: string, content: string, close: string) =>
-        `${open}${" ".repeat(content.length)}${close}`,
-    );
+    masked = maskElementContents(masked, ["script", "style", "textarea"]);
   }
   return masked;
 };
@@ -356,7 +351,7 @@ const findOpenTag = (
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRegexp = new RegExp(`<${tn}(?:${ATTR_VALUE})>`, "i");
+  const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "i");
   const openTagMatch = openTagRegexp.exec(masked ?? maskRawTextContent(htmlString));
   if (!openTagMatch) return null;
   return {
@@ -415,24 +410,7 @@ export const replaceTag = (
   );
 };
 
-export const getTagContents = (
-  htmlString: string,
-  tagName: string,
-): { content?: string; innerContent?: string } => {
-  if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const regexp = new RegExp(
-    `(?<content><${tn}[^>]*>(?<innerContent>([\\s\\S]*?))<\\/${tn}>)`,
-    "i",
-  );
-  const match = htmlString.match(regexp);
-  if (!match) return {};
-  // { content, innerContent }
-  return { ...match.groups };
-};
-
-const componentRegexCache = new WeakMap<ComponentList, { keysCount: number; regex: RegExp | null }>();
+const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
 
 export const getFirstComponent = (
   htmlString: string,
@@ -441,21 +419,22 @@ export const getFirstComponent = (
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
 
-  const currentKeyCount = Object.keys(componentList).length;
+  const componentNames = Object.keys(componentList)
+    .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
+    .sort((a, b) => b.length - a.length || a.localeCompare(b));
+  const namesKey = componentNames.join("\0");
   let cached = componentRegexCache.get(componentList);
-  if (!cached || cached.keysCount !== currentKeyCount) {
+  if (!cached || cached.namesKey !== namesKey) {
     // Super important here, reverse, makes it so we're matching on the most specific tag first
     // Meaning, it will find test-comp-clone before test-comp,
     // because reverse, the longer tag will be first in the regexp, and therefore match first.
     // It's like how an ingress controller works.
-    const componentNames = Object.keys(componentList)
-      .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .sort((a, b) => b.length - a.length);
-    const regex = componentNames.length === 0
+    const escapedComponentNames = componentNames
+      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = escapedComponentNames.length === 0
       ? null
-      : new RegExp(`<\\b(${componentNames.join("|")})\\b[\\s\\S]*?>`, "i");
-    cached = { keysCount: currentKeyCount, regex };
+      : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "i");
+    cached = { namesKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
@@ -482,7 +461,12 @@ export const getTag = (
   tagName: string,
   componentList?: ComponentList,
   masked?: string,
-): Partial<BascikComponent> => {
+): Partial<BascikComponent> & {
+  startIndex?: number;
+  contentStart?: number;
+  closeIndex?: number;
+  endIndex?: number;
+} => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Try paired tags: <tagName ...>content</tagName>
@@ -498,24 +482,44 @@ export const getTag = (
       const closeTagRegexp = new RegExp(`^<\\/${tn}\\s*>`, "i");
       const closeTagMatch = closeTagRegexp.exec(htmlString.slice(closeIndex));
       if (closeTagMatch) {
-        const returnObj = {
+        const returnObj: Partial<BascikComponent> & {
+          startIndex?: number;
+          contentStart?: number;
+          closeIndex?: number;
+          endIndex?: number;
+        } = {
           content: htmlString.slice(
             openTag.start,
             closeIndex + closeTagMatch[0].length,
           ),
           innerContent: htmlString.slice(openTag.end, closeIndex),
         };
+        Object.defineProperties(returnObj, {
+          startIndex: { value: openTag.start },
+          contentStart: { value: openTag.end },
+          closeIndex: { value: closeIndex },
+          endIndex: { value: closeIndex + closeTagMatch[0].length },
+        });
         if (!componentList) return returnObj;
         return { ...returnObj, ...componentList[tagName.toLowerCase()] };
       }
     }
   }
 
+  if (openTag) {
+    const returnObj = {
+      content: openTag.openTag,
+      innerContent: "",
+    };
+    if (!componentList) return returnObj;
+    return { ...returnObj, ...componentList[tagName.toLowerCase()] };
+  }
+
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const selfClosingPattern = new RegExp(
-    `<${tn}([\\s\\S]*?)\\/?>`,
+    `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
     "i",
   );
   const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
@@ -534,13 +538,26 @@ export const getTag = (
   return {};
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HTML minification
-// ─────────────────────────────────────────────────────────────────────────────
-
-export { minifyHtml, extractScriptTags } from "./html-minifier.ts";
-
 // ─── Props ────────────────────────────────────────────────────────────────────
+
+const decodePropEntities = (value: string): string => value.replace(
+  /&(amp|lt|gt|quot|#39|#x27);/gi,
+  (_match, entity: string) => ({
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    "#39": "'",
+    "#x27": "'",
+  })[entity.toLowerCase()] ?? _match,
+);
+
+const escapePropValue = (value: string): string => value
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
 
 /**
  * Extract data-bascik-prop-* attributes from a component usage tag string.
@@ -551,14 +568,97 @@ export const extractProps = (
 ): Record<string, string> => {
   const props: Record<string, string> = {};
   if (!componentContent) return props;
+  const openingTag = componentContent.match(
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
+  )?.[0];
+  if (!openingTag) return props;
   // Accept both double-quoted and single-quoted prop values,
   // e.g. data-bascik-prop-title="Hi" or data-bascik-prop-title='Hi'.
   const regexp = /data-bascik-prop-([\w-]+)=("[^"]*"|'[^']*')/gi;
   let match;
-  while ((match = regexp.exec(componentContent)) !== null) {
-    props[match[1]] = match[2].slice(1, -1);
+  while ((match = regexp.exec(openingTag)) !== null) {
+    const followingCharacter = openingTag[match.index + match[0].length];
+    if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
+      console.warn(
+        `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
+      );
+      continue;
+    }
+    props[match[1]] = decodePropEntities(match[2].slice(1, -1));
   }
   return props;
+};
+
+export const injectPropAttributes = (
+  fileContent: string | undefined,
+  props: Record<string, string>,
+): string => {
+  if (!fileContent) return "";
+  if (!fileContent.includes("data-bascik-attr-")) return fileContent;
+
+  return fileContent.replace(
+    new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
+    (openingTag: string) => {
+      if (!openingTag.includes("data-bascik-attr-")) return openingTag;
+      const directives: Array<{
+        start: number;
+        end: number;
+        targetName: string;
+        rawPropName?: string;
+      }> = [];
+      const directiveRegex = /\s+data-bascik-attr-([^\s=/>]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+))?/gi;
+      let directiveMatch: RegExpExecArray | null;
+      while ((directiveMatch = directiveRegex.exec(openingTag)) !== null) {
+        directives.push({
+          start: directiveMatch.index,
+          end: directiveMatch.index + directiveMatch[0].length,
+          targetName: directiveMatch[1],
+          rawPropName: directiveMatch[2],
+        });
+      }
+
+      let result = openingTag;
+      for (let index = directives.length - 1; index >= 0; index--) {
+        const directive = directives[index];
+        result = result.slice(0, directive.start) + result.slice(directive.end);
+      }
+
+      for (const { targetName, rawPropName } of directives) {
+        const isQuoted = rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
+        const propName = isQuoted ? rawPropName?.slice(1, -1) : undefined;
+        if (
+          !/^[a-zA-Z_:][\w:.-]*$/.test(targetName) ||
+          !propName ||
+          !/^[a-zA-Z0-9_-]+$/.test(propName)
+        ) {
+          console.warn(
+            `Ignoring malformed data-bascik-attr-${targetName}: expected a quoted prop name.`,
+          );
+          continue;
+        }
+
+        const propValue = props[propName];
+        if (propValue === undefined) continue;
+        const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const targetRegex = new RegExp(
+          `\\s+${escapedTargetName}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
+          "i",
+        );
+        const attribute = ` ${targetName}="${escapePropValue(propValue)}"`;
+        if (targetRegex.test(result)) {
+          console.warn(
+            `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
+          );
+          result = result.replace(targetRegex, () => attribute);
+        } else {
+          result = result.replace(/(\s*\/?>)$/, (_match, close: string) => `${attribute}${close}`);
+        }
+      }
+
+      return result;
+    },
+  );
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -583,24 +683,39 @@ export const injectProps = (
     if (!result.includes(propName)) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
-    // Match: <tagName [attrsBefore] data-bascik-prop-name[=value] [attrsAfter]>...</tagName>
-    // The attr scans are quote-aware so a `>` inside a quoted attribute value
-    // (e.g. title="a > b") does not end the opening tag early.
-    result = result.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `<(\\w+(?:-\\w+)*?)(${ATTR_VALUE}?)\\s+${attrName}(?:=("[^"]*"|'[^']*'))?(${ATTR_VALUE})>([\\s\\S]*?)<\\/\\1>`,
-        "gi",
-      ),
-      (
-        _match: string,
-        tagName: string,
-        attrsBefore: string,
-        _markerValue: string | undefined,
-        attrsAfter: string,
-        _oldContent: string,
-      ) => `<${tagName}${attrsBefore}${attrsAfter}>${propValue}</${tagName}>`,
+    const escapedPropValue = escapePropValue(propValue);
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const receiverRe = new RegExp(
+      `<(\\w+(?:-\\w+)*?)(${ATTR_VALUE}?)\\s+${attrName}(?!\\s*=)(?=\\s|>)(${ATTR_VALUE})>`,
+      "gi",
     );
+    let searchIndex = 0;
+    while (searchIndex < result.length) {
+      receiverRe.lastIndex = searchIndex;
+      const receiver = receiverRe.exec(result);
+      if (!receiver) break;
+      const [openTag, tagName, attrsBefore, attrsAfter] = receiver;
+      const contentStart = receiver.index + openTag.length;
+      const closeIndex = findMatchingClose(result, tagName, contentStart);
+      if (closeIndex === -1) {
+        searchIndex = contentStart;
+        continue;
+      }
+      const closeTag = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(
+        result.slice(closeIndex),
+      )?.[0];
+      if (!closeTag) {
+        searchIndex = contentStart;
+        continue;
+      }
+      const replacement =
+        `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}${closeTag}`;
+      result =
+        result.slice(0, receiver.index) +
+        replacement +
+        result.slice(closeIndex + closeTag.length);
+      searchIndex = receiver.index + replacement.length;
+    }
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.
   // Only strip markers that have NO value (prop receivers, e.g. `data-bascik-prop-label`
@@ -628,9 +743,9 @@ const findMatchingClose = (
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return -1;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openRe = new RegExp(`<${tn}[\\s>]`, "gi");
+  const openRe = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const closeRe = new RegExp(`<\\/${tn}>`, "gi");
+  const closeRe = new RegExp(`<\\/${tn}\\s*>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
   const maskedHtml = masked ?? maskRawTextContent(html);
@@ -647,7 +762,9 @@ const findMatchingClose = (
       if (depth === 0) return closeMatch.index;
       pos = closeMatch.index + closeMatch[0].length;
     } else {
-      depth++;
+      if (!/\/\s*>$/.test(openMatch[0])) {
+        depth++;
+      }
       pos = openMatch.index + openMatch[0].length;
     }
   }
@@ -855,37 +972,69 @@ export const mergeAttributesOntoRoot = (
   attrs: Record<string, string>,
 ): string => {
   if (!Object.keys(attrs).length) return html;
-  return html.replace(
-    /^((?:\s*(?:<!--[\s\S]*?-->|<(?:script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/(?:script|style)\s*>))*\s*)(<[a-zA-Z][\w-]*)((?:\s[^>]*?)?)(\s*\/?>)/i,
-    (_match: string, leading: string, tagName: string, existing: string, close: string) => {
-      let attrStr = existing || "";
-      const existingNames = new Set<string>();
-      const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
-      let match: RegExpExecArray | null;
-      while ((match = attrRegex.exec(attrStr)) !== null) {
-        existingNames.add(match[1].toLowerCase());
-      }
+  const masked = maskRawTextContent(html);
+  const tagRegex = new RegExp(`<([a-zA-Z][\\w-]*)(?:${ATTR_VALUE})>`, "gi");
+  const metadataTags = new Set(["link", "meta", "script", "style"]);
+  let rootMatch: RegExpExecArray | null = null;
+  let candidate: RegExpExecArray | null;
+  while ((candidate = tagRegex.exec(masked)) !== null) {
+    if (!metadataTags.has(candidate[1].toLowerCase())) {
+      rootMatch = candidate;
+      break;
+    }
+  }
+  if (!rootMatch) return html;
 
-      for (const [name, value] of Object.entries(attrs)) {
-        if (name === "class" && value) {
-          if (/class="/.test(attrStr)) {
-            attrStr = attrStr.replace(
-              /class="([^"]*)"/,
-              (_, cls) => `class="${cls} ${value}"`,
-            );
-          } else if (/class='/.test(attrStr)) {
-            attrStr = attrStr.replace(
-              /class='([^']*)'/,
-              (_, cls) => `class='${cls} ${value}'`,
-            );
-          } else {
-            attrStr += ` class="${value}"`;
-          }
-        } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
-          attrStr += ` ${name}="${value}"`;
-        }
+  const rootTag = html.slice(rootMatch.index, rootMatch.index + rootMatch[0].length);
+  const rootParts = /^<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)(\s*\/?>)$/i.exec(rootTag);
+  if (!rootParts) return html;
+  const [, tagName, existing, close] = rootParts;
+  let attrStr = existing || "";
+  const existingNames = new Set<string>();
+  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRegex.exec(attrStr)) !== null) {
+    existingNames.add(match[1].toLowerCase());
+  }
+
+  for (const [name, value] of Object.entries(attrs)) {
+    if (name === "class" && value) {
+      if (/class="/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /class="([^"]*)"/,
+          (_, classes) => `class="${classes} ${value}"`,
+        );
+      } else if (/class='/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /class='([^']*)'/,
+          (_, classes) => `class='${classes} ${value}'`,
+        );
+      } else {
+        attrStr += ` class="${value}"`;
       }
-      return `${leading}${tagName}${attrStr}${close}`;
-    },
+    } else if (name === "style" && value) {
+      if (/style="/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /style="([^"]*)"/,
+          (_, style) => `style="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+        );
+      } else if (/style='/.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /style='([^']*)'/,
+          (_, style) => `style='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+        );
+      } else {
+        attrStr += ` style="${value}"`;
+      }
+    } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
+      attrStr += ` ${name}="${value}"`;
+    }
+  }
+
+  const mergedRoot = `<${tagName}${attrStr}${close}`;
+  return (
+    html.slice(0, rootMatch.index) +
+    mergedRoot +
+    html.slice(rootMatch.index + rootTag.length)
   );
 };

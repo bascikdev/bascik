@@ -96,6 +96,126 @@ suite('Extension Integration Suite', () => {
   });
 
   suite('Diagnostics', () => {
+    test('reports info when an ID reference is not declared in the component', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'id-reference-missing.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const matches = diagnostics.filter((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      );
+      assert.strictEqual(matches.length, 2);
+      assert.ok(matches.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Information));
+    });
+
+    test('does not report info when an ID reference resolves locally', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'id-reference-local.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      ));
+    });
+
+    test('does not report component ID reference info for non-component HTML', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<label for="missing">Email</label><a href="#outside">Outside</a>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      ));
+    });
+
+    test('ignores ID references inside component raw-text elements', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'id-reference-raw-text.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri).filter((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      );
+      assert.deepStrictEqual(
+        diagnostics.map((diagnostic) => diagnostic.message),
+        ['ID reference "outside" is not declared in this component and will be left unscoped.'],
+      );
+    });
+
+    test('warns when data-bascik-preserve contains an unknown token', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<div data-bascik-preserve="id href"></div>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('Unknown data-bascik-preserve token "href"'),
+      );
+      assert.ok(match, 'Expected warning for an unknown preserve token');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('does not warn for an external form outside a component file', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<form action="https://forms.example/submit"><input name="email"></form>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('External form actions require data-bascik-preserve="name"'),
+      ));
+    });
+
+    test('warns when a component external form does not preserve name attributes', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'external-form.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('External form actions require data-bascik-preserve="name"'),
+      );
+      assert.ok(match, 'Expected warning for an external form with scoped names');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('accepts an external form that preserves name attributes', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<form action="https://forms.example/submit" data-bascik-preserve="name"><input name="email"></form>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('External form actions require data-bascik-preserve="name"'),
+      ));
+    });
+
+    test('warns when no usage supplies the prop named by an attribute directive', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'attribute-card.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('data-bascik-attr-href references prop "link"'),
+      );
+      assert.ok(match, 'Expected warning for an attribute directive prop missing from every usage');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
     test('reports error when script has both data-bascik-build and data-bascik-server', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',

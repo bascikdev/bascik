@@ -6,12 +6,10 @@ import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
-  getCssClasses,
   getKeyframeNames,
   prefixKeyframes,
   removeIdSelectors,
   removeCommentsFromCss,
-  minifyCss,
   scopeCssCustomProperties,
   scopeLayerNames,
   scopeContainerNames,
@@ -32,6 +30,10 @@ import {
   resolveCssImportsSync,
   hoistCssImports,
 } from "./styles.ts";
+import { minifyCss } from "./css-minifier.ts";
+import { prefixElementAttribute } from "./javascript.ts";
+import { BascikConfig } from "./config.ts";
+import type { BascikComponent } from "./types.ts";
 
 const css = `
 .navigation ul {
@@ -209,26 +211,6 @@ describe("addElementClassesInHtml", () => {
   });
 });
 
-describe("getCssClasses", () => {
-  it("test", () => {
-    expect(getCssClasses(css)).toStrictEqual([
-      ".navigation ul {\n" +
-      "  list-style-type: none;\n" +
-      "  margin: unset;\n" +
-      "  padding: unset;\n" +
-      "}",
-      ".home.logo {\n" +
-      "  background-color: #fff;\n" +
-      "  color: #18191b;\n" +
-      "  padding: 4px;\n" +
-      "  user-select: none;\n" +
-      "  animation: rotateLogo 2s infinite alternate;\n" +
-      "}",
-      ".home.logo {\n    background-color: #d3ff8d;\n  }",
-    ]);
-  });
-});
-
 describe("addIdClassesInHtml", () => {
   it("adds id class to element with single-quoted class attribute", () => {
     const html = "<div id=\"btn\" class='btn-base'></div>";
@@ -253,6 +235,16 @@ describe("getKeyframeNames", () => {
 describe("prefixKeyframes", () => {
   it("test", () => {
     expect(prefixKeyframes(css, "my-comp")).toBe(prefixKeyframesRes);
+  });
+
+  it("preserves replacement tokens in scoped keyframe names", () => {
+    const result = prefixKeyframes(
+      "@keyframes spin { from { opacity: 0; } } .box { animation: spin 1s; }",
+      "my$&$1$`comp",
+    );
+    const scoped = "bascik__my$&$1$`comp__keyframe__spin";
+    expect(result).toContain(`@keyframes ${scoped}`);
+    expect(result).toContain(`animation: ${scoped} 1s`);
   });
 });
 
@@ -514,6 +506,34 @@ describe("scopeCssCustomProperties – @property declarations", () => {
 });
 
 describe("deduplicateCss", () => {
+  it("emits every instance that contains a CSS fragment reference", () => {
+    const usedComponents = [
+      {
+        name: "svg-icon",
+        cssFileContent: ".bascik__svg-icon__first__icon{fill:url(#first-gradient)}",
+        requiresPerInstanceCss: true,
+      },
+      {
+        name: "svg-icon",
+        cssFileContent: ".bascik__svg-icon__second__icon{fill:url(#second-gradient)}",
+        requiresPerInstanceCss: true,
+      },
+    ];
+    const css = deduplicateCss(usedComponents);
+    expect(css).toContain("first-gradient");
+    expect(css).toContain("second-gradient");
+  });
+
+  it("still deduplicates ordinary components when fragment components opt out", () => {
+    const usedComponents = [
+      { name: "card", cssFileContent: ".card{}" },
+      { name: "card", cssFileContent: ".card{}" },
+      { name: "svg-icon", cssFileContent: ".first{}", requiresPerInstanceCss: true },
+      { name: "svg-icon", cssFileContent: ".second{}", requiresPerInstanceCss: true },
+    ];
+    expect(deduplicateCss(usedComponents)).toBe(".card{} .first{} .second{}");
+  });
+
   it("returns CSS for each unique component once", () => {
     const usedComponents = [
       { name: "my-btn", cssFileContent: ".btn{color:red}" },
@@ -545,6 +565,113 @@ describe("deduplicateCss", () => {
       { name: "a", cssFileContent: ".a{}" },
     ];
     expect(deduplicateCss(usedComponents)).toBe(".a{} .b{}");
+  });
+});
+
+describe("CSS ID fragment integration", () => {
+  it("rewrites CSS fragments when class scoping is disabled", () => {
+    const component = prefixElementAttribute(
+      {
+        name: "svg-icon",
+        fileContent: '<svg><linearGradient id="grad"></linearGradient></svg>',
+        cssFileContent: ".icon { fill: url(#grad); }",
+      },
+      "id",
+      "first123",
+    );
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
+  it("rewrites inline CSS fragments when class scoping is disabled", () => {
+    const component = prefixElementAttribute(
+      {
+        name: "svg-icon",
+        fileContent:
+          '<style>.icon { fill: url(#grad); }</style><svg><linearGradient id="grad"></linearGradient></svg>',
+      },
+      "id",
+      "first123",
+    );
+    expect(component.fileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
+  it("rewrites url(#grad) to match a scoped svg gradient id", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
+  it("uses normal per-instance CSS when global deduplication is false", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", false);
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.cssFileContent).toContain(".bascik__svg-icon__first123__icon");
+  });
+
+  it("leaves a fragment for a preserved ID untouched", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg data-bascik-preserve="id"><linearGradient id="grad"></linearGradient></svg>',
+      cssFileContent: ".icon { fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain("url(#grad)");
+    expect(component.requiresPerInstanceCss).toBeUndefined();
+  });
+
+  it("uses the declaration hash in CSS when identifiers are minified", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      let component: BascikComponent = {
+        name: "svg-icon",
+        fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+        cssFileContent: ".icon { fill: url(#grad); }",
+      };
+      component = prefixElementAttribute(component, "id", "first123");
+      const scopedId = component.fileContent.match(/id="([^"]+)"/)?.[1];
+      component = prefixElementAttribute(component, "class", "first123", true);
+      expect(component.cssFileContent).toContain(`url(#${scopedId})`);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("keeps real URLs byte-identical while rewriting local fragments", () => {
+    let component: BascikComponent = {
+      name: "svg-icon",
+      fileContent: '<svg><linearGradient id="grad"></linearGradient><path class="icon"></path></svg>',
+      cssFileContent: ".icon { background: url(/img/x.png); mask: url(sprite.svg#icon); fill: url(#grad); }",
+    };
+    component = prefixElementAttribute(component, "id", "first123");
+    component = prefixElementAttribute(component, "class", "first123", true);
+    expect(component.cssFileContent).toContain("url(/img/x.png)");
+    expect(component.cssFileContent).toContain("url(sprite.svg#icon)");
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
   });
 });
 
@@ -887,6 +1014,12 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
 // ─── scopeLayerNames ─────────────────────────────────────────────────────────
 
 describe("scopeLayerNames", () => {
+  it("scopes a leading-hyphen layer name", () => {
+    expect(scopeLayerNames("@layer --utils { .box { color: red; } }", "my-comp")).toContain(
+      "@layer bascik__my-comp__layer__--utils",
+    );
+  });
+
   it("scopes a single @layer declaration block", () => {
     const css = "@layer base { .foo { color: red; } }";
     const result = scopeLayerNames(css, "my-comp");
@@ -1670,6 +1803,13 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
 // ─── CSS @import Resolution & Hoisting ────────────────────────────────────────
 
 describe("CSS @import resolution and hoisting", () => {
+  it("keeps replacement tokens literal in unresolved async and sync imports", async () => {
+    const css = '@import "$&.css";';
+    const expected = '/* @import "$&.css" not found */';
+    expect(await resolveCssImports(css, "/missing/index.css")).toBe(expected);
+    expect(resolveCssImportsSync(css, "/missing/index.css")).toBe(expected);
+  });
+
   describe("isRemoteCssUrl", () => {
     it("identifies remote and data URLs", () => {
       expect(isRemoteCssUrl("http://example.com/style.css")).toBe(true);

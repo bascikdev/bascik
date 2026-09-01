@@ -1,6 +1,6 @@
-# Bascik Docs: Copilot Instructions
+# Bascik: Copilot Instructions
 
-This file applies to all work inside `/docs/`. Read it before creating or editing docs pages.
+Repository-wide instructions are labeled accordingly. The docs rules below apply to all work inside `/docs/` and must be read before creating or editing docs pages.
 
 ## Content Lives in Markdown
 
@@ -271,6 +271,17 @@ The repo uses **Modern Yarn 4** (`yarn@4.6.0`) with `nodeLinker: node-modules`. 
 yarn test       # vitest watch mode (@bascik/bascik)
 yarn docs:dev   # docs dev server (bascik-docs)
 ```
+
+### Format-on-Save Workflow
+
+`pkg/.vscode/settings.json` enables `editor.formatOnSave`. VS Code may therefore apply formatting shortly after an agent edits or creates a TypeScript, JavaScript, HTML, CSS, or JSON file.
+
+- Treat formatter output in files intentionally touched for the current task as part of that task. Do not repeatedly restore those files to the agent's preformatted layout.
+- Before final validation, explicitly run VS Code's **Format Document** action on every touched file that has a configured formatter, then save it. If no formatter is registered for a file type, leave the file unchanged.
+- Inspect `git diff` after formatting. Confirm that formatter changes are mechanical, preserve the intended behavior, and do not include unrelated files.
+- Run the task's focused validation after formatting, so tests and typechecks exercise the exact bytes that will be committed.
+- Immediately before committing, run `git status --short` and `git diff --check` again. Do not commit until the touched-file diff remains stable after formatting and validation.
+- Immediately after committing, run `git status --short`. If a delayed formatter write changed a file from that completed task, inspect it and include the mechanical formatting in that same task before starting the next prompt. Never let known formatter residue drift into a later task's commit.
 
 ### VS Code Sandbox and Command Permissions
 

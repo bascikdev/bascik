@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { minifyCss } from "./styles.ts";
-import { minifyJs } from "./javascript.ts";
+import { minifyCss } from "./css-minifier.ts";
+import { minifyJs } from "./js-minifier.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";

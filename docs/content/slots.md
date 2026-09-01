@@ -2,6 +2,8 @@
 
 Slots let you pass inner HTML content into a component at the usage site. Bascik supports a default slot, named slots, and slot fallback content.
 
+Slot content is the raw-markup path for components. Elements remain HTML, participate in scoping, and may include nested Bascik components. Prop values are escaped text instead; see [Props](/props).
+
 ## Default slots and fallback content
 
 Add `data-bascik-slot` (no value) to any element in your component template to mark where inner content should be inserted. The element itself is replaced by the slot content.

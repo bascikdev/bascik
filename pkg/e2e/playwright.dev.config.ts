@@ -16,7 +16,7 @@ const pkgDir = join(e2eDir, '..');
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/server-scripts.test.ts', '**/prod-server.test.ts', '**/sitemap.test.ts', '**/exec.test.ts', '**/dist-lifecycle.test.ts'],
+  testIgnore: ['**/server-scripts.test.ts', '**/prod-server.test.ts', '**/sitemap.test.ts', '**/exec.test.ts', '**/dist-lifecycle.test.ts', '**/preserve-server-form.test.ts'],
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

@@ -360,6 +360,8 @@ Create a `.css` file or companion script files alongside the `.html` file if you
 </div>
 ```
 
+The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component, and `data-bascik-preserve` for keeping selected `id`, `name`, or `class` values literal. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, slots for consumer-authored markup, and [Preserve Scoping](/preserve) only when an external system must bypass normal scoping.
+
 <!-- demo:source-css-card -->
 ```css
 .fcard {
@@ -447,6 +449,8 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
+Component names match complete tag names only. A component named `card` claims `<card>`, but it never claims a longer tag such as `<card-header>`.
+
 ## Void / Self-Closing Component Tags
 
 When utilizing your components inside pages or other components, choose self-closing void syntax for any component that does not take slot children:
@@ -463,7 +467,7 @@ When utilizing your components inside pages or other components, choose self-clo
 </hello-card>
 ```
 
-If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. Both forms compile to the exact same output.
+If a component does not use a `<slot>` to accept inner children, always prefer self-closing/void syntax (`<site-nav />`, `<site-footer />`) to keep page markup clean, concise, and readable. A space before `/>` is optional, so `<site-nav />` and `<site-nav/>` compile identically, including when nested inside another instance of the same component. Paired and self-closing forms compile to the exact same output.
 
 ## Multiple Root Elements
 

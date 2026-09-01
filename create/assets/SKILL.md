@@ -267,6 +267,8 @@ All class names, element selectors, `#id` selectors, `@keyframes`, `@layer`, `@c
 
 These rewrites compose normally in one component: bare element selectors receive generated classes, locally declared custom properties and their `var()` references are renamed together, and keyframe declarations stay synchronized with `animation` references.
 
+Fragment-only CSS references such as `fill: url(#gradient)` are rewritten when the ID is declared in the same component. Quoted fragment forms are supported. Real URLs, data URLs, remote URLs, and cross-document fragments such as `url(sprite.svg#icon)` remain unchanged. Because IDs are per instance, a component with a resolvable CSS fragment automatically emits per-instance CSS even when `deduplicateCss: true`; components without fragments still deduplicate normally. Fragment rewriting runs before base-path URL processing.
+
 ```css
 /* site-nav.css: source */
 .nav a {
@@ -429,6 +431,8 @@ DOM selectors in component scripts are rewritten to match scoped names:
 ### Scoping Model
 `id` and `name` attributes are scoped **per-instance:** each use of a component generates a different `instanceId`, guaranteeing unique DOM IDs even when the same component appears multiple times on a page. `class` attributes are scoped to the component name only (no instanceId), so all instances share the same class names and CSS deduplication emits a single `<style>` block.
 
+HTML references to locally declared IDs are rewritten automatically in the same component. This includes `<label for>`, form, ARIA, and microdata `itemref` ID attributes, fragment-only `href` values, SVG fragment attributes, and inline `style` `url(#id)` values. Space-separated lists resolve one token at a time. `usemap` resolves against `<map name>` and follows name scoping. References that target page-shell IDs or IDs in another component remain unchanged because cross-component instance resolution is not possible at build time. Use `data-bascik-preserve` when an external system requires a literal ID graph.
+
 Form inputs using `<input name="username">` receive per-instance scoped names (e.g. `bascik__comp__a1b2c3__username`), so `new FormData(form)` keys reflect the scoped name.
 
 Literal component tags inside `<script>`, `<style>`, `<textarea>`, or HTML comments (`<!-- <my-card> -->`) are treated as text and never resolved into components.
@@ -585,6 +589,8 @@ The only exception is `innerHTML` / `insertAdjacentHTML` HTML string scanning, w
 
 Add `data-bascik-slot` (no value) to any element in the component template. The element is replaced by the slot content at the usage site. Use the element's inner content as fallback when no slot content is provided.
 
+Slot content remains raw HTML, participates in scoping, and may contain nested Bascik components. Use slots, not props, for rich markup.
+
 ```html
 <!-- my-card.html -->
 <div class="card">
@@ -646,7 +652,17 @@ Inject text values into a component at usage time.
 ```
 Props in Bascik follow the same basic idea as React props, but the mechanism is vanilla HTML through `data-bascik-prop-*` attributes.
 The `data-bascik-prop-*` marker is removed from compiled output, while the target element's other attributes are preserved.
-*Props accept text values only. For rich HTML content, use slots.*
+Prop values are HTML-escaped on injection. Entity-encode delimiting quotes in usage attributes. Props are read only from the component's opening tag, so nested component props do not leak upward.
+*Props accept text values only. For rich HTML content or nested components, use slots.*
+
+To send a prop value to an element attribute, use `data-bascik-attr-{attribute}="{propName}"` in the component template:
+
+```html
+<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">
+<a data-bascik-attr-href="link">Read more</a>
+```
+
+This is the same prop value with a different destination, not templating or variables. The directive is removed from output. A missing prop adds no attribute. If the target already exists, the prop wins and Bascik warns. Bound `id`, `name`, and `class` values are scoped normally.
 
 ---
 
@@ -677,7 +693,7 @@ Inherited class names are not scoped, they are treated as global page-level clas
 These two mechanisms serve distinct purposes:
 
 * **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
-* **Preserve element contents (authoring choice):** The `skipTranspilingElementContents` option (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. *(Note: this option is renamed to `scoping.preserve` in an upcoming configuration update; the rename is not yet implemented)*.
+* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names.
 
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:

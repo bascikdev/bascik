@@ -1,0 +1,10 @@
+{
+  "scopeName": "bascik.html.injection",
+  "injectionSelector": "L:text.html.basic",
+  "patterns": [
+    {
+      "name": "entity.other.attribute-name.bascik",
+      "match": "\\bdata-bascik-(?:attr-[A-Za-z_:][\\w:.-]*|prop-[\\w-]+|slot|build|routes|server|preserve)\\b"
+    }
+  ]
+}

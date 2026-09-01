@@ -6,7 +6,7 @@ Bascik features zero-dependency minifiers for HTML, CSS, and JavaScript, determi
 
 Minification reduces payload sizes without introducing heavy external bundlers or AST parsers. Bascik includes three specialized minification passes:
 
-- **`html-minifier.ts`**: Strips comments, consolidates script blocks, and collapses whitespace while protecting `<pre>` and `<textarea>` content.
+- **`html-minifier.ts`**: Shields raw-text content, strips comments, consolidates eligible scripts, and collapses whitespace while protecting `<pre>` and `<textarea>` content.
 - **`css-minifier.ts`**: Removes comments and structural whitespace while shielding string literals and `url()` definitions.
 - **`js-minifier.ts`**: Strips comments and unnecessary spaces while preserving string literals, template literals, and regex literals verbatim.
 - **Identifier Hashing (`names.ts`)**: Hashes scoped class names and element IDs using SHA-256 and Base62 encoding when `minify.identifiers: true` is configured.
@@ -16,7 +16,7 @@ Minification reduces payload sizes without introducing heavy external bundlers o
 
 Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to minify code safely. Bascik achieves equivalent safety and higher throughput using zero-dependency lexical context preservation:
 
-1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>` and `<textarea>`) are extracted and replaced with null-byte placeholders (`\x00P0\x00`) before whitespace collapsing runs. This prevents code blocks and formatted text from losing indentation or newlines.
+1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>` and `<textarea>`) and script bodies are replaced with namespaced null-byte placeholders before comments are stripped or whitespace is collapsed. This prevents code blocks, formatted text, and comment-like strings inside scripts from being parsed as document structure.
 2. **CSS String and Resource Shielding:** Quoted string literals and `url(...)` declarations in CSS can contain colons, semicolons, or multiple spaces (such as data URIs or content strings). `shieldCssStrings` extracts these values into temporary tokens before structural whitespace stripping, restoring them unchanged afterward.
 3. **JS Lexical Context and Regex Disambiguation:** JavaScript code is segmented into literal regions (quoted strings, template literals, regexes) and minifiable code regions. To disambiguate the forward slash `/` character (which can represent either a division operator or a regex literal), `js-minifier.ts` tracks preceding keyword context (such as `return`, `case`, `typeof`, `yield`, `await`). Forward slashes following expression keywords are preserved as regex literals.
 
@@ -24,38 +24,22 @@ Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to mini
 
 `minifyHtml` optimizes HTML documents through structural transformations and whitespace rules:
 
-```ts
-export const minifyHtml = (htmlString: string): string => {
-  let html = htmlString.replace(/<!--[\s\S]*?-->/g, "");
-  const scriptTags = extractScriptTags(html);
-  if (scriptTags) {
-    const pattern = new RegExp(`<script[^>]*>([\\s\\S]*?)<\\/script>`, "gi");
-    html = html.replace(pattern, "").trim();
-  }
+The order is deliberate:
 
-  const preserved: string[] = [];
-  html = html.replace(
-    /<(pre|textarea)\b[^>]*>[\s\S]*?<\/\1>/gi,
-    (match) => {
-      preserved.push(match);
-      return `\x00P${preserved.length - 1}\x00`;
-    },
-  );
-
-  html = html.replace(/\n/g, " ").replace(/\s\s+/g, " ");
-  // Whitespace collapsing between tags...
-  // Restores preserved <pre> / <textarea> blocks
-  // Appends consolidated script tags to document end
-  return html;
-};
-```
+1. Shield complete `<pre>` and `<textarea>` elements plus script bodies.
+2. Strip ordinary HTML comments from the remaining document structure.
+3. Extract eligible client scripts while leaving scripts inside shielded containers in place.
+4. Collapse structural whitespace.
+5. Restore every shielded region and append only the scripts selected for consolidation.
 
 ### Key HTML Minification Behaviors
 
-1. **Comment Stripping**: All HTML comments (`<!-- ... -->`) are removed.
-2. **Whitespace-Sensitive Shielding**: The contents of `<pre>` and `<textarea>` elements are stored in a temporary array and replaced with null-byte placeholders (`\x00P0\x00`). This ensures code blocks and formatted text preserve indentation and newlines.
+1. **Comment Stripping**: Ordinary HTML comments (`<!-- ... -->`) are removed after raw-text regions are shielded. Comment text inside `<pre>`, `<textarea>`, and scripts survives unchanged.
+2. **Whitespace-Sensitive Shielding**: Complete `<pre>` and `<textarea>` elements are stored before structural processing. Scripts nested inside those containers remain in their original location.
 3. **Smart Inline Tag Spacing & `O(1)` Tag-Boundary Scanning**: Whitespace between block-level tags (`</div> <div>`) is collapsed completely (`"></div><div>"`). For inline tags (`a`, `span`, `b`, `strong`, `code`), a single space is preserved between adjacent elements (`"> <"`). Tag boundary matching uses `O(1)` backwards scanning (`lastIndexOf('<', offset)`) and bounded slices rather than full-string `slice(0, offset)` allocations, avoiding `O(N^2)` memory churn and V8 garbage collection overhead on large HTML pages.
-4. **Script Consolidation**: Inline `<script>` tags are extracted and re-appended at the end of the document, reducing head blocking and improving HTML parsing performance.
+4. **Script Consolidation**: Eligible classic and module client scripts may be extracted and re-appended at the end of the document. Build, routes, server, data, and scripts nested inside shielded containers remain in place.
+
+JavaScript minification applies to scripts with no `type` and to `text/javascript`, `module`, `application/javascript`, `text/ecmascript`, and `application/ecmascript`. External `src` scripts and non-JavaScript data scripts are not minified.
 
 ## CSS Minification (`css-minifier.ts`)
 

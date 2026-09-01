@@ -2,6 +2,12 @@
 
 Scoping prevents one component's styles and identifiers from leaking into another. Bascik rewrites HTML attributes, CSS rules, and JavaScript DOM selector strings at transpile time using a deterministic naming scheme.
 
+## Shared Content Shielding
+
+All compiler passes use one shielding utility, one token namespace, and one global counter. Restorable shields own their tokens and recursively restore nested content, so overlapping operations cannot consume or swap one another's values. Generated tokens are checked against source text before use.
+
+The internal raw-text mask has a different semantic: it replaces content with the same number of spaces for index-safe scanning, then discards the mask. In contrast, author-configured `scoping.preserve` restores the original content after scoping. The shared utility implements both behaviors without treating the internal mask as an author-facing setting.
+
 ## The Naming Scheme
 
 Every scoped name is constructed from three or four parts separated by double underscores:
