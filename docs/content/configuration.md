@@ -357,9 +357,11 @@ generate: {
   robots: true,          // write robots.txt
   sitemapLastmod: false, // include lastmod timestamps
   cspHashes: false,      // generate CSP hash manifest
-  manifest: false,       // write build manifest
+  manifest: false,       // write dist/.bascik/manifest.json build manifest
 }
 ```
+
+When `generate.manifest` is enabled (default `false`), Bascik records every emitted file in `directory.out` and writes `dist/.bascik/manifest.json`. The manifest contains the Bascik version and an inventory of all emitted files with forward-slash output-relative paths, SHA-256 content hashes, and byte sizes, sorted byte-wise by path. Because `dist/.bascik/` is dot-prefixed, it is protected by Bascik's dot-segment request guard and is never served over HTTP.
 
 ### `pipeline`
 

@@ -102,6 +102,7 @@ import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
+import { manifestCollector } from "./manifest.ts";
 import type {
   BascikComponent,
   ComponentList,
@@ -637,6 +638,7 @@ const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> =
     throw new PageProcessingError(result.absolutePagePath, "create output directory", error);
   }
   const distPagePath = getDistPagePath(result.relativePagePath);
+  manifestCollector.recordFile(distPagePath, result.distHtml);
   try {
     await writeFile(distPagePath, result.distHtml);
   } catch (error) {

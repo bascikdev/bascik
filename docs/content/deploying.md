@@ -27,6 +27,20 @@ Running `bascik --build` produces:
 
 The output uses root-relative paths (e.g. `/css/styles.css`). Files must be served from an HTTP server; opening them directly with `file://` will break asset loading.
 
+### Consuming the build manifest
+
+When `generate.manifest: true` is configured, Bascik outputs `dist/.bascik/manifest.json`. Deployment workflows and CDN synchronization scripts can consume this manifest to upload only modified files or verify build outputs:
+
+```js
+// Example deploy-layer script reading dist/.bascik/manifest.json
+import { readFileSync } from 'node:fs';
+
+const manifest = JSON.parse(readFileSync('dist/.bascik/manifest.json', 'utf8'));
+for (const [relPath, info] of Object.entries(manifest.files)) {
+  console.log(`Deploying ${relPath} (${info.size} bytes, SHA-256: ${info.hash})`);
+}
+```
+
 ### Excluded source files
 
 To keep deployment artifacts clean, the following files are excluded from static asset copying and are never copied to `dist/`:

@@ -91,6 +91,10 @@ If two component files define the same tag name (such as `src/components/marketi
 
 Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
 
+## What is `dist/.bascik/`?
+
+`dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
+
 ## How do local script references (`<script src="...">`) work inside a component?
 
 When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.

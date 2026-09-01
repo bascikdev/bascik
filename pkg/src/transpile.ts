@@ -7,6 +7,8 @@ import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
 import { formatDuration } from "./lib/format.ts";
+import { manifestCollector } from "./lib/manifest.ts";
+import { readVersion } from "./lib/version.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -32,6 +34,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     startExecParallel();
     await watchFiles();
     await runExecPhase("post");
+    const version = await readVersion();
+    await manifestCollector.writeManifest(version);
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
@@ -51,6 +55,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
 
     await watchFiles();
     await runExecPhase("post");
+    const version = await readVersion();
+    await manifestCollector.writeManifest(version);
     await execReady;
     mem.setBootingDone();
     eventEmitter.emit("boot-done");

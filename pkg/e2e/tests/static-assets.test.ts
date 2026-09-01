@@ -35,7 +35,7 @@ test.describe('Static Assets & Inlined Styles handling', () => {
   });
 
   test('does not ship denied source assets', async ({ request }) => {
-    for (const path of ['/.env', '/secret.js.map']) {
+    for (const path of ['/.env', '/secret.js.map', '/.bascik/manifest.json']) {
       const response = await request.get(path);
       expect(response.status()).toBe(404);
     }

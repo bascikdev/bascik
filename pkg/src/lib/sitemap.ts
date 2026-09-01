@@ -32,6 +32,7 @@ import { listPages } from "./file-system.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { composeSiteUrl } from "./base-path.ts";
+import { manifestCollector } from "./manifest.ts";
 
 /**
  * Escape the five XML metacharacters for safe interpolation into `<loc>` etc.
@@ -133,6 +134,7 @@ export const generateSitemapFiles = async (
     const sitemapXml = buildSitemapXml(siteUrl, urlPaths, BascikConfig.base);
     const sitemapPath = join(BascikConfig.directory.out, "sitemap.xml");
     const sitemapRel = relative(process.cwd(), sitemapPath);
+    manifestCollector.recordFile(sitemapPath, sitemapXml);
     writes.push(
       writeFile(sitemapPath, sitemapXml, "utf8").then(() =>
         console.log(`generated: ${sitemapRel}`),
@@ -144,6 +146,7 @@ export const generateSitemapFiles = async (
     const robotsTxt = buildRobotsTxt(siteUrl, BascikConfig.base);
     const robotsPath = join(BascikConfig.directory.out, "robots.txt");
     const robotsRel = relative(process.cwd(), robotsPath);
+    manifestCollector.recordFile(robotsPath, robotsTxt);
     writes.push(
       writeFile(robotsPath, robotsTxt, "utf8").then(() =>
         console.log(`generated: ${robotsRel}`),

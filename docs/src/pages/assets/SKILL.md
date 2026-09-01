@@ -20,6 +20,7 @@ This file contains the **complete, centralized documentation and development ski
 * **Rewrites DOM selector calls** (`getElementById`, `querySelector`, etc.) in component scripts to match scoped attribute names.
 * **Wraps component scripts in IIFEs** so variables do not leak between components.
 * **Derives instance IDs deterministically** from page path, component name, and ordinal index, ensuring byte-identical builds across repeated runs.
+* **Internal build metadata in `dist/.bascik/`:** Build-internal artifacts (such as `dist/.bascik/manifest.json` when `generate.manifest` is enabled) are stored in dot-prefixed paths within `dist/`. These are never served over HTTP because requests containing dot-segments always return 404.
 * **Outputs a `dist/` directory of plain `.html` files** with zero runtime dependencies and no client-side JS added by Bascik itself.
 
 ### What Bascik Does NOT Do

@@ -61,6 +61,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `javascript.ts` | The scoping transforms: `prefixElementAttribute` (rewrites HTML attributes, JS DOM selectors, and CSS) and `namespaceScriptTags` (wraps scripts in IIFEs with `sourceURL` annotations and line positioning). |
 | `js-minifier.ts` | Lightweight, built-in JavaScript minifier that strips comments and collapses safe whitespace without breaking statement boundaries (ASI). |
 | `live-reload.ts` | Injected client-side script that establishes an EventSource connection to the dev server to reload pages when they are updated. |
+| `manifest.ts` | Collects written file metadata (forward-slash path, SHA-256 hash, byte size) as writes occur and writes `dist/.bascik/manifest.json` when `generate.manifest` is enabled. |
 | `mem.ts` | In-memory page store. Stores brotli-compressed page buffers keyed by HTTP path, and maintains a reverse index mapping each component name to the set of pages that use it. |
 | `mime.ts` | A static MIME type map used by the HTTP/2 server and the watch system's file-type filter. |
 | `names.ts` | Generates unique instance IDs (`getUniqueId`) and hashes long scoped names to short alphanumeric strings (`minifyAttributeName` via SHA-256 with Base62 encoding) when identifier minification is enabled. |
