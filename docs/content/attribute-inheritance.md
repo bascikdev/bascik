@@ -31,6 +31,8 @@ Common use cases:
 - **Testing hooks:** `data-testid`, `data-cy`
 - **Custom data:** any `data-*` attribute except `data-bascik-*`
 
+Attribute inheritance is root-only. To send a prop to an attribute on a non-root element, use [`data-bascik-attr-{attribute}="{propName}"`](/props#put-a-prop-in-an-attribute). Use slots when the consumer should provide the element or richer markup itself.
+
 ## What Happens with `id`
 
 `id` is treated like any other inheritable attribute **unless the component root already has its own `id`**.

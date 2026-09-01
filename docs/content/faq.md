@@ -133,6 +133,10 @@ Yes. Components can use other components inside their markup. Bascik resolves ne
 
 Props are text values. Bascik HTML-escapes them during injection so markup from a CMS, database, or API cannot become an executable element or script. If you need rich HTML or a nested component, pass it through a default or named [slot](/slots) instead. Slot content remains markup and participates in component scoping.
 
+## How do I put a prop into an attribute?
+
+Add `data-bascik-attr-{attribute}="{propName}"` to the target element in the component template. For example, `<a data-bascik-attr-href="link">` reads `data-bascik-prop-link="/about"` from the component usage and emits `<a href="/about">`. This works on non-root elements, unlike attribute inheritance. It is a build-time `data-*` directive, not a variable or templating expression. See [Props](/props#put-a-prop-in-an-attribute).
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.

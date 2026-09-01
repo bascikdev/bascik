@@ -360,6 +360,8 @@ Create a `.css` file or companion script files alongside the `.html` file if you
 </div>
 ```
 
+The directive family also includes `data-bascik-attr-{attribute}="{propName}"` for sending a prop value to an attribute on an element inside the component. Use content props for text, attribute props for values such as `href`, `src`, and `aria-label`, and slots for consumer-authored markup.
+
 <!-- demo:source-css-card -->
 ```css
 .fcard {

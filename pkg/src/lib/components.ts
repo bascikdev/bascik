@@ -611,6 +611,77 @@ export const extractProps = (
   return props;
 };
 
+export const injectPropAttributes = (
+  fileContent: string | undefined,
+  props: Record<string, string>,
+): string => {
+  if (!fileContent) return "";
+  if (!fileContent.includes("data-bascik-attr-")) return fileContent;
+
+  return fileContent.replace(
+    new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
+    (openingTag: string) => {
+      if (!openingTag.includes("data-bascik-attr-")) return openingTag;
+      const directives: Array<{
+        start: number;
+        end: number;
+        targetName: string;
+        rawPropName?: string;
+      }> = [];
+      const directiveRegex = /\s+data-bascik-attr-([^\s=/>]*)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+))?/gi;
+      let directiveMatch: RegExpExecArray | null;
+      while ((directiveMatch = directiveRegex.exec(openingTag)) !== null) {
+        directives.push({
+          start: directiveMatch.index,
+          end: directiveMatch.index + directiveMatch[0].length,
+          targetName: directiveMatch[1],
+          rawPropName: directiveMatch[2],
+        });
+      }
+
+      let result = openingTag;
+      for (let index = directives.length - 1; index >= 0; index--) {
+        const directive = directives[index];
+        result = result.slice(0, directive.start) + result.slice(directive.end);
+      }
+
+      for (const { targetName, rawPropName } of directives) {
+        const isQuoted = rawPropName?.startsWith('"') || rawPropName?.startsWith("'");
+        const propName = isQuoted ? rawPropName?.slice(1, -1) : undefined;
+        if (
+          !/^[a-zA-Z_:][\w:.-]*$/.test(targetName) ||
+          !propName ||
+          !/^[a-zA-Z0-9_-]+$/.test(propName)
+        ) {
+          console.warn(
+            `Ignoring malformed data-bascik-attr-${targetName}: expected a quoted prop name.`,
+          );
+          continue;
+        }
+
+        const propValue = props[propName];
+        if (propValue === undefined) continue;
+        const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const targetRegex = new RegExp(
+          `\\s+${escapedTargetName}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?(?=[\\s/>])`,
+          "i",
+        );
+        const attribute = ` ${targetName}="${escapePropValue(propValue)}"`;
+        if (targetRegex.test(result)) {
+          console.warn(
+            `Attribute binding conflict: attribute "${targetName}" already exists; prop "${propName}" wins.`,
+          );
+          result = result.replace(targetRegex, () => attribute);
+        } else {
+          result = result.replace(/(\s*\/?>)$/, (_match, close: string) => `${attribute}${close}`);
+        }
+      }
+
+      return result;
+    },
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Prop injection
 // ─────────────────────────────────────────────────────────────────────────────

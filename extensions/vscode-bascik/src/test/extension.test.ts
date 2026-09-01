@@ -96,6 +96,21 @@ suite('Extension Integration Suite', () => {
   });
 
   suite('Diagnostics', () => {
+    test('warns when no usage supplies the prop named by an attribute directive', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+      const componentUri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'attribute-card.html'),
+      );
+      const doc = await vscode.workspace.openTextDocument(componentUri);
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((diagnostic) =>
+        diagnostic.message.includes('data-bascik-attr-href references prop "link"'),
+      );
+      assert.ok(match, 'Expected warning for an attribute directive prop missing from every usage');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
     test('reports error when script has both data-bascik-build and data-bascik-server', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',

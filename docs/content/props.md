@@ -59,6 +59,29 @@ Other attributes on the target element are preserved. The prop marker attribute 
 <p class="bascik__comp__lead">Your prop value here.</p>
 ```
 
+## Put a Prop in an Attribute
+
+Use `data-bascik-attr-{attribute}="{propName}"` when the same prop values should go to an element attribute instead of its inner content. The attribute name may contain hyphens, including `aria-*` and `data-*` targets.
+
+```html
+<!-- component template -->
+<article class="card">
+  <img data-bascik-attr-src="image" data-bascik-attr-alt="alt">
+  <a data-bascik-attr-href="link">Read more</a>
+</article>
+
+<!-- usage -->
+<media-card
+  data-bascik-prop-image="/images/launch.jpg"
+  data-bascik-prop-alt="Product launch"
+  data-bascik-prop-link="/launch">
+</media-card>
+```
+
+The directive is removed from compiled output. If the named prop is missing, Bascik adds no target attribute. If the target attribute already exists, the prop value wins and Bascik warns. Values are HTML-attribute-escaped. Bound `id`, `name`, and `class` values enter the normal scoping pipeline.
+
+This is the same prop mechanism with a different destination. It adds no variables, expressions, interpolation, or templating syntax. A prop may independently drive both element content and an attribute.
+
 ## Naming Conventions
 
 Prop names use the portion of the attribute after `data-bascik-prop-`. You can use lowercase alphanumeric names with hyphens:

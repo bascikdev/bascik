@@ -14,6 +14,7 @@ import {
   minifyHtml,
   extractProps,
   injectProps,
+  injectPropAttributes,
   extractNamedSlotContent,
   replaceNamedSlots,
   replaceDefaultSlots,
@@ -500,6 +501,84 @@ describe("injectProps", () => {
 
   it("handles undefined fileContent gracefully", () => {
     expect(injectProps(undefined, {})).toBe("");
+  });
+});
+
+describe("injectPropAttributes", () => {
+  it("injects a simple attribute and strips the directive", () => {
+    const result = injectPropAttributes(
+      '<a data-bascik-attr-href="link">About</a>',
+      { link: "/about" },
+    );
+    expect(result).toBe('<a href="/about">About</a>');
+    expect(result).not.toContain("data-bascik-attr-");
+  });
+
+  it("supports hyphenated aria and data attribute targets", () => {
+    expect(
+      injectPropAttributes(
+        '<div data-bascik-attr-aria-label="label" data-bascik-attr-data-foo="foo"></div>',
+        { label: "Details", foo: "bar" },
+      ),
+    ).toBe('<div aria-label="Details" data-foo="bar"></div>');
+  });
+
+  it("removes a missing-prop directive without adding the target attribute", () => {
+    expect(
+      injectPropAttributes('<img data-bascik-attr-src="image">', {}),
+    ).toBe("<img>");
+  });
+
+  it("lets the prop override an existing target and warns with both names", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    expect(
+      injectPropAttributes(
+        '<a href="/old" data-bascik-attr-href="link">Read</a>',
+        { link: "/new" },
+      ),
+    ).toBe('<a href="/new">Read</a>');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('attribute "href"'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('prop "link"'));
+    warnSpy.mockRestore();
+  });
+
+  it.each([
+    ['say "hello"', "say &quot;hello&quot;"],
+    ["<unsafe>", "&lt;unsafe&gt;"],
+  ])("attribute-escapes %s", (value, escaped) => {
+    expect(
+      injectPropAttributes('<img data-bascik-attr-alt="text">', { text: value }),
+    ).toBe(`<img alt="${escaped}">`);
+  });
+
+  it("preserves replacement tokens verbatim", () => {
+    expect(
+      injectPropAttributes('<a data-bascik-attr-href="link"></a>', {
+        link: "/$&/$1/$`",
+      }),
+    ).toBe('<a href="/$&amp;/$1/$`"></a>');
+  });
+
+  it("warns and strips a directive with no target attribute name", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    expect(
+      injectPropAttributes('<div data-bascik-attr-="value"></div>', {
+        value: "ignored",
+      }),
+    ).toBe("<div></div>");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("malformed data-bascik-attr-"));
+    warnSpy.mockRestore();
+  });
+
+  it("allows one prop to drive content and an attribute independently", () => {
+    const props = { label: "About" };
+    const withAttribute = injectPropAttributes(
+      '<a data-bascik-attr-aria-label="label"><span data-bascik-prop-label></span></a>',
+      props,
+    );
+    expect(injectProps(withAttribute, props)).toBe(
+      '<a aria-label="About"><span>About</span></a>',
+    );
   });
 });
 

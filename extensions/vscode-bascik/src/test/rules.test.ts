@@ -1,5 +1,19 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { matchCompatibilityRules } from '../rules';
+
+suite('Bascik HTML Grammar', () => {
+  test('highlights prop attribute directives with hyphenated targets', () => {
+    const grammarPath = path.resolve(__dirname, '../../syntaxes/bascik-html.tmLanguage.json');
+    const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf8')) as {
+      patterns: Array<{ match: string }>;
+    };
+    const directivePattern = new RegExp(grammar.patterns[0].match);
+    assert.ok(directivePattern.test('data-bascik-attr-aria-label'));
+    assert.ok(directivePattern.test('data-bascik-attr-data-foo'));
+  });
+});
 
 suite('Compatibility Rules Suite', () => {
   suite('CSS Rules', () => {

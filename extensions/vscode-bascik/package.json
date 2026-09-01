@@ -14,7 +14,17 @@
     "onLanguage:javascript",
     "onLanguage:typescript"
   ],
-  "contributes": {},
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "bascik.html.injection",
+        "path": "./syntaxes/bascik-html.tmLanguage.json",
+        "injectTo": [
+          "text.html.basic"
+        ]
+      }
+    ]
+  },
   "scripts": {
     "precompile": "node ../../docs/scripts/generate-compatibility-rules.ts",
     "compile": "tsc -p ./tsconfig.json",

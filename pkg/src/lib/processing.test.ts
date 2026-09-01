@@ -4,6 +4,7 @@ import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProc
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { getUniqueId } from "./names.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -2313,6 +2314,40 @@ describe("transpilePage – inline component <style> extraction & deduplication"
 
     // JSON-LD script is preserved verbatim without IIFE wrapping
     expect(html).toContain('<script type="application/ld+json">{"@type":"Thing"}</script>');
+  });
+});
+
+describe("recursivelyTranspile – prop attribute scoping", () => {
+  it("scopes injected id and name per instance while deduplicating class", () => {
+    (BascikConfig as any).scoping = {
+      scriptBlocks: false,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["code"],
+    };
+    (getUniqueId as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce("first111")
+      .mockReturnValueOnce("second22");
+
+    const componentList = {
+      "bound-field": {
+        fileName: "components/bound-field.html",
+        fileContent:
+          '<input data-bascik-attr-id="id" data-bascik-attr-name="name" data-bascik-attr-class="class">',
+      },
+    };
+    const result = recursivelyTranspile(
+      '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>' +
+        '<bound-field data-bascik-prop-id="field" data-bascik-prop-name="group" data-bascik-prop-class="control"></bound-field>',
+      componentList,
+    ).transpiledHtmlBody;
+
+    expect(result).toContain('id="bascik__bound-field__first111__field"');
+    expect(result).toContain('id="bascik__bound-field__second22__field"');
+    expect(result).toContain('name="bascik__bound-field__first111__group"');
+    expect(result).toContain('name="bascik__bound-field__second22__group"');
+    expect(result.match(/class="bascik__bound-field__control"/g)).toHaveLength(2);
   });
 });
 

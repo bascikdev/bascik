@@ -651,6 +651,15 @@ The `data-bascik-prop-*` marker is removed from compiled output, while the targe
 Prop values are HTML-escaped on injection. Entity-encode delimiting quotes in usage attributes. Props are read only from the component's opening tag, so nested component props do not leak upward.
 *Props accept text values only. For rich HTML content or nested components, use slots.*
 
+To send a prop value to an element attribute, use `data-bascik-attr-{attribute}="{propName}"` in the component template:
+
+```html
+<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">
+<a data-bascik-attr-href="link">Read more</a>
+```
+
+This is the same prop value with a different destination, not templating or variables. The directive is removed from output. A missing prop adds no attribute. If the target already exists, the prop wins and Bascik warns. Bound `id`, `name`, and `class` values are scoped normally.
+
 ---
 
 ## 7. Attribute Inheritance & Tags

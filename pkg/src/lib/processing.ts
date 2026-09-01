@@ -76,6 +76,7 @@ import {
   getTag,
   minifyHtml,
   extractProps,
+  injectPropAttributes,
   injectProps,
   extractNamedSlotContent,
   extractDefaultSlotContent,
@@ -438,6 +439,9 @@ export const recursivelyTranspile = (
     let currentStage = "";
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
+      const props = extractProps(component.content);
+      component.fileContent = injectPropAttributes(component.fileContent, props);
+
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
       const instanceId = getUniqueId(8);
       currentStage = "attribute scoping";
@@ -445,7 +449,6 @@ export const recursivelyTranspile = (
 
       currentStage = "prop injection";
       // Inject props — always call so unused data-bascik-prop-* markers are stripped.
-      const props = extractProps(component.content);
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
