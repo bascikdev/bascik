@@ -447,6 +447,8 @@ Naming your components with hyphens ensures they never collide with native HTML 
 
 Always use lowercase hyphenated filenames in `src/components/` (e.g. `src/components/feature-card.html` for `<feature-card>`).
 
+Component names match complete tag names only. A component named `card` claims `<card>`, but it never claims a longer tag such as `<card-header>`.
+
 ## Void / Self-Closing Component Tags
 
 When utilizing your components inside pages or other components, choose self-closing void syntax for any component that does not take slot children:

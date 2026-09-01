@@ -261,6 +261,47 @@ describe("getFirstComponent", () => {
       expect(result.name).toBeUndefined();
     });
   });
+
+  it("does not match a longer hyphenated tag when only its prefix is registered", () => {
+    const cardOnly: ComponentList = {
+      card: { fileContent: "<article>card</article>" },
+    };
+
+    expect(getFirstComponent("<card-header>Heading</card-header>", cardOnly)).toEqual({});
+  });
+
+  it("refreshes its regex when component names change without changing key count", () => {
+    const mutableList: ComponentList = {
+      "old-card": { fileContent: "<article>old</article>" },
+    };
+    expect(getFirstComponent("<old-card></old-card>", mutableList).name).toBe("old-card");
+
+    delete mutableList["old-card"];
+    mutableList["new-card"] = { fileContent: "<article>new</article>" };
+
+    expect(getFirstComponent("<new-card></new-card>", mutableList).name).toBe("new-card");
+  });
+
+  it("matches equal-length component names consistently regardless of insertion order", () => {
+    const alphaFirst: ComponentList = {
+      "alpha-box": { fileContent: "<div>alpha</div>" },
+      "bravo-box": { fileContent: "<div>bravo</div>" },
+    };
+    const bravoFirst: ComponentList = {
+      "bravo-box": { fileContent: "<div>bravo</div>" },
+      "alpha-box": { fileContent: "<div>alpha</div>" },
+    };
+    const html = "<bravo-box></bravo-box><alpha-box></alpha-box>";
+
+    expect(getFirstComponent(html, alphaFirst).name).toBe("bravo-box");
+    expect(getFirstComponent(html, bravoFirst).name).toBe("bravo-box");
+  });
+});
+
+describe("getTag – component name boundary", () => {
+  it("does not parse a longer hyphenated tag as a shorter component", () => {
+    expect(getTag("<card-header>Heading</card-header>", "card")).toEqual({});
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

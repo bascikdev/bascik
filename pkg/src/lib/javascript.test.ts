@@ -142,6 +142,52 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
       `querySelectorAll(".${scopeClass("card")}")`,
     );
   });
+
+  it("normalizes trailing class whitespace without producing an empty token", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div class="card "></div>'),
+      "class",
+      "test1234",
+    );
+
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("card")}"></div>`,
+    );
+  });
+
+  it("does not corrupt empty string literals when a class has trailing whitespace", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div class="card "></div><script>const value = "";</script>'),
+      "class",
+      "test1234",
+    );
+
+    expect(result.fileContent).toContain('const value = "";');
+  });
+
+  it("normalizes newlines and repeated spaces between class tokens", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div class="alpha\n  beta"></div>'),
+      "class",
+      "test1234",
+    );
+
+    expect(result.fileContent).toContain(
+      `class="${scopeClass("alpha")} ${scopeClass("beta")}"`,
+    );
+  });
+
+  it("normalizes tabs between class tokens", () => {
+    const result = prefixElementAttribute(
+      makeComponent('<div class="alpha\tbeta"></div>'),
+      "class",
+      "test1234",
+    );
+
+    expect(result.fileContent).toContain(
+      `class="${scopeClass("alpha")} ${scopeClass("beta")}"`,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1095,6 +1141,36 @@ describe("property-based JS scoping fuzzing", () => {
           expect(typeof result.fileContent).toBe("string");
         },
       ),
+      { numRuns: 150 },
+    );
+  });
+
+  it("normalizes generated class whitespace without corrupting empty strings", () => {
+    const classNameArb = fc.stringMatching(/^[a-z][a-z0-9-]{1,10}$/);
+    const whitespaceArb = fc.constantFrom(" ", "  ", "\t", "\n", "\n  ");
+    const classAttributeArb = fc
+      .tuple(
+        fc.array(classNameArb, { minLength: 1, maxLength: 4 }),
+        whitespaceArb,
+        fc.boolean(),
+        fc.boolean(),
+      )
+      .map(([classes, separator, leading, trailing]) => ({
+        classes,
+        value: `${leading ? separator : ""}${classes.join(separator)}${trailing ? separator : ""}`,
+      }));
+
+    fc.assert(
+      fc.property(classAttributeArb, ({ classes, value }) => {
+        const component = makeComponent(
+          `<div class="${value}"></div><script>const empty = "";</script>`,
+        );
+        const result = prefixElementAttribute(component, "class", "test1234");
+        expect(result.fileContent).toContain('const empty = "";');
+        expect(result.fileContent).toContain(
+          `class="${classes.map(scopeClass).join(" ")}"`,
+        );
+      }),
       { numRuns: 150 },
     );
   });

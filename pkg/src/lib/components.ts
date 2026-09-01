@@ -356,7 +356,7 @@ const findOpenTag = (
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRegexp = new RegExp(`<${tn}(?:${ATTR_VALUE})>`, "i");
+  const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "i");
   const openTagMatch = openTagRegexp.exec(masked ?? maskRawTextContent(htmlString));
   if (!openTagMatch) return null;
   return {
@@ -432,7 +432,7 @@ export const getTagContents = (
   return { ...match.groups };
 };
 
-const componentRegexCache = new WeakMap<ComponentList, { keysCount: number; regex: RegExp | null }>();
+const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
 
 export const getFirstComponent = (
   htmlString: string,
@@ -441,21 +441,22 @@ export const getFirstComponent = (
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
 
-  const currentKeyCount = Object.keys(componentList).length;
+  const componentNames = Object.keys(componentList)
+    .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
+    .sort((a, b) => b.length - a.length || a.localeCompare(b));
+  const namesKey = componentNames.join("\0");
   let cached = componentRegexCache.get(componentList);
-  if (!cached || cached.keysCount !== currentKeyCount) {
+  if (!cached || cached.namesKey !== namesKey) {
     // Super important here, reverse, makes it so we're matching on the most specific tag first
     // Meaning, it will find test-comp-clone before test-comp,
     // because reverse, the longer tag will be first in the regexp, and therefore match first.
     // It's like how an ingress controller works.
-    const componentNames = Object.keys(componentList)
-      .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .sort((a, b) => b.length - a.length);
-    const regex = componentNames.length === 0
+    const escapedComponentNames = componentNames
+      .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = escapedComponentNames.length === 0
       ? null
-      : new RegExp(`<\\b(${componentNames.join("|")})\\b[\\s\\S]*?>`, "i");
-    cached = { keysCount: currentKeyCount, regex };
+      : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "i");
+    cached = { namesKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
@@ -514,10 +515,10 @@ export const getTag = (
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const selfClosingPattern = new RegExp(
-    `<${tn}([\\s\\S]*?)\\/?>`,
-    "i",
-  );
+    const selfClosingPattern = new RegExp(
+      `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
+      "i",
+    );
   const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
   if (selfClosingMatch) {
     const returnObj = {

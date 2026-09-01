@@ -328,8 +328,9 @@ export const prefixElementAttribute = (
       const match = quotedVal.slice(1, -1);
       if (!match) return fullMatch;
       const newInner = match
-        .replace(/  +/g, " ")
-        .split(" ")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
         .map((attributeName: string) => {
           if (attribute === "class" && scopedClassesSet !== null && !scopedClassesSet.has(attributeName)) {
             return attributeName;
