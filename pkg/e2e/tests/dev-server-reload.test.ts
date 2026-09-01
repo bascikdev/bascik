@@ -15,7 +15,8 @@
  *   npx playwright test --config e2e/playwright.dev.config.ts
  */
 import { test, expect } from '@playwright/test';
-import { readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -37,6 +38,13 @@ const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css'
 const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
 const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
 
+const restoreFileIfChanged = async (filePath: string, originalContent: string): Promise<void> => {
+  const currentContent = await readFile(filePath, 'utf8').catch(() => null);
+  if (currentContent !== originalContent) {
+    await writeFile(filePath, originalContent, 'utf8');
+  }
+};
+
 test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalPageContent: string;
   let originalSecondPageContent: string;
@@ -57,14 +65,14 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   });
 
   test.afterEach(async () => {
-    // Always restore original files on disk after each test
-    await writeFile(pagePath, originalPageContent, 'utf8');
-    await writeFile(secondPagePath, originalSecondPageContent, 'utf8');
-    await writeFile(componentPath, originalComponentContent, 'utf8');
-    await writeFile(contentDocPath, originalContentDoc, 'utf8');
-    await writeFile(subfolderPagePath, originalSubfolderPage, 'utf8');
-    await writeFile(inlinedGlobalCssPath, originalInlinedGlobalCss, 'utf8');
-    await writeFile(scopeTestCssPath, originalScopeTestCss, 'utf8');
+    // Avoid emitting watcher events for unchanged fixtures between tests.
+    await restoreFileIfChanged(pagePath, originalPageContent);
+    await restoreFileIfChanged(secondPagePath, originalSecondPageContent);
+    await restoreFileIfChanged(componentPath, originalComponentContent);
+    await restoreFileIfChanged(contentDocPath, originalContentDoc);
+    await restoreFileIfChanged(subfolderPagePath, originalSubfolderPage);
+    await restoreFileIfChanged(inlinedGlobalCssPath, originalInlinedGlobalCss);
+    await restoreFileIfChanged(scopeTestCssPath, originalScopeTestCss);
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
     await rm(dynamicHeadMetaCompPath, { force: true });
@@ -330,19 +338,19 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   test('picks up companion CSS file added to component during dev server session', async ({ page }) => {
     await page.goto('/scope-test');
 
+    const updatedComponent = originalComponentContent + '\n<p class="dyn-companion-style" data-testid="dyn-companion-target">Companion Target</p>';
+    await writeFile(componentPath, updatedComponent, 'utf8');
+
+    const target = page.getByTestId('dyn-companion-target').first();
+    await expect(target).toBeVisible({ timeout: 15000 });
+
     await writeFile(
       scopeTestCssPath,
       originalScopeTestCss + '\n.dyn-companion-style { color: rgb(12, 34, 56); }',
       'utf8',
     );
-    await new Promise((r) => setTimeout(r, 1000));
 
-    const updatedComponent = originalComponentContent + '\n<p class="dyn-companion-style" id="dyn-companion-target">Companion Target</p>';
-    await writeFile(componentPath, updatedComponent, 'utf8');
-
-    const target = page.locator('[id$="__dyn-companion-target"]').first();
-    await expect(target).toBeVisible({ timeout: 15000 });
-    await expect(target).toHaveCSS('color', 'rgb(12, 34, 56)');
+    await expect(target).toHaveCSS('color', 'rgb(12, 34, 56)', { timeout: 15000 });
   });
 
   test('transpiles and serves newly created page with component tags during dev server session', async ({ page }) => {
@@ -575,45 +583,63 @@ test.describe('Dev Server Request-Time Scripts (data-bascik-server)', () => {
 test.describe('Dev Server Startup Output', () => {
   test('startup logs do not contain duplicate transpiled page entries or duplicate completion summaries', async () => {
     const entryPath = join(pkgDir, 'bin/bascik.js');
+    const fixtureDir = await mkdtemp(join(tmpdir(), 'bascik-dev-startup-'));
+    await Promise.all([
+      mkdir(join(fixtureDir, 'src/pages'), { recursive: true }),
+      mkdir(join(fixtureDir, 'src/components'), { recursive: true }),
+    ]);
+    await writeFile(
+      join(fixtureDir, 'src/pages/index.html'),
+      '<!DOCTYPE html><html><head><title>Startup</title></head><body><h1>Startup</h1></body></html>',
+      'utf8',
+    );
     const child = spawn(process.execPath, [entryPath], {
-      cwd: e2eDir,
-      env: { ...process.env, PORT: '9989' },
+      cwd: fixtureDir,
+      env: { ...process.env, BASCIK_SERVER_PORT: '9989' },
     });
 
     let output = '';
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        child.kill();
-        reject(new Error(`Dev server startup timed out. Output captured:\n${output}`));
-      }, 15000);
-
-      child.stdout?.on('data', (data) => {
-        output += data.toString('utf8');
-        if (output.includes('All tasks completed in')) {
-          clearTimeout(timeout);
+    let bootCompleted = false;
+    let timedOut = false;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          timedOut = true;
           child.kill();
-          resolve();
-        }
-      });
+        }, 15000);
 
-      child.stderr?.on('data', (data) => {
-        output += data.toString('utf8');
-      });
+        child.stdout?.on('data', (data) => {
+          output += data.toString('utf8');
+          if (output.includes('All tasks completed in')) {
+            bootCompleted = true;
+            child.kill();
+          }
+        });
 
-      child.on('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
+        child.stderr?.on('data', (data) => {
+          output += data.toString('utf8');
+        });
 
-      child.on('exit', (code) => {
-        clearTimeout(timeout);
-        if (!output.includes('All tasks completed in')) {
-          reject(new Error(`Dev server exited prematurely with code ${code}. Output:\n${output}`));
-        } else {
-          resolve();
-        }
+        child.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+
+        child.on('exit', (code) => {
+          clearTimeout(timeout);
+          if (bootCompleted) {
+            resolve();
+          } else if (timedOut) {
+            reject(new Error(`Dev server startup timed out. Output captured:\n${output}`));
+          } else {
+            reject(new Error(`Dev server exited prematurely with code ${code}. Output:\n${output}`));
+          }
+        });
       });
-    });
+    } finally {
+      if (!child.killed) child.kill();
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
 
     const lines = output.split('\n').map((l) => l.trim()).filter(Boolean);
 

@@ -70,7 +70,7 @@
     "e2e:prod": "yarn e2e:prod:http1 && yarn e2e:prod:http2",
     "e2e:prod:http1": "playwright test --config e2e/playwright.server.config.ts --reporter=line",
     "e2e:prod:http2": "playwright test --config e2e/playwright.server-http2.config.ts --reporter=line",
-    "e2e:all": "yarn e2e && yarn e2e:prod",
+    "e2e:all": "yarn e2e && yarn e2e:dev && yarn e2e:prod",
     "coverage": "yarn update-coverage && yarn update-e2e-coverage",
     "cover": "yarn coverage",
     "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",

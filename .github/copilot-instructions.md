@@ -281,7 +281,7 @@ If one of these commands hangs or cannot access the required resource, the comma
 ### Token-Efficient Test Execution & Output Parsing
 
 - **Unit tests, typechecks, checks, E2E, and Lighthouse**: To run all tests across all monorepo packages (`pkg`, `docs`, `create`, `extensions/vscode-bascik`), use `yarn test:all`. For unit tests only, use `yarn unit:all`.
-- **E2E tests**: Playwright E2E tests are configured in package scripts (`yarn pkg:e2e`, `yarn pkg:e2e:prod`, `yarn e2e:all`) with `--reporter=line` output to preserve context tokens.
+- **E2E tests**: Playwright E2E tests are configured in package scripts (`yarn pkg:e2e`, `yarn pkg:e2e:dev`, `yarn pkg:e2e:prod`, `yarn e2e:all`) with `--reporter=line` output to preserve context tokens. `yarn e2e:all` includes static build, live dev server, production HTTP/1.1, and production HTTP/2 configurations.
 - **Efficient output parsing**:
   - Always check the overall status first: **Did it pass or fail?**
   - If all tests pass, stop immediately: do NOT read or print out lists of passing test names.
