@@ -33,7 +33,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
 
   if (BascikConfig.isBuild) {
     await runExecPhase("pre");
-    startExecParallel();
+    await startExecParallel();
     await watchFiles();
     await runExecPhase("post");
     const version = await readVersion();

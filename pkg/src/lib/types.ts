@@ -16,9 +16,17 @@ export interface ExecEntry {
    * When this script runs relative to page transpilation.
    * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
    * - 'post': runs after all pages are transpiled and written to dist.
-   * - 'parallel': started before transpilation but not awaited (fire-and-forget).
+   * - 'parallel': started before transpilation and joined before transpilation begins in build mode.
    */
   phase?: ExecPhase;
+  /** Working directory for the script execution. Defaults to process.cwd(). */
+  cwd?: string;
+  /** Environment variables passed to the script, merged with process.env. */
+  env?: Record<string, string>;
+  /** Command line arguments passed to the Node script (process.argv). */
+  args?: string[];
+  /** Execution timeout in milliseconds (default: 60,000ms). */
+  timeout?: number;
 }
 
 export interface RouteParams {

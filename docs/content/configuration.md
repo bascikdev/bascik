@@ -371,7 +371,14 @@ Pipeline options for file watching, build scripts execution, and concurrency.
 pipeline: {
   watchPaths: ['scripts/', 'data/'], // extra paths to watch in dev mode
   exec: [                            // lifecycle scripts
-    { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
+    {
+      script: 'scripts/generate-search-index.ts',
+      phase: 'parallel',             // 'pre' | 'post' | 'parallel'
+      cwd: '.',                      // working directory
+      args: ['--full'],              // argv passed to the script
+      env: { CUSTOM: '1' },          // extra env variables
+      timeout: 60000,                // timeout in ms
+    },
   ],
   workers: false,                    // enable multi-threaded worker pool
 }

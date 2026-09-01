@@ -111,6 +111,10 @@ Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`,
 
 Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.
 
+## Why did my `parallel` exec script's output not appear?
+
+In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts.
+
 ## How do local script references (`<script src="...">`) work inside a component?
 
 When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.

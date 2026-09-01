@@ -107,7 +107,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   base: null,
 };
 
-const KNOWN_EXEC_ENTRY_KEYS = ["script", "watch", "phase"];
+const KNOWN_EXEC_ENTRY_KEYS = ["script", "watch", "phase", "cwd", "env", "args", "timeout"];
 
 /* ── Edit-distance suggestions ────────────────────────────────────────── */
 
