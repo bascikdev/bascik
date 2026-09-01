@@ -47,4 +47,12 @@ describe('canonical', () => {
     const link = await canonical('custom-route');
     expect(link).toBe('<link rel="canonical" href="https://bascik.dev/custom-route" />');
   });
+
+  it('includes BASCIK_BASE for page paths and route overrides', async () => {
+    process.env.BASCIK_BASE = '/docs/';
+    expect(await canonical()).toBe('<link rel="canonical" href="https://bascik.dev/docs/about" />');
+    expect(await canonical('/custom-route')).toBe(
+      '<link rel="canonical" href="https://bascik.dev/docs/custom-route" />',
+    );
+  });
 });

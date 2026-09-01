@@ -267,6 +267,21 @@ When no source provides a value, the variable is **absent** from the script's en
 </script>
 ```
 
+### `BASCIK_BASE`
+
+Bascik forwards the normalized `base` config value to every build script as `BASCIK_BASE`. It is always present and defaults to `/`. This is useful when build output must expose the deployment prefix to client code, because Bascik deliberately does not rewrite URLs assembled inside JavaScript.
+
+The following is an illustrative pattern. Adapt the element and attribute placement to the page structure rather than treating it as a required API:
+
+```html
+<!-- Emit the base once, at build time, into a data attribute. -->
+<script data-bascik-build>
+  console.log(`data-base="${process.env.BASCIK_BASE ?? "/"}"`);
+</script>
+```
+
+Client code can read the emitted data attribute and prefix a runtime URL. The value was selected during the build, and reading it from the DOM adds no Bascik runtime.
+
 ## Concurrent Execution
 
 All build scripts on a page run concurrently. Bascik collects every `<script data-bascik-build>` tag at once and starts them all in parallel using `Promise.all`. A semaphore caps how many Node.js subprocesses are alive simultaneously based on available memory, but there is no document-order sequencing, so script 4 can finish before script 1. The outputs are stitched back into the page in their original positions once all scripts have resolved, so the HTML order is always preserved.
@@ -300,7 +315,7 @@ Bascik caches build script output to `node_modules/.cache/bascik/script-cache/` 
 
 - The script body
 - The contents of any local `scripts/` or `content/` files the script imports
-- The `isBuild` flag and the site URL (`BASCIK_SITE_URL`)
+- The `isBuild` flag, site URL (`BASCIK_SITE_URL`), and deployment base (`BASCIK_BASE`)
 
 If a dependency file changes (because you edited it or switched branches), the cache entry is invalid and the script re-runs automatically.
 

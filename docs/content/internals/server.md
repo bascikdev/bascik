@@ -160,13 +160,14 @@ Every incoming request (`req.path`) passes through a deterministic normalization
 1. **URL Decomposition (`?` and `#` stripping):** The raw request URI is split on `?` and `#` (`req.path.split(/[?#]/)[0]`) so query parameters and fragments never alter static asset paths or page lookup keys. For example, `/style.css?v=1` or `/about#section` resolve directly to `/style.css` and `/about`.
 2. **Percent-Encoding and Traversal Sanitation:** Paths are decoded using `decodeURIComponent()`. Malformed percent-encoding or paths containing `..` traversal patterns immediately yield a `400 Bad Request`.
 3. **Dot-Segment Rejection:** After decoding and traversal validation, any path segment beginning with `.` yields `404 Not Found` before static file lookup. This catches literal and encoded paths such as `/.env`, `/.git/config`, and `/%2Egit/config`, and protects internal output directories such as `dist/.bascik/`.
-4. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections to `/bascik-live-reload`, the server extracts `new URL(req.headers.referer).pathname` before calling `getHttpPath()`. Query strings in the address bar (such as `/faq?tab=settings`) are stripped out so `mem.trackOpenPage()` tracks `/faq` accurately and selective reload filtering matches correctly.
-5. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
+4. **Base Prefix Stripping:** After both security guards pass, the normalized `base` prefix is removed before static assets, live reload, or pages are resolved. Requests outside a non-root base return `404`. Keeping this step after traversal and dot-segment rejection prevents a prefix from hiding unsafe input; keeping it before routing gives dev, HTTP/1.1, and HTTP/2 identical behavior.
+5. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections through the base-prefixed `/bascik-live-reload` endpoint, the server extracts `new URL(req.headers.referer).pathname`, strips the same base, then calls `getHttpPath()`. Query strings in the address bar (such as `/faq?tab=settings`) are stripped out so `mem.trackOpenPage()` tracks `/faq` accurately and selective reload filtering matches correctly.
+6. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
    - Exact literal path match (`mem.getPageExact(pathname)`)
    - Strip `.html` extension if present
    - Alternate trailing-slash variant (`/blog` vs `/blog/`)
    - Fallback to full `mem.getPage()` lookup (which returns `/404` if unmapped)
-6. **Server Script Parameter Parsing:** For pages containing `<script data-bascik-server>`, the original query string is isolated (`req.path.indexOf("?")`) and parsed via `URLSearchParams` into `searchParams` on the request context object.
+7. **Server Script Parameter Parsing:** For pages containing `<script data-bascik-server>`, the original query string is isolated (`req.path.indexOf("?")`) and parsed via `URLSearchParams` into `searchParams` on the request context object.
 
 ### Security response headers
 

@@ -160,6 +160,12 @@ export const normalizeBasePath = (base: string): string => {
   return normalized;
 };
 
+const isValidBasePathPrefix = (base: string): boolean => {
+  const normalized = base.trim();
+  if (/[?#%\\\u0000-\u001f\u007f]/.test(normalized)) return false;
+  return !normalized.split("/").some((segment) => segment === "." || segment === "..");
+};
+
 /* ── Pure validation half ─────────────────────────────────────────────── */
 
 const VALID_EXEC_PHASES = ["pre", "post", "parallel"];
@@ -465,6 +471,8 @@ export const validateConfigShape = (
       push("base", base, 'expected a root-relative path like "/docs/"');
     } else if (/^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\//.test(base) || /^[a-zA-Z]:[\\/]/.test(base)) {
       push("base", base, 'expected a root-relative path like "/docs/", not a URL');
+    } else if (!isValidBasePathPrefix(base)) {
+      push("base", base, 'expected a literal URL path prefix without query, fragment, escape, backslash, or dot segments');
     }
   }
 

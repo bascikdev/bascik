@@ -27,11 +27,12 @@ The page phase prepares the source HTML document and orchestrates the component 
 3. **Obtain component list.** On the multi-page startup path (`processAllPages`), the list is pre-computed once and passed in. On a single-page re-transpilation, it is loaded from `src/components/` at this point.
 4. **Run component phase.** `recursivelyTranspile` is called on both the body and head HTML strings. Each call returns a `TranspileResult` containing the resolved HTML and the list of components that were used.
 5. **Collect and deduplicate CSS.** All CSS from used components is gathered. Since multiple instances of the same component share identical scoped class names, `deduplicateCss` emits a single `<style>` block regardless of how many times a component appears on the page. Any global stylesheets configured via `inlineStyles` are also injected into `<head>` at this stage.
-6. **Inject live-reload script.** In dev mode only, a small `<script>` that opens a Server-Sent Events connection to `/bascik-live-reload` is appended to the body.
-7. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs *after* component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
-8. **Reassemble HTML.** The resolved body and head are placed back into the original HTML document structure.
-9. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
-10. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
+6. **Rewrite base paths.** When `base` is not `/`, root-relative HTML and CSS URLs receive the normalized prefix. This runs after component ID-reference rewriting, so `href="#id"` and `url(#id)` are already final and remain untouched, and before minification. Markup-like text in comments and raw-text elements is shielded. With the default `/`, the step returns the original bytes immediately.
+7. **Inject live-reload script.** In dev mode only, a small `<script>` that opens a Server-Sent Events connection to `/bascik-live-reload` is appended to the body.
+8. **Minify.** HTML comments are stripped and excess whitespace is collapsed via `minifyHtml`. This runs *after* component resolution so that whitespace-sensitive content inside resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
+9. **Reassemble HTML.** The resolved body and head are placed back into the original HTML document structure. An idempotent whole-document base-path pass then covers URL-bearing attributes on the `html`, `head`, and `body` opening tags.
+10. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
+11. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
 
 ### Output Directory Lifecycle
 
@@ -74,8 +75,9 @@ The key is the SHA-256 hex digest of:
 5. The page file path (`BASCIK_PAGE_FILE`).
 6. The page route path (`BASCIK_PAGE_PATH`), which guarantees page-aware component scripts derive distinct cache keys per page.
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
-8. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
-9. The full content of every local file the script references, concatenated in order.
+8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
+9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
+10. The full content of every local file the script references, concatenated in order.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`), which scans the script source for quoted path literals matching `content/*.md` or `scripts/*.{mjs,js,ts}` patterns:
 

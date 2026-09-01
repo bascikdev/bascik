@@ -31,6 +31,7 @@ import { getSiteUrl } from "./environment.ts";
 import { listPages } from "./file-system.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
+import { composeSiteUrl } from "./base-path.ts";
 
 /**
  * Escape the five XML metacharacters for safe interpolation into `<loc>` etc.
@@ -64,11 +65,9 @@ export const is404Page = (relativePath: string): boolean =>
 /**
  * Build the XML sitemap string from an array of URL paths.
  */
-export const buildSitemapXml = (baseUrl: string, urlPaths: string[]): string => {
-  const normalizedBase = baseUrl.replace(/\/+$/, "");
-  const safeBase = escapeXml(normalizedBase);
+export const buildSitemapXml = (siteUrl: string, urlPaths: string[], base = "/"): string => {
   const urls = urlPaths
-    .map((p) => `  <url>\n    <loc>${safeBase}${escapeXml(p)}</loc>\n  </url>`)
+    .map((path) => `  <url>\n    <loc>${escapeXml(composeSiteUrl(siteUrl, base, path))}</loc>\n  </url>`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
 };
@@ -76,10 +75,8 @@ export const buildSitemapXml = (baseUrl: string, urlPaths: string[]): string => 
 /**
  * Build the robots.txt string pointing at the sitemap.
  */
-export const buildRobotsTxt = (baseUrl: string): string => {
-  const normalizedBase = baseUrl.replace(/\/+$/, "");
-  return `User-agent: *\nAllow: /\n\nSitemap: ${normalizedBase}/sitemap.xml\n`;
-};
+export const buildRobotsTxt = (siteUrl: string, base = "/"): string =>
+  `User-agent: *\nAllow: /\n\nSitemap: ${composeSiteUrl(siteUrl, base, "/sitemap.xml")}\n`;
 
 /**
  * The error shown when a feature that needs the site URL is enabled and none
@@ -120,8 +117,6 @@ export const generateSitemapFiles = async (
     throw new Error(buildMissingSiteUrlError(features));
   }
 
-  const baseUrl = siteUrl.replace(/\/+$/, ""); // trim trailing slash
-
   await mkdir(BascikConfig.directory.out, { recursive: true });
   const writes: Promise<void>[] = [];
 
@@ -135,7 +130,7 @@ export const generateSitemapFiles = async (
       .filter((rel) => !is404Page(rel))
       .map((relativePath) => encodeUrlPath(getHttpPath(relativePath)))
       .sort();
-    const sitemapXml = buildSitemapXml(baseUrl, urlPaths);
+    const sitemapXml = buildSitemapXml(siteUrl, urlPaths, BascikConfig.base);
     const sitemapPath = join(BascikConfig.directory.out, "sitemap.xml");
     const sitemapRel = relative(process.cwd(), sitemapPath);
     writes.push(
@@ -146,7 +141,7 @@ export const generateSitemapFiles = async (
   }
 
   if (doRobots) {
-    const robotsTxt = buildRobotsTxt(baseUrl);
+    const robotsTxt = buildRobotsTxt(siteUrl, BascikConfig.base);
     const robotsPath = join(BascikConfig.directory.out, "robots.txt");
     const robotsRel = relative(process.cwd(), robotsPath);
     writes.push(

@@ -9,8 +9,9 @@ import { eventEmitter, runShutdownHandlers } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
 import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
-import { BOOT_PAGE_HTML } from "./boot-page.ts";
+import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
+import { stripBasePath, withBasePath } from "./base-path.ts";
 
 import { makeEtag } from "./names.ts";
 
@@ -143,7 +144,7 @@ export const createRequestHandler = () => {
       const method = req.method;
       const path = req.path;
       // Skip noisy SSE keep-alive pings
-      if (path === "/bascik-live-reload") return;
+      if (path?.split(/[?#]/)[0] === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
       console.log(`${method} ${path} ${responseStatus} ${formatDuration(elapsed)}`);
     };
 
@@ -203,6 +204,15 @@ export const createRequestHandler = () => {
         res.end("Not Found");
         return;
       }
+
+      const baseRelativePathname = stripBasePath(pathname, BascikConfig.base);
+      if (baseRelativePathname === null) {
+        responseStatus = 404;
+        res.respond(404, { ...secHeaders });
+        res.end("Not Found");
+        return;
+      }
+      pathname = baseRelativePathname;
 
       // ── Static asset (has extension, not .html) ──────────────────────────
       const ext = extname(pathname).toLowerCase();
@@ -309,7 +319,8 @@ export const createRequestHandler = () => {
         try {
           if (req.headers.referer) {
             const rawPath = new URL(req.headers.referer as string).pathname;
-            openPagePath = getHttpPath(rawPath);
+            const relativeRefererPath = stripBasePath(rawPath, BascikConfig.base);
+            if (relativeRefererPath !== null) openPagePath = getHttpPath(relativeRefererPath);
           }
         } catch { }
         if (openPagePath) mem.trackOpenPage(openPagePath);
@@ -374,7 +385,10 @@ export const createRequestHandler = () => {
       if (!exactPage && mem.isBooting && !BascikConfig.isProdServer) {
         responseStatus = 200;
         res.respond(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...secHeaders });
-        return res.end(isHead ? undefined : Buffer.from(BOOT_PAGE_HTML));
+        const bootPage = getBootPageHtml(
+          withBasePath("/bascik-live-reload?boot=1", BascikConfig.base),
+        );
+        return res.end(isHead ? undefined : bootPage);
       }
 
       const page = exactPage ?? mem.getPage(pathname);

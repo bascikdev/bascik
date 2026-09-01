@@ -62,6 +62,7 @@ vi.mock("./mem.js", () => ({
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
   BascikConfig: {
+    base: "/",
     http: {
       httpCache: false,
       tls: {
@@ -806,6 +807,107 @@ describe("startHttp2Server – path traversal protection", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 200 }),
     );
+  });
+});
+
+describe("startHttp2Server – base path routing", () => {
+  beforeEach(async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).base = "/sub/";
+    await startHttp2Server();
+  });
+
+  afterEach(async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).base = "/";
+  });
+
+  it.each([
+    ["/sub/about", "/about"],
+    ["/%73ub/about", "/about"],
+    ["/sub/", "/"],
+    ["/sub/index.html", "/"],
+  ])("serves %s from the base-relative route %s", async (requestPath, lookupPath) => {
+    const page = makePage();
+    mockMem.getPageExact.mockImplementation((path) => path === lookupPath ? page : undefined);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders(requestPath));
+
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 200 }));
+    expect(mockMem.getPageExact).toHaveBeenCalledWith(lookupPath);
+  });
+
+  it("returns 404 for a request outside the configured base", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about"));
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+    expect(mockMem.getPage).not.toHaveBeenCalled();
+  });
+
+  it("serves a static asset under the configured base", async () => {
+    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
+    mockCreateReadStream.mockReturnValue(fakeFileStream);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/sub/logo.png"));
+    expect(mockStat).toHaveBeenCalledWith(expect.stringMatching(/dist\/logo\.png$/));
+  });
+
+  it("rejects traversal before stripping the configured base", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/sub/../../etc/passwd"));
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 400 }));
+    expect(mockMem.getPage).not.toHaveBeenCalled();
+  });
+
+  it("rejects dot segments before stripping the configured base", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/sub/.env"));
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+    expect(mockStat).not.toHaveBeenCalled();
+  });
+
+  it("accepts the live-reload endpoint and tracks a base-relative referer", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(
+      stream,
+      makeHeaders("/sub/bascik-live-reload", "GET", "", "https://localhost:8443/sub/about"),
+    );
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ "content-type": "text/event-stream" }),
+    );
+    expect(mockMem.trackOpenPage).toHaveBeenCalledWith("/about");
+  });
+
+  it("serves a boot page whose live-reload client uses the configured base", async () => {
+    mockMem.isBooting = true;
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    try {
+      await handler(stream, makeHeaders("/sub/pending"));
+      expect(String(stream.end.mock.calls[0][0])).toContain(
+        'new EventSource("/sub/bascik-live-reload?boot=1")',
+      );
+    } finally {
+      mockMem.isBooting = false;
+    }
+  });
+
+  it("keeps root-base routing unchanged", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).base = "/";
+    const page = makePage();
+    mockMem.getPageExact.mockImplementation((path) => path === "/about" ? page : undefined);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about"));
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 200 }));
   });
 });
 

@@ -754,6 +754,7 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
 | `BASCIK_SITE_URL` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` env var, or `.env`. Absent when unset, never an empty string. |
+| `BASCIK_BASE` | Normalized deployment base from config. Always present and defaults to `/`. Use it when a build script must expose the prefix for JavaScript-built URLs. |
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
@@ -764,7 +765,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
 
 **To disable:** set `buildScriptCache: false` in your config (useful when debugging a script that reads external state not tracked by the cache key).
 
@@ -977,6 +978,8 @@ Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if bo
 
 Bascik validates the config before anything reads it and reports every problem together: each error names the key, the received value, and the expectation. Unknown keys are rejected with a "did you mean" suggestion, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.exec[].script`, `pipeline.watchPaths`, `assets.inlineStyles`, TLS key/cert files) are checked for existence. `base` is normalized to a leading and trailing slash (`docs` becomes `/docs/`); only a full URL is rejected.
 
+`base` defaults to `/`, which is a complete output and routing no-op. A non-root value such as `/docs/` rewrites root-relative HTML, CSS, and web app manifest URLs, serves dev and production-server requests below that prefix, and is included in sitemap, robots, and canonical URLs. Requests outside the prefix return `404`. Bascik does not rewrite URLs constructed in JavaScript; emit `BASCIK_BASE` from a build script when client code needs the prefix.
+
 ### The site URL is not a config key
 
 `siteUrl` is a per-deployment value, so it never goes in `bascik.config.ts` (setting it there is an error). Three sources, in precedence order:
@@ -1124,6 +1127,7 @@ When creating or modifying `bascik.config.ts`:
 * **Write artifacts to `dist/`:** Any custom lifecycle script run via `exec` or `<script data-bascik-build>` must write its generated files to `dist/`, never to `src/`.
 * **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
+* **Use `base` for subdirectory deployments:** Set a literal path prefix such as `base: '/docs/'`. Do not include a query, fragment, percent escape, backslash, or dot segment, and do not use a full URL. Bascik does not rewrite paths assembled inside JavaScript; use the build-time `BASCIK_BASE` value for those paths.
 
 **`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
 
@@ -1516,6 +1520,8 @@ The E2E suite lives in `pkg/e2e/` and supports four execution modes:
 2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
+
+Keep each mode's `testIgnore` list on its `default` project. Playwright project arrays replace matching top-level arrays instead of extending them, which can silently select server-only tests in the wrong mode. The config-selection unit test must cover all four project exclusion lists.
 
 The fixture config sets `minify.identifiers: false` so Playwright selectors can use readable scoped names like `bascik__my-comp__btn` instead of opaque hashes. However, in production builds (where `minify.identifiers: true` is enabled), Bascik compiles and minifies element IDs and class names. Consequently, relying on raw CSS selectors like `page.locator('.my-class')` or `page.locator('#my-id')` will fail because those identifiers are hashed and compressed.
 

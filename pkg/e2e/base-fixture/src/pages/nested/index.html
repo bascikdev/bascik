@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Nested base fixture</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <main class="hero">
+    <h1 data-testid="status">Nested base fixture ready</h1>
+    <img data-testid="hero" src="/image.svg" srcset="/image.svg 1x, https://cdn.example.com/image.svg 2x"
+      alt="Base fixture">
+    <a data-testid="mail" href="mailto:test@example.com">Mail</a>
+    <a data-testid="fragment" href="#details">Details</a>
+    <section id="details">Details</section>
+    <fixture-note></fixture-note>
+  </main>
+</body>
+
+</html>

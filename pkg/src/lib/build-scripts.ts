@@ -257,6 +257,7 @@ const computeScriptCacheKey = async (
   isBuild: boolean,
   filePath: string,
   siteUrl: string,
+  base: string,
   routeStr: string = "",
   pageFile: string = "",
   pagePath: string = "",
@@ -269,6 +270,7 @@ const computeScriptCacheKey = async (
   hash.update(pageFile);   // BASCIK_PAGE_FILE
   hash.update(pagePath);   // BASCIK_PAGE_PATH — varies per page for page-aware scripts
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
+  hash.update(base);       // BASCIK_BASE      — can affect script output
   hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
 
   const visited = new Set<string>();
@@ -426,7 +428,7 @@ export const executeBuildScripts = async (
     }
 
     const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, sourceFile, siteUrl, routeStr, pageFile, pagePath)
+      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath)
       : null;
 
     const prefix = html.slice(0, index);
@@ -478,6 +480,7 @@ export const executeBuildScripts = async (
       BASCIK_PAGE_FILE: pageFile,
       BASCIK_PAGE_PATH: pagePath,
       BASCIK_PAGES_DIR: resolve(process.cwd(), BascikConfig.directory.pages),
+      BASCIK_BASE: BascikConfig.base ?? "/",
     };
     // Only set BASCIK_SITE_URL when a value exists: an absent key lets scripts
     // distinguish "unset" from "empty".

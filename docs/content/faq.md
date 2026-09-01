@@ -205,6 +205,14 @@ Because the site URL changes per deployment, not per project. Staging, productio
 
 Bascik follows the standard precedence chain instead: `--site-url` flag, then the `BASCIK_SITE_URL` environment variable, then a `.env` file. Each environment sets its own value and the config file stays untouched. See [Configuration precedence](/configuration#configuration-precedence).
 
+## How do I deploy to `example.com/docs` instead of `example.com`?
+
+Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML and CSS URLs during the build, serves dev and production-server requests below `/docs/`, and includes the prefix in generated sitemap, robots, and canonical URLs. Requests without the prefix return `404`, matching a static subdirectory host. See [Subdirectory deploys](/deploying#subdirectory-deploys).
+
+## Why is my `fetch('/api/x')` broken under `base`?
+
+Bascik cannot safely infer URLs assembled or used inside JavaScript, so it does not rewrite them. Emit `process.env.BASCIK_BASE` into a data attribute from a build script, read that value from the DOM, and prefix the request path in client code. This keeps the deployment value build-time and adds no Bascik runtime. See [`BASCIK_BASE`](/build-scripts#bascik_base) for an illustrative pattern.
+
 ## Why is my `bascik.config.ts` being ignored?
 
 Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.

@@ -1,6 +1,7 @@
 import type { UserConfig } from "./types.ts";
 
 export type * from "./types.ts";
+export { composeSiteUrl } from "./base-path.ts";
 
 /** Public type for bascik.config.ts — use with `defineConfig`. */
 export type BascikConfig = UserConfig;
