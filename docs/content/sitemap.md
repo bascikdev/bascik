@@ -45,6 +45,63 @@ Allow: /
 Sitemap: https://example.com/sitemap.xml
 ```
 
+## Authored file precedence and source-tree checks
+
+If you author your own `src/pages/robots.txt` or `src/pages/sitemap.xml`, Bascik preserves your authored file and skips writing the generated version.
+
+Bascik checks for the existence of authored files in `directory.pages` (the source tree), never in `directory.out` (the output tree). Checking the output tree would cause stale artifacts from past builds to block regeneration indefinitely. When an authored file is found in `src/pages/` while generation is enabled, Bascik emits an actionable warning:
+
+```text
+warning: src/pages/robots.txt exists, so generate.robots did not write dist/robots.txt.
+  - To keep your authored file and silence this warning, set generate.robots: false
+  - To use Bascik's generated file, delete src/pages/robots.txt
+  - Your authored robots.txt should include its own "Sitemap:" line
+```
+
+Robots.txt and sitemap precedence are evaluated independently. Authoring one does not suppress generation of the other. Nested files (such as `src/pages/about/robots.txt`) are ignored for site-root precedence.
+
+### Composing generated sitemaps with custom additions
+
+Instead of manually maintaining a full `sitemap.xml`, you can use an `exec` script with `phase: 'post'` to read Bascik's freshly generated `dist/sitemap.xml` and append custom external URLs or split into a sitemap index:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  pipeline: {
+    exec: [
+      { script: 'scripts/augment-sitemap.ts', phase: 'post' },
+    ],
+  },
+});
+```
+
+Because post-phase scripts run on the newly emitted build output, this pattern remains completely deterministic across builds.
+
+## Per-page sitemap exclusion
+
+To exclude a specific page (such as a legacy URL redirect) from `sitemap.xml`, place a meta tag in the page's HTML:
+
+```html
+<meta name="bascik-sitemap" content="exclude">
+```
+
+The 404 page is automatically excluded from `sitemap.xml`.
+
+## Optional lastmod timestamps
+
+By default, `generate.sitemapLastmod` is `false`. When enabled, `<lastmod>` tags in `sitemap.xml` are populated using the source file's last modified timestamp:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  generate: {
+    sitemapLastmod: true,
+  },
+});
+```
+
+`sitemapLastmod` is opt-in because filesystem mtimes can vary across CI checkouts, which would create unnecessary diff churn. Bascik intentionally omits `changefreq` and `priority` elements, as search engines publicly ignore them.
+
 ## URL path rules
 
 Each page is converted from its file path to a URL path following these rules:

@@ -87,6 +87,10 @@ Yes. Subfolders are supported for file organization. However, tag names come fro
 
 If two component files define the same tag name (such as `src/components/marketing/card.html` and `src/components/admin/card.html`, or `card.html` and `card.v2.html`), Bascik throws a build error naming both colliding file paths. Duplicate component names are not allowed because tag names come from the filename alone.
 
+## Why did my hand-written robots.txt get overwritten?
+
+In earlier versions of Bascik, generated files could overwrite authored ones. Bascik now checks the source tree (`src/pages/robots.txt` or `src/pages/sitemap.xml`) before generating files. If an authored file exists, Bascik preserves it and emits a warning with steps to configure `generate.robots: false` or delete the authored file.
+
 ## Why do two builds of the same source produce byte-identical output?
 
 Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
