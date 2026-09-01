@@ -412,7 +412,7 @@ describe("extractProps", () => {
   });
 
   it("warns when a prop value contains its delimiting quote", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     extractProps(
       '<my-comp data-bascik-prop-title="say "hello""></my-comp>',
