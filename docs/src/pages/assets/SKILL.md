@@ -19,6 +19,7 @@ This file contains the **complete, centralized documentation and development ski
 * **Scopes CSS class names, element selectors, `@keyframes`, and CSS custom properties** per component so they never collide.
 * **Rewrites DOM selector calls** (`getElementById`, `querySelector`, etc.) in component scripts to match scoped attribute names.
 * **Wraps component scripts in IIFEs** so variables do not leak between components.
+* **Derives instance IDs deterministically** from page path, component name, and ordinal index, ensuring byte-identical builds across repeated runs.
 * **Outputs a `dist/` directory of plain `.html` files** with zero runtime dependencies and no client-side JS added by Bascik itself.
 
 ### What Bascik Does NOT Do

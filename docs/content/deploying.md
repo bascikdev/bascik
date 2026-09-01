@@ -2,6 +2,8 @@
 
 Bascik's build output is a standard folder of static HTML, CSS, and JavaScript files. `bascik --build` writes everything to `dist/`, and that folder can be served by any static host or CDN without additional configuration.
 
+Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
+
 Every dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it.
 
 ## Per-environment values: the site URL

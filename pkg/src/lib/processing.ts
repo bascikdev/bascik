@@ -93,7 +93,7 @@ import { minifyJs } from "./js-minifier.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
-import { getUniqueId } from "./names.ts";
+import { deriveInstanceId, getUniqueId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
@@ -389,10 +389,14 @@ export const recursivelyTranspile = (
   componentList: ComponentList,
   usedComponents: BascikComponent[] = [],
   filePath?: string,
+  instanceState?: { ordinalMap: Map<string, number>; issuedIds: Set<string> },
 ): TranspileResult => {
   if (filePath && !transpiledHtmlBody.includes("<!--bascik-source-file:")) {
     transpiledHtmlBody = `<!--bascik-source-file:${filePath}-->${transpiledHtmlBody}<!--bascik-source-file-end:${filePath}-->`;
   }
+
+  const ordinalMap = instanceState?.ordinalMap ?? new Map<string, number>();
+  const issuedIds = instanceState?.issuedIds ?? new Set<string>();
 
   // Iterative implementation — avoids keeping O(N) copies of the growing HTML
   // string simultaneously on the call stack (each recursive frame held its own
@@ -446,7 +450,14 @@ export const recursivelyTranspile = (
       component.fileContent = injectPropAttributes(component.fileContent, props);
 
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
-      const instanceId = getUniqueId(8);
+      const currentOrdinal = (ordinalMap.get(component.name) ?? 0) + 1;
+      ordinalMap.set(component.name, currentOrdinal);
+      const instanceId = deriveInstanceId(
+        filePath || "page",
+        component.name,
+        currentOrdinal,
+        issuedIds,
+      );
       currentStage = "attribute scoping";
       component = applyTransforms(component, buildScopingPipeline(instanceId));
       component.fileContent = stripPreserveDirectives(component.fileContent);
@@ -1013,11 +1024,17 @@ export const transpilePage = async (
     );
   }
 
+  const instanceState = {
+    ordinalMap: new Map<string, number>(),
+    issuedIds: new Set<string>(),
+  };
+
   let { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
     body,
     componentList,
     [],
     pagePath,
+    instanceState,
   );
 
   let bodyPasses = 0;
@@ -1031,6 +1048,7 @@ export const transpilePage = async (
       componentList,
       usedComponents,
       pagePath,
+      instanceState,
     );
     transpiledHtmlBody = nextPass.transpiledHtmlBody;
     usedComponents = nextPass.usedComponents;
@@ -1042,7 +1060,7 @@ export const transpilePage = async (
   let {
     transpiledHtmlBody: transpiledHeadContent,
     usedComponents: headUsedComponents,
-  } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath);
+  } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath, instanceState);
 
   let headPasses = 0;
   while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
@@ -1055,6 +1073,7 @@ export const transpilePage = async (
       componentList,
       headUsedComponents,
       pagePath,
+      instanceState,
     );
     transpiledHeadContent = nextPassHead.transpiledHtmlBody;
     headUsedComponents = nextPassHead.usedComponents;

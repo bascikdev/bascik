@@ -79,6 +79,10 @@ Yes. Bascik's output is vanilla HTML. Any library that works with HTML works wit
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.
 
+## Why do two builds of the same source produce byte-identical output?
+
+Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
+
 ## How do local script references (`<script src="...">`) work inside a component?
 
 When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.
