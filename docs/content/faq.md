@@ -154,6 +154,12 @@ Because the site URL changes per deployment, not per project. Staging, productio
 
 Bascik follows the standard precedence chain instead: `--site-url` flag, then the `BASCIK_SITE_URL` environment variable, then a `.env` file. Each environment sets its own value and the config file stays untouched. See [Configuration precedence](/configuration#configuration-precedence).
 
+## Why is my `bascik.config.ts` being ignored?
+
+Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or scaffolded `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
+
+Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
+
 ## Why did my build fail with a configuration error?
 
 Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.

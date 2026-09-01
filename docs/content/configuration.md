@@ -6,6 +6,20 @@ However, Bascik is also **highly configurable** for both development and product
 
 To override any default behaviors, create a `bascik.config.ts` file in your project root. Import `defineConfig` for full autocomplete and type checking on every option. Your editor will surface valid values, flag typos, and show inline docs as you type. A plain `bascik.config.js` also works and takes precedence if both files exist.
 
+## Config File Discovery
+
+Bascik looks for its config in the project root only, in this order:
+
+1. `--config <path>` (or `--config=<path>`): load a specific file. An explicitly passed path that does not exist is an error, mirroring the `--env-file` behavior.
+2. `bascik.config.js`
+3. `bascik.config.ts`
+
+When both files exist, `bascik.config.js` wins. This is deliberate: a `.js` file written by `bascik init` would otherwise silently shadow your `.ts` config. If your `.ts` file appears to be ignored, check for a stray `.js` file next to it.
+
+Only these two filenames are supported: no `.mjs`, `.cjs`, `.mts`, or `.cts` variants, no `config/` subdirectory, and no parent-directory search.
+
+TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
+
 ## Configuration Validation
 
 Bascik validates your configuration at startup, before anything reads it. Every problem is reported together in one aggregated error rather than one fix at a time. Each entry names the key, the received value, and what was expected:

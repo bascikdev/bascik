@@ -1,4 +1,9 @@
 // Central TypeScript types for the Bascik transpile pipeline
+//
+// Config naming: three concepts, three names.
+//   UserConfig          — the user-facing input type written in bascik.config (see defineConfig.ts)
+//   BascikConfigOptions — the resolved runtime type after defaults and mode overrides are merged
+//   BascikConfig        — the frozen runtime value exported from config.ts
 
 export type ExecPhase = "pre" | "post" | "parallel";
 
@@ -166,6 +171,7 @@ export interface HttpTimeoutsOptions {
 
 export interface HttpOptions {
   httpCache: boolean;
+  /** TCP port to listen on. Defaults to `8080` for HTTP, or `8443` when TLS is enabled. */
   port?: number;
   hostname: string;
   tls: HttpTlsOptions;
@@ -232,6 +238,7 @@ export type UserConfig = {
   onMinifyError?: "warn" | "error";
   http?: {
     httpCache?: boolean;
+    /** TCP port to listen on. Defaults to `8080` for HTTP, or `8443` when TLS is enabled. */
     port?: number;
     hostname?: string;
     tls?: Partial<HttpTlsOptions>;

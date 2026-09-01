@@ -36,10 +36,11 @@ const KNOWN_FLAGS = new Set([
   "--log",
   "--site-url",
   "--env-file",
+  "--config",
 ]);
 
 /** Flags that also accept an inline `--flag=value` form. */
-const VALUE_FLAG_PREFIXES = ["--site-url=", "--env-file="];
+const VALUE_FLAG_PREFIXES = ["--site-url=", "--env-file=", "--config="];
 
 const isKnownFlag = (arg: string): boolean =>
   KNOWN_FLAGS.has(arg) || VALUE_FLAG_PREFIXES.some((p) => arg.startsWith(p));
@@ -133,6 +134,8 @@ Options:
   --site-url <url>   Set the site URL for this run (overrides BASCIK_SITE_URL and .env)
   --env-file <path>  Load env vars from a file (repeatable; later files win).
                      Defaults to ./.env when present, silently skipped when not
+  --config <path>    Load the config from a specific file instead of
+                     ./bascik.config.js or ./bascik.config.ts
   -h, --help      Show this help text
   -v, --version   Show the installed Bascik version
 `;

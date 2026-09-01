@@ -78,6 +78,7 @@ bascik --check  # static analysis: validate pages and components without buildin
 bascik --build --log [path]  # optional build log; defaults to .bascik/build.log
 bascik --build --site-url https://example.com  # set the site URL for this run
 bascik --build --env-file .env.staging         # load env vars from a file
+bascik --build --config ./conf/bascik.config.js  # load config from a specific file
 ```
 
 ## Environment files and the site URL

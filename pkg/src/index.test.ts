@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
@@ -103,6 +105,10 @@ describe("CLI_USAGE", () => {
       "-h",
       "--version",
       "-v",
+      "--log",
+      "--site-url",
+      "--env-file",
+      "--config",
       "init",
     ]) {
       expect(CLI_USAGE).toContain(token);
@@ -180,5 +186,31 @@ describe("index.ts CLI runner functions", () => {
     expect(buildRes.action).toBe("build");
     expect(transpileSpy).toHaveBeenCalled();
   });
+
+  it("prints a clean error (no unhandled rejection banner, no Node stack) when the config fails to load", async () => {
+    // Regression anchor: a syntax error in bascik.config must surface as one
+    // clean [bascik] line, not a top-level unhandled rejection with a stack.
+    // Spawning the real CLI is the honest test: the bug lives at the module
+    // top-level boundary, which in-process tests cannot reach.
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cli-err-"));
+    try {
+      await writeFile(
+        join(dir, "bascik.config.js"),
+        "this is not valid javascript {{{",
+        "utf8",
+      );
+      const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
+      const result = spawnSync(process.execPath, [cliPath, "--build"], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Failed to load bascik.config");
+      expect(result.stderr).not.toMatch(/unhandled|Unhandled/);
+      expect(result.stderr).not.toMatch(/\n\s+at\s/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 

@@ -135,6 +135,15 @@ const isMain =
     process.argv[1].endsWith("bascik.js"));
 
 if (isMain) {
-  await runCli(process.argv.slice(2), { exitOnFinish: true });
+  // CLI boundary: anything that escapes runCli (for example a config load
+  // failure during a lazy module import) is reported as one clean line. The
+  // actionable message is in err.message; a full Node stack and an unhandled
+  // rejection banner would only bury it.
+  try {
+    await runCli(process.argv.slice(2), { exitOnFinish: true });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 }
 

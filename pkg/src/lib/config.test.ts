@@ -131,6 +131,36 @@ describe("BascikConfig freeze and structure", () => {
   });
 });
 
+describe("initBascikConfig does not mutate objects the caller owns", () => {
+  it("does not freeze arrays on the caller's own config object", () => {
+    const userConfig = { pipeline: { watchPaths: ["src/assets"] } };
+    initBascikConfig(userConfig, {}, {}, { fs: allowAllFs });
+    // The resolved config is frozen; the caller's own module exports must
+    // stay mutable — deepFreeze must never reach across the boundary.
+    expect(Object.isFrozen(userConfig.pipeline.watchPaths)).toBe(false);
+    expect(() => userConfig.pipeline.watchPaths.push("src/more")).not.toThrow();
+    expect(userConfig.pipeline.watchPaths).toEqual(["src/assets", "src/more"]);
+  });
+
+  it("does not freeze nested objects on the caller's own config object", () => {
+    const userConfig = { http: { hostname: "example.test" } };
+    initBascikConfig(userConfig, {}, {}, { fs: allowAllFs });
+    expect(Object.isFrozen(userConfig.http)).toBe(false);
+  });
+
+  it("leaves the exported defaultConfig unfrozen and unmodified", () => {
+    // Two symptoms of the same leak: freezing the merged config must not
+    // reach back into defaultConfig, whose arrays are shared by reference
+    // through the merge when the user provides no override.
+    initBascikConfig({}, {}, {}, { fs: allowAllFs });
+    expect(Object.isFrozen(defaultConfig)).toBe(false);
+    expect(Object.isFrozen(defaultConfig.scoping)).toBe(false);
+    expect(Object.isFrozen(defaultConfig.pipeline.watchPaths)).toBe(false);
+    expect(defaultConfig.pipeline.watchPaths).toEqual([]);
+    expect(defaultConfig.scoping.preserve).toEqual(["code"]);
+  });
+});
+
 describe("dev vs build vs server mode overrides and defaults", () => {
   afterEach(() => {
     vi.unstubAllEnvs();

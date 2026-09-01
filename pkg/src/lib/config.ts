@@ -205,6 +205,30 @@ export const shouldLog = (
 };
 
 /**
+ * Deep-clone plain objects and arrays. Functions (e.g. a custom `minify.js`
+ * implementation) and class instances pass through by reference: they cannot
+ * be cloned, and they hold no mutable config values.
+ *
+ * The merge above keeps source arrays and untouched subtrees by reference, so
+ * without this clone `deepFreeze` would freeze arrays inside the user's own
+ * config module and inside the exported `defaultConfig` — a global side
+ * effect on objects the caller still owns.
+ */
+const deepClone = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => deepClone(entry)) as T;
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      out[key] = deepClone((value as Record<string, unknown>)[key]);
+    }
+    return out as T;
+  }
+  return value;
+};
+
+/**
  * Recursively freeze the config object. `Object.freeze` alone is shallow —
  * without this, nested objects (`directory`, `scopeAttribute`, `generate`,
  * `serve`) would remain mutable at runtime.
@@ -342,7 +366,7 @@ export const initBascikConfig = (
     BascikConfig.pipeline.exec = normalizeExec(BascikConfig.pipeline.exec);
   }
 
-  return { BascikConfig: deepFreeze(BascikConfig) };
+  return { BascikConfig: deepFreeze(deepClone(BascikConfig)) };
 };
 
 export const { BascikConfig } = initBascikConfig(
