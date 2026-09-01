@@ -217,7 +217,29 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
         const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
         const diag = new vscode.Diagnostic(
           new vscode.Range(start, end),
-          'data-bascik-build and data-bascik-server cannot both appear on the same <script> tag. Remove one — a script runs at build time or at request time, not both.',
+          'data-bascik-build and data-bascik-server cannot both appear on the same <script> tag. Remove one - a script runs at build time or at request time, not both.',
+          vscode.DiagnosticSeverity.Error,
+        );
+        diag.source = 'bascik';
+        diagnostics.push(diag);
+      }
+      if (attrs.has('data-bascik-routes') && attrs.has('data-bascik-server')) {
+        const start = document.positionAt(scriptMatch.index ?? 0);
+        const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          'data-bascik-routes and data-bascik-server cannot both appear on the same <script> tag. Remove one - a routes script runs at build time, while a server script runs at request time.',
+          vscode.DiagnosticSeverity.Error,
+        );
+        diag.source = 'bascik';
+        diagnostics.push(diag);
+      }
+      if (attrs.has('data-bascik-routes') && attrs.has('data-bascik-build')) {
+        const start = document.positionAt(scriptMatch.index ?? 0);
+        const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          'data-bascik-routes and data-bascik-build cannot both appear on the same <script> tag. Remove one.',
           vscode.DiagnosticSeverity.Error,
         );
         diag.source = 'bascik';

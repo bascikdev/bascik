@@ -312,3 +312,80 @@ describe("listComponents – companion scripts", () => {
     expect(result["my-btn"].fileContent).not.toContain("spec");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listComponents – page-aware component script deferral
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("listComponents – page-aware component build script deferral", () => {
+  it("executes static component build scripts immediately during registration", async () => {
+    const rawHtml =
+      "<div><script data-bascik-build>console.log('static')</script></div>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/static-comp.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+    mockExecuteBuildScripts.mockResolvedValue("<div><span>static</span></div>");
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
+      rawHtml,
+      "src/components/static-comp.html",
+    );
+    expect(result["static-comp"].fileContent).toContain("<span>static</span>");
+    expect(result["static-comp"].fileContent).not.toContain("<script data-bascik-build");
+  });
+
+  it("defers execution of build script referencing process.env.BASCIK_PAGE_PATH", async () => {
+    const rawHtml =
+      "<div><script data-bascik-build>console.log(process.env.BASCIK_PAGE_PATH)</script></div>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/page-badge.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+
+    const result = await listComponents();
+
+    // Should NOT execute executeBuildScripts for the page-aware script
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["page-badge"].fileContent).toContain("<script data-bascik-build");
+    expect(result["page-badge"].fileContent).toContain("process.env.BASCIK_PAGE_PATH");
+  });
+
+  it("defers execution of build script with data-bascik-page-aware attribute", async () => {
+    const rawHtml =
+      "<div><script data-bascik-build data-bascik-page-aware>console.log('aware')</script></div>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/aware-comp.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["aware-comp"].fileContent).toContain("data-bascik-page-aware");
+  });
+
+  it("defers execution of build script with data-bascik-build='page' attribute", async () => {
+    const rawHtml =
+      "<div><script data-bascik-build=\"page\">console.log('page-aware')</script></div>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/docs-pagination.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).not.toHaveBeenCalled();
+    expect(result["docs-pagination"].fileContent).toContain('data-bascik-build="page"');
+  });
+
+  it("executes static build scripts while deferring page-aware build scripts in the same component", async () => {
+    const rawHtml =
+      "<div><script data-bascik-build>staticPart()</script><script data-bascik-build=\"page\">dynamicPart()</script></div>";
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp.html"]);
+    mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
+    mockExecuteBuildScripts.mockImplementation(async (html: string) =>
+      html.replace("<script data-bascik-build>staticPart()</script>", "<p>Static</p>"),
+    );
+
+    const result = await listComponents();
+
+    expect(mockExecuteBuildScripts).toHaveBeenCalled();
+    expect(result["mixed-comp"].fileContent).toContain("<p>Static</p>");
+    expect(result["mixed-comp"].fileContent).toContain('data-bascik-build="page"');
+  });
+});

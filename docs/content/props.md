@@ -109,6 +109,32 @@ This example passes values directly into the `feature-card` component via `data-
 </feature-card>
 ```
 
+<!-- demo:source-html -->
+```html
+<div class="fcard">
+  <h3 data-bascik-prop-title></h3>
+  <p data-bascik-prop-desc></p>
+</div>
+```
+
+<!-- demo:source-css -->
+```css
+.fcard {
+  padding: 24px;
+  background: #242628;
+  border: 1px solid #3a3d40;
+  border-radius: 10px;
+
+  h3 { color: #f0f1f2; }
+  p  { font-size: 0.875rem; color: #8d929e; }
+
+  &:hover {
+    border-color: rgba(211,255,141,0.35);
+    box-shadow: 0 0 0 1px rgba(211,255,141,0.12);
+  }
+}
+```
+
 <!-- demo:output-html -->
 ```html
 <div class="bascik__feature-card__fcard">

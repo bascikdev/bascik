@@ -26,6 +26,7 @@ describe('renderSectionLabel', () => {
   it('returns section label for valid page paths', () => {
     expect(renderSectionLabel('/why-bascik')).toBe('<p class="section-label">Overview</p>');
     expect(renderSectionLabel('/components')).toBe('<p class="section-label">Features</p>');
+    expect(renderSectionLabel('/environment-variables')).toBe('<p class="section-label">Reference</p>');
     expect(renderSectionLabel('/testing')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/unit-testing')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/build-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
@@ -36,6 +37,16 @@ describe('renderSectionLabel', () => {
 
   it('returns empty string for unknown paths', () => {
     expect(renderSectionLabel('/nonexistent-page')).toBe('');
+  });
+
+  it('reads process.env.BASCIK_PAGE_PATH directly when no argument is provided', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/components';
+    try {
+      expect(renderSectionLabel()).toBe('<p class="section-label">Features</p>');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
   });
 });
 
@@ -75,5 +86,103 @@ describe('renderPagination', () => {
 
   it('returns empty string for unknown paths', () => {
     expect(renderPagination('/nonexistent-page')).toBe('');
+  });
+
+  it('reads process.env.BASCIK_PAGE_PATH directly when no argument is provided', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/dynamic-routes';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="prev"');
+      expect(html).toContain('data-pg="next"');
+      expect(html).toContain('href="/build-scripts"');
+      expect(html).toContain('href="/server"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('auto-detects route path from process.env.BASCIK_SOURCE_FILE when no argument is provided', () => {
+    const originalFile = process.env.BASCIK_SOURCE_FILE;
+    const originalPageFile = process.env.BASCIK_PAGE_FILE;
+    const originalDir = process.env.BASCIK_PAGES_DIR;
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+
+    delete process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGES_DIR = '/abs/docs/src/pages';
+    process.env.BASCIK_SOURCE_FILE = '/abs/docs/src/pages/dynamic-routes.html';
+
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="prev"');
+      expect(html).toContain('data-pg="next"');
+      expect(html).toContain('href="/build-scripts"');
+      expect(html).toContain('href="/server"');
+    } finally {
+      process.env.BASCIK_SOURCE_FILE = originalFile;
+      process.env.BASCIK_PAGE_FILE = originalPageFile;
+      process.env.BASCIK_PAGES_DIR = originalDir;
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles process.env.BASCIK_PAGE_PATH = "/components" correctly', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/components';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('<nav class="docs-pagination" aria-label="Page navigation">');
+      expect(html).toContain('href="/getting-started"');
+      expect(html).toContain('href="/scoped-styles"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles first item in NAV correctly via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/why-bascik';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="next"');
+      expect(html).not.toContain('data-pg="prev"');
+      expect(html).toContain('href="/developer-experience"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles last item in NAV correctly via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/switch/from-vue';
+    try {
+      const html = renderPagination();
+      expect(html).toContain('data-pg="prev"');
+      expect(html).not.toContain('data-pg="next"');
+      expect(html).toContain('href="/switch/from-svelte"');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('returns empty string for unknown path via BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/nonexistent-page';
+    try {
+      const html = renderPagination();
+      expect(html).toBe('');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
+  });
+
+  it('handles renderSectionLabel with process.env.BASCIK_PAGE_PATH', () => {
+    const originalPath = process.env.BASCIK_PAGE_PATH;
+    process.env.BASCIK_PAGE_PATH = '/components';
+    try {
+      expect(renderSectionLabel()).toBe('<p class="section-label">Features</p>');
+    } finally {
+      process.env.BASCIK_PAGE_PATH = originalPath;
+    }
   });
 });

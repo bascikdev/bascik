@@ -350,12 +350,8 @@
             .replace(/^<p[^>]*>.*?<\/p>\s*/is, '')
           );
         </script>
-        <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
-          console.log(renderPagination('/internals/testing'));
-        </script>
+
+        <docs-pagination />
 
       </main>
     </div>

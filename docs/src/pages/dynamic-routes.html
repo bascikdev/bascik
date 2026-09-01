@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { canonical } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
+    );
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { openGraph } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
+    );
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { breadcrumbLd } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
+    );
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    const { articleSchema } = await import(
+      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
+    );
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Generate multiple HTML pages from a single template at build time using bracket filenames and data-bascik-routes scripts." />
+  <title>Dynamic Routes - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderSectionLabel } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
+          );
+          console.log(renderSectionLabel('/dynamic-routes'));
+        </script>
+
+        <!-- Content rendered from docs/content/dynamic-routes.md at build time.
+             To update page content, edit the MD file - not this file. -->
+        <script data-bascik-build>
+          import { join } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const { renderMd } = await import(
+            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
+          );
+          console.log(await renderMd('./content/dynamic-routes.md'));
+        </script>
+
+        <div class="callout">
+          <p><strong>Next:</strong> See <a href="/build-scripts">Build Scripts</a> to learn more about
+            running Node.js code at transpile time, or explore <a href="/server">Production Server</a> for dynamic
+            runtime handling.
+          </p>
+        </div>
+
+        <docs-pagination />
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

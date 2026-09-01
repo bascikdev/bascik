@@ -79,6 +79,7 @@ Full feature documentation lives at **[bascik.dev](https://bascik.dev)**.
 | Topic                   | URL                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------- |
 | Getting started         | [bascik.dev/getting-started](https://bascik.dev/getting-started)             |
+| Dynamic routes          | [bascik.dev/dynamic-routes](https://bascik.dev/dynamic-routes)               |
 | Slots                   | [bascik.dev/slots](https://bascik.dev/slots)                                 |
 | Props                   | [bascik.dev/props](https://bascik.dev/props)                                 |
 | Attribute inheritance   | [bascik.dev/attribute-inheritance](https://bascik.dev/attribute-inheritance) |

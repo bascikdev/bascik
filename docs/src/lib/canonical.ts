@@ -17,7 +17,7 @@
  */
 export async function canonical(routeOverride?: string): Promise<string> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
 
   if (!siteUrl || !pageFile || !pagesDir) return '';

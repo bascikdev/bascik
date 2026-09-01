@@ -198,6 +198,7 @@ describe("executeBuildScripts", () => {
       "/abs/project/src/pages/guides/intro.html",
     );
     const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_SITE_URL).toBe("");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
@@ -374,7 +375,7 @@ describe("executeBuildScripts", () => {
     (BascikConfig as any).onScriptError = undefined;
   });
 
-  it("reads script content from src file when script tag body is empty", async () => {
+  it("reads script content from double-quoted src file when script tag body is empty", async () => {
     mockReadFile.mockResolvedValueOnce('console.log("<h1>External Build Header</h1>");');
     resolveWith("<h1>External Build Header</h1>");
 
@@ -383,6 +384,28 @@ describe("executeBuildScripts", () => {
 
     expect(mockReadFile).toHaveBeenCalled();
     expect(result).toBe("<h1>External Build Header</h1>");
+  });
+
+  it("reads script content from single-quoted src file", async () => {
+    mockReadFile.mockResolvedValueOnce('console.log("<h1>Single Quoted</h1>");');
+    resolveWith("<h1>Single Quoted</h1>");
+
+    const html = "<script data-bascik-build src='helper.ts'></script>";
+    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+
+    expect(mockReadFile).toHaveBeenCalled();
+    expect(result).toBe("<h1>Single Quoted</h1>");
+  });
+
+  it("reads script content from unquoted src file and handles spaces around equals", async () => {
+    mockReadFile.mockResolvedValueOnce('console.log("<h1>Unquoted Header</h1>");');
+    resolveWith("<h1>Unquoted Header</h1>");
+
+    const html = '<script data-bascik-build src = ./helper.ts></script>';
+    const result = await executeBuildScripts(html, "src/components/my-comp.html");
+
+    expect(mockReadFile).toHaveBeenCalled();
+    expect(result).toBe("<h1>Unquoted Header</h1>");
   });
 
   it("respects onScriptError: error", async () => {
@@ -503,6 +526,31 @@ describe("collectAllScriptDeps", () => {
     const deps = await collectAllScriptDeps(html);
     expect(deps).toContain("scripts/md-renderer.ts");
     expect(deps).toContain("content/cli.md");
+  });
+
+  it("collects file dependencies from <script data-bascik-routes> tags in html", async () => {
+    const html = `
+      <script data-bascik-routes>
+        import { fetchRoutes } from './scripts/route-generator.ts';
+        console.log(JSON.stringify(await fetchRoutes()));
+      </script>
+    `;
+    const deps = await collectAllScriptDeps(html);
+    expect(deps).toContain("scripts/route-generator.ts");
+  });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-server", async () => {
+    const html = "<script data-bascik-build data-bascik-server>console.log(1)</script>";
+    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-build and data-bascik-server/,
+    );
+  });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-routes", async () => {
+    const html = "<script data-bascik-build data-bascik-routes>console.log(1)</script>";
+    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-build and data-bascik-routes/,
+    );
   });
 });
 
@@ -749,6 +797,73 @@ describe("build-script output cache", () => {
     expect(result).toBe("<p>cached-1</p><p>batch-2</p><p>batch-3</p>");
     // Only 1 batch call for the 2 uncached scripts
     expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("different route params produce a different cache key so generated pages are not reused", async () => {
+    resolveWith("<p>page-1</p>");
+    mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
+
+    const template = "<script data-bascik-build>makeArticle()</script>";
+    const templatePath = "src/pages/blog/[slug].html";
+
+    await executeBuildScripts(template, templatePath, {
+      params: { slug: "post-1" },
+    });
+
+    const jsonWrite1 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite1).toBeDefined();
+    const cacheKey1 = jsonWrite1![0];
+
+    mockExecFile.mockClear();
+    mockWriteFile.mockClear();
+    mockReadFile.mockClear();
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>page-2</p>");
+
+    await executeBuildScripts(template, templatePath, {
+      params: { slug: "post-2" },
+    });
+
+    const jsonWrite2 = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite2).toBeDefined();
+    const cacheKey2 = jsonWrite2![0];
+
+    expect(cacheKey1).not.toEqual(cacheKey2);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes BASCIK_ROUTE to child process when route is provided and omits it for ordinary pages", async () => {
+    resolveWith("");
+    const template = "<script data-bascik-build>x()</script>";
+    const route = { params: { slug: "hello" }, data: { title: "Hello World" } };
+
+    await executeBuildScripts(template, "src/pages/blog/[slug].html", route);
+    const optsWithRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(optsWithRoute.env?.BASCIK_ROUTE).toBe(JSON.stringify(route));
+
+    mockExecFile.mockClear();
+    await executeBuildScripts(template, "src/pages/index.html");
+    const optsWithoutRoute = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(optsWithoutRoute.env?.BASCIK_ROUTE).toBeUndefined();
+  });
+
+  it("passes BASCIK_PAGE_PATH to child process based on computePagePath or options", async () => {
+    resolveWith("<p>ok</p>");
+    const template = "<script data-bascik-build>x()</script>";
+
+    await executeBuildScripts(template, "src/pages/guides/getting-started.html");
+    const opts1 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts1.env?.BASCIK_PAGE_PATH).toBe("/guides/getting-started");
+
+    mockExecFile.mockClear();
+    await executeBuildScripts(template, "src/components/pagination.html", null, {
+      pageFile: "src/pages/switch/from-react.html",
+      sourceFile: "src/components/pagination.html",
+    });
+    const opts2 = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    expect(opts2.env?.BASCIK_PAGE_PATH).toBe("/switch/from-react");
+    expect(opts2.env?.BASCIK_PAGE_FILE).toBe("src/pages/switch/from-react.html");
+    expect(opts2.env?.BASCIK_SOURCE_FILE).toBe("src/components/pagination.html");
   });
 });
 

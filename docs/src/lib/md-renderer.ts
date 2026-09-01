@@ -124,11 +124,17 @@ export async function renderMdRange(
 
   if (from) {
     const idx = _headingIndex(md, from);
-    if (idx !== -1) md = md.slice(idx);
+    if (idx === -1) {
+      throw new Error(`[md-renderer] Heading "from: ${from}" not found in ${filePath}`);
+    }
+    md = md.slice(idx);
   }
   if (to) {
     const idx = _headingIndex(md, to);
-    if (idx !== -1) md = md.slice(0, idx);
+    if (idx === -1) {
+      throw new Error(`[md-renderer] Heading "to: ${to}" not found in ${filePath}`);
+    }
+    md = md.slice(0, idx);
   }
 
   return _transformMd(md, options);

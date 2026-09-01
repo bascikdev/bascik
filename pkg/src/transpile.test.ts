@@ -1,18 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { _mockWatchFiles, _mockRunExecOnBuild, _mockStartExecDev, _mockStartServer } = vi.hoisted(() => ({
-  _mockWatchFiles: vi.fn().mockResolvedValue(undefined),
-  _mockRunExecOnBuild: vi.fn().mockResolvedValue({ count: 1, totalElapsed: 5 }),
-  _mockStartExecDev: vi.fn().mockResolvedValue(undefined),
-  _mockStartServer: vi.fn().mockResolvedValue("http://localhost:8080"),
-}));
+const {
+  _mockWatchFiles,
+  _mockRunExecPhase,
+  _mockStartExecParallel,
+  _mockStartExecDev,
+  _mockStartServer,
+  _callOrder,
+} = vi.hoisted(() => {
+  const _callOrder: string[] = [];
+  return {
+    _callOrder,
+    _mockWatchFiles: vi.fn().mockImplementation(async () => {
+      _callOrder.push("watchFiles");
+    }),
+    _mockRunExecPhase: vi.fn().mockImplementation(async (phase: string) => {
+      _callOrder.push(`runExecPhase:${phase}`);
+      return { count: 1, totalElapsed: 5 };
+    }),
+    _mockStartExecParallel: vi.fn().mockImplementation(() => {
+      _callOrder.push("startExecParallel");
+    }),
+    _mockStartExecDev: vi.fn().mockImplementation(async () => {
+      _callOrder.push("startExecDev");
+    }),
+    _mockStartServer: vi.fn().mockImplementation(async () => {
+      _callOrder.push("startServer");
+      return "http://localhost:8080";
+    }),
+  };
+});
 
 vi.mock("./lib/watch.js", () => ({
   watchFiles: _mockWatchFiles,
 }));
 
 vi.mock("./lib/exec.js", () => ({
-  runExecOnBuild: _mockRunExecOnBuild,
+  runExecPhase: _mockRunExecPhase,
+  startExecParallel: _mockStartExecParallel,
   startExecDev: _mockStartExecDev,
 }));
 
@@ -38,29 +63,54 @@ import { BascikConfig } from "./lib/config.ts";
 describe("runTranspile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _callOrder.length = 0;
   });
 
-  it("runs build pipeline when BascikConfig.isBuild is true and logs complete timing", async () => {
+  it("runs build pipeline with pre -> watchFiles -> post order and logs complete timing", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = true;
     await runTranspile();
 
-    expect(_mockRunExecOnBuild).toHaveBeenCalled();
+    expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
+    expect(_mockStartExecParallel).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
+    expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
     expect(_mockStartExecDev).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in \d+ms/));
+
+    // Verify ordering: pre -> watchFiles -> post
+    expect(_callOrder).toEqual([
+      "runExecPhase:pre",
+      "startExecParallel",
+      "watchFiles",
+      "runExecPhase:post",
+    ]);
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in (?:[<]?[\d.]+(?:ms|s))/));
     logSpy.mockRestore();
   });
 
-  it("runs dev pipeline when BascikConfig.isBuild is false and logs server running and completion timing", async () => {
+  it("runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = false;
     await runTranspile();
 
+    expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
+    expect(_mockStartExecParallel).toHaveBeenCalled();
     expect(_mockStartExecDev).toHaveBeenCalled();
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in \d+ms/));
+    expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
+
+    // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
+    const preIndex = _callOrder.indexOf("runExecPhase:pre");
+    const watchIndex = _callOrder.indexOf("watchFiles");
+    const postIndex = _callOrder.indexOf("runExecPhase:post");
+
+    expect(preIndex).toBeGreaterThanOrEqual(0);
+    expect(watchIndex).toBeGreaterThan(preIndex);
+    expect(postIndex).toBeGreaterThan(watchIndex);
+
+    expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/));
     expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
     logSpy.mockRestore();
   });
@@ -71,4 +121,13 @@ describe("runTranspile", () => {
 
     await expect(runTranspile({ exitOnError: false })).rejects.toThrow("Port in use");
   });
+
+  it("rejects without calling watchFiles when a pre exec script fails in dev", async () => {
+    (BascikConfig as any).isBuild = false;
+    _mockRunExecPhase.mockRejectedValueOnce(new Error("exec pre failed"));
+
+    await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
+    expect(_mockWatchFiles).not.toHaveBeenCalled();
+  });
 });
+

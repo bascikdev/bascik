@@ -1,10 +1,28 @@
 // Central TypeScript types for the Bascik transpile pipeline
 
+export type ExecPhase = "pre" | "post" | "parallel";
+
 export interface ExecEntry {
   /** Path to the script (relative to project root). */
   script: string;
   /** File/directory globs that trigger a re-run in dev. Omit for build-only scripts. */
   watch?: string | string[];
+  /**
+   * When this script runs relative to page transpilation.
+   * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
+   * - 'post': runs after all pages are transpiled and written to dist.
+   * - 'parallel': started before transpilation but not awaited (fire-and-forget).
+   */
+  phase?: ExecPhase;
+}
+
+export interface RouteParams {
+  [key: string]: string | number;
+}
+
+export interface RouteEntry {
+  params: Record<string, string | number>;
+  data?: unknown;
 }
 
 export interface BascikComponent {

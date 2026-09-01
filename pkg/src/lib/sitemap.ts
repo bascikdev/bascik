@@ -46,23 +46,26 @@ export const escapeXml = (value: string): string =>
  * URL path (e.g. `/blog/post`) suitable for use in a sitemap.
  *
  * Rules:
- *  - Strip the leading `pages/` segment (already done via getRelativePath).
+ *  - Strip the leading `pages/` segment.
  *  - Strip the `.html` extension.
  *  - `/index` at the end of a path becomes `/`.
  *  - `index.html` at the root becomes `/`.
+ *  - Percent-encode each path segment for non-ASCII characters.
  */
 export const pagePathToUrlPath = (relativePath: string): string => {
-  // relativePath is like "pages/index.html" or "pages/blog/post.html"
-  let path = relativePath
-    .replace(/^pages\//, "/")   // leading pages/ → /
-    .replace(/\.html$/, "");    // strip .html extension
+  const clean = relativePath
+    .replace(/^pages\//, "")
+    .replace(/\.html$/, "");
 
-  // /index → /
-  if (path === "/index") return "/";
-  // /foo/index → /foo
-  path = path.replace(/\/index$/, "");
+  if (clean === "" || clean === "index") return "/";
 
-  return path || "/";
+  const segments = clean
+    .split("/")
+    .filter((s) => s.length > 0 && s !== "index")
+    .map((s) => encodeURIComponent(s));
+
+  if (segments.length === 0) return "/";
+  return `/${segments.join("/")}`;
 };
 
 /**
@@ -100,7 +103,9 @@ export const buildRobotsTxt = (baseUrl: string): string => {
  * Called by `processAllPages` at the end of a build. Skipped silently when
  * `generateSitemap` is `false` or `siteUrl` is not configured.
  */
-export const generateSitemapFiles = async (): Promise<void> => {
+export const generateSitemapFiles = async (
+  transpiledPaths?: string[],
+): Promise<void> => {
   const { sitemap: doSitemap, robots: doRobots } = BascikConfig.generate;
   if (!doSitemap && !doRobots) return;
 
@@ -117,9 +122,11 @@ export const generateSitemapFiles = async (): Promise<void> => {
   const writes: Promise<void>[] = [];
 
   if (doSitemap) {
-    const pages = await listPages();
-    const urlPaths = pages
-      .map((p) => getRelativePath(p, "pages"))
+    const rawPaths =
+      transpiledPaths ??
+      (await listPages()).map((p) => getRelativePath(p, "pages"));
+    const urlPaths = rawPaths
+      .map((p) => (p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`))
       // Exclude the 404 page — it is an error document, not a crawlable URL.
       .filter((rel) => !is404Page(rel))
       .map(pagePathToUrlPath)

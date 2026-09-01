@@ -454,12 +454,7 @@
           </div>
         </component-demo>
 
-        <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
-          console.log(renderPagination('/libraries'));
-        </script>
+        <docs-pagination />
 
       </main>
     </div>

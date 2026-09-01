@@ -1,6 +1,21 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Docs Component E2E Tests', () => {
+  test('components page does not double render page content', async ({ page }) => {
+    await page.goto('/components');
+
+    // Ensure main content container has exactly one h1 heading
+    const h1s = page.locator('#main-content h1');
+    await expect(h1s).toHaveCount(1);
+    await expect(h1s).toHaveText('Components');
+
+    // Ensure intro paragraph text appears only once in main content
+    const introParagraphs = page.locator('#main-content p', {
+      hasText: 'Components are the core building block in Bascik.'
+    });
+    await expect(introParagraphs).toHaveCount(1);
+  });
+
   test('component-demo switches between preview, code, and output tabs', async ({ page }) => {
     await page.goto('/components');
 

@@ -90,6 +90,34 @@ The script's working directory is your project root (`process.cwd()`), so relati
 </script>
 ```
 
+### Dynamic routes with server scripts
+
+Dynamic route templates (such as `src/pages/blog/[slug].html`) can generate multiple static pages at build time via `<script data-bascik-routes>` while still containing `<script data-bascik-server>` blocks for dynamic per-request interactions.
+
+When built, each generated HTML file (e.g. `dist/blog/hello-world.html`) retains its server script blocks to execute dynamically on the server:
+
+```html
+<!-- src/pages/blog/[slug].html -->
+<script data-bascik-routes>
+  console.log(JSON.stringify([{ params: { slug: 'post-1' }, data: { title: 'Post 1' } }]));
+</script>
+
+<!-- Evaluated at build time -->
+<script data-bascik-build>
+  const { data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+  console.log(`<h1>${data.title}</h1>`);
+</script>
+
+<!-- Evaluated per request when served -->
+<script data-bascik-server>
+  const { headers } = JSON.parse(process.env.BASCIK_REQUEST);
+  const user = headers['x-user-id'] ?? 'Anonymous';
+  console.log(`<p>Viewing as: ${user}</p>`);
+</script>
+```
+
+> **Note:** A single `<script>` tag cannot combine `data-bascik-routes` with `data-bascik-server` or `data-bascik-build`. All three directives are mutually exclusive.
+
 ### Rules and behavior
 
 - Scripts run on **every request** and are **never cached:** the output is always fresh.

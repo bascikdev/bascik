@@ -2264,4 +2264,39 @@ describe("startServerInstance signal handler cleanup", () => {
       }
     }
   });
+
+  it("prioritizes process.env.BASCIK_SERVE_PORT over process.env.PORT when defined", async () => {
+    const originalServePort = process.env.BASCIK_SERVE_PORT;
+    const originalPort = process.env.PORT;
+    process.env.BASCIK_SERVE_PORT = "9443";
+    process.env.PORT = "3000";
+
+    try {
+      const mockServer: any = {
+        once: vi.fn().mockReturnThis(),
+        listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
+          const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
+          callback?.();
+          return mockServer;
+        }),
+        on: vi.fn().mockReturnThis(),
+        removeListener: vi.fn().mockReturnThis(),
+      };
+
+      const origin = await startServerInstance(mockServer, "http");
+      expect(mockServer.listen).toHaveBeenCalledWith(9443, "localhost", expect.any(Function));
+      expect(origin).toBe("http://localhost:9443");
+    } finally {
+      if (originalServePort !== undefined) {
+        process.env.BASCIK_SERVE_PORT = originalServePort;
+      } else {
+        delete process.env.BASCIK_SERVE_PORT;
+      }
+      if (originalPort !== undefined) {
+        process.env.PORT = originalPort;
+      } else {
+        delete process.env.PORT;
+      }
+    }
+  });
 });

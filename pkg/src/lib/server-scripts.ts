@@ -83,6 +83,24 @@ const stripAnsiEscapeCodes = (value: string): string =>
     .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
     .replace(/\u001B[@-Z\\-_]/g, "");
 
+const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
+const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
+const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
+const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
+const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
+
+const SCRIPT_TAG_PREFIX = "<script\\b";
+
+const SERVER_BUILD_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const SERVER_ROUTES_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
 /** Return `true` if `html` contains at least one `data-bascik-server` block. */
 export const htmlHasServerScripts = (html: string): boolean => {
   return createServerScriptRegex().test(html);
@@ -174,6 +192,20 @@ export const executeServerScripts = async (
 
     // Server-script open tag
     const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+    if (SERVER_BUILD_CONFLICT_RE.test(openTag)) {
+      let errorMsg = `[bascik] error: <script> tag has both data-bascik-server and data-bascik-build`;
+      if (filePath) {
+        errorMsg += ` in "${filePath}"`;
+      }
+      throw new Error(`${errorMsg}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
+    }
+    if (SERVER_ROUTES_CONFLICT_RE.test(openTag)) {
+      let errorMsg = `[bascik] error: <script> tag has both data-bascik-server and data-bascik-routes`;
+      if (filePath) {
+        errorMsg += ` in "${filePath}"`;
+      }
+      throw new Error(`${errorMsg}. A script cannot be both a server script and a routes script. Remove one of the attributes.`);
+    }
     const openTagLines = openTag.split(/\r?\n/).length - 1;
     const startLine = lineOffset + openTagLines;
 
@@ -205,7 +237,7 @@ export const executeServerScripts = async (
             try {
               codeToExecute = await readFile(resolvedPath, "utf8");
             } catch (err) {
-              console.warn(`[bascik] warning: Failed to read server script src "${srcPath}":`, err);
+              console.warn('[bascik] warning: Failed to read server script src "%s":', srcPath, err);
             }
           }
         }

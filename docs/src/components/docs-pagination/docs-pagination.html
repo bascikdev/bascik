@@ -1,3 +1,8 @@
-<!-- docs-pagination is no longer used directly in pages.
-     Each page renders pagination at build time via src/lib/render-nav.ts.
-     See src/lib/nav.ts for the single source of truth for navigation order. -->
+<script data-bascik-build="page">
+     import { join } from 'node:path';
+     import { pathToFileURL } from 'node:url';
+     const { renderPagination } = await import(
+          pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
+     );
+     console.log(renderPagination());
+</script>

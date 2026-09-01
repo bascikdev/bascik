@@ -333,17 +333,22 @@ Has no effect during `bascik --build`.
 
 ### `exec`
 
-Scripts to run as part of the build/dev lifecycle. Entries execute sequentially in array order before page transpilation during `--build`. Each entry has a `script` path (relative to the project root, run with the same `node` binary) and an optional `watch` array.
+Scripts to run as part of the build/dev lifecycle. Each entry has a `script` path (relative to the project root, run with the same `node` binary), an optional `phase`, and an optional `watch` array.
 
-- **With `watch`**: runs on dev startup (non-blocking) and re-runs whenever a watched file changes, followed by a live-reload. Also runs before pages during `--build`.
+- **`phase`** (optional): Execution phase controlling when the script runs relative to page transpilation. Defaults to `'pre'`.
+  - `'pre'` (default): Runs before page transpilation begins. In both `--build` and `dev` startup, `pre` scripts are awaited sequentially before pages transpile. This is the default because build scripts frequently fetch dynamic data (CMS feeds, localized string bundles, or route manifests) required by `<script data-bascik-build>` blocks or dynamic routes during page compilation. Defaulting to `'pre'` guarantees data safety and eliminates cold-build race conditions.
+  - `'post'`: Runs after all pages finish transpilation and sitemaps are generated. Ideal for post-processing, build artifact verification, or deployment packaging.
+  - `'parallel'`: Initiates concurrently with page transpilation without blocking the start of page processing. Ideal for independent generation tasks (such as search indexes, LLM manifests, or social share images) that do not produce data needed during page compilation.
+- **With `watch`**: runs on dev startup according to its phase and re-runs whenever a watched file changes, followed by a live-reload. Also runs during `--build`.
 - **Without `watch`**: build-only, skipped in dev.
 
 > **Output location recommendation.** Lifecycle scripts executed by `exec` should write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than into source directories (`src/`). Writing generated files into `src/` can pollute your source tree with build artifacts and cause unnecessary `git` diffs or pre-push sync steps.
 
 ```ts
 exec: [
-  { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
-  { script: 'scripts/generate-llms-txt.ts' }, // build only
+  { script: 'scripts/fetch-content.ts', phase: 'pre', watch: ['content/'] },
+  { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
+  { script: 'scripts/verify-build.ts', phase: 'post' },
 ]
 ```
 
@@ -402,7 +407,7 @@ buildScriptCache: true  // default
 buildScriptCache: false // disable for debugging
 ```
 
-Cache entries live in `node_modules/.cache/bascik/script-cache/`. The cache key covers the script content, dev/build mode, the current page path (`BASCIK_PAGE_FILE`), the site URL, and the content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files the script references as quoted path literals. This means the cache self-invalidates on a per-script basis: editing one Markdown file only invalidates scripts that reference that file.
+Cache entries live in `node_modules/.cache/bascik/script-cache/`. The cache key covers the script content, dev/build mode, the source file path (`BASCIK_SOURCE_FILE`), the site URL, and the content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files the script references as quoted path literals. This means the cache self-invalidates on a per-script basis: editing one Markdown file only invalidates scripts that reference that file.
 
 To bust the entire cache manually, for example after upgrading a build-time npm dependency whose output changed:
 
@@ -445,7 +450,7 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   exec: [
-    { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
+    { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
   ],
 });
 
@@ -457,9 +462,9 @@ export const build = defineConfig({
     identifiers: true,
   },
   exec: [
-    { script: 'scripts/generate-search-index.ts' },
-    { script: 'scripts/generate-llms-txt.ts' },
-    { script: 'scripts/generate-og-images.ts' },
+    { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
+    { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
+    { script: 'scripts/generate-og-images.ts', phase: 'parallel' },
   ],
 });
 ```

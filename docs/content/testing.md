@@ -88,7 +88,7 @@ describe('Card component', () => {
 
 Build scripts run in Node.js during compilation to generate static HTML before pages are saved to `dist/`. Keep `<script data-bascik-build>` tags thin by importing pure helper functions from `src/lib/`.
 
-This allows testing Markdown parsers, navigation generators, and page-aware helpers (which read `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL`) by mocking environment variables in Vitest:
+This allows testing Markdown parsers, navigation generators, and page-aware helpers (which read `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL`) by mocking environment variables in Vitest:
 
 ```ts
 // src/lib/canonical.test.ts
@@ -108,7 +108,7 @@ describe('getCanonicalUrl', () => {
   });
 
   it('computes correct canonical tag from page file path', () => {
-    process.env.BASCIK_PAGE_FILE = '/app/src/pages/about.html';
+    process.env.BASCIK_SOURCE_FILE = '/app/src/pages/about.html';
     expect(getCanonicalUrl()).toBe('<link rel="canonical" href="https://example.com/about" />');
   });
 });

@@ -11,14 +11,37 @@ vi.mock("./processing.js", () => ({
 import { handlePageWorkerMessage } from "./page-worker.ts";
 
 describe("handlePageWorkerMessage", () => {
-  it("posts success result when transpilePage resolves", async () => {
+  it("posts success result when transpilePage resolves with string path", async () => {
     const mockResult = { relativePagePath: "index.html", content: Buffer.from("ok") };
     _mockTranspilePage.mockResolvedValueOnce(mockResult);
 
     const port = { postMessage: vi.fn() };
     await handlePageWorkerMessage(port, { componentList: {}, globalStylesHtml: "" }, "src/index.html");
 
-    expect(_mockTranspilePage).toHaveBeenCalledWith("src/index.html", {}, "");
+    expect(_mockTranspilePage).toHaveBeenCalledWith("src/index.html", {}, "", null, undefined);
+    expect(port.postMessage).toHaveBeenCalledWith({ ok: true, result: mockResult });
+  });
+
+  it("posts success result when transpilePage resolves with PageJob", async () => {
+    const mockResult = { relativePagePath: "blog/post-1.html", content: Buffer.from("ok") };
+    _mockTranspilePage.mockResolvedValueOnce(mockResult);
+
+    const port = { postMessage: vi.fn() };
+    const job = {
+      pagePath: "src/pages/blog/[slug].html",
+      route: { params: { slug: "post-1" } },
+      relativePagePath: "blog/post-1.html",
+      preCleanedHtml: "<h1>Post 1</h1>",
+    };
+    await handlePageWorkerMessage(port, { componentList: {}, globalStylesHtml: "" }, job);
+
+    expect(_mockTranspilePage).toHaveBeenCalledWith(
+      "src/pages/blog/[slug].html",
+      {},
+      "",
+      job.route,
+      job.preCleanedHtml,
+    );
     expect(port.postMessage).toHaveBeenCalledWith({ ok: true, result: mockResult });
   });
 

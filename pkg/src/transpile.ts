@@ -2,18 +2,21 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
-import { runExecOnBuild, startExecDev } from "./lib/exec.ts";
+import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
+import { formatDuration } from "./lib/format.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const overallStart = performance.now();
 
   if (BascikConfig.isBuild) {
-    await runExecOnBuild();
+    await runExecPhase("pre");
+    startExecParallel();
     await watchFiles();
-    const totalElapsed = Math.round(performance.now() - overallStart);
-    console.log(`\n✓ Build complete in ${totalElapsed}ms`);
+    await runExecPhase("post");
+    const totalElapsed = performance.now() - overallStart;
+    console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
     const { startServer } = await import("./lib/server.ts");
     const serverReady = startServer().catch((err) => {
@@ -24,15 +27,18 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       throw err;
     });
 
+    await runExecPhase("pre");
+    startExecParallel();
     const execReady = startExecDev();
     const url = await serverReady;
 
     await watchFiles();
+    await runExecPhase("post");
     await execReady;
     mem.setBootingDone();
     eventEmitter.emit("boot-done");
-    const totalElapsed = Math.round(performance.now() - overallStart);
-    console.log(`✓ All tasks completed in ${totalElapsed}ms`);
+    const totalElapsed = performance.now() - overallStart;
+    console.log(`✓ All tasks completed in ${formatDuration(totalElapsed)}`);
     if (url) console.log(`Server running at ${url}`);
   }
 };

@@ -6,7 +6,7 @@ Bascik's build output is a standard folder of static HTML, CSS, and JavaScript f
 
 Running `bascik --build` produces:
 
-- **HTML**: compiled pages with component tags resolved, scoped class names applied, and build-script output inlined
+- **HTML**: compiled pages with component tags resolved, scoped class names applied, build-script output inlined, and dynamic route templates expanded into concrete static HTML files
 - **CSS and JS**: as-is from your `src/pages/` asset folders
 - **Static assets**: images, fonts, and any other files copied unchanged
 

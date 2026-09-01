@@ -82,7 +82,7 @@ vi.mock("./config.js", () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { BascikConfig } from "./config.ts";
-import { runExecOnBuild, startExecDev } from "./exec.ts";
+import { runExecPhase, startExecParallel, startExecDev, runExecOnBuild } from "./exec.ts";
 
 const cfg = BascikConfig as { exec: typeof BascikConfig.exec };
 
@@ -91,6 +91,89 @@ const cfg = BascikConfig as { exec: typeof BascikConfig.exec };
 beforeEach(() => {
   resetMocks();
   cfg.exec = undefined;
+});
+
+describe("runExecPhase", () => {
+  it("does nothing when exec is undefined", async () => {
+    const res = await runExecPhase("pre");
+    expect(res).toEqual({ count: 0, totalElapsed: expect.any(Number) });
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when no entries match the phase", async () => {
+    cfg.exec = [{ script: "scripts/post.ts", phase: "post" }];
+    const res = await runExecPhase("pre");
+    expect(res.count).toBe(0);
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it("spawns only entries matching the specified phase", async () => {
+    cfg.exec = [
+      { script: "scripts/pre.ts", phase: "pre" },
+      { script: "scripts/post.ts", phase: "post" },
+      { script: "scripts/parallel.ts", phase: "parallel" },
+      { script: "scripts/pre2.ts", phase: "pre" },
+    ];
+    const res = await runExecPhase("pre");
+    expect(res.count).toBe(2);
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenNthCalledWith(1, process.execPath, ["scripts/pre.ts"], expect.anything());
+    expect(mockSpawn).toHaveBeenNthCalledWith(2, process.execPath, ["scripts/pre2.ts"], expect.anything());
+  });
+
+  it("defaults entries with undefined phase to 'pre'", async () => {
+    cfg.exec = [{ script: "scripts/default.ts" }];
+    const res = await runExecPhase("pre");
+    expect(res.count).toBe(1);
+    expect(mockSpawn).toHaveBeenCalledWith(process.execPath, ["scripts/default.ts"], expect.anything());
+  });
+
+  it("runs scripts in matching phase sequentially in array order", async () => {
+    const order: string[] = [];
+    const scripts = ["a.ts", "b.ts"];
+    let call = 0;
+
+    mockSpawn.mockImplementation(() => {
+      const script = scripts[call++];
+      order.push(`spawn:${script}`);
+      const cbs: Record<string, ((...a: unknown[]) => void)[]> = {};
+      const proc = {
+        on: vi.fn((event: string, cb: (...a: unknown[]) => void) => {
+          (cbs[event] ??= []).push(cb);
+          if (event === "close") Promise.resolve().then(() => { order.push(`close:${script}`); cb(0); });
+          return proc;
+        }),
+      };
+      return proc;
+    });
+
+    cfg.exec = [
+      { script: "a.ts", phase: "post" },
+      { script: "b.ts", phase: "post" },
+    ];
+    await runExecPhase("post");
+    expect(order).toEqual(["spawn:a.ts", "close:a.ts", "spawn:b.ts", "close:b.ts"]);
+  });
+
+  it("rejects when a script exits with a non-zero code", async () => {
+    setNextExitCode(1);
+    cfg.exec = [{ script: "fail.ts", phase: "pre" }];
+    await expect(runExecPhase("pre")).rejects.toThrow('exec "fail.ts" exited with code 1');
+  });
+});
+
+describe("startExecParallel", () => {
+  it("spawns parallel entries without awaiting completion", () => {
+    cfg.exec = [
+      { script: "scripts/par1.ts", phase: "parallel" },
+      { script: "scripts/pre.ts", phase: "pre" },
+      { script: "scripts/par2.ts", phase: "parallel" },
+    ];
+    startExecParallel();
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenNthCalledWith(1, process.execPath, ["scripts/par1.ts"], expect.anything());
+    expect(mockSpawn).toHaveBeenNthCalledWith(2, process.execPath, ["scripts/par2.ts"], expect.anything());
+  });
 });
 
 describe("runExecOnBuild", () => {
@@ -154,7 +237,7 @@ describe("runExecOnBuild", () => {
     expect(res.count).toBe(2);
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(logSpy).toHaveBeenCalledWith("(started) exec: scripts/a.ts");
-    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/\(completed\) exec: scripts\/a\.ts \(\d+ms\)/));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/\(completed\) exec: scripts\/a\.ts in /));
     logSpy.mockRestore();
   });
 });

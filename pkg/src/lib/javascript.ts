@@ -364,9 +364,11 @@ export const prefixElementAttribute = (
     };
 
     for (const scriptMatch of scopedAttrsHtml.matchAll(
-      /<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi,
+      /<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi,
     )) {
-      const src = scriptMatch[1];
+      const openTag = scriptMatch[1];
+      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(openTag)) continue;
+      const src = scriptMatch[2];
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
       replaceBalancedCall(
@@ -412,8 +414,9 @@ export const prefixElementAttribute = (
 
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
   const scopedHtml = scopedAttrsHtml.replace(
-    /<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi,
-    (match) => {
+    /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
+    (match, open) => {
+      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
       let updatedMatch = match;
       attributesToReplace.forEach(
         ({ attributeName, obfuscatedAttributeName }) => {
@@ -820,8 +823,8 @@ export const namespaceScriptTags = (
   component.fileContent = component.fileContent.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open, code, close, offset) => {
-      // Server scripts run in Node.js at request time — never wrap in browser IIFE
-      if (/\bdata-bascik-server\b/i.test(open)) return match;
+      // Server scripts, build scripts, and route scripts run in Node.js — never wrap in browser IIFE
+      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
 
       // Extract data-bascik-source attribute if present
       const sourceAttrMatch = open.match(/\bdata-bascik-source=["']([^"']+)["']/i);

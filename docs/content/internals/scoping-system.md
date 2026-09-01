@@ -153,7 +153,7 @@ el.matches("#bascik__site-nav__a1b2c3d4__menu-trigger");
 el.setAttribute("id", "bascik__site-nav__a1b2c3d4__menu-trigger");
 ```
 
-### Class selectors
+### Class selectors in JavaScript
 
 ```js
 // Source

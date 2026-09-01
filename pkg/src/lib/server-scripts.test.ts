@@ -460,6 +460,20 @@ describe("executeServerScripts", () => {
     errorSpy.mockRestore();
     (BascikConfig as any).onScriptError = undefined;
   });
+
+  it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {
+    const html = "<script data-bascik-server data-bascik-build>console.log(1)</script>";
+    await expect(executeServerScripts(html, baseRequest, 30000, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-server and data-bascik-build/,
+    );
+  });
+
+  it("throws an error when script tag has both data-bascik-server and data-bascik-routes", async () => {
+    const html = "<script data-bascik-server data-bascik-routes>console.log(1)</script>";
+    await expect(executeServerScripts(html, baseRequest, 30000, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-server and data-bascik-routes/,
+    );
+  });
 });
 
 // ─── cleanStackTrace ─────────────────────────────────────────────────────────

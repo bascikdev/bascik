@@ -725,12 +725,15 @@ Build scripts receive these `process.env` variables:
 
 | Variable | Description |
 |---|---|
+| `BASCIK_PAGE_PATH` | Normalized root-relative route path of the current page shell (e.g. `/getting-started`, `/switch/from-vue`, `/`). |
+| `BASCIK_SOURCE_FILE` | Absolute path to the file currently being transpiled (page or component template). |
 | `BASCIK_PAGE_FILE` | Absolute path of the current page file (e.g. `/project/src/pages/about.html`). Use this to generate page-specific output like canonical URLs. |
 | `BASCIK_PAGES_DIR` | Absolute path to the configured pages directory. |
 | `BASCIK_BUILD` | `"1"` during `bascik --build`, `"0"` during dev. Use to produce different output per mode. |
 | `BASCIK_SITE_URL` | The `siteUrl` from `bascik.config.ts`, e.g. `"https://example.com"`. |
+| `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
-These are critical for scripts that generate per-page output. A script using `BASCIK_PAGE_FILE` gets a separate cache entry per page automatically.
+These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
 
 ### Build Script Output Cache
 
@@ -738,7 +741,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the current page path (`BASCIK_PAGE_FILE`) + the site URL + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The page path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_PAGE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the full content of any `content/*.md` or `scripts/*.{mjs,js,ts}` files referenced as quoted path literals in the script. The file path is included so that scripts like `canonical.ts` that use `process.env.BASCIK_SOURCE_FILE` get a separate cache entry per page. Changing a referenced file produces a new key and a cache miss for that script only; all other scripts keep their cached output.
 
 **To disable:** set `buildScriptCache: false` in your config (useful when debugging a script that reads external state not tracked by the cache key).
 
@@ -799,17 +802,17 @@ Do not rely on a bare `h2 {}` component rule for Markdown passed through a slot.
 
 Some pages need content that is specific to the current page, such as a canonical URL in the head, an Open Graph image, a structured-data block, or even a page-specific sidebar. Hardcoding those values in every page file works. However, a shared script is easier to maintain. You can change the logic once and every page picks it up automatically.
 
-Bascik makes this possible by injecting three environment variables into every `data-bascik-build` subprocess: `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL` (described in the Environment Variables table above).
+Bascik makes this possible by injecting environment variables into every `data-bascik-build` subprocess: `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, `BASCIK_PAGES_DIR`, and `BASCIK_SITE_URL` (described in the Environment Variables table above).
 
 #### Canonical URL Example
 
-A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `scripts/canonical.ts` that derives the URL from `BASCIK_PAGE_FILE`:
+A canonical URL tag tells search engines which URL is the authoritative version of a page. Every docs page on this site uses a shared `scripts/canonical.ts` that derives the URL from `BASCIK_SOURCE_FILE`:
 
 ```ts
 // scripts/canonical.ts
 export async function canonical(): Promise<string> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const pagesDir = process.env.BASCIK_PAGES_DIR ?? '';
 
   if (!siteUrl || !pageFile || !pagesDir) return '';
@@ -840,14 +843,14 @@ Use it from any page's `<head>`:
 
 #### Reading the Page's Own HTML
 
-For richer outputs, including Open Graph tags or JSON-LD structured data, a script can also read the page file itself to extract metadata. `BASCIK_PAGE_FILE` is an absolute path, so `readFile` works directly:
+For richer outputs, including Open Graph tags or JSON-LD structured data, a script can also read the page file itself to extract metadata. `BASCIK_SOURCE_FILE` is an absolute path, so `readFile` works directly:
 
 ```ts
 // scripts/article-schema.ts (simplified)
 import { readFile } from 'node:fs/promises';
 
 export async function articleSchema(): Promise<string> {
-  const pageFile = process.env.BASCIK_PAGE_FILE ?? '';
+  const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
   if (!pageFile || !siteUrl) return '';
 
@@ -877,6 +880,37 @@ Tag a browser script with `data-bascik-dev` to mark it as dev-only. In developme
 Useful for debug logging, development overlays, or any browser script that should never ship to production.
 
 > **dev vs. build:** `data-bascik-build` executes at transpile time and injects HTML into the page. `data-bascik-dev` runs in the browser, but only in dev mode.
+
+### Dynamic Routes (data-bascik-routes)
+
+Dynamic routes allow you to generate multiple static HTML files from a single template at build time. Use square brackets in the template filename (such as `src/pages/blog/[slug].html` or `src/pages/[category]/[id].html`) and include a `<script data-bascik-routes>` block:
+
+```html
+<!-- src/pages/blog/[slug].html -->
+<script data-bascik-routes>
+  const posts = [
+    { slug: 'hello-world', title: 'Hello World' },
+    { slug: 'second-post', title: 'Second Post' }
+  ];
+  const routes = posts.map(p => ({
+    params: { slug: p.slug },
+    data: p
+  }));
+  console.log(JSON.stringify(routes));
+</script>
+
+<script data-bascik-build>
+  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+  console.log(`<h1>${data.title}</h1>`);
+</script>
+```
+
+Rules:
+* Script must output a valid JSON array of route objects with required `params` (matching all bracket names in the template path) and optional `data`.
+* In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
+* Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup.
+* Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
+* `data-bascik-routes`, `data-bascik-build`, and `data-bascik-server` are mutually exclusive and cannot be combined on the same tag.
 
 ### data-bascik-server
 
@@ -953,13 +987,15 @@ export default defineConfig({
     components: "src/components", // default
   },
   watch: [], // re-transpile all pages when these paths change (dev only)
-  // exec: Optional array of custom build-lifecycle script objects { script: string, watch?: string[] }.
-  // Executed sequentially in array order before page transpilation during --build, and on startup/watched file changes in dev mode.
+  // exec: Optional array of custom build-lifecycle script objects { script: string, phase?: 'pre' | 'post' | 'parallel', watch?: string[] }.
+  // 'pre' (default) runs and is awaited before page transpilation in both build and dev startup.
+  // 'post' runs after all pages finish transpilation.
+  // 'parallel' starts concurrently with page transpilation.
   // Note: The commented examples below demonstrate possible custom build tasks (e.g. search indexes, RSS feeds, social card images).
   // Do NOT add exec entries unless your project actually implements corresponding script files!
   exec: [
-    // Example: { script: 'scripts/generate-search-index.ts', watch: ['content/'] },
-    // Example: { script: 'scripts/generate-sitemap.ts', watch: ['content/'] },
+    // Example: { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
+    // Example: { script: 'scripts/generate-sitemap.ts', phase: 'post' },
   ],
   // Critical: custom lifecycle scripts registered in `exec` must write generated artifacts directly to your output directory (such as `dist/` or `dist/assets/`) rather than `src/` to prevent polluting your source tree or causing infinite watcher re-transpile loops.
   scopeScriptBlocks: true,
@@ -1160,9 +1196,9 @@ When you start the dev server, Bascik starts the HTTP server concurrently with p
 
 ```terminal
 Starting transpiling...
-transpiled: pages/getting-started.html
-transpiled: pages/index.html
-transpiled: pages/about.html
+transpiled: pages/getting-started.html in 0.4ms
+transpiled: pages/index.html in 0.6ms
+transpiled: pages/about.html in 0.3ms
 
 ✓ 3 pages transpiled in 45ms
 Server running at http://localhost:8080
@@ -1175,12 +1211,12 @@ While the dev server is active, Bascik watches your file system and incrementall
 
 * **Modifying/Adding Pages:** Editing or adding an HTML page in your pages directory (e.g., `src/pages/about.html`) triggers incremental transpilation of just that page:
   ```terminal
-  transpiled: pages/about.html
+  transpiled: pages/about.html in 0.3ms
   ```
 * **Modifying Components:** Editing a component (e.g., `src/components/site-nav/site-nav.html`) triggers selective transpilation. Bascik tracks dependency mappings and only rebuilds pages that actually reference that component:
   ```terminal
-  transpiled: pages/index.html
-  transpiled: pages/about.html
+  transpiled: pages/index.html in 0.5ms
+  transpiled: pages/about.html in 0.3ms
   ```
 * **Open-Page Prioritization:** When a batch rebuild is triggered (such as an inlined stylesheet or shared component), Bascik checks active live-reload browser connections and prioritizes compiling currently open pages first, emitting reload signals immediately before compiling background pages.
 * **Static Assets:** Replicating any non-HTML static assets (like custom CSS, JS files, or images) from pages directly into the output directory:

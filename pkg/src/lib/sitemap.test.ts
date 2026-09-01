@@ -50,6 +50,12 @@ describe("pagePathToUrlPath", () => {
   it("handles deeply nested paths", () => {
     expect(pagePathToUrlPath("pages/docs/api/reference.html")).toBe("/docs/api/reference");
   });
+
+  it("percent-encodes non-ASCII characters in path segments", () => {
+    expect(pagePathToUrlPath("pages/blog/author’s-post.html")).toBe(
+      "/blog/author%E2%80%99s-post",
+    );
+  });
 });
 
 describe("buildSitemapXml", () => {
@@ -168,6 +174,28 @@ describe("generateSitemapFiles", () => {
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).toContain("<loc>https://example.com/about</loc>");
     expect(xml).not.toContain("/404");
+  });
+
+  it("includes passed transpiled routes and does not contain literal bracket placeholders", async () => {
+    const transpiledPaths = [
+      "pages/index.html",
+      "pages/blog/first-post.html",
+      "pages/blog/author’s-post.html",
+    ];
+
+    await generateSitemapFiles(transpiledPaths);
+
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([file]) => String(file).endsWith("sitemap.xml"));
+    expect(sitemapCall).toBeDefined();
+    const xml = String(sitemapCall?.[1]);
+
+    expect(xml).toContain("<loc>https://example.com/</loc>");
+    expect(xml).toContain("<loc>https://example.com/blog/first-post</loc>");
+    expect(xml).toContain("<loc>https://example.com/blog/author%E2%80%99s-post</loc>");
+    expect(xml).not.toContain("[");
+    expect(xml).not.toContain("]");
   });
 });
 

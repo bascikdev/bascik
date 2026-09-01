@@ -10,6 +10,7 @@ import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
 import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
+import { formatDuration } from "./format.ts";
 
 import { makeEtag } from "./names.ts";
 
@@ -129,7 +130,7 @@ export const createRequestHandler = () => {
   const distDir = resolve(process.cwd(), "dist");
 
   return async (req: BascikRequest, res: BascikResponse) => {
-    const startMs = Date.now();
+    const start = performance.now();
     let responseStatus = 0;
     const secHeaders = getSecurityHeaders(req);
 
@@ -140,12 +141,12 @@ export const createRequestHandler = () => {
         : (BascikConfig.devServer?.logging ?? { level: "info", requests: true });
       if (logging.requests === false) return;
       if (!shouldLog(logging.level ?? "info", "info")) return;
-      const elapsed = Date.now() - startMs;
+      const elapsed = performance.now() - start;
       const method = req.method;
       const path = req.path;
       // Skip noisy SSE keep-alive pings
       if (path === "/bascik-live-reload") return;
-      console.log(`${method} ${path} ${responseStatus} ${elapsed}ms`);
+      console.log(`${method} ${path} ${responseStatus} ${formatDuration(elapsed)}`);
     };
 
     try {
@@ -463,8 +464,10 @@ export const startServerInstance = async (
 ): Promise<string> => {
   const hostname = BascikConfig.prodServer?.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
-  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : undefined;
-  const startPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.prodServer?.port ?? defaultPort);
+  const envPortStr = process.env.BASCIK_SERVE_PORT || process.env.PORT;
+  const envPort = envPortStr ? parseInt(envPortStr, 10) : undefined;
+  const rawStartPort = (envPort && !isNaN(envPort)) ? envPort : (BascikConfig.prodServer?.port ?? defaultPort);
+  const startPort = (!isNaN(rawStartPort) && rawStartPort > 0) ? rawStartPort : defaultPort;
   let origin = "";
 
   // Find the first available port, incrementing if the preferred one is in use.

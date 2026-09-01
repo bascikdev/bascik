@@ -60,6 +60,7 @@
     "ext:update-coverage": "yarn ext:coverage",
     "check:spelling": "codespell -L teY --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
+    "check:security": "semgrep --error --config p/default",
     "check:all": "yarn check:spelling && yarn check:standards",
     "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck",
     "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit",

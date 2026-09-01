@@ -71,7 +71,24 @@ Bascik supports three error modes:
 
 ### Conflict Errors
 
-One combination always hard-fails regardless of `onScriptError`: putting both `data-bascik-build` and `data-bascik-server` on the same `<script>` tag. A script can run at build time or at request time, but not both. Bascik throws an error with the file name and line position. The VS Code extension also highlights this as an error as you type.
+Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) are mutually exclusive and cannot be combined on the same `<script>` tag:
+- Combining `data-bascik-build` and `data-bascik-server` is disallowed. A script can run at build time or at request time, but not both.
+- Combining `data-bascik-routes` with `data-bascik-build` or `data-bascik-server` is disallowed. Route generation scripts run independently at build time.
+
+Bascik throws an error with the file name and line position. The VS Code extension also highlights this as an error as you type.
+
+### Dynamic Route Context (BASCIK_ROUTE)
+
+When a build script runs inside a dynamic route template (for example, `src/pages/blog/[slug].html`), Bascik populates the `BASCIK_ROUTE` environment variable with a JSON string containing the current route parameters and custom data payload:
+
+```html
+<script data-bascik-build>
+  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+  console.log(`<h1>${data?.title || params?.slug}</h1>`);
+</script>
+```
+
+See [Dynamic Routes](/dynamic-routes) for the guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full list of variables available to build scripts.
 
 ### Best Practices for Resilient Scripts
 

@@ -73,6 +73,7 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     }
 
     function instantConnect() {
+      if (source && source.readyState !== EventSource.CLOSED) return;
       retryCount = 0;
       if (retryTimeout) {
         clearTimeout(retryTimeout);

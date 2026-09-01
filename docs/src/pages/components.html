@@ -243,7 +243,7 @@
           const { renderMdRange } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMdRange('./content/components.md', { from: 'HTML, CSS, and JavaScript Together', to: 'Separate CSS Files' }, { stripDemoBlocks: true }));
+          console.log(await renderMdRange('./content/components.md', { from: 'HTML, CSS, and JavaScript Together', to: 'Companion CSS and Script Files' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/comp-alert/">
@@ -292,14 +292,14 @@
           </div>
         </component-demo>
 
-        <!-- Section: Separate CSS Files -->
+        <!-- Section: Companion CSS and Script Files -->
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMdRange('./content/components.md', { from: 'Separate CSS Files', to: 'Subfolder Layout' }, { stripDemoBlocks: true }));
+          console.log(await renderMdRange('./content/components.md', { from: 'Companion CSS and Script Files', to: 'Subfolder Layout' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/feature-card/">
@@ -370,12 +370,7 @@
           console.log(await renderMdRange('./content/components.md', { from: 'Subfolder Layout' }));
         </script>
 
-        <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderPagination } = await import(pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href);
-          console.log(renderPagination('/components'));
-        </script>
+        <docs-pagination />
 
       </main>
     </div>

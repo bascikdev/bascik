@@ -614,7 +614,7 @@ test.describe('Dev Server Startup Output', () => {
     expect(transpiledLines.length).toBe(uniqueTranspiled.size);
 
     // 2. Check summary line: exactly one "✓ N pages transpiled in Xms" before server ready
-    const summaryLines = lines.filter((l) => /^✓ \d+ pages? transpiled in \d+ms$/.test(l));
+    const summaryLines = lines.filter((l) => /^✓ \d+ pages? transpiled in (?:[<]?[\d.]+(?:ms|s))$/.test(l));
     expect(summaryLines.length).toBe(1);
   });
 });
