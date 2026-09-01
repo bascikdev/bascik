@@ -1,12 +1,12 @@
 # Server Scripts Testing
 
-Server scripts (`<script data-bascik-server>`) execute in Node.js at request time to generate dynamic HTML content on HTTP/1.1 and HTTP/2 production servers (`bascik --serve`). To keep server scripts maintainable, secure, and easily testable, separate backend business logic, database queries, and request parsing into pure exported TypeScript modules.
+Server scripts (`<script data-bascik-server>`) execute in Node.js at request time to generate dynamic HTML content on HTTP/1.1 and HTTP/2 production servers (`bascik --server`). To keep server scripts maintainable, secure, and easily testable, separate backend business logic, database queries, and request parsing into pure exported TypeScript modules.
 
 ## Build Scripts vs Server Scripts Testing
 
 | Characteristic | Build Scripts (`data-bascik-build`) | Server Scripts (`data-bascik-server`) |
 | --- | --- | --- |
-| **Execution Time** | Once at compile time (`bascik --build`) | On every incoming HTTP request (`bascik --serve`) |
+| **Execution Time** | Once at compile time (`bascik --build`) | On every incoming HTTP request (`bascik --server`) |
 | **Data Sources** | Local Markdown/JSON files, build-time env vars, static APIs | Database queries, session cookies, request headers, query parameters |
 | **Testing Strategy** | Mock build env vars (`BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`), test static outputs in `dist/` | Unit test pure handlers, mock database connections, test request-time parsers |
 | **Detailed Guide** | [Build Scripts Testing](/testing/build-scripts) | [Server Scripts Testing](/testing/server-scripts) |

@@ -68,7 +68,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
-| `serve.ts` | Production server entrypoint (`bascik --serve`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
+| `serve.ts` | Production server entrypoint (`bascik --server`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
 | `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls`, runs shared request handlers, and manages server instances. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
@@ -89,7 +89,7 @@ index.ts
   │     └── init.ts
   ├── (--check only)
   │     └── check.ts ← components.ts, file-system.ts
-  ├── (--serve / prod server)
+  ├── (--server / prod server)
   │     └── serve.ts → server.ts
   └── transpile.ts
         ├── config.ts ← userConfig.ts ← bascik.config.ts / bascik.config.js

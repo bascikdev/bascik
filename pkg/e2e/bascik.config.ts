@@ -37,7 +37,7 @@ export default defineConfig({
 
 export const server = defineConfig({
   http: {
-    port: Number(process.env.BASCIK_SERVER_PORT || process.env.BASCIK_SERVE_PORT) || 9443,
+    port: Number(process.env.BASCIK_SERVER_PORT) || 9443,
     tls: {
       enabled: process.env.BASCIK_ENABLE_TLS === 'true',
     },

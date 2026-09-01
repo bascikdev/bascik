@@ -218,7 +218,7 @@ High unit test coverage numbers can create false confidence if tests only exerci
 
 1. **Test Boundaries, Not Just Isolated Functions (Coverage ≠ Resilience):**
    - High line coverage does not prove system resilience. Bugs hide at boundary intersections: Main Thread ↔ Worker Thread, Dev Server SSE ↔ Browser EventSource, and Build Scripts ↔ Disk Cache.
-   - Always pair unit tests with E2E integration tests running against active dev (`bascik`), production HTTP/2 (`bascik --serve`), and static build output (`bascik --build`).
+   - Always pair unit tests with E2E integration tests running against active dev (`bascik`), production HTTP/2 (`bascik --server`), and static build output (`bascik --build`).
 
 2. **Test the Full Real-World Input Spectrum:**
    - Functions rarely receive clean ideal inputs in production. Test path utilities, route lookups, and watchers against the full spectrum of environment inputs: absolute filesystem paths (`/abs/.../src/pages/x.html`), relative paths (`src/pages/x.html`, `pages/x.html`), bare filenames (`x.html`), subfolder routes, Windows backslashes, and trailing slash URL variants.

@@ -30,7 +30,7 @@ When working in this repository (`@bascik/bascik`), pre-configured npm/yarn prof
 | :--- | :--- | :--- |
 | **Static Build (`--build`)** | `yarn --cwd pkg profile:0x:docs-build` | `docs/dist/profile-0x-build/flamegraph.html` |
 | **Dev Server (watch mode)** | `yarn --cwd pkg profile:0x:docs-dev` | `docs/dist/profile-0x-dev/flamegraph.html` |
-| **Production Server (`--serve`)** | `yarn --cwd pkg profile:0x:docs-serve` | `docs/dist/profile-0x-serve/flamegraph.html` |
+| **Production Server (`--server`)** | `yarn --cwd pkg profile:0x:docs-serve` | `docs/dist/profile-0x-serve/flamegraph.html` |
 
 Each command automatically opens the generated flamegraph in your browser upon completion.
 

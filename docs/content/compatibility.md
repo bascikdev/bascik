@@ -212,7 +212,7 @@ When a component uses `<input name="username">`, Bascik scopes the `name` attrib
 
 ## HTTP Protocols, Caching & Security Standards
 
-When running Bascik's built-in HTTP/1.1 and HTTP/2 production server (`bascik --serve`) or dev server (`bascik`), responses strictly adhere to modern IETF network and caching standards:
+When running Bascik's built-in HTTP/1.1 and HTTP/2 production server (`bascik --server`) or dev server (`bascik`), responses strictly adhere to modern IETF network and caching standards:
 
 | Feature / Standard | Protocol Authority | Status | Implementation Details |
 | --- | --- | --- | --- |

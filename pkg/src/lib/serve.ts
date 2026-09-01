@@ -4,9 +4,9 @@
  * Production Server
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * `bascik --serve` starts the HTTP/2 server against a previously-built
+ * `bascik --server` starts the HTTP server against a previously-built
  * `dist/` directory.  Run `bascik --build` first to produce `dist/`, then
- * `bascik --serve` to start the production server.
+ * `bascik --server` to start the production server.
  *
  * Unlike the dev server (`bascik`), the production server does NOT:
  *   - Watch source files for changes

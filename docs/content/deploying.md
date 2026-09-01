@@ -38,7 +38,7 @@ To keep deployment artifacts clean, the following files are excluded from static
 To preview your built site locally before deploying, run Bascik's built-in production server:
 
 ```sh
-bascik --serve
+bascik --server
 ```
 
 Or preview with any third-party static HTTP server:
@@ -103,7 +103,7 @@ If your site uses `data-bascik-server` scripts for per-request dynamic content, 
 
 ```sh
 bascik --build   # compile to dist/
-bascik --serve   # start the HTTP server; runs server scripts per request
+bascik --server   # start the HTTP server; runs server scripts per request
 ```
 
 See [Production Server](/server) for full documentation on server scripts and the request context API.
@@ -148,7 +148,7 @@ RUN npm ci
 COPY --from=build /app/dist ./dist
 COPY bascik.config.ts .
 EXPOSE 8080
-CMD ["npx", "bascik", "--serve"]
+CMD ["npx", "bascik", "--server"]
 ```
 
 The `ARG` makes the site URL a build-time input, so the same Dockerfile builds staging and production images with different `--build-arg BASCIK_SITE_URL=...` values.
@@ -166,7 +166,7 @@ Bascik looks for `bascik-privkey.pem` and `bascik-cert.pem` in the working direc
 
 ### PaaS (Railway, Render, Fly.io, etc.)
 
-Set the start command to `bascik --build && bascik --serve`, point the platform's health check at the server port, and configure the port via the `http.port` setting to match the port the platform expects to expose. Set `BASCIK_SITE_URL` in the platform's environment variables so the sitemap and robots.txt carry the public origin.
+Set the start command to `bascik --build && bascik --server`, point the platform's health check at the server port, and configure the port via the `http.port` setting to match the port the platform expects to expose. Set `BASCIK_SITE_URL` in the platform's environment variables so the sitemap and robots.txt carry the public origin.
 
 ### VPS or bare metal
 
@@ -183,7 +183,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/srv/my-site
 ExecStartPre=/usr/bin/npx bascik --build
-ExecStart=/usr/bin/npx bascik --serve
+ExecStart=/usr/bin/npx bascik --server
 Restart=on-failure
 RestartSec=5s
 Environment=NODE_ENV=production

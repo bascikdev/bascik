@@ -1,15 +1,15 @@
 # Production Server
 
-Bascik generates static output, HTML, CSS, and JS that a CDN or any file server can deliver. You only need `bascik --serve` when you want **per-request dynamic content**: personalized dashboards, user-specific data, server-rendered pagination, or anything that must be different for each visitor.
+Bascik generates static output, HTML, CSS, and JS that a CDN or any file server can deliver. You only need `bascik --server` when you want **per-request dynamic content**: personalized dashboards, user-specific data, server-rendered pagination, or anything that must be different for each visitor.
 
 The mechanism is `data-bascik-server`: a script tag that runs on the server on every request and injects its stdout into the page. Everything else, layout, navigation, styles, components, is still compiled at build time. You get the performance of static assets with the flexibility of server-rendered sections exactly where you need them.
 
 ```sh
 bascik --build   # compile to dist/ (static assets)
-bascik --serve   # start the production HTTP server; runs data-bascik-server scripts per request
+bascik --server   # start the production HTTP server; runs data-bascik-server scripts per request
 ```
 
-If your site has no `data-bascik-server` scripts, you do not need `bascik --serve`: any static host will do.
+If your site has no `data-bascik-server` scripts, you do not need `bascik --server`: any static host will do.
 
 ## Server scripts: `data-bascik-server`
 
@@ -240,48 +240,50 @@ npm install pg
 
 ## Server configuration
 
-Configure the production server in `bascik.config.ts` under the `prodServer` key.
+Configure the production server in `bascik.config.ts` under the `http` key.
 
 ```ts
 // bascik.config.ts
 export default {
-  cacheHttp: true,     // default in --serve; false in dev
-  prodServer: {
+  http: {
     port: 8080,         // default (8080 for HTTP, 8443 for HTTPS)
     hostname: 'localhost',  // default; use '0.0.0.0' to bind all interfaces
-    enableTls: false,   // default; set to true for encrypted HTTP/2 (HTTPS)
-    keyFile: 'bascik-privkey.pem',  // path to your TLS private key when enableTls: true
-    certFile: 'bascik-cert.pem',    // path to your TLS certificate when enableTls: true
-    logging: {
-      level: 'info',   // silent | error | warn | info | debug
-      requests: true,  // log each request line
+    httpCache: true,    // default in --server; false in dev
+    tls: {
+      enabled: false,   // default; set to true for encrypted HTTP/2 (HTTPS)
+      keyFile: 'bascik-privkey.pem',  // path to your TLS private key when tls.enabled: true
+      certFile: 'bascik-cert.pem',    // path to your TLS certificate when tls.enabled: true
     },
+  },
+  logging: {
+    level: 'info',   // silent | error | warn | info | debug
+    requests: true,  // log each request line
   },
 };
 ```
 
-The `prodServer.logging.level` setting controls the request log threshold, and `requests: false` disables the per-request `GET / ...` lines without suppressing warnings or errors.
+The `logging.level` setting controls the request log threshold, and `requests: false` disables the per-request `GET / ...` lines without suppressing warnings or errors.
 
 Bascik increments the port automatically if the preferred port is already in use.
 
-`cacheHttp` defaults to `true` in `--serve` mode and `false` in the dev server. When `true`, pages receive `ETag` headers and the server returns `304 Not Modified` when a client's cached copy is still fresh. Static assets also get `Cache-Control: public, max-age=3600`. Set `cacheHttp: false` to disable all of this if you are behind a CDN that manages caching itself.
+`http.httpCache` defaults to `true` in `--server` mode and `false` in the dev server. When `true`, pages receive `ETag` headers and the server returns `304 Not Modified` when a client's cached copy is still fresh. Static assets also get `Cache-Control: public, max-age=3600`. Set `httpCache: false` to disable all of this if you are behind a CDN that manages caching itself.
 
 ## URL routing
 
-Both the dev server and `bascik --serve` strip the `.html` extension and serve pages at the bare path. A file compiled to `dist/about.html` is available at `/about`, and `dist/blog/post.html` is available at `/blog/post`. The root page (`dist/index.html`) maps to `/`.
+Both the dev server and `bascik --server` strip the `.html` extension and serve pages at the bare path. A file compiled to `dist/about.html` is available at `/about`, and `dist/blog/post.html` is available at `/blog/post`. The root page (`dist/index.html`) maps to `/`.
 
 Requests for a path that has no matching page fall through to the `404` page if one exists (`dist/404.html`), otherwise the server returns a plain `404 Not Found`.
 
-## What `--serve` does differently from `--build`
+## What `--server` does differently from `--build`
 
-| Capability | `bascik --build` | `bascik --serve` |
+| Capability | `bascik --build` | `bascik --server` |
 | --- | --- | --- |
 | Transpile pages to `dist/` | ✓ | ✕ (reads existing `dist/`) |
 | Watch source files for changes | ✕ | ✕ |
 | Live-reload SSE | ✕ | ✕ |
 | Built-in HTTP server | ✕ | ✓ |
 | Brotli compression | ✕ | ✓ |
-| HTTP caching (ETags, 304) | ✕ | ✓ (default; see `cacheHttp`) |
+| HTTP caching (ETags, 304) | ✕ | ✓ (default; see `http.httpCache`) |
 | Rate limiting | ✕ | ✓ (per-IP) |
 | Security response headers | ✕ | ✓ |
 | Graceful shutdown | ✕ | ✓ (SIGTERM / SIGINT) |
@@ -289,7 +291,7 @@ Requests for a path that has no matching page fall through to the `404` page if 
 
 ## Production hardening
 
-The Bascik HTTP server applies several hardening measures. Most of these are active in both the dev server (`bascik`) and the production server (`bascik --serve`); rate limiting is the only protection that is production-only.
+The Bascik HTTP server applies several hardening measures. Most of these are active in both the dev server (`bascik`) and the production server (`bascik --server`); rate limiting is the only protection that is production-only.
 
 ### Security response headers
 
@@ -306,7 +308,7 @@ These are sent on HTML pages, static assets, and error responses in both dev and
 
 ### Rate limiting
 
-In `--serve` mode the server enforces a per-IP request limit of **500 requests per 10 seconds** by default. Clients that exceed the limit receive `429 Too Many Requests` with a `Retry-After` header. The limit resets automatically after the window expires. Rate limiting is not active in the dev server, and can be disabled on the production server by setting `prodServer: { rateLimit: false }` in `bascik.config.ts`.
+In `--server` mode the server enforces a per-IP request limit of **500 requests per 10 seconds** by default. Clients that exceed the limit receive `429 Too Many Requests` with a `Retry-After` header. The limit resets automatically after the window expires. Rate limiting is not active in the dev server, and can be disabled on the production server by setting `http: { rateLimit: false }` in `bascik.config.ts`.
 
 ### Graceful shutdown
 

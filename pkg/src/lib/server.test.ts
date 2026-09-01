@@ -1526,7 +1526,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     expect(mockMem.trackOpenPage).not.toHaveBeenCalled();
   });
 
-  it("responds 404 in --serve mode (SSE only runs in dev)", async () => {
+  it("responds 404 in --server mode (SSE only runs in dev)", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     const handler = getStreamHandler()!;
@@ -2002,7 +2002,7 @@ describe("startHttp2Server – boot page", () => {
     expect(stream.end).toHaveBeenCalledWith("Not Found");
   });
 
-  it("serves a 404 (not the boot page) in --serve mode even when isBooting is true", async () => {
+  it("serves a 404 (not the boot page) in --server mode even when isBooting is true", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).isProdServer = true;
     mockMem.getPage.mockReturnValue(undefined);
@@ -2276,10 +2276,10 @@ describe("startServerInstance signal handler cleanup", () => {
     }
   });
 
-  it("prioritizes process.env.BASCIK_SERVE_PORT over process.env.PORT when defined", async () => {
-    const originalServePort = process.env.BASCIK_SERVE_PORT;
+  it("prioritizes process.env.BASCIK_SERVER_PORT over process.env.PORT when defined", async () => {
+    const originalServePort = process.env.BASCIK_SERVER_PORT;
     const originalPort = process.env.PORT;
-    process.env.BASCIK_SERVE_PORT = "9443";
+    process.env.BASCIK_SERVER_PORT = "9443";
     process.env.PORT = "3000";
 
     try {
@@ -2299,9 +2299,9 @@ describe("startServerInstance signal handler cleanup", () => {
       expect(origin).toBe("http://localhost:9443");
     } finally {
       if (originalServePort !== undefined) {
-        process.env.BASCIK_SERVE_PORT = originalServePort;
+        process.env.BASCIK_SERVER_PORT = originalServePort;
       } else {
-        delete process.env.BASCIK_SERVE_PORT;
+        delete process.env.BASCIK_SERVER_PORT;
       }
       if (originalPort !== undefined) {
         process.env.PORT = originalPort;

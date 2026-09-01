@@ -61,14 +61,14 @@ export interface TranspilePageResult {
 export interface MinifyOptions {
   /**
    * Minify HTML output: strip comments and collapse excess whitespace.
-   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --serve`.
+   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
    */
   html: boolean;
   /**
    * Collapse whitespace and newlines in component `<style>` blocks, inline styles,
    * and static `.css` files.
    * Accepts `boolean` or a custom CSS minifier/transformer function.
-   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --serve`.
+   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
    *
    * ```ts
    * minify: {
@@ -80,7 +80,7 @@ export interface MinifyOptions {
   /**
    * Minify inline `<script>` content and `.js` static files in the output.
    * Accepts `boolean` or a custom minifier function.
-   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --serve`.
+   * Defaults to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.
    *
    * ```ts
    * minify: {

@@ -40,7 +40,7 @@ const BASCIK_CONFIG = `// Bascik works without this file — defaults are src/pa
 //   directory: { pages: 'src/pages', components: 'src/components' },
 // });
 
-// Applied only during \`bascik --build\` and \`bascik --serve\`.
+// Applied only during \`bascik --build\` and \`bascik --server\`.
 export const build = {
   minify: {
     html: true,

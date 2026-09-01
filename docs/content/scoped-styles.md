@@ -448,7 +448,7 @@ export const build = defineConfig({
 });
 ```
 
-When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build` and `bascik --serve`.
+When configured, Bascik runs your custom `minify.css` transformer on all scoped component `<style>` blocks, inlined global stylesheets, and static `.css` files during `bascik --build` and `bascik --server`.
 
 ## How Scoping Works
 

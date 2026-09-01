@@ -316,7 +316,7 @@ When `enableTls` is true and `keyFile` / `certFile` are omitted, Bascik generate
 To preview the production build locally with Bascik's built-in production server:
 
 ```sh
-bascik --serve
+bascik --server
 ```
 
 Or with any third-party HTTP server:

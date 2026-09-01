@@ -106,7 +106,7 @@ Dynamic route scripts receive:
 
 ## Server Scripts (`data-bascik-server`)
 
-`<script data-bascik-server>` blocks execute on every HTTP request when running with `bascik --serve` or during development with server scripts enabled.
+`<script data-bascik-server>` blocks execute on every HTTP request when running with `bascik --server` or during development with server scripts enabled.
 
 ### `BASCIK_REQUEST`
 
@@ -158,7 +158,7 @@ if (isBuild) {
 
 ### `BASCIK_PROD_SERVER`
 
-Set to `"1"` when running the production server (`bascik --serve`), and `"0"` during static builds or dev server runs.
+Set to `"1"` when running the production server (`bascik --server`), and `"0"` during static builds or dev server runs.
 
 ### `BASCIK_BUILD_LOG`
 

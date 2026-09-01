@@ -722,7 +722,7 @@ Components work inside `<head>` to organize metadata and shared links:
 * Use `console.log()` or `process.stdout.write()` to output HTML.
 * Build scripts run before component resolution, so their output can contain component tags.
 * All build scripts on a page execute concurrently via `Promise.all` (capped by a memory semaphore), and output is assembled in document order once all scripts complete.
-* On error, behavior is controlled by `onScriptError` in `bascik.config.ts`: `'warn'` (default in dev: log warning to stderr and replace tag with `""`), `'error'` (default in `--build` and `--serve`: log error to stderr and throw exception to stop build), or `'halt'` (alias for `'error'`).
+* On error, behavior is controlled by `onScriptError` in `bascik.config.ts`: `'warn'` (default in dev: log warning to stderr and replace tag with `""`), `'error'` (default in `--build` and `--server`: log error to stderr and throw exception to stop build), or `'halt'` (alias for `'error'`).
 * **Stack Trace Remapping:** For both `<script data-bascik-build>` and `<script data-bascik-server>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
 * **Hard error:** combining `data-bascik-build` and `data-bascik-server` on the same tag throws and aborts the build. A script runs at build time or at request time, not both.
 
@@ -944,7 +944,7 @@ Bascik intentionally does not inject a global `escapeHtml()` helper into every s
 
 Rules:
 * Top-level `import` and `await` are supported.
-* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --serve` or the dev server.
+* `data-bascik-server` blocks are preserved through `bascik --build` and executed at request time when served with `bascik --server` or the dev server.
 * They are NOT executed during `bascik --build` itself.
 * Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
 * On error, a warning is logged and the tag is replaced with an empty string.
@@ -983,7 +983,7 @@ export default defineConfig({
   generate: { sitemapLastmod: true },
 });
 
-// Applied only during `bascik --build` and `bascik --serve`.
+// Applied only during `bascik --build` and `bascik --server`.
 export const build = defineConfig({
   minify: {
     html: true,
@@ -1142,10 +1142,10 @@ src/
 * **No Passthrough Configuration:** No asset pipelines, passthrough copy configuration, or public folder settings are needed.
 
 ### Custom 404 & 500 Error Pages
-* **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --serve` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
+* **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
 * **500 Error Pages in Static vs. Server Contexts:**
   * **Static builds (`bascik --build`):** A 500 error page is meaningless in a fully static build, because static web hosts serve their own error pages if an infrastructure or server issue occurs. Do not port a 500 error page from Next.js, Remix, or any server-rendered framework into a static Bascik site.
-  * **Production server (`bascik --serve`):** Custom `src/pages/500.html` support under `bascik --serve` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
+  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
 
 ---
 
@@ -1357,7 +1357,7 @@ What to check in compiled output:
 * **Scoped class names:** attributes like `class="bascik__site-nav__nav"` (or a short hash with `minify.identifiers`) confirm CSS scoping ran correctly.
 * **Injected `<style>` block:** the `<head>` should contain one combined `<style>` with CSS from all components used on that page.
 * **Build script output:** `<script data-bascik-build>` is replaced with stdout; if missing, check the terminal for a `[bascik] build script error` line.
-* **Server script output:** `<script data-bascik-server>` is replaced at request time; if output is missing on a live request, check the terminal for a `[bascik] server script error` line. Remember these scripts run in Node.js, not the browser, they require `bascik --serve` or the dev server to execute.
+* **Server script output:** `<script data-bascik-server>` is replaced at request time; if output is missing on a live request, check the terminal for a `[bascik] server script error` line. Remember these scripts run in Node.js, not the browser, they require `bascik --server` or the dev server to execute.
 * **Slot and prop values:** verify fallback and injected text appear in the right place.
 
 The browser's **View Source** (or DevTools **Sources** panel) is equivalent to reading `dist/` and is often faster during development.
@@ -1484,8 +1484,8 @@ yarn pkg:e2e:prod:http2         # run TLS HTTP/2 prod server suite
 
 The E2E suite lives in `pkg/e2e/` and supports four execution modes:
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
-2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --serve` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
-3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --serve` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
+2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
+3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
 The fixture config sets `minify.identifiers: false` so Playwright selectors can use readable scoped names like `bascik__my-comp__btn` instead of opaque hashes. However, in production builds (where `minify.identifiers: true` is enabled), Bascik compiles and minifies element IDs and class names. Consequently, relying on raw CSS selectors like `page.locator('.my-class')` or `page.locator('#my-id')` will fail because those identifiers are hashed and compressed.

@@ -24,7 +24,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'npx bascik --build && npx bascik --serve',
+    command: 'npx bascik --build && npx bascik --server',
     url: 'http://localhost:8080',
     reuseExistingServer: !process.env.CI,
   },
@@ -81,8 +81,8 @@ Depending on the features under test, configure Playwright to run against the ap
 | --- | --- | --- |
 | **Static Production** | `bascik --build` | Static HTML rendering, slot replacement, compiled assets, client JS interactivity |
 | **Dev Server (Live)** | `bascik --dev` | SSE live-reload connection, fast recompilation, open-page prioritization |
-| **HTTP/1.1 Production** | `bascik --serve` | Request-time `<script data-bascik-server>` scripts, query parameters, cookies |
-| **HTTP/2 Production** | `bascik --serve` (TLS) | TLS termination, HTTP/2 multiplexed streaming, encrypted server scripts |
+| **HTTP/1.1 Production** | `bascik --server` | Request-time `<script data-bascik-server>` scripts, query parameters, cookies |
+| **HTTP/2 Production** | `bascik --server` (TLS) | TLS termination, HTTP/2 multiplexed streaming, encrypted server scripts |
 
 ### Example: Testing Live Dev Server Reloading
 

@@ -351,7 +351,7 @@ Open `dist/index.html` to see the compiled result. Custom component tags are ful
 Serve the compiled `dist/` directory locally over HTTP:
 
 ```sh
-npx bascik --serve
+npx bascik --server
 ```
 
 Terminal Output:
