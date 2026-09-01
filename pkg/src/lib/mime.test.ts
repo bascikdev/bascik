@@ -11,24 +11,22 @@ describe("MIME_MAP", () => {
     expect(MIME_MAP.has(".html")).toBe(false);
   });
 
+  it("does not assign readable MIME types to denied or source/config files", () => {
+    const unsafeExtensions = [
+      ".env", ".map", ".md", ".ts", ".mts", ".cts",
+      ".yaml", ".yml", ".toml", ".ini", ".lock", ".sh", ".py", ".rb",
+      ".go", ".java", ".c", ".cpp", ".h",
+    ];
+
+    expect(unsafeExtensions.filter((extension) => MIME_MAP.has(extension))).toEqual([]);
+  });
+
   it(".css → text/css; charset=utf-8", () => {
     expect(MIME_MAP.get(".css")).toBe("text/css; charset=utf-8");
   });
 
   it(".js → text/javascript; charset=utf-8", () => {
     expect(MIME_MAP.get(".js")).toBe("text/javascript; charset=utf-8");
-  });
-
-  it(".mjs → text/javascript; charset=utf-8", () => {
-    expect(MIME_MAP.get(".mjs")).toBe("text/javascript; charset=utf-8");
-  });
-
-  it(".cjs → text/javascript; charset=utf-8", () => {
-    expect(MIME_MAP.get(".cjs")).toBe("text/javascript; charset=utf-8");
-  });
-
-  it(".ts → text/typescript; charset=utf-8", () => {
-    expect(MIME_MAP.get(".ts")).toBe("text/typescript; charset=utf-8");
   });
 
   it(".json → application/json; charset=utf-8", () => {

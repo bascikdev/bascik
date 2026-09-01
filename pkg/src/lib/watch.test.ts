@@ -14,6 +14,7 @@ const {
   mockSelectivelyProcessPagesForWatchPath,
   mockCopyReplicatePath,
   mockCopyStaticAssets,
+  mockIsStaticAssetPath,
   mockDeleteDistDir,
   mockDeleteDistFile,
   mockIsInlineStylesheet,
@@ -27,6 +28,7 @@ const {
   const mockSelectivelyProcessPagesForWatchPath = vi.fn().mockResolvedValue(undefined);
   const mockCopyReplicatePath = vi.fn().mockResolvedValue(undefined);
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
+  const mockIsStaticAssetPath = vi.fn().mockReturnValue(true);
   const mockDeleteDistDir = vi.fn().mockResolvedValue(undefined);
   const mockDeleteDistFile = vi.fn().mockResolvedValue(undefined);
   const mockIsInlineStylesheet = vi.fn().mockReturnValue(false);
@@ -59,6 +61,7 @@ const {
     );
     mockCopyReplicatePath.mockReset().mockResolvedValue(undefined);
     mockCopyStaticAssets.mockReset().mockResolvedValue(undefined);
+    mockIsStaticAssetPath.mockReset().mockReturnValue(true);
     mockDeleteDistDir.mockReset().mockResolvedValue(undefined);
     mockDeleteDistFile.mockReset().mockResolvedValue(undefined);
     mockEventEmit.mockReset();
@@ -77,6 +80,7 @@ const {
     mockSelectivelyProcessPagesForWatchPath,
     mockCopyReplicatePath,
     mockCopyStaticAssets,
+    mockIsStaticAssetPath,
     mockDeleteDistDir,
     mockDeleteDistFile,
     mockIsInlineStylesheet,
@@ -103,6 +107,10 @@ vi.mock("./file-system.js", () => ({
   copyStaticAssets: mockCopyStaticAssets,
   deleteDistDir: mockDeleteDistDir,
   deleteDistFile: mockDeleteDistFile,
+}));
+
+vi.mock("./asset-filter.js", () => ({
+  isStaticAssetPath: mockIsStaticAssetPath,
   isInlineStylesheet: mockIsInlineStylesheet,
 }));
 
@@ -121,13 +129,6 @@ vi.mock("./config.js", () => ({
     },
     isBuild: false,
   },
-}));
-
-vi.mock("./mime.js", () => ({
-  MIME_MAP: new Map([
-    [".css", "text/css"],
-    [".js", "application/javascript"],
-  ]),
 }));
 
 vi.mock("./events.js", () => ({
@@ -398,12 +399,26 @@ describe("watchFiles – ignored predicates", () => {
     expect(ignored("/path/to/app.js", { isFile: () => true })).toBe(false);
   });
 
-  it("watcher 0: returns true for .ts and test files or files with an unknown extension", () => {
+  it("watcher 0: delegates unknown-extension decisions to the shared asset predicate", () => {
     const ignored = mockWatch.mock.calls[0][1].ignored as (
       p: string,
       s?: { isFile: () => boolean },
     ) => boolean;
-    expect(ignored("/path/to/file.txt", { isFile: () => true })).toBe(true);
+    mockIsStaticAssetPath.mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+    expect(ignored("/path/to/template.hbs", { isFile: () => true })).toBe(false);
+    expect(ignored("/path/to/private.hbs", { isFile: () => true })).toBe(true);
+    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(1, "/path/to/template.hbs");
+    expect(mockIsStaticAssetPath).toHaveBeenNthCalledWith(2, "/path/to/private.hbs");
+  });
+
+  it("watcher 0: returns true for denied source and test files", () => {
+    const ignored = mockWatch.mock.calls[0][1].ignored as (
+      p: string,
+      s?: { isFile: () => boolean },
+    ) => boolean;
+    mockIsStaticAssetPath.mockReturnValue(false);
+
     expect(ignored("/path/to/helper.ts", { isFile: () => true })).toBe(true);
     expect(ignored("/path/to/app.test.js", { isFile: () => true })).toBe(true);
   });

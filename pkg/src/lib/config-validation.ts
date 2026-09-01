@@ -70,7 +70,7 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 
 /** Nested map of every known config key. Leaf value is null. */
 const KNOWN_KEYS: Record<string, unknown> = {
-  directory: { pages: null, components: null, out: null, public: null, api: null },
+  directory: { pages: null, components: null, out: null, api: null },
   scoping: {
     scriptBlocks: null,
     inheritAttributes: null,
@@ -502,9 +502,6 @@ export const validateConfigPaths = (
       } else if (!fs.isDirectory(resolvePath(dir.pages))) {
         push("directory.pages", dir.pages, "expected a directory");
       }
-    }
-    if (typeof dir.public === "string" && !fs.isDirectory(resolvePath(dir.public))) {
-      push("directory.public", dir.public, "directory does not exist");
     }
   }
 

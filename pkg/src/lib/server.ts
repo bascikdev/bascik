@@ -197,6 +197,13 @@ export const createRequestHandler = () => {
         return;
       }
 
+      if (pathname.split("/").some((segment) => segment.startsWith("."))) {
+        responseStatus = 404;
+        res.respond(404, { ...secHeaders });
+        res.end("Not Found");
+        return;
+      }
+
       // ── Static asset (has extension, not .html) ──────────────────────────
       const ext = extname(pathname).toLowerCase();
       if (ext && !ext.match(/^\.htm.*$/)) {

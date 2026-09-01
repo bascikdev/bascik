@@ -6,6 +6,9 @@ import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { minifyCss } from "./styles.ts";
 import { minifyJs } from "./javascript.ts";
+import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
+
+export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
 /** Resolve an absolute path to a `parentDir/...` relative path, normalizing separators. */
 export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
@@ -51,7 +54,6 @@ const displayRelativePath = (path: string): string => {
   if (normalized.startsWith(`${componentsDir}/`)) {
     return normalized;
   }
-
   const outDirRel = relative(process.cwd(), BascikConfig.directory.out) || "dist";
   return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(new RegExp(`^${outDirRel}/`), "");
 };
@@ -203,37 +205,14 @@ export const deepReadDirFlat = async (
   }
 };
 
-export const isInlineStylesheet = (path: string): boolean => {
-  const inlineStyles = BascikConfig.assets?.inlineStyles;
-  if (!inlineStyles) return false;
-  if (!path.endsWith(".css")) return false;
-  if (inlineStyles === true) return true;
-  if (Array.isArray(inlineStyles)) {
-    const normalizedPath = path.replace(/\\/g, "/");
-    return inlineStyles.some((stylePath) => {
-      const normalizedStyle = stylePath.replace(/\\/g, "/");
-      return (
-        normalizedPath === normalizedStyle ||
-        normalizedPath.endsWith("/" + normalizedStyle) ||
-        normalizedStyle.endsWith("/" + normalizedPath)
-      );
-    });
-  }
-  return false;
-};
-
 export const copyStaticAssets = async (): Promise<void> => {
-  const allFiles = await deepReadDirFlat(BascikConfig.directory.pages);
-  const staticAssetFiles = allFiles.filter(
-    (filePath) =>
-      /\.[a-zA-Z0-9]+$/.test(filePath) &&
-      !filePath.endsWith(".html") &&
-      !filePath.endsWith(".ts") &&
-      !/\.(test|spec)\.[a-zA-Z0-9]+$/.test(filePath) &&
-      !isInlineStylesheet(filePath),
-  );
+  const pagesRoot = BascikConfig.directory.pages;
+  const allPageFiles = await deepReadDirFlat(pagesRoot);
+  const pageAssetFiles = allPageFiles.filter((filePath) =>
+    isStaticAssetPath(filePath, pagesRoot, true));
+
   await Promise.all(
-    staticAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
+    pageAssetFiles.map((filePath) => copyReplicatePath(filePath, BascikConfig.directory.out)),
   );
 };
 

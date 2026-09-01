@@ -12,11 +12,10 @@ import {
   copyStaticAssets,
   deleteDistDir,
   deleteDistFile,
-  isInlineStylesheet,
 } from "./file-system.ts";
+import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
-import { MIME_MAP } from "./mime.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 
 export const watchFiles = async () => {
@@ -33,15 +32,8 @@ export const watchFiles = async () => {
   // Copy non-page files
   w(chokidar
     .watch([BascikConfig.directory.pages], {
-      ignored: (path: string, stats?: Stats): boolean => {
-        const hasFileExt = Array.from(MIME_MAP.keys()).some((ext) =>
-          ext.startsWith(".") && path.endsWith(ext),
-        );
-        return !!(
-          stats?.isFile() &&
-          (!hasFileExt || path.endsWith(".ts") || /\.(test|spec)\.[a-zA-Z0-9]+$/.test(path))
-        );
-      },
+      ignored: (path: string, stats?: Stats): boolean =>
+        !!(stats?.isFile() && !isStaticAssetPath(path)),
       ignoreInitial: true,
       persistent: !BascikConfig.isBuild,
     })

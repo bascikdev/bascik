@@ -18,8 +18,8 @@ A `--site-url` flag and an automatic `./.env` file are also available; see [Conf
 Running `bascik --build` produces:
 
 - **HTML**: compiled pages with component tags resolved, scoped class names applied, build-script output inlined, and dynamic route templates expanded into concrete static HTML files
-- **CSS and JS**: as-is from your `src/pages/` asset folders
-- **Static assets**: images, fonts, and any other files copied unchanged
+- **CSS and JS**: page-adjacent files from `src/pages/`, processed by configured minifiers
+- **Static assets**: eligible images, fonts, downloads, and other files from `src/pages/`, preserving their relative paths
 
 The output uses root-relative paths (e.g. `/css/styles.css`). Files must be served from an HTTP server; opening them directly with `file://` will break asset loading.
 
@@ -30,8 +30,15 @@ To keep deployment artifacts clean, the following files are excluded from static
 - **Component source files**: all files in `src/components/` are source templates, resolved at build time, and never copied to `dist/`
 - **Page templates**: `.html` files in `src/pages/` are transpiled into compiled pages
 - **TypeScript files**: `.ts` source files used by build scripts or helper modules
+- **Other source files**: `.mjs`, `.cjs`, `.mts`, and `.cts` modules, source maps (`.map`), and Markdown (`.md`)
 - **Test files**: any test file matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
 - **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into `<head>`)
+- **Hidden paths**: every dotfile and every file below a dot-directory
+- **Dependencies**: every file below a `node_modules` directory
+
+Treat `directory.pages` as the publish tree. Colocate assets with a page or organize shared files under folders such as `src/pages/assets/`, `src/pages/images/`, and `src/pages/fonts/`. Keep tests and source-only helpers outside that tree. Use `assets.exclude` for project-specific exclusions; its globs match relative to `directory.pages`, and the built-in exclusions always apply.
+
+If a project needs to copy files from a separate source tree, use a `pipeline.exec` script that selects those files and writes them to `directory.out`. This keeps external copying explicit instead of creating a second built-in asset root.
 
 ### Previewing static builds locally
 

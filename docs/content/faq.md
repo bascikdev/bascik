@@ -98,18 +98,28 @@ The `src/components/` directory is treated strictly as source-only files:
 - Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their stdout replaces the script tag.
 - Any other files (helper modules, JSON data files, tests, READMEs) stay in `src/components/` and are never copied to `dist/`.
 
-Static assets intended to be served directly as public URLs (such as images, web fonts, or global stylesheets) should be placed in `src/pages/` instead.
+Static assets intended to be served directly as public URLs should be placed in `src/pages/` instead.
 
 ## Which files in `src/pages/` are copied to `dist/` and which are excluded?
 
-All non-`.html` static assets placed in `src/pages/` (such as images, fonts, favicons, PDFs, and standalone CSS or JS files) are automatically copied to `dist/` preserving their directory structure.
+Eligible static assets placed in `src/pages/` are copied to `dist/` with their directory structure preserved. This makes `src/pages/` the publish tree for both routes and their browser assets.
 
 The following files are **excluded** from static asset copying:
 - **`.html` page templates**: compiled into output HTML pages in `dist/`.
-- **`.ts` source files**: treated as Node build-script or server helper modules.
+- **Source and documentation files**: `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md`.
 - **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
+- **Hidden paths**: any dotfile or file inside a dot-directory.
+- **Dependencies**: any file inside a `node_modules` directory.
 - **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into page `<head>` blocks).
 - **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.
+
+`assets.exclude` adds project-specific glob exclusions matched relative to `directory.pages`. The built-in exclusions always apply.
+
+## Where should I put images and fonts?
+
+Put them under `directory.pages`, either beside the page that uses them or in a shared folder such as `src/pages/assets/`, `src/pages/images/`, or `src/pages/fonts/`. For example, `src/pages/fonts/site.woff2` becomes `dist/fonts/site.woff2`.
+
+Keep tests and source-only helpers outside `directory.pages`. For project-specific exceptions, add page-relative glob patterns to `assets.exclude`. If assets must come from a separate source tree, use a `pipeline.exec` script to copy intentionally selected files into `directory.out`.
 
 ## Do I need to restart the dev server when I add a new component?
 

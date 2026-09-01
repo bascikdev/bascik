@@ -263,13 +263,13 @@ describe("directory paths (fs half)", () => {
     expect(errors[0].message).toContain("expected a directory");
   });
 
-  it("rejects a public directory that does not exist when set", () => {
-    const errors = validateConfigPaths(
-      { directory: { public: "static" } },
-      { fs: missingFs, cwd: "/project" },
+  it("rejects directory.public as an unknown configuration key", () => {
+    const errors = validateConfigShape(
+      { directory: { public: "static" } } as any,
     );
     expect(errors).toHaveLength(1);
     expect(errors[0].key).toBe("directory.public");
+    expect(errors[0].unknownKey).toBe(true);
   });
 
   it("does not check directory paths the user did not set", () => {
@@ -279,7 +279,7 @@ describe("directory paths (fs half)", () => {
   it("accepts existing directories", () => {
     expect(
       validateConfigPaths(
-        { directory: { pages: "src/pages", public: "public" } },
+        { directory: { pages: "src/pages" } },
         { fs: allowAllFs, cwd: "/project" },
       ),
     ).toHaveLength(0);
@@ -511,7 +511,7 @@ describe("pure half performs no filesystem access", () => {
     // appear) — the fs half owns every existence/readability message.
     const errors = validateConfigShape(
       {
-        directory: { pages: "definitely/not/here", public: "also/not/here" },
+        directory: { pages: "definitely/not/here" },
         pipeline: {
           watchPaths: ["nope/"],
           exec: [{ script: "scripts/nope.ts" }],
@@ -565,7 +565,7 @@ describe("valid config", () => {
   it("produces zero errors for a fully valid config", () => {
     const errors = validateUserConfig(
       {
-        directory: { pages: "src/pages", out: "dist", public: "public" },
+        directory: { pages: "src/pages", out: "dist" },
         scoping: { preserve: ["code"] },
         minify: { css: true, js: (code: string) => code },
         assets: { inlineStyles: ["src/css/styles.css"], exclude: ["**/*.map"] },

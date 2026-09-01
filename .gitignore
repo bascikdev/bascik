@@ -60,6 +60,7 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+!pkg/e2e/src/pages/.env
 
 
 # macos

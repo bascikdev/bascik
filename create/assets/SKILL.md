@@ -1018,7 +1018,6 @@ export default defineConfig({
     pages: 'src/pages',
     components: 'src/components',
     out: 'dist',
-    public: undefined,
     api: 'src/api',
   },
   scoping: {
@@ -1128,7 +1127,7 @@ export const build = defineConfig({
 ```
 src/
   components/           ← component .html (+ optional .css) templates
-  pages/                ← HTML routes, static assets, and subfolders
+  pages/                ← HTML routes and publishable assets
     index.html          → dist/index.html
     css/styles.css      → dist/css/styles.css (auto-minified)
     js/main.js          → dist/js/main.js (auto-minified)
@@ -1137,9 +1136,11 @@ src/
 ```
 
 ### Static Assets and Subdirectories
-* **Any Asset or Folder in `src/pages/`:** You can create any subfolders (`css/`, `js/`, `images/`, `fonts/`, `downloads/`) inside `src/pages/`. All non-`.html` files (CSS, JS, images, fonts, PDFs, JSON, etc.) are automatically copied to `dist/` replicating their exact directory structure.
+* **One Publish Tree:** Put images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets under `directory.pages`. Colocate them with a route or use shared subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with relative structure preserved.
+* **Project-Specific Exclusions:** `assets.exclude` adds glob exclusions matched relative to `directory.pages`. Keep tests and source-only helpers outside the publish tree.
 * **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified at build time when `minify.css` / `minify.js` are enabled in `bascik.config.ts`. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can also be assigned to `minify.css` and `minify.js`.
-* **No Passthrough Configuration:** No asset pipelines, passthrough copy configuration, or public folder settings are needed.
+* **Built-In Deny-List:** Dotfiles, dot-directories, `node_modules`, `.html`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test/spec files, and inlined stylesheets never copy. This deny-list always applies, including when `assets.exclude` is configured.
+* **External Copying:** When assets must come from a separate source tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
 ### Custom 404 & 500 Error Pages
 * **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
@@ -1224,6 +1225,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
 * **Graceful shutdown:** SIGTERM and SIGINT stop accepting connections, destroy all open sessions and live-reload SSE connections, and drain in-flight requests before exiting. Force-exits after 10 seconds if anything hasn't drained.
 * **Path traversal protection:** static asset URLs are validated against `dist/`; requests that escape with `/../` sequences get `400 Bad Request`.
+* **Hidden-path protection:** after URL decoding, any request path containing a segment that starts with `.` gets `404 Not Found` before static file lookup.
 
 **Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
 

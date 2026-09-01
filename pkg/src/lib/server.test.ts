@@ -774,6 +774,22 @@ describe("startHttp2Server – path traversal protection", () => {
     expect(stream.end).toHaveBeenCalledWith("Bad Request");
   });
 
+  it.each(["/.env", "/.git/config", "/foo/.hidden", "/%2Egit/config"])(
+    "returns 404 for dot-segment path %s before filesystem access",
+    async (path) => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+      expect(stream.end).toHaveBeenCalledWith("Not Found");
+      expect(mockStat).not.toHaveBeenCalled();
+    },
+  );
+
   it("serves a file whose name contains literal %2F without escaping (not a traversal)", async () => {
     // path.resolve treats %2F as a literal character, not a /; the guard passes
     // and stat is called. Mock stat succeeds, then createReadStream is set up.

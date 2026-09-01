@@ -42,7 +42,7 @@ Configuration errors in bascik.config.ts
 4 configuration errors
 ```
 
-Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `directory.public`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted; only a full URL is rejected.
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted; only a full URL is rejected.
 
 ## Minimal Configuration Example (Recommended)
 
@@ -128,7 +128,6 @@ export default defineConfig({
     pages: 'src/pages',
     components: 'src/components',
     out: 'dist',
-    public: undefined,
     api: 'src/api',
   },
   scoping: {
@@ -220,26 +219,28 @@ Here are just a few ways Bascik puts architectural choices back in your hands:
 
 ### `directory`
 
-Paths to your pages, components, output, public assets, and API routes directories, relative to the project root.
+Paths to your pages, components, output, and API routes directories, relative to the project root.
 
 ```ts
 directory: {
-  pages: 'src/pages',           // default: HTML routes, static assets, and subfolders
+  pages: 'src/pages',           // default: HTML routes and publishable assets
   components: 'src/components', // default: component .html and .css templates
   out: 'dist',                  // default: output build directory
-  public: undefined,            // default: optional public asset directory
   api: 'src/api',               // default: API route handlers directory
 }
 ```
 
-> **Asset Mirroring and Exclusions:** Any subfolders and static asset files inside `pages` (such as `images/`, `fonts/`, favicons, or standalone `css/` and `js/` files) are automatically copied to `directory.out` preserving their folder structure. CSS and JS files in `pages` are minified during build when `minify.css` / `minify.js` are enabled.
->
-> The following files are **excluded** from static asset copying and are never copied to `directory.out`:
-> - `.html` page templates (transpiled into compiled HTML output pages)
-> - `.ts` files (treated as build or server helper scripts)
-> - Test files matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
-> - Inlined stylesheets specified in `assets.inlineStyles` (injected directly into HTML `<head>` blocks)
-> - All files in `src/components/` (treated as source-only component templates and styles)
+`directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers.
+
+The following built-in exclusions always apply:
+
+- Any dotfile or file inside a dot-directory
+- Any file inside `node_modules`
+- `.html`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and `.md` files
+- Test files matching `*.test.*` or `*.spec.*`
+- Stylesheets configured in `assets.inlineStyles`
+
+Files in `directory.components` are source-only and are never copied directly.
 
 ### `scoping`
 
@@ -322,9 +323,11 @@ Asset pipeline configuration.
 ```ts
 assets: {
   inlineStyles: ['src/css/styles.css'], // global stylesheets to inline into <head>
-  exclude: [],                          // glob patterns for asset copying exclusion
+  exclude: ['drafts/**'],               // default: []; page-relative exclusion globs
 }
 ```
+
+`assets.exclude` patterns match paths relative to `directory.pages` and provide project-specific exclusions. They do not weaken the built-in deny-list, which always applies. Keep tests and source-only helpers outside `directory.pages`. To copy a separate external asset tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
 ### `generate`
 

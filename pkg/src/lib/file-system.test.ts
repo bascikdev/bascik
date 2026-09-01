@@ -15,6 +15,7 @@ import {
   copyStaticAssets,
   isInlineStylesheet,
 } from "./file-system.ts";
+import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
 import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 
@@ -101,6 +102,23 @@ vi.spyOn(console, "log");
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.mocked(readdir).mockImplementation(async () => [
+    {
+      name: "./dir",
+      isDirectory: isDirMock,
+    },
+    {
+      name: "./dir/one.html",
+      isDirectory: vi.fn(() => false),
+    },
+    {
+      name: "./dir/one.css",
+      isDirectory: vi.fn(() => false),
+    },
+  ] as any);
 });
 
 describe("deepReadDir", () => {
@@ -308,6 +326,66 @@ describe("copyReplicatePath", () => {
 });
 
 describe("copyStaticAssets", () => {
+  it("does not copy built-in denied files from the pages directory", async () => {
+    const file = (name: string) => ({
+      name,
+      isDirectory: vi.fn(() => false),
+    });
+    const directory = (name: string) => ({
+      name,
+      isDirectory: vi.fn(() => true),
+    });
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (`${path}` === "pages") {
+        return [
+          file(".env"),
+          file("bundle.js.map"),
+          file(".DS_Store"),
+          file(".gitignore"),
+          file("helper.mjs"),
+          file("README.md"),
+          file("logo.svg"),
+          directory("node_modules"),
+        ] as any;
+      }
+      if (`${path}` === "pages/node_modules") {
+        return [directory("pkg")] as any;
+      }
+      if (`${path}` === "pages/node_modules/pkg") {
+        return [file("index.js")] as any;
+      }
+      return [];
+    });
+
+    await copyStaticAssets();
+
+    const copiedSources = vi.mocked(copyFile).mock.calls.map(([source]) => source);
+    expect(copiedSources).toEqual(["pages/logo.svg"]);
+  });
+
+  it("applies assets.exclude relative to pages while allowing unknown extensions", () => {
+    (BascikConfig as any).assets = {
+      inlineStyles: false,
+      exclude: ["private/**", "*.jsonc"],
+    };
+
+    try {
+      expect(isStaticAssetPath("pages/templates/card.hbs", "pages")).toBe(true);
+      expect(isStaticAssetPath("pages/private/card.hbs", "pages")).toBe(false);
+      expect(isStaticAssetPath("pages/settings.jsonc", "pages")).toBe(false);
+      expect(isStaticAssetPath("pages/public/settings.jsonc", "pages")).toBe(true);
+      expect(isStaticAssetPath("pages/.hidden/allowed.svg", "pages")).toBe(false);
+      expect(
+        isStaticAssetPath(
+          "/Users/example/.work/project/pages/logo.svg",
+          "/Users/example/.work/project/pages",
+        ),
+      ).toBe(true);
+    } finally {
+      (BascikConfig as any).assets = { inlineStyles: false, exclude: [] };
+    }
+  });
+
   it("copies non-HTML static assets and ignores HTML, TS, and test files", async () => {
     vi.mocked(readFile)
       .mockResolvedValueOnce("body { color: red; }" as any)

@@ -34,7 +34,7 @@ describe("defaultConfig", () => {
     expect(defaultConfig.directory.components).toMatch(/src[/\\]components$/);
     expect(defaultConfig.directory.out).toMatch(/dist$/);
     expect(defaultConfig.directory.api).toBe("src/api");
-    expect(defaultConfig.directory.public).toBeUndefined();
+    expect("public" in defaultConfig.directory).toBe(false);
   });
 
   it("has default minify options set to false in dev mode", () => {
