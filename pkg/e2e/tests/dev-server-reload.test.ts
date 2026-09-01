@@ -631,6 +631,57 @@ test.describe('Dev Server Startup Output', () => {
 });
 
 test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
+  test('survives an invalid page at boot and serves the fixed page without restarting', async ({ page }) => {
+    const entryPath = join(pkgDir, 'bin/bascik.js');
+    const brokenPagePath = join(e2eDir, 'src/pages/dev-recovery-test.html');
+    const port = '9993';
+    const baseUrl = `http://localhost:${port}`;
+    await writeFile(brokenPagePath, '<!DOCTYPE html><html><head><title>Broken</title></head></html>', 'utf8');
+
+    const child = spawn(process.execPath, [entryPath], {
+      cwd: e2eDir,
+      env: { ...process.env, PORT: port },
+    });
+    let output = '';
+    let exited = false;
+    child.stdout?.on('data', (data) => { output += data.toString('utf8'); });
+    child.stderr?.on('data', (data) => { output += data.toString('utf8'); });
+    child.on('exit', () => { exited = true; });
+
+    try {
+      await expect.poll(() => output.includes('All tasks completed in'), {
+        timeout: 20000,
+        message: 'Dev server did not finish booting after encountering an invalid page',
+      }).toBe(true);
+      expect(exited).toBe(false);
+
+      const brokenResponse = await fetch(`${baseUrl}/dev-recovery-test`);
+      expect(brokenResponse.status).toBe(404);
+      expect(await brokenResponse.text()).not.toContain('Building site');
+
+      const healthyResponse = await fetch(`${baseUrl}/scope-test`);
+      expect(healthyResponse.status).toBe(200);
+
+      const recoveredText = `Recovered ${Date.now()}`;
+      await writeFile(
+        brokenPagePath,
+        `<!DOCTYPE html><html><head><title>Recovered</title></head><body><h1 data-testid="recovered-page">${recoveredText}</h1></body></html>`,
+        'utf8',
+      );
+
+      await expect.poll(async () => {
+        const response = await fetch(`${baseUrl}/dev-recovery-test`);
+        return response.status;
+      }, { timeout: 15000 }).toBe(200);
+      await page.goto(`${baseUrl}/dev-recovery-test`);
+      await expect(page.getByTestId('recovered-page')).toHaveText(recoveredText);
+      expect(exited).toBe(false);
+    } finally {
+      child.kill();
+      await rm(brokenPagePath, { force: true });
+    }
+  });
+
   test('serves boot loading screen during cold start before initial transpile completes and resolves pages afterwards', async () => {
     const entryPath = join(pkgDir, 'bin/bascik.js');
     const cacheDir = join(e2eDir, 'node_modules/.cache/bascik');

@@ -24,7 +24,7 @@
  * ```
  */
 
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -122,6 +122,7 @@ export const generateSitemapFiles = async (
 
   const baseUrl = siteUrl.replace(/\/+$/, ""); // trim trailing slash
 
+  await mkdir(BascikConfig.directory.out, { recursive: true });
   const writes: Promise<void>[] = [];
 
   if (doSitemap) {

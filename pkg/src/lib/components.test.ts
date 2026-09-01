@@ -627,10 +627,9 @@ describe("extractDefaultSlotContent", () => {
 });
 
 describe("listComponents", () => {
-  it("invalidates cache and builds component list", async () => {
+  it("rejects when the configured components directory is missing", async () => {
     invalidateComponentListCache();
-    const result = await listComponents();
-    expect(typeof result).toBe("object");
+    await expect(listComponents()).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

@@ -1276,7 +1276,17 @@ While the dev server is active, Bascik watches your file system and incrementall
   ```
 
 #### 3. Transpilation & Build Errors
-If you introduce a syntax mistake or a runtime error inside a custom build script, Bascik prevents the server from crashing, gracefully logs a descriptive error with the file and exact line/column location, and continues running.
+Development and production builds handle page failures differently. The dev server logs a failed page, completes boot, continues serving healthy pages, and retries the failed page on the next save. A production `bascik --build` waits for every page job, reports all failures together, and exits nonzero rather than reporting success with missing output.
+
+Hard build failures include a missing or unreadable configured pages directory, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored.
+
+```terminal
+Build failed with 2 page errors:
+  src/pages/about.html
+    validate markup: Page does not contain a non-empty <body> element
+  src/pages/blog/post.html
+    write output: EACCES: permission denied
+```
 
 * **Component Transpilation Failure:** If a component markup or CSS scoping parser fails during transpilation:
   ```terminal
@@ -1293,6 +1303,7 @@ If you introduce a syntax mistake or a runtime error inside a custom build scrip
   ```terminal
   [bascik] Unresolved component tag in "pages/about.html": <my-mistyped> - no matching component file found. Run `bascik --check` for a full report.
   ```
+  Use `bascik --check` as the strict CI gate for unresolved component references.
 
 #### 4. Static Analysis (`bascik --check`)
 Run `bascik --check` from your project root to validate pages and component files without starting the dev server or writing any output:

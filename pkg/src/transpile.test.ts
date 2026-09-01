@@ -70,6 +70,8 @@ vi.mock("./lib/config.js", () => ({
 
 import { runTranspile } from "./transpile.ts";
 import { BascikConfig } from "./lib/config.ts";
+import { mem } from "./lib/mem.ts";
+import { eventEmitter } from "./lib/events.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {
@@ -113,6 +115,8 @@ describe("runTranspile", () => {
     expect(_mockStartServer).toHaveBeenCalled();
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
+    expect(mem.setBootingDone).toHaveBeenCalledOnce();
+    expect(eventEmitter.emit).toHaveBeenCalledWith("boot-done");
 
     // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
     const preIndex = _callOrder.indexOf("runExecPhase:pre");

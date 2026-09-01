@@ -334,6 +334,37 @@ export const findActiveSourceFile = (
 const MAX_SUBSTITUTIONS = 10_000;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
 
+export class PageProcessingError extends Error {
+  constructor(
+    public readonly pagePath: string,
+    public readonly stage: string,
+    cause: unknown,
+  ) {
+    const causeMessage = cause instanceof Error ? cause.message : String(cause);
+    super(`${stage}: ${causeMessage}`, { cause });
+    this.name = "PageProcessingError";
+  }
+}
+
+export class PageProcessingAggregateError extends AggregateError {
+  constructor(public readonly pageErrors: PageProcessingError[]) {
+    const details = pageErrors
+      .map(({ pagePath, stage, message }) =>
+        `  ${pagePath}\n    ${stage}: ${message.replace(`${stage}: `, "")}`)
+      .join("\n");
+    super(pageErrors, `Build failed with ${pageErrors.length} page errors:\n${details}`);
+    this.name = "PageProcessingAggregateError";
+  }
+}
+
+const normalizePageError = (
+  pagePath: string,
+  error: unknown,
+  stage = "transpile page",
+): PageProcessingError => error instanceof PageProcessingError
+    ? error
+    : new PageProcessingError(pagePath, stage, error);
+
 export const recursivelyTranspile = (
   transpiledHtmlBody: string,
   componentList: ComponentList,
@@ -357,17 +388,16 @@ export const recursivelyTranspile = (
     ) {
       const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
       const tag = partial.name ? `<${partial.name}>` : "(unknown)";
-      console.error(
-        `[bascik] Transpilation aborted in "${filePath ?? "unknown file"}": ` +
-        `component expansion exceeded safety limits (${substitutions} substitutions). ` +
-        `This usually means a component recursively includes itself (e.g. ${tag} ` +
-        `contains its own tag, directly or through another component). ` +
-        `Recursive components are not supported — restructure to terminate the recursion.`,
+      throw new PageProcessingError(
+        filePath ?? "unknown file",
+        "component expansion",
+        new Error(
+          `component expansion exceeded safety limits (${substitutions} substitutions). ` +
+          `This usually means a component recursively includes itself (e.g. ${tag} ` +
+          `contains its own tag, directly or through another component). ` +
+          "Recursive components are not supported; restructure to terminate the recursion.",
+        ),
       );
-      const cleanedHtml = transpiledHtmlBody
-        .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-        .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
-      return { transpiledHtmlBody: cleanedHtml, usedComponents };
     }
     const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
     if (!partial.name) {
@@ -571,26 +601,30 @@ const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> =
   try {
     await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
   } catch (error) {
-    console.error("Make directory error", error);
+    throw new PageProcessingError(result.absolutePagePath, "create output directory", error);
   }
   const distPagePath = getDistPagePath(result.relativePagePath);
   try {
     await writeFile(distPagePath, result.distHtml);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error("Write file error", error);
-    }
+    throw new PageProcessingError(result.absolutePagePath, "write output", error);
   }
 };
 
 const queueTranspiledPageWrite = (result: TranspilePageResult): Promise<void> => {
   const pagePath = result.absolutePagePath;
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
-  const queued = current.catch(() => { }).then(() => writeTranspiledPage(result)).finally(() => {
-    if (pageProcessingQueues.get(pagePath) === queued) {
-      pageProcessingQueues.delete(pagePath);
-    }
-  });
+  const queued = current
+    .catch(() => { })
+    .then(() => writeTranspiledPage(result))
+    .catch((error) => {
+      console.error(`[bascik] Failed to write dev page "${pagePath}":`, error);
+    })
+    .finally(() => {
+      if (pageProcessingQueues.get(pagePath) === queued) {
+        pageProcessingQueues.delete(pagePath);
+      }
+    });
   pageProcessingQueues.set(pagePath, queued);
   return queued;
 };
@@ -618,6 +652,7 @@ export const processPageBatch = async (
   const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
 
   const results: (TranspilePageResult | null)[] = [];
+  const pageErrors: PageProcessingError[] = [];
 
   const runJob = async (job: PageJob) => {
     const result = await transpilePage(
@@ -643,24 +678,34 @@ export const processPageBatch = async (
     return result;
   };
 
+  const runJobs = async (batch: PageJob[]): Promise<void> => {
+    const batchResults = await Promise.all(batch.map(async (job) => {
+      try {
+        return await runJob(job);
+      } catch (error) {
+        pageErrors.push(normalizePageError(job.pagePath, error));
+        return null;
+      }
+    }));
+    for (const result of batchResults) {
+      if (result) results.push(result);
+    }
+  };
+
   // Transpile open pages first, store in memory, and emit transpiled reload event IMMEDIATELY.
   if (openJobs.length > 0) {
-    const openResults = await Promise.all(openJobs.map(runJob));
-    for (const result of openResults) {
-      if (result) {
-        results.push(result);
-      }
-    }
+    await runJobs(openJobs);
   }
 
   // Transpile remaining (closed) pages afterwards
   if (restJobs.length > 0) {
-    const restResults = await Promise.all(restJobs.map(runJob));
-    for (const result of restResults) {
-      if (result) {
-        results.push(result);
-      }
-    }
+    await runJobs(restJobs);
+  }
+
+  if (pageErrors.length > 0) {
+    const aggregateError = new PageProcessingAggregateError(pageErrors);
+    if (BascikConfig.isBuild) throw aggregateError;
+    console.error(aggregateError.message);
   }
 
   return results.map((r) => r?.relativePagePath ?? null).filter((p): p is string => p !== null);
@@ -727,25 +772,31 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: (TranspilePageResult | null)[] = [];
+    const pageErrors: PageProcessingError[] = [];
     try {
       if (openJobs.length > 0) {
         const openResults = await Promise.all(
           openJobs.map(async (job) => {
-            const result = await pool.run(job);
-            if (result) {
-              if (!BascikConfig.isBuild) {
-                await mem.storePage({
-                  relativePagePath: result.relativePagePath,
-                  absolutePagePath: result.absolutePagePath,
-                  pageContent: result.distHtml,
-                  usedComponentsNames: result.usedComponentsNames,
-                  fileDependencies: result.fileDependencies,
-                });
-                void queueTranspiledPageWrite(result);
+            try {
+              const result = await pool.run(job);
+              if (result) {
+                if (!BascikConfig.isBuild) {
+                  await mem.storePage({
+                    relativePagePath: result.relativePagePath,
+                    absolutePagePath: result.absolutePagePath,
+                    pageContent: result.distHtml,
+                    usedComponentsNames: result.usedComponentsNames,
+                    fileDependencies: result.fileDependencies,
+                  });
+                  void queueTranspiledPageWrite(result);
+                }
+                eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
               }
-              eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+              return result;
+            } catch (error) {
+              pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
+              return null;
             }
-            return result;
           }),
         );
         for (const result of openResults) {
@@ -756,26 +807,37 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       if (restJobs.length > 0) {
         const restResults = await Promise.all(
           restJobs.map(async (job) => {
-            const result = await pool.run(job);
-            if (result) {
-              if (!BascikConfig.isBuild) {
-                await mem.storePage({
-                  relativePagePath: result.relativePagePath,
-                  absolutePagePath: result.absolutePagePath,
-                  pageContent: result.distHtml,
-                  usedComponentsNames: result.usedComponentsNames,
-                  fileDependencies: result.fileDependencies,
-                });
-                void queueTranspiledPageWrite(result);
+            try {
+              const result = await pool.run(job);
+              if (result) {
+                if (!BascikConfig.isBuild) {
+                  await mem.storePage({
+                    relativePagePath: result.relativePagePath,
+                    absolutePagePath: result.absolutePagePath,
+                    pageContent: result.distHtml,
+                    usedComponentsNames: result.usedComponentsNames,
+                    fileDependencies: result.fileDependencies,
+                  });
+                  void queueTranspiledPageWrite(result);
+                }
+                eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
               }
-              eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+              return result;
+            } catch (error) {
+              pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
+              return null;
             }
-            return result;
           }),
         );
         for (const result of restResults) {
           if (result) results.push(result);
         }
+      }
+
+      if (pageErrors.length > 0) {
+        const aggregateError = new PageProcessingAggregateError(pageErrors);
+        if (BascikConfig.isBuild) throw aggregateError;
+        console.error(aggregateError.message);
       }
     } finally {
       // Always terminate — otherwise a rejected job leaves worker threads
@@ -814,7 +876,7 @@ export const pageProcessing = (
     resolveAvailable = resolvePromise;
     rejectAvailable = rejectPromise;
   });
-  const next = current.then(async () => {
+  const next = current.catch(() => { }).then(async () => {
     try {
       if (!isDynamicRoute(pagePath)) {
         const result = await transpilePage(pagePath, componentList, globalStylesHtml);
@@ -852,9 +914,6 @@ export const pageProcessing = (
       rejectAvailable(error);
       throw error;
     }
-  }, (error) => {
-    rejectAvailable(error);
-    throw error;
   }).finally(() => {
     if (pageProcessingQueues.get(pagePath) === next) {
       pageProcessingQueues.delete(pagePath);
@@ -908,10 +967,11 @@ export const transpilePage = async (
   const { innerContent: body } = getTag(htmlWithBuildOutput, "body");
 
   if (!body) {
-    console.warn(
-      `warning: ${pagePath} does not contain <body></body> or body does not have content`,
+    throw new PageProcessingError(
+      pagePath,
+      "validate markup",
+      new Error("Page does not contain a non-empty <body> element"),
     );
-    return null;
   }
 
   let { transpiledHtmlBody, usedComponents } = recursivelyTranspile(

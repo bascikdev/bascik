@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
 import { getHttpPath } from "./paths.ts";
 import { listPages } from "./file-system.ts";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ vi.mock("./config.js", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn(async () => { }),
   writeFile: vi.fn(async () => { }),
 }));
 
@@ -182,6 +183,15 @@ describe("buildRobotsTxt", () => {
 });
 
 describe("generateSitemapFiles", () => {
+  it("creates the output directory before writing a zero-page sitemap", async () => {
+    await generateSitemapFiles([]);
+
+    expect(mkdir).toHaveBeenCalledWith("dist", { recursive: true });
+    expect(vi.mocked(mkdir).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(writeFile).mock.invocationCallOrder[0],
+    );
+  });
+
   it("excludes the 404 page from sitemap.xml", async () => {
     vi.mocked(listPages).mockResolvedValue([
       "/project/src/pages/index.html",

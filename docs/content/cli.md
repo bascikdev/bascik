@@ -189,7 +189,19 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 ## Transpilation and build errors
 
-If you introduce a syntax mistake or a build-script error, Bascik logs the file and location without crashing the dev server.
+Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
+
+`bascik --build` treats missing or unreadable configured directories, pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+
+```terminal
+Build failed with 2 page errors:
+  src/pages/about.html
+    validate markup: Page does not contain a non-empty <body> element
+  src/pages/blog/post.html
+    write output: EACCES: permission denied
+```
+
+Unresolved component tags remain transpilation warnings. `bascik --check` reports them as errors, making that command the strict CI gate for component references.
 
 Component transpilation failure:
 

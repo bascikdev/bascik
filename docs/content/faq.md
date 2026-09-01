@@ -151,14 +151,17 @@ Yes. Dev mode stores the updated page in memory first so it can be served immedi
 
 ## How does Bascik handle bad markup or invalid code? Does it crash?
 
-No, Bascik is designed to be highly resilient and hard to crash. Because it uses robust, regular-expression-based scoping and depth-counter checks rather than rigid AST parses, invalid markup or buggy script code will not crash the build or the dev server. Here is how different scenarios are handled:
+The dev server is resilient to a bad page, while a production build fails rather than shipping incomplete output. During development, Bascik logs the page failure, completes boot, continues serving healthy pages, and retries the failed page when you save a fix. During `bascik --build`, hard failures from all pages are aggregated into one report and the process exits nonzero.
 
 - **Unclosed Component Tags:** If a component tag is unclosed, for example `<my-component>` with no closing `</my-component>` tag, Bascik safely falls back to treating it as a self-closing tag, compiles it with empty inner content, and proceeds. The VS Code extension also issues a warning so you can fix it easily.
 - **Unclosed or Invalid Standard HTML:** Bascik does not use a rigid HTML/XML AST parser for standard elements. If you have unclosed or invalid native HTML tags (such as `<div>` or `<p>`), they are passed directly to the output files untouched. This allows the browser's native parser to handle the layout, ensuring that standard markup errors never crash your build processes.
+- **Missing Page Body:** A page without a non-empty `<body>` cannot produce a deployable page. It is a hard build error and a recoverable page error in dev mode.
+- **Runaway Component Expansion:** Direct or indirect recursive component expansion is a hard page error when it reaches the safety limit. Partial HTML is never reported as a successful build output.
 - **Component Transpilation Failures:** Each component transpilation step is wrapped in a `try-catch` block. If a component fails to compile, Bascik logs a detailed error with line and column numbers to `console.error`, removes the failed component tag, and continues compiling the rest of the page.
 - **Build-time & Server-side Scripts (`data-bascik-build` / `data-bascik-server`):** If a script block fails to execute due to syntax errors or runtime exceptions, Bascik logs the detailed error to `console.error` and stops by default. You can tune behavior separately with `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` in `bascik.config.ts`.
 - **Client-side / Browser-side JavaScript:** Standard scripts are wrapped in an IIFE for scoping, but they are not parsed or executed during the build. If there is a syntax error or a logical bug in your browser-side JavaScript, it is compiled as-is and sent to the client browser, where the error will be printed in the browser's developer console without affecting your server or build processes.
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
+- **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
 
 ## Why do I see multiple identical script tags in my page output?
 

@@ -78,6 +78,22 @@ Instead, when `check.ts` detects a `<script data-bascik-build>` block in a file,
 | Unknown Component Tag | Error | 1 | A hyphenated tag (e.g. `<missing-btn>`) was used in HTML, but no matching file exists in `src/components/`. |
 | Unused Component File | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page or component file. |
 
+## Aggregated Build Errors
+
+Production transpilation settles every page job before deciding whether the build succeeded. Each failure is normalized into three fields: the source page path, the processing stage, and the original error message. The CLI prints one grouped report and exits with code 1:
+
+```terminal
+Build failed with 2 page errors:
+  src/pages/about.html
+    validate markup: Page does not contain a non-empty <body> element
+  src/pages/blog/post.html
+    write output: EACCES: permission denied
+```
+
+Stages include `validate markup`, `component expansion`, `create output directory`, `write output`, `transpile page`, and `worker transpile`. Missing or unreadable configured source directories fail before page processing begins. A subdirectory that disappears during recursive traversal is treated as a file-watch race: Bascik warns and continues scanning the remaining tree.
+
+In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unresolved component tags are warning-only during transpilation; static analysis reports them as errors.
+
 ## Source Map & Stack Trace Remapping (`stack-trace.ts`)
 
 During build and server execution, Bascik extracts `<script data-bascik-build>` and `<script data-bascik-server>` blocks into ephemeral temporary files before executing them with Node.js.

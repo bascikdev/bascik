@@ -167,18 +167,19 @@ export const listPages = async () => {
 
 // Taken from https://stackoverflow.com/a/71166133/1469690
 // Returns any[] because the recursive structure cannot be expressed as a fixed-depth generic.
-export const deepReadDir = async (dirPath: string): Promise<any[]> => {
+export const deepReadDir = async (dirPath: string, isRoot = true): Promise<any[]> => {
   try {
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
     return Promise.all(
       dirents.map(async (dirent: Dirent) => {
         const path = join(dirPath, dirent.name);
-        return dirent.isDirectory() ? await deepReadDir(path) : path;
+        return dirent.isDirectory() ? await deepReadDir(path, false) : path;
       }),
     );
   } catch (error) {
-    console.error("Failed to read directory %s", dirPath, error);
+    if (isRoot) throw error;
+    console.warn("Failed to read subdirectory %s", dirPath, error);
     return [];
   }
 };
@@ -193,16 +194,11 @@ export const deepReadDirFlat = async (
   dirPath: string,
   filter?: RegExp,
 ): Promise<string[]> => {
-  try {
-    const files = (await deepReadDir(dirPath)).flat(
-      Number.POSITIVE_INFINITY,
-    ) as string[];
-    if (!filter) return files;
-    return files.filter((filePath) => `${filePath}`.match(filter));
-  } catch (error) {
-    console.error("Error Reading Directory", error);
-    return [];
-  }
+  const files = (await deepReadDir(dirPath)).flat(
+    Number.POSITIVE_INFINITY,
+  ) as string[];
+  if (!filter) return files;
+  return files.filter((filePath) => `${filePath}`.match(filter));
 };
 
 export const copyStaticAssets = async (): Promise<void> => {

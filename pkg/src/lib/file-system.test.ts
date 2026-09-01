@@ -130,6 +130,32 @@ describe("deepReadDir", () => {
       "dir/one.css",
     ]);
   });
+
+  it("rejects when the configured root directory cannot be read", async () => {
+    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    vi.mocked(readdir).mockRejectedValueOnce(error);
+
+    await expect(deepReadDir("pages")).rejects.toBe(error);
+  });
+
+  it("warns and continues when a subdirectory disappears during recursion", async () => {
+    const missingError = Object.assign(new Error("ENOENT: directory disappeared"), { code: "ENOENT" });
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (`${path}` === "pages") {
+        return [{ name: "removed", isDirectory: () => true }] as any;
+      }
+      throw missingError;
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    await expect(deepReadDir("pages")).resolves.toEqual([[]]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to read subdirectory %s",
+      "pages/removed",
+      missingError,
+    );
+    warnSpy.mockRestore();
+  });
 });
 
 describe("deepReadDirFlat", () => {
@@ -593,16 +619,11 @@ describe("getRelativePath – additional branches", () => {
 });
 
 describe("deepReadDir – error path", () => {
-  it("returns empty array when readdir rejects", async () => {
-    vi.mocked(readdir).mockRejectedValueOnce(new Error("EACCES"));
-    vi.spyOn(console, "error").mockImplementation(() => { });
-    const result = await deepReadDir("./secret");
-    expect(result).toEqual([]);
-    expect(console.error).toHaveBeenCalledWith(
-      "Failed to read directory %s",
-      "./secret",
-      expect.any(Error),
-    );
+  it("propagates a configured root read failure", async () => {
+    const error = new Error("EACCES");
+    vi.mocked(readdir).mockRejectedValueOnce(error);
+
+    await expect(deepReadDir("./secret")).rejects.toBe(error);
   });
 });
 
