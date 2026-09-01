@@ -168,10 +168,7 @@ export const shieldPreservedAttribute = (
     const isVoid = /\/\s*>$/.test(tag) || /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(tagName);
     if (!isVoid) activeFrames.push({ tagName, attributes });
     if (!attributes.has(attribute)) return tag;
-    const attributePattern = new RegExp(`(\\s${attribute}\\s*=\\s*)("[^"]*"|'[^']*')`, "i");
-    return tag.replace(attributePattern, (_full, prefix: string, value: string) =>
-      `${prefix}${shield.hide(value)}`,
-    );
+    return shield.hide(tag);
   });
 
   return { html: result, restore: shield.restore };

@@ -100,6 +100,11 @@ import {
   shieldPreservedAttribute,
   stripPreserveDirectives,
 } from "./shielding.ts";
+import {
+  collectDeclaredIds,
+  rewriteIdReferencesInHtml,
+  rewriteUsemapReferencesInHtml,
+} from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
 
 /**
@@ -224,6 +229,9 @@ export const prefixElementAttribute = (
     preservedTags,
   );
   component.fileContent = shieldedContent;
+  const declaredIds = attribute === "id"
+    ? collectDeclaredIds(component.fileContent)
+    : new Set<string>();
   // All class/name/id attrs will get this ID.
   // Accept an externally provided ID so that a single component instance can
   // share one ID across all attribute types (id, name, class).
@@ -282,7 +290,7 @@ export const prefixElementAttribute = (
   }
 
   // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`
-  const scopedAttrsHtml = replaceSafeAttr(
+  let scopedAttrsHtml = replaceSafeAttr(
     component.fileContent,
     attribute,
     (fullMatch, prefix, quotedVal) => {
@@ -306,6 +314,34 @@ export const prefixElementAttribute = (
       return `${prefix}${quote}${newInner}${quote}`;
     },
   );
+
+  if (attribute === "id" && declaredIds.size > 0) {
+    const scopedIds = new Map(
+      attributesToReplace.map(({ attributeName, obfuscatedAttributeName }) => [
+        attributeName,
+        obfuscatedAttributeName,
+      ]),
+    );
+    scopedAttrsHtml = rewriteIdReferencesInHtml(
+      scopedAttrsHtml,
+      (originalId) => declaredIds.has(originalId)
+        ? scopedIds.get(originalId) ?? null
+        : null,
+    );
+  }
+  if (attribute === "name" && attributesToReplace.length > 0) {
+    const scopedNames = new Map(
+      attributesToReplace.map(({ attributeName, obfuscatedAttributeName }) => [
+        attributeName,
+        obfuscatedAttributeName,
+      ]),
+    );
+    // usemap references <map name>, not an id declaration.
+    scopedAttrsHtml = rewriteUsemapReferencesInHtml(
+      scopedAttrsHtml,
+      (originalName) => scopedNames.get(originalName) ?? null,
+    );
+  }
 
   // Discover class names used only in JS (never in a class= attr).
   // The CSS pass scopes every class name it finds, so JS-only classes would

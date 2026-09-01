@@ -145,6 +145,10 @@ Add a bare `data-bascik-preserve` directive to the widget mount point. Its liter
 
 Bascik scopes `name` per component instance so repeated radio groups remain independent. For a form that posts to an external service requiring literal keys, add `data-bascik-preserve="name"` to the form. This deliberately gives up radio-group isolation inside that preserved subtree, so do not disable name scoping site-wide. See [Preserve Scoping](/preserve).
 
+## Why is my `<label for>` not working?
+
+Bascik rewrites `<label for>` automatically when the matching `id` is declared in the same component. The label and control receive the same per-instance scoped identifier, including when identifier minification is enabled. A reference to an ID in another component is left unchanged because Bascik cannot choose that component's instance at build time. Keep the label and control together or target a literal page-shell ID. See [Scoped JavaScript](/scoped-javascript#html-id-references).
+
 ## How do I generate pages dynamically from a CMS, database, or API?
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.

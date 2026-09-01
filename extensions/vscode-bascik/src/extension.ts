@@ -242,6 +242,47 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
+    const referenceScanText = text.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => ' '.repeat(comment.length));
+    const declaredIds = new Set(
+      Array.from(referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi))
+        .map((match) => match[1] ?? match[2])
+        .filter((id): id is string => Boolean(id)),
+    );
+    const idReferenceAttributeRegex = /\s(for|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+    let idReferenceMatch: RegExpExecArray | null;
+    while ((idReferenceMatch = idReferenceAttributeRegex.exec(referenceScanText)) !== null) {
+      const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? '';
+      for (const id of value.trim().split(/\s+/).filter(Boolean)) {
+        if (declaredIds.has(id)) continue;
+        const valueOffset = idReferenceMatch[0].indexOf(id);
+        const start = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0));
+        const end = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0) + id.length);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          `ID reference "${id}" is not declared in this component and will be left unscoped.`,
+          vscode.DiagnosticSeverity.Information,
+        );
+        diagnostic.source = 'bascik';
+        diagnostics.push(diagnostic);
+      }
+    }
+    const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)')/gi;
+    let fragmentReferenceMatch: RegExpExecArray | null;
+    while ((fragmentReferenceMatch = fragmentReferenceRegex.exec(referenceScanText)) !== null) {
+      const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2];
+      if (!id || declaredIds.has(id)) continue;
+      const idOffset = fragmentReferenceMatch[0].indexOf(id);
+      const start = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0));
+      const end = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0) + id.length);
+      const diagnostic = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        `ID reference "${id}" is not declared in this component and will be left unscoped.`,
+        vscode.DiagnosticSeverity.Information,
+      );
+      diagnostic.source = 'bascik';
+      diagnostics.push(diagnostic);
+    }
+
     const preserveDirectiveRegex = /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
     let preserveMatch: RegExpExecArray | null;
     while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {

@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
 import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
 import { minifyJs } from "./js-minifier.ts";
+import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";
 
 vi.mock("./config.js", () => ({
@@ -183,6 +184,74 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – id (existing patterns)", () => {
+  it("scopes the for attribute to match a scoped input id", () => {
+    const component = makeComponent(
+      '<label for="email">Email</label><input id="email">',
+    );
+    const result = prefixElementAttribute(component, "id", "test1234");
+    expect(result.fileContent).toContain(`for="${scope("email")}"`);
+    expect(result.fileContent).toContain(`id="${scope("email")}"`);
+  });
+
+  it("scopes aria-labelledby tokens that resolve to local ids", () => {
+    const component = makeComponent(
+      '<h2 id="title">Title</h2><section aria-labelledby="title"></section>',
+    );
+    const result = prefixElementAttribute(component, "id", "test1234");
+    expect(result.fileContent).toContain(`aria-labelledby="${scope("title")}"`);
+  });
+
+  it("scopes a local fragment link to match its target id", () => {
+    const component = makeComponent(
+      '<a href="#section">Section</a><section id="section"></section>',
+    );
+    const result = prefixElementAttribute(component, "id", "test1234");
+    expect(result.fileContent).toContain(`href="#${scope("section")}"`);
+  });
+
+  it("resolves each component instance to its own scoped id", () => {
+    const source = '<label for="email">Email</label><input id="email">';
+    const first = prefixElementAttribute(makeComponent(source), "id", "first123");
+    const second = prefixElementAttribute(makeComponent(source), "id", "second12");
+    expect(first.fileContent).toContain('for="bascik__my-comp__first123__email"');
+    expect(second.fileContent).toContain('for="bascik__my-comp__second12__email"');
+  });
+
+  it("uses the declaration hash for references when identifiers are minified", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const result = prefixElementAttribute(
+        makeComponent('<label for="email">Email</label><input id="email">'),
+        "id",
+        "test1234",
+      );
+      const id = result.fileContent.match(/id="([^"]+)"/)?.[1];
+      const reference = result.fileContent.match(/for="([^"]+)"/)?.[1];
+      expect(reference).toBe(id);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
+  it("leaves nonlocal references byte-identical", () => {
+    const source = '<a href="#main">Main</a><label for="page-input">Input</label><div id="local"></div>';
+    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
+    expect(result.fileContent).toContain('<a href="#main">Main</a>');
+    expect(result.fileContent).toContain('<label for="page-input">Input</label>');
+  });
+
+  it("does not rewrite references or declarations in an id-preserved subtree", () => {
+    const source = '<div data-bascik-preserve="id"><label for="email">Email</label><input id="email"></div>';
+    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
+    expect(result.fileContent).toContain('<label for="email">Email</label><input id="email">');
+  });
+
+  it("does not rewrite references inside an id-preserved subtree to an outside id", () => {
+    const source = '<div id="outside"></div><div data-bascik-preserve="id"><a href="#outside">Outside</a></div>';
+    const result = prefixElementAttribute(makeComponent(source), "id", "test1234");
+    expect(result.fileContent).toContain('<a href="#outside">Outside</a>');
+  });
+
   it("preserves replacement tokens in scoped query selector values", () => {
     const component = {
       name: "my$&$1$`comp",
@@ -725,6 +794,17 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – name setAttribute", () => {
+  it("rewrites usemap against a locally scoped map name", () => {
+    const component = makeComponent('<map name="choices"></map><img usemap="#choices">');
+    const result = prefixElementAttribute(component, "name", "test1234");
+    expect(result.fileContent).toContain(`usemap="#${scope("choices")}"`);
+  });
+
+  it("leaves usemap untouched when name scoping is not run", () => {
+    const source = '<map name="choices"></map><img usemap="#choices">';
+    expect(makeComponent(source).fileContent).toBe(source);
+  });
+
   it("scopes setAttribute('name', value)", () => {
     const c = makeComponent(
       '<input name="email"><script>el.setAttribute("name", "email")</script>',

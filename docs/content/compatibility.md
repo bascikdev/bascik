@@ -71,6 +71,28 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 
 ---
 
+## ID References
+
+When an `id` declaration is scoped, Bascik rewrites references that resolve to that declaration in the same component. Unresolved references remain byte-identical so components can still target literal page-level IDs.
+
+| Reference | Status | Notes |
+| --- | --- | --- |
+| `for` on `<label>` | ✓ | Rewritten as one ID so label activation continues to focus the scoped control. |
+| `form`, `list`, `popovertarget`, `commandfor` | ✓ | Each single-ID reference is rewritten when its target is declared locally. |
+| `aria-activedescendant`, `aria-details`, `aria-errormessage` | ✓ | Single-ID ARIA references resolve locally. |
+| `aria-labelledby`, `aria-describedby`, `aria-controls`, `aria-owns`, `aria-flowto` | ✓ | Space-separated tokens resolve independently; nonlocal tokens remain unchanged. |
+| `headers` on `<td>` and `<th>` | ✓ | Space-separated header IDs resolve independently. |
+| `for` on `<output>` | ✓ | Treated as a space-separated ID list, unlike the single-ID `<label for>`. |
+| Fragment links on `<a>` and `<area>` | ✓ | Fragment-only values such as `href="#section"` resolve locally. Bare hashes and other-document URLs remain unchanged. |
+| SVG `<use href>` and `xlink:href` | ✓ | Fragment-only references to local SVG IDs are rewritten. |
+| SVG presentation attributes | ✓ | `fill`, `stroke`, `mask`, `clip-path`, `filter`, `marker-start`, `marker-mid`, and `marker-end` rewrite local `url(#id)` fragments. |
+| Inline `style` attributes | ✓ | Local `url(#id)` fragments are rewritten. Component `<style>` blocks and stylesheets are covered separately by CSS scoping. |
+| `usemap` on `<img>` | ✓ | Resolves against a local `<map name>`, not an ID, and follows `scoping.attributes.name`. |
+| Cross-component ID references | ✗ | IDs are scoped per instance, so references cannot resolve safely across component boundaries at build time. They remain unchanged. |
+| Preserved subtrees | ✓ | References and declarations inside `scoping.preserve` tags or `data-bascik-preserve` subtrees remain literal. |
+
+---
+
 ## CSS Scoping
 
 CSS scoping applies to `.css` files paired with a component's HTML file. Place the `.css` file in the same directory as the component and give it the same base name.

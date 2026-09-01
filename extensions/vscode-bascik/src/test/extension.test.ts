@@ -96,6 +96,30 @@ suite('Extension Integration Suite', () => {
   });
 
   suite('Diagnostics', () => {
+    test('reports info when an ID reference is not declared in the component', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<label for="missing">Email</label><a href="#outside">Outside</a>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const matches = diagnostics.filter((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      );
+      assert.strictEqual(matches.length, 2);
+      assert.ok(matches.every((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Information));
+    });
+
+    test('does not report info when an ID reference resolves locally', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<label for="email">Email</label><input id="email">',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      assert.ok(!diagnostics.some((diagnostic) =>
+        diagnostic.message.includes('is not declared in this component and will be left unscoped'),
+      ));
+    });
+
     test('warns when data-bascik-preserve contains an unknown token', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',

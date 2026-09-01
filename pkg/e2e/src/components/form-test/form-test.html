@@ -1,23 +1,23 @@
-<form class="form" id="login-form">
+<form class="form" id="login-form" data-testid="form">
   <div class="field-group">
-    <label class="label" for="username-input">Username</label>
-    <input id="username-input" class="input" name="username" type="text" value="alice">
+    <label class="label" for="username-input" data-testid="username-label">Username</label>
+    <input id="username-input" class="input" name="username" type="text" value="alice" data-testid="username-input">
   </div>
   <div class="field-group">
     <label class="label" for="email-input">Email</label>
-    <input id="email-input" class="input" name="email" type="email" value="alice@example.com">
+    <input id="email-input" class="input" name="email" type="email" value="alice@example.com" data-testid="email-input">
   </div>
   <div class="field-group">
     <label class="label" for="role-select">Role</label>
-    <select id="role-select" class="select" name="role">
+    <select id="role-select" class="select" name="role" data-testid="role-select">
       <option value="admin">Admin</option>
       <option value="user" selected>User</option>
     </select>
   </div>
-  <div id="result" class="result">No submission yet</div>
+  <div id="result" class="result" data-testid="result">No submission yet</div>
   <div class="btn-row">
-    <button id="submit-btn" class="btn" type="button">Read FormData</button>
-    <button id="check-entries-btn" class="btn" type="button">Count FormData entries</button>
+    <button id="submit-btn" class="btn" type="button" data-testid="submit-btn">Read FormData</button>
+    <button id="check-entries-btn" class="btn" type="button" data-testid="check-entries-btn">Count FormData entries</button>
   </div>
 
   <script>

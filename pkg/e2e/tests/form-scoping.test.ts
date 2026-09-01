@@ -19,13 +19,13 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 
 function getInstances(page: Page) {
   return {
-    a: page.locator('.bascik__form-test__form').nth(0),
-    b: page.locator('.bascik__form-test__form').nth(1),
+    a: page.getByTestId('form-instance-one'),
+    b: page.getByTestId('form-instance-two'),
   };
 }
 
-const result = (inst: Locator) => inst.locator('[id$="__result"]');
-const btn = (inst: Locator, suffix: string) => inst.locator(`[id$="__${suffix}"]`);
+const result = (instance: Locator) => instance.getByTestId('result');
+const button = (instance: Locator, testId: string) => instance.getByTestId(testId);
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -40,7 +40,7 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('username input has scoped name attribute', async ({ page }) => {
     const { a } = getInstances(page);
-    const usernameInput = a.locator('[id$="__username-input"]');
+    const usernameInput = a.getByTestId('username-input');
     await expect(usernameInput).toHaveAttribute('name', /bascik__form-test__.+__username/);
   });
 
@@ -48,7 +48,7 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('email input has scoped name attribute', async ({ page }) => {
     const { a } = getInstances(page);
-    const emailInput = a.locator('[id$="__email-input"]');
+    const emailInput = a.getByTestId('email-input');
     await expect(emailInput).toHaveAttribute('name', /bascik__form-test__.+__email/);
   });
 
@@ -56,7 +56,7 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('role select has scoped name attribute', async ({ page }) => {
     const { a } = getInstances(page);
-    const roleSelect = a.locator('[id$="__role-select"]');
+    const roleSelect = a.getByTestId('role-select');
     await expect(roleSelect).toHaveAttribute('name', /bascik__form-test__.+__role/);
   });
 
@@ -68,7 +68,7 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('FormData keys use scoped names (contain bascik__form-test__ prefix)', async ({ page }) => {
     const { a } = getInstances(page);
-    await btn(a, 'submit-btn').click();
+    await button(a, 'submit-btn').click();
     await expect(result(a)).toHaveText(/keys: bascik__form-test__.+__username/);
   });
 
@@ -76,7 +76,7 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('FormData has exactly 3 entries (username, email, role)', async ({ page }) => {
     const { a } = getInstances(page);
-    await btn(a, 'check-entries-btn').click();
+    await button(a, 'check-entries-btn').click();
     await expect(result(a)).toHaveText('count: 3');
   });
 
@@ -86,9 +86,9 @@ test.describe('form-test page — name attribute scoping', () => {
   // and instance B must differ so FormData from both forms doesn't collide.
 
   test('both instances have different scoped name attributes for username', async ({ page }) => {
-    const inputs = page.locator('[id$="__username-input"]');
-    const nameA = await inputs.nth(0).getAttribute('name');
-    const nameB = await inputs.nth(1).getAttribute('name');
+    const { a, b } = getInstances(page);
+    const nameA = await a.getByTestId('username-input').getAttribute('name');
+    const nameB = await b.getByTestId('username-input').getAttribute('name');
     expect(nameA).toMatch(/bascik__form-test__.+__username/);
     expect(nameB).toMatch(/bascik__form-test__.+__username/);
     expect(nameA).not.toBe(nameB);
@@ -98,8 +98,37 @@ test.describe('form-test page — name attribute scoping', () => {
 
   test('clicking submit in instance A does not update instance B result', async ({ page }) => {
     const { a, b } = getInstances(page);
-    await btn(a, 'submit-btn').click();
+    await button(a, 'submit-btn').click();
     await expect(result(a)).toHaveText(/keys:/);
     await expect(result(b)).toHaveText('No submission yet');
+  });
+
+  test('each label focuses the input in its own component instance', async ({ page }) => {
+    const { a, b } = getInstances(page);
+    await a.getByTestId('username-label').click();
+    await expect(a.getByTestId('username-input')).toBeFocused();
+    await b.getByTestId('username-label').click();
+    await expect(b.getByTestId('username-input')).toBeFocused();
+  });
+
+  test('aria-describedby resolves within each component instance', async ({ page }) => {
+    for (const instanceId of ['reference-instance-one', 'reference-instance-two']) {
+      const instance = page.getByTestId(instanceId);
+      const descriptionId = await instance.getByTestId('description').getAttribute('id');
+      await expect(instance.getByTestId('described-input')).toHaveAttribute(
+        'aria-describedby',
+        descriptionId ?? '',
+      );
+    }
+  });
+
+  test('each fragment link targets its own component instance', async ({ page }) => {
+    for (const instanceId of ['reference-instance-one', 'reference-instance-two']) {
+      const instance = page.getByTestId(instanceId);
+      await instance.getByTestId('fragment-link').click();
+      await expect.poll(() => instance.evaluate((element) =>
+        element.contains(document.querySelector(':target')),
+      )).toBe(true);
+    }
   });
 });
