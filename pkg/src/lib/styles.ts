@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
+import { shieldElementContents } from "./shielding.ts";
 import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
@@ -198,13 +199,6 @@ export const addElementClassesInHtml = (
   return componentHtml;
 };
 
-/** Returns all `.class { }` rule strings. Useful for CSS analysis. */
-export const getCssClasses = (css: string): string[] => {
-  const classes = css.match(/\.[\.\w\s\(\)]+{[\w\s\:;#-_]+}/g);
-  if (Array.isArray(classes)) return classes;
-  return [];
-};
-
 export const getKeyframeNames = (css: string): string[] | null => {
   // Anchor on the @keyframes at-rule itself so only the declared animation
   // name is captured — never `from`/`to`/percentage selectors or idents that
@@ -233,7 +227,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
     // `spinFast`, `transform`, or the `@keyframes` keyword itself.
     result = result.replace(
       new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"),
-      scoped,
+      () => scoped,
     );
   }
   return result;
@@ -363,8 +357,6 @@ export const removeCommentsFromCss = (css: string): string => {
   );
 };
 
-export { minifyCss } from "./css-minifier.ts";
-
 // ─── CSS @import Resolution & Scoping ────────────────────────────────────────
 
 /**
@@ -477,6 +469,78 @@ export const wrapInlinedCss = (
   return result;
 };
 
+type CssImportPlan = {
+  fullStatement: string;
+  parsed: NonNullable<ReturnType<typeof parseCssImport>>;
+  targetPath: string;
+  nextVisited: Set<string>;
+  replacement?: string;
+};
+
+const planCssImports = (
+  css: string,
+  baseFilePath: string | undefined,
+  visited: Set<string>,
+): CssImportPlan[] => {
+  if (!css || !css.includes("@import")) return [];
+  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const plans: CssImportPlan[] = [];
+  for (const match of css.matchAll(importRegex)) {
+    const fullStatement = match[0];
+    const parsed = parseCssImport(fullStatement);
+    if (!parsed || parsed.isRemote) continue;
+    const baseDir = baseFilePath
+      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
+        ? baseFilePath
+        : dirname(baseFilePath)
+      : process.cwd();
+    let targetPath = resolve(baseDir, parsed.url);
+    if (
+      !existsSync(targetPath) &&
+      !targetPath.endsWith(".css") &&
+      existsSync(`${targetPath}.css`)
+    ) {
+      targetPath = `${targetPath}.css`;
+    }
+    const nextVisited = new Set(visited);
+    nextVisited.add(targetPath);
+    if (!existsSync(targetPath)) {
+      console.warn(
+        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
+      );
+      plans.push({
+        fullStatement,
+        parsed,
+        targetPath,
+        nextVisited,
+        replacement: `/* @import "${parsed.url}" not found */`,
+      });
+    } else if (visited.has(targetPath)) {
+      plans.push({ fullStatement, parsed, targetPath, nextVisited, replacement: "" });
+    } else {
+      plans.push({ fullStatement, parsed, targetPath, nextVisited });
+    }
+  }
+  return plans;
+};
+
+const cleanImportedCss = (css: string): string =>
+  removeCommentsFromCss(css).replace(/@charset\s+["'][^"']+["'];?/gi, "");
+
+const replaceCssImport = (
+  css: string,
+  fullStatement: string,
+  replacement: string,
+): string => css.replace(fullStatement, () => replacement);
+
+const wrapPlannedCss = (css: string, plan: CssImportPlan): string =>
+  wrapInlinedCss(
+    css,
+    plan.parsed.layer,
+    plan.parsed.supports,
+    plan.parsed.media,
+  );
+
 /**
  * Resolves and inlines local `@import` statements in a CSS string asynchronously.
  * Remote `@import` statements (e.g. Google Fonts) are preserved.
@@ -490,62 +554,20 @@ export const resolveCssImports = async (
   baseFilePath?: string,
   visited: Set<string> = new Set(),
 ): Promise<string> => {
-  if (!css || !css.includes("@import")) return css;
-
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
-  const matches = [...css.matchAll(importRegex)];
-  if (matches.length === 0) return css;
-
   let result = css;
-
-  for (const match of matches) {
-    const fullStatement = match[0];
-    const parsed = parseCssImport(fullStatement);
-    if (!parsed) continue;
-
-    // Remote URLs (https://, //, etc.) are kept as @import statements
-    if (parsed.isRemote) continue;
-
-    // Local file path resolution
-    const baseDir = baseFilePath
-      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
-        ? baseFilePath
-        : dirname(baseFilePath)
-      : process.cwd();
-
-    let targetPath = resolve(baseDir, parsed.url);
-    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
-      targetPath = `${targetPath}.css`;
-    }
-
-    if (!existsSync(targetPath)) {
-      console.warn(
-        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
-      );
-      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+  for (const plan of planCssImports(css, baseFilePath, visited)) {
+    if (plan.replacement !== undefined) {
+      result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
     }
-
-    // Circular import guard
-    if (visited.has(targetPath)) {
-      result = result.replace(fullStatement, "");
-      continue;
-    }
-
-    const nextVisited = new Set(visited);
-    nextVisited.add(targetPath);
 
     try {
-      const importedRaw = removeCommentsFromCss((await readFile(targetPath)).toString()).replace(
-        /@charset\s+["'][^"']+["'];?/gi,
-        "",
-      );
-      const nestedResolved = await resolveCssImports(importedRaw, targetPath, nextVisited);
-      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
-      result = result.replace(fullStatement, () => wrapped);
+      const importedRaw = cleanImportedCss((await readFile(plan.targetPath)).toString());
+      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited);
+      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
-      result = result.replace(fullStatement, "");
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
 
@@ -561,60 +583,20 @@ export const resolveCssImportsSync = (
   baseFilePath?: string,
   visited: Set<string> = new Set(),
 ): string => {
-  if (!css || !css.includes("@import")) return css;
-
-  const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
-  const matches = [...css.matchAll(importRegex)];
-  if (matches.length === 0) return css;
-
   let result = css;
-
-  for (const match of matches) {
-    const fullStatement = match[0];
-    const parsed = parseCssImport(fullStatement);
-    if (!parsed) continue;
-
-    // Remote URLs (https://, //, etc.) are kept as @import statements
-    if (parsed.isRemote) continue;
-
-    const baseDir = baseFilePath
-      ? existsSync(baseFilePath) && statSync(baseFilePath).isDirectory()
-        ? baseFilePath
-        : dirname(baseFilePath)
-      : process.cwd();
-
-    let targetPath = resolve(baseDir, parsed.url);
-    if (!existsSync(targetPath) && !targetPath.endsWith(".css") && existsSync(`${targetPath}.css`)) {
-      targetPath = `${targetPath}.css`;
-    }
-
-    if (!existsSync(targetPath)) {
-      console.warn(
-        `[bascik] warning: Could not resolve CSS @import "${parsed.url}" in "${baseFilePath ?? "component CSS"}"`,
-      );
-      result = result.replace(fullStatement, `/* @import "${parsed.url}" not found */`);
+  for (const plan of planCssImports(css, baseFilePath, visited)) {
+    if (plan.replacement !== undefined) {
+      result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
     }
-
-    if (visited.has(targetPath)) {
-      result = result.replace(fullStatement, "");
-      continue;
-    }
-
-    const nextVisited = new Set(visited);
-    nextVisited.add(targetPath);
 
     try {
-      const importedRaw = removeCommentsFromCss(readFileSync(targetPath, "utf-8")).replace(
-        /@charset\s+["'][^"']+["'];?/gi,
-        "",
-      );
-      const nestedResolved = resolveCssImportsSync(importedRaw, targetPath, nextVisited);
-      const wrapped = wrapInlinedCss(nestedResolved, parsed.layer, parsed.supports, parsed.media);
-      result = result.replace(fullStatement, () => wrapped);
+      const importedRaw = cleanImportedCss(readFileSync(plan.targetPath, "utf-8"));
+      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited);
+      result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
-      console.warn("[bascik] warning: Failed to read imported CSS file %s:", targetPath, err);
-      result = result.replace(fullStatement, "");
+      console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
+      result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
 
@@ -760,8 +742,12 @@ export const scopeLayerNames = (css: string, componentName: string): string => {
     const scoped = minifyAttributeName(
       `bascik__${componentName}__layer__${name}`,
     );
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     result = result.replace(
-      new RegExp(`(?<=@layer[^{;]*)\\b${name}\\b`, "gm"),
+      new RegExp(
+        `(?<=@layer[^{;]*)(?<![\\w-])${escapedName}(?![\\w-])`,
+        "gm",
+      ),
       () => scoped,
     );
   });
@@ -1008,25 +994,10 @@ export const extractInlineStyles = (
     return { html, css: "" };
   }
 
-  // Shield raw-text / code element contents so literal <style> tags in code examples
-  // or scripts are untouched.
-  const preserved: string[] = [];
-  let maskedHtml = html;
-  const skipTags = ["code", "pre", "script", "textarea"];
-  for (const tag of skipTags) {
-    const esc = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const attr = `(?:"[^"]*"|'[^']*'|[^>"'])*`;
-    maskedHtml = maskedHtml.replace(
-      new RegExp(`(<${esc}(?:\\b${attr})?>)([\\s\\S]*?)(<\\/${esc}>)`, "gi"),
-      (_match, open, inner, close) => {
-        preserved.push(inner);
-        return `${open}\x00BSKIP${preserved.length - 1}\x00${close}`;
-      },
-    );
-  }
+  const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
-  const cleanedHtml = maskedHtml.replace(
+  const cleanedHtml = shielded.html.replace(
     /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_match, openTag: string, styleContent: string) => {
       let css = removeCommentsFromCss(styleContent).trim();
@@ -1045,14 +1016,8 @@ export const extractInlineStyles = (
     },
   );
 
-  // Restore preserved raw-text element contents
-  let finalHtml = cleanedHtml;
-  for (let i = preserved.length - 1; i >= 0; i--) {
-    finalHtml = finalHtml.split(`\x00BSKIP${i}\x00`).join(preserved[i]);
-  }
-
   return {
-    html: finalHtml,
+    html: shielded.restore(cleanedHtml),
     css: cssBlocks.join("\n"),
   };
 };

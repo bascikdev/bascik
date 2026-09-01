@@ -7,11 +7,8 @@ import type { ComponentList } from "./types.ts";
 
 import {
   replaceTag,
-  getTagContents,
   getFirstComponent,
   getTag,
-  extractScriptTags,
-  minifyHtml,
   extractProps,
   injectProps,
   injectPropAttributes,
@@ -24,45 +21,7 @@ import {
   listComponents,
   invalidateComponentListCache,
 } from "./components.ts";
-
-describe("extractScriptTags", () => {
-  it("should extract one script tag", () => {
-    const htmlString =
-      "<html><body><script>alert('hello world')</script></body></html>";
-    const expected = "<script>alert('hello world')</script>";
-    expect(extractScriptTags(htmlString)).toEqual(expected);
-  });
-
-  it("should extract multiple script tags", () => {
-    const htmlString = `
-      <html>
-        <body>
-          <script>alert('hello world')</script>
-          <script>console.log('goodbye world')</script>
-        </body>
-      </html>`;
-    const expected = `<script>alert('hello world')</script>\n<script>console.log('goodbye world')</script>`;
-    expect(extractScriptTags(htmlString)).toEqual(expected);
-  });
-
-  it("should not extract script tags that are commented out", () => {
-    const htmlString = `
-      <html>
-        <body>
-          <!-- <script>alert('hello world')</script> -->
-          <script>console.log('goodbye world')</script>
-        </body>
-      </html>`;
-    const expected = `<script>console.log('goodbye world')</script>`;
-    expect(extractScriptTags(htmlString)).toEqual(expected);
-  });
-
-  it("should return an empty string if no script tags are found", () => {
-    const htmlString = "<html><body><div>Hello world</div></body></html>";
-    const expected = "";
-    expect(extractScriptTags(htmlString)).toEqual(expected);
-  });
-});
+import { minifyHtml } from "./html-minifier.ts";
 
 describe("replaceTag", () => {
   it("replaces a single tag", () => {
@@ -98,43 +57,6 @@ describe("replaceTag", () => {
     const input = "<div>before</div><SPAN>replace me</SPAN><div>after</div>";
     const output = "<div>before</div><p>new tag</p><div>after</div>";
     expect(replaceTag(input, "span", "<p>new tag</p>")).toEqual(output);
-  });
-});
-
-describe("getTagContents", () => {
-  it("gets contents of single tag", () => {
-    const input = "<div>before</div><span>get me</span><div>after</div>";
-    const output = { content: "<span>get me</span>", innerContent: "get me" };
-    expect(getTagContents(input, "span")).toEqual(output);
-  });
-
-  it("gets contents of first matching tag", () => {
-    const input =
-      "<div>before</div><span>get me</span><span>not me</span><div>after</div>";
-    const output = { content: "<span>get me</span>", innerContent: "get me" };
-    expect(getTagContents(input, "span")).toEqual(output);
-  });
-
-  it("returns empty object when tag not found", () => {
-    const input = "<div>before</div><p>do not get me</p><div>after</div>";
-    const output = {};
-    expect(getTagContents(input, "span")).toEqual(output);
-  });
-
-  it("preserves tag attributes", () => {
-    const input =
-      '<div>before</div><span class="important">get me</span><div>after</div>';
-    const output = {
-      content: '<span class="important">get me</span>',
-      innerContent: "get me",
-    };
-    expect(getTagContents(input, "span")).toEqual(output);
-  });
-
-  it("is case-insensitive", () => {
-    const input = "<div>before</div><SPAN>get me</SPAN><div>after</div>";
-    const output = { content: "<SPAN>get me</SPAN>", innerContent: "get me" };
-    expect(getTagContents(input, "span")).toEqual(output);
   });
 });
 
@@ -1544,7 +1466,7 @@ describe("injectProps – adversarial prop values", () => {
 });
 
 describe("tagName Validation Guards", () => {
-  it("rejects malicious, unescaped, or non-conforming tagNames in findOpenTag, replaceTag, getTagContents, and getTag", () => {
+  it("rejects malicious, unescaped, or non-conforming tagNames in findOpenTag, replaceTag, and getTag", () => {
     const maliciousNames = [
       "p(hello)",
       "p; alert(1)",
@@ -1565,9 +1487,6 @@ describe("tagName Validation Guards", () => {
     for (const badName of maliciousNames) {
       // replaceTag should return the input string unchanged
       expect(replaceTag(html, badName, "REPLACED")).toBe(html);
-
-      // getTagContents should return an empty object
-      expect(getTagContents(html, badName)).toEqual({});
 
       // getTag should return an empty object
       expect(getTag(html, badName)).toEqual({});

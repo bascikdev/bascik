@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
-import { prefixElementAttribute, namespaceScriptTags, getComponentScripts, minifyJs } from "./javascript.ts";
+import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
+import { minifyJs } from "./js-minifier.ts";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -45,6 +46,18 @@ const scopeClassPerInstance = (attr: string, id = "test1234"): string =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – id (existing patterns)", () => {
+  it("preserves replacement tokens in scoped query selector values", () => {
+    const component = {
+      name: "my$&$1$`comp",
+      fileContent:
+        '<div id="panel"></div><script>document.querySelector("#panel")</script>',
+    };
+    const result = prefixElementAttribute(component, "id", "test1234");
+    const scopedId = "bascik__my$&$1$`comp__test1234__panel";
+    expect(result.fileContent).toContain(`id="${scopedId}"`);
+    expect(result.fileContent).toContain(`querySelector("#${scopedId}")`);
+  });
+
   it("scopes getElementById", () => {
     const c = makeComponent(
       '<div id="btn"></div><script>document.getElementById("btn")</script>',
@@ -95,6 +108,19 @@ describe("prefixElementAttribute – class with deduplicateCss: false", () => {
 });
 
 describe("prefixElementAttribute – class (existing patterns)", () => {
+  it("preserves replacement tokens in classList and className values", () => {
+    const component = {
+      name: "my$&$1$`comp",
+      fileContent:
+        '<div class="active"></div><script>el.classList.add("active"); el.className = "active";</script>',
+      cssFileContent: ".active { color: red; }",
+    };
+    const result = prefixElementAttribute(component, "class", "test1234");
+    const scopedClass = "bascik__my$&$1$`comp__active";
+    expect(result.fileContent).toContain(`classList.add("${scopedClass}")`);
+    expect(result.fileContent).toContain(`className = "${scopedClass}"`);
+  });
+
   it("preserves global classes in component HTML when class is not defined in component CSS", () => {
     const c = makeComponent(
       '<a href="#main" class="skip-link dnav-logo">Skip</a>',
@@ -922,6 +948,24 @@ describe("prefixElementAttribute – attribute names with regex metacharacters",
 // ─── skipElementContents ────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – skipElementContents", () => {
+  it("does not swap pre and code contents while discovering inline styles", () => {
+    const preContent = '<span class="pre-example">PRE EXAMPLE</span>';
+    const codeContent = '<span class="code-example">CODE EXAMPLE</span>';
+    const component = makeComponent(
+      `<pre>${preContent}</pre><code>${codeContent}</code>` +
+      '<style>.outside { color: red; }</style><div class="outside">Live</div>',
+    );
+    const result = prefixElementAttribute(
+      component,
+      "class",
+      "test1234",
+      true,
+      ["pre", "code"],
+    );
+    expect(result.fileContent).toContain(`<pre>${preContent}</pre>`);
+    expect(result.fileContent).toContain(`<code>${codeContent}</code>`);
+  });
+
   it("still scopes attributes on the skip element's own opening tag", () => {
     // class="cblock-body" on <code> itself is a template attribute and SHOULD be scoped
     const c = makeComponent('<code class="cblock-body">literal</code>');
@@ -982,7 +1026,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
 
   it("leaves no sentinel placeholders in output when both code and pre are skipped", () => {
     // Regression: nested sentinel restoration (pre > code) was single-pass, leaving
-    // \x00BSKIP0\x00 unresolved in the output when <pre> swallowed the already-sentinel-
+    // A shielding token remained unresolved when <pre> swallowed the already-shielded
     // ised <code> inner content.
     const inner = '<span class="slot-marker"></span>';
     const c = makeComponent(
@@ -991,7 +1035,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code", "pre"]);
     // No sentinel may survive in the output
     expect(result.fileContent).not.toContain("\x00");
-    expect(result.fileContent).not.toContain("BSKIP");
+    expect(result.fileContent).not.toContain("BASCIK_SHIELD");
     // The slot marker inside <code> must be fully restored
     expect(result.fileContent).toContain(inner);
     // Note: class="cblock-body" is NOT scoped here because it sits inside <pre>'s
@@ -1018,7 +1062,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).toContain(scopeClass("outer"));
     expect(result.fileContent).toContain(scopeClass("cblock-body"));
     // No sentinel may survive in the output
-    expect(result.fileContent).not.toContain("BSKIP");
+    expect(result.fileContent).not.toContain("BASCIK_SHIELD");
   });
 
   it("handles a '>' inside a single-quoted attribute value on the skip element's open tag", () => {
@@ -1029,7 +1073,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     expect(result.fileContent).toContain("data-x='a>b'");
     expect(result.fileContent).toContain('<div class="inner">literal</div>');
     expect(result.fileContent).toContain(scopeClass("outer"));
-    expect(result.fileContent).not.toContain("BSKIP");
+    expect(result.fileContent).not.toContain("BASCIK_SHIELD");
   });
 
   it("handles a '>' inside an attribute that appears before class, id, or name attributes", () => {
@@ -1053,7 +1097,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code", "pre"]);
     // Slot marker must survive intact for the slot-injection step
     expect(result.fileContent).toContain('<span data-bascik-slot></span>');
-    expect(result.fileContent).not.toContain("BSKIP");
+    expect(result.fileContent).not.toContain("BASCIK_SHIELD");
   });
 });
 
@@ -1473,9 +1517,8 @@ describe("namespaceScriptTags – line-offset padding and sourceURL", () => {
 });
 
 describe("getComponentScripts", () => {
-  it("returns empty scripts for empty file list", async () => {
+  it("returns an empty script map for an empty file list", async () => {
     const res = await getComponentScripts("src/components/my-comp.html", []);
-    expect(res.scripts).toBe("");
     expect(res.scriptMap.size).toBe(0);
   });
 });

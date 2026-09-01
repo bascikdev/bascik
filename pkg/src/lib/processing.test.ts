@@ -113,7 +113,6 @@ vi.mock("./worker-pool.js", () => {
 vi.mock("./names.js", () => ({
   getUniqueId: vi.fn(() => "test1234"),
   minifyAttributeName: vi.fn((name) => name),
-  obfuscateAttributeName: vi.fn((name) => name),
   getAttributeNameHash: vi.fn((name) => name),
 }));
 

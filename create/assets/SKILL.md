@@ -689,7 +689,7 @@ Inherited class names are not scoped, they are treated as global page-level clas
 These two mechanisms serve distinct purposes:
 
 * **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
-* **Preserve element contents (authoring choice):** The `skipTranspilingElementContents` option (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. *(Note: this option is renamed to `scoping.preserve` in an upcoming configuration update; the rename is not yet implemented)*.
+* **Preserve element contents (authoring choice):** `scoping.preserve` (default `['code']`) tells Bascik not to apply scoping transforms inside matching tags, so code samples displaying `class="card"` are not rewritten to scoped identifiers like `class="bascik__comp__card"`. Multiple tags such as `['pre', 'code']` can be preserved together safely.
 
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:

@@ -6,6 +6,7 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
+import { maskElementContents } from "./shielding.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -330,15 +331,7 @@ export const maskRawTextContent = (htmlString: string): string => {
     );
   }
   if (hasRawTags) {
-    masked = masked.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `(<(script|style|textarea)(?:${ATTR_VALUE})>)([\\s\\S]*?)(<\\/\\2\\s*>)`,
-        "gi",
-      ),
-      (_m, open: string, _tag: string, content: string, close: string) =>
-        `${open}${" ".repeat(content.length)}${close}`,
-    );
+    masked = maskElementContents(masked, ["script", "style", "textarea"]);
   }
   return masked;
 };
@@ -415,23 +408,6 @@ export const replaceTag = (
     transpiledTag +
     htmlString.slice(selfClosingMatch.index + selfClosingMatch[0].length)
   );
-};
-
-export const getTagContents = (
-  htmlString: string,
-  tagName: string,
-): { content?: string; innerContent?: string } => {
-  if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return {};
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const regexp = new RegExp(
-    `(?<content><${tn}[^>]*>(?<innerContent>([\\s\\S]*?))<\\/${tn}>)`,
-    "i",
-  );
-  const match = htmlString.match(regexp);
-  if (!match) return {};
-  // { content, innerContent }
-  return { ...match.groups };
 };
 
 const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
@@ -552,12 +528,6 @@ export const getTag = (
 
   return {};
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HTML minification
-// ─────────────────────────────────────────────────────────────────────────────
-
-export { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

@@ -6,12 +6,10 @@ import { tmpdir } from "node:os";
 import {
   convertCssElementSelectorsToClasses,
   addElementClassesInHtml,
-  getCssClasses,
   getKeyframeNames,
   prefixKeyframes,
   removeIdSelectors,
   removeCommentsFromCss,
-  minifyCss,
   scopeCssCustomProperties,
   scopeLayerNames,
   scopeContainerNames,
@@ -32,6 +30,7 @@ import {
   resolveCssImportsSync,
   hoistCssImports,
 } from "./styles.ts";
+import { minifyCss } from "./css-minifier.ts";
 
 const css = `
 .navigation ul {
@@ -209,26 +208,6 @@ describe("addElementClassesInHtml", () => {
   });
 });
 
-describe("getCssClasses", () => {
-  it("test", () => {
-    expect(getCssClasses(css)).toStrictEqual([
-      ".navigation ul {\n" +
-      "  list-style-type: none;\n" +
-      "  margin: unset;\n" +
-      "  padding: unset;\n" +
-      "}",
-      ".home.logo {\n" +
-      "  background-color: #fff;\n" +
-      "  color: #18191b;\n" +
-      "  padding: 4px;\n" +
-      "  user-select: none;\n" +
-      "  animation: rotateLogo 2s infinite alternate;\n" +
-      "}",
-      ".home.logo {\n    background-color: #d3ff8d;\n  }",
-    ]);
-  });
-});
-
 describe("addIdClassesInHtml", () => {
   it("adds id class to element with single-quoted class attribute", () => {
     const html = "<div id=\"btn\" class='btn-base'></div>";
@@ -253,6 +232,16 @@ describe("getKeyframeNames", () => {
 describe("prefixKeyframes", () => {
   it("test", () => {
     expect(prefixKeyframes(css, "my-comp")).toBe(prefixKeyframesRes);
+  });
+
+  it("preserves replacement tokens in scoped keyframe names", () => {
+    const result = prefixKeyframes(
+      "@keyframes spin { from { opacity: 0; } } .box { animation: spin 1s; }",
+      "my$&$1$`comp",
+    );
+    const scoped = "bascik__my$&$1$`comp__keyframe__spin";
+    expect(result).toContain(`@keyframes ${scoped}`);
+    expect(result).toContain(`animation: ${scoped} 1s`);
   });
 });
 
@@ -887,6 +876,12 @@ describe("addElementClassesInHtml – nested same-tag elements", () => {
 // ─── scopeLayerNames ─────────────────────────────────────────────────────────
 
 describe("scopeLayerNames", () => {
+  it("scopes a leading-hyphen layer name", () => {
+    expect(scopeLayerNames("@layer --utils { .box { color: red; } }", "my-comp")).toContain(
+      "@layer bascik__my-comp__layer__--utils",
+    );
+  });
+
   it("scopes a single @layer declaration block", () => {
     const css = "@layer base { .foo { color: red; } }";
     const result = scopeLayerNames(css, "my-comp");
@@ -1670,6 +1665,13 @@ describe("Resilience to regex replacement patterns (TDD)", () => {
 // ─── CSS @import Resolution & Hoisting ────────────────────────────────────────
 
 describe("CSS @import resolution and hoisting", () => {
+  it("keeps replacement tokens literal in unresolved async and sync imports", async () => {
+    const css = '@import "$&.css";';
+    const expected = '/* @import "$&.css" not found */';
+    expect(await resolveCssImports(css, "/missing/index.css")).toBe(expected);
+    expect(resolveCssImportsSync(css, "/missing/index.css")).toBe(expected);
+  });
+
   describe("isRemoteCssUrl", () => {
     it("identifies remote and data URLs", () => {
       expect(isRemoteCssUrl("http://example.com/style.css")).toBe(true);

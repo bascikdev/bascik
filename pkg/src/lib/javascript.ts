@@ -96,6 +96,7 @@ import {
   resolveCssImportsSync,
   shieldCssStrings,
 } from "./styles.ts";
+import { shieldElementContents } from "./shielding.ts";
 import type { BascikComponent } from "./types.ts";
 
 /**
@@ -147,49 +148,6 @@ const replaceBalancedCall = (
 
   result += src.substring(lastIndex);
   return result;
-};
-
-/**
- * Preserve the inner content of named elements in `html`, replacing each with a
- * placeholder sentinel.  Returns the modified html and a `restore` function
- * that puts the original content back.  Used to shield element contents (e.g.
- * `<code>`, `<pre>`) from the scoping pipeline so their text is never rewritten.
- */
-const preserveElementContents = (
-  html: string,
-  tags: string[],
-): { html: string; restore: (h: string) => string } => {
-  if (!tags.length) return { html, restore: (h) => h };
-  const preserved: string[] = [];
-  let result = html;
-  for (const tag of tags) {
-    const esc = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Quote-aware open tag: attribute values may contain `>` (e.g.
-    // <code data-x="a>b">), so consume quoted strings or non-`>` runs
-    // instead of a plain [^>]* that would end the match early.
-    const attr = `(?:"[^"]*"|'[^']*'|[^>"'])*`;
-    result = result.replace(
-      new RegExp(`(<${esc}(?:\\b${attr})?>)([\\s\\S]*?)(<\\/${esc}>)`, "gi"),
-      (_match, open, inner, close) => {
-        preserved.push(inner);
-        return `${open}\x00BSKIP${preserved.length - 1}\x00${close}`;
-      },
-    );
-  }
-  return {
-    html: result,
-    restore: (h: string) => {
-      // Restore from highest index to lowest so that outer sentinels (which were
-      // created after inner ones and whose preserved content may itself contain
-      // inner sentinels) are expanded first, revealing the inner sentinels for
-      // the subsequent iterations to resolve.
-      let out = h;
-      for (let i = preserved.length - 1; i >= 0; i--) {
-        out = out.split(`\x00BSKIP${i}\x00`).join(preserved[i]);
-      }
-      return out;
-    },
-  };
 };
 /**
  * Replaces attributes inside HTML tags, taking care to ignore attribute-like
@@ -258,7 +216,7 @@ export const prefixElementAttribute = (
   if (!component.fileContent) return component;
 
   // Shield inner content of skip elements (e.g. <code>, <pre>) from all transforms.
-  const { html: shieldedContent, restore } = preserveElementContents(
+  const { html: shieldedContent, restore } = shieldElementContents(
     component.fileContent,
     skipElementContents,
   );
@@ -463,7 +421,7 @@ export const prefixElementAttribute = (
                   // alphanumeric, underscore, or hyphen (avoids partial
                   // matches inside already-scoped names like __myClass).
                   tokenRegex,
-                  `${prefix}${obfuscatedAttributeName}`,
+                  () => `${prefix}${obfuscatedAttributeName}`,
                 ),
             );
           };
@@ -533,7 +491,8 @@ export const prefixElementAttribute = (
               (call) =>
                 call.replace(
                   classTokenAllRegex,
-                  `$1${obfuscatedAttributeName}$1`,
+                  (_match, quote: string) =>
+                    `${quote}${obfuscatedAttributeName}${quote}`,
                 ),
             );
             // classList.toggle — rewrites the class-name (first) arg only.
@@ -547,7 +506,8 @@ export const prefixElementAttribute = (
               (call) =>
                 call.replace(
                   classTokenSingleRegex,
-                  `$1${obfuscatedAttributeName}$1`,
+                  (_match, quote: string) =>
+                    `${quote}${obfuscatedAttributeName}${quote}`,
                 ),
             );
             // classList.contains — always single arg
@@ -557,7 +517,8 @@ export const prefixElementAttribute = (
               (call) =>
                 call.replace(
                   classTokenSingleRegex,
-                  `$1${obfuscatedAttributeName}$1`,
+                  (_match, quote: string) =>
+                    `${quote}${obfuscatedAttributeName}${quote}`,
                 ),
             );
             // classList.replace(oldToken, newToken) — rewrites both args if
@@ -568,7 +529,8 @@ export const prefixElementAttribute = (
               (call) =>
                 call.replace(
                   classTokenAllRegex,
-                  `$1${obfuscatedAttributeName}$1`,
+                  (_match, quote: string) =>
+                    `${quote}${obfuscatedAttributeName}${quote}`,
                 ),
             );
             // element.setAttribute("class", "value")
@@ -592,7 +554,7 @@ export const prefixElementAttribute = (
               (_, prefix, classes, suffix) => {
                 const replaced = classes.replace(
                   classNameTokenRegex,
-                  obfuscatedAttributeName,
+                  () => obfuscatedAttributeName,
                 );
                 return `${prefix}${replaced}${suffix}`;
               },
@@ -739,14 +701,12 @@ export const prefixElementAttribute = (
 
   return component;
 };
-
 export interface ComponentScriptInfo {
   relPath: string;
   code: string;
 }
 
 export interface ComponentScriptsResult {
-  scripts: string;
   scriptMap: Map<string, ComponentScriptInfo>;
 }
 
@@ -756,7 +716,7 @@ export const getComponentScripts = async (
 ): Promise<ComponentScriptsResult> => {
   const scriptMap = new Map<string, ComponentScriptInfo>();
   if (!htmlFileName || !Array.isArray(scriptFileNames) || scriptFileNames.length === 0) {
-    return { scripts: "", scriptMap };
+    return { scriptMap };
   }
 
   const htmlDir = dirname(htmlFileName);
@@ -790,8 +750,6 @@ export const getComponentScripts = async (
     return a.localeCompare(b);
   });
 
-  const scriptBlocks: string[] = [];
-
   for (const scriptPath of matchingScriptFiles) {
     try {
       const code = (await readFile(scriptPath)).toString();
@@ -803,17 +761,12 @@ export const getComponentScripts = async (
       scriptMap.set(`./${baseName}`, info);
       scriptMap.set(relPath, info);
 
-      const isModule = /^\s*(?:import|export)\b/m.test(code);
-      const typeAttr = isModule ? ' type="module"' : '';
-      const safeRelPath = relPath.replace(/"/g, "&quot;");
-      scriptBlocks.push(`<script${typeAttr} data-bascik-source="${safeRelPath}">\n${code}\n</script>`);
     } catch (err) {
       console.warn("warning: Failed to read script for %s", scriptPath, err);
     }
   }
 
   return {
-    scripts: scriptBlocks.join("\n"),
     scriptMap,
   };
 };
@@ -871,7 +824,6 @@ export const namespaceScriptTags = (
   return component;
 };
 
-// ─── Built-in JS minifier ────────────────────────────────────────────────────
+// JavaScript minification is exported from js-minifier.ts.
 
-export { minifyJs } from "./js-minifier.ts";
 

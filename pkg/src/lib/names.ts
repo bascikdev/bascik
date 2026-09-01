@@ -42,13 +42,8 @@ export const minifyAttributeName = (attributeName: string): string => {
     : attributeName;
 };
 
-export const obfuscateAttributeName = minifyAttributeName;
-
 export const getUniqueId = (length: number): string => {
-  if (length % 2 !== 0) {
-    length++;
-  }
-  return randomBytes(length / 2).toString("hex");
+  return randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
 };
 
 export const makeEtag = (buf: Buffer): string =>

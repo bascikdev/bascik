@@ -8,6 +8,7 @@
  */
 
 import { isJavaScriptScript } from "./script-types.ts";
+import { createContentShield } from "./shielding.ts";
 
 const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script>)/gi;
 
@@ -15,27 +16,17 @@ const shieldSensitiveContent = (htmlString: string): {
   html: string;
   restore: (value: string) => string;
 } => {
-  const elements: string[] = [];
-  const scriptBodies: string[] = [];
+  const shield = createContentShield(htmlString);
   let html = htmlString.replace(
     /<(pre|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1>/gi,
-    (match) => `\x00BHTML_ELEMENT_${elements.push(match) - 1}\x00`,
+    (match) => shield.hide(match),
   );
   html = html.replace(
     SCRIPT_TAG_PATTERN,
     (_match, open: string, body: string, close: string) =>
-      `${open}\x00BHTML_SCRIPT_${scriptBodies.push(body) - 1}\x00${close}`,
+      `${open}${shield.hide(body)}${close}`,
   );
-  const restore = (value: string): string => value
-    .replace(
-      /\x00BHTML_SCRIPT_(\d+)\x00/g,
-      (_match, index: string) => scriptBodies[Number(index)],
-    )
-    .replace(
-      /\x00BHTML_ELEMENT_(\d+)\x00/g,
-      (_match, index: string) => elements[Number(index)],
-    );
-  return { html, restore };
+  return { html, restore: shield.restore };
 };
 
 const isExtractableScript = (openTag: string): boolean =>
@@ -153,8 +144,14 @@ export const minifyHtml = (htmlString: string): string => {
     }
     return "><";
   });
-  html = html.replace(/>\s+(\x00BHTML_(?:ELEMENT|SCRIPT)_\d+\x00)/g, ">$1");
-  html = html.replace(/(\x00BHTML_(?:ELEMENT|SCRIPT)_\d+\x00)\s+</g, "$1<");
+  html = html.replace(
+    />\s+(\x00BASCIK_SHIELD_\d+\x00)/g,
+    (_match, token: string) => `>${token}`,
+  );
+  html = html.replace(
+    /(\x00BASCIK_SHIELD_\d+\x00)\s+</g,
+    (_match, token: string) => `${token}<`,
+  );
   html = shielded.restore(html);
   if (scriptTags) {
     html += `\n${shielded.restore(scriptTags)}`;

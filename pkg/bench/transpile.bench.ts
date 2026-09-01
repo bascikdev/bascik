@@ -29,14 +29,14 @@ vi.mock("../src/lib/config.ts", () => ({
 vi.mock("../src/lib/names.ts", () => ({
   getUniqueId: () => "bench1234",
   minifyAttributeName: (n: string) => n,
-  obfuscateAttributeName: (n: string) => n,
   getAttributeNameHash: (n: string) => n,
 }));
 
 import {
   recursivelyTranspile,
 } from "../src/lib/processing.ts";
-import { minifyHtml, replaceTag, getTag } from "../src/lib/components.ts";
+import { replaceTag, getTag } from "../src/lib/components.ts";
+import { minifyHtml } from "../src/lib/html-minifier.ts";
 import {
   convertCssElementSelectorsToClasses,
   scopeCssCustomProperties,

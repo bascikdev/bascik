@@ -40,7 +40,8 @@ vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
 }));
 
-import { listComponents, minifyHtml, invalidateComponentListCache } from "./components.ts";
+import { listComponents, invalidateComponentListCache } from "./components.ts";
+import { minifyHtml } from "./html-minifier.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { readFile } from "node:fs/promises";

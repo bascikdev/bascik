@@ -26,7 +26,7 @@ test.describe('recursion-guard-test page', () => {
     await page.goto('/recursion-guard-test');
     const body = await page.locator('body').innerHTML();
     expect(body.length).toBeGreaterThan(0);
-    expect(body).not.toContain('\x00BSKIP');
+    expect(body).not.toContain('\x00BASCIK_SHIELD');
     expect(body).not.toContain('bascik-source-file');
   });
 });

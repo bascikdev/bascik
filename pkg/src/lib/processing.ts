@@ -74,7 +74,6 @@ import {
   replaceTag,
   getFirstComponent,
   getTag,
-  minifyHtml,
   extractProps,
   injectPropAttributes,
   injectProps,
@@ -86,10 +85,12 @@ import {
   mergeAttributesOntoRoot,
   maskRawTextContent,
 } from "./components.ts";
+import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
 import { isJavaScriptScript } from "./script-types.ts";
 import { minifyJs } from "./js-minifier.ts";
-import { deduplicateCss, minifyCss } from "./styles.ts";
+import { deduplicateCss } from "./styles.ts";
+import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
 import { getUniqueId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";

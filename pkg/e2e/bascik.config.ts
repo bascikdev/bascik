@@ -7,6 +7,9 @@ import autoprefixer from 'autoprefixer';
 import { transform } from 'esbuild';
 
 export default defineConfig({
+  scoping: {
+    preserve: ['pre', 'code'],
+  },
   pipeline: {
     watchPaths: ['src/content/'],
     workers: true,

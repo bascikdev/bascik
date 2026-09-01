@@ -284,6 +284,8 @@ An array of HTML element names whose inner content is left untouched by the scop
 
 Defaults to `['code']`.
 
+Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
+
 ### `minify` (BYOMinifier)
 
 Configure minification toggles for HTML, CSS, and JS outputs. All three default to `false` in dev mode and `true` during `bascik --build` and `bascik --server`.

@@ -49,11 +49,11 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-vi.mock("./javascript.js", () => ({
+vi.mock("./js-minifier.js", () => ({
   minifyJs: vi.fn(async (js: string) => js),
 }));
 
-vi.mock("./styles.js", () => ({
+vi.mock("./css-minifier.js", () => ({
   minifyCss: vi.fn((css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").replace(/\s*([{}:;,])\s*/g, "$1").trim()),
 }));
 
@@ -781,7 +781,7 @@ describe("copyReplicatePath – JS minification", () => {
 
     await copyReplicatePath("pages/js/app.js", "dist");
 
-    const { minifyJs } = await import("./javascript.ts");
+    const { minifyJs } = await import("./js-minifier.ts");
     expect(vi.mocked(minifyJs)).toHaveBeenCalledWith("const x = 1;");
     expect(writeFile).toHaveBeenCalledOnce();
   });

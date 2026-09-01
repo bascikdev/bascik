@@ -24,6 +24,7 @@ import { readFile } from "node:fs/promises";
 import { listPages, getRelativePath } from "./file-system.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
+import { maskElementContents } from "./shielding.ts";
 import type { ComponentList } from "./types.ts";
 
 /**
@@ -40,23 +41,7 @@ const stripElementContents = (html: string): string => {
     .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
     .filter(Boolean);
   const protectedTags = ["script", "style", "textarea", ...extra];
-  if (protectedTags.length === 0) return html;
-  // Content is matched non-greedily up to the element's own close tag; the
-  // loop repeats to handle nesting (e.g. <code>…<code>…</code>…</code>).
-  // Leftover closing tags from nesting are harmless — extractCustomTags only
-  // scans for opening tags.
-  const re = new RegExp(
-    `<(${protectedTags.join("|")})(\\s[^>]*)?>[\\s\\S]*?</\\1>`,
-    "gi",
-  );
-  let prev: string;
-  let out = html;
-  // Repeat to handle nesting (e.g. <code>…<code>…</code>…</code>).
-  do {
-    prev = out;
-    out = out.replace(re, "<$1$2></$1>");
-  } while (out !== prev);
-  return out;
+  return maskElementContents(html, protectedTags);
 };
 
 /**
