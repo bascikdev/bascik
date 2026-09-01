@@ -10,7 +10,7 @@
 import { isJavaScriptScript } from "./script-types.ts";
 import { createContentShield } from "./shielding.ts";
 
-const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script>)/gi;
+const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
 
 const shieldSensitiveContent = (htmlString: string): {
   html: string;
@@ -18,7 +18,7 @@ const shieldSensitiveContent = (htmlString: string): {
 } => {
   const shield = createContentShield(htmlString);
   let html = htmlString.replace(
-    /<(pre|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1>/gi,
+    /<(pre|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
     (match) => shield.hide(match),
   );
   html = html.replace(

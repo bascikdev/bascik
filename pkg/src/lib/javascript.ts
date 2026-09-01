@@ -97,6 +97,7 @@ import {
   shieldCssStrings,
 } from "./styles.ts";
 import {
+  shieldElementContents,
   shieldPreservedAttribute,
   stripPreserveDirectives,
 } from "./shielding.ts";
@@ -107,6 +108,23 @@ import {
   rewriteUsemapReferencesInHtml,
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
+
+const rewriteIdReferencesInStyleTags = (
+  html: string,
+  resolve: (originalId: string) => string | null,
+): { html: string; changed: boolean } => {
+  const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
+  let changed = false;
+  const rewrittenHtml = shielded.html.replace(
+    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style\s*>)/gi,
+    (_match, openTag: string, css: string, closeTag: string) => {
+      const rewrittenCss = rewriteIdReferencesInCss(css, resolve);
+      changed ||= rewrittenCss !== css;
+      return `${openTag}${rewrittenCss}${closeTag}`;
+    },
+  );
+  return { html: shielded.restore(rewrittenHtml), changed };
+};
 
 /**
  * Extracts and replaces function calls that might contain nested parentheses.
@@ -132,14 +150,43 @@ const replaceBalancedCall = (
     let depth = 1;
     let i = startIndex;
     let inString: string | null = null;
+    let inRegex = false;
+    let inRegexCharacterClass = false;
+    let inLineComment = false;
+    let inBlockComment = false;
 
     while (i < src.length && depth > 0) {
       const char = src[i];
       if (inString) {
         if (char === "\\") i++;
         else if (char === inString) inString = null;
+      } else if (inRegex) {
+        if (char === "\\") i++;
+        else if (char === "[") inRegexCharacterClass = true;
+        else if (char === "]") inRegexCharacterClass = false;
+        else if (char === "/" && !inRegexCharacterClass) inRegex = false;
+      } else if (inLineComment) {
+        if (char === "\n" || char === "\r") inLineComment = false;
+      } else if (inBlockComment) {
+        if (char === "*" && src[i + 1] === "/") {
+          inBlockComment = false;
+          i++;
+        }
       } else {
         if (char === '"' || char === "'" || char === "`") inString = char;
+        else if (char === "/" && src[i + 1] === "/") {
+          inLineComment = true;
+          i++;
+        } else if (char === "/" && src[i + 1] === "*") {
+          inBlockComment = true;
+          i++;
+        } else if (char === "/") {
+          const previous = src.slice(startIndex, i).match(/\S(?=\s*$)/)?.[0];
+          if (!previous || /[([{=:;,!?&|+\-*%^~<>]/.test(previous)) {
+            inRegex = true;
+            inRegexCharacterClass = false;
+          }
+        }
         else if (char === "(") depth++;
         else if (char === ")") depth--;
       }
@@ -246,21 +293,6 @@ export const prefixElementAttribute = (
   // selector queries like querySelector('.myClass') naturally target only the
   // current instance's elements, at the cost of per-instance CSS blocks.
   // IDs and names always keep the instanceId so multiple instances have unique DOM nodes.
-  if (attribute === "class" && component.scopedIdNames) {
-    const resolveScopedId = (originalId: string): string | null =>
-      component.scopedIdNames?.[originalId] ?? null;
-    const cssSources = [
-      component.cssFileContent
-        ? resolveCssImportsSync(component.cssFileContent, component.fileName)
-        : "",
-      component.fileContent.includes("<style")
-        ? extractInlineStyles(component.fileContent).css
-        : "",
-    ].filter(Boolean);
-    component.requiresPerInstanceCss = cssSources.some(
-      (css) => rewriteIdReferencesInCss(css, resolveScopedId) !== css,
-    );
-  }
   // One shared stylesheet cannot target different per-instance IDs, so these components opt out of deduplication.
   const scopeKey =
     attribute === "class" && deduplicateCss && !component.requiresPerInstanceCss
@@ -348,6 +380,20 @@ export const prefixElementAttribute = (
         : null,
     );
     component.scopedIdNames = Object.fromEntries(scopedIds);
+    const inlineStyles = rewriteIdReferencesInStyleTags(
+      scopedAttrsHtml,
+      (originalId) => scopedIds.get(originalId) ?? null,
+    );
+    scopedAttrsHtml = inlineStyles.html;
+    component.requiresPerInstanceCss = inlineStyles.changed;
+    if (component.cssFileContent) {
+      const rewrittenCss = rewriteIdReferencesInCss(
+        component.cssFileContent,
+        (originalId) => scopedIds.get(originalId) ?? null,
+      );
+      component.requiresPerInstanceCss ||= rewrittenCss !== component.cssFileContent;
+      component.cssFileContent = rewrittenCss;
+    }
   }
   if (attribute === "name" && attributesToReplace.length > 0) {
     const scopedNames = new Map(

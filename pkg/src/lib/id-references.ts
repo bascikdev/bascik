@@ -1,4 +1,8 @@
-import { createContentShield } from "./shielding.ts";
+import {
+  createContentShield,
+  maskElementContents,
+  shieldElementContents,
+} from "./shielding.ts";
 
 const OPENING_TAG_PATTERN = /<[a-zA-Z][a-zA-Z0-9:-]*(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?\s*\/?>/g;
 
@@ -13,9 +17,23 @@ const shieldComments = (html: string): {
   };
 };
 
+const shieldHtmlScanningContexts = (html: string): {
+  html: string;
+  restore: (value: string) => string;
+} => {
+  const rawText = shieldElementContents(html, ["script", "style", "textarea"]);
+  const comments = shieldComments(rawText.html);
+  return {
+    html: comments.html,
+    restore: (value) => rawText.restore(comments.restore(value)),
+  };
+};
+
 /** Collect the set of original ID values declared in the component HTML. */
 export const collectDeclaredIds = (html: string): Set<string> => {
-  const { html: shieldedHtml } = shieldComments(html);
+  const { html: shieldedHtml } = shieldComments(
+    maskElementContents(html, ["script", "style", "textarea"]),
+  );
   const declaredIds = new Set<string>();
   for (const tagMatch of shieldedHtml.matchAll(OPENING_TAG_PATTERN)) {
     const idMatch = tagMatch[0].match(/\sid\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
@@ -31,6 +49,7 @@ const replaceAttributeValue = (
   replaceValue: (value: string) => string,
 ): string => {
   const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attributePattern = new RegExp(
     `(\\s${escapedAttribute}\\s*=\\s*)(["'])([\\s\\S]*?)\\2`,
     "i",
@@ -82,7 +101,6 @@ const SINGLE_ID_ATTRIBUTES = [
   "popovertarget",
   "commandfor",
   "aria-activedescendant",
-  "aria-details",
   "aria-errormessage",
 ];
 
@@ -92,6 +110,8 @@ const ID_LIST_ATTRIBUTES = [
   "aria-controls",
   "aria-owns",
   "aria-flowto",
+  "aria-details",
+  "itemref",
 ];
 
 const SVG_PRESENTATION_ATTRIBUTES = [
@@ -110,7 +130,7 @@ export const rewriteIdReferencesInHtml = (
   html: string,
   resolve: (originalId: string) => string | null,
 ): string => {
-  const { html: shieldedHtml, restore } = shieldComments(html);
+  const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
   const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
     const tagName = openingTag.match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/)?.[1].toLowerCase();
     if (!tagName) return openingTag;
@@ -169,7 +189,7 @@ export const rewriteUsemapReferencesInHtml = (
   html: string,
   resolve: (originalName: string) => string | null,
 ): string => {
-  const { html: shieldedHtml, restore } = shieldComments(html);
+  const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
   const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
     if (!/^<\s*img(?:\s|\/?>)/i.test(openingTag)) return openingTag;
     return replaceAttributeValue(openingTag, "usemap", (value) =>

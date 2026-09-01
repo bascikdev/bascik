@@ -569,6 +569,38 @@ describe("deduplicateCss", () => {
 });
 
 describe("CSS ID fragment integration", () => {
+  it("rewrites CSS fragments when class scoping is disabled", () => {
+    const component = prefixElementAttribute(
+      {
+        name: "svg-icon",
+        fileContent: '<svg><linearGradient id="grad"></linearGradient></svg>',
+        cssFileContent: ".icon { fill: url(#grad); }",
+      },
+      "id",
+      "first123",
+    );
+    expect(component.cssFileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
+  it("rewrites inline CSS fragments when class scoping is disabled", () => {
+    const component = prefixElementAttribute(
+      {
+        name: "svg-icon",
+        fileContent:
+          '<style>.icon { fill: url(#grad); }</style><svg><linearGradient id="grad"></linearGradient></svg>',
+      },
+      "id",
+      "first123",
+    );
+    expect(component.fileContent).toContain(
+      "url(#bascik__svg-icon__first123__grad)",
+    );
+    expect(component.requiresPerInstanceCss).toBe(true);
+  });
+
   it("rewrites url(#grad) to match a scoped svg gradient id", () => {
     let component: BascikComponent = {
       name: "svg-icon",

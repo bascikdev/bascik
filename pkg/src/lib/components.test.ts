@@ -222,6 +222,20 @@ describe("getFirstComponent", () => {
 });
 
 describe("getTag – component name boundary", () => {
+  it("matches a component closing tag with whitespace before the terminator", () => {
+    expect(getTag("<my-card>content</my-card >", "my-card")).toEqual({
+      content: "<my-card>content</my-card >",
+      innerContent: "content",
+    });
+  });
+
+  it("keeps a complete quoted opening tag when the component is unclosed", () => {
+    expect(getTag('<my-card title="a > b">tail', "my-card")).toEqual({
+      content: '<my-card title="a > b">',
+      innerContent: "",
+    });
+  });
+
   it("does not parse a longer hyphenated tag as a shorter component", () => {
     expect(getTag("<card-header>Heading</card-header>", "card")).toEqual({});
   });
@@ -400,6 +414,12 @@ describe("injectProps", () => {
     expect(injectProps(template, { heading: "Title", body: "Content" })).toBe(
       "<h1>Title</h1><p>Content</p>",
     );
+  });
+
+  it("replaces the full body of a receiver with nested same-tag elements", () => {
+    const template =
+      "<div data-bascik-prop-title><div>fallback</div><p>tail</p></div>";
+    expect(injectProps(template, { title: "New" })).toBe("<div>New</div>");
   });
 
   it("does not modify template when prop name has no matching element", () => {

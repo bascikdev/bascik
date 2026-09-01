@@ -40,6 +40,17 @@ describe("extractScriptTags", () => {
 });
 
 describe("minifyHtml", () => {
+  it("preserves sensitive content with whitespace in closing tags", () => {
+    const script =
+      "<div><script>const value = 1;\n// keep newline\nwindow.done = true;</script ></div>";
+    expect(minifyHtml(script)).toContain(
+      "// keep newline\nwindow.done = true;",
+    );
+    expect(minifyHtml("<pre>  a\n  b\n</pre >")).toBe(
+      "<pre>  a\n  b\n</pre >",
+    );
+  });
+
   it("does not strip the document tail when a script contains an HTML comment opener", () => {
     const html = '<div><script>const sample = "<!--";</script><p>after</p><!-- real --></div>';
     expect(minifyHtml(html)).toContain("<p>after</p>");

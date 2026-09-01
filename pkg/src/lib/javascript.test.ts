@@ -177,6 +177,16 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
       'name="plan"',
     ]);
   });
+
+  it("does not leak preservation past an ancestor with an omitted child end tag", () => {
+    const component = makeComponent(
+      '<ul data-bascik-preserve="name"><li><input name="inside"></ul>' +
+      '<input name="outside">',
+    );
+    const result = prefixElementAttribute(component, "name", "test1234");
+    expect(result.fileContent).toContain('name="inside"');
+    expect(result.fileContent).toContain(`name="${scope("outside")}"`);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -626,6 +636,16 @@ describe("prefixElementAttribute – class classList methods", () => {
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
       `classList.add(fn("${scopeClass("active")}"), "${scopeClass("other")}")`,
+    );
+  });
+
+  it("ignores parentheses inside regex literals while scanning classList calls", () => {
+    const component = makeComponent(
+      '<div class="active"></div><script>el.classList.add(fn(/[)]/), "active")</script>',
+    );
+    const result = prefixElementAttribute(component, "class", "test1234");
+    expect(result.fileContent).toContain(
+      `classList.add(fn(/[)]/), "${scopeClass("active")}")`,
     );
   });
 });

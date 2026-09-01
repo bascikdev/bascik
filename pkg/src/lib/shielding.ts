@@ -51,6 +51,7 @@ export const shieldElementContents = (
     const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       new RegExp(`(<${escapedTag}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${escapedTag}>)`, "gi"),
       (_match, open: string, inner: string, close: string) =>
         `${open}${shield.hide(inner)}${close}`,
@@ -104,7 +105,7 @@ export const shieldPreservedAttribute = (
       const tagName = closingMatch[1].toLowerCase();
       for (let index = frames.length - 1; index >= 0; index--) {
         if (frames[index].tagName !== tagName) continue;
-        const [frame] = frames.splice(index, 1);
+        const [frame] = frames.splice(index);
         if (frame.shieldsContent) {
           contentRanges.push({ start: frame.contentStart, end: match.index });
         }
@@ -151,7 +152,7 @@ export const shieldPreservedAttribute = (
     if (closingMatch) {
       const tagName = closingMatch[1].toLowerCase();
       const index = activeFrames.findLastIndex((frame) => frame.tagName === tagName);
-      if (index >= 0) activeFrames.splice(index, 1);
+      if (index >= 0) activeFrames.splice(index);
       return tag;
     }
     const openingMatch = tag.match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/);
@@ -198,6 +199,7 @@ export const maskElementContents = (html: string, tags: string[]): string => {
     const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       new RegExp(`(<${escapedTag}(?:\\b${attributes})?>)([\\s\\S]*?)(<\\/${escapedTag}\\s*>)`, "gi"),
       (_match, open: string, inner: string, close: string) =>
         `${open}${" ".repeat(inner.length)}${close}`,

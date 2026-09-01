@@ -35,6 +35,16 @@ describe("collectDeclaredIds", () => {
       new Set(["real"]),
     );
   });
+
+  it("ignores id-like markup inside raw-text elements", () => {
+    expect(
+      collectDeclaredIds(
+        '<script type="application/json">{"example":"<div id=\\"scripted\\">"}</script>' +
+        '<style>.sample::before { content: \'<i id="styled">\'; }</style>' +
+        '<textarea><span id="typed"></span></textarea><div id="real"></div>',
+      ),
+    ).toEqual(new Set(["real"]));
+  });
 });
 
 describe("rewriteIdReferencesInHtml", () => {
@@ -62,6 +72,8 @@ describe("rewriteIdReferencesInHtml", () => {
     "aria-controls",
     "aria-owns",
     "aria-flowto",
+    "aria-details",
+    "itemref",
   ])("rewrites local tokens independently in %s", (attribute) => {
     expect(rewrite(`<div ${attribute}="external  local\texternal"></div>`)).toBe(
       `<div ${attribute}="external  scoped-local\texternal"></div>`,
@@ -130,6 +142,7 @@ describe("rewriteIdReferencesInHtml", () => {
     '<button commandfor="external"></button>',
     '<div aria-activedescendant="external"></div>',
     '<div aria-details="external"></div>',
+    '<div itemref="external"></div>',
     '<div aria-errormessage="external"></div>',
     '<div aria-labelledby="external"></div>',
     '<div aria-describedby="external"></div>',
@@ -166,6 +179,18 @@ describe("rewriteIdReferencesInHtml", () => {
     const source = '<!-- <label for="local"></label> --><label for="local"></label>';
     expect(rewrite(source)).toBe(
       '<!-- <label for="local"></label> --><label for="scoped-local"></label>',
+    );
+  });
+
+  it("does not rewrite references inside raw-text elements", () => {
+    const source =
+      '<script>const sample = \'<label for="local">\';</script>' +
+      '<textarea><a href="#local"></a></textarea>' +
+      '<label for="local"></label>';
+    expect(rewrite(source)).toBe(
+      '<script>const sample = \'<label for="local">\';</script>' +
+      '<textarea><a href="#local"></a></textarea>' +
+      '<label for="scoped-local"></label>',
     );
   });
 });

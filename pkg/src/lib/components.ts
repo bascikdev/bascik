@@ -506,6 +506,15 @@ export const getTag = (
     }
   }
 
+  if (openTag) {
+    const returnObj = {
+      content: openTag.openTag,
+      innerContent: "",
+    };
+    if (!componentList) return returnObj;
+    return { ...returnObj, ...componentList[tagName.toLowerCase()] };
+  }
+
   // Try self-closing: <tagName ... /> or <tagName/>
   // Search the masked string so literal tag text inside raw-text elements is skipped.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -675,26 +684,38 @@ export const injectProps = (
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     const escapedPropValue = escapePropValue(propValue);
-    // Match: <tagName [attrsBefore] data-bascik-prop-name[=value] [attrsAfter]>...</tagName>
-    // The attr scans are quote-aware so a `>` inside a quoted attribute value
-    // (e.g. title="a > b") does not end the opening tag early.
-    result = result.replace(
-      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-      new RegExp(
-        `<(\\w+(?:-\\w+)*?)(${ATTR_VALUE}?)\\s+${attrName}(?:=("[^"]*"|'[^']*'))?(${ATTR_VALUE})>([\\s\\S]*?)<\\/\\1>`,
-        "gi",
-      ),
-      (
-        match: string,
-        tagName: string,
-        attrsBefore: string,
-        markerValue: string | undefined,
-        attrsAfter: string,
-        _oldContent: string,
-      ) => markerValue
-          ? match
-          : `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}</${tagName}>`,
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    const receiverRe = new RegExp(
+      `<(\\w+(?:-\\w+)*?)(${ATTR_VALUE}?)\\s+${attrName}(?!\\s*=)(?=\\s|>)(${ATTR_VALUE})>`,
+      "gi",
     );
+    let searchIndex = 0;
+    while (searchIndex < result.length) {
+      receiverRe.lastIndex = searchIndex;
+      const receiver = receiverRe.exec(result);
+      if (!receiver) break;
+      const [openTag, tagName, attrsBefore, attrsAfter] = receiver;
+      const contentStart = receiver.index + openTag.length;
+      const closeIndex = findMatchingClose(result, tagName, contentStart);
+      if (closeIndex === -1) {
+        searchIndex = contentStart;
+        continue;
+      }
+      const closeTag = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(
+        result.slice(closeIndex),
+      )?.[0];
+      if (!closeTag) {
+        searchIndex = contentStart;
+        continue;
+      }
+      const replacement =
+        `<${tagName}${attrsBefore}${attrsAfter}>${escapedPropValue}${closeTag}`;
+      result =
+        result.slice(0, receiver.index) +
+        replacement +
+        result.slice(closeIndex + closeTag.length);
+      searchIndex = receiver.index + replacement.length;
+    }
   });
   // Strip any remaining data-bascik-prop-* markers whose prop was not provided.
   // Only strip markers that have NO value (prop receivers, e.g. `data-bascik-prop-label`
@@ -724,7 +745,7 @@ const findMatchingClose = (
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openRe = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const closeRe = new RegExp(`<\\/${tn}>`, "gi");
+  const closeRe = new RegExp(`<\\/${tn}\\s*>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
   const maskedHtml = masked ?? maskRawTextContent(html);

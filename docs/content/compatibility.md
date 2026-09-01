@@ -79,8 +79,9 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | --- | --- | --- |
 | `for` on `<label>` | ✓ | Rewritten as one ID so label activation continues to focus the scoped control. |
 | `form`, `list`, `popovertarget`, `commandfor` | ✓ | Each single-ID reference is rewritten when its target is declared locally. |
-| `aria-activedescendant`, `aria-details`, `aria-errormessage` | ✓ | Single-ID ARIA references resolve locally. |
-| `aria-labelledby`, `aria-describedby`, `aria-controls`, `aria-owns`, `aria-flowto` | ✓ | Space-separated tokens resolve independently; nonlocal tokens remain unchanged. |
+| `aria-activedescendant`, `aria-errormessage` | ✓ | Single-ID ARIA references resolve locally. |
+| `aria-labelledby`, `aria-describedby`, `aria-controls`, `aria-owns`, `aria-flowto`, `aria-details` | ✓ | Space-separated tokens resolve independently; nonlocal tokens remain unchanged. |
+| `itemref` | ✓ | Space-separated microdata item IDs resolve independently. |
 | `headers` on `<td>` and `<th>` | ✓ | Space-separated header IDs resolve independently. |
 | `for` on `<output>` | ✓ | Treated as a space-separated ID list, unlike the single-ID `<label for>`. |
 | Fragment links on `<a>` and `<area>` | ✓ | Fragment-only values such as `href="#section"` resolve locally. Bare hashes and other-document URLs remain unchanged. |
