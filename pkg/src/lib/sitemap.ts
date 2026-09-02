@@ -137,6 +137,17 @@ export const generateSitemapFiles = async (
   const { sitemap: doSitemap, robots: doRobots, sitemapLastmod } = BascikConfig.generate;
   if (!doSitemap && !doRobots) return;
 
+  const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  if (isTargetedBuild) {
+    if (doSitemap || doRobots) {
+      console.warn(
+        `[bascik] warning: Skipping sitemap and robots.txt generation during targeted build (--only).\n` +
+        `  The existing sitemap and robots.txt may be stale. Run a full build (bascik --build) to regenerate them.`,
+      );
+    }
+    return;
+  }
+
   const siteUrl = getSiteUrl();
   if (!siteUrl) {
     const features: string[] = [];

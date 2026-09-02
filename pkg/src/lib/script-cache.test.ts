@@ -16,7 +16,7 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
+import { isScriptCacheEnabledForPath, pruneScriptCache, resetScriptCachePruneThrottle } from "./script-cache.ts";
 import { BascikConfig } from "./config.ts";
 import { mkdir, writeFile, utimes, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 
 describe("script-cache configuration and scoping", () => {
   beforeEach(() => {
+    resetScriptCachePruneThrottle();
     (BascikConfig as any).scripts.cache = {
       enabled: true,
       include: undefined,

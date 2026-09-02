@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 
@@ -79,8 +79,32 @@ class CspHashCollector {
     const cspPath = join(outDir, ".bascik", "csp-hashes.json");
     await mkdir(dirname(cspPath), { recursive: true });
 
-    const manifest = this.getManifest();
-    const content = JSON.stringify(manifest, null, 2);
+    let mergedManifest: CspHashesManifest = {};
+    const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+    if (isTargetedBuild) {
+      try {
+        const rawExisting = await readFile(cspPath, "utf8");
+        const parsed = JSON.parse(rawExisting) as CspHashesManifest;
+        if (parsed && typeof parsed === "object") {
+          mergedManifest = { ...parsed };
+        }
+      } catch {
+        // No existing file to merge
+      }
+    }
+
+    const currentManifest = this.getManifest();
+    mergedManifest = { ...mergedManifest, ...currentManifest };
+
+    const sortedKeys = Object.keys(mergedManifest).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    const finalManifest: CspHashesManifest = {};
+    for (const key of sortedKeys) {
+      finalManifest[key] = mergedManifest[key];
+    }
+
+    const content = JSON.stringify(finalManifest, null, 2);
     await writeFile(cspPath, content, "utf8");
     return cspPath;
   }

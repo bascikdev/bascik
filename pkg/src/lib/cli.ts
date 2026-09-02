@@ -40,6 +40,7 @@ export interface CliFlags {
   logLevel?: string;
   siteUrl?: string;
   envFiles: string[];
+  only?: string[];
 }
 
 export interface CliDecision {
@@ -78,6 +79,7 @@ const VALUE_FLAGS = new Set([
   "--log-level",
   "--site-url",
   "--env-file",
+  "--only",
 ]);
 
 /** `--log` is the one flag whose value is optional. */
@@ -100,6 +102,7 @@ const SUGGESTION_CANDIDATES = [
   "--log-level",
   "--site-url",
   "--env-file",
+  "--only",
   "--log",
 ];
 
@@ -239,6 +242,10 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       case "--env-file":
         flags.envFiles.push(value);
         break;
+      case "--only":
+        if (!flags.only) flags.only = [];
+        flags.only.push(value);
+        break;
       case "--log":
         flags.log = value || DEFAULT_LOG_PATH;
         break;
@@ -367,6 +374,10 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (flags.log !== undefined && action !== "build") {
     return error("Error: --log only applies to --build.");
+  }
+
+  if (flags.only !== undefined && action !== "build") {
+    return error("Error: --only only applies to --build.");
   }
 
   return { action, flags };

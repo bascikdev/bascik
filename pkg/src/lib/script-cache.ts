@@ -5,6 +5,13 @@ import { BascikConfig } from "./config.ts";
 /** Max age for script cache files before pruning (7 days in ms) */
 const SCRIPT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+let lastPruneTime = 0;
+const PRUNE_THROTTLE_MS = 60 * 60 * 1000; // prune at most once per hour
+
+export const resetScriptCachePruneThrottle = (): void => {
+  lastPruneTime = 0;
+};
+
 export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {
   const cacheConfig = BascikConfig.scripts?.cache;
   if (!cacheConfig || cacheConfig.enabled === false) {
@@ -39,10 +46,14 @@ export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {
  * Prune disk cache entries older than TTL or exceeding maximum capacity.
  * One-line policy: prune cached JSON files older than 7 days to prevent unbounded directory growth.
  */
-export const pruneScriptCache = async (cacheDir: string): Promise<void> => {
+export const pruneScriptCache = async (cacheDir: string, force = false): Promise<void> => {
+  const now = Date.now();
+  if (!force && now - lastPruneTime < PRUNE_THROTTLE_MS) {
+    return;
+  }
+  lastPruneTime = now;
   try {
     const files = await readdir(cacheDir);
-    const now = Date.now();
     await Promise.all(
       files
         .filter((f) => f.endsWith(".json"))

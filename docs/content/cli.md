@@ -81,6 +81,7 @@ bascik --check   # static analysis: validate pages, components, and config witho
 | Flag | Description |
 | --- | --- |
 | `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
+| `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
 | `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
 | `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
 | `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
@@ -136,6 +137,26 @@ bascik --build --log ./logs/build.log
 ```
 
 `--log` is only valid together with `--build`; passing it to the dev server or `--server` is an error. The terminal output still stays as the primary log, and the file is an optional diagnostic artifact. If you do not pass `--log`, Bascik does not create a build log file.
+
+## Targeted builds (`--only`)
+
+Use `--only <glob>` to selectively rebuild a subset of pages without compiling the entire site:
+
+```sh
+bascik --build --only "blog/**"
+bascik --build --only "blog/**" --only "about.html"
+bascik --build --only="docs/pages/internals/*"
+```
+
+Important rules for targeted builds:
+- The glob is matched relative to `directory.pages`.
+- Multiple `--only` flags union together.
+- `--only` is only valid with `--build`. Passing `--only` without `--build` is an error.
+- A glob that matches zero pages produces an error.
+- **The output directory is not cleaned:** existing pages in `dist/` are preserved so a targeted build does not destroy the rest of your site.
+- **Pages only:** `--only` scopes page transpilation, not static assets. Static assets are still copied and verified.
+- **Sitemap and robots:** `sitemap.xml` and `robots.txt` generation is skipped with a warning during targeted builds to prevent delisting pages that were not rebuilt. Run a full `bascik --build` to regenerate whole-site sitemaps.
+- **Manifest & CSP hashes:** When `generate.manifest` or `generate.cspHashes` are enabled, newly generated entries merge cleanly into the existing artifact in `dist/.bascik/`.
 
 ## Starting the dev server
 

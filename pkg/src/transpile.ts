@@ -27,7 +27,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     );
   }
   // Targeted builds added by prompt 33 must skip this full output clean.
-  await rm(outputDirectory, { recursive: true, force: true });
+  const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  if (!isTargetedBuild) {
+    await rm(outputDirectory, { recursive: true, force: true });
+  }
 
   const overallStart = performance.now();
 

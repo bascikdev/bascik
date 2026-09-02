@@ -218,6 +218,7 @@ export interface BascikConfigOptions {
   base: string;
   isBuild: boolean;
   isProdServer: boolean;
+  only?: string[];
 }
 
 export type UserConfig = {

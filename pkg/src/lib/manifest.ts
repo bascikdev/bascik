@@ -69,9 +69,34 @@ class ManifestCollector {
     const manifestPath = join(outDir, ".bascik", "manifest.json");
     await mkdir(dirname(manifestPath), { recursive: true });
 
+    let mergedFiles: Record<string, ManifestEntry> = {};
+    const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+    if (isTargetedBuild) {
+      try {
+        const rawExisting = await readFile(manifestPath, "utf8");
+        const parsed = JSON.parse(rawExisting) as BuildManifest;
+        if (parsed && typeof parsed.files === "object") {
+          mergedFiles = { ...parsed.files };
+        }
+      } catch {
+        // No existing manifest to merge
+      }
+    }
+
+    const currentFiles = this.getFiles();
+    mergedFiles = { ...mergedFiles, ...currentFiles };
+
+    const sortedKeys = Object.keys(mergedFiles).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    const finalFiles: Record<string, ManifestEntry> = {};
+    for (const key of sortedKeys) {
+      finalFiles[key] = mergedFiles[key];
+    }
+
     const manifest: BuildManifest = {
       version,
-      files: this.getFiles(),
+      files: finalFiles,
     };
 
     const content = JSON.stringify(manifest, null, 2);

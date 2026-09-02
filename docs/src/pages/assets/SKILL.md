@@ -1228,11 +1228,14 @@ Then run `bascik init` to scaffold starter files (`src/pages/index.html`, `src/c
 bascik                        # dev: transpile, start plaintext HTTP server at http://localhost:8080, watch
 bascik --build                # production: transpile to dist/ only
 bascik --build --log [path]   # write build output to a log file (default: .bascik/build.log; only valid with --build)
+bascik --build --only <glob>  # targeted build: rebuild matching pages only without cleaning dist/ (repeatable)
 bascik --server               # production server: serve a pre-built dist/ folder
 bascik --check                # static analysis: validate pages, components, and config without building
 ```
 
-More flags: `--config <path>` (load a specific config file), `--port <n>`, `--host <name>`, `--log-level <silent|error|warn|info|debug>`, `--site-url <url>`, and `--env-file <path>` (repeatable). Every value flag accepts both `--flag value` and `--flag=value`. Precedence: a flag beats the environment variable (`BASCIK_SERVER_PORT`, `BASCIK_SERVER_HOST`, `BASCIK_LOG_LEVEL`), which beats the config file. The parser rejects `--build` combined with `--server`, unknown flags, and stray positionals: `bascik build` (no dashes) errors with a `Did you mean "--build"?` suggestion instead of silently starting the dev server.
+More flags: `--config <path>` (load a specific config file), `--port <n>`, `--host <name>`, `--log-level <silent|error|warn|info|debug>`, `--site-url <url>`, `--only <glob>` (repeatable, only with `--build`), and `--env-file <path>` (repeatable). Every value flag accepts both `--flag value` and `--flag=value`. Precedence: a flag beats the environment variable (`BASCIK_SERVER_PORT`, `BASCIK_SERVER_HOST`, `BASCIK_LOG_LEVEL`), which beats the config file. The parser rejects `--build` combined with `--server`, `--only` without `--build`, unknown flags, and stray positionals: `bascik build` (no dashes) errors with a `Did you mean "--build"?` suggestion instead of silently starting the dev server.
+
+**Gotchas with `--only`:** Targeted builds skip cleaning `directory.out` so existing compiled pages survive. Sitemap and robots generation is skipped with a warning to avoid delisting unbuilt pages. Artifacts (`dist/.bascik/manifest.json`, `dist/.bascik/csp-hashes.json`) merge updated entries into existing files.
 
 **`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
 

@@ -109,6 +109,18 @@ import {
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
 
+interface ScopedCssCacheEntry {
+  css: string;
+  allElementClasses: string[];
+  allIdsConverted: { idName: string; className: string }[];
+}
+
+const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
+
+export const clearScopedCssCache = (): void => {
+  scopedCssCache.clear();
+};
+
 const rewriteIdReferencesInStyleTags = (
   html: string,
   resolve: (originalId: string) => string | null,
@@ -266,7 +278,7 @@ export const prefixElementAttribute = (
   component: BascikComponent,
   attribute: "id" | "name" | "class",
   componentInstanceId: string | null = null,
-  deduplicateCss: boolean = true,
+  deduplicateCss: boolean = BascikConfig.scoping?.deduplicateCss !== false,
   preservedTags: string[] = [],
 ): BascikComponent => {
   if (!component.fileContent) return component;
@@ -477,13 +489,27 @@ export const prefixElementAttribute = (
     }
   }
 
+  // Deduplicate attributesToReplace tokens before running the script rewrite loop
+  const seenAttrMap = new Map<string, string>();
+  for (const { attributeName, obfuscatedAttributeName } of attributesToReplace) {
+    if (!seenAttrMap.has(attributeName)) {
+      seenAttrMap.set(attributeName, obfuscatedAttributeName);
+    }
+  }
+  const uniqueAttributesToReplace = Array.from(seenAttrMap.entries()).map(
+    ([attributeName, obfuscatedAttributeName]) => ({
+      attributeName,
+      obfuscatedAttributeName,
+    }),
+  );
+
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
   const scopedHtml = scopedAttrsHtml.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open) => {
       if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
       let updatedMatch = match;
-      attributesToReplace.forEach(
+      uniqueAttributesToReplace.forEach(
         ({ attributeName, obfuscatedAttributeName }) => {
           if (!updatedMatch.includes(attributeName)) return;
           const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {
@@ -706,84 +732,101 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
-      component.cssFileContent = resolveCssImportsSync(
-        component.cssFileContent,
-        component.fileName,
-      );
-      if (component.scopedIdNames) {
-        component.cssFileContent = rewriteIdReferencesInCss(
+      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames
+      const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
+      const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
+      const cached = scopedCssCache.get(cacheKey);
+
+      if (cached) {
+        component.cssFileContent = cached.css;
+        allElementClasses.push(...cached.allElementClasses);
+        allIdsConverted.push(...cached.allIdsConverted);
+      } else {
+        component.cssFileContent = resolveCssImportsSync(
           component.cssFileContent,
-          (originalId) => component.scopedIdNames?.[originalId] ?? null,
+          component.fileName,
         );
+        if (component.scopedIdNames) {
+          component.cssFileContent = rewriteIdReferencesInCss(
+            component.cssFileContent,
+            (originalId) => component.scopedIdNames?.[originalId] ?? null,
+          );
+        }
+        // Handle basic replacement of classnames in css file.
+        // Shield string literals and url(...) contents first so dots inside
+        // them (file extensions, domains) are never mistaken for class selectors:
+        //   url(./img.png)  must NOT become  url(./img.bascik__…__png)
+        const { css: shieldedCss, restore: restoreCssStrings } = shieldCssStrings(
+          component.cssFileContent,
+        );
+        component.cssFileContent = restoreCssStrings(
+          shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
+            return minifyAttributeName(`bascik__${scopeKey}__${className}`);
+          }),
+        );
+
+        const { css: elSelectorToClassCss, elementsConvertedClasses } =
+          convertCssElementSelectorsToClasses(component.cssFileContent, scopeKey);
+        component.cssFileContent = elSelectorToClassCss;
+        allElementClasses.push(...elementsConvertedClasses);
+
+        component.cssFileContent = prefixKeyframes(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Convert CSS hash-ID selectors (#id) to component-scoped class selectors.
+        // Uses a context-aware lookahead to avoid matching hex color values.
+        const { css: idSelectorCss, idsConverted } =
+          convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
+        component.cssFileContent = idSelectorCss;
+        allIdsConverted.push(...idsConverted);
+
+        // Strip the [id] attribute-selector form (cannot be scoped without wrapping).
+        component.cssFileContent = removeIdSelectors(component.cssFileContent);
+
+        // Scope CSS custom properties (--var-name declarations and var() references)
+        component.cssFileContent = scopeCssCustomProperties(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Scope @layer names
+        component.cssFileContent = scopeLayerNames(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Scope @container names
+        component.cssFileContent = scopeContainerNames(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Scope view-transition-name values
+        component.cssFileContent = scopeViewTransitionNames(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Scope @counter-style names
+        component.cssFileContent = scopeCounterStyleNames(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        // Scope anchor-name / @position-try identifiers
+        component.cssFileContent = scopeAnchorNames(
+          component.cssFileContent,
+          scopeKey,
+        );
+
+        scopedCssCache.set(cacheKey, {
+          css: component.cssFileContent,
+          allElementClasses: [...elementsConvertedClasses],
+          allIdsConverted: [...idsConverted],
+        });
       }
-      // Handle basic replacement of classnames in css file.
-      // Shield string literals and url(...) contents first so dots inside
-      // them (file extensions, domains) are never mistaken for class selectors:
-      //   url(./img.png)  must NOT become  url(./img.bascik__…__png)
-      const { css: shieldedCss, restore: restoreCssStrings } = shieldCssStrings(
-        component.cssFileContent,
-      );
-      component.cssFileContent = restoreCssStrings(
-        shieldedCss.replace(/(?<=\.)[a-z_][a-z0-9-_]*/gim, (className) => {
-          return minifyAttributeName(`bascik__${scopeKey}__${className}`);
-        }),
-      );
-
-      const { css: elSelectorToClassCss, elementsConvertedClasses } =
-        convertCssElementSelectorsToClasses(component.cssFileContent, scopeKey);
-      component.cssFileContent = elSelectorToClassCss;
-      allElementClasses.push(...elementsConvertedClasses);
-
-      component.cssFileContent = prefixKeyframes(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Convert CSS hash-ID selectors (#id) to component-scoped class selectors.
-      // Uses a context-aware lookahead to avoid matching hex color values.
-      const { css: idSelectorCss, idsConverted } =
-        convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
-      component.cssFileContent = idSelectorCss;
-      allIdsConverted.push(...idsConverted);
-
-      // Strip the [id] attribute-selector form (cannot be scoped without wrapping).
-      component.cssFileContent = removeIdSelectors(component.cssFileContent);
-
-      // Scope CSS custom properties (--var-name declarations and var() references)
-      component.cssFileContent = scopeCssCustomProperties(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Scope @layer names
-      component.cssFileContent = scopeLayerNames(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Scope @container names
-      component.cssFileContent = scopeContainerNames(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Scope view-transition-name values
-      component.cssFileContent = scopeViewTransitionNames(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Scope @counter-style names
-      component.cssFileContent = scopeCounterStyleNames(
-        component.cssFileContent,
-        scopeKey,
-      );
-
-      // Scope anchor-name / @position-try identifiers
-      component.cssFileContent = scopeAnchorNames(
-        component.cssFileContent,
-        scopeKey,
-      );
     }
 
     // Scope inline <style> tags in the component HTML and collect any

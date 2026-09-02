@@ -113,6 +113,10 @@ Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`,
 
 Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.
 
+## Can I rebuild only part of my site?
+
+Yes. Run `bascik --build --only "<glob>"` to selectively transpile matching pages (e.g. `bascik --build --only "blog/**"`). Targeted builds do not clean the output directory, so your other compiled pages remain intact in `dist/`. Note that sitemap and robots generation is skipped during targeted builds to prevent delisting pages that were not rebuilt; run a full build before deploying to production.
+
 ## Why did my `parallel` exec script's output not appear?
 
 In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and joined before page transpilation begins. However, if transpilation requires generated content from a script, configure that script with `phase: 'pre'` to guarantee it finishes before page compilation starts.
