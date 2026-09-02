@@ -21,6 +21,9 @@ const devServerTestIgnore = [
   '**/exec.test.ts',
   '**/dist-lifecycle.test.ts',
   '**/preserve-server-form.test.ts',
+  // http.httpCache defaults to false in dev, so ETags/304s are intentionally
+  // absent. This suite only runs against playwright.server*.config.ts.
+  '**/caching-layer.test.ts',
 ];
 
 export default defineConfig({

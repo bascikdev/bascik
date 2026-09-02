@@ -18,7 +18,7 @@ vi.mock("node:fs/promises", () => ({
   readFile: mocks.readFile,
 }));
 
-import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, generateSitemapFiles } from "./sitemap.ts";
+import { encodeUrlPath, buildSitemapXml, buildRobotsTxt, escapeXml, is404Page, is500Page, generateSitemapFiles } from "./sitemap.ts";
 import { composeSiteUrl } from "./base-path.ts";
 import { getHttpPath } from "./paths.ts";
 import { listPages } from "./file-system.ts";
@@ -192,6 +192,24 @@ describe("is404Page", () => {
   });
 });
 
+describe("is500Page", () => {
+  it("matches pages/500.html", () => {
+    expect(is500Page("pages/500.html")).toBe(true);
+  });
+
+  it("does not match a nested 500 page", () => {
+    expect(is500Page("pages/blog/500.html")).toBe(false);
+  });
+
+  it("does not match a regular page", () => {
+    expect(is500Page("pages/about.html")).toBe(false);
+  });
+
+  it("does not match the root index", () => {
+    expect(is500Page("pages/index.html")).toBe(false);
+  });
+});
+
 describe("buildRobotsTxt", () => {
   it("generates robots.txt pointing to sitemap", () => {
     const robots = buildRobotsTxt("https://example.com");
@@ -246,6 +264,25 @@ describe("generateSitemapFiles", () => {
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).toContain("<loc>https://example.com/about</loc>");
     expect(xml).not.toContain("/404");
+  });
+
+  // The custom 500 error page (prompt 38) is not real content and, like
+  // /404, must not be advertised to crawlers as a canonical URL.
+  it("excludes the 500 page from sitemap.xml", async () => {
+    vi.mocked(listPages).mockResolvedValue([
+      "/project/src/pages/index.html",
+      "/project/src/pages/about.html",
+      "/project/src/pages/500.html",
+    ]);
+    await generateSitemapFiles();
+    const sitemapCall = vi
+      .mocked(writeFile)
+      .mock.calls.find(([file]) => String(file).includes("sitemap.xml"));
+    expect(sitemapCall).toBeDefined();
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/</loc>");
+    expect(xml).toContain("<loc>https://example.com/about</loc>");
+    expect(xml).not.toContain("/500");
   });
 
   it("includes passed transpiled routes and does not contain literal bracket placeholders", async () => {

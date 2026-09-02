@@ -1,12 +1,18 @@
 import http from "node:http";
 import {
   createRequestHandler,
+  isNetworkResetError,
   startServerInstance,
   type BascikRequest,
   type BascikResponse
 } from "./server.ts";
 
 export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResponse): { req: BascikRequest; res: BascikResponse } => {
+  resMsg.on("error", (err) => {
+    if (isNetworkResetError(err)) return;
+    console.error("[bascik] HTTP/1.1 response error:", err);
+  });
+
   const req: BascikRequest = {
     method: reqMsg.method ?? "GET",
     path: reqMsg.url,
@@ -50,9 +56,20 @@ export const startHttpServer = async (): Promise<string> => {
     socket.once("close", () => openSockets.delete(socket));
   });
 
-  server.on("request", async (reqMsg, resMsg) => {
+  server.on("request", (reqMsg, resMsg) => {
     const { req, res } = adaptHttp1(reqMsg, resMsg);
-    await handleRequest(req, res);
+    // Returning the promise here is a no-op for Node's EventEmitter, which
+    // ignores listener return values, but lets tests and other callers
+    // deterministically await request handling instead of racing it.
+    return handleRequest(req, res).catch((err) => {
+      console.error("[bascik] Unhandled error during request processing:", err);
+      if (!res.headersSent) {
+        try {
+          res.respond(500, { "content-type": "text/plain" });
+          res.end("Internal Server Error");
+        } catch { }
+      }
+    });
   });
 
   return startServerInstance(server, "http", () => {

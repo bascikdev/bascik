@@ -190,6 +190,24 @@ export default {
 
 When `keyFile` and `certFile` are omitted, Bascik generates certificates automatically using mkcert (if installed) or openssl as a fallback. For production, supply a certificate signed by a trusted CA.
 
+### Process supervisor in production
+
+When running `bascik --server` directly on a server or within containers, always run under a process supervisor such as systemd, Docker restart policies, or a container orchestrator (Kubernetes, AWS ECS).
+
+Process-level safety handlers in Bascik ensure that unhandled errors or rejections log complete diagnostics before exiting cleanly with a non-zero code. A supervisor automatically restarts the process in an untainted state:
+
+**systemd unit restart policy:**
+```ini
+[Service]
+Restart=on-failure
+RestartSec=3s
+```
+
+**Docker container restart policy:**
+```sh
+docker run -d --restart=unless-stopped -p 8080:8080 my-site
+```
+
 ### Containers
 
 A two-stage Dockerfile keeps the final image lean:
@@ -262,6 +280,26 @@ systemctl daemon-reload
 systemctl enable --now my-site
 journalctl -u my-site -f
 ```
+
+### Caching and cache-control tuning
+
+Bascik inlines component CSS and JavaScript directly into page markup, and `assets.inlineStyles` inlines global stylesheets. External static asset requests are primarily images, fonts, and favicons.
+
+Configure `http.cacheControl` to tune caching policies per extension:
+
+```ts
+// bascik.config.ts
+export default {
+  http: {
+    cacheControl: {
+      '.woff2': 'public, max-age=31536000, immutable',
+      '.png': 'public, max-age=86400',
+    },
+  },
+};
+```
+
+Pair `immutable` with fingerprinted filenames where content is immutable.
 
 ### Behind a reverse proxy
 

@@ -12,6 +12,17 @@ import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-script
 import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
+import {
+  getContentHashEtag,
+  getEncodedEtag,
+  resolveCacheControl,
+  negotiateCompression,
+  isCompressibleMime,
+  STATIC_CACHE_METADATA,
+  COMPRESSION_MIN_BYTES,
+} from "./caching.ts";
+import { readFile } from "node:fs/promises";
+import zlib from "node:zlib";
 
 import { makeEtag } from "./names.ts";
 
@@ -98,30 +109,57 @@ export const isNetworkResetError = (err: unknown): boolean => {
     code === "EPIPE" ||
     code === "ECANCELED" ||
     code === "ERR_HTTP2_STREAM_CANCEL" ||
-    code === "ERR_HTTP2_INVALID_STREAM"
+    code === "ERR_HTTP2_INVALID_STREAM" ||
+    code === "ERR_HTTP2_INVALID_SESSION" ||
+    code === "ERR_STREAM_WRITE_AFTER_END" ||
+    code === "ERR_STREAM_DESTROYED" ||
+    code === "ERR_STREAM_ALREADY_FINISHED"
   );
 };
+
+const DEFAULT_500_BODY = Buffer.from(
+  "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
+  "utf8"
+);
 
 export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest): void => {
   // Client disconnected mid-request: not a server bug, nothing to respond to.
   if (isNetworkResetError(error)) return;
   const secHeaders = getSecurityHeaders(req);
+
   try {
     if (!res.headersSent) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
         res.respond(404, { ...secHeaders });
+        res.end();
       } else {
-        res.respond(500, { ...secHeaders });
+        // Try serving custom 500 page from memory store
+        let custom500Page: any = undefined;
+        try {
+          custom500Page = mem.getPageExact("/500");
+        } catch {
+          // Guard against recursion if lookup throws
+        }
+
+        const bodyBuf = custom500Page?.content ? custom500Page.content : DEFAULT_500_BODY;
+        res.respond(500, {
+          "content-type": "text/html; charset=utf-8",
+          "content-length": bodyBuf.byteLength,
+          ...secHeaders,
+        });
+        res.end(bodyBuf);
       }
     }
   } catch (respondErr) {
     console.error("Error responding to stream/request:", respondErr);
-  }
-
-  try {
-    res.end();
-  } catch (endErr) {
-    console.error("Error ending stream/request:", endErr);
+    try {
+      if (!res.headersSent) {
+        res.respond(500, { "content-type": "text/html; charset=utf-8", ...secHeaders });
+      }
+      res.end(DEFAULT_500_BODY);
+    } catch (endErr) {
+      console.error("Error ending stream/request:", endErr);
+    }
   }
 
   console.error("Request/Stream error:", error);
@@ -227,7 +265,6 @@ export const createRequestHandler = () => {
           return;
         }
 
-        // Stat gives us size (for Content-Length) + mtime (for ETag) in one syscall.
         let fileStat: Awaited<ReturnType<typeof stat>>;
         try {
           fileStat = await stat(fullPath);
@@ -238,40 +275,126 @@ export const createRequestHandler = () => {
           return;
         }
 
-        const etag = makeStatEtag(fileStat.mtimeMs, fileStat.size);
-        if (BascikConfig.http.httpCache !== false && req.headers["if-none-match"] === etag) {
+        let cached = STATIC_CACHE_METADATA.get(fullPath);
+        if (!cached || cached.mtimeMs !== fileStat.mtimeMs || cached.size !== fileStat.size) {
+          // Compute the content-hash ETag once, before the first response is
+          // sent. A background-computed hash would still let the very first
+          // request on every fresh process (every restart, every replica)
+          // serve a non-deterministic mtime-derived ETag, the exact bug this
+          // cache exists to fix.
+          let etag: string;
+          try {
+            const rawContent = await readFile(fullPath);
+            etag = getContentHashEtag(rawContent);
+          } catch {
+            // File vanished or became unreadable between stat() and read();
+            // fall back rather than fail the whole request over an ETag.
+            etag = `"${fileStat.mtimeMs}-${fileStat.size}"`;
+          }
+          cached = {
+            etag,
+            size: fileStat.size,
+            mtimeMs: fileStat.mtimeMs,
+          };
+          STATIC_CACHE_METADATA.set(fullPath, cached);
+        }
+
+        const rawEtag = cached.etag;
+        const mimeType = MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
+        const cacheControlVal = BascikConfig.http.httpCache !== false
+          ? resolveCacheControl(ext.toLowerCase(), BascikConfig.http.cacheControl)
+          : "no-store";
+
+        const enableCompression = BascikConfig.http.compression !== false && isCompressibleMime(mimeType, ext.toLowerCase()) && fileStat.size >= COMPRESSION_MIN_BYTES;
+        const negotiatedEncoding = enableCompression ? negotiateCompression(req.headers["accept-encoding"]) : "identity";
+        const effectiveEtag = negotiatedEncoding !== "identity" ? getEncodedEtag(rawEtag, negotiatedEncoding) : rawEtag;
+
+        // Conditional GET (304)
+        if (BascikConfig.http.httpCache !== false && (req.headers["if-none-match"] === effectiveEtag || req.headers["if-none-match"] === rawEtag)) {
           responseStatus = 304;
-          res.respond(304, { etag, ...secHeaders });
+          const headers304: Record<string, string | number> = {
+            etag: effectiveEtag,
+            "cache-control": cacheControlVal,
+            "vary": "Accept-Encoding",
+            ...secHeaders,
+          };
+          res.respond(304, headers304);
           res.end();
           return;
         }
 
         const staticHeaders: Record<string, string | number> = {
-          "content-type": MIME_MAP.get(ext) ?? "application/octet-stream",
-          "content-length": fileStat.size,
+          "content-type": mimeType,
+          "cache-control": cacheControlVal,
+          "vary": "Accept-Encoding",
           ...secHeaders,
         };
+
         if (BascikConfig.http.httpCache !== false) {
-          staticHeaders["etag"] = etag;
-          staticHeaders["cache-control"] = "public, max-age=3600";
-        } else {
-          staticHeaders["cache-control"] = "no-store";
+          staticHeaders["etag"] = effectiveEtag;
         }
 
         if (isHead) {
           responseStatus = 200;
+          staticHeaders["content-length"] = fileStat.size;
           res.respond(200, staticHeaders);
           res.end();
           return;
         }
+
+        // Check for pre-compressed sidecars (.br / .gz) or compress on the fly
+        let sidecarBuffer: Buffer | undefined = undefined;
+        let sidecarEncoding: string | undefined = undefined;
+
+        if (negotiatedEncoding === "br") {
+          try {
+            const sidecar = await readFile(`${fullPath}.br`);
+            if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
+              sidecarBuffer = sidecar;
+              sidecarEncoding = "br";
+            }
+          } catch { }
+        } else if (negotiatedEncoding === "gzip") {
+          try {
+            const sidecar = await readFile(`${fullPath}.gz`);
+            if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
+              sidecarBuffer = sidecar;
+              sidecarEncoding = "gzip";
+            }
+          } catch { }
+        }
+
+        if (sidecarBuffer && sidecarEncoding) {
+          staticHeaders["content-encoding"] = sidecarEncoding;
+          staticHeaders["content-length"] = sidecarBuffer.byteLength;
+          responseStatus = 200;
+          res.respond(200, staticHeaders);
+          return res.end(sidecarBuffer);
+        }
+
+        if (enableCompression && (negotiatedEncoding === "br" || negotiatedEncoding === "gzip")) {
+          try {
+            const raw = await readFile(fullPath);
+            if (raw && Buffer.isBuffer(raw) && raw.length > 0) {
+              const compressed = negotiatedEncoding === "br"
+                ? zlib.brotliCompressSync(raw)
+                : zlib.gzipSync(raw);
+              staticHeaders["content-encoding"] = negotiatedEncoding;
+              staticHeaders["content-length"] = compressed.byteLength;
+              responseStatus = 200;
+              res.respond(200, staticHeaders);
+              return res.end(compressed);
+            }
+          } catch { }
+        }
+
+        staticHeaders["content-length"] = fileStat.size;
 
         const fileStream = createReadStream(fullPath);
 
         fileStream.on("error", (err) => {
           if (res.destroyed) return;
           if (res.headersSent) {
-            // Headers already went out on "open", so a second respond() would
-            // throw ERR_HTTP2_HEADERS_SENT. Abort the stream instead.
             res.close(2); // NGHTTP2_INTERNAL_ERROR equivalent
             return;
           }
@@ -444,21 +567,32 @@ export const createRequestHandler = () => {
       }
 
       // ── ETag + conditional GET (skip for no-store pages) ─────────────────
-      const etag = page.etag ?? makeEtag(page.content);
-      if (BascikConfig.http.httpCache !== false && req.headers["if-none-match"] === etag) {
-        responseStatus = 304;
-        res.respond(304, { etag, ...secHeaders });
-        return res.end();
-      }
-      responseHeaders["etag"] = etag;
-
-      // ── Brotli or uncompressed ────────────────────────────────────────────
       const rawAcceptEncoding = req.headers["accept-encoding"] ?? "";
       const acceptEncoding = Array.isArray(rawAcceptEncoding)
         ? rawAcceptEncoding.join(", ")
         : rawAcceptEncoding;
+      const willCompressBr = /\bbr\b/.test(acceptEncoding) && !!page.compressedContent;
 
-      if (/\bbr\b/.test(acceptEncoding) && page.compressedContent) {
+      const rawEtag = page.etag ?? makeEtag(page.content);
+      const effectivePageEtag = willCompressBr ? getEncodedEtag(rawEtag, "br") : rawEtag;
+
+      if (BascikConfig.http.httpCache !== false && (req.headers["if-none-match"] === effectivePageEtag || req.headers["if-none-match"] === rawEtag)) {
+        responseStatus = 304;
+        res.respond(304, {
+          etag: effectivePageEtag,
+          "cache-control": responseHeaders["cache-control"] ?? "public, max-age=0, must-revalidate",
+          "vary": "Accept-Encoding",
+          ...secHeaders,
+        });
+        return res.end();
+      }
+
+      if (BascikConfig.http.httpCache !== false) {
+        responseHeaders["etag"] = effectivePageEtag;
+      }
+
+      // ── Brotli or uncompressed ────────────────────────────────────────────
+      if (willCompressBr && page.compressedContent) {
         responseHeaders["content-encoding"] = "br";
         responseHeaders["content-length"] = page.compressedContent.byteLength;
         res.respond(responseStatus, responseHeaders);

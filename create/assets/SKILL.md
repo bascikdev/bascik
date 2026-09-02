@@ -1182,7 +1182,7 @@ src/
 * **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
 * **500 Error Pages in Static vs. Server Contexts:**
   * **Static builds (`bascik --build`):** A 500 error page is meaningless in a fully static build, because static web hosts serve their own error pages if an infrastructure or server issue occurs. Do not port a 500 error page from Next.js, Remix, or any server-rendered framework into a static Bascik site.
-  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
+  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` is convention-based with no config key. When an unhandled error occurs, `src/pages/500.html` is served with status 500 and security headers, falling back to a built-in minimal document when absent. Static hosts serve their own error pages.
 
 ---
 
@@ -1256,7 +1256,11 @@ export default {
 ```
 When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert if available, openssl fallback) when `keyFile`/`certFile` are absent. Provide your own certs from a public CA for production.
 
-**`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages receive `ETag` headers and the server returns `304 Not Modified` for unchanged content; static assets get `Cache-Control: public, max-age=3600`. Set `false` if a CDN manages caching externally.
+**`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages and static assets receive strong SHA-256 content-hash `ETag` headers (not mtime-derived, so identical bytes produce identical ETags across separate server instances/replicas) and the server returns `304 Not Modified` for unchanged content, carrying `vary` and `cache-control`. Set `false` if a CDN manages caching externally.
+
+**`http.cacheControl`:** a string (applied to every static asset) or a per-extension map, e.g. `{ '.woff2': 'public, max-age=31536000, immutable', '.png': 'public, max-age=86400' }`. Unmapped extensions fall back to the default `public, max-age=3600`. Only pair `immutable` with a URL whose content cannot change (in practice, a fingerprinted filename).
+
+**`http.compression`:** negotiates Brotli or Gzip for static assets based on `Accept-Encoding`, preferring a precompressed `.br`/`.gz` sidecar next to the file when one exists. Compression is skipped below a size threshold and for already-compressed formats (images, video, audio, archives, `woff2`). Pages are compressed with Brotli only (no gzip fallback yet); static assets support both. The Brotli/Gzip-encoded representation gets a distinct ETag from the identity representation (e.g. `"hash-br"`).
 
 **Production hardening (automatic in `--server`):**
 * **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`. When serving over HTTPS/TLS (`enableTls: true` or `x-forwarded-proto: https`), `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS) is automatically included per RFC 6797.
@@ -1266,10 +1270,10 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Path traversal protection:** static asset URLs are validated against `dist/`; requests that escape with `/../` sequences get `400 Bad Request`.
 * **Hidden-path protection:** after URL decoding, any request path containing a segment that starts with `.` gets `404 Not Found` before static file lookup.
 
-**Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
+**Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Always run production servers under a process supervisor (systemd, Docker restart policy, or Kubernetes supervisor) as Bascik's process-level crash net terminates with a non-zero exit code on unhandled errors to avoid undefined state. Key patterns:
 
-* **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service.
-* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`).
+* **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service with `Restart=on-failure`.
+* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`) with `--restart=unless-stopped`.
 * **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
 When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.

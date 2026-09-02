@@ -7,6 +7,12 @@ import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
 import type { StoredPage } from "./types.ts";
 
+export const getBrotliQuality = (config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig): number => {
+  return config.isBuild || config.isProdServer
+    ? zlib.constants.BROTLI_MAX_QUALITY
+    : zlib.constants.BROTLI_MIN_QUALITY;
+};
+
 interface StorePageArgs {
   relativePagePath: string;
   absolutePagePath: string;
@@ -104,9 +110,7 @@ class MemoryStore {
     // Fire-and-forget: compress in the background and attach the result once
     // done. In dev mode, quality 1 (min) is 200x faster than quality 11 (max)
     // and avoids queuing heavy zlib tasks that delay dev server shutdown.
-    const quality = BascikConfig.isBuild
-      ? zlib.constants.BROTLI_MAX_QUALITY
-      : zlib.constants.BROTLI_MIN_QUALITY;
+    const quality = getBrotliQuality();
     zlib.brotliCompress(
       buffer,
       { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: quality } },

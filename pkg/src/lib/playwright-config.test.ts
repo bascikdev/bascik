@@ -18,6 +18,7 @@ describe('Playwright project test selection', () => {
       '**/dev-server-reload.test.ts',
       '**/prod-server.test.ts',
       '**/preserve-server-form.test.ts',
+      '**/caching-layer.test.ts',
       '**/base-serving.test.ts',
     ]],
     [devConfig, [
@@ -27,6 +28,7 @@ describe('Playwright project test selection', () => {
       '**/exec.test.ts',
       '**/dist-lifecycle.test.ts',
       '**/preserve-server-form.test.ts',
+      '**/caching-layer.test.ts',
       '**/base-serving.test.ts',
     ]],
     [http1Config, [

@@ -189,7 +189,7 @@ export interface HttpOptions {
   tls: HttpTlsOptions;
   rateLimit: boolean | { window?: number; max?: number };
   trustProxy: boolean;
-  cacheControl: string;
+  cacheControl: string | Record<string, string>;
   compression: boolean;
   timeouts?: HttpTimeoutsOptions;
   maxBodySize: number;

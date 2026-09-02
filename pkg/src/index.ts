@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
+import { installProcessCrashHandlers } from "./lib/crash-net.ts";
 
-export { readVersion };
+export { readVersion, installProcessCrashHandlers };
 
 export const resolveBuildLogPath = (args: string[]): string | undefined => {
   return resolveCliAction(args).flags.log;
@@ -116,6 +117,9 @@ const isMain =
     process.argv[1].endsWith("bascik.js"));
 
 if (isMain) {
+  // Install process-level crash net for unexpected rejections / exceptions.
+  installProcessCrashHandlers();
+
   // CLI boundary: anything that escapes runCli (for example a config load
   // failure during a lazy module import) is reported as one clean line. The
   // actionable message is in err.message; a full Node stack and an unhandled

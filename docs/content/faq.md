@@ -97,6 +97,16 @@ In earlier versions of Bascik, generated files could overwrite authored ones. Ba
 
 Bascik builds are fully deterministic. Component instance IDs (used for scoped `id` and `name` DOM attributes) are derived deterministically from the page path, component name, and ordinal index of each instance on the page. Under the default configuration, class names omit instance IDs entirely and were already deterministic. This design guarantees that identical source input produces byte-identical output across repeated runs, worker threads, and different machines.
 
+## Do I need a process supervisor?
+
+Yes, when running `bascik --server` in production, a process supervisor such as systemd, Docker container restart policy, or Kubernetes pod supervisor is expected.
+
+Bascik provides process-level crash safety handlers for unexpected rejections or exceptions. Instead of attempting ungraceful recovery in an indeterminate state, it logs full diagnostic context and exits with a non-zero code (`1`). A supervisor restarts the process cleanly.
+
+## Why did my server exit?
+
+If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fatal uncaught exception:` or `[bascik] Fatal unhandled promise rejection:`. Bascik captures unhandled errors and deliberately terminates with code `1` rather than continuing in an unsafe memory state. Ensure your deployment environment has a process supervisor configured to restart the server on failure.
+
 ## What is `dist/.bascik/`?
 
 `dist/.bascik/` is a build-internal directory that holds artifacts generated for deployment tools and runtime servers. For example, `generate.manifest: true` writes `dist/.bascik/manifest.json`, `generate.cspHashes: true` writes `dist/.bascik/csp-hashes.json`, and static builds with server scripts write `dist/.bascik/server-scripts.json`. Because the directory starts with a dot, Bascik's built-in servers and request guards 404 all requests to `/.bascik/*` to prevent exposing build inventory.
@@ -260,6 +270,16 @@ Bascik cannot safely infer URLs assembled or used inside JavaScript, so it does 
 Check for a `bascik.config.js` in the same directory. When both files exist in the project root, the `.js` file takes precedence, so a stale or accidental `.js` file shadows your `.ts` config. Delete the `.js` file, or pass `--config bascik.config.ts` to load a specific file explicitly.
 
 Two other things to rule out: only the project root is searched (a config in a subdirectory or parent directory is never picked up), and only the `.js` and `.ts` extensions are supported (`.mjs`, `.cjs`, `.mts`, and `.cts` files are not discovered). See [Config file discovery](/configuration#config-file-discovery).
+
+## How do I add a custom error page?
+
+Add `src/pages/404.html` for not found errors or `src/pages/500.html` for server errors.
+
+Bascik supports custom error pages by convention without needing any configuration. In production server mode, `src/pages/500.html` is transpiled at boot and served whenever an internal error occurs. If absent, a minimal built-in document is served instead. For static sites, `dist/404.html` and `dist/500.html` are standard files ready for your static host or CDN.
+
+## Why are my assets re-downloading after every deploy?
+
+In earlier versions, static asset ETags were derived from file modification times (`mtime`), which differed across CI checkouts and server replicas. Bascik now uses deterministic SHA-256 content hashes for all static and page ETags, computed once and cached in memory. Identical bytes produce identical ETags across separate server instances and deploys.
 
 ## Why did my build fail with a configuration error?
 
