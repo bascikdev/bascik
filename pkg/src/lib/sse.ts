@@ -29,11 +29,20 @@ export class SseManager {
   private clients = new Map<number, SseClient>();
   private nextClientId = 1;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private generation = 0;
 
   constructor(options: SseManagerOptions = {}) {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.maxConnections = options.maxConnections ?? DEFAULT_MAX_SSE_CONNECTIONS;
     this.startHeartbeat();
+  }
+
+  public getNextGeneration(): number {
+    return ++this.generation;
+  }
+
+  public get currentGeneration(): number {
+    return this.generation;
   }
 
   public addClient(res: BascikResponse, openPagePath?: string | null): SseClient | null {
@@ -57,8 +66,6 @@ export class SseManager {
 
     // Send initial connected payload
     this.send(client, "data: connected\n\n");
-
-    return client;
 
     return client;
   }
@@ -96,6 +103,7 @@ export class SseManager {
   }
 
   public broadcastReload(relativePagePath?: string, matchHttpPath?: (openPage: string, targetPage: string) => boolean): void {
+    const gen = this.getNextGeneration();
     for (const client of this.clients.values()) {
       if (client.res.destroyed) {
         this.removeClient(client.id);
@@ -106,7 +114,7 @@ export class SseManager {
           continue;
         }
       }
-      this.send(client, "data: reload\n\n");
+      this.send(client, `data: reload ${gen}\n\n`);
     }
   }
 

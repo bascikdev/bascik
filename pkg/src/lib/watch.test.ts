@@ -707,3 +707,29 @@ describe("watchFiles – error resiliency", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Coordinated watch & exec notification
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", () => {
+  it("coordinates reload notifications when a path is present in both pipeline.watchPaths and exec.watch", async () => {
+    (BascikConfig as any).pipeline = {
+      watchPaths: ["src/content/docs"],
+      exec: [{ script: "scripts/gen-docs.ts", watch: ["src/content/docs"] }],
+    };
+    await watchFiles();
+
+    // Trigger change in the overlapping watch path
+    const handler = getHandler(3, "change");
+    mockEventEmit.mockClear();
+    await handler?.("src/content/docs/intro.md");
+
+    // It should invoke selective page processing for the watch path
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("src/content/docs/intro.md");
+    // Ensure conflicting uncoordinated reload events are not emitted directly from watch handler
+    expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
+    // Should have coordinated execution flag or handled synchronously
+    expect(mockEventEmit).toHaveBeenCalledWith("watch-path-processed", expect.objectContaining({ path: "src/content/docs/intro.md" }));
+  });
+});
+

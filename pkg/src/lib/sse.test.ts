@@ -94,7 +94,31 @@ describe("SseManager", () => {
     sseManager.addClient(mockRes1);
 
     sseManager.broadcastReload();
-    expect(writes1).toContain("data: reload\n\n");
+    expect(writes1).toContain("data: reload 1\n\n");
+  });
+
+  it("includes a monotonic generation counter in broadcast reload payloads", () => {
+    const writes: string[] = [];
+    const mockRes: any = {
+      destroyed: false,
+      write: vi.fn((data: string) => { writes.push(data); return true; }),
+      end: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+    };
+    sseManager.addClient(mockRes);
+
+    sseManager.broadcastReload();
+    sseManager.broadcastReload();
+    sseManager.broadcastReload();
+
+    // Reload messages must contain monotonically increasing generation numbers (e.g. data: reload 1, data: reload 2...)
+    const reloadMessages = writes.filter((w) => w.startsWith("data: reload"));
+    expect(reloadMessages).toEqual([
+      "data: reload 1\n\n",
+      "data: reload 2\n\n",
+      "data: reload 3\n\n",
+    ]);
   });
 
   it("broadcasts error event with structured message to all connected clients", () => {

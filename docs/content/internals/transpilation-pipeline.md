@@ -8,6 +8,20 @@ Every time a source page or component file changes, `pageProcessing(filePath)` i
 
 Build scripts (`<script data-bascik-build>`) run **first**, before component resolution, so their output can contain component tags. Body HTML minification runs *after* component resolution so that whitespace-sensitive content from resolved components (e.g. `<pre>` blocks from `<code-block>`) is preserved intact.
 
+## Lifecycle and Pipeline Ordering Guarantee
+
+Bascik guarantees strict, deterministic execution ordering across all compilation phases:
+
+1. **Output Directory Cleaning:** In full builds and dev startup, `directory.out` is wiped cleanly before executing any lifecycle scripts.
+2. **Pre-phase Lifecycle Scripts:** All `pipeline.exec` scripts configured with `phase: 'pre'` (or defaulting to `'pre'`) execute sequentially in array order and are fully awaited before any page or component compilation starts.
+3. **Parallel Lifecycle Scripts:** All `pipeline.exec` scripts configured with `phase: 'parallel'` launch concurrently and are awaited during build mode (or managed in dev mode).
+4. **Dev Server Initialization (dev mode):** In development mode, the dev HTTP/HTTPS server starts and initial watched exec handlers (`startExecDev`) begin.
+5. **Page and Component Compilation:** File watchers and initial multi-page transpilation (`watchFiles()` / `processAllPages()`) execute, compiling pages, evaluating page-level `<script data-bascik-build>` blocks, resolving components, injecting scoped CSS/JS, and writing output files.
+6. **Post-phase Lifecycle Scripts:** All `pipeline.exec` scripts configured with `phase: 'post'` execute sequentially in array order after all page transpilation has completed.
+7. **Post-build Artifacts:** Sidecar registration (`server-scripts.json`), CSP hash collection (`csp-hashes.json`), and the build manifest (`manifest.json`) are finalized and written to disk.
+
+This guarantee ensures that `pre` scripts can reliably generate source files or data dependencies needed by build scripts and components, while `post` scripts can safely inspect or transform final compiled assets in `dist/`.
+
 ## Multi-Page Startup: `processAllPages`
 
 On startup (and whenever a component is added), the watch system calls `processAllPages()` instead of invoking `pageProcessing()` once per file. This avoids redundant I/O:

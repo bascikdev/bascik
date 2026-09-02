@@ -543,12 +543,14 @@ export const createRequestHandler = () => {
             const strip = (p: string) => p.replace(/\/$/, "") || "/";
             if (strip(openPagePath) !== strip(httpPath)) return;
           }
-          sseManager.send(client, `data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
         const assetChangedHandler = () => {
           if (res.destroyed) return;
-          sseManager.send(client, `data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
         const buildErrorHandler = (errPayload: any) => {
@@ -559,7 +561,8 @@ export const createRequestHandler = () => {
         // Reload boot pages immediately when the initial scan finishes.
         const bootDoneHandler = () => {
           if (res.destroyed) return;
-          sseManager.send(client, `data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
         eventEmitter.on("transpiled", eventHandler);
@@ -576,7 +579,8 @@ export const createRequestHandler = () => {
         });
 
         if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
-          sseManager.send(client, `data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
         }
         return;
       }

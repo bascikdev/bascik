@@ -147,7 +147,10 @@ export const startExecDev = (): Promise<void> => {
       let pending = false;
       let debounceTimer: NodeJS.Timeout | null = null;
 
-      const triggerRun = () => {
+      const lastChangedPath = { current: undefined as string | undefined };
+
+      const triggerRun = (changedPath?: string) => {
+        if (changedPath) lastChangedPath.current = changedPath;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           if (running) {
@@ -155,8 +158,11 @@ export const startExecDev = (): Promise<void> => {
             return;
           }
           running = true;
+          const targetPath = lastChangedPath.current;
           runScript(entry)
-            .then(() => eventEmitter.emit('asset-changed'))
+            .then(() => {
+              eventEmitter.emit('exec-completed', { path: targetPath });
+            })
             .catch((err) => console.error('[bascik] exec error:', err))
             .finally(() => {
               running = false;
@@ -184,8 +190,8 @@ export const startExecDev = (): Promise<void> => {
       const patterns = Array.isArray(entry.watch) ? entry.watch : [entry.watch];
       const watcher = chokidar
         .watch(patterns, { ignoreInitial: true })
-        .on('all', () => {
-          triggerRun();
+        .on('all', (_event, changedPath) => {
+          triggerRun(typeof changedPath === 'string' ? changedPath : undefined);
         });
       registerShutdownHandler(() => {
         if (debounceTimer) clearTimeout(debounceTimer);

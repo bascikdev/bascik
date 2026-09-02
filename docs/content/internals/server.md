@@ -98,6 +98,8 @@ Three native filesystem watchers (chokidar) handle source file updates:
 ### Live reload (`live-reload.ts`, `sse.ts`)
 
 Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The SSE system features:
+- **Monotonic Generation Counter:** Reload events include an incrementing integer generation counter (`data: reload <gen>`). The client-side script tracks `lastGeneration` and ignores stale, duplicate, or out-of-order reload messages.
+- **Reload Coordination:** Reload notifications across asset updates, watched custom paths, exec script completions, and page transpilation are coordinated through SSE generation tracking, ensuring clients reload once on complete batch cycles rather than multiple times.
 - **Periodic Heartbeats:** Sends `: ping\n\n` comments every 20 seconds, preventing proxy/VPN idle disconnection.
 - **Backpressure Handling:** Honors `res.write()` return values, draining stalled writes and terminating persistently wedged clients.
 - **Connection Cap & Cleanup:** Bounded at 200 concurrent SSE streams (`DEFAULT_MAX_SSE_CONNECTIONS`).

@@ -27,12 +27,54 @@ class MemoryStore {
   #fileDependencies: Map<string, Set<string>>;
   /** HTTP paths of pages with an active SSE live-reload connection, with connection counts. */
   #openPages: Map<string, number>;
+  #dirtyPages: Set<string>;
+  #pageWaiters: Map<string, ((page: StoredPage | undefined) => void)[]>;
 
   constructor() {
     this.#files = new Map();
     this.#components = new Map();
     this.#fileDependencies = new Map();
     this.#openPages = new Map();
+    this.#dirtyPages = new Set();
+    this.#pageWaiters = new Map();
+  }
+
+  markDirty(pagePathOrHttpPath: string): void {
+    const key = pagePathOrHttpPath;
+    const httpPath = getHttpPath(pagePathOrHttpPath);
+    this.#dirtyPages.add(key);
+    this.#dirtyPages.add(httpPath);
+  }
+
+  isDirty(pagePathOrHttpPath: string): boolean {
+    const key = pagePathOrHttpPath;
+    const httpPath = getHttpPath(pagePathOrHttpPath);
+    return this.#dirtyPages.has(key) || this.#dirtyPages.has(httpPath);
+  }
+
+  async waitForFreshPage(pagePathOrHttpPath: string): Promise<StoredPage | undefined> {
+    if (!this.isDirty(pagePathOrHttpPath)) {
+      return this.getPageExact(getHttpPath(pagePathOrHttpPath)) ?? this.getPage(pagePathOrHttpPath);
+    }
+    const key = pagePathOrHttpPath;
+    const httpPath = getHttpPath(pagePathOrHttpPath);
+    return new Promise<StoredPage | undefined>((resolve) => {
+      let waiters = this.#pageWaiters.get(key);
+      if (!waiters) {
+        waiters = [];
+        this.#pageWaiters.set(key, waiters);
+      }
+      waiters.push(resolve);
+
+      if (httpPath !== key) {
+        let httpWaiters = this.#pageWaiters.get(httpPath);
+        if (!httpWaiters) {
+          httpWaiters = [];
+          this.#pageWaiters.set(httpPath, httpWaiters);
+        }
+        httpWaiters.push(resolve);
+      }
+    });
   }
 
   async storePage({
@@ -60,11 +102,7 @@ class MemoryStore {
       this.#files.get(httpPath)?.fileDependenciesSet,
     );
 
-    // Store the raw content immediately so the page is servable right away.
-    // Brotli compression (quality 11 is CPU-heavy) is computed in the
-    // background below and does not block "page ready" — the server falls
-    // back to uncompressed content until compression finishes.
-    this.#files.set(httpPath, {
+    const storedPage: StoredPage = {
       relativePagePath,
       absolutePagePath,
       content: buffer,
@@ -73,7 +111,32 @@ class MemoryStore {
       usedComponentsSet,
       fileDependenciesSet,
       hasServerScripts: htmlHasServerScripts(pageContent),
-    });
+    };
+
+    // Store the raw content immediately so the page is servable right away.
+    // Brotli compression (quality 11 is CPU-heavy) is computed in the
+    // background below and does not block "page ready" — the server falls
+    // back to uncompressed content until compression finishes.
+    this.#files.set(httpPath, storedPage);
+
+    // Clear dirty flags
+    this.#dirtyPages.delete(relativePagePath);
+    this.#dirtyPages.delete(absolutePagePath);
+    this.#dirtyPages.delete(httpPath);
+
+    // Resolve any waiters
+    const waitersToNotify: ((page: StoredPage | undefined) => void)[] = [];
+    const keysToCheck = [relativePagePath, absolutePagePath, httpPath];
+    for (const k of keysToCheck) {
+      const waiters = this.#pageWaiters.get(k);
+      if (waiters) {
+        waitersToNotify.push(...waiters);
+        this.#pageWaiters.delete(k);
+      }
+    }
+    for (const resolveWaiter of waitersToNotify) {
+      resolveWaiter(storedPage);
+    }
 
     // Invert map for reverse lookup to efficiently know what files to update
     // Create entries in the map for each component name,

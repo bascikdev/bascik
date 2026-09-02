@@ -152,12 +152,22 @@ export const watchFiles = async () => {
         persistent: true,
       })
       .on("add", async (path) => {
-        clearBuildScriptCaches(path);
-        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+        try {
+          clearBuildScriptCaches(path);
+          await selectivelyProcessPagesForWatchPath(path);
+          eventEmitter.emit("watch-path-processed", { path });
+        } catch (err) {
+          onWatchError(err);
+        }
       })
       .on("change", async (path) => {
-        clearBuildScriptCaches(path);
-        selectivelyProcessPagesForWatchPath(path).catch(onWatchError);
+        try {
+          clearBuildScriptCaches(path);
+          await selectivelyProcessPagesForWatchPath(path);
+          eventEmitter.emit("watch-path-processed", { path });
+        } catch (err) {
+          onWatchError(err);
+        }
       })
       .on("unlink", async () => {
         clearBuildScriptCaches();

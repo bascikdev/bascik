@@ -1685,7 +1685,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     // No referer header: simulates Safari, privacy extensions, or no-referrer policy.
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", undefined));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer matches the transpiled page", async () => {
@@ -1693,7 +1693,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about"));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer lacks trailing slash but page path is an index route", async () => {
@@ -1703,7 +1703,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/blog"));
     fireTranspiled("pages/blog/index.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer has trailing slash and page path is an index route", async () => {
@@ -1711,7 +1711,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/blog/"));
     fireTranspiled("pages/blog/index.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("does not send reload when Referer is a different page than the one transpiled", async () => {
@@ -1719,7 +1719,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/getting-started"));
     fireTranspiled("pages/about.html");
-    const reloadCalls = stream.write.mock.calls.filter((c: any[]) => c[0] === "data: reload\n\n");
+    const reloadCalls = stream.write.mock.calls.filter((c: any[]) => typeof c[0] === "string" && c[0].startsWith("data: reload"));
     expect(reloadCalls).toHaveLength(0);
   });
 
@@ -1753,7 +1753,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about?ref=social"));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("calls mem.untrackOpenPage when the SSE stream closes", async () => {
@@ -2304,7 +2304,7 @@ describe("startHttp2Server – SSE boot-done event", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about"));
     fireBootDone();
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("immediately reloads boot-page SSE clients when boot is already complete", async () => {
@@ -2312,7 +2312,7 @@ describe("startHttp2Server – SSE boot-done event", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload?boot=1"));
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("removes the boot-done listener when the SSE stream closes", async () => {

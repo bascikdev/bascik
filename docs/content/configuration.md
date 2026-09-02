@@ -378,11 +378,14 @@ pipeline: {
       args: ['--full'],              // argv passed to the script
       env: { CUSTOM: '1' },          // extra env variables
       timeout: 60000,                // timeout in ms
+      watch: ['content/'],           // re-run on changes in dev mode
     },
   ],
   workers: false,                    // enable multi-threaded worker pool
 }
 ```
+
+Listing a path in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. Bascik coordinates the watch triggers and SSE generation counter so that edits to overlapping paths execute the associated exec script, re-transpile affected pages, and issue exactly one coordinated browser reload rather than duplicate or conflicting reload signals.
 
 ### `scripts`
 

@@ -11,7 +11,7 @@
       import { readFile } from 'node:fs/promises';
       import { join } from 'node:path';
       const content = await readFile(join(process.cwd(), 'src/content/watch-doc.md'), 'utf8');
-      console.log(`<h1>${content.trim()}</h1>`);
+      console.log(`<h1 data-testid="watch-content-heading">${content.trim()}</h1>`);
     </script>
   </main>
 </body>

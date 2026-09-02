@@ -147,16 +147,19 @@ describe("startExecDev", () => {
     expect(mockWatch).toHaveBeenCalledTimes(1);
   });
 
-  it("re-runs script and emits asset-changed on watch event", async () => {
+  it("re-runs script and emits exec-completed on watch event", async () => {
     cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     await startExecDev();
 
     const watcher = getWatcher(0);
-    watcher.handlers.all();
+    watcher.handlers.all("change", "content/doc.md");
     await new Promise((r) => setTimeout(r, 70));
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
-    expect(mockEventEmit).toHaveBeenCalledWith("asset-changed");
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ path: "content/doc.md" }),
+    );
   });
 
   it("registers watcher close handlers for shutdown", async () => {
@@ -212,5 +215,22 @@ describe("startExecDev", () => {
     await new Promise((r) => setTimeout(r, 70));
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("coordinates watched exec triggers with dependent page transpile before emitting reload", async () => {
+    // When a watched file changes that triggers an exec script, it should await dependent page transpilation
+    // rather than emitting uncoordinated asset-changed/reload before dependent pages have re-transpiled.
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "content/doc.md");
+    await new Promise((r) => setTimeout(r, 70));
+
+    // Must emit coordinated event or coordinate with processing pipeline
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ path: "content/doc.md" }),
+    );
   });
 });

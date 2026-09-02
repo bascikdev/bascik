@@ -16,6 +16,7 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     var retryTimeout = null;
     var banner = null;
     var errorOverlay = null;
+    var lastGeneration = 0;
 
     function escapeHtml(str) {
       return String(str || '')
@@ -79,10 +80,16 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
       if (source) return;
       source = new EventSource("${url}");
       source.onmessage = function(e) {
-        if (e.data === 'reload') {
-          removeErrorOverlay();
-          window.location.reload();
-        } else if (e.data === 'connected') {
+        var msg = e.data || '';
+        if (msg.indexOf('reload') === 0) {
+          var parts = msg.split(' ');
+          var gen = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+          if (!gen || gen > lastGeneration) {
+            if (gen) lastGeneration = gen;
+            removeErrorOverlay();
+            window.location.reload();
+          }
+        } else if (msg === 'connected') {
           retryCount = 0;
           removeBanner();
           if (wasConnected) {
