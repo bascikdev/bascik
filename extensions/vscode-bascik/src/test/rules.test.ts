@@ -2,6 +2,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { matchCompatibilityRules } from '../rules';
+import { analyzeApiRouteSource } from '../api-rules';
 
 suite('Bascik HTML Grammar', () => {
   test('highlights prop attribute directives with hyphenated targets', () => {
@@ -72,6 +73,26 @@ suite('Compatibility Rules Suite', () => {
       const js = 'const btn = document.getElementById("submit"); btn.classList.add("active");';
       const matches = matchCompatibilityRules(js, 'js');
       assert.strictEqual(matches.length, 0);
+    });
+  });
+
+  suite('API Route Diagnostics', () => {
+    test('reports error when no recognized method is exported', () => {
+      const code = 'export const helper = () => "not a method";';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'error' && d.message.includes('does not export any recognized HTTP method')));
+    });
+
+    test('reports warning for lowercase or mixed-case export that looks like a method', () => {
+      const code = 'export const post = async () => new Response("ok");';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'warning' && d.message.includes('must be uppercase')));
+    });
+
+    test('reports warning when handler return type is not Response or Promise<Response>', () => {
+      const code = 'export const GET = async (): Promise<string> => "hello";';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'warning' && d.message.includes('must return a standard WHATWG Response')));
     });
   });
 });

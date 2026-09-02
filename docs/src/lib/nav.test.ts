@@ -96,7 +96,7 @@ describe('renderPagination', () => {
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
       expect(html).toContain('href="/build-scripts"');
-      expect(html).toContain('href="/server"');
+      expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }
@@ -117,7 +117,7 @@ describe('renderPagination', () => {
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
       expect(html).toContain('href="/build-scripts"');
-      expect(html).toContain('href="/server"');
+      expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_SOURCE_FILE = originalFile;
       process.env.BASCIK_PAGE_FILE = originalPageFile;

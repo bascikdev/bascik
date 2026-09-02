@@ -15,6 +15,20 @@ bascik --server   # start the production HTTP server; runs data-bascik-server sc
 
 If your site has no `data-bascik-server` scripts, you do not need `bascik --server`: any static host will do.
 
+## Server Scripts vs API Routes
+
+Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, but they serve different architectural purposes:
+
+| Feature | Server Scripts (`data-bascik-server`) | API Routes (`src/api/*.ts`) |
+| :--- | :--- | :--- |
+| **Destination** | Injected directly into HTML pages | Standalone JSON, streaming, or binary HTTP endpoints |
+| **Methods** | GET only (page render) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD` |
+| **Contract** | Returns HTML string markup | Takes WHATWG `Request` and returns WHATWG `Response` |
+| **Response Control** | Cannot set HTTP status code or custom headers | Full control over status codes, response headers, and cookies |
+| **Use Cases** | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs |
+
+Use `data-bascik-server` when rendering HTML into the document flow. Use API routes when returning data, receiving client submissions, or controlling response headers.
+
 ## Server scripts: `data-bascik-server`
 
 Tag a `<script>` block with `data-bascik-server` to run it at **request time** on the server. Server scripts run in-process through Bascik's script registry as ESM modules. The script returns markup (or uses a default exported function) which is injected into the page in place of the script tag on every request.

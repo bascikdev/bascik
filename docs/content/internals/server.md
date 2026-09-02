@@ -185,13 +185,14 @@ Every incoming request (`req.path`) passes through a deterministic normalization
 2. **Percent-Encoding and Control Character Sanitation:** Paths are decoded using `decodeURIComponent()`. Malformed percent-encoding, null bytes (`%00`), control characters (`\r`, `\n`, `\t`), or paths containing `..` traversal patterns immediately yield a `400 Bad Request` with `content-type: text/plain; charset=utf-8`.
 3. **Dot-Segment Rejection:** After decoding and traversal validation, any path segment beginning with `.` yields `404 Not Found` before static file lookup. This catches literal and encoded paths such as `/.env`, `/.git/config`, and `/%2Egit/config`, and protects internal output directories such as `dist/.bascik/`.
 4. **Base Prefix Stripping:** After security guards pass, the normalized `base` prefix is removed before static assets, live reload, or pages are resolved. Requests outside a non-root base return `404`.
-5. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections through `/bascik-live-reload`, the server extracts `new URL(req.headers.referer).pathname`, strips the base, and calls `getHttpPath()` to track active tabs accurately.
-6. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
+5. **API Route Dispatching:** Matching requests are dispatched to in-process WHATWG `Request`/`Response` handlers loaded via the `ScriptRegistry` before the GET/HEAD method guard. Unexported methods return `405` with `Allow`.
+6. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections through `/bascik-live-reload`, the server extracts `new URL(req.headers.referer).pathname`, strips the base, and calls `getHttpPath()` to track active tabs accurately.
+7. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
    - Exact literal path match (`mem.getPageExact(pathname)`)
    - Strip `.html` extension if present
    - Alternate trailing-slash variant (`/blog` vs `/blog/`)
    - Fallback to full `mem.getPage()` lookup (which returns `/404` if unmapped)
-7. **Access Logging Lifecycle:** Requests log when the response completes (`close` or `finish`), capturing full transfer duration. Static asset requests and page responses log status and elapsed duration; `/_health` probes and SSE pings are excluded from access logs.
+8. **Access Logging Lifecycle:** Requests log when the response completes (`close` or `finish`), capturing full transfer duration. Static asset requests and page responses log status and elapsed duration; `/_health` probes and SSE pings are excluded from access logs.
 
 ### Security response headers
 

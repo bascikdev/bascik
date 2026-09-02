@@ -1249,7 +1249,26 @@ More flags: `--config <path>` (load a specific config file), `--port <n>`, `--ho
 
 **Gotchas with `--only`:** Targeted builds skip cleaning `directory.out` so existing compiled pages survive. Sitemap and robots generation is skipped with a warning to avoid delisting unbuilt pages. Artifacts (`dist/.bascik/manifest.json`, `dist/.bascik/csp-hashes.json`) merge updated entries into existing files.
 
-**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Needed when the site uses `data-bascik-server` scripts or API routes (`src/api/`)** for per-request dynamic content. Sites with only static pages and no server scripts or API routes can be deployed to any static host. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts and API routes execute per-request in both modes.
+
+### API Routes (`src/api/`)
+
+Define HTTP endpoints in TypeScript/JavaScript files under `src/api/` (`directory.api`). Handlers take a standard WHATWG `Request` and return a standard `Response`:
+
+```ts
+// src/api/contact.ts
+export const POST = async (request: Request): Promise<Response> => {
+  const data = await request.json();
+  if (!data.name) return Response.json({ error: "name is required" }, { status: 400 });
+  return Response.json({ ok: true }, { status: 201 });
+};
+```
+
+* **Method exports:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. Unexported methods return `405 Method Not Allowed` with an accurate `Allow` header.
+* **Derived HEAD & Auto OPTIONS:** `HEAD` auto-derives from `GET` (headers only, body stripped); `OPTIONS` auto-responds 204 with `Allow`.
+* **Context argument:** `(request, { params, remoteIp })`. Route params are parsed from `[param]` segments. `remoteIp` is proxy-aware when `http.trustProxy` is true.
+* **Zero config & portable:** Standard WHATWG contract lifts directly into Cloudflare Workers, Deno, or Bun without rewrite.
+* **Gotchas:** Static builds (`bascik --build`) cannot serve API routes and warn at build time. Handlers run in-process on the server; do not block the event loop with synchronous long-running tasks. No automatic compression or CORS headers are added by default.
 
 **`http` config block:** configure the server in `bascik.config.ts`:
 ```ts

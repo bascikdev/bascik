@@ -100,6 +100,26 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 
 ---
 
+## Server & API Features
+
+| Capability | Status | Notes |
+| --- | --- | --- |
+| WHATWG Request / Response handlers | ✓ | Standard handler signature `(request: Request, context) => Response \| Promise<Response>` in `src/api/*.ts`. |
+| Supported HTTP methods | ✓ | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. |
+| Automatic `Allow` headers | ✓ | 405 responses automatically list exported methods in `Allow`. |
+| Derived `HEAD` | ✓ | `HEAD` derives automatically from `GET` when unexported, returning headers with empty body. |
+| Auto `OPTIONS` | ✓ | Auto-responds 204 with `Allow` header. |
+| Multiple `Set-Cookie` headers | ✓ | Preserved via `Headers.getSetCookie()` without comma-flattening. |
+| Streaming responses | ✓ | WHATWG `ReadableStream` bodies stream directly to clients. |
+| Dynamic API route parameters | ✓ | Extracted from `[param]` path segments into `context.params`. |
+| Client IP resolution | ✓ | Forwarded client IP provided via `context.remoteIp`, respecting `http.trustProxy`. |
+| Middleware chains (`_middleware.ts`) | ✕ | Not supported by design. Handlers compose plain functions directly. |
+| Built-in schema validation | ✕ | Not supported by design. Validate payloads using standard libraries (e.g. Zod, Valibot). |
+| Automatic response compression on API routes | ✕ | Deliberately omitted to prevent BREACH attacks on sensitive dynamic data. Handlers set `Content-Encoding` manually if needed. |
+| Automatic CORS headers | ✕ | Not injected by default. Handlers return explicit `Access-Control-*` headers when required. |
+
+---
+
 ## CSS Scoping
 
 CSS scoping applies to `.css` files paired with a component's HTML file. Place the `.css` file in the same directory as the component and give it the same base name.

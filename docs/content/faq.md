@@ -331,3 +331,15 @@ Common causes:
 - **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
 
 Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).
+
+## Can Bascik handle form submissions and API requests?
+
+Yes. Define API route handlers in TypeScript or JavaScript under `src/api/` (such as `src/api/contact.ts` or `src/api/users/[id].ts`). Handlers take a standard WHATWG `Request` and return a standard `Response`. You can accept POST JSON, parse form bodies, set custom status codes, and issue cookies directly without external backend dependencies. Run `bascik --server` to serve API routes in production.
+
+## Do I need a separate backend server for my API?
+
+No. If you run Bascik with `bascik --server`, API routes run in-process on the same port and server as your pages and assets. If you prefer static CDN hosting for pages, you can also lift your `src/api/` handlers directly to Cloudflare Workers, Deno Deploy, or AWS Lambda since they use standard web `Request` and `Response` interfaces.
+
+## Why does Bascik not include middleware chains or interceptors?
+
+Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.

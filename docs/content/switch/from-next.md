@@ -220,13 +220,25 @@ export default function About() {
 </html>
 ```
 
-## API Routes → Not Applicable
+## API Routes → src/api/
 
-Bascik produces static HTML at build time, there is no server process to handle API requests. Replace Next.js API routes with one of:
+Next.js App Router route handlers (`app/api/.../route.ts`) map directly to Bascik API routes in `src/api/`. Both frameworks use standard WHATWG `Request` and `Response` interfaces:
 
-- **Build-time data:** Use `<script data-bascik-build>` to fetch or read data and bake it into the HTML at build time.
-- **Client-side fetch:** Call external APIs directly from a `<script>` tag in the page.
-- **A separate backend:** Deploy an API server alongside the static site and point client-side JS to it.
+```text
+Before (Next.js App Router)       After (Bascik)
+app/api/contact/route.ts          src/api/contact.ts
+app/api/users/[id]/route.ts       src/api/users/[id].ts
+```
+
+```ts
+// src/api/contact.ts (Bascik)
+export const POST = async (request: Request): Promise<Response> => {
+  const data = await request.json();
+  return Response.json({ received: data }, { status: 201 });
+};
+```
+
+Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For purely static hosting deployments, handlers can also be lifted directly to Cloudflare Workers, Fastly Compute, Deno Deploy, or AWS Lambda without rewriting because they use standard web APIs.
 
 ## CSS Modules → Paired .css Files
 
