@@ -406,9 +406,8 @@ export const recursivelyTranspile = (
   // string simultaneously on the call stack (each recursive frame held its own
   // copy, leading to multi-GB heap usage on pages with many component instances).
   let substitutions = 0;
+  let masked = maskRawTextContent(transpiledHtmlBody);
   while (true) {
-    const masked = maskRawTextContent(transpiledHtmlBody);
-
     if (
       substitutions >= MAX_SUBSTITUTIONS ||
       transpiledHtmlBody.length > MAX_OUTPUT_BYTES
@@ -496,12 +495,26 @@ export const recursivelyTranspile = (
       if (component.fileName) {
         transpiledTag = `<!--bascik-source-file:${component.fileName}-->${transpiledTag}<!--bascik-source-file-end:${component.fileName}-->`;
       }
+      const sIdx = (component as any).startIndex;
+      const eIdx = (component as any).endIndex;
       transpiledHtmlBody = replaceTag(
         transpiledHtmlBody,
         component.name,
         transpiledTag,
         masked,
+        typeof sIdx === "number" && typeof eIdx === "number"
+          ? { startIndex: sIdx, endIndex: eIdx }
+          : undefined,
       );
+
+      // If the replaced content introduced raw tags (<script>, <style>, <textarea>), re-mask
+      const introducedRawTags = /<(?:script|style|textarea)\b/i.test(transpiledTag);
+      if (introducedRawTags || typeof sIdx !== "number" || typeof eIdx !== "number") {
+        masked = maskRawTextContent(transpiledHtmlBody);
+      } else {
+        masked = masked.slice(0, sIdx) + transpiledTag + masked.slice(eIdx);
+      }
+
       usedComponents.push(component);
       substitutions++;
     } catch (error) {
@@ -525,6 +538,7 @@ export const recursivelyTranspile = (
       console.error(`${errorMsg}\n  Error: ${error instanceof Error ? error.stack || error.message : String(error)}`);
       if (component.content) {
         transpiledHtmlBody = replaceTag(transpiledHtmlBody, component.name, "", masked);
+        masked = maskRawTextContent(transpiledHtmlBody);
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)

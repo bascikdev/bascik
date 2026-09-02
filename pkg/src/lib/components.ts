@@ -378,7 +378,8 @@ const findOpenTag = (
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "i");
-  const openTagMatch = openTagRegexp.exec(masked ?? maskRawTextContent(htmlString));
+  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
+  const openTagMatch = openTagRegexp.exec(maskedHtml);
   if (!openTagMatch) return null;
   return {
     openTag: openTagMatch[0],
@@ -392,14 +393,22 @@ export const replaceTag = (
   tagName: string,
   transpiledTag: string,
   masked?: string,
+  offsets?: { startIndex?: number; endIndex?: number },
 ): string => {
+  if (offsets && typeof offsets.startIndex === "number" && typeof offsets.endIndex === "number") {
+    return (
+      htmlString.slice(0, offsets.startIndex) +
+      transpiledTag +
+      htmlString.slice(offsets.endIndex)
+    );
+  }
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return htmlString;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Try paired tags first: <tagName ...>...</tagName>
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTag = findOpenTag(htmlString, tagName, maskedHtml);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
     const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
@@ -469,17 +478,25 @@ export const getFirstComponent = (
 
   // Match against the masked string so literal component-tag text inside
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
-  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
   const match = maskedHtml.match(matchComponentName);
   if (!match) {
     return {};
   }
   const firstComponentName = match[1].toLowerCase();
-  return {
+  const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml);
+  const resultObj: Partial<BascikComponent> & { index?: number; startIndex?: number; endIndex?: number } = {
     name: firstComponentName,
     index: match.index,
-    ...getTag(htmlString, firstComponentName, componentList, maskedHtml),
+    ...tagInfo,
   };
+  if (typeof tagInfo.startIndex === "number") {
+    Object.defineProperty(resultObj, "startIndex", { value: tagInfo.startIndex, enumerable: false });
+  }
+  if (typeof tagInfo.endIndex === "number") {
+    Object.defineProperty(resultObj, "endIndex", { value: tagInfo.endIndex, enumerable: false });
+  }
+  return resultObj;
 };
 
 export const getTag = (
@@ -499,7 +516,7 @@ export const getTag = (
   // Use findMatchingClose (a depth counter) instead of a lazy regex so nested
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
-  const maskedHtml = masked ?? maskRawTextContent(htmlString);
+  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTag = findOpenTag(htmlString, tagName, maskedHtml);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
     const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
@@ -521,24 +538,49 @@ export const getTag = (
           innerContent: htmlString.slice(openTag.end, closeIndex),
         };
         Object.defineProperties(returnObj, {
-          startIndex: { value: openTag.start },
-          contentStart: { value: openTag.end },
-          closeIndex: { value: closeIndex },
-          endIndex: { value: closeIndex + closeTagMatch[0].length },
+          startIndex: { value: openTag.start, enumerable: false },
+          contentStart: { value: openTag.end, enumerable: false },
+          closeIndex: { value: closeIndex, enumerable: false },
+          endIndex: { value: closeIndex + closeTagMatch[0].length, enumerable: false },
         });
         if (!componentList) return returnObj;
-        return { ...returnObj, ...componentList[tagName.toLowerCase()] };
+        const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
+        Object.defineProperties(res, {
+          startIndex: { value: openTag.start, enumerable: false },
+          contentStart: { value: openTag.end, enumerable: false },
+          closeIndex: { value: closeIndex, enumerable: false },
+          endIndex: { value: closeIndex + closeTagMatch[0].length, enumerable: false },
+        });
+        return res;
       }
     }
   }
 
   if (openTag) {
-    const returnObj = {
+    const returnObj: Partial<BascikComponent> & {
+      startIndex?: number;
+      contentStart?: number;
+      closeIndex?: number;
+      endIndex?: number;
+    } = {
       content: openTag.openTag,
       innerContent: "",
     };
+    Object.defineProperties(returnObj, {
+      startIndex: { value: openTag.start, enumerable: false },
+      contentStart: { value: openTag.end, enumerable: false },
+      closeIndex: { value: -1, enumerable: false },
+      endIndex: { value: openTag.end, enumerable: false },
+    });
     if (!componentList) return returnObj;
-    return { ...returnObj, ...componentList[tagName.toLowerCase()] };
+    const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
+    Object.defineProperties(res, {
+      startIndex: { value: openTag.start, enumerable: false },
+      contentStart: { value: openTag.end, enumerable: false },
+      closeIndex: { value: -1, enumerable: false },
+      endIndex: { value: openTag.end, enumerable: false },
+    });
+    return res;
   }
 
   // Try self-closing: <tagName ... /> or <tagName/>
@@ -550,15 +592,33 @@ export const getTag = (
   );
   const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
   if (selfClosingMatch) {
-    const returnObj = {
+    const returnObj: Partial<BascikComponent> & {
+      startIndex?: number;
+      contentStart?: number;
+      closeIndex?: number;
+      endIndex?: number;
+    } = {
       content: htmlString.slice(
         selfClosingMatch.index,
         selfClosingMatch.index + selfClosingMatch[0].length,
       ),
       innerContent: "",
     };
+    Object.defineProperties(returnObj, {
+      startIndex: { value: selfClosingMatch.index, enumerable: false },
+      contentStart: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      closeIndex: { value: -1, enumerable: false },
+      endIndex: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+    });
     if (!componentList) return returnObj;
-    return { ...returnObj, ...componentList[tagName.toLowerCase()] };
+    const res = { ...returnObj, ...componentList[tagName.toLowerCase()] };
+    Object.defineProperties(res, {
+      startIndex: { value: selfClosingMatch.index, enumerable: false },
+      contentStart: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+      closeIndex: { value: -1, enumerable: false },
+      endIndex: { value: selfClosingMatch.index + selfClosingMatch[0].length, enumerable: false },
+    });
+    return res;
   }
 
   return {};
@@ -774,7 +834,7 @@ const findMatchingClose = (
   const closeRe = new RegExp(`<\\/${tn}\\s*>`, "gi");
   // Scan the masked string so literal tag text inside <script>/<style>/<textarea>
   // content never skews the depth counter. Indices are valid in the original.
-  const maskedHtml = masked ?? maskRawTextContent(html);
+  const maskedHtml = masked !== undefined ? masked : maskRawTextContent(html);
   let depth = 1;
   let pos = contentStart;
   while (pos < maskedHtml.length) {

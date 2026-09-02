@@ -160,7 +160,7 @@ describe("targeted build artifact merging and warnings", () => {
   });
 
   it("warns and skips sitemap generation on targeted build", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
     await generateSitemapFiles(["pages/blog/post-1.html"]);
 
     expect(warnSpy).toHaveBeenCalledWith(
