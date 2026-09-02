@@ -131,6 +131,10 @@ If live reload previously disconnected behind a corporate proxy or VPN, Bascik n
 
 In earlier releases, static asset streams logged before the file descriptor finished opening. Bascik now logs static asset and page requests when the response finishes transmission, capturing the HTTP status and total transfer time. Set `logging.requests: false` if you prefer to suppress request logs.
 
+## Why do I need to restart after changing my config?
+
+Bascik deep-freezes configuration at server boot to guarantee consistency across worker threads, routers, and watchers. When `bascik.config.ts` changes during development, Bascik logs a restart hint. Hot config reload is intentionally avoided to prevent state desynchronization.
+
 ## Why did my deployment fail to bind the port?
 
 Under `bascik --server`, encountering `EADDRINUSE` fails fast with an explicit error rather than silently incrementing to another port. This ensures traffic intended for your configured port is not routed to an unmonitored port. In local development mode (`bascik`), auto-incrementing remains active.

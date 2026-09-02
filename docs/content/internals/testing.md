@@ -72,6 +72,10 @@ npx playwright test --config e2e/playwright.server-http2.config.ts e2e/tests/pro
 npx playwright test --config e2e/playwright.config.ts --ui
 ```
 
+### Real-Filesystem Watch Testing
+
+In addition to mocked chokidar tests, watch mode includes real-filesystem tests in isolated temporary directories (`watch-fs.test.ts`). These verify real-world filesystem event sequences, atomic editor saves (temp file write followed by rename), stability thresholds (`awaitWriteFinish`), and debounce behavior without false-confidence gaps.
+
 ## How the E2E Suite Works
 
 The e2e fixture is a small but complete Bascik project at `pkg/e2e/`:

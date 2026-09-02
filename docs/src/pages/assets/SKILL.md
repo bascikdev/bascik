@@ -1136,6 +1136,8 @@ export const build = defineConfig({
 
 > **Live Reload & Error Overlay:** In dev mode, live reload uses SSE with periodic comment heartbeats to survive proxies. Build errors surface directly in an in-browser overlay (`data-testid="bascik-build-error-overlay"`) and clear on the next successful build. Live reload scripts never ship to production.
 
+> **Watch Mode & Config Changes:** Changes to `bascik.config.ts` require a server restart because configuration is deep-frozen at boot time. Bascik prints a restart hint when config files change.
+
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:

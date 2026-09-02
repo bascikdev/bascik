@@ -17,6 +17,7 @@ import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
+import { debounce } from "./debounce.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -29,9 +30,24 @@ export const watchFiles = async () => {
   const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };
   registerShutdownHandler(() => Promise.all(watchers.map(watcher => watcher.close())).then(() => { }));
 
+  const debouncedProcessAllPages = debounce(() => {
+    processAllPages().catch(onWatchError);
+  }, 50);
+
+  const watchOptions: NonNullable<Parameters<typeof chokidar.watch>[1]> = {
+    atomic: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 100,
+      pollInterval: 20,
+    },
+    followSymlinks: false,
+    persistent: !BascikConfig.isBuild,
+  };
+
   // Copy non-page files
   w(chokidar
     .watch([BascikConfig.directory.pages], {
+      ...watchOptions,
       ignored: (path: string, stats?: Stats): boolean =>
         !!(stats?.isFile() && !isInlineStylesheet(path) && !isStaticAssetPath(path)),
       ignoreInitial: true,
@@ -79,6 +95,7 @@ export const watchFiles = async () => {
   await new Promise<void>((resolve, reject) => {
     w(chokidar
       .watch([BascikConfig.directory.pages], {
+        ...watchOptions,
         // only watch html files
         ignored: (path: string, stats?: Stats): boolean =>
           !!(stats?.isFile() && !path.endsWith(".html")),
@@ -101,6 +118,7 @@ export const watchFiles = async () => {
   // Transpile pages if components change
   w(chokidar
     .watch([BascikConfig.directory.components], {
+      ...watchOptions,
       ignored: (path: string, stats?: Stats): boolean => {
         return !!(
           stats?.isFile() && !(path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js") || path.endsWith(".ts") || path.endsWith(".mjs"))
@@ -129,6 +147,7 @@ export const watchFiles = async () => {
   if (!BascikConfig.isBuild && watchPaths.length) {
     w(chokidar
       .watch(watchPaths, {
+        ...watchOptions,
         ignoreInitial: true,
         persistent: true,
       })
@@ -151,11 +170,29 @@ export const watchFiles = async () => {
   if (!BascikConfig.isBuild && Array.isArray(inlineStyles) && inlineStyles.length) {
     w(chokidar
       .watch(inlineStyles, {
+        ...watchOptions,
         ignoreInitial: true,
         persistent: true,
       })
       .on("add", async () => processAllPages().catch(onWatchError))
       .on("change", async () => processAllPages().catch(onWatchError))
       .on("unlink", async () => processAllPages().catch(onWatchError)));
+  }
+
+  // Watch config file to print a restart hint when modified
+  const configCandidates = [
+    "bascik.config.ts",
+    "bascik.config.js",
+    "bascik.config.mjs",
+  ];
+  if (!BascikConfig.isBuild && !process.env.VITEST) {
+    w(chokidar
+      .watch(configCandidates, {
+        ...watchOptions,
+        ignoreInitial: true,
+      })
+      .on("change", (cfgPath) => {
+        console.log(`\n[bascik] Config file changed: ${cfgPath}. Restart the server to apply configuration changes.`);
+      }));
   }
 };
