@@ -268,7 +268,14 @@ export default {
 
 The `logging.level` setting controls the request log threshold, and `requests: false` disables the per-request `GET / ...` lines without suppressing warnings or errors.
 
-Bascik increments the port automatically if the preferred port is already in use.
+Under `bascik --server`, if the configured port is already in use (`EADDRINUSE`), the server fails fast with a clear error so container orchestrators and reverse proxies do not route traffic to an unexpected port. In development mode (`bascik`), the server automatically increments to the next available port up to a bounded retry limit.
+
+## Graceful shutdown and health endpoints
+
+When running in containerized environments or behind load balancers:
+
+- **Health Endpoint (`/_health`, `/_health/ready`, `/_health/live`):** Returns `200 OK` when the server is ready to accept traffic, and `503 Service Unavailable` during boot and during the shutdown drain. The health check is fast, un-cached, and excluded from rate limiting and standard access logs.
+- **Graceful Shutdown:** On receiving `SIGTERM` or `SIGINT`, the server enters the drain phase, stops accepting new connections, drains in-flight requests within `http.timeouts.drain` (default 5000 ms), awaits all cleanup handlers (watchers and exec processes), and then exits cleanly.
 
 `http.httpCache` defaults to `true` in `--server` mode and `false` in the dev server. When `true`, pages receive `ETag` headers and the server returns `304 Not Modified` when a client's cached copy is still fresh. Static assets also get `Cache-Control: public, max-age=3600`. Set `httpCache: false` to disable all of this if you are behind a CDN that manages caching itself.
 

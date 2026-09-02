@@ -195,6 +195,19 @@ Every response includes standard security headers:
 | `referrer-policy` | `strict-origin-when-cross-origin` |
 | `permissions-policy` | `interest-cohort=()` |
 
+### Graceful shutdown sequence and health checks
+
+When receiving `SIGTERM` or `SIGINT`:
+1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable`.
+2. Idle keep-alive connections are closed with `closeIdleConnections()`.
+3. The server drains in-flight requests during `http.timeouts.drain` (default 5000 ms).
+4. All registered shutdown handlers (watchers, exec child processes) are completed.
+5. Sockets and sessions are closed and the process terminates cleanly.
+
+### Port conflict policy
+
+Under `bascik --server`, binding to an occupied port (`EADDRINUSE`) is a fatal error that exits immediately to prevent serving from an unexpected port. Under development mode (`bascik`), port conflicts increment automatically up to 20 attempts.
+
 ### Path traversal protection
 
 Static asset requests are normalized and validated to ensure the resolved path remains strictly within the `dist/` directory. Requests attempting path traversal via `/../` receive an immediate `400 Bad Request` response before file I/O occurs.

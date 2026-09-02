@@ -29,6 +29,16 @@ import {
   DEFAULT_RATE_LIMIT_WINDOW_MS,
   DEFAULT_RATE_LIMIT_MAX,
 } from "./rate-limit.ts";
+import {
+  setServerHealthState,
+  getServerHealthState,
+  isHealthEndpoint,
+  handleHealthCheck,
+  DEFAULT_DRAIN_TIMEOUT_MS,
+  MAX_PORT_INCREMENTS,
+} from "./server-lifecycle.ts";
+
+export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
 import { makeEtag } from "./names.ts";
 
@@ -201,29 +211,14 @@ export const createRequestHandler = () => {
       const elapsed = performance.now() - start;
       const method = req.method;
       const path = req.path;
-      // Skip noisy SSE keep-alive pings
-      if (path?.split(/[?#]/)[0] === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
+      // Skip noisy SSE keep-alive pings and health checks
+      const cleanPath = path?.split(/[?#]/)[0];
+      if (cleanPath === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
+      if (isHealthEndpoint(cleanPath ?? "")) return;
       console.log(`${method} ${path} ${responseStatus} ${formatDuration(elapsed)}`);
     };
 
     try {
-      // ── Rate limiting ────────────────────────────────────────────────────
-      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
-        responseStatus = 429;
-        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
-        res.end("Too Many Requests");
-        return;
-      }
-
-      // ── Method guard: GET and HEAD only ──────────────────────────────────
-      const isHead = req.method === "HEAD";
-      if (req.method !== "GET" && !isHead) {
-        responseStatus = 405;
-        res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
-        res.end("Method Not Allowed");
-        return;
-      }
-
       if (!req.path) {
         responseStatus = 400;
         res.respond(400, { ...secHeaders });
@@ -240,6 +235,42 @@ export const createRequestHandler = () => {
         responseStatus = 400;
         res.respond(400, { ...secHeaders });
         res.end("Bad Request");
+        return;
+      }
+
+      // ── Health endpoint check (/_health, /_health/ready, /_health/live) ─
+      // Un-rate-limited, un-cached, and checked before other routing
+      if (isHealthEndpoint(pathname)) {
+        const isHead = req.method === "HEAD";
+        if (req.method !== "GET" && !isHead) {
+          responseStatus = 405;
+          res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
+          res.end("Method Not Allowed");
+          return;
+        }
+        const health = handleHealthCheck(pathname);
+        responseStatus = health.status;
+        res.respond(health.status, {
+          ...health.headers,
+          ...secHeaders,
+        });
+        return res.end(isHead ? undefined : health.body);
+      }
+
+      // ── Rate limiting ────────────────────────────────────────────────────
+      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
+        responseStatus = 429;
+        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
+        res.end("Too Many Requests");
+        return;
+      }
+
+      // ── Method guard: GET and HEAD only ──────────────────────────────────
+      const isHead = req.method === "HEAD";
+      if (req.method !== "GET" && !isHead) {
+        responseStatus = 405;
+        res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
+        res.end("Method Not Allowed");
         return;
       }
 
@@ -645,13 +676,20 @@ export const startServerInstance = async (
 
   // Find the first available port, incrementing if the preferred one is in use.
   await new Promise<void>((resolve, reject) => {
+    let attempts = 0;
     const tryPort = (p: number) => {
-      if (p > 65535) {
-        reject(new RangeError(`No available ports found between ${startPort} and 65535.`));
+      if (p > 65535 || attempts >= MAX_PORT_INCREMENTS) {
+        reject(new RangeError(`No available ports found between ${startPort} and ${Math.min(65535, startPort + MAX_PORT_INCREMENTS)}.`));
         return;
       }
       const errorHandler = (err: NodeJS.ErrnoException) => {
+        server.removeListener("error", errorHandler);
         if (err.code === "EADDRINUSE") {
+          if (BascikConfig.isProdServer) {
+            reject(new Error(`Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`));
+            return;
+          }
+          attempts++;
           console.warn(`Port ${p} is in use, trying ${p + 1}…`);
           tryPort(p + 1);
         } else {
@@ -662,6 +700,7 @@ export const startServerInstance = async (
       server.listen(p, hostname, () => {
         server.removeListener("error", errorHandler);
         origin = `${protocol}://${hostname}:${p}`;
+        setServerHealthState("ready");
         resolve();
       });
     };
@@ -673,11 +712,22 @@ export const startServerInstance = async (
 
   // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
   let shuttingDown = false;
+  const drainTimeout = BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
+
   const gracefulShutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    setServerHealthState("draining");
     console.log(`\nReceived ${signal}, shutting down gracefully…`);
 
+    // 1. Stop accepting new connections
+    if (typeof (server as any).closeIdleConnections === "function") {
+      try {
+        (server as any).closeIdleConnections();
+      } catch { }
+    }
+
+    // 2. Custom protocol cleanup callback (sockets/sessions)
     if (onShutdown) {
       try {
         onShutdown();
@@ -690,29 +740,33 @@ export const startServerInstance = async (
       } catch { }
     }
 
-    // Close all registered handles (chokidar watchers, exec watchers).
-    runShutdownHandlers().catch(() => { });
+    // 3. Await registered shutdown handlers (watchers, exec children)
+    runShutdownHandlers().catch((err) => {
+      console.error("[bascik] Error running shutdown handlers:", err);
+    });
 
     server.close((err) => {
       if (err) console.error("Error closing server:", err);
       process.exit(0);
     });
 
-    // Force exit if sessions or connections haven't drained within 10 s.
+    // Force exit if server close hangs past configured drain timeout
     setTimeout(() => {
       console.error("Graceful shutdown timeout: forcing exit");
       process.exit(1);
-    }, 10_000).unref();
+    }, drainTimeout).unref();
   };
+
   process.setMaxListeners(process.getMaxListeners() + 2);
-  const sigtermHandler = () => gracefulShutdown("SIGTERM");
-  const sigintHandler = () => gracefulShutdown("SIGINT");
+  const sigtermHandler = () => { void gracefulShutdown("SIGTERM"); };
+  const sigintHandler = () => { void gracefulShutdown("SIGINT"); };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
 
   server.once("close", () => {
     process.removeListener("SIGTERM", sigtermHandler);
     process.removeListener("SIGINT", sigintHandler);
+    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 2));
   });
 
   return origin;

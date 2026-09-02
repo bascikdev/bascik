@@ -123,6 +123,14 @@ Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`,
 
 If `bascik --server` runs behind a CDN or load balancer without `http.trustProxy: true`, all incoming connections share the CDN's socket IP address. One active user will exhaust the rate limit budget for all users. Enable `trustProxy: true` under `http` or `export const server` in `bascik.config.ts` so client IPs are resolved from the trusted reverse proxy headers.
 
+## Why did my deployment fail to bind the port?
+
+Under `bascik --server`, encountering `EADDRINUSE` fails fast with an explicit error rather than silently incrementing to another port. This ensures traffic intended for your configured port is not routed to an unmonitored port. In local development mode (`bascik`), auto-incrementing remains active.
+
+## How do I do a zero-downtime deploy?
+
+Configure your orchestrator or reverse proxy to use `GET /_health` as the readiness probe. When a deployment replaces existing containers, sending `SIGTERM` makes Bascik report `503` on `/_health` immediately while draining existing requests within `http.timeouts.drain` (default 5 seconds). Once the load balancer shifts traffic to the new instances, the old process exits cleanly.
+
 ## Why is my build script output stale?
 
 Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.

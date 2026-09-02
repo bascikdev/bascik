@@ -415,6 +415,12 @@ http: {
   trustProxy: false,        // trust X-Forwarded-For and X-Forwarded-Proto behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
+  timeouts: {
+    request: 30000,         // request socket timeout (ms)
+    headers: 10000,         // headers timeout (ms)
+    keepAlive: 5000,        // keep-alive timeout (ms)
+    drain: 5000,            // graceful shutdown drain window (ms)
+  },
   maxBodySize: 1048576,
   apiTimeout: 10000,
 }

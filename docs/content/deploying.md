@@ -112,6 +112,18 @@ When `trustProxy: true` is enabled:
 
 When `trustProxy: false` (the default), `X-Forwarded-For` and `X-Forwarded-Proto` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
 
+### Health checks and zero-downtime deployments
+
+`bascik --server` provides built-in endpoints for load balancer and orchestrator health checks:
+
+- **Liveness probe:** `GET /_health/live` returns `200 OK` as long as the process is alive.
+- **Readiness probe:** `GET /_health` (or `GET /_health/ready`) returns `200 OK` when the server is ready to accept traffic, and `503 Service Unavailable` during boot and during the shutdown drain window.
+
+Configure your container orchestrator (e.g. Kubernetes, AWS ECS) or load balancer with:
+- **Health check path:** `/_health`
+- **Shutdown signal:** `SIGTERM`
+- **Deregistration delay:** Match or exceed `http.timeouts.drain` (default `5000` ms) so the load balancer stops routing new traffic before the process exits.
+
 ## Static hosting
 
 For most Bascik sites, `dist/` is the deployable artifact. If your site has no `data-bascik-server` scripts, you only need a static host.

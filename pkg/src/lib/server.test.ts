@@ -1505,6 +1505,72 @@ describe("startHttp2Server – graceful shutdown", () => {
   });
 });
 
+describe("startHttp2Server – health endpoint", () => {
+  beforeEach(async () => {
+    await startHttp2Server();
+  });
+
+  it("serves 200 OK for /_health when server is ready", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/_health", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200, "content-type": expect.stringContaining("json") }),
+    );
+  });
+
+  it("serves 503 for /_health during booting state", async () => {
+    const { setServerHealthState } = await import("./server-lifecycle.ts");
+    setServerHealthState("booting");
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/_health", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 503 }),
+    );
+    setServerHealthState("ready");
+  });
+
+  it("does not rate limit /_health even under flood", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).isProdServer = true;
+    const handler = getStreamHandler()!;
+    for (let i = 0; i < 505; i++) {
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/_health", "GET"));
+      if (i === 504) {
+        expect(stream.respond).toHaveBeenCalledWith(
+          expect.objectContaining({ ":status": 200 }),
+        );
+      }
+    }
+    (BascikConfig as any).isProdServer = false;
+  });
+});
+
+describe("startServerInstance – port conflict handling", () => {
+  it("fails hard on EADDRINUSE under --server", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).isProdServer = true;
+
+    const mockListenServer: any = {
+      once: vi.fn(),
+      removeListener: vi.fn(),
+      listen: vi.fn().mockImplementation((_p, _h, _cb) => {
+        // Trigger EADDRINUSE
+        const err: any = new Error("address in use");
+        err.code = "EADDRINUSE";
+        const errorHandler = mockListenServer.once.mock.calls.find((c: any[]) => c[0] === "error")?.[1];
+        errorHandler?.(err);
+      }),
+      on: vi.fn(),
+    };
+
+    await expect(startServerInstance(mockListenServer, "http")).rejects.toThrow(/already in use/);
+    (BascikConfig as any).isProdServer = false;
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cert auto-generation
 // ─────────────────────────────────────────────────────────────────────────────

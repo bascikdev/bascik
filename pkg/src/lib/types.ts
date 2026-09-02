@@ -179,6 +179,7 @@ export interface HttpTimeoutsOptions {
   request?: number;
   headers?: number;
   keepAlive?: number;
+  drain?: number;
 }
 
 export interface HttpOptions {
