@@ -10,6 +10,11 @@ const staticTestIgnore = [
   '**/dev-server-reload.test.ts',
   '**/prod-server.test.ts',
   '**/preserve-server-form.test.ts',
+  // Content-hash ETags, cache-control mapping, and 304 revalidation are
+  // Bascik server features (mem.ts / server.ts). The static build config
+  // serves dist/ with a minimal harness server that has none of this, so
+  // this suite only runs against playwright.server*.config.ts.
+  '**/caching-layer.test.ts',
 ];
 
 export default defineConfig({

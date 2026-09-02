@@ -277,6 +277,10 @@ Add `src/pages/404.html` for not found errors or `src/pages/500.html` for server
 
 Bascik supports custom error pages by convention without needing any configuration. In production server mode, `src/pages/500.html` is transpiled at boot and served whenever an internal error occurs. If absent, a minimal built-in document is served instead. For static sites, `dist/404.html` and `dist/500.html` are standard files ready for your static host or CDN.
 
+## Why are my assets re-downloading after every deploy?
+
+In earlier versions, static asset ETags were derived from file modification times (`mtime`), which differed across CI checkouts and server replicas. Bascik now uses deterministic SHA-256 content hashes for all static and page ETags, computed once and cached in memory. Identical bytes produce identical ETags across separate server instances and deploys.
+
 ## Why did my build fail with a configuration error?
 
 Bascik validates `bascik.config.ts` at startup and refuses to run on an invalid configuration, so a mistake surfaces immediately with a clear message instead of a confusing runtime failure later. The report lists every problem at once: each entry names the key, shows the value it received, and states what was expected.

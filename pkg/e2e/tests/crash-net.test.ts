@@ -13,7 +13,7 @@ test.describe('Client Abort & Server Crash Net', () => {
     const aborted = await page.evaluate(async () => {
       const controller = new AbortController();
       const signal = controller.signal;
-      const fetchPromise = fetch('/styles.css', { signal }).catch((err) => {
+      const fetchPromise = fetch('/static-asset-test.css', { signal }).catch((err) => {
         return err.name === 'AbortError' ? 'aborted' : 'other-error';
       });
       // Abort immediately
@@ -27,7 +27,7 @@ test.describe('Client Abort & Server Crash Net', () => {
     const subsequentResponse = await page.request.get('/');
     expect(subsequentResponse.status()).toBe(200);
 
-    const assetResponse = await page.request.get('/styles.css');
+    const assetResponse = await page.request.get('/static-asset-test.css');
     expect(assetResponse.status()).toBe(200);
   });
 });

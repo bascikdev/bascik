@@ -319,7 +319,6 @@ describe("startHttp2Server – stream handler", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
         ":status": 200,
-        etag: expect.stringMatching(/^"[A-Za-z0-9_-]{27}"$/),
       }),
     );
     expect(stream.end).toHaveBeenCalledWith(page.content);
@@ -385,6 +384,9 @@ describe("startHttp2Server – stream handler", () => {
   });
 
   it("pipes a file stream for static asset requests", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.compression = false;
+    mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
     const fakeFileStream = {
       on: vi.fn().mockReturnThis(),
       pipe: vi.fn(),
@@ -399,6 +401,7 @@ describe("startHttp2Server – stream handler", () => {
     const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
     openCall?.[1]?.();
     expect(fakeFileStream.pipe).toHaveBeenCalledWith(stream);
+    (BascikConfig as any).http.compression = true;
   });
 
   it("decodes URL-encoded spaces in static asset paths", async () => {
@@ -457,6 +460,7 @@ describe("startHttp2Server – stream handler", () => {
   });
 
   it("resolves the MIME type for uppercase static asset extensions", async () => {
+    mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
     const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
     const handler = getStreamHandler()!;
@@ -655,6 +659,8 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   });
 
   it("sets an ETag header on page responses", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.httpCache = true;
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -662,6 +668,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ etag: expect.stringMatching(/^"[A-Za-z0-9_-]+"$/) }),
     );
+    (BascikConfig as any).http.httpCache = false;
   });
 
   it("returns 304 when If-None-Match matches and cacheHttp is enabled", async () => {
@@ -713,6 +720,7 @@ describe("startHttp2Server – ETag and conditional GET", () => {
   it("sets an ETag header on static asset responses", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.httpCache = true;
+    (BascikConfig as any).http.compression = false;
     const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
     const handler = getStreamHandler()!;
@@ -721,9 +729,10 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
     openCall?.[1]?.();
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ etag: expect.stringMatching(/^W\/"[0-9a-z]+-[0-9a-z]+"$/) }),
+      expect.objectContaining({ etag: expect.stringMatching(/^"[0-9a-f]{32,64}"$/) }),
     );
     (BascikConfig as any).http.httpCache = false;
+    (BascikConfig as any).http.compression = true;
   });
 
   it("returns 304 for a static asset when If-None-Match matches", async () => {
@@ -794,6 +803,9 @@ describe("startHttp2Server – path traversal protection", () => {
   it("serves a file whose name contains literal %2F without escaping (not a traversal)", async () => {
     // path.resolve treats %2F as a literal character, not a /; the guard passes
     // and stat is called. Mock stat succeeds, then createReadStream is set up.
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.compression = false;
+    mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
     const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
     mockCreateReadStream.mockReturnValue(fakeFileStream);
     const handler = getStreamHandler()!;
@@ -807,6 +819,7 @@ describe("startHttp2Server – path traversal protection", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 200 }),
     );
+    (BascikConfig as any).http.compression = true;
   });
 });
 

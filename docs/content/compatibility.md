@@ -256,7 +256,7 @@ When running Bascik's built-in HTTP/1.1 and HTTP/2 production server (`bascik --
 | Feature / Standard | Protocol Authority | Status | Implementation Details |
 | --- | --- | --- | --- |
 | HTTP/2 & ALPN Negotiation | IETF RFC 9113 / RFC 9112 | ✓ | Uses `http2.createSecureServer({ allowHTTP1: true })` for ALPN negotiation with automatic HTTP/1.1 fallback. Handles HTTP/2 pseudo-headers (`:status`, `:path`, `:method`, `:scheme`). |
-| Strong & Weak ETags | IETF RFC 9110 §8.8.3 | ✓ | Generates strong SHA-256 base64url ETags for dynamic HTML pages and weak stat-based ETags (`W/"mtime-size"`) for static files. |
+| Strong & Content-Hash ETags | IETF RFC 9110 §8.8.3 | ✓ | Generates strong SHA-256 content-hash ETags for both HTML pages and static assets, with distinct encoding-specific ETags (`"hash-br"`). |
 | Conditional GET & 304 Responses | IETF RFC 9110 §13.1.1 | ✓ | Evaluates incoming `If-None-Match` request headers against generated ETags and returns `304 Not Modified` with zero response body. |
 | Content Negotiation & Vary | IETF RFC 9110 §12.5.5 | ✓ | Sends `Vary: Accept-Encoding` and serves pre-compressed Brotli (`content-encoding: br`) assets when supported by the client. |
 | Method Guarding | IETF RFC 9110 §9.1 | ✓ | Enforces `GET` and `HEAD` requests only. Rejects other methods with `405 Method Not Allowed` and sends `Allow: GET, HEAD`. |

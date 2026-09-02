@@ -179,7 +179,7 @@ export default defineConfig({
     },
     rateLimit: true,
     trustProxy: false,
-    cacheControl: 'public, max-age=3600',
+    cacheControl: 'public, max-age=3600', // string or per-extension map: { '.woff2': 'public, max-age=31536000, immutable' }
     compression: true,
     maxBodySize: 1048576,
     apiTimeout: 10000,

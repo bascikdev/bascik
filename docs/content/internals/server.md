@@ -192,6 +192,12 @@ Every response includes standard security headers:
 
 Static asset requests are normalized and validated to ensure the resolved path remains strictly within the `dist/` directory. Requests attempting path traversal via `/../` receive an immediate `400 Bad Request` response before file I/O occurs.
 
+### Content-Hash ETags and Caching Layer
+
+Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (e.g. `"hash-br"`).
+
+Compression negotiation supports Brotli (`br`) and Gzip (`gzip`), respecting a size threshold and skipping already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
+
 ### Crash Net & Stream Error Handling
 
 Both HTTP/1.1 and HTTP/2 adapters register stream error handlers that identify client disconnects and network resets via `isNetworkResetError`. Errors such as `ECONNRESET`, `EPIPE`, `ECANCELED`, `ERR_HTTP2_STREAM_CANCEL`, `ERR_HTTP2_INVALID_STREAM`, `ERR_HTTP2_INVALID_SESSION`, `ERR_STREAM_WRITE_AFTER_END`, `ERR_STREAM_DESTROYED`, and `ERR_STREAM_ALREADY_FINISHED` are filtered out so client disconnects do not trigger spurious error logs or unhandled stream errors.

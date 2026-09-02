@@ -281,6 +281,26 @@ systemctl enable --now my-site
 journalctl -u my-site -f
 ```
 
+### Caching and cache-control tuning
+
+Bascik inlines component CSS and JavaScript directly into page markup, and `assets.inlineStyles` inlines global stylesheets. External static asset requests are primarily images, fonts, and favicons.
+
+Configure `http.cacheControl` to tune caching policies per extension:
+
+```ts
+// bascik.config.ts
+export default {
+  http: {
+    cacheControl: {
+      '.woff2': 'public, max-age=31536000, immutable',
+      '.png': 'public, max-age=86400',
+    },
+  },
+};
+```
+
+Pair `immutable` with fingerprinted filenames where content is immutable.
+
 ### Behind a reverse proxy
 
 If you already run nginx, Caddy, or another proxy, proxy HTTPS traffic to Bascik. The proxy-to-backend leg can use Bascik's self-signed certificate; only the client-facing edge needs a trusted cert. Pass the original client IP and any authentication headers through to `data-bascik-server` scripts so they have access to them.

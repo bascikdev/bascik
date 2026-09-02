@@ -41,7 +41,7 @@ describe("Crash Net - Bug 1 & 6: HTTP/1.1 stream error handler ignores network r
     mockResMsg.end = vi.fn();
     mockResMsg.destroy = vi.fn();
 
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     adaptHttp1(mockReqMsg, mockResMsg);
 
@@ -71,7 +71,7 @@ describe("Crash Net - Bug 1 & 6: HTTP/1.1 stream error handler ignores network r
     mockStream.end = vi.fn();
     mockStream.close = vi.fn();
 
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     adaptHttp2(mockStream, { ":method": "GET", ":path": "/test" });
 
@@ -101,8 +101,8 @@ describe("Crash Net - Bug 2: Request handler promise rejection handling", () => 
 
     const handler = createRequestHandler();
     // Simulate error during handler execution
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    
+    vi.spyOn(console, "error").mockImplementation(() => { });
+
     // We verify createRequestHandler does not let throw escape even if an internal step fails
     await expect(handler(mockReq, mockRes)).resolves.not.toThrow();
   });
@@ -134,8 +134,8 @@ describe("Crash Net - Bug 3 & 5 & 7: Process-level crash handlers", () => {
   beforeEach(() => {
     originalListenersRejection = process.listeners("unhandledRejection");
     originalListenersException = process.listeners("uncaughtException");
-    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as any);
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => { }) as any);
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
   });
 
   afterEach(() => {
