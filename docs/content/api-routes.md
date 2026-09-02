@@ -42,14 +42,13 @@ A route file exports functions corresponding to standard HTTP methods: `GET`, `P
 
 ## The Request and Response Contract & Portability
 
-Because Bascik uses native web standard `Request` and `Response` objects, your handlers are completely portable. The exact same handler function can run without modification across modern serverless and edge compute environments:
+Because Bascik uses native web standard `Request` and `Response` objects, your handlers are completely portable. The exact same handler function can run without modification on serverless edge runtimes or alongside standard web adapters:
 
 - Cloudflare Workers
-- AWS Lambda (via Function URLs or standard Web Adapters)
-- Google Cloud Functions / Cloud Run (using standard Web Request handlers)
-- Netlify Functions / Edge Functions
 - Fastly Compute
-- And many more!
+- Netlify Edge Functions
+- AWS Lambda (via Web Adapters or Function URLs)
+- Google Cloud Functions / Cloud Run (using standard Web Request adapters)
 
 ## The Context Argument
 

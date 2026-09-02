@@ -338,7 +338,7 @@ Yes. Define API route handlers in TypeScript or JavaScript under `src/api/` (suc
 
 ## Do I need a separate backend server for my API?
 
-No. If you run Bascik with `bascik --server`, API routes run in-process on the same port and server as your pages and assets. If you prefer static CDN hosting for pages, you can also lift your `src/api/` handlers directly to Cloudflare Workers, Deno Deploy, or AWS Lambda since they use standard web `Request` and `Response` interfaces.
+No. If you run Bascik with `bascik --server`, API routes run in-process on the same port and server as your pages and assets. If you prefer static CDN hosting for pages, you can also lift your `src/api/` handlers directly to Cloudflare Workers, Netlify Edge Functions, or AWS Lambda since they use standard web `Request` and `Response` interfaces.
 
 ## Why does Bascik not include middleware chains or interceptors?
 

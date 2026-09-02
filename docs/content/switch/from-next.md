@@ -238,7 +238,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For purely static hosting deployments, handlers can also be lifted directly to Cloudflare Workers, Fastly Compute, Deno Deploy, or AWS Lambda without rewriting because they use standard web APIs.
+Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For purely static hosting deployments, handlers can also be lifted directly to Cloudflare Workers, Fastly Compute, Netlify Edge Functions, or AWS Lambda without rewriting because they use standard web APIs.
 
 ## CSS Modules → Paired .css Files
 
