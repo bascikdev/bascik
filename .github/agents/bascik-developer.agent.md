@@ -1,7 +1,7 @@
 ---
 name: Bascik Developer
 description: "Primary specialist developer agent for Bascik. Use for developing compiler features, build pipeline changes, server architectures, scoping transforms, or debugging across pkg/, docs/, create/, and extensions/."
-model: ['Google Gemini 3.7 Flash', 'GPT-5.6 Sol Pro', 'GPT-5.6 Sol', 'Gemini 3.1 Pro preview', 'Claude Sonnet 5', 'Claude Sonnet 4.6', 'Google Gemini 3.6 Flash']
+model: ['Google: Gemini 3.7 Flash (openrouter)', 'google/gemini-3.7-flash', 'Google: Gemini 3.7 Flash']
 user-invocable: true
 argument-hint: "Describe the Bascik feature, bug fix, performance optimization, or refactor..."
 ---
