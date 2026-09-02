@@ -135,12 +135,17 @@ const mockStat = stat as unknown as ReturnType<typeof vi.fn>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   _rateLimiter.clear();
   mockMem.isBooting = false;
   // No exact-match pages by default: http2 falls back to mem.getPage (mocked per-test).
   mockMem.getPageExact.mockReturnValue(undefined);
+  // Static asset ETags are cached module-globally by file path (prompt 39);
+  // without clearing, a test that populates the cache for `/style.css`
+  // leaks a stale entry into every later test using the same path.
+  const { STATIC_CACHE_METADATA } = await import("./caching.ts");
+  STATIC_CACHE_METADATA.clear();
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -731,6 +736,30 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ etag: expect.stringMatching(/^"[0-9a-f]{32,64}"$/) }),
     );
+    (BascikConfig as any).http.httpCache = false;
+    (BascikConfig as any).http.compression = true;
+  });
+
+  // Regression test for the cold-cache bug: the very first request to a
+  // static asset in a fresh process (every server restart, every replica)
+  // must already carry the content-hash ETag, not the mtime-based fallback
+  // that used to be served synchronously while the real hash computed in
+  // the background. This is the exact scenario prompt 39 claims to fix.
+  it("serves a content-hash ETag on the FIRST request to a static asset, not an mtime fallback", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.httpCache = true;
+    (BascikConfig as any).http.compression = false;
+    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
+    mockCreateReadStream.mockReturnValue(fakeFileStream);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/style.css", "GET"));
+    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
+    openCall?.[1]?.();
+    const firstRequestCall = stream.respond.mock.calls[0][0] as Record<string, unknown>;
+    const firstEtag = firstRequestCall["etag"] as string;
+    // The mtime fallback looks like `"1705000000000-1024"`; a content hash is hex-only.
+    expect(firstEtag).toMatch(/^"[0-9a-f]{32,64}"$/);
     (BascikConfig as any).http.httpCache = false;
     (BascikConfig as any).http.compression = true;
   });

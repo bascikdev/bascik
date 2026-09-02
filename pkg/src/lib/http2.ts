@@ -88,9 +88,12 @@ export const startHttp2Server = async (): Promise<string> => {
 
   server.on(
     "stream",
+    // Returning the promise here is a no-op for Node's EventEmitter, which
+    // ignores listener return values, but lets tests and other callers
+    // deterministically await request handling instead of racing it.
     (stream: ServerHttp2Stream, headers: IncomingHttpHeaders) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handleRequest(req, res).catch((err) => {
+      return handleRequest(req, res).catch((err) => {
         console.error("[bascik] Unhandled error during HTTP/2 stream processing:", err);
         if (!res.headersSent) {
           try {
@@ -109,7 +112,7 @@ export const startHttp2Server = async (): Promise<string> => {
   server.on("request", (reqMsg, resMsg) => {
     if (reqMsg.httpVersion === "2.0") return;
     const { req, res } = adaptHttp1(reqMsg as any, resMsg as any);
-    handleRequest(req, res).catch((err) => {
+    return handleRequest(req, res).catch((err) => {
       console.error("[bascik] Unhandled error during HTTP/1.1 over TLS request processing:", err);
       if (!res.headersSent) {
         try {

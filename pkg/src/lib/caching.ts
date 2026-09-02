@@ -4,9 +4,6 @@ export interface StaticCacheEntry {
   etag: string;
   size: number;
   mtimeMs: number;
-  contentHash?: string;
-  brBuffer?: Buffer;
-  gzipBuffer?: Buffer;
 }
 
 export const STATIC_CACHE_METADATA = new Map<string, StaticCacheEntry>();

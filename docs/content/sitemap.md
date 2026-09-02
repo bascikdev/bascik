@@ -85,7 +85,7 @@ To exclude a specific page (such as a legacy URL redirect) from `sitemap.xml`, p
 <meta name="bascik-sitemap" content="exclude">
 ```
 
-The 404 page is automatically excluded from `sitemap.xml`.
+The `404` and `500` error pages are automatically excluded from `sitemap.xml`, since neither is real content.
 
 ## Optional lastmod timestamps
 

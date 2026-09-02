@@ -277,24 +277,26 @@ export const createRequestHandler = () => {
 
         let cached = STATIC_CACHE_METADATA.get(fullPath);
         if (!cached || cached.mtimeMs !== fileStat.mtimeMs || cached.size !== fileStat.size) {
-          const fallbackEtag = `"${fileStat.mtimeMs}-${fileStat.size}"`;
+          // Compute the content-hash ETag once, before the first response is
+          // sent. A background-computed hash would still let the very first
+          // request on every fresh process (every restart, every replica)
+          // serve a non-deterministic mtime-derived ETag, the exact bug this
+          // cache exists to fix.
+          let etag: string;
+          try {
+            const rawContent = await readFile(fullPath);
+            etag = getContentHashEtag(rawContent);
+          } catch {
+            // File vanished or became unreadable between stat() and read();
+            // fall back rather than fail the whole request over an ETag.
+            etag = `"${fileStat.mtimeMs}-${fileStat.size}"`;
+          }
           cached = {
-            etag: fallbackEtag,
+            etag,
             size: fileStat.size,
             mtimeMs: fileStat.mtimeMs,
           };
           STATIC_CACHE_METADATA.set(fullPath, cached);
-          // Async background update with real content hash
-          readFile(fullPath).then((rawContent) => {
-            if (rawContent && Buffer.isBuffer(rawContent) && rawContent.length > 0) {
-              const contentEtag = getContentHashEtag(rawContent);
-              STATIC_CACHE_METADATA.set(fullPath, {
-                etag: contentEtag,
-                size: fileStat.size,
-                mtimeMs: fileStat.mtimeMs,
-              });
-            }
-          }).catch(() => { });
         }
 
         const rawEtag = cached.etag;

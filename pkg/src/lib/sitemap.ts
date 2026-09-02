@@ -65,6 +65,14 @@ export const is404Page = (relativePath: string): boolean =>
   getHttpPath(relativePath) === "/404";
 
 /**
+ * True when a relative page path resolves to the site's custom 500 error page
+ * (`pages/500.html` → `/500`, prompt 38). Like `/404`, this is not real
+ * content and must not be advertised to crawlers as a canonical URL.
+ */
+export const is500Page = (relativePath: string): boolean =>
+  getHttpPath(relativePath) === "/500";
+
+/**
  * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.
  */
 export const isPageExcludedFromSitemap = async (pageFilePath: string): Promise<boolean> => {
@@ -189,7 +197,7 @@ export const generateSitemapFiles = async (
 
     const validPaths = rawPaths
       .map((p) => (p.startsWith("pages/") ? p : `pages/${p.replace(/^\/+/, "")}`))
-      .filter((rel) => !is404Page(rel));
+      .filter((rel) => !is404Page(rel) && !is500Page(rel));
 
     // Remove duplicates and filter excluded meta
     const uniqueRawPaths = Array.from(new Set(validPaths));

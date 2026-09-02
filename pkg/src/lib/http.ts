@@ -58,7 +58,10 @@ export const startHttpServer = async (): Promise<string> => {
 
   server.on("request", (reqMsg, resMsg) => {
     const { req, res } = adaptHttp1(reqMsg, resMsg);
-    handleRequest(req, res).catch((err) => {
+    // Returning the promise here is a no-op for Node's EventEmitter, which
+    // ignores listener return values, but lets tests and other callers
+    // deterministically await request handling instead of racing it.
+    return handleRequest(req, res).catch((err) => {
       console.error("[bascik] Unhandled error during request processing:", err);
       if (!res.headersSent) {
         try {
