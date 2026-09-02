@@ -1,7 +1,7 @@
 ---
 name: Bascik PR Reviewer
 description: "Pull request review specialist for Bascik. Use for deep code review, architectural adherence, edge case checks, TDD probe generation, and web standards verification on branches or PR diffs."
-model: ['Google: Gemini 3.7 Flash (openrouter)', 'google/gemini-3.7-flash', 'Google: Gemini 3.7 Flash']
+model: 'Google: Gemini 3.7 Flash (openrouter)'
 user-invocable: true
 argument-hint: "Specify the PR number, branch name, or diff range to review..."
 ---

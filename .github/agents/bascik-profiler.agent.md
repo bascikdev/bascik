@@ -1,7 +1,7 @@
 ---
 name: Bascik Performance & Profiling
 description: "Performance engineering and profiling agent for Bascik. Use to analyze compiler transpile times, AST parse bottlenecks, event loop lag, and memory allocations using 0x, clinic, and Node perf tools."
-model: ['Google: Gemini 3.7 Flash (openrouter)', 'google/gemini-3.7-flash', 'Google: Gemini 3.7 Flash']
+model: 'Google: Gemini 3.7 Flash (openrouter)'
 user-invocable: true
 argument-hint: "Profile compiler transpile times, server throughput, or inspect flamegraphs..."
 ---
