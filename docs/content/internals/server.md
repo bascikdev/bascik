@@ -234,6 +234,31 @@ Both HTTP/1.1 and HTTP/2 adapters register stream error handlers that identify c
 
 Process-level handlers for `unhandledRejection` and `uncaughtException` log full error context and exit with a non-zero code (`1`) to allow external process supervisors (systemd, Docker container restart policies) to restart the process cleanly.
 
+### In-Process Script Module Registry
+
+Dynamic server-side execution (`data-bascik-server` scripts and API routes) uses an in-process module registry (`pkg/src/lib/script-registry.ts`) powered by native dynamic `import()`.
+
+#### Rationale: In-Process vs. Child Process vs. Worker Threads
+
+- **Rejected: Child process per request.** Spawning a fresh Node interpreter plus disk I/O per request per script block incurs 30 to 80 ms of overhead, eliminates caching, and risks fork-bomb resource exhaustion under concurrent load.
+- **Rejected: Worker threads pool.** A worker pool requires structured-clone serialization of every request and payload, introduces pool lifecycle overhead, and complicates response streaming without solving event-loop starvation within workers.
+- **Adopted: In-process module cache.** Dynamic `import()` leverages Node's native module cache and V8 optimizations, executing request handlers with sub-millisecond dispatch overhead.
+
+#### Caching and Invalidation
+
+- **Production (`bascik --server`):** Modules load once on first request and are cached by resolved absolute file path for the lifetime of the process.
+- **Development (`bascik`):** File updates invalidate the registry entry. Cache-busting query URLs ensure edited modules take effect immediately without restarting the server.
+- **Error Containment:** A module that throws during load is contained to its own entry and does not poison the registry for other modules or subsequent retries after fixes.
+
+#### Concurrency and State Isolation
+
+Because modules run in-process, handlers receive request data via an explicit context argument rather than process-global state like `process.env`. Concurrently running requests execute asynchronously without leaking per-request context.
+
+#### Timeout, Cancellation, and Limitations
+
+- **Timeout:** Invocations accept a configurable timeout parameter. When a timeout occurs, the runner aborts an `AbortSignal` passed to the handler and returns a structured failure.
+- **Synchronous CPU Limitation:** In Node's single-threaded event loop, synchronous blocking loops (such as `while(true)`) cannot be forcibly preempted by an in-process timer. Authors must structure long-running tasks asynchronously.
+
 ### Graceful shutdown
 
 The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it stops accepting new connections, closes active SSE streams, destroys HTTP/2 sessions, shuts down filesystem watchers, and exits cleanly within a 10-second grace period.
