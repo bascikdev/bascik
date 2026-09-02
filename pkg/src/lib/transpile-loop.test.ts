@@ -8,7 +8,6 @@ describe("Prompt 34: Transpile loop performance & operation count guard", () => 
     let maskCallsOnDocument = 0;
     const origMask = componentsModule.maskRawTextContent;
     const maskSpy = vi.spyOn(componentsModule, "maskRawTextContent").mockImplementation((str) => {
-      console.log("caller:", new Error().stack?.split("\n")[3]);
       if (str.length > 500) {
         maskCallsOnDocument++;
       }
