@@ -102,6 +102,7 @@ import { WorkerPool } from "./worker-pool.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
+import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
 import { extractServerScriptsToSidecar, serverSidecarRegistry } from "./server-sidecar.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
@@ -823,7 +824,11 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     listComponents(),
     resolveInlineStylesHtml(),
   ]);
-  const pageList = pages ?? [];
+  let pageList = pages ?? [];
+
+  if (BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0) {
+    pageList = filterPagesByOnlyGlobs(pageList, BascikConfig.only, BascikConfig.directory.pages);
+  }
 
   let relativePaths: string[] = [];
 

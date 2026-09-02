@@ -282,6 +282,7 @@ export const initBascikConfig = (
     port?: number;
     host?: string;
     logLevel?: LogLevel;
+    only?: string[];
   } = {},
   deps: ConfigValidationDeps = {},
 ) => {
@@ -381,6 +382,7 @@ export const initBascikConfig = (
     },
     isBuild,
     isProdServer,
+    ...(flags.only && flags.only.length > 0 ? { only: flags.only } : {}),
   };
 
   if (BascikConfig.pipeline?.exec) {
@@ -421,5 +423,6 @@ export const { BascikConfig } = initBascikConfig(
     port: envPort,
     host: envHost,
     logLevel: envLogLevel as LogLevel | undefined,
+    only: cliDecision.flags.only,
   },
 );
