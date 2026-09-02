@@ -14,7 +14,7 @@
  * - Multiple Set-Cookie headers are preserved via Headers.getSetCookie().
  */
 
-import { Readable } from "node:stream";
+import { Readable, PassThrough } from "node:stream";
 import { scriptRegistry } from "./script-registry.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { BascikConfig } from "./config.ts";
@@ -109,12 +109,18 @@ export const createWebRequest = (
     const stream = (rawReq as any).stream ?? (rawReq as any).rawStream;
     if (stream && typeof Readable.toWeb === "function") {
       try {
-        const rawWebStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+        let nodeStream = stream;
+        if (typeof stream.pipe === "function") {
+          const pass = new PassThrough();
+          stream.pipe(pass);
+          nodeStream = pass;
+        }
+        const rawWebStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
         const limit = maxBodySize ?? BascikConfig.http?.maxBodySize ?? 1048576;
         if (limit > 0) {
           const limitTransform = createByteLimitTransform(limit, () => {
-            if (typeof stream.destroy === "function") {
-              stream.destroy();
+            if (typeof stream.resume === "function") {
+              stream.resume();
             }
           });
           body = rawWebStream.pipeThrough(limitTransform);
@@ -280,7 +286,13 @@ export const executeApiRoute = async (
     return result;
   } catch (err) {
     if (err instanceof PayloadTooLargeError || (err as any)?.name === "PayloadTooLargeError") {
-      return new Response("Payload Too Large", { status: 413 });
+      return new Response("Payload Too Large", {
+        status: 413,
+        headers: {
+          "Connection": "close",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
     }
 
     if (isNetworkResetError(err)) {

@@ -7,6 +7,7 @@ const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const staticTestIgnore = [
   '**/server-scripts.test.ts',
+  '**/api-routes.test.ts',
   '**/dev-server-reload.test.ts',
   '**/prod-server.test.ts',
   '**/preserve-server-form.test.ts',

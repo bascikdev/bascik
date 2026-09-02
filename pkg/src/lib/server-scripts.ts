@@ -99,18 +99,20 @@ export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
 export const transformServerScriptSource = (source: string): string => {
   const trimmed = source.trim();
 
+  const escapeHtmlHelper = `const escapeHtml = (val) => {
+  if (val === null || val === undefined) return "";
+  return String(val).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+};`;
+
   // If already exports a default function/object
-  if (/^export\s+default\b/m.test(trimmed)) {
-    return trimmed;
+  if (/^\s*export\s+default\b/m.test(trimmed)) {
+    return `${escapeHtmlHelper}\n${trimmed}`;
   }
 
   // Wrap in default async export function with escapeHtml available in scope
-  return `export default async function({ req }, { signal } = {}) {
+  return `${escapeHtmlHelper}
+export default async function({ req }, { signal } = {}) {
   let __bascik_out = "";
-  const escapeHtml = (val) => {
-    if (val === null || val === undefined) return "";
-    return String(val).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  };
   const process = {
     ...globalThis.process,
     env: {
