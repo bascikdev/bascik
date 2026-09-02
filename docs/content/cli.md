@@ -253,7 +253,7 @@ When you build for production (`bascik --build`), this file is compiled to `dist
 
 ## Static analysis with `bascik --check`
 
-Run `bascik --check` from your project root to validate all pages and component files without starting the dev server or writing any output files:
+Run `bascik --check` from your project root to validate all pages, component files, and API route files without starting the dev server or writing any output files:
 
 ```sh
 bascik --check
@@ -261,8 +261,13 @@ bascik --check
 
 It reports:
 
-- **Errors:** hyphenated tags that have no matching component file
-- **Warnings:** component files that exist but are never referenced
+- **Errors:**
+  - Hyphenated tags that have no matching component file
+  - API route files under `directory.api` that export no recognized method handler
+  - Two or more API route files that resolve to the same route URL (collision)
+- **Warnings:**
+  - Component files that exist but are never referenced
+  - API route method exports that are lowercase or mixed-case (e.g. `get` or `Post`)
 - **Success:** exits with code `0` when no errors are found
 
 Example output:

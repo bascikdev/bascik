@@ -21,11 +21,17 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { listPages, getRelativePath } from "./file-system.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
+import { scanApiRouteFiles, fileToApiRoutePath } from "./api-routes.ts";
 import type { ComponentList } from "./types.ts";
+
+const VALID_API_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
+const API_METHOD_LIKE_REGEX = /\bexport\s+(?:async\s+)?(?:const|function|let|var)\s+([a-zA-Z0-9_$]+)\b/g;
 
 /**
  * Strip the inner content of elements that can legitimately contain raw,
@@ -150,6 +156,69 @@ export const checkProject = async (): Promise<boolean> => {
         `${unknown.map((t) => `<${t}>`).join(", ")} — no matching component file found`,
       );
       hasErrors = true;
+    }
+  }
+
+  // ── API route static analysis (Prompt 49) ───────────────────────────
+  const apiDir = resolve(process.cwd(), BascikConfig.directory?.api ?? "src/api");
+  if (existsSync(apiDir)) {
+    const apiFiles = await scanApiRouteFiles(apiDir);
+    const routesByUrl = new Map<string, string[]>();
+
+    for (const filePath of apiFiles) {
+      const normalizedApiDir = apiDir.replace(/\\/g, "/");
+      const normalizedFilePath = filePath.replace(/\\/g, "/");
+      let rel = normalizedFilePath.startsWith(normalizedApiDir + "/")
+        ? normalizedFilePath.slice(normalizedApiDir.length + 1)
+        : filePath;
+      const routeUrl = fileToApiRoutePath(rel, BascikConfig.base ?? "/");
+
+      const existing = routesByUrl.get(routeUrl);
+      if (existing) {
+        existing.push(filePath);
+      } else {
+        routesByUrl.set(routeUrl, [filePath]);
+      }
+
+      try {
+        const content = await readFile(filePath, "utf8");
+        API_METHOD_LIKE_REGEX.lastIndex = 0;
+        const exportedNames: string[] = [];
+        let match: RegExpExecArray | null;
+
+        while ((match = API_METHOD_LIKE_REGEX.exec(content)) !== null) {
+          const name = match[1];
+          exportedNames.push(name);
+
+          const upper = name.toUpperCase();
+          if (VALID_API_METHODS.has(upper) && name !== upper) {
+            console.warn(
+              `[bascik check] Warning in "${filePath}": method export "${name}" must be uppercase ("${upper}"). Lowercase or mixed-case HTTP methods are not recognized by the dispatcher.`
+            );
+          }
+        }
+
+        const hasRecognized = exportedNames.some((n) => VALID_API_METHODS.has(n));
+        if (!hasRecognized) {
+          console.error(
+            `[bascik check] Error in "${filePath}": file exports no recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`
+          );
+          hasErrors = true;
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    // Check for collisions
+    for (const [url, filePaths] of routesByUrl.entries()) {
+      if (filePaths.length > 1) {
+        console.error(
+          `[bascik check] Route URL Collision: "${url}" is declared in multiple route files:\n` +
+          filePaths.map((f) => `  - ${f}`).join("\n")
+        );
+        hasErrors = true;
+      }
     }
   }
 

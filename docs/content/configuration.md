@@ -424,8 +424,8 @@ http: {
     keepAlive: 5000,        // keep-alive timeout (ms)
     drain: 5000,            // graceful shutdown drain window (ms)
   },
-  maxBodySize: 1048576,
-  apiTimeout: 10000,
+  maxBodySize: 1048576,     // maximum API request body size in bytes (1 MB default)
+  apiTimeout: 10000,        // maximum execution time for API route handlers in ms (10s default)
 }
 ```
 

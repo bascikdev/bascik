@@ -113,6 +113,11 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | Streaming responses | ✓ | WHATWG `ReadableStream` bodies stream directly to clients. |
 | Dynamic API route parameters | ✓ | Extracted from `[param]` path segments into `context.params`. |
 | Client IP resolution | ✓ | Forwarded client IP provided via `context.remoteIp`, respecting `http.trustProxy`. |
+| Request body streaming | ✓ | Standard WHATWG `request.body` stream with `duplex: 'half'` support. |
+| Streaming body size limit | ✓ | `http.maxBodySize` counts bytes on the fly (defaults to 1 MB) and aborts with 413 without buffering. |
+| Handler execution timeout | ✓ | `http.apiTimeout` triggers 504 and cooperative `AbortSignal` for async work. |
+| Error information protection | ✓ | Thrown handler errors return generic 500 without leaking stack traces or source paths. |
+| Header injection protection | ✓ | CR and LF in handler-supplied header values are rejected. |
 | Middleware chains (`_middleware.ts`) | ✕ | Not supported by design. Handlers compose plain functions directly. |
 | Built-in schema validation | ✕ | Not supported by design. Validate payloads using standard libraries (e.g. Zod, Valibot). |
 | Automatic response compression on API routes | ✕ | Deliberately omitted to prevent BREACH attacks on sensitive dynamic data. Handlers set `Content-Encoding` manually if needed. |

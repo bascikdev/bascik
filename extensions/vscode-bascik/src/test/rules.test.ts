@@ -94,5 +94,17 @@ suite('Compatibility Rules Suite', () => {
       const diags = analyzeApiRouteSource(code);
       assert.ok(diags.some((d) => d.severity === 'warning' && d.message.includes('must return a standard WHATWG Response')));
     });
+
+    test('reports info diagnostic when request.json() is called without try/catch', () => {
+      const code = 'export const POST = async (req: Request) => { const body = await req.json(); return Response.json(body); };';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'info' && d.message.includes('try/catch')));
+    });
+
+    test('does not report info diagnostic when request.json() is within try/catch', () => {
+      const code = 'export const POST = async (req: Request) => { try { const body = await req.json(); return Response.json(body); } catch { return new Response("bad json", { status: 400 }); } };';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(!diags.some((d) => d.severity === 'info' && d.message.includes('try/catch')));
+    });
   });
 });

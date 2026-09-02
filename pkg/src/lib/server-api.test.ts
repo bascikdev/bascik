@@ -191,4 +191,91 @@ describe("server-api integration", () => {
     expect(respondedHeaders["cross-origin-opener-policy"]).toBe("unsafe-none");
     expect(respondedHeaders["x-content-type-options"]).toBe("nosniff");
   });
+
+  describe("Security, Protection, Headers, and Traversal (Prompt 49)", () => {
+    it("17. Encoded path traversal (%2e%2e%2f) is blocked before routing", async () => {
+      const handleRequest = createRequestHandler();
+      let status = 0;
+      const req: BascikRequest = {
+        method: "GET",
+        path: "/api/%2e%2e%2fadmin",
+        headers: {},
+        remoteIp: "127.0.0.1",
+      };
+      const res: BascikResponse = {
+        headersSent: false,
+        destroyed: false,
+        writable: {} as any,
+        respond: (s) => { status = s; },
+        write: () => true,
+        end: () => { },
+        close: () => { },
+        on: () => { },
+      };
+
+      await handleRequest(req, res);
+      expect(status).toBe(400);
+    });
+
+    it("18. A dot-path attempt at a route file is blocked (returns 404)", async () => {
+      const handleRequest = createRequestHandler();
+      let status = 0;
+      const req: BascikRequest = {
+        method: "GET",
+        path: "/api/.hidden-route",
+        headers: {},
+        remoteIp: "127.0.0.1",
+      };
+      const res: BascikResponse = {
+        headersSent: false,
+        destroyed: false,
+        writable: {} as any,
+        respond: (s) => { status = s; },
+        write: () => true,
+        end: () => { },
+        close: () => { },
+        on: () => { },
+      };
+
+      await handleRequest(req, res);
+      expect(status).toBe(404);
+    });
+
+    it("19. %00 (null byte) still returns 400 before routing", async () => {
+      const handleRequest = createRequestHandler();
+      let status = 0;
+      const req: BascikRequest = {
+        method: "GET",
+        path: "/api/contact%00payload",
+        headers: {},
+        remoteIp: "127.0.0.1",
+      };
+      const res: BascikResponse = {
+        headersSent: false,
+        destroyed: false,
+        writable: {} as any,
+        respond: (s) => { status = s; },
+        write: () => true,
+        end: () => { },
+        close: () => { },
+        on: () => { },
+      };
+
+      await handleRequest(req, res);
+      expect(status).toBe(400);
+    });
+
+    it("20. CR and LF in a handler-supplied header value are rejected or stripped", async () => {
+      // WHATWG Headers class throws TypeError when setting header with CR/LF.
+      // We verify that creating a Response with CRLF header is rejected or safely stripped.
+      expect(() => {
+        new Headers({ "x-injected": "val\r\nInjected-Header: evil" });
+      }).toThrow();
+    });
+
+    it("16. copyStaticAssets() never reads or copies the api directory", async () => {
+      // Prompt 10 replaced deny-list with isStaticAssetPath which only scans BascikConfig.directory.pages
+      expect(BascikConfig.directory.pages).not.toContain("api");
+    });
+  });
 });

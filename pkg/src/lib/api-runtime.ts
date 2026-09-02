@@ -17,7 +17,8 @@
 import { Readable } from "node:stream";
 import { scriptRegistry } from "./script-registry.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
-import type { BascikRequest } from "./server.ts";
+import { BascikConfig } from "./config.ts";
+import { isNetworkResetError, type BascikRequest } from "./server.ts";
 
 export const ALLOWED_METHODS = [
   "GET",
@@ -42,15 +43,47 @@ export interface ExecuteApiRouteOptions {
   params: Record<string, string>;
   remoteIp: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
+
+export class PayloadTooLargeError extends Error {
+  constructor(message = "Payload Too Large") {
+    super(message);
+    this.name = "PayloadTooLargeError";
+  }
+}
+
+/**
+ * Creates a TransformStream that limits the number of bytes passing through.
+ * If total bytes exceed maxBytes, it destroys/errors the stream immediately.
+ */
+export const createByteLimitTransform = (
+  maxBytes: number,
+  onExceeded?: () => void
+): TransformStream<Uint8Array, Uint8Array> => {
+  let bytesReceived = 0;
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytesReceived += chunk.byteLength;
+      if (bytesReceived > maxBytes) {
+        if (onExceeded) onExceeded();
+        controller.error(new PayloadTooLargeError(`Request body exceeded ${maxBytes} bytes.`));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+};
 
 /**
  * Construct a WHATWG Request from a BascikRequest.
  * Excludes HTTP/2 pseudo-headers (headers starting with ':').
+ * Enforces streaming byte count up to maxBodySize without buffering.
  */
 export const createWebRequest = (
   rawReq: BascikRequest,
-  origin = "http://localhost"
+  origin = "http://localhost",
+  maxBodySize?: number
 ): Request => {
   const method = rawReq.method ? rawReq.method.toUpperCase() : "GET";
   const url = new URL(rawReq.path ?? "/", origin).href;
@@ -73,11 +106,21 @@ export const createWebRequest = (
   const isBodyAllowed = method !== "GET" && method !== "HEAD";
 
   if (isBodyAllowed) {
-    // If rawReq carries a stream (e.g. from Node http.IncomingMessage or http2 stream)
     const stream = (rawReq as any).stream ?? (rawReq as any).rawStream;
     if (stream && typeof Readable.toWeb === "function") {
       try {
-        body = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+        const rawWebStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+        const limit = maxBodySize ?? BascikConfig.http?.maxBodySize ?? 1048576;
+        if (limit > 0) {
+          const limitTransform = createByteLimitTransform(limit, () => {
+            if (typeof stream.destroy === "function") {
+              stream.destroy();
+            }
+          });
+          body = rawWebStream.pipeThrough(limitTransform);
+        } else {
+          body = rawWebStream;
+        }
       } catch {
         body = null;
       }
@@ -101,7 +144,7 @@ export const createWebRequest = (
 export const executeApiRoute = async (
   options: ExecuteApiRouteOptions
 ): Promise<Response> => {
-  const { filePath, request, params, remoteIp, signal } = options;
+  const { filePath, request, params, remoteIp, signal: userSignal, timeoutMs } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
   let loadedModule: any;
@@ -172,8 +215,52 @@ export const executeApiRoute = async (
     remoteIp,
   };
 
+  const effectiveTimeout = timeoutMs ?? BascikConfig.http?.apiTimeout ?? 10000;
+  const abortController = new AbortController();
+
+  let upstreamSignalUnsubscribe: (() => void) | undefined;
+  if (userSignal) {
+    if (userSignal.aborted) {
+      abortController.abort(userSignal.reason);
+    } else {
+      const onAbort = () => abortController.abort(userSignal.reason);
+      userSignal.addEventListener("abort", onAbort, { once: true });
+      upstreamSignalUnsubscribe = () => userSignal.removeEventListener("abort", onAbort);
+    }
+  }
+
+  let timer: NodeJS.Timeout | undefined;
+  let didTimeout = false;
+
+  if (effectiveTimeout && effectiveTimeout > 0) {
+    timer = setTimeout(() => {
+      didTimeout = true;
+      abortController.abort(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
+    }, effectiveTimeout);
+  }
+
   try {
-    const result = await targetHandler(request, context, { signal });
+    const handlerPromise = Promise.resolve(
+      targetHandler(request, context, { signal: abortController.signal })
+    );
+
+    let result: unknown;
+    if (effectiveTimeout && effectiveTimeout > 0) {
+      result = await Promise.race([
+        handlerPromise,
+        new Promise<never>((_, reject) => {
+          abortController.signal.addEventListener("abort", () => {
+            if (didTimeout) {
+              reject(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
+            } else {
+              reject(abortController.signal.reason);
+            }
+          }, { once: true });
+        }),
+      ]);
+    } else {
+      result = await handlerPromise;
+    }
 
     if (!(result instanceof Response)) {
       console.error(
@@ -183,7 +270,6 @@ export const executeApiRoute = async (
     }
 
     if (isDerivedHead) {
-      // Return status and headers from GET response, but empty body
       return new Response(null, {
         status: result.status,
         statusText: result.statusText,
@@ -193,10 +279,26 @@ export const executeApiRoute = async (
 
     return result;
   } catch (err) {
+    if (err instanceof PayloadTooLargeError || (err as any)?.name === "PayloadTooLargeError") {
+      return new Response("Payload Too Large", { status: 413 });
+    }
+
+    if (isNetworkResetError(err)) {
+      return new Response("Client Closed Request", { status: 499 });
+    }
+
+    if (didTimeout || (err as Error)?.message?.includes("timed out after")) {
+      console.error(`[bascik] API route handler timed out in "${filePath}" (${method}) after ${effectiveTimeout}ms`);
+      return new Response("Gateway Timeout", { status: 504 });
+    }
+
     console.error(
       `[bascik] API route handler error in "${filePath}" (${method}):`,
       (err as Error).stack ?? String(err)
     );
     return new Response("Internal Server Error", { status: 500 });
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (upstreamSignalUnsubscribe) upstreamSignalUnsubscribe();
   }
 };

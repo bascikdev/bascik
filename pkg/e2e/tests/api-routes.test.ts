@@ -76,4 +76,44 @@ test.describe('API routes core functionality', () => {
     const text = await res.text();
     expect(text).toBe('part1-part2');
   });
+
+  test('413 on oversized body and handler side effect did not occur', async ({ request }) => {
+    // 1 MB limit by default: send 2 MB of data
+    const oversizedBody = 'A'.repeat(2 * 1024 * 1024);
+    const res = await request.post('/api/body-limit', {
+      data: oversizedBody,
+      headers: { 'content-type': 'text/plain' },
+    });
+    expect(res.status()).toBe(413);
+
+    // Verify side effect did not run
+    const checkRes = await request.get('/api/body-limit');
+    expect(checkRes.status()).toBe(200);
+    const checkData = await checkRes.json();
+    expect(checkData.sideEffect).toBe(false);
+  });
+
+  test('504 Gateway Timeout on hung handler', async ({ request }) => {
+    const res = await request.get('/api/timeout');
+    expect(res.status()).toBe(504);
+  });
+
+  test('500 Internal Server Error hides stack trace and secrets from response body', async ({ request }) => {
+    const res = await request.get('/api/fault');
+    expect(res.status()).toBe(500);
+    const body = await res.text();
+    expect(body).not.toContain('SECRET_INTERNAL_DB_PASSWORD_MARKER_98765');
+    expect(body).not.toContain('/api/fault');
+    expect(body).toBe('Internal Server Error');
+  });
+
+  test('Blocks encoded path traversal (%2e%2e%2f)', async ({ request }) => {
+    const res = await request.get('/api/%2e%2e%2fadmin');
+    expect(res.status()).toBe(400);
+  });
+
+  test('Blocks dot-path access to hidden files', async ({ request }) => {
+    const res = await request.get('/api/.hidden');
+    expect(res.status()).toBe(404);
+  });
 });

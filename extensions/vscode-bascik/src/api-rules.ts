@@ -1,6 +1,6 @@
 export interface ApiRouteDiagnostic {
   message: string;
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "info";
   range?: { startLine: number; startChar: number; endLine: number; endChar: number };
 }
 
@@ -51,6 +51,26 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
       message: `API route file does not export any recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`,
       severity: "error",
     });
+  }
+
+  // Info diagnostic: request.json() or req.json() called without surrounding try/catch
+  // Matches \b(?:request|req)\.json\(\)
+  const jsonCallRegex = /\b(?:request|req)\.json\s*\(/g;
+  let jsonMatch: RegExpExecArray | null;
+  while ((jsonMatch = jsonCallRegex.exec(text)) !== null) {
+    // Check if there is a surrounding try block before this index in the function scope
+    // Simple heuristic: check if `try {` appears before jsonMatch.index without a closing `}` before it
+    const prefix = text.slice(0, jsonMatch.index);
+    const lastTry = prefix.lastIndexOf("try");
+    const lastCatch = prefix.lastIndexOf("catch");
+    const insideTry = lastTry !== -1 && (lastCatch === -1 || lastTry > lastCatch);
+
+    if (!insideTry) {
+      diagnostics.push({
+        message: `Calling request.json() without a surrounding try/catch will throw an unhandled error on malformed JSON payloads (resulting in a 500 response). Consider wrapping in a try/catch or validating input.`,
+        severity: "info",
+      });
+    }
   }
 
   return diagnostics;

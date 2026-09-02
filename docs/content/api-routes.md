@@ -69,6 +69,39 @@ export const GET = async (
 - `context.params`: Key-value map of extracted dynamic route segments (`[param]`).
 - `context.remoteIp`: The client IP address. When `http.trustProxy` is enabled in configuration, this value reflects the real client IP forwarded by upstream reverse proxies or CDNs.
 
+## Request Body Handling and Streaming
+
+Request bodies are exposed as standard WHATWG streams with `duplex: 'half'`. Handlers parse bodies using standard WHATWG methods such as `await request.json()`, `await request.text()`, `await request.formData()`, or `await request.arrayBuffer()`. Bascik does not automatically parse bodies or sniff content types.
+
+- **Streaming Size Enforcement (`http.maxBodySize`):** The maximum request body size defaults to `1048576` bytes (1 MB) and can be customized in `bascik.config.ts`.
+- **Stream Counting:** Bytes are counted on the fly as they stream from the client. Bascik never buffers an unbounded payload in memory to measure it.
+- **Payload Rejection:** If the payload exceeds the limit, the incoming stream is aborted and destroyed, and Bascik responds with `413 Payload Too Large` without continuing execution.
+- **Client Headers Untrusted:** Bascik does not trust `Content-Length` headers from clients; size limits are enforced strictly against actual received bytes.
+
+## Timeouts and Cooperative Cancellation
+
+API route execution is protected by `http.apiTimeout` (defaults to `10000` ms):
+
+- **AbortSignal:** Handlers receive a cooperative `AbortSignal` in the third argument options object `{ signal }` to cancel downstream network calls or database operations.
+- **Hard Timeout:** If a handler does not resolve before `http.apiTimeout` elapses, Bascik responds with `504 Gateway Timeout` and logs the timeout on the server.
+- **Synchronous Execution Limitation:** Like any JavaScript runtime, synchronous CPU-bound operations (such as infinite loops) cannot be interrupted by timers. The timeout protects asynchronous operations (promises, queries, fetch requests).
+
+## Error Handling and Information Protection
+
+Bascik strictly protects internal implementation details from clients:
+
+- **Clean 500 Responses:** Thrown errors or unhandled rejections return a generic `500 Internal Server Error` response with no stack traces, file paths, or internal error messages sent to the client.
+- **Server-Side Logging:** The complete, formatted error stack trace and route path are logged directly to server stderr for diagnostics.
+- **Fault Containment:** An error or syntax failure in a specific route file is completely contained to that route. Other API routes, server scripts, and static pages continue operating normally.
+- **Network Resets:** Client disconnects and network resets (`ECONNRESET`, `EPIPE`, `ERR_HTTP2_STREAM_CANCEL`) mid-request are handled cleanly without logging false server errors.
+
+## Security Model and Secret Protection
+
+- **No CORS by Default:** Same-origin policy is preserved by default. Handlers must explicitly set `Access-Control-Allow-Origin` headers if cross-origin access is intended.
+- **Full Environment Access:** Handlers run in-process with full access to `process.env` for database credentials, private API tokens, and server secrets.
+- **Source Protection:** Source code in `directory.api` (`src/api/`) is never served to clients, copied by asset pipelines, or bundled into static build output.
+- **Transport and Traversal Security:** Path traversal attempts (`%2e%2e%2f`), dot-file requests, and null bytes (`%00`) are blocked before routing. CRLF injection in handler-supplied headers is strictly rejected.
+
 ## Errors and Status Codes
 
 - Return any standard `Response` object to specify status code, headers, and body.

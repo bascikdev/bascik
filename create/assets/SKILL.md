@@ -1266,9 +1266,11 @@ export const POST = async (request: Request): Promise<Response> => {
 
 * **Method exports:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. Unexported methods return `405 Method Not Allowed` with an accurate `Allow` header.
 * **Derived HEAD & Auto OPTIONS:** `HEAD` auto-derives from `GET` (headers only, body stripped); `OPTIONS` auto-responds 204 with `Allow`.
-* **Context argument:** `(request, { params, remoteIp })`. Route params are parsed from `[param]` segments. `remoteIp` is proxy-aware when `http.trustProxy` is true.
+* **Context argument:** `(request, { params, remoteIp }, { signal })`. Route params are parsed from `[param]` segments. `remoteIp` is proxy-aware when `http.trustProxy` is true. `signal` provides cooperative abort on `http.apiTimeout`.
+* **Streaming request body:** `request.body` is a WHATWG stream with `duplex: 'half'`. Handlers call `.json()`, `.text()`, etc. `http.maxBodySize` (default 1 MB) counts streamed bytes and aborts with 413 without memory buffering.
+* **Security & secrets:** Handlers run in-process with access to `process.env`. Handler source files in `src/api/` are never served or copied to static builds. Thrown errors return 500 with zero stack/path info leaked to clients. No CORS headers are added by default.
 * **Zero config & portable:** Standard WHATWG contract lifts directly into Cloudflare Workers, Deno, or Bun without rewrite.
-* **Gotchas:** Static builds (`bascik --build`) cannot serve API routes and warn at build time. Handlers run in-process on the server; do not block the event loop with synchronous long-running tasks. No automatic compression or CORS headers are added by default.
+* **Gotchas:** Static builds (`bascik --build`) cannot serve API routes and warn at build time. Handlers run in-process on the server; synchronous infinite loops cannot be interrupted by timers. No automatic compression or CORS headers are added by default.
 
 **`http` config block:** configure the server in `bascik.config.ts`:
 ```ts

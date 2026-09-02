@@ -343,3 +343,11 @@ No. If you run Bascik with `bascik --server`, API routes run in-process on the s
 ## Why does Bascik not include middleware chains or interceptors?
 
 Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.
+
+## How big a request body can an API route accept?
+
+By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and immediately terminates oversized requests with `413 Payload Too Large` without buffering the entire body into memory.
+
+## Why did my API route return 504?
+
+API route execution is guarded by `http.apiTimeout` (default: 10,000 ms). If your handler does not return a `Response` before this timeout elapses, Bascik aborts the request and responds with `504 Gateway Timeout`. Handlers receive a cooperative `AbortSignal` in their context to cancel long-running database queries or external fetch requests.
