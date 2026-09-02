@@ -52,7 +52,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "SAMEORIGIN",
   "referrer-policy": "strict-origin-when-cross-origin",
-  "permissions-policy": "interest-cohort=()",
+  "cross-origin-opener-policy": "same-origin-allow-popups",
+  "cross-origin-resource-policy": "cross-origin",
 };
 
 export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
@@ -816,8 +817,6 @@ export const startServerInstance = async (
 export const startServer = async (): Promise<string> => {
   const enableTls = !!BascikConfig.http.tls?.enabled;
   if (enableTls) {
-    const { createSelfSignedCert } = await import("./pki.ts");
-    await createSelfSignedCert();
     const { startHttp2Server } = await import("./http2.ts");
     return startHttp2Server();
   }

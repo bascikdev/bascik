@@ -115,6 +115,14 @@ If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fa
 
 Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
 
+## Does Bascik set a Content Security Policy header?
+
+No. Bascik inlines styles and component scripts for performance and scoping isolation. Setting a CSP header directly in Bascik would require `'unsafe-inline'`, which defeats the purpose of CSP. Instead, Bascik generates SHA-256 hash manifests (`generate.cspHashes: true`) so your host or CDN edge can serve a strict policy.
+
+## Why does my browser reject the dev TLS certificate?
+
+Modern browsers require SubjectAltName (SAN) extensions on certificates. When generating self-signed certificates (`http.tls.enabled: true`), Bascik creates certificates with SAN extensions covering `localhost`, `*.localhost`, `127.0.0.1`, and `::1`. If you have `mkcert` installed, Bascik uses it to create locally-trusted certificates automatically.
+
 ## Why did my dynamic route 404?
 
 Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.

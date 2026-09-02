@@ -492,7 +492,8 @@ describe("startHttp2Server – security headers", () => {
     "x-content-type-options": "nosniff",
     "x-frame-options": "SAMEORIGIN",
     "referrer-policy": "strict-origin-when-cross-origin",
-    "permissions-policy": "interest-cohort=()",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "cross-origin-resource-policy": "cross-origin",
   };
 
   it("includes security headers on page responses", async () => {
@@ -1610,22 +1611,11 @@ describe("startHttp2Server – cert generation", () => {
     expect(mockExecFile).toHaveBeenCalledWith(
       "mkcert",
       expect.arrayContaining(["-key-file", "-cert-file", "localhost"]),
-      expect.objectContaining({ env: expect.any(Object) }),
       expect.any(Function),
     );
   });
 
-  it("passes augmented PATH to mkcert so Homebrew bin dirs are included", async () => {
-    mockAccess.mockRejectedValue(new Error("ENOENT"));
-
-    await startHttp2Server();
-
-    const [, , opts] = mockExecFile.mock.calls[0] as [string, string[], { env: { PATH: string } }, ExecFileCb];
-    expect(opts.env.PATH).toContain("/opt/homebrew/bin");
-    expect(opts.env.PATH).toContain("/usr/local/bin");
-  });
-
-  it("falls back to openssl when mkcert is not available", async () => {
+  it("falls back to openssl with SubjectAltName when mkcert is not available", async () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockExecFile
       .mockImplementationOnce(fail("mkcert not found"))
@@ -1637,7 +1627,7 @@ describe("startHttp2Server – cert generation", () => {
     expect(mockExecFile).toHaveBeenNthCalledWith(
       2,
       "openssl",
-      expect.arrayContaining(["req", "-x509"]),
+      expect.arrayContaining(["req", "-x509", "-addext"]),
       expect.any(Function),
     );
   });

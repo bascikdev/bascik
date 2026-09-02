@@ -1138,6 +1138,8 @@ export const build = defineConfig({
 
 > **Watch Mode & Config Changes:** Changes to `bascik.config.ts` require a server restart because configuration is deep-frozen at boot time. Bascik prints a restart hint when config files change.
 
+> **Content Security Policy (CSP):** Bascik does not set a `Content-Security-Policy` header. Enable `generate.cspHashes: true` to generate SHA-256 hashes of all inline styles and scripts, and apply the CSP header at your host or reverse proxy.
+
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:

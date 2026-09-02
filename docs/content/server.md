@@ -315,16 +315,23 @@ The Bascik HTTP server applies several hardening measures. Most of these are act
 
 ### Security response headers
 
-Every response includes these headers:
+Every response includes standard security headers:
 
 | Header | Value |
 | --- | --- |
 | `x-content-type-options` | `nosniff` |
 | `x-frame-options` | `SAMEORIGIN` |
 | `referrer-policy` | `strict-origin-when-cross-origin` |
-| `permissions-policy` | `interest-cohort=()` |
+| `cross-origin-opener-policy` | `same-origin-allow-popups` |
+| `cross-origin-resource-policy` | `cross-origin` |
 
-These are sent on HTML pages, static assets, and error responses in both dev and production. If you are terminating TLS at a proxy and want to add `Strict-Transport-Security`, add it there rather than in Bascik, the proxy already knows the scheme of the outer connection.
+These are sent on HTML pages, static assets, and error responses in both dev and production. Bascik deliberately does not inject a default `Content-Security-Policy` header because component styles and scripts are inlined; use `generate.cspHashes` and configure CSP at your edge or host provider.
+
+### Local TLS and certificates
+
+When `http.tls.enabled: true` is configured:
+- If `keyFile` and `certFile` are provided, Bascik loads the custom certificates.
+- If omitted, Bascik automatically generates development certificates with `SubjectAltName` covering `localhost`, `*.localhost`, `127.0.0.1`, and `::1` using `mkcert` (if installed) or `openssl`, with private key file permissions restricted to `0600`. Ensure `mkcert` or `openssl` is installed in your system PATH.
 
 ### Rate limiting
 

@@ -45,7 +45,15 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 
 Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support strict CSP configurations without using `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
 
-Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. You can convert the manifest into host headers (e.g. a Cloudflare Pages `_headers` file) using an `exec` script with `phase: 'post'`:
+Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. Setting a generic CSP with `'unsafe-inline'` inside the framework would provide false assurance.
+
+### Cross-Origin Isolation Headers
+
+Bascik sets safe default cross-origin headers:
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups`
+- `Cross-Origin-Resource-Policy: cross-origin`
+
+These defaults allow cross-origin images, fonts, and authentication popups to function without unexpected breaks. If full cross-origin isolation (e.g. `SharedArrayBuffer`) is required, configure `Cross-Origin-Embedder-Policy: require-corp` at your hosting layer.
 
 ```js
 // scripts/generate-csp-headers.ts

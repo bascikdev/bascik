@@ -200,7 +200,8 @@ Every response includes standard security headers:
 | `x-content-type-options` | `nosniff` |
 | `x-frame-options` | `SAMEORIGIN` |
 | `referrer-policy` | `strict-origin-when-cross-origin` |
-| `permissions-policy` | `interest-cohort=()` |
+| `cross-origin-opener-policy` | `same-origin-allow-popups` |
+| `cross-origin-resource-policy` | `cross-origin` |
 
 ### Graceful shutdown sequence and health checks
 
