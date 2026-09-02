@@ -10,7 +10,7 @@ import type { StoredPage } from "./types.ts";
 interface StorePageArgs {
   relativePagePath: string;
   absolutePagePath: string;
-  pageContent: string;
+  pageContent: string | Buffer;
   usedComponentsNames?: string[];
   fileDependencies?: string[];
 }
@@ -38,8 +38,7 @@ class MemoryStore {
   }: StorePageArgs): Promise<void> {
     const httpPath = getHttpPath(relativePagePath);
 
-    //this.#files.set(httpPath, pageContent)
-    const buffer = Buffer.from(pageContent, "utf8");
+    const buffer = Buffer.isBuffer(pageContent) ? pageContent : Buffer.from(pageContent, "utf8");
 
     const usedComponentsSet = new Set(usedComponentsNames);
     const fileDependenciesSet = new Set(

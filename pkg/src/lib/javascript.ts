@@ -489,13 +489,27 @@ export const prefixElementAttribute = (
     }
   }
 
+  // Deduplicate attributesToReplace tokens before running the script rewrite loop
+  const seenAttrMap = new Map<string, string>();
+  for (const { attributeName, obfuscatedAttributeName } of attributesToReplace) {
+    if (!seenAttrMap.has(attributeName)) {
+      seenAttrMap.set(attributeName, obfuscatedAttributeName);
+    }
+  }
+  const uniqueAttributesToReplace = Array.from(seenAttrMap.entries()).map(
+    ([attributeName, obfuscatedAttributeName]) => ({
+      attributeName,
+      obfuscatedAttributeName,
+    }),
+  );
+
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
   const scopedHtml = scopedAttrsHtml.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open) => {
       if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
       let updatedMatch = match;
-      attributesToReplace.forEach(
+      uniqueAttributesToReplace.forEach(
         ({ attributeName, obfuscatedAttributeName }) => {
           if (!updatedMatch.includes(attributeName)) return;
           const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {

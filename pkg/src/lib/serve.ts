@@ -73,22 +73,27 @@ const loadDistIntoMemory = async (): Promise<void> => {
     // Sidecar may not exist if no pages used server scripts
   }
 
-  await Promise.all(
-    htmlFiles.map(async (absPath) => {
-      // Derive a relativePagePath in the "pages/..." format that getHttpPath expects.
-      const distRelative = absPath.slice(distDir.length).replace(/\\/g, "/"); // normalize Windows separators
-      const relativePagePath = `pages${distRelative}`;
+  // Bounded concurrency during production boot to avoid EMFILE on large sites
+  const concurrency = 32;
+  for (let i = 0; i < htmlFiles.length; i += concurrency) {
+    const chunk = htmlFiles.slice(i, i + concurrency);
+    await Promise.all(
+      chunk.map(async (absPath) => {
+        // Derive a relativePagePath in the "pages/..." format that getHttpPath expects.
+        const distRelative = absPath.slice(distDir.length).replace(/\\/g, "/"); // normalize Windows separators
+        const relativePagePath = `pages${distRelative}`;
 
-      const content = (await readFile(absPath)).toString();
+        const buffer = await readFile(absPath);
 
-      await mem.storePage({
-        relativePagePath,
-        absolutePagePath: absPath,
-        pageContent: content,
-        usedComponentsNames: [],
-      });
-    }),
-  );
+        await mem.storePage({
+          relativePagePath,
+          absolutePagePath: absPath,
+          pageContent: buffer,
+          usedComponentsNames: [],
+        });
+      }),
+    );
+  }
 
   console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`);
 };

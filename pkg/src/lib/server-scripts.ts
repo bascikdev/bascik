@@ -103,7 +103,11 @@ const SERVER_ROUTES_CONFLICT_RE = new RegExp(
 );
 
 /** Return `true` if `html` contains at least one `data-bascik-server` block or placeholder. */
-export const htmlHasServerScripts = (html: string): boolean => {
+export const htmlHasServerScripts = (html: string | Buffer): boolean => {
+  if (Buffer.isBuffer(html)) {
+    // Quick buffer scan without full string decode
+    return html.includes("data-bascik-server") || html.includes("text/bascik-server");
+  }
   return createServerScriptRegex().test(html);
 };
 
