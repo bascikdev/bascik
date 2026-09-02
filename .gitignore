@@ -70,7 +70,7 @@ typings/
 
 docs/dist
 pkg/dist
-pkg/e2e/dist
+**/dist
 create/dist
 extensions/vscode-bascik/dist
 pkg/test-results
