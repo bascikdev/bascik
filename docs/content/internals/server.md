@@ -95,9 +95,16 @@ Three native filesystem watchers (chokidar) handle source file updates:
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
 
-### Live reload (`live-reload.ts`)
+### Live reload (`live-reload.ts`, `sse.ts`)
 
-Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects instantly when disconnected on browser tab focus or visibility changes (so restarting the dev server reloads your browser as soon as you re-focus the window without manual refresh, while remaining connected without unneeded reloads when active), and cleanly closes streams on page unload. Production builds strip this script entirely. If the dev server is offline, a status banner indicates that auto-reconnection will happen automatically when the server is restarted.
+Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The SSE system features:
+- **Periodic Heartbeats:** Sends `: ping\n\n` comments every 20 seconds, preventing proxy/VPN idle disconnection.
+- **Backpressure Handling:** Honors `res.write()` return values, draining stalled writes and terminating persistently wedged clients.
+- **Connection Cap & Cleanup:** Bounded at 200 concurrent SSE streams (`DEFAULT_MAX_SSE_CONNECTIONS`).
+- **Build Error Overlay:** Broadcasts `event: build-error` containing file, line, and stack info to display an overlay in the browser, clearing on subsequent successful builds.
+- **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
+- **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
+- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `serve.ts` as defense in depth.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 

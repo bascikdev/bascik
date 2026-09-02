@@ -83,7 +83,12 @@ const loadDistIntoMemory = async (): Promise<void> => {
         const distRelative = absPath.slice(distDir.length).replace(/\\/g, "/"); // normalize Windows separators
         const relativePagePath = `pages${distRelative}`;
 
-        const buffer = await readFile(absPath);
+        let rawString = await readFile(absPath, "utf8");
+        // Defense in depth: runtime strip any live-reload script if present
+        if (rawString.includes("/bascik-live-reload")) {
+          rawString = rawString.replace(/<script[^>]*>[\s\S]*?bascik-live-reload[\s\S]*?<\/script>/gi, "");
+        }
+        const buffer = Buffer.from(rawString, "utf8");
 
         await mem.storePage({
           relativePagePath,

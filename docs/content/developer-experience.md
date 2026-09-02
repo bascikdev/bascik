@@ -37,7 +37,9 @@ Drop a new component file at `src/components/user-badge/user-badge.html` and use
 
 A syntax error, missing `<body>`, or other page-level transpilation failure does not terminate the dev server. Initial boot still completes, successfully compiled pages remain available, and the failed route returns an error response instead of remaining on the boot screen. Bascik logs the source path, stage, and error message.
 
-Fix and save the page normally. Page rebuilds recover from earlier rejected jobs, so the corrected page is transpiled and served without restarting the process.
+In development, Bascik displays a **build-error overlay** in the browser immediately via SSE (`event: build-error`), detailing the file, line number, and error stack trace so you do not have to check your terminal. Fix and save the page normally; the overlay clears automatically and your page refreshes.
+
+The live-reload connection also includes comment heartbeats every 20 seconds, ensuring connections through corporate firewalls, VPNs, and proxies do not silently time out.
 
 ### Inspecting Dev Output
 

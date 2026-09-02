@@ -37,8 +37,11 @@ import {
   DEFAULT_DRAIN_TIMEOUT_MS,
   MAX_PORT_INCREMENTS,
 } from "./server-lifecycle.ts";
+import { SseManager } from "./sse.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
+
+export const sseManager = new SseManager();
 
 import { makeEtag } from "./names.ts";
 
@@ -55,7 +58,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
 export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
   const isHttps = req && req.headers
     ? req.headers[":scheme"] === "https" ||
-      (BascikConfig.http.trustProxy === true && req.headers["x-forwarded-proto"] === "https")
+    (BascikConfig.http.trustProxy === true && req.headers["x-forwarded-proto"] === "https")
     : false;
   if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
@@ -477,6 +480,17 @@ export const createRequestHandler = () => {
           return res.end();
         }
 
+        const isHead = req.method === "HEAD";
+        if (isHead) {
+          responseStatus = 200;
+          res.respond(200, {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            ...secHeaders,
+          });
+          return res.end();
+        }
+
         const isBootReloadConnection = new URL(req.path, "http://localhost").searchParams.get("boot") === "1";
 
         responseStatus = 200;
@@ -485,8 +499,6 @@ export const createRequestHandler = () => {
           "cache-control": "no-cache",
           ...secHeaders,
         });
-
-        res.write(`data: connected\n\n`);
 
         // Parse the referer once at connection time for path-matching and open-page tracking.
         let openPagePath: string | null = null;
@@ -498,6 +510,11 @@ export const createRequestHandler = () => {
           }
         } catch { }
         if (openPagePath) mem.trackOpenPage(openPagePath);
+
+        const client = sseManager.addClient(res, openPagePath);
+        if (!client) {
+          return;
+        }
 
         const eventHandler = ({
           relativePagePath,
@@ -511,31 +528,41 @@ export const createRequestHandler = () => {
             const strip = (p: string) => p.replace(/\/$/, "") || "/";
             if (strip(openPagePath) !== strip(httpPath)) return;
           }
-          res.write(`data: reload\n\n`);
+          sseManager.send(client, `data: reload\n\n`);
         };
 
         const assetChangedHandler = () => {
           if (res.destroyed) return;
-          res.write(`data: reload\n\n`);
+          sseManager.send(client, `data: reload\n\n`);
+        };
+
+        const buildErrorHandler = (errPayload: any) => {
+          if (res.destroyed) return;
+          sseManager.broadcastError(errPayload);
         };
 
         // Reload boot pages immediately when the initial scan finishes.
-        const bootDoneHandler = () => { if (res.destroyed) return; res.write(`data: reload\n\n`); };
+        const bootDoneHandler = () => {
+          if (res.destroyed) return;
+          sseManager.send(client, `data: reload\n\n`);
+        };
 
         eventEmitter.on("transpiled", eventHandler);
         eventEmitter.on("asset-changed", assetChangedHandler);
         eventEmitter.on("boot-done", bootDoneHandler);
-
-        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
-          res.write(`data: reload\n\n`);
-        }
+        eventEmitter.on("build-error", buildErrorHandler);
 
         res.on("close", () => {
           if (openPagePath) mem.untrackOpenPage(openPagePath);
           eventEmitter.removeListener("transpiled", eventHandler);
           eventEmitter.removeListener("asset-changed", assetChangedHandler);
           eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("build-error", buildErrorHandler);
         });
+
+        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
+          sseManager.send(client, `data: reload\n\n`);
+        }
         return;
       }
 

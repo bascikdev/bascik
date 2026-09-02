@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
 
@@ -39,6 +39,7 @@ describe("LIVE_RELOAD_SCRIPT", () => {
       onmessage: ((e: any) => void) | null = null;
       onerror: (() => void) | null = null;
       closed = false;
+      addEventListener = vi.fn();
 
       constructor(url: string) {
         this.url = url;
