@@ -119,6 +119,10 @@ Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256
 
 Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.
 
+## Why is my rate limit blocking everyone behind my CDN?
+
+If `bascik --server` runs behind a CDN or load balancer without `http.trustProxy: true`, all incoming connections share the CDN's socket IP address. One active user will exhaust the rate limit budget for all users. Enable `trustProxy: true` under `http` or `export const server` in `bascik.config.ts` so client IPs are resolved from the trusted reverse proxy headers.
+
 ## Why is my build script output stale?
 
 Bascik caches build script executions based on statically scanned local dependencies. If your script fetches data from a remote network API, reads a directory dynamically via `readdir`, or uses computed file paths, configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that path from caching.

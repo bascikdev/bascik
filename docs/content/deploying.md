@@ -94,6 +94,24 @@ npx http-server dist
 
 Then open `http://localhost:8080` in your browser to inspect your production site.
 
+### Reverse proxy and CDN deployments (`trustProxy`)
+
+When deploying `bascik --server` behind a CDN, load balancer, or reverse proxy (such as Cloudflare, AWS CloudFront/ALB, or NGINX), set `http.trustProxy: true` in `bascik.config.ts` (or under `export const server`):
+
+```ts
+export const server = defineConfig({
+  http: {
+    trustProxy: true,
+  },
+});
+```
+
+When `trustProxy: true` is enabled:
+- **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
+- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
+
+When `trustProxy: false` (the default), `X-Forwarded-For` and `X-Forwarded-Proto` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
+
 ## Static hosting
 
 For most Bascik sites, `dist/` is the deployable artifact. If your site has no `data-bascik-server` scripts, you only need a static host.

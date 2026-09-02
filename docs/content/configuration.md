@@ -411,8 +411,8 @@ http: {
     keyFile: undefined,     // path to TLS private key
     certFile: undefined,    // path to TLS certificate
   },
-  rateLimit: true,          // per-IP rate limiting
-  trustProxy: false,        // trust X-Forwarded-* headers
+  rateLimit: true,          // boolean or { window?: number, max?: number } (default: 500 req / 10s)
+  trustProxy: false,        // trust X-Forwarded-For and X-Forwarded-Proto behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
   maxBodySize: 1048576,

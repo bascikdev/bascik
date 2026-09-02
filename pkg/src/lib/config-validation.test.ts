@@ -363,6 +363,26 @@ describe("referenced files (fs half)", () => {
     ).toHaveLength(0);
   });
 
+  it("validates http.trustProxy and http.rateLimit options", () => {
+    const invalidErrors = validateConfigShape({
+      http: {
+        trustProxy: "yes" as any,
+        rateLimit: { window: -10, max: "500" as any },
+      },
+    });
+    expect(invalidErrors.some((e) => e.key === "http.trustProxy")).toBe(true);
+    expect(invalidErrors.some((e) => e.key === "http.rateLimit.window")).toBe(true);
+    expect(invalidErrors.some((e) => e.key === "http.rateLimit.max")).toBe(true);
+
+    const validErrors = validateConfigShape({
+      http: {
+        trustProxy: true,
+        rateLimit: { window: 5000, max: 100 },
+      },
+    });
+    expect(validErrors).toHaveLength(0);
+  });
+
   it("accepts referenced files that all exist", () => {
     expect(
       validateConfigPaths(

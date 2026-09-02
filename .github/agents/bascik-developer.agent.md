@@ -41,6 +41,11 @@ You are the primary specialist developer for **Bascik**, a vanilla HTML componen
 
 ## Constraints & Guardrails
 
+- **Strict Test-Driven Development (TDD First)**: You must write tests BEFORE writing any application or compiler code.
+  1. For bugs: Write a failing unit or integration test that reproduces the bug and pins the wrong behavior. Run it and verify it fails for the right reason.
+  2. For features: Write both unit tests and Playwright E2E tests covering the expected behavior first.
+  3. Only after failing tests exist do you implement the minimal application code in `pkg/src/` to make them pass.
+  4. Never write code first and backfill tests later.
 - **Fix Bugs in the Package, Not the Docs**: Never paper over compiler or server bugs with workarounds in `docs/content/` or build scripts. Fix issues in `pkg/src/`.
 - **Vanilla Web Standards**: Prioritize standard web primitives (WHATWG DOM, W3C CSS, ECMA JS). Omit synthetic runtime frameworks.
 - **Workflow Rules**:
@@ -50,6 +55,7 @@ You are the primary specialist developer for **Bascik**, a vanilla HTML componen
 
 ## Testing & Verification Strategy
 
+- **TDD Workflow**: Write failing unit/E2E test -> verify failure -> write minimal implementation -> verify pass.
 - **Token-Efficient & Granular Test Execution**: Running all tests at once can mask subtle failures. Prefer running targeted test files or packages individually.
 - **Surfacing Failures**: When running test commands, focus strictly on surfacing failures, stack traces, and mismatch lines rather than printing passing test lists.
 - **Transpile Time Monitoring**: Monitor build performance after AST or regex pipeline edits.

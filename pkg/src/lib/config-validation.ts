@@ -345,6 +345,28 @@ export const validateConfigShape = (
         }
       }
     }
+    if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
+      push("http.trustProxy", http.trustProxy, "expected true or false");
+    }
+    if (http.rateLimit !== undefined) {
+      const rateLimit = http.rateLimit;
+      if (typeof rateLimit !== "boolean" && !isPlainObject(rateLimit)) {
+        push("http.rateLimit", rateLimit, "expected true, false, or an object { window?, max? }");
+      } else if (isPlainObject(rateLimit)) {
+        if (rateLimit.window !== undefined) {
+          const windowVal = rateLimit.window;
+          if (typeof windowVal !== "number" || Number.isNaN(windowVal) || windowVal <= 0) {
+            push("http.rateLimit.window", windowVal, "expected a positive number (milliseconds)");
+          }
+        }
+        if (rateLimit.max !== undefined) {
+          const maxVal = rateLimit.max;
+          if (typeof maxVal !== "number" || !Number.isInteger(maxVal) || maxVal <= 0) {
+            push("http.rateLimit.max", maxVal, "expected a positive integer");
+          }
+        }
+      }
+    }
   }
 
   /* scripts */

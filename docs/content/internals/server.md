@@ -141,7 +141,14 @@ Production mode enables `cacheHttp: true` by default:
 
 ### Production rate limiting
 
-Production mode enforces a rate limit of **500 requests per 10-second window per IP address** by default. Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header. Rate limiting is inactive during development mode, and can be disabled via `prodServer: { rateLimit: false }` in `bascik.config.ts`.
+Production mode enforces a sliding-window rate limit per IP address (by default **500 requests per 10-second window**). Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header.
+
+- **Sliding Sub-Windows:** Uses a ring of 10 sub-buckets per window to smooth boundary bursts and prevent double-budget attacks at window edges.
+- **Trust Proxy Support:** When `http.trustProxy: true` is configured, client IP derivation reads the rightmost entry of `X-Forwarded-For` (the address appended by the immediate trusted proxy). When `false` (default), forwarded headers are ignored to prevent spoofing.
+- **Bounded Tracking Map:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). If capacity is saturated by flood attacks, the limiter fails closed to preserve server memory. Periodic cleanup reaps stale entries.
+- **Configurable:** Accepts `boolean` or `{ window?: number, max?: number }` in `bascik.config.ts`.
+- **SSE Streams:** Excluded from page rate limit checks.
+- **Development Mode:** Rate limiting is inactive during development mode.
 
 ## Development vs Production Comparison
 

@@ -24,6 +24,12 @@ import {
 import { readFile } from "node:fs/promises";
 import zlib from "node:zlib";
 
+import {
+  RateLimiter,
+  DEFAULT_RATE_LIMIT_WINDOW_MS,
+  DEFAULT_RATE_LIMIT_MAX,
+} from "./rate-limit.ts";
+
 import { makeEtag } from "./names.ts";
 
 export { makeEtag };
@@ -38,7 +44,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
 export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
   const isHttps = req && req.headers
-    ? req.headers[":scheme"] === "https" || req.headers["x-forwarded-proto"] === "https"
+    ? req.headers[":scheme"] === "https" ||
+      (BascikConfig.http.trustProxy === true && req.headers["x-forwarded-proto"] === "https")
     : false;
   if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
@@ -57,32 +64,45 @@ export const makeStatEtag = (mtimeMs: number, size: number): string =>
 const fileStatSizeToString = (size: number): string => size.toString(36);
 
 // ─── Per-IP rate limiting ─────────────────────────────────────────────────────
-export const RATE_WINDOW_MS = 10_000;
-export const RATE_MAX_REQUESTS = 500;
+export const RATE_WINDOW_MS = DEFAULT_RATE_LIMIT_WINDOW_MS;
+export const RATE_MAX_REQUESTS = DEFAULT_RATE_LIMIT_MAX;
 
-interface RateEntry { count: number; windowStart: number; }
+let activeRateLimiter: RateLimiter | null = null;
 
-/** Exported for test cleanup only, do not use in production code. */
-export const _rateLimiter = new Map<string, RateEntry>();
-
-export const isRateLimited = (ip: string): boolean => {
-  const now = Date.now();
-  const entry = _rateLimiter.get(ip);
-  if (!entry || now - entry.windowStart >= RATE_WINDOW_MS) {
-    _rateLimiter.set(ip, { count: 1, windowStart: now });
-    return false;
+export const getActiveRateLimiter = (): RateLimiter => {
+  if (!activeRateLimiter) {
+    const rateLimitConfig = BascikConfig.http.rateLimit;
+    const windowMs = typeof rateLimitConfig === "object" && rateLimitConfig?.window
+      ? rateLimitConfig.window
+      : DEFAULT_RATE_LIMIT_WINDOW_MS;
+    const max = typeof rateLimitConfig === "object" && rateLimitConfig?.max
+      ? rateLimitConfig.max
+      : DEFAULT_RATE_LIMIT_MAX;
+    activeRateLimiter = new RateLimiter({ windowMs, max });
   }
-  entry.count++;
-  return entry.count > RATE_MAX_REQUESTS;
+  return activeRateLimiter;
 };
 
-// Purge stale entries to prevent unbounded memory growth.
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of _rateLimiter) {
-    if (now - entry.windowStart >= RATE_WINDOW_MS) _rateLimiter.delete(ip);
+/** For testing or reconfiguration: reset active rate limiter */
+export const resetActiveRateLimiter = (): void => {
+  if (activeRateLimiter) {
+    activeRateLimiter.destroy();
+    activeRateLimiter = null;
   }
-}, RATE_WINDOW_MS).unref();
+};
+
+/** Exported for backward-compatibility with tests */
+export const _rateLimiter = {
+  clear() {
+    if (activeRateLimiter) {
+      activeRateLimiter.clear();
+    }
+  },
+};
+
+export const isRateLimited = (ip: string): boolean => {
+  return getActiveRateLimiter().isRateLimited(ip);
+};
 
 export interface BascikRequest {
   method: string;

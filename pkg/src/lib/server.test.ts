@@ -537,7 +537,7 @@ describe("startHttp2Server – security headers", () => {
     );
   });
 
-  it("includes Strict-Transport-Security header when request has :scheme https or x-forwarded-proto https", async () => {
+  it("includes Strict-Transport-Security header when request has :scheme https", async () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -548,6 +548,36 @@ describe("startHttp2Server – security headers", () => {
         "strict-transport-security": "max-age=31536000; includeSubDomains",
       }),
     );
+  });
+
+  it("does NOT include Strict-Transport-Security on x-forwarded-proto https when trustProxy is false", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.trustProxy = false;
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        "strict-transport-security": expect.any(String),
+      }),
+    );
+  });
+
+  it("includes Strict-Transport-Security on x-forwarded-proto https when trustProxy is true", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.trustProxy = true;
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...EXPECTED_SECURITY_HEADERS,
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      }),
+    );
+    (BascikConfig as any).http.trustProxy = false;
   });
 });
 
