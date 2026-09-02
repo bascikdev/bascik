@@ -158,7 +158,7 @@ export const executeApiRoute = async (
     const loaded = await scriptRegistry.load(filePath);
     loadedModule = loaded.module;
   } catch (err) {
-    console.error(`[bascik] Failed to load API route module "${filePath}":`, (err as Error).stack ?? String(err));
+    console.error("[bascik] Failed to load API route module %s:", filePath, (err as Error).stack ?? String(err));
     return new Response("Internal Server Error", { status: 500 });
   }
 
@@ -300,12 +300,14 @@ export const executeApiRoute = async (
     }
 
     if (didTimeout || (err as Error)?.message?.includes("timed out after")) {
-      console.error(`[bascik] API route handler timed out in "${filePath}" (${method}) after ${effectiveTimeout}ms`);
+      console.error("[bascik] API route handler timed out in %s (%s) after %dms", filePath, method, effectiveTimeout);
       return new Response("Gateway Timeout", { status: 504 });
     }
 
     console.error(
-      `[bascik] API route handler error in "${filePath}" (${method}):`,
+      "[bascik] API route handler error in %s (%s):",
+      filePath,
+      method,
       (err as Error).stack ?? String(err)
     );
     return new Response("Internal Server Error", { status: 500 });

@@ -27,8 +27,6 @@ export interface ApiRouteDefinition {
   paramNames: string[];
   /** Whether the route contains any dynamic segment */
   isDynamic: boolean;
-  /** Regex for matching dynamic paths */
-  regex?: RegExp;
 }
 
 export interface ApiRouteMatch {
@@ -60,22 +58,6 @@ export const fileToApiRoutePath = (relPath: string, basePath = "/"): string => {
   // Ensure clean leading slash and no trailing slash except root
   routeSegment = "/" + routeSegment.replace(/^\/+/, "").replace(/\/+$/, "");
   return withBasePath(routeSegment, basePath);
-};
-
-/**
- * Builds a regex to match a dynamic route path with `[param]` segments.
- */
-export const createRouteRegex = (routePath: string): { regex: RegExp; paramNames: string[] } => {
-  const paramNames: string[] = [];
-  const escaped = routePath
-    .replace(/\/+$/, "")
-    .replace(/\[([^\]/\\\s]+)\]/g, (_match, paramName) => {
-      paramNames.push(paramName);
-      return "([^/]+)";
-    });
-
-  const regex = new RegExp(`^${escaped}/?$`);
-  return { regex, paramNames };
 };
 
 export const sortApiRoutes = (routes: ApiRouteDefinition[]): ApiRouteDefinition[] => {
@@ -128,14 +110,12 @@ export const buildApiRouteTree = (
 
     const isDynamic = isDynamicRoute(routePath);
     const paramNames = isDynamic ? extractRouteParamNames(routePath) : [];
-    const regex = isDynamic ? createRouteRegex(routePath).regex : undefined;
 
     const routeDef: ApiRouteDefinition = {
       path: routePath,
       filePath,
       paramNames,
       isDynamic,
-      regex,
     };
 
     const existing = routesByPath.get(routePath);
@@ -161,57 +141,71 @@ export const buildApiRouteTree = (
 };
 
 export const normalizeApiRouteDefinition = (
-  def: Omit<ApiRouteDefinition, "regex"> & { regex?: RegExp }
+  def: ApiRouteDefinition
 ): ApiRouteDefinition => {
   const isDynamic = def.isDynamic ?? isDynamicRoute(def.path);
   const paramNames =
-    def.paramNames.length > 0
+    def.paramNames && def.paramNames.length > 0
       ? def.paramNames
       : isDynamic
         ? extractRouteParamNames(def.path)
         : [];
-  const regex =
-    def.regex ?? (isDynamic ? createRouteRegex(def.path).regex : undefined);
   return {
     path: def.path,
     filePath: def.filePath,
     isDynamic,
     paramNames,
-    regex,
   };
 };
 
 /**
  * Match an incoming request pathname against registered API routes.
+ * Uses exact segment matching for static paths and deterministic parameter
+ * extraction for `[param]` dynamic segments without generating dynamic regular expressions.
  */
 export const matchApiRoute = (
   routes: ApiRouteDefinition[],
   pathname: string
 ): ApiRouteMatch | null => {
-  // Normalize pathname: ensure leading slash, decode if needed, strip trailing slash except root
-  const cleanPath = "/" + pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+  const pathSegments = pathname.split("/").filter(Boolean);
 
   for (const rawRoute of routes) {
-    const route = rawRoute.regex || !rawRoute.isDynamic ? rawRoute : normalizeApiRouteDefinition(rawRoute);
+    const route = normalizeApiRouteDefinition(rawRoute);
+    const routeSegments = route.path.split("/").filter(Boolean);
+
+    if (pathSegments.length !== routeSegments.length) {
+      continue;
+    }
+
     if (!route.isDynamic) {
-      const cleanRoute = "/" + route.path.replace(/^\/+/, "").replace(/\/+$/, "");
-      if (cleanPath === cleanRoute) {
+      if (routeSegments.every((seg, i) => seg === pathSegments[i])) {
         return { route, params: {} };
       }
-    } else if (route.regex) {
-      const match = route.regex.exec(cleanPath);
-      if (match) {
-        const params: Record<string, string> = {};
-        for (let i = 0; i < route.paramNames.length; i++) {
-          const rawVal = match[i + 1];
-          try {
-            params[route.paramNames[i]] = decodeURIComponent(rawVal);
-          } catch {
-            params[route.paramNames[i]] = rawVal;
-          }
+      continue;
+    }
+
+    const params: Record<string, string> = {};
+    let isMatch = true;
+
+    for (let i = 0; i < routeSegments.length; i++) {
+      const rSeg = routeSegments[i];
+      const pSeg = pathSegments[i];
+
+      if (rSeg.startsWith("[") && rSeg.endsWith("]")) {
+        const paramName = rSeg.slice(1, -1);
+        try {
+          params[paramName] = decodeURIComponent(pSeg);
+        } catch {
+          params[paramName] = pSeg;
         }
-        return { route, params };
+      } else if (rSeg !== pSeg) {
+        isMatch = false;
+        break;
       }
+    }
+
+    if (isMatch) {
+      return { route, params };
     }
   }
 
