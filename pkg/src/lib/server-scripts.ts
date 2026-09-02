@@ -1,58 +1,35 @@
 /**
  * @module server-scripts
  *
- * Server-time Script Execution
+ * In-Process Server-time Script Execution
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * `<script data-bascik-server>` blocks are executed at request time as
- * Node.js ESM modules.  Whatever the script writes to stdout is injected into
- * the page in place of the script tag, on every request.
- *
- * This lets you personalize pages at the HTTP layer — reading session cookies,
- * querying a database, or rendering content based on query parameters — without
- * a full framework.
+ * `<script data-bascik-server>` blocks are executed at request time in-process
+ * as Node.js ESM modules using the ScriptRegistry. Whatever the script function
+ * returns (or exports as default) is injected into the page in place of the
+ * script tag on every request.
  *
  * @example
  * ```html
  * <script data-bascik-server>
- * const req = JSON.parse(process.env.BASCIK_REQUEST);
- * const name = req.headers['x-display-name'] ?? 'Guest';
- * console.log(`<p>Welcome, ${name}</p>`);
+ * import { escapeHtml } from '@bascik/bascik';
+ * export default function({ req }) {
+ *   const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+ *   return `<p>Welcome, ${name}</p>`;
+ * }
  * </script>
  * ```
- *
- * Rules
- * ─────────────────────────────────────────────────────────────────────────────
- * - The script body is written to a temp `.mjs` file and run with the same
- *   Node.js binary that is running Bascik.
- * - Top-level `import` statements and top-level `await` are both supported.
- * - `process.env.BASCIK_REQUEST` contains JSON with four keys:
- *     `{ path, method, headers, searchParams }`
- *   – `path`         — the requested URL path without the query string
- *   – `method`       — the HTTP method in uppercase (e.g. `"GET"`)
- *   – `headers`      — an object of request header name → value strings
- *                      (HTTP/2 pseudo-headers like `:path` are excluded)
- *   – `searchParams` — an object of query-param key → value strings
- * - The script's working directory is the project root (`process.cwd()`).
- * - Use `console.log()` or `process.stdout.write()` to emit the HTML to
- *   inject.  Anything written to stderr is forwarded to the server's stderr.
- * - The script tag (including attributes and closing tag) is completely
- *   replaced by the stdout output.  Empty stdout → replaced with `""`.
- * - On execution error, Bascik logs a warning and removes the tag from the
- *   response rather than aborting the request.
- * - Unlike `data-bascik-build`, server scripts run on every request and are
- *   never cached.  They are NOT executed during `bascik --build`.
  */
 
-import { execFile } from "node:child_process";
-import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
-import os from "node:os";
+import { resolve, relative, dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
+import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
+import { escapeHtml } from "./escape-html.ts";
 
-export { cleanStackTrace };
+export { cleanStackTrace, escapeHtml };
 
 /** Request context passed to every `data-bascik-server` script. */
 export interface ServerRequest {
@@ -69,16 +46,15 @@ export interface ServerRequest {
   searchParams: Record<string, string>;
 }
 
-// Match <script data-bascik-server …> … </script> (captures inner content).
-// The attribute section uses an alternation that consumes either a complete
-// double-quoted value, a single-quoted value, or any non-quote, non->
-// character — this prevents a match when "data-bascik-server" appears only
-// inside an attribute value such as title="run data-bascik-server later".
+export interface ServerScriptContext extends Record<string, unknown> {
+  req: ServerRequest;
+}
+
+// Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>
 const createServerScriptRegex = (): RegExp =>
   /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gi;
 
-// Strip ANSI terminal color sequences so server-side HTML injection never leaks
-// terminal formatting from CI or Netlify build environments into the page output.
+// Strip ANSI terminal color sequences so server-side HTML injection never leaks terminal formatting.
 const stripAnsiEscapeCodes = (value: string): string =>
   value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
     .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
@@ -105,60 +81,88 @@ const SERVER_ROUTES_CONFLICT_RE = new RegExp(
 /** Return `true` if `html` contains at least one `data-bascik-server` block or placeholder. */
 export const htmlHasServerScripts = (html: string | Buffer): boolean => {
   if (Buffer.isBuffer(html)) {
-    // Quick buffer scan without full string decode
     return html.includes("data-bascik-server") || html.includes("text/bascik-server");
   }
   return createServerScriptRegex().test(html);
 };
 
-/** Default execution timeout per server-script child process (ms). */
+/** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
 
 /**
- * Maximum number of server-script child processes that may run concurrently
- * per request.  Prevents a single page with many server blocks from spawning
- * an unbounded number of child processes at once.
+ * Transforms authored server script source into a valid ESM module that exports a default handler.
+ * Supports:
+ * 1. Authored `export default function({ req }) { ... }` or `export default async ({ req }) => ...`
+ * 2. Authored `return <markup>;` top-level body statements
+ * 3. Legacy `process.stdout.write(...)` or `console.log(...)` inside the script body (intercepted per-invocation)
  */
-const MAX_CONCURRENT_SCRIPTS = Math.max(4, os.availableParallelism?.() ?? os.cpus().length);
+export const transformServerScriptSource = (source: string): string => {
+  const trimmed = source.trim();
 
-// Manual promise wrapper keeps the same shape as the one in build-scripts.ts
-// so tests can mock execFile with a plain vi.fn() without simulating
-// Node's promisify.custom symbol.
-const runModule = (
-  path: string,
-  request: ServerRequest,
-  timeoutMs: number,
-): Promise<{ stdout: string; stderr: string }> =>
-  new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [path],
-      {
-        cwd: process.cwd(),
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-        env: {
-          ...process.env,
-          BASCIK_REQUEST: JSON.stringify(request),
-          FORCE_COLOR: "0",
-          NO_COLOR: "1",
-        },
+  // If already exports a default function/object
+  if (/^export\s+default\b/m.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Wrap in default async export function with escapeHtml available in scope
+  return `export default async function({ req }, { signal } = {}) {
+  let __bascik_out = "";
+  const escapeHtml = (val) => {
+    if (val === null || val === undefined) return "";
+    return String(val).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  };
+  const process = {
+    ...globalThis.process,
+    env: {
+      ...globalThis.process?.env,
+      BASCIK_REQUEST: JSON.stringify(req),
+    },
+    stdout: {
+      ...globalThis.process?.stdout,
+      write: (chunk) => {
+        if (chunk !== undefined && chunk !== null) {
+          __bascik_out += String(chunk);
+        }
+        return true;
       },
-      (err, stdout, stderr) => {
-        if (err) reject(Object.assign(err, { stdout, stderr }));
-        else resolve({ stdout, stderr });
-      },
-    );
-  });
+    },
+  };
+  const console = {
+    ...globalThis.console,
+    log: (...args) => {
+      __bascik_out += args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\\n";
+    },
+    warn: globalThis.console?.warn?.bind(globalThis.console),
+    error: globalThis.console?.error?.bind(globalThis.console),
+  };
+
+  const __result = await (async () => {
+${trimmed}
+  })();
+
+  if (__result !== undefined && __result !== null) {
+    return String(__result);
+  }
+  return __bascik_out;
+};`;
+};
+
+interface ScriptJob {
+  fullTag: string;
+  scriptContent: string;
+  openTag: string;
+  index: number;
+  length: number;
+  startLine: number;
+  output?: string;
+  placeholderId?: string;
+  srcPath?: string;
+}
 
 /**
- * Find every `<script data-bascik-server>` block in `html`, execute each as a
- * Node.js ESM module with the supplied request context, and replace the tag
- * with the script's stdout output.
- *
- * @param timeoutMs - Per-script execution deadline in milliseconds.
- *   Defaults to {@link DEFAULT_SCRIPT_TIMEOUT_MS}.  Scripts that exceed the
- *   deadline are killed (SIGKILL) and their block is removed from the output.
+ * Find every `<script data-bascik-server>` block or placeholder in `html`, execute each
+ * in-process via ScriptRegistry with the supplied request context, and replace the tag
+ * with the script's output.
  */
 export const executeServerScripts = async (
   html: string,
@@ -169,36 +173,31 @@ export const executeServerScripts = async (
   const matches = [...html.matchAll(createServerScriptRegex())];
   if (matches.length === 0) return html;
 
-  // Same temp-dir convention as build-scripts.ts: keeps script files inside
-  // the project tree so ESM resolution can find the project's node_modules.
-  const tempDir = join(process.cwd(), "node_modules", ".cache", "bascik");
-  await mkdir(tempDir, { recursive: true });
-
-  // Run at most MAX_CONCURRENT_SCRIPTS child processes at a time.
-  interface ScriptJob {
-    fullTag: string;
-    scriptContent: string;
-    openTag: string;
-    index: number;
-    length: number;
-    startLine: number;
-    output?: string;
-  }
-
   const scriptJobs: ScriptJob[] = matches.map((match) => {
     const fullTag = match[0];
     let scriptContent = match[1] ?? match[2] ?? "";
     const index = match.index!;
     const length = fullTag.length;
 
+    let placeholderId: string | undefined;
     const idMatch = fullTag.match(/\bdata-bascik-server-id=["']([^"']+)["']/i);
+    let srcPath: string | undefined;
+    const srcMatch = fullTag.match(/\bsrc=["']([^"']+)["']/i);
+    if (srcMatch) {
+      srcPath = srcMatch[1];
+    }
+
     if (idMatch) {
-      const entry = serverSidecarRegistry.getScript(idMatch[1]);
+      placeholderId = idMatch[1];
+      const entry = serverSidecarRegistry.getScript(placeholderId);
       if (entry) {
         scriptContent = entry.source;
+        if (entry.modulePath && !srcPath) {
+          srcPath = entry.modulePath;
+        }
       } else {
         throw new Error(
-          `[bascik] Server script placeholder "${idMatch[1]}" could not be resolved from sidecar. ` +
+          `[bascik] Server script placeholder "${placeholderId}" could not be resolved from sidecar. ` +
           `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
         );
       }
@@ -208,7 +207,6 @@ export const executeServerScripts = async (
     const lines = prefix.split(/\r?\n/);
     const lineOffset = lines.length;
 
-    // Server-script open tag
     const openTag = fullTag.slice(0, fullTag.length - (match[1] ?? match[2] ?? "").length - "</script>".length);
     if (SERVER_BUILD_CONFLICT_RE.test(openTag)) {
       let errorMsg = `[bascik] error: <script> tag has both data-bascik-server and data-bascik-build`;
@@ -224,6 +222,7 @@ export const executeServerScripts = async (
       }
       throw new Error(`${errorMsg}. A script cannot be both a server script and a routes script. Remove one of the attributes.`);
     }
+
     const openTagLines = openTag.split(/\r?\n/).length - 1;
     const startLine = lineOffset + openTagLines;
 
@@ -234,67 +233,79 @@ export const executeServerScripts = async (
       index,
       length,
       startLine,
+      placeholderId,
+      srcPath,
     };
   });
 
-  for (let i = 0; i < scriptJobs.length; i += MAX_CONCURRENT_SCRIPTS) {
-    const batch = scriptJobs.slice(i, i + MAX_CONCURRENT_SCRIPTS);
-    await Promise.all(
-      batch.map(async (job) => {
-        const tmpPath = join(
-          tempDir,
-          `server-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
-        );
+  await Promise.all(
+    scriptJobs.map(async (job) => {
+      let codeToExecute = job.scriptContent.trim();
+      let moduleFilePath: string | undefined;
 
-        let codeToExecute = job.scriptContent.trim();
+      if (job.srcPath) {
+        const resolvedPath = filePath
+          ? resolve(dirname(filePath), job.srcPath)
+          : resolve(process.cwd(), job.srcPath);
+        moduleFilePath = resolvedPath;
         if (!codeToExecute) {
-          const srcMatch = job.openTag.match(/\bsrc=["']([^"']+)["']/i);
-          if (srcMatch) {
-            const srcPath = srcMatch[1];
-            const resolvedPath = filePath ? resolve(dirname(filePath), srcPath) : resolve(process.cwd(), srcPath);
-            try {
-              codeToExecute = await readFile(resolvedPath, "utf8");
-            } catch (err) {
-              console.warn('[bascik] warning: Failed to read server script src "%s":', srcPath, err);
-            }
+          try {
+            codeToExecute = await readFile(resolvedPath, "utf8");
+          } catch (err) {
+            console.warn('[bascik] warning: Failed to read server script src "%s":', job.srcPath, err);
           }
         }
+      }
 
-        let sourceUrlComment = "";
-        if (filePath) {
-          const relPath = relative(process.cwd(), filePath).replace(/\\/g, "/");
-          sourceUrlComment = `\n//# sourceURL=${relPath}`;
-        } else {
-          sourceUrlComment = `\n//# sourceURL=${request.path}`;
-        }
+      const transformedCode = transformServerScriptSource(codeToExecute);
+      const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(transformedCode)}`;
+      const specifier = moduleFilePath ?? dataUri;
 
-        try {
-          await writeFile(tmpPath, codeToExecute + sourceUrlComment, "utf8");
-          const { stdout, stderr } = await runModule(tmpPath, request, timeoutMs);
-          if (stderr) process.stderr.write(stderr);
-          job.output = stripAnsiEscapeCodes(stdout);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : request.path;
-          const cleanedMsg = cleanStackTrace(msg, tmpPath, relPath, job.startLine);
-          const errorMsg = `[bascik] server script error at "${request.path}":\n${cleanedMsg}`;
-          const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
-          if (behavior === "error") {
-            console.error(errorMsg);
-            throw new Error(errorMsg);
-          } else {
-            console.warn(errorMsg);
-          }
+      const context: ServerScriptContext = {
+        req: request,
+      };
+
+      const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : request.path;
+
+      const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
+        specifier,
+        context,
+        {
+          timeoutMs,
+          originalSourcePath: relPath,
+          lineOffset: job.startLine,
+          exportName: "default",
+        },
+      );
+
+      if (result.ok) {
+        const val = result.value;
+        const strVal = typeof val === "string" ? val : (val !== undefined && val !== null ? String(val) : "");
+        job.output = stripAnsiEscapeCodes(strVal);
+      } else {
+        const behavior = BascikConfig.scripts?.onServerScriptError ?? "error";
+        const err = result.error ?? new Error("Server script error");
+
+        if (result.isNetworkReset) {
           job.output = "";
-        } finally {
-          await unlink(tmpPath).catch(() => { });
+          return;
         }
-      }),
-    );
-  }
+
+        const rawTrace = err.stack || err.message;
+        const cleanedMsg = cleanStackTrace(rawTrace, specifier, relPath, job.startLine);
+        const errorMsg = `[bascik] server script error at "${request.path}":\n${cleanedMsg}`;
+
+        if (behavior === "error") {
+          throw new Error(errorMsg);
+        } else {
+          console.warn(errorMsg);
+        }
+        job.output = "";
+      }
+    }),
+  );
 
   let result = html;
-  // Sort from last match to first match so earlier string indices remain valid
   const sortedJobs = scriptJobs.slice().sort((a, b) => b.index - a.index);
   for (const job of sortedJobs) {
     result =

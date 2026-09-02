@@ -8,11 +8,11 @@
 <body>
   <h1>Server Scripts Resilience</h1>
 
-  <p id="resilience-before">start</p>
+  <p id="resilience-before" data-testid="resilience-before">start</p>
 
-  <!-- 1. Script calling process.exit(1) inside child process -->
+  <!-- 1. Script with runtime error -->
   <script data-bascik-server>
-    process.exit(1);
+    throw new Error('Resilience test error');
   </script>
 
   <!-- 2. Script with syntax error -->
@@ -22,18 +22,21 @@
 
   <!-- 3. Script producing large stdout payload -->
   <script data-bascik-server>
-    const largeStr = 'A'.repeat(50000);
-    process.stdout.write(`<div id="large-payload" data-len="${largeStr.length}">LargePayload</div>`);
+    export default function () {
+      const largeStr = 'A'.repeat(50000);
+      return `<div id="large-payload" data-testid="large-payload" data-len="${largeStr.length}">LargePayload</div>`;
+    }
   </script>
 
   <!-- 4. Script reading multiple request headers -->
   <script data-bascik-server>
-    const req = JSON.parse(process.env.BASCIK_REQUEST);
-    const count = Object.keys(req.headers).filter(k => k.startsWith('x-stress-')).length;
-    process.stdout.write(`<p id="custom-headers-count">${count}</p>`);
+    export default function ({ req }) {
+      const count = Object.keys(req.headers).filter(k => k.startsWith('x-stress-')).length;
+      return `<p id="custom-headers-count" data-testid="custom-headers-count">${count}</p>`;
+    }
   </script>
 
-  <p id="resilience-after">end</p>
+  <p id="resilience-after" data-testid="resilience-after">end</p>
 </body>
 
 </html>

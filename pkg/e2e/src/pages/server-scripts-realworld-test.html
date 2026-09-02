@@ -10,42 +10,48 @@
 
   <!-- 1. Cookie Header Parsing -->
   <script data-bascik-server>
-    const req = JSON.parse(process.env.BASCIK_REQUEST);
-    const rawCookies = req.headers['cookie'] ?? '';
-    const cookies = Object.fromEntries(
-      rawCookies.split(';').map(c => c.trim().split('=').map(decodeURIComponent)).filter(pair => pair.length === 2)
-    );
-    const session = cookies.session_id ?? 'guest';
-    const theme = cookies.theme ?? 'light';
-    process.stdout.write(`<p id="user-session">Session: ${session}</p><p id="user-theme">Theme: ${theme}</p>`);
+    export default function ({ req }) {
+      const rawCookies = req.headers['cookie'] ?? '';
+      const cookies = Object.fromEntries(
+        rawCookies.split(';').map(c => c.trim().split('=').map(decodeURIComponent)).filter(pair => pair.length === 2)
+      );
+      const session = cookies.session_id ?? 'guest';
+      const theme = cookies.theme ?? 'light';
+      return `<p id="user-session" data-testid="user-session">Session: ${session}</p><p id="user-theme" data-testid="user-theme">Theme: ${theme}</p>`;
+    }
   </script>
 
   <!-- 2. Laggy / Delayed Async DB Call Simulation -->
   <script data-bascik-server>
-    // Simulate a 120ms database query or external microservice call
-    await new Promise(r => setTimeout(r, 120));
-    const dbData = { id: 42, status: 'active', role: 'admin' };
-    process.stdout.write(`<p id="db-status">DB Status: ${dbData.status} (${dbData.role})</p>`);
+    export default async function () {
+      // Simulate a 120ms database query or external microservice call
+      await new Promise(r => setTimeout(r, 120));
+      const dbData = { id: 42, status: 'active', role: 'admin' };
+      return `<p id="db-status" data-testid="db-status">DB Status: ${dbData.status} (${dbData.role})</p>`;
+    }
   </script>
 
   <!-- 3. Failing External API Call with Try-Catch Fallback -->
   <script data-bascik-server>
-    try {
-      // Attempt to fetch an unreachable endpoint (simulating API failure)
-      await fetch('http://127.0.0.1:59999/down-api', { signal: AbortSignal.timeout(100) });
-      process.stdout.write('<p id="api-status">API Online</p>');
-    } catch (err) {
-      // Graceful fallback UI when external service is offline
-      process.stdout.write('<p id="api-status">API Offline Fallback</p>');
+    export default async function () {
+      try {
+        // Attempt to fetch an unreachable endpoint (simulating API failure)
+        await fetch('http://127.0.0.1:59999/down-api', { signal: AbortSignal.timeout(100) });
+        return '<p id="api-status" data-testid="api-status">API Online</p>';
+      } catch (err) {
+        // Graceful fallback UI when external service is offline
+        return '<p id="api-status" data-testid="api-status">API Offline Fallback</p>';
+      }
     }
   </script>
 
   <!-- 4. Complex Query Params & Special Character Handling -->
   <script data-bascik-server>
-    const req = JSON.parse(process.env.BASCIK_REQUEST);
-    const filter = req.searchParams.filter ?? 'none';
-    const tag = req.searchParams.tag ?? 'all';
-    process.stdout.write(`<p id="query-filter">Filter: ${filter}</p><p id="query-tag">Tag: ${tag}</p>`);
+    export default function ({ req }) {
+      const filter = req.searchParams.filter ?? 'none';
+      const tag = req.searchParams.tag ?? 'all';
+      return `<p id="query-filter" data-testid="query-filter">Filter: ${filter}</p><p id="query-tag" data-testid="query-tag">Tag: ${tag}</p>`;
+    }
   </script>
 </body>
 

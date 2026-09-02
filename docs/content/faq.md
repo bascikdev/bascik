@@ -271,6 +271,12 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
 
+## Can a server script slow down other requests?
+
+Yes, if it executes long-running synchronous code or blocks Node's event loop.
+
+Server scripts (`<script data-bascik-server>`) execute in-process within the same Node.js runtime to eliminate fork overhead and process starvation. Because Node runs JavaScript on a single thread, synchronous computations (such as heavy regex matching or CPU loops) block the event loop while they run, delaying concurrent requests. Always use asynchronous APIs with `await`, pass `signal` to `fetch()` or database clients to respect `scripts.timeout`, and offload intensive CPU tasks to worker threads.
+
 ## Why did part of my page disappear after HTML minification?
 
 Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification.

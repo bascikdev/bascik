@@ -67,25 +67,32 @@ export class ScriptRegistry {
   }
 
   /**
-   * Resolve and load an ESM module by its file path.
-   * Caches by resolved absolute path. In dev mode, applies cache-busting.
+   * Resolve and load an ESM module by its file path or specifier URL.
+   * Caches by resolved absolute path or URL. In dev mode, applies cache-busting.
    */
   async load(specifier: string): Promise<LoadedScriptModule> {
-    const resolvedPath = resolve(process.cwd(), specifier);
+    const isUrl = specifier.startsWith("data:") || specifier.startsWith("file:");
+    const resolvedPath = isUrl ? specifier : resolve(process.cwd(), specifier);
 
     if (!this.isDev && this.cache.has(resolvedPath)) {
       return this.cache.get(resolvedPath)!;
     }
 
     const currentVersion = (this.versionMap.get(resolvedPath) ?? 0);
-    const fileUrl = pathToFileURL(resolvedPath);
+    let targetUrl: string;
 
-    if (this.isDev && currentVersion > 0) {
-      fileUrl.searchParams.set("v", String(currentVersion));
+    if (specifier.startsWith("data:")) {
+      targetUrl = specifier;
+    } else {
+      const fileUrl = pathToFileURL(resolvedPath);
+      if (this.isDev && currentVersion > 0) {
+        fileUrl.searchParams.set("v", String(currentVersion));
+      }
+      targetUrl = fileUrl.href;
     }
 
     try {
-      const imported = await import(fileUrl.href);
+      const imported = await import(targetUrl);
       const entry: LoadedScriptModule = {
         filePath: resolvedPath,
         module: imported,
@@ -104,7 +111,8 @@ export class ScriptRegistry {
    * Increments the version counter for cache-busting in development mode.
    */
   invalidate(specifier: string): void {
-    const resolvedPath = resolve(process.cwd(), specifier);
+    const isUrl = specifier.startsWith("data:") || specifier.startsWith("file:");
+    const resolvedPath = isUrl ? specifier : resolve(process.cwd(), specifier);
     this.cache.delete(resolvedPath);
     const nextVersion = (this.versionMap.get(resolvedPath) ?? 0) + 1;
     this.versionMap.set(resolvedPath, nextVersion);
@@ -126,7 +134,8 @@ export class ScriptRegistry {
     context: ScriptInvocationContext,
     options: ScriptExecutionOptions = {},
   ): Promise<ScriptExecutionResult<T>> {
-    const resolvedPath = resolve(process.cwd(), specifier);
+    const isUrl = specifier.startsWith("data:") || specifier.startsWith("file:");
+    const resolvedPath = isUrl ? specifier : resolve(process.cwd(), specifier);
     const exportName = options.exportName ?? "default";
     const timeoutMs = options.timeoutMs;
 

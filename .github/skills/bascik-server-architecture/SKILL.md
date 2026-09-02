@@ -77,7 +77,18 @@ stream.on('error', (err: NodeJS.ErrnoException) => {
 
 ---
 
-## 5. Execution in Workspace
+## 5. Request-Time Server Scripts (`data-bascik-server`)
+
+`<script data-bascik-server>` blocks execute in-process as Node.js ESM modules using `ScriptRegistry` without spawning child processes.
+- **Sidecar loading:** In production (`bascik --server`), script sources are loaded from `dist/.bascik/server-scripts.json` at startup.
+- **Context delivery:** Handlers receive explicit `{ req }` context (`path`, `method`, `headers`, `searchParams`) and `{ signal }` for timeout/cancellation.
+- **Output:** The handler's return value replaces the script tag in the page response.
+- **Escaping:** Output is raw HTML; user data must be sanitized using `escapeHtml` from `@bascik/bascik`.
+- **Fault containment:** Errors in one script block fail only that block, logged per `scripts.onServerScriptError`.
+
+---
+
+## 6. Execution in Workspace
 
 Test and run server modes directly using workspace helper scripts:
 

@@ -953,34 +953,36 @@ Rules:
 
 ### data-bascik-server
 
-Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Unlike `data-bascik-build` (which executes once at transpile time), server scripts execute on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
+Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from './lib/escape-html.mjs';
+  import { escapeHtml } from '@bascik/bascik';
 
-  const req = JSON.parse(process.env.BASCIK_REQUEST);
-  const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
-  console.log(`<p>Welcome, ${name}!</p>`);
+  export default function({ req }) {
+    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    return `<p>Welcome, ${name}!</p>`;
+  }
 </script>
 ```
 
-`process.env.BASCIK_REQUEST` is a JSON string with four keys:
+Handlers receive `{ req }` as their first argument and `{ signal }` as their second argument. `req` contains:
 
-* `path`: URL path without query string, e.g. `"/about"`
-* `method`: HTTP method in uppercase, e.g. `"GET"`
-* `headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
-* `searchParams`: parsed query params as string-to-string object
+* `req.path`: URL path without query string, e.g. `"/about"`
+* `req.method`: HTTP method in uppercase, e.g. `"GET"`
+* `req.headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
+* `req.searchParams`: parsed query params as string-to-string object
 
-Bascik intentionally does not inject a global `escapeHtml()` helper into every server script. If you want a shared escape utility, keep it in a project file or import it explicitly.
+Bascik exports `escapeHtml` from `@bascik/bascik` to escape user-controlled strings before inserting into HTML markup.
 
 Rules:
 * Top-level `import` and `await` are supported.
 * `data-bascik-server` blocks are stripped from emitted HTML into a sidecar file (`dist/.bascik/server-scripts.json`) leaving an inert placeholder (`<script type="text/bascik-server">`), so Node server source is never shipped to browsers in static builds.
-* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute on each request.
+* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute in-process on each request.
 * They are NOT executed during `bascik --build` itself.
-* Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
-* On error, a warning is logged and the tag is replaced with an empty string.
+* Execution is bounded by `scripts.timeout` in `bascik.config.ts`.
+* On error, behavior is governed by `scripts.onServerScriptError` (`'error'` or `'warn'`). Under `'warn'`, the error is logged and the tag is replaced with an empty string without failing other scripts or the page.
+* In-process caveat: synchronous blocking code blocks Node's single-threaded event loop and cannot be interrupted by timeouts; always use async APIs.
 
 ---
 

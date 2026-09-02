@@ -1,7 +1,8 @@
 <div class="server-comp">
-  <p class="server-comp-static">Component Static</p>
+  <p class="server-comp-static" data-testid="server-comp-static">Component Static</p>
   <script data-bascik-server>
-    const req = JSON.parse(process.env.BASCIK_REQUEST);
-    process.stdout.write(`<p id="comp-server-output">Comp Server: ${req.method}</p>`);
+    export default function ({ req }) {
+      return `<p id="comp-server-output" data-testid="comp-server-output">Comp Server: ${req.method}</p>`;
+    }
   </script>
 </div>

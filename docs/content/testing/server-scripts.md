@@ -119,6 +119,31 @@ describe('fetchCityWeather', () => {
 });
 ```
 
+## Direct Server Script Handler Testing
+
+Under Bascik's in-process execution model, server scripts export standard async functions receiving `{ req }` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
+
+```ts
+// src/components/weather-widget/weather-widget.server.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import weatherHandler from './weather-widget.server.ts';
+
+describe('weatherHandler', () => {
+  it('renders greeting and weather for requested city query param', async () => {
+    const fakeReq = {
+      path: '/weather',
+      method: 'GET',
+      headers: { 'x-display-name': 'Alice' },
+      searchParams: { city: 'Seattle' },
+    };
+
+    const output = await weatherHandler({ req: fakeReq });
+    expect(output).toContain('Seattle');
+    expect(output).toContain('Alice');
+  });
+});
+```
+
 ## Testing Request Parameter Parsers
 
 When your server scripts parse incoming query strings or request headers, test parameter validation and sanitization as pure functions:
