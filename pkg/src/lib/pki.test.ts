@@ -81,76 +81,53 @@ describe("createSelfSignedCert – certs already exist", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cert generation – Unix / macOS / Linux
+// Cert generation – Unix / Windows / OpenSSL
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("createSelfSignedCert – Unix cert generation", () => {
+describe("createSelfSignedCert – OpenSSL SAN cert generation", () => {
   beforeEach(() => {
     mockAccess.mockReset();
     mockAccess.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
     mockPlatform.mockReturnValue("linux");
   });
 
-  it("calls exec with an openssl req command", async () => {
-    makeExecSucceed();
-    vi.spyOn(console, "log").mockImplementation(() => { });
-    await createSelfSignedCert();
-    expect(mockExec).toHaveBeenCalledTimes(1);
-    const cmd = mockExec.mock.calls[0][0] as string;
-    expect(cmd).toContain("openssl req");
-  });
+  it("calls execFile with openssl req and SubjectAltName extension", async () => {
+    mockExecFile.mockImplementation((cmd: string, args: string[], cb: any) => {
+      const callback = typeof args === "function" ? args : cb;
+      if (cmd === "openssl") {
+        callback(null, { stdout: "", stderr: "" });
+      } else {
+        callback(new Error("mkcert not found"));
+      }
+    });
 
-  it("includes localhost in the openssl subject", async () => {
-    makeExecSucceed();
     vi.spyOn(console, "log").mockImplementation(() => { });
     await createSelfSignedCert();
-    const cmd = mockExec.mock.calls[0][0] as string;
-    expect(cmd).toContain("localhost");
+
+    const opensslCall = mockExecFile.mock.calls.find((c: any[]) => c[0] === "openssl");
+    expect(opensslCall).toBeDefined();
+    const args = opensslCall![1] as string[];
+    expect(args).toContain("req");
+    expect(args).toContain("-addext");
+    expect(args.some((a) => a.includes("subjectAltName="))).toBe(true);
+    expect(args.some((a) => a.includes("DNS:localhost"))).toBe(true);
+    expect(args.some((a) => a.includes("IP:127.0.0.1"))).toBe(true);
   });
 
   it("logs success after generating the cert", async () => {
-    makeExecSucceed();
+    mockExecFile.mockImplementation((cmd: string, args: string[], cb: any) => {
+      const callback = typeof args === "function" ? args : cb;
+      if (cmd === "openssl") {
+        callback(null, { stdout: "", stderr: "" });
+      } else {
+        callback(new Error("mkcert not found"));
+      }
+    });
+
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     await createSelfSignedCert();
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("Generated self-signed certificate"),
-    );
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cert generation – Windows
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("createSelfSignedCert – Windows cert generation", () => {
-  beforeEach(() => {
-    mockAccess.mockReset();
-    mockAccess.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
-    mockPlatform.mockReturnValue("win32");
-  });
-
-  it("calls exec multiple times for the Windows PowerShell + openssl flow", async () => {
-    makeExecSucceed();
-    vi.spyOn(console, "log").mockImplementation(() => { });
-    await createSelfSignedCert();
-    expect(mockExec).toHaveBeenCalledTimes(3);
-  });
-
-  it("the first exec call uses PowerShell", async () => {
-    makeExecSucceed();
-    vi.spyOn(console, "log").mockImplementation(() => { });
-    await createSelfSignedCert();
-    const cmd = mockExec.mock.calls[0][0] as string;
-    expect(cmd).toContain("powershell");
-  });
-
-  it("removes the temporary pfx file after generation", async () => {
-    makeExecSucceed();
-    vi.spyOn(console, "log").mockImplementation(() => { });
-    await createSelfSignedCert();
-    expect(mockRm).toHaveBeenCalledWith(
-      expect.stringContaining("bascik-cert.pfx"),
-      { force: true },
     );
   });
 });
@@ -165,18 +142,14 @@ describe("createSelfSignedCert – exec failure", () => {
     mockAccess.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
   });
 
-  it("throws (rather than process.exit) when exec fails", async () => {
-    makeExecFail("openssl error");
+  it("throws with clear message when openssl fails", async () => {
+    mockExecFile.mockImplementation((_cmd: string, _args: any, cb: any) => {
+      const callback = typeof _args === "function" ? _args : cb;
+      callback(new Error("openssl missing"));
+    });
     await expect(createSelfSignedCert()).rejects.toThrow(
       /Failed to generate self-signed certificate/,
     );
-  });
-
-  it("stringifies a non-Error value thrown by exec", async () => {
-    mockExec.mockImplementation(
-      (_cmd: string, cb: (err: unknown) => void) => { cb("exec string error"); },
-    );
-    await expect(createSelfSignedCert()).rejects.toThrow("exec string error");
   });
 });
 

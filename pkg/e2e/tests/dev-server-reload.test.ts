@@ -263,15 +263,34 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
 
   test('open page updates live when a watched external content file changes', async ({ page }) => {
     await page.goto('/watch-content-test');
-    await expect(page.locator('h1')).toHaveText('Watch Doc Initial Content');
+    await expect(page.getByTestId('watch-content-heading')).toHaveText('Watch Doc Initial Content');
 
     const updatedText = `Updated Content ${Date.now()}`;
     const start = performance.now();
     await writeFile(contentDocPath, updatedText, 'utf8');
 
-    await expect(page.locator('h1')).toHaveText(updatedText, { timeout: 15000 });
+    await expect(page.getByTestId('watch-content-heading')).toHaveText(updatedText, { timeout: 15000 });
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  test('handles rapid alternating content edits on watched markdown doc without stale reload', async ({ page }) => {
+    await page.goto('/watch-content-test');
+    const heading = page.getByTestId('watch-content-heading');
+    await expect(heading).toHaveText('Watch Doc Initial Content');
+
+    // Perform 10 rapid alternating saves (add/save, remove/save, add/save...)
+    for (let i = 1; i <= 10; i++) {
+      const isEven = i % 2 === 0;
+      const expectedText = isEven
+        ? `Watch Doc Alternate ${i}`
+        : `Watch Doc Primary ${i}`;
+
+      await writeFile(contentDocPath, expectedText, 'utf8');
+
+      // Assert after each save that DOM text matches the file on disk without stale generation rollback
+      await expect(heading).toHaveText(expectedText, { timeout: 15000 });
+    }
   });
 
   test('subfolder routes receive live reload when nested page source changes', async ({ page }) => {

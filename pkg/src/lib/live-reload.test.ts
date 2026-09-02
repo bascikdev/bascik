@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
 
@@ -39,6 +39,7 @@ describe("LIVE_RELOAD_SCRIPT", () => {
       onmessage: ((e: any) => void) | null = null;
       onerror: (() => void) | null = null;
       closed = false;
+      addEventListener = vi.fn();
 
       constructor(url: string) {
         this.url = url;
@@ -110,6 +111,66 @@ describe("LIVE_RELOAD_SCRIPT", () => {
 
     // Since it was previously connected before disconnection, it should now reload
     expect(reloadCalls).toBe(1);
+  });
+
+  it("handles monotonic generation counter and ignores stale/older generations", () => {
+    let reloadCalls = 0;
+    const eventSourceInstances: any[] = [];
+
+    class MockEventSource {
+      url: string;
+      readyState = 1;
+      onmessage: ((e: any) => void) | null = null;
+      onerror: (() => void) | null = null;
+      closed = false;
+      addEventListener = vi.fn();
+
+      constructor(url: string) {
+        this.url = url;
+        eventSourceInstances.push(this);
+      }
+    }
+
+    const mockWindow = {
+      location: { reload: () => { reloadCalls++; } },
+      addEventListener: () => { },
+    };
+
+    const mockDocument = {
+      visibilityState: "visible",
+      body: { appendChild: () => { }, removeChild: () => { } },
+      createElement: () => ({ style: {}, parentNode: null }),
+      addEventListener: () => { },
+    };
+
+    const scriptCode = LIVE_RELOAD_SCRIPT
+      .replace("<script>", "")
+      .replace("</script>", "");
+
+    const runScript = new Function("window", "document", "EventSource", scriptCode);
+    runScript(mockWindow, mockDocument, MockEventSource);
+
+    const es = eventSourceInstances[0];
+
+    // Initial connected
+    es.onmessage({ data: "connected" });
+    expect(reloadCalls).toBe(0);
+
+    // Generation 2 arrives -> triggers reload
+    es.onmessage({ data: "reload 2" });
+    expect(reloadCalls).toBe(1);
+
+    // Stale generation 1 arrives -> ignored, no reload
+    es.onmessage({ data: "reload 1" });
+    expect(reloadCalls).toBe(1);
+
+    // Out-of-order stale generation 2 arrives again -> ignored
+    es.onmessage({ data: "reload 2" });
+    expect(reloadCalls).toBe(1);
+
+    // Generation 3 arrives -> triggers reload
+    es.onmessage({ data: "reload 3" });
+    expect(reloadCalls).toBe(2);
   });
 });
 

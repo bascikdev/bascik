@@ -15,6 +15,42 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
     var maxRetries = 5;
     var retryTimeout = null;
     var banner = null;
+    var errorOverlay = null;
+    var lastGeneration = 0;
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showErrorOverlay(errData) {
+      if (!errorOverlay) {
+        errorOverlay = document.createElement('div');
+        errorOverlay.id = 'bascik-build-error-overlay';
+        errorOverlay.setAttribute('data-testid', 'bascik-build-error-overlay');
+        errorOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;' +
+          'background:rgba(0,0,0,0.85);color:#f43f5e;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;' +
+          'padding:24px;overflow:auto;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;';
+        document.body.appendChild(errorOverlay);
+      }
+      var header = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #3f3f46;padding-bottom:12px;">' +
+        '<span style="font-weight:bold;font-size:16px;color:#f43f5e;">Bascik Build Error</span>' +
+        '<button data-testid="bascik-error-dismiss" style="background:#27272a;color:#e4e4e7;border:1px solid #3f3f46;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;" onclick="this.closest(\\'#bascik-build-error-overlay\\').remove()">Dismiss</button>' +
+        '</div>';
+      var loc = errData.file ? '<div style="color:#a1a1aa;font-size:13px;">File: <span style="color:#e4e4e7;">' + escapeHtml(errData.file) + (errData.line ? ':' + errData.line : '') + '</span></div>' : '';
+      var body = '<pre style="background:#18181b;color:#e4e4e7;padding:16px;border-radius:6px;border:1px solid #27272a;overflow-x:auto;white-space:pre-wrap;font-size:13px;line-height:1.5;margin:0;">' + escapeHtml(errData.message || errData) + '</pre>';
+      errorOverlay.innerHTML = header + loc + body;
+    }
+
+    function removeErrorOverlay() {
+      if (errorOverlay && errorOverlay.parentNode) {
+        errorOverlay.parentNode.removeChild(errorOverlay);
+        errorOverlay = null;
+      }
+    }
 
     function showBanner(message, isOffline) {
       if (!banner) {
@@ -44,17 +80,33 @@ export const getLiveReloadScript = (url = "/bascik-live-reload") => `
       if (source) return;
       source = new EventSource("${url}");
       source.onmessage = function(e) {
-        if (e.data === 'reload') {
-          window.location.reload();
-        } else if (e.data === 'connected') {
+        var msg = e.data || '';
+        if (msg.indexOf('reload') === 0) {
+          var parts = msg.split(' ');
+          var gen = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+          if (!gen || gen > lastGeneration) {
+            if (gen) lastGeneration = gen;
+            removeErrorOverlay();
+            window.location.reload();
+          }
+        } else if (msg === 'connected') {
           retryCount = 0;
           removeBanner();
           if (wasConnected) {
+            removeErrorOverlay();
             window.location.reload();
           }
           wasConnected = true;
         }
       };
+      source.addEventListener('build-error', function(e) {
+        try {
+          var errData = JSON.parse(e.data);
+          showErrorOverlay(errData);
+        } catch (_) {
+          showErrorOverlay({ message: e.data });
+        }
+      });
       source.onerror = function() {
         if (source) {
           source.close();

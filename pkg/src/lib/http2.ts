@@ -3,6 +3,7 @@ import http2 from "node:http2";
 import type { ServerHttp2Stream, IncomingHttpHeaders } from "node:http2";
 import { BascikConfig } from "./config.ts";
 import { ensureCertificates } from "./pki.ts";
+import { getClientIp } from "./rate-limit.ts";
 import {
   createRequestHandler,
   isNetworkResetError,
@@ -15,10 +16,12 @@ import { adaptHttp1 } from "./http.ts";
 export { _rateLimiter } from "./server.ts";
 
 export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeaders): { req: BascikRequest; res: BascikResponse } => {
-  let remoteIp = "unknown";
+  let rawIp = "unknown";
   try {
-    remoteIp = (stream as any).session?.socket?.remoteAddress ?? "unknown";
+    rawIp = (stream as any).session?.socket?.remoteAddress ?? "unknown";
   } catch { }
+
+  const remoteIp = getClientIp(rawIp, headers as Record<string, string | string[] | undefined>, BascikConfig.http.trustProxy === true);
 
   stream.on("error", (err) => {
     if (isNetworkResetError(err)) return;

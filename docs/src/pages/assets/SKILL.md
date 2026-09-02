@@ -1130,6 +1130,16 @@ export const build = defineConfig({
 });
 ```
 
+> **Reverse Proxy & CDN Note (`trustProxy`):** When deploying `bascik --server` behind a CDN or load balancer, set `http.trustProxy: true` in `bascik.config.ts`. This ensures per-IP rate limiting and HSTS headers accurately resolve the client from `X-Forwarded-For` and `X-Forwarded-Proto`. Do not enable `trustProxy` if the server is exposed directly to the Internet without a reverse proxy.
+
+> **Health Endpoints & Port Conflicts:** `bascik --server` provides `GET /_health` (returns 200 when ready, 503 during boot or drain). Under `--server`, port conflicts (`EADDRINUSE`) fail fast rather than binding an unexpected port.
+
+> **Live Reload & Error Overlay:** In dev mode, live reload uses SSE with periodic comment heartbeats to survive proxies. Build errors surface directly in an in-browser overlay (`data-testid="bascik-build-error-overlay"`) and clear on the next successful build. Live reload scripts never ship to production.
+
+> **Watch Mode & Config Changes:** Changes to `bascik.config.ts` require a server restart because configuration is deep-frozen at boot time. Bascik prints a restart hint when config files change.
+
+> **Content Security Policy (CSP):** Bascik does not set a `Content-Security-Policy` header. Enable `generate.cspHashes: true` to generate SHA-256 hashes of all inline styles and scripts, and apply the CSP header at your host or reverse proxy.
+
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:

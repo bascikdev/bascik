@@ -492,7 +492,8 @@ describe("startHttp2Server – security headers", () => {
     "x-content-type-options": "nosniff",
     "x-frame-options": "SAMEORIGIN",
     "referrer-policy": "strict-origin-when-cross-origin",
-    "permissions-policy": "interest-cohort=()",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "cross-origin-resource-policy": "cross-origin",
   };
 
   it("includes security headers on page responses", async () => {
@@ -537,7 +538,7 @@ describe("startHttp2Server – security headers", () => {
     );
   });
 
-  it("includes Strict-Transport-Security header when request has :scheme https or x-forwarded-proto https", async () => {
+  it("includes Strict-Transport-Security header when request has :scheme https", async () => {
     mockMem.getPage.mockReturnValue(makePage());
     const handler = getStreamHandler()!;
     const stream = makeStream();
@@ -548,6 +549,36 @@ describe("startHttp2Server – security headers", () => {
         "strict-transport-security": "max-age=31536000; includeSubDomains",
       }),
     );
+  });
+
+  it("does NOT include Strict-Transport-Security on x-forwarded-proto https when trustProxy is false", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.trustProxy = false;
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        "strict-transport-security": expect.any(String),
+      }),
+    );
+  });
+
+  it("includes Strict-Transport-Security on x-forwarded-proto https when trustProxy is true", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.trustProxy = true;
+    mockMem.getPage.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/about", "GET", "", undefined, { "x-forwarded-proto": "https" }));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...EXPECTED_SECURITY_HEADERS,
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      }),
+    );
+    (BascikConfig as any).http.trustProxy = false;
   });
 });
 
@@ -1475,6 +1506,72 @@ describe("startHttp2Server – graceful shutdown", () => {
   });
 });
 
+describe("startHttp2Server – health endpoint", () => {
+  beforeEach(async () => {
+    await startHttp2Server();
+  });
+
+  it("serves 200 OK for /_health when server is ready", async () => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/_health", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200, "content-type": expect.stringContaining("json") }),
+    );
+  });
+
+  it("serves 503 for /_health during booting state", async () => {
+    const { setServerHealthState } = await import("./server-lifecycle.ts");
+    setServerHealthState("booting");
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/_health", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 503 }),
+    );
+    setServerHealthState("ready");
+  });
+
+  it("does not rate limit /_health even under flood", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).isProdServer = true;
+    const handler = getStreamHandler()!;
+    for (let i = 0; i < 505; i++) {
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/_health", "GET"));
+      if (i === 504) {
+        expect(stream.respond).toHaveBeenCalledWith(
+          expect.objectContaining({ ":status": 200 }),
+        );
+      }
+    }
+    (BascikConfig as any).isProdServer = false;
+  });
+});
+
+describe("startServerInstance – port conflict handling", () => {
+  it("fails hard on EADDRINUSE under --server", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).isProdServer = true;
+
+    const mockListenServer: any = {
+      once: vi.fn(),
+      removeListener: vi.fn(),
+      listen: vi.fn().mockImplementation((_p, _h, _cb) => {
+        // Trigger EADDRINUSE
+        const err: any = new Error("address in use");
+        err.code = "EADDRINUSE";
+        const errorHandler = mockListenServer.once.mock.calls.find((c: any[]) => c[0] === "error")?.[1];
+        errorHandler?.(err);
+      }),
+      on: vi.fn(),
+    };
+
+    await expect(startServerInstance(mockListenServer, "http")).rejects.toThrow(/already in use/);
+    (BascikConfig as any).isProdServer = false;
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cert auto-generation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1514,22 +1611,11 @@ describe("startHttp2Server – cert generation", () => {
     expect(mockExecFile).toHaveBeenCalledWith(
       "mkcert",
       expect.arrayContaining(["-key-file", "-cert-file", "localhost"]),
-      expect.objectContaining({ env: expect.any(Object) }),
       expect.any(Function),
     );
   });
 
-  it("passes augmented PATH to mkcert so Homebrew bin dirs are included", async () => {
-    mockAccess.mockRejectedValue(new Error("ENOENT"));
-
-    await startHttp2Server();
-
-    const [, , opts] = mockExecFile.mock.calls[0] as [string, string[], { env: { PATH: string } }, ExecFileCb];
-    expect(opts.env.PATH).toContain("/opt/homebrew/bin");
-    expect(opts.env.PATH).toContain("/usr/local/bin");
-  });
-
-  it("falls back to openssl when mkcert is not available", async () => {
+  it("falls back to openssl with SubjectAltName when mkcert is not available", async () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockExecFile
       .mockImplementationOnce(fail("mkcert not found"))
@@ -1541,7 +1627,7 @@ describe("startHttp2Server – cert generation", () => {
     expect(mockExecFile).toHaveBeenNthCalledWith(
       2,
       "openssl",
-      expect.arrayContaining(["req", "-x509"]),
+      expect.arrayContaining(["req", "-x509", "-addext"]),
       expect.any(Function),
     );
   });
@@ -1599,7 +1685,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     // No referer header: simulates Safari, privacy extensions, or no-referrer policy.
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", undefined));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer matches the transpiled page", async () => {
@@ -1607,7 +1693,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about"));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer lacks trailing slash but page path is an index route", async () => {
@@ -1617,7 +1703,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/blog"));
     fireTranspiled("pages/blog/index.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("sends reload when Referer has trailing slash and page path is an index route", async () => {
@@ -1625,7 +1711,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/blog/"));
     fireTranspiled("pages/blog/index.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("does not send reload when Referer is a different page than the one transpiled", async () => {
@@ -1633,7 +1719,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/getting-started"));
     fireTranspiled("pages/about.html");
-    const reloadCalls = stream.write.mock.calls.filter((c: any[]) => c[0] === "data: reload\n\n");
+    const reloadCalls = stream.write.mock.calls.filter((c: any[]) => typeof c[0] === "string" && c[0].startsWith("data: reload"));
     expect(reloadCalls).toHaveLength(0);
   });
 
@@ -1667,7 +1753,7 @@ describe("startHttp2Server – SSE live-reload (/bascik-live-reload)", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about?ref=social"));
     fireTranspiled("pages/about.html");
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("calls mem.untrackOpenPage when the SSE stream closes", async () => {
@@ -2218,7 +2304,7 @@ describe("startHttp2Server – SSE boot-done event", () => {
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload", "GET", "", "https://localhost:8443/about"));
     fireBootDone();
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("immediately reloads boot-page SSE clients when boot is already complete", async () => {
@@ -2226,7 +2312,7 @@ describe("startHttp2Server – SSE boot-done event", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/bascik-live-reload?boot=1"));
-    expect(stream.write).toHaveBeenCalledWith("data: reload\n\n");
+    expect(stream.write).toHaveBeenCalledWith(expect.stringMatching(/^data: reload \d+\n\n$/));
   });
 
   it("removes the boot-done listener when the SSE stream closes", async () => {

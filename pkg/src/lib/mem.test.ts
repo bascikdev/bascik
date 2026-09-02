@@ -257,6 +257,40 @@ describe("fileDependencies and pagesDependentOnFile", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// In-flight rebuilds & dirty page tracking
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("dirty page tracking and pending in-flight rebuilds", () => {
+  it("marks a page dirty when dependencies change and resolves getPage after rebuild", async () => {
+    await storeSample("doc-page");
+    expect(mem.isDirty("doc-page")).toBe(false);
+
+    mem.markDirty("doc-page");
+    expect(mem.isDirty("doc-page")).toBe(true);
+
+    let resolved = false;
+    const rebuildPromise = mem.waitForFreshPage("doc-page").then((page) => {
+      resolved = true;
+      return page;
+    });
+
+    expect(resolved).toBe(false);
+
+    // Now store fresh rebuild
+    await mem.storePage({
+      relativePagePath: "doc-page",
+      absolutePagePath: "doc-page",
+      pageContent: "<html><body>Fresh Version</body></html>",
+    });
+
+    const freshPage = await rebuildPromise;
+    expect(resolved).toBe(true);
+    expect(mem.isDirty("doc-page")).toBe(false);
+    expect(freshPage?.content.toString("utf8")).toContain("Fresh Version");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Open-page tracking
 // ─────────────────────────────────────────────────────────────────────────────
 

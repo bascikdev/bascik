@@ -99,7 +99,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     trustProxy: null,
     cacheControl: null,
     compression: null,
-    timeouts: { request: null, headers: null, keepAlive: null },
+    timeouts: { request: null, headers: null, keepAlive: null, drain: null },
     maxBodySize: null,
     apiTimeout: null,
   },
@@ -342,6 +342,41 @@ export const validateConfigShape = (
         const value = tls[key];
         if (value !== undefined && typeof value !== "string") {
           push(`http.tls.${key}`, value, "expected a string path");
+        }
+      }
+    }
+    if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
+      push("http.trustProxy", http.trustProxy, "expected true or false");
+    }
+    if (http.rateLimit !== undefined) {
+      const rateLimit = http.rateLimit;
+      if (typeof rateLimit !== "boolean" && !isPlainObject(rateLimit)) {
+        push("http.rateLimit", rateLimit, "expected true, false, or an object { window?, max? }");
+      } else if (isPlainObject(rateLimit)) {
+        if (rateLimit.window !== undefined) {
+          const windowVal = rateLimit.window;
+          if (typeof windowVal !== "number" || Number.isNaN(windowVal) || windowVal <= 0) {
+            push("http.rateLimit.window", windowVal, "expected a positive number (milliseconds)");
+          }
+        }
+        if (rateLimit.max !== undefined) {
+          const maxVal = rateLimit.max;
+          if (typeof maxVal !== "number" || !Number.isInteger(maxVal) || maxVal <= 0) {
+            push("http.rateLimit.max", maxVal, "expected a positive integer");
+          }
+        }
+      }
+    }
+    if (http.timeouts !== undefined) {
+      const timeouts = http.timeouts;
+      if (!isPlainObject(timeouts)) {
+        push("http.timeouts", timeouts, "expected an object with timeout values");
+      } else {
+        for (const key of ["request", "headers", "keepAlive", "drain"] as const) {
+          const val = timeouts[key];
+          if (val !== undefined && (typeof val !== "number" || Number.isNaN(val) || val <= 0)) {
+            push(`http.timeouts.${key}`, val, "expected a positive number (milliseconds)");
+          }
         }
       }
     }

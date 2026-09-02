@@ -45,7 +45,15 @@ for (const [relPath, info] of Object.entries(manifest.files)) {
 
 Bascik inlines component `<style>` blocks and wraps component `<script>` blocks in isolated IIFEs. To support strict CSP configurations without using `'unsafe-inline'`, enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik emits `dist/.bascik/csp-hashes.json` mapping each page to its exact post-minification inline script and style SHA-256 hashes (`sha256-<base64>`).
 
-Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. You can convert the manifest into host headers (e.g. a Cloudflare Pages `_headers` file) using an `exec` script with `phase: 'post'`:
+Bascik emits hashes rather than injecting a CSP header because CSP headers belong to your hosting provider or CDN edge. Setting a generic CSP with `'unsafe-inline'` inside the framework would provide false assurance.
+
+### Cross-Origin Isolation Headers
+
+Bascik sets safe default cross-origin headers:
+- `Cross-Origin-Opener-Policy: same-origin-allow-popups`
+- `Cross-Origin-Resource-Policy: cross-origin`
+
+These defaults allow cross-origin images, fonts, and authentication popups to function without unexpected breaks. If full cross-origin isolation (e.g. `SharedArrayBuffer`) is required, configure `Cross-Origin-Embedder-Policy: require-corp` at your hosting layer.
 
 ```js
 // scripts/generate-csp-headers.ts
@@ -93,6 +101,36 @@ npx http-server dist
 ```
 
 Then open `http://localhost:8080` in your browser to inspect your production site.
+
+### Reverse proxy and CDN deployments (`trustProxy`)
+
+When deploying `bascik --server` behind a CDN, load balancer, or reverse proxy (such as Cloudflare, AWS CloudFront/ALB, or NGINX), set `http.trustProxy: true` in `bascik.config.ts` (or under `export const server`):
+
+```ts
+export const server = defineConfig({
+  http: {
+    trustProxy: true,
+  },
+});
+```
+
+When `trustProxy: true` is enabled:
+- **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
+- **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
+
+When `trustProxy: false` (the default), `X-Forwarded-For` and `X-Forwarded-Proto` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
+
+### Health checks and zero-downtime deployments
+
+`bascik --server` provides built-in endpoints for load balancer and orchestrator health checks:
+
+- **Liveness probe:** `GET /_health/live` returns `200 OK` as long as the process is alive.
+- **Readiness probe:** `GET /_health` (or `GET /_health/ready`) returns `200 OK` when the server is ready to accept traffic, and `503 Service Unavailable` during boot and during the shutdown drain window.
+
+Configure your container orchestrator (e.g. Kubernetes, AWS ECS) or load balancer with:
+- **Health check path:** `/_health`
+- **Shutdown signal:** `SIGTERM`
+- **Deregistration delay:** Match or exceed `http.timeouts.drain` (default `5000` ms) so the load balancer stops routing new traffic before the process exits.
 
 ## Static hosting
 

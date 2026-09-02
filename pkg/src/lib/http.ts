@@ -1,4 +1,6 @@
 import http from "node:http";
+import { BascikConfig } from "./config.ts";
+import { getClientIp } from "./rate-limit.ts";
 import {
   createRequestHandler,
   isNetworkResetError,
@@ -13,11 +15,14 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
     console.error("[bascik] HTTP/1.1 response error:", err);
   });
 
+  const rawIp = reqMsg.socket.remoteAddress ?? "unknown";
+  const remoteIp = getClientIp(rawIp, reqMsg.headers, BascikConfig.http.trustProxy === true);
+
   const req: BascikRequest = {
     method: reqMsg.method ?? "GET",
     path: reqMsg.url,
     headers: reqMsg.headers,
-    remoteIp: reqMsg.socket.remoteAddress ?? "unknown",
+    remoteIp,
   };
 
   const res: BascikResponse = {

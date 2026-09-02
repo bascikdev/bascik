@@ -378,11 +378,14 @@ pipeline: {
       args: ['--full'],              // argv passed to the script
       env: { CUSTOM: '1' },          // extra env variables
       timeout: 60000,                // timeout in ms
+      watch: ['content/'],           // re-run on changes in dev mode
     },
   ],
   workers: false,                    // enable multi-threaded worker pool
 }
 ```
+
+Listing a path in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. Bascik coordinates the watch triggers and SSE generation counter so that edits to overlapping paths execute the associated exec script, re-transpile affected pages, and issue exactly one coordinated browser reload rather than duplicate or conflicting reload signals.
 
 ### `scripts`
 
@@ -411,10 +414,16 @@ http: {
     keyFile: undefined,     // path to TLS private key
     certFile: undefined,    // path to TLS certificate
   },
-  rateLimit: true,          // per-IP rate limiting
-  trustProxy: false,        // trust X-Forwarded-* headers
+  rateLimit: true,          // boolean or { window?: number, max?: number } (default: 500 req / 10s)
+  trustProxy: false,        // trust X-Forwarded-For and X-Forwarded-Proto behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
+  timeouts: {
+    request: 30000,         // request socket timeout (ms)
+    headers: 10000,         // headers timeout (ms)
+    keepAlive: 5000,        // keep-alive timeout (ms)
+    drain: 5000,            // graceful shutdown drain window (ms)
+  },
   maxBodySize: 1048576,
   apiTimeout: 10000,
 }

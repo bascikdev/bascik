@@ -95,9 +95,18 @@ Three native filesystem watchers (chokidar) handle source file updates:
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
 
-### Live reload (`live-reload.ts`)
+### Live reload (`live-reload.ts`, `sse.ts`)
 
-Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The script listens for `reload` messages, auto-reconnects instantly when disconnected on browser tab focus or visibility changes (so restarting the dev server reloads your browser as soon as you re-focus the window without manual refresh, while remaining connected without unneeded reloads when active), and cleanly closes streams on page unload. Production builds strip this script entirely. If the dev server is offline, a status banner indicates that auto-reconnection will happen automatically when the server is restarted.
+Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The SSE system features:
+- **Monotonic Generation Counter:** Reload events include an incrementing integer generation counter (`data: reload <gen>`). The client-side script tracks `lastGeneration` and ignores stale, duplicate, or out-of-order reload messages.
+- **Reload Coordination:** Reload notifications across asset updates, watched custom paths, exec script completions, and page transpilation are coordinated through SSE generation tracking, ensuring clients reload once on complete batch cycles rather than multiple times.
+- **Periodic Heartbeats:** Sends `: ping\n\n` comments every 20 seconds, preventing proxy/VPN idle disconnection.
+- **Backpressure Handling:** Honors `res.write()` return values, draining stalled writes and terminating persistently wedged clients.
+- **Connection Cap & Cleanup:** Bounded at 200 concurrent SSE streams (`DEFAULT_MAX_SSE_CONNECTIONS`).
+- **Build Error Overlay:** Broadcasts `event: build-error` containing file, line, and stack info to display an overlay in the browser, clearing on subsequent successful builds.
+- **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
+- **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
+- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `serve.ts` as defense in depth.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 
@@ -141,7 +150,14 @@ Production mode enables `cacheHttp: true` by default:
 
 ### Production rate limiting
 
-Production mode enforces a rate limit of **500 requests per 10-second window per IP address** by default. Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header. Rate limiting is inactive during development mode, and can be disabled via `prodServer: { rateLimit: false }` in `bascik.config.ts`.
+Production mode enforces a sliding-window rate limit per IP address (by default **500 requests per 10-second window**). Clients exceeding the limit receive `429 Too Many Requests` with a `Retry-After` header.
+
+- **Sliding Sub-Windows:** Uses a ring of 10 sub-buckets per window to smooth boundary bursts and prevent double-budget attacks at window edges.
+- **Trust Proxy Support:** When `http.trustProxy: true` is configured, client IP derivation reads the rightmost entry of `X-Forwarded-For` (the address appended by the immediate trusted proxy). When `false` (default), forwarded headers are ignored to prevent spoofing.
+- **Bounded Tracking Map:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). If capacity is saturated by flood attacks, the limiter fails closed to preserve server memory. Periodic cleanup reaps stale entries.
+- **Configurable:** Accepts `boolean` or `{ window?: number, max?: number }` in `bascik.config.ts`.
+- **SSE Streams:** Excluded from page rate limit checks.
+- **Development Mode:** Rate limiting is inactive during development mode.
 
 ## Development vs Production Comparison
 
@@ -166,16 +182,16 @@ Both development and production server modes share core security and lifecycle m
 Every incoming request (`req.path`) passes through a deterministic normalization sequence before reaching the static asset or in-memory page resolver:
 
 1. **URL Decomposition (`?` and `#` stripping):** The raw request URI is split on `?` and `#` (`req.path.split(/[?#]/)[0]`) so query parameters and fragments never alter static asset paths or page lookup keys. For example, `/style.css?v=1` or `/about#section` resolve directly to `/style.css` and `/about`.
-2. **Percent-Encoding and Traversal Sanitation:** Paths are decoded using `decodeURIComponent()`. Malformed percent-encoding or paths containing `..` traversal patterns immediately yield a `400 Bad Request`.
+2. **Percent-Encoding and Control Character Sanitation:** Paths are decoded using `decodeURIComponent()`. Malformed percent-encoding, null bytes (`%00`), control characters (`\r`, `\n`, `\t`), or paths containing `..` traversal patterns immediately yield a `400 Bad Request` with `content-type: text/plain; charset=utf-8`.
 3. **Dot-Segment Rejection:** After decoding and traversal validation, any path segment beginning with `.` yields `404 Not Found` before static file lookup. This catches literal and encoded paths such as `/.env`, `/.git/config`, and `/%2Egit/config`, and protects internal output directories such as `dist/.bascik/`.
-4. **Base Prefix Stripping:** After both security guards pass, the normalized `base` prefix is removed before static assets, live reload, or pages are resolved. Requests outside a non-root base return `404`. Keeping this step after traversal and dot-segment rejection prevents a prefix from hiding unsafe input; keeping it before routing gives dev, HTTP/1.1, and HTTP/2 identical behavior.
-5. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections through the base-prefixed `/bascik-live-reload` endpoint, the server extracts `new URL(req.headers.referer).pathname`, strips the same base, then calls `getHttpPath()`. Query strings in the address bar (such as `/faq?tab=settings`) are stripped out so `mem.trackOpenPage()` tracks `/faq` accurately and selective reload filtering matches correctly.
+4. **Base Prefix Stripping:** After security guards pass, the normalized `base` prefix is removed before static assets, live reload, or pages are resolved. Requests outside a non-root base return `404`.
+5. **Referer Normalization for SSE Open-Page Tracking:** When browser tabs establish live-reload connections through `/bascik-live-reload`, the server extracts `new URL(req.headers.referer).pathname`, strips the base, and calls `getHttpPath()` to track active tabs accurately.
 6. **Page Route Resolution Order:** For page requests, lookup follows a strict priority chain:
    - Exact literal path match (`mem.getPageExact(pathname)`)
    - Strip `.html` extension if present
    - Alternate trailing-slash variant (`/blog` vs `/blog/`)
    - Fallback to full `mem.getPage()` lookup (which returns `/404` if unmapped)
-7. **Server Script Parameter Parsing:** For pages containing `<script data-bascik-server>`, the original query string is isolated (`req.path.indexOf("?")`) and parsed via `URLSearchParams` into `searchParams` on the request context object.
+7. **Access Logging Lifecycle:** Requests log when the response completes (`close` or `finish`), capturing full transfer duration. Static asset requests and page responses log status and elapsed duration; `/_health` probes and SSE pings are excluded from access logs.
 
 ### Security response headers
 
@@ -186,7 +202,21 @@ Every response includes standard security headers:
 | `x-content-type-options` | `nosniff` |
 | `x-frame-options` | `SAMEORIGIN` |
 | `referrer-policy` | `strict-origin-when-cross-origin` |
-| `permissions-policy` | `interest-cohort=()` |
+| `cross-origin-opener-policy` | `same-origin-allow-popups` |
+| `cross-origin-resource-policy` | `cross-origin` |
+
+### Graceful shutdown sequence and health checks
+
+When receiving `SIGTERM` or `SIGINT`:
+1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable`.
+2. Idle keep-alive connections are closed with `closeIdleConnections()`.
+3. The server drains in-flight requests during `http.timeouts.drain` (default 5000 ms).
+4. All registered shutdown handlers (watchers, exec child processes) are completed.
+5. Sockets and sessions are closed and the process terminates cleanly.
+
+### Port conflict policy
+
+Under `bascik --server`, binding to an occupied port (`EADDRINUSE`) is a fatal error that exits immediately to prevent serving from an unexpected port. Under development mode (`bascik`), port conflicts increment automatically up to 20 attempts.
 
 ### Path traversal protection
 

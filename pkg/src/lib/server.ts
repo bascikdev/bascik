@@ -24,6 +24,25 @@ import {
 import { readFile } from "node:fs/promises";
 import zlib from "node:zlib";
 
+import {
+  RateLimiter,
+  DEFAULT_RATE_LIMIT_WINDOW_MS,
+  DEFAULT_RATE_LIMIT_MAX,
+} from "./rate-limit.ts";
+import {
+  setServerHealthState,
+  getServerHealthState,
+  isHealthEndpoint,
+  handleHealthCheck,
+  DEFAULT_DRAIN_TIMEOUT_MS,
+  MAX_PORT_INCREMENTS,
+} from "./server-lifecycle.ts";
+import { SseManager } from "./sse.ts";
+
+export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
+
+export const sseManager = new SseManager();
+
 import { makeEtag } from "./names.ts";
 
 export { makeEtag };
@@ -33,12 +52,14 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "SAMEORIGIN",
   "referrer-policy": "strict-origin-when-cross-origin",
-  "permissions-policy": "interest-cohort=()",
+  "cross-origin-opener-policy": "same-origin-allow-popups",
+  "cross-origin-resource-policy": "cross-origin",
 };
 
 export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
   const isHttps = req && req.headers
-    ? req.headers[":scheme"] === "https" || req.headers["x-forwarded-proto"] === "https"
+    ? req.headers[":scheme"] === "https" ||
+    (BascikConfig.http.trustProxy === true && req.headers["x-forwarded-proto"] === "https")
     : false;
   if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
@@ -57,32 +78,45 @@ export const makeStatEtag = (mtimeMs: number, size: number): string =>
 const fileStatSizeToString = (size: number): string => size.toString(36);
 
 // ─── Per-IP rate limiting ─────────────────────────────────────────────────────
-export const RATE_WINDOW_MS = 10_000;
-export const RATE_MAX_REQUESTS = 500;
+export const RATE_WINDOW_MS = DEFAULT_RATE_LIMIT_WINDOW_MS;
+export const RATE_MAX_REQUESTS = DEFAULT_RATE_LIMIT_MAX;
 
-interface RateEntry { count: number; windowStart: number; }
+let activeRateLimiter: RateLimiter | null = null;
 
-/** Exported for test cleanup only, do not use in production code. */
-export const _rateLimiter = new Map<string, RateEntry>();
-
-export const isRateLimited = (ip: string): boolean => {
-  const now = Date.now();
-  const entry = _rateLimiter.get(ip);
-  if (!entry || now - entry.windowStart >= RATE_WINDOW_MS) {
-    _rateLimiter.set(ip, { count: 1, windowStart: now });
-    return false;
+export const getActiveRateLimiter = (): RateLimiter => {
+  if (!activeRateLimiter) {
+    const rateLimitConfig = BascikConfig.http.rateLimit;
+    const windowMs = typeof rateLimitConfig === "object" && rateLimitConfig?.window
+      ? rateLimitConfig.window
+      : DEFAULT_RATE_LIMIT_WINDOW_MS;
+    const max = typeof rateLimitConfig === "object" && rateLimitConfig?.max
+      ? rateLimitConfig.max
+      : DEFAULT_RATE_LIMIT_MAX;
+    activeRateLimiter = new RateLimiter({ windowMs, max });
   }
-  entry.count++;
-  return entry.count > RATE_MAX_REQUESTS;
+  return activeRateLimiter;
 };
 
-// Purge stale entries to prevent unbounded memory growth.
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of _rateLimiter) {
-    if (now - entry.windowStart >= RATE_WINDOW_MS) _rateLimiter.delete(ip);
+/** For testing or reconfiguration: reset active rate limiter */
+export const resetActiveRateLimiter = (): void => {
+  if (activeRateLimiter) {
+    activeRateLimiter.destroy();
+    activeRateLimiter = null;
   }
-}, RATE_WINDOW_MS).unref();
+};
+
+/** Exported for backward-compatibility with tests */
+export const _rateLimiter = {
+  clear() {
+    if (activeRateLimiter) {
+      activeRateLimiter.clear();
+    }
+  },
+};
+
+export const isRateLimited = (ip: string): boolean => {
+  return getActiveRateLimiter().isRateLimited(ip);
+};
 
 export interface BascikRequest {
   method: string;
@@ -181,29 +215,14 @@ export const createRequestHandler = () => {
       const elapsed = performance.now() - start;
       const method = req.method;
       const path = req.path;
-      // Skip noisy SSE keep-alive pings
-      if (path?.split(/[?#]/)[0] === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
+      // Skip noisy SSE keep-alive pings and health checks
+      const cleanPath = path?.split(/[?#]/)[0];
+      if (cleanPath === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
+      if (isHealthEndpoint(cleanPath ?? "")) return;
       console.log(`${method} ${path} ${responseStatus} ${formatDuration(elapsed)}`);
     };
 
     try {
-      // ── Rate limiting ────────────────────────────────────────────────────
-      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
-        responseStatus = 429;
-        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
-        res.end("Too Many Requests");
-        return;
-      }
-
-      // ── Method guard: GET and HEAD only ──────────────────────────────────
-      const isHead = req.method === "HEAD";
-      if (req.method !== "GET" && !isHead) {
-        responseStatus = 405;
-        res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
-        res.end("Method Not Allowed");
-        return;
-      }
-
       if (!req.path) {
         responseStatus = 400;
         res.respond(400, { ...secHeaders });
@@ -218,8 +237,58 @@ export const createRequestHandler = () => {
         pathname = decodeURIComponent(rawPathname);
       } catch {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Bad Request");
+        return;
+      }
+
+      // Gap 1: Null byte and control characters check
+      if (pathname.includes("\0") || /[\r\n\t]/.test(pathname)) {
+        responseStatus = 400;
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Bad Request");
+        return;
+      }
+
+      // ── Health endpoint check (/_health, /_health/ready, /_health/live) ─
+      // Un-rate-limited, un-cached, and checked before other routing
+      if (isHealthEndpoint(pathname)) {
+        const isHead = req.method === "HEAD";
+        if (req.method !== "GET" && !isHead) {
+          responseStatus = 405;
+          if (res.writable && typeof (res.writable as any).resume === "function") {
+            try { (res.writable as any).resume(); } catch { }
+          }
+          res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
+          res.end("Method Not Allowed");
+          return;
+        }
+        const health = handleHealthCheck(pathname);
+        responseStatus = health.status;
+        res.respond(health.status, {
+          ...health.headers,
+          ...secHeaders,
+        });
+        return res.end(isHead ? undefined : health.body);
+      }
+
+      // ── Rate limiting ────────────────────────────────────────────────────
+      if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
+        responseStatus = 429;
+        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Too Many Requests");
+        return;
+      }
+
+      // ── Method guard: GET and HEAD only ──────────────────────────────────
+      const isHead = req.method === "HEAD";
+      if (req.method !== "GET" && !isHead) {
+        responseStatus = 405;
+        if (res.writable && typeof (res.writable as any).resume === "function") {
+          try { (res.writable as any).resume(); } catch { }
+        }
+        res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Method Not Allowed");
         return;
       }
 
@@ -231,14 +300,14 @@ export const createRequestHandler = () => {
         pathname === ".."
       ) {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Bad Request");
         return;
       }
 
       if (pathname.split("/").some((segment) => segment.startsWith("."))) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Not Found");
         return;
       }
@@ -246,7 +315,7 @@ export const createRequestHandler = () => {
       const baseRelativePathname = stripBasePath(pathname, BascikConfig.base);
       if (baseRelativePathname === null) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Not Found");
         return;
       }
@@ -426,6 +495,17 @@ export const createRequestHandler = () => {
           return res.end();
         }
 
+        const isHead = req.method === "HEAD";
+        if (isHead) {
+          responseStatus = 200;
+          res.respond(200, {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            ...secHeaders,
+          });
+          return res.end();
+        }
+
         const isBootReloadConnection = new URL(req.path, "http://localhost").searchParams.get("boot") === "1";
 
         responseStatus = 200;
@@ -434,8 +514,6 @@ export const createRequestHandler = () => {
           "cache-control": "no-cache",
           ...secHeaders,
         });
-
-        res.write(`data: connected\n\n`);
 
         // Parse the referer once at connection time for path-matching and open-page tracking.
         let openPagePath: string | null = null;
@@ -447,6 +525,11 @@ export const createRequestHandler = () => {
           }
         } catch { }
         if (openPagePath) mem.trackOpenPage(openPagePath);
+
+        const client = sseManager.addClient(res, openPagePath);
+        if (!client) {
+          return;
+        }
 
         const eventHandler = ({
           relativePagePath,
@@ -460,31 +543,45 @@ export const createRequestHandler = () => {
             const strip = (p: string) => p.replace(/\/$/, "") || "/";
             if (strip(openPagePath) !== strip(httpPath)) return;
           }
-          res.write(`data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
         const assetChangedHandler = () => {
           if (res.destroyed) return;
-          res.write(`data: reload\n\n`);
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
+        };
+
+        const buildErrorHandler = (errPayload: any) => {
+          if (res.destroyed) return;
+          sseManager.broadcastError(errPayload);
         };
 
         // Reload boot pages immediately when the initial scan finishes.
-        const bootDoneHandler = () => { if (res.destroyed) return; res.write(`data: reload\n\n`); };
+        const bootDoneHandler = () => {
+          if (res.destroyed) return;
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
+        };
 
         eventEmitter.on("transpiled", eventHandler);
         eventEmitter.on("asset-changed", assetChangedHandler);
         eventEmitter.on("boot-done", bootDoneHandler);
-
-        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
-          res.write(`data: reload\n\n`);
-        }
+        eventEmitter.on("build-error", buildErrorHandler);
 
         res.on("close", () => {
           if (openPagePath) mem.untrackOpenPage(openPagePath);
           eventEmitter.removeListener("transpiled", eventHandler);
           eventEmitter.removeListener("asset-changed", assetChangedHandler);
           eventEmitter.removeListener("boot-done", bootDoneHandler);
+          eventEmitter.removeListener("build-error", buildErrorHandler);
         });
+
+        if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {
+          const gen = sseManager.getNextGeneration();
+          sseManager.send(client, `data: reload ${gen}\n\n`);
+        }
         return;
       }
 
@@ -499,8 +596,8 @@ export const createRequestHandler = () => {
 
       if (!exactPage && pathname.split(".").length > 1 && !/\.html?$/i.test(pathname)) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
-        return res.end();
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        return res.end("Not Found");
       }
 
       // During the initial transpile in dev mode, serve a boot page instead of 404 for any page
@@ -518,7 +615,7 @@ export const createRequestHandler = () => {
 
       if (!page) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         return res.end("Not Found");
       }
 
@@ -625,13 +722,20 @@ export const startServerInstance = async (
 
   // Find the first available port, incrementing if the preferred one is in use.
   await new Promise<void>((resolve, reject) => {
+    let attempts = 0;
     const tryPort = (p: number) => {
-      if (p > 65535) {
-        reject(new RangeError(`No available ports found between ${startPort} and 65535.`));
+      if (p > 65535 || attempts >= MAX_PORT_INCREMENTS) {
+        reject(new RangeError(`No available ports found between ${startPort} and ${Math.min(65535, startPort + MAX_PORT_INCREMENTS)}.`));
         return;
       }
       const errorHandler = (err: NodeJS.ErrnoException) => {
+        server.removeListener("error", errorHandler);
         if (err.code === "EADDRINUSE") {
+          if (BascikConfig.isProdServer) {
+            reject(new Error(`Port ${p} is already in use. Under --server, specify a free port with --port or http.port.`));
+            return;
+          }
+          attempts++;
           console.warn(`Port ${p} is in use, trying ${p + 1}…`);
           tryPort(p + 1);
         } else {
@@ -642,6 +746,7 @@ export const startServerInstance = async (
       server.listen(p, hostname, () => {
         server.removeListener("error", errorHandler);
         origin = `${protocol}://${hostname}:${p}`;
+        setServerHealthState("ready");
         resolve();
       });
     };
@@ -653,11 +758,22 @@ export const startServerInstance = async (
 
   // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
   let shuttingDown = false;
+  const drainTimeout = BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
+
   const gracefulShutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    setServerHealthState("draining");
     console.log(`\nReceived ${signal}, shutting down gracefully…`);
 
+    // 1. Stop accepting new connections
+    if (typeof (server as any).closeIdleConnections === "function") {
+      try {
+        (server as any).closeIdleConnections();
+      } catch { }
+    }
+
+    // 2. Custom protocol cleanup callback (sockets/sessions)
     if (onShutdown) {
       try {
         onShutdown();
@@ -670,29 +786,33 @@ export const startServerInstance = async (
       } catch { }
     }
 
-    // Close all registered handles (chokidar watchers, exec watchers).
-    runShutdownHandlers().catch(() => { });
+    // 3. Await registered shutdown handlers (watchers, exec children)
+    runShutdownHandlers().catch((err) => {
+      console.error("[bascik] Error running shutdown handlers:", err);
+    });
 
     server.close((err) => {
       if (err) console.error("Error closing server:", err);
       process.exit(0);
     });
 
-    // Force exit if sessions or connections haven't drained within 10 s.
+    // Force exit if server close hangs past configured drain timeout
     setTimeout(() => {
       console.error("Graceful shutdown timeout: forcing exit");
       process.exit(1);
-    }, 10_000).unref();
+    }, drainTimeout).unref();
   };
+
   process.setMaxListeners(process.getMaxListeners() + 2);
-  const sigtermHandler = () => gracefulShutdown("SIGTERM");
-  const sigintHandler = () => gracefulShutdown("SIGINT");
+  const sigtermHandler = () => { void gracefulShutdown("SIGTERM"); };
+  const sigintHandler = () => { void gracefulShutdown("SIGINT"); };
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
 
   server.once("close", () => {
     process.removeListener("SIGTERM", sigtermHandler);
     process.removeListener("SIGINT", sigintHandler);
+    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 2));
   });
 
   return origin;
@@ -701,8 +821,6 @@ export const startServerInstance = async (
 export const startServer = async (): Promise<string> => {
   const enableTls = !!BascikConfig.http.tls?.enabled;
   if (enableTls) {
-    const { createSelfSignedCert } = await import("./pki.ts");
-    await createSelfSignedCert();
     const { startHttp2Server } = await import("./http2.ts");
     return startHttp2Server();
   }

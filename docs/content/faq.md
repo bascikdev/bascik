@@ -115,9 +115,41 @@ If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fa
 
 Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
 
+## Does Bascik set a Content Security Policy header?
+
+No. Bascik inlines styles and component scripts for performance and scoping isolation. Setting a CSP header directly in Bascik would require `'unsafe-inline'`, which defeats the purpose of CSP. Instead, Bascik generates SHA-256 hash manifests (`generate.cspHashes: true`) so your host or CDN edge can serve a strict policy.
+
+## Why does my browser reject the dev TLS certificate?
+
+Modern browsers require SubjectAltName (SAN) extensions on certificates. When generating self-signed certificates (`http.tls.enabled: true`), Bascik creates certificates with SAN extensions covering `localhost`, `*.localhost`, `127.0.0.1`, and `::1`. If you have `mkcert` installed, Bascik uses it to create locally-trusted certificates automatically.
+
 ## Why did my dynamic route 404?
 
 Dynamic route parameters must be URL-safe tokens. Characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed. Also ensure your template's routes script returned an array containing valid `params` objects matching the bracket names in the filename.
+
+## Why is my rate limit blocking everyone behind my CDN?
+
+If `bascik --server` runs behind a CDN or load balancer without `http.trustProxy: true`, all incoming connections share the CDN's socket IP address. One active user will exhaust the rate limit budget for all users. Enable `trustProxy: true` under `http` or `export const server` in `bascik.config.ts` so client IPs are resolved from the trusted reverse proxy headers.
+
+## Why did live reload stop working?
+
+If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected.
+
+## Why are my static asset requests missing from the logs?
+
+In earlier releases, static asset streams logged before the file descriptor finished opening. Bascik now logs static asset and page requests when the response finishes transmission, capturing the HTTP status and total transfer time. Set `logging.requests: false` if you prefer to suppress request logs.
+
+## Why do I need to restart after changing my config?
+
+Bascik deep-freezes configuration at server boot to guarantee consistency across worker threads, routers, and watchers. When `bascik.config.ts` changes during development, Bascik logs a restart hint. Hot config reload is intentionally avoided to prevent state desynchronization.
+
+## Why did my deployment fail to bind the port?
+
+Under `bascik --server`, encountering `EADDRINUSE` fails fast with an explicit error rather than silently incrementing to another port. This ensures traffic intended for your configured port is not routed to an unmonitored port. In local development mode (`bascik`), auto-incrementing remains active.
+
+## How do I do a zero-downtime deploy?
+
+Configure your orchestrator or reverse proxy to use `GET /_health` as the readiness probe. When a deployment replaces existing containers, sending `SIGTERM` makes Bascik report `503` on `/_health` immediately while draining existing requests within `http.timeouts.drain` (default 5 seconds). Once the load balancer shifts traffic to the new instances, the old process exits cleanly.
 
 ## Why is my build script output stale?
 
