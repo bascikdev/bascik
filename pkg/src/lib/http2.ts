@@ -88,9 +88,17 @@ export const startHttp2Server = async (): Promise<string> => {
 
   server.on(
     "stream",
-    async (stream: ServerHttp2Stream, headers: IncomingHttpHeaders) => {
+    (stream: ServerHttp2Stream, headers: IncomingHttpHeaders) => {
       const { req, res } = adaptHttp2(stream, headers);
-      await handleRequest(req, res);
+      handleRequest(req, res).catch((err) => {
+        console.error("[bascik] Unhandled error during HTTP/2 stream processing:", err);
+        if (!res.headersSent) {
+          try {
+            res.respond(500, { "content-type": "text/plain" });
+            res.end("Internal Server Error");
+          } catch { }
+        }
+      });
     },
   );
 
@@ -98,10 +106,18 @@ export const startHttp2Server = async (): Promise<string> => {
   // HTTP/1.1 over TLS for clients that do not support HTTP/2 or ALPN.
   // We handle these requests using standard HTTP/1.1 adapters, but ignore
   // HTTP/2 requests here since they are already processed via the "stream" event.
-  server.on("request", async (reqMsg, resMsg) => {
+  server.on("request", (reqMsg, resMsg) => {
     if (reqMsg.httpVersion === "2.0") return;
     const { req, res } = adaptHttp1(reqMsg as any, resMsg as any);
-    await handleRequest(req, res);
+    handleRequest(req, res).catch((err) => {
+      console.error("[bascik] Unhandled error during HTTP/1.1 over TLS request processing:", err);
+      if (!res.headersSent) {
+        try {
+          res.respond(500, { "content-type": "text/plain" });
+          res.end("Internal Server Error");
+        } catch { }
+      }
+    });
   });
 
   return startServerInstance(

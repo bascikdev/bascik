@@ -1277,7 +1277,7 @@ describe("startHttp2Server – rate limiting details", () => {
 
     // Stream with a null session socket/remoteAddress or throwing socket should resolve remoteIp as "unknown"
     const badStream1 = { ...makeStream(), session: { socket: null } };
-    await expect(handler(badStream1, makeHeaders("/about", "GET"))).resolves.not.toThrow();
+    expect(() => handler(badStream1, makeHeaders("/about", "GET"))).not.toThrow();
 
     const badStream2 = {
       ...makeStream(),
@@ -1285,7 +1285,7 @@ describe("startHttp2Server – rate limiting details", () => {
         throw new Error("ERR_HTTP2_NO_SOCKET_MANIPULATION");
       },
     };
-    await expect(handler(badStream2, makeHeaders("/about", "GET"))).resolves.not.toThrow();
+    expect(() => handler(badStream2, makeHeaders("/about", "GET"))).not.toThrow();
   });
 });
 

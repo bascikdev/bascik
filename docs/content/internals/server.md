@@ -186,6 +186,12 @@ Every response includes standard security headers:
 
 Static asset requests are normalized and validated to ensure the resolved path remains strictly within the `dist/` directory. Requests attempting path traversal via `/../` receive an immediate `400 Bad Request` response before file I/O occurs.
 
+### Crash Net & Stream Error Handling
+
+Both HTTP/1.1 and HTTP/2 adapters register stream error handlers that identify client disconnects and network resets via `isNetworkResetError`. Errors such as `ECONNRESET`, `EPIPE`, `ECANCELED`, `ERR_HTTP2_STREAM_CANCEL`, `ERR_HTTP2_INVALID_STREAM`, `ERR_HTTP2_INVALID_SESSION`, `ERR_STREAM_WRITE_AFTER_END`, `ERR_STREAM_DESTROYED`, and `ERR_STREAM_ALREADY_FINISHED` are filtered out so client disconnects do not trigger spurious error logs or unhandled stream errors.
+
+Process-level handlers for `unhandledRejection` and `uncaughtException` log full error context and exit with a non-zero code (`1`) to allow external process supervisors (systemd, Docker container restart policies) to restart the process cleanly.
+
 ### Graceful shutdown
 
 The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it stops accepting new connections, closes active SSE streams, destroys HTTP/2 sessions, shuts down filesystem watchers, and exits cleanly within a 10-second grace period.

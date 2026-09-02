@@ -98,7 +98,11 @@ export const isNetworkResetError = (err: unknown): boolean => {
     code === "EPIPE" ||
     code === "ECANCELED" ||
     code === "ERR_HTTP2_STREAM_CANCEL" ||
-    code === "ERR_HTTP2_INVALID_STREAM"
+    code === "ERR_HTTP2_INVALID_STREAM" ||
+    code === "ERR_HTTP2_INVALID_SESSION" ||
+    code === "ERR_STREAM_WRITE_AFTER_END" ||
+    code === "ERR_STREAM_DESTROYED" ||
+    code === "ERR_STREAM_ALREADY_FINISHED"
   );
 };
 

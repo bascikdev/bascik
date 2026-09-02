@@ -1266,10 +1266,10 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Path traversal protection:** static asset URLs are validated against `dist/`; requests that escape with `/../` sequences get `400 Bad Request`.
 * **Hidden-path protection:** after URL decoding, any request path containing a segment that starts with `.` gets `404 Not Found` before static file lookup.
 
-**Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Key patterns:
+**Deployment:** Bascik's server runs over unencrypted HTTP/1.1 by default. Edge platforms (Heroku, Fly.io, AWS ECS, Render) that terminate TLS at the load balancer can forward cleartext HTTP directly to the container. Always run production servers under a process supervisor (systemd, Docker restart policy, or Kubernetes supervisor) as Bascik's process-level crash net terminates with a non-zero exit code on unhandled errors to avoid undefined state. Key patterns:
 
-* **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service.
-* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`).
+* **VPS / dedicated**: bind `hostname: '0.0.0.0'`, supply Let's Encrypt certs via `keyFile`/`certFile` with `enableTls: true`, run as a `systemd` service with `Restart=on-failure`.
+* **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`) with `--restart=unless-stopped`.
 * **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
 When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.
