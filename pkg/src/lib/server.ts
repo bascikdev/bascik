@@ -236,7 +236,15 @@ export const createRequestHandler = () => {
         pathname = decodeURIComponent(rawPathname);
       } catch {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Bad Request");
+        return;
+      }
+
+      // Gap 1: Null byte and control characters check
+      if (pathname.includes("\0") || /[\r\n\t]/.test(pathname)) {
+        responseStatus = 400;
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Bad Request");
         return;
       }
@@ -247,7 +255,10 @@ export const createRequestHandler = () => {
         const isHead = req.method === "HEAD";
         if (req.method !== "GET" && !isHead) {
           responseStatus = 405;
-          res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
+          if (res.writable && typeof (res.writable as any).resume === "function") {
+            try { (res.writable as any).resume(); } catch { }
+          }
+          res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
           res.end("Method Not Allowed");
           return;
         }
@@ -263,7 +274,7 @@ export const createRequestHandler = () => {
       // ── Rate limiting ────────────────────────────────────────────────────
       if (BascikConfig.isProdServer && BascikConfig.http.rateLimit !== false && isRateLimited(req.remoteIp)) {
         responseStatus = 429;
-        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), ...secHeaders });
+        res.respond(429, { "retry-after": String(RATE_WINDOW_MS / 1000), "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Too Many Requests");
         return;
       }
@@ -272,7 +283,10 @@ export const createRequestHandler = () => {
       const isHead = req.method === "HEAD";
       if (req.method !== "GET" && !isHead) {
         responseStatus = 405;
-        res.respond(405, { "allow": "GET, HEAD", ...secHeaders });
+        if (res.writable && typeof (res.writable as any).resume === "function") {
+          try { (res.writable as any).resume(); } catch { }
+        }
+        res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Method Not Allowed");
         return;
       }
@@ -285,14 +299,14 @@ export const createRequestHandler = () => {
         pathname === ".."
       ) {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Bad Request");
         return;
       }
 
       if (pathname.split("/").some((segment) => segment.startsWith("."))) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Not Found");
         return;
       }
@@ -300,7 +314,7 @@ export const createRequestHandler = () => {
       const baseRelativePathname = stripBasePath(pathname, BascikConfig.base);
       if (baseRelativePathname === null) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Not Found");
         return;
       }
@@ -577,8 +591,8 @@ export const createRequestHandler = () => {
 
       if (!exactPage && pathname.split(".").length > 1 && !/\.html?$/i.test(pathname)) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
-        return res.end();
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        return res.end("Not Found");
       }
 
       // During the initial transpile in dev mode, serve a boot page instead of 404 for any page
@@ -596,7 +610,7 @@ export const createRequestHandler = () => {
 
       if (!page) {
         responseStatus = 404;
-        res.respond(404, { ...secHeaders });
+        res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         return res.end("Not Found");
       }
 

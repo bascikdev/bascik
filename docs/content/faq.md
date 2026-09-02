@@ -127,6 +127,10 @@ If `bascik --server` runs behind a CDN or load balancer without `http.trustProxy
 
 If live reload previously disconnected behind a corporate proxy or VPN, Bascik now sends automatic comment heartbeats every 20 seconds to prevent proxy idle timeouts. If you are developing with multiple tabs open or experiencing a build error, an in-browser overlay will display the exact error location until corrected.
 
+## Why are my static asset requests missing from the logs?
+
+In earlier releases, static asset streams logged before the file descriptor finished opening. Bascik now logs static asset and page requests when the response finishes transmission, capturing the HTTP status and total transfer time. Set `logging.requests: false` if you prefer to suppress request logs.
+
 ## Why did my deployment fail to bind the port?
 
 Under `bascik --server`, encountering `EADDRINUSE` fails fast with an explicit error rather than silently incrementing to another port. This ensures traffic intended for your configured port is not routed to an unmonitored port. In local development mode (`bascik`), auto-incrementing remains active.
