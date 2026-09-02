@@ -106,26 +106,49 @@ export const isNetworkResetError = (err: unknown): boolean => {
   );
 };
 
+const DEFAULT_500_BODY = Buffer.from(
+  "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>500 Internal Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
+  "utf8"
+);
+
 export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest): void => {
   // Client disconnected mid-request: not a server bug, nothing to respond to.
   if (isNetworkResetError(error)) return;
   const secHeaders = getSecurityHeaders(req);
+
   try {
     if (!res.headersSent) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
         res.respond(404, { ...secHeaders });
+        res.end();
       } else {
-        res.respond(500, { ...secHeaders });
+        // Try serving custom 500 page from memory store
+        let custom500Page: any = undefined;
+        try {
+          custom500Page = mem.getPageExact("/500");
+        } catch {
+          // Guard against recursion if lookup throws
+        }
+
+        const bodyBuf = custom500Page?.content ? custom500Page.content : DEFAULT_500_BODY;
+        res.respond(500, {
+          "content-type": "text/html; charset=utf-8",
+          "content-length": bodyBuf.byteLength,
+          ...secHeaders,
+        });
+        res.end(bodyBuf);
       }
     }
   } catch (respondErr) {
     console.error("Error responding to stream/request:", respondErr);
-  }
-
-  try {
-    res.end();
-  } catch (endErr) {
-    console.error("Error ending stream/request:", endErr);
+    try {
+      if (!res.headersSent) {
+        res.respond(500, { "content-type": "text/html; charset=utf-8", ...secHeaders });
+      }
+      res.end(DEFAULT_500_BODY);
+    } catch (endErr) {
+      console.error("Error ending stream/request:", endErr);
+    }
   }
 
   console.error("Request/Stream error:", error);

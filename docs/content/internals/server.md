@@ -71,7 +71,13 @@ The `MemoryStore` class manages rendered pages during development without writin
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
 - `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
-Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers.
+Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers. Under `--build` and `--server`, Brotli compression uses maximum quality (`BROTLI_MAX_QUALITY = 11`) to ensure optimal payload sizes.
+
+### Error page handling
+
+Custom 404 and 500 error pages are supported by filesystem convention:
+- `/404`: Rendered from `src/pages/404.html`.
+- `/500`: Rendered from `src/pages/500.html`. When an unhandled error occurs during request processing, `onError` serves `/500` with status 500. If missing, it falls back to a clean built-in HTML document. Server stack traces are sent to stderr only and never leaked to response payloads.
 
 ### Boot page during startup (`boot-page.ts`)
 

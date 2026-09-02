@@ -1182,7 +1182,7 @@ src/
 * **404 Page (`src/pages/404.html`):** Picked up automatically by path convention in the dev server and under `bascik --server` as a fallback for any non-existent routes (with a 404 status code). When built with `bascik --build`, it compiles to `dist/404.html`, which static hosting platforms (GitHub Pages, Cloudflare Pages, Netlify, Vercel) recognize and serve automatically.
 * **500 Error Pages in Static vs. Server Contexts:**
   * **Static builds (`bascik --build`):** A 500 error page is meaningless in a fully static build, because static web hosts serve their own error pages if an infrastructure or server issue occurs. Do not port a 500 error page from Next.js, Remix, or any server-rendered framework into a static Bascik site.
-  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` will be convention-based with no config key *(Note: Not yet implemented, planned in an upcoming release)*. Currently, runtime server errors return built-in error responses.
+  * **Production server (`bascik --server`):** Custom `src/pages/500.html` support under `bascik --server` is convention-based with no config key. When an unhandled error occurs, `src/pages/500.html` is served with status 500 and security headers, falling back to a built-in minimal document when absent. Static hosts serve their own error pages.
 
 ---
 

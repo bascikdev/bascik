@@ -278,6 +278,15 @@ Both the dev server and `bascik --server` strip the `.html` extension and serve 
 
 Requests for a path that has no matching page fall through to the `404` page if one exists (`dist/404.html`), otherwise the server returns a plain `404 Not Found`.
 
+### Custom error pages
+
+Bascik supports custom error pages by convention without requiring configuration options:
+
+- **404 Not Found:** Author `src/pages/404.html`. It is served automatically when a route cannot be matched.
+- **500 Internal Server Error:** Author `src/pages/500.html`. When an unhandled error occurs during request processing, the server serves `src/pages/500.html` with status 500 and security headers. If no 500 page is authored, a minimal built-in HTML fallback is served.
+
+Internal errors and stack traces are logged directly to stderr and are never interpolated into 500 error responses or leaked to clients. If the custom 500 page itself errors, a recursion guard falls back to the built-in minimal 500 document safely.
+
 ## What `--server` does differently from `--build`
 
 | Capability | `bascik --build` | `bascik --server` |
