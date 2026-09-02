@@ -20,6 +20,11 @@ implementation team to change working code and ship a fix that does not hold.
 You are done investigating only when you can explain **every** observed symptom. If one detail
 does not fit your theory, your theory is wrong. Not "mostly right." Wrong.
 
+Always prefer a solution that **"removes the problem by construction"**. We do not merely pile on
+more code, conditional checks, or defensive layers to patch over a symptom. Look at the problem
+structurally and in its broad architecture. Think from a clean sheet and redesign the mechanism from
+the ground up if that is what it takes to eliminate the failure mode entirely.
+
 ## The investigation loop
 
 Work in this order. Do not skip ahead to a fix.
