@@ -122,7 +122,7 @@ describe("debounce helper", () => {
         timeouts.delete(handle as any);
       },
       setInterval: () => 0 as any,
-      clearInterval: () => {},
+      clearInterval: () => { },
     };
 
     const fn = vi.fn();

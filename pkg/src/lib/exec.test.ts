@@ -442,7 +442,7 @@ describe("exec timeout escalation and lifecycle", () => {
         timeouts.delete(handle as any);
       },
       setInterval: () => 0 as any,
-      clearInterval: () => {},
+      clearInterval: () => { },
     };
 
     const proc = {
