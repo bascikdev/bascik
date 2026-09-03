@@ -36,20 +36,19 @@ export const NAV: NavSection[] = [
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
       { href: '/build-scripts', label: 'Build Scripts' },
+      { href: '/server', label: 'Production Server' },
       { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/api-routes', label: 'API Routes' },
-      { href: '/server', label: 'Production Server' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
-      { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },
   {
     section: 'Reference', pages: [
       { href: '/faq', label: 'FAQ' },
-      { href: '/cli', label: 'CLI / Command Line' },
+      { href: '/cli', label: 'Command Line Interface (CLI)' },
       { href: '/configuration', label: 'Configuration' },
       { href: '/environment-variables', label: 'Environment Variables' },
-      { href: '/compatibility', label: 'Scoping Compatibility' },
+      { href: '/compatibility', label: 'Compatibility' },
       { href: '/deploying', label: 'Deploying' },
     ]
   },
@@ -79,11 +78,12 @@ export const NAV: NavSection[] = [
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
       { href: '/how-to/server-scripts', label: 'Server Scripts' },
       { href: '/how-to/templating', label: 'Templating' },
+      { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },
   {
     section: 'Internals', pages: [
-      { href: '/internals', label: 'Internals Overview' },
+      { href: '/internals', label: 'Overview' },
       { href: '/internals/architecture', label: 'Architecture' },
       { href: '/internals/transpilation-pipeline', label: 'Transpilation Pipeline' },
       { href: '/internals/scoping-system', label: 'Scoping System' },

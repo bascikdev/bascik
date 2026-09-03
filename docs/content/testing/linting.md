@@ -1,4 +1,4 @@
-# Linting & Web Standards
+# Linting
 
 Automated web standards checks and HTML linting catch accessibility flaws, invalid markup, and browser compatibility issues in component templates before deployment.
 

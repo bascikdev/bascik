@@ -72,7 +72,7 @@ describe('renderPagination', () => {
     expect(html).toContain('data-pg="prev"');
     expect(html).toContain('data-pg="next"');
     expect(html).toContain('<span data-pg-section>Reference</span>');
-    expect(html).toContain('<span data-pg-label>Scoping Compatibility</span>');
+    expect(html).toContain('<span data-pg-label>Compatibility</span>');
     expect(html).toContain('<span data-pg-section>Testing & Debugging</span>');
     expect(html).toContain('<span data-pg-label>Overview</span>');
   });
@@ -95,7 +95,7 @@ describe('renderPagination', () => {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/build-scripts"');
+      expect(html).toContain('href="/server"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
@@ -116,7 +116,7 @@ describe('renderPagination', () => {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).toContain('data-pg="next"');
-      expect(html).toContain('href="/build-scripts"');
+      expect(html).toContain('href="/server"');
       expect(html).toContain('href="/api-routes"');
     } finally {
       process.env.BASCIK_SOURCE_FILE = originalFile;

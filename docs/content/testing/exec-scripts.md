@@ -1,4 +1,4 @@
-# Exec Scripts Testing
+# Exec Scripts
 
 Lifecycle build scripts (configured via the `exec` option in `bascik.config.ts`) execute Node.js tasks during compilation to generate automated artifacts, such as XML sitemaps, search indexes, RSS feeds, or optimized Open Graph social images.
 

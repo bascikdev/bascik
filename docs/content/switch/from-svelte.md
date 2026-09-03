@@ -1,4 +1,4 @@
-# Switch from Svelte
+# From Svelte
 
 Svelte and Bascik share a surface-level resemblance: both use single-file components that combine markup, logic, and scoped styles in one place. The difference is in the output. Svelte compiles components to JavaScript that runs in the browser to manage reactive state and DOM updates. Bascik compiles components to vanilla HTML at build time and outputs nothing else. Switching is mostly mechanical: remove Svelte's script and template syntax, extract styles to a paired CSS file, and replace reactive primitives with vanilla JS.
 

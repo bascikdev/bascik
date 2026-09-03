@@ -1,4 +1,4 @@
-# Testing & Debugging Overview
+# Overview
 
 Bascik supports automated testing and debugging across every layer of your application, from pure TypeScript utilities and component markup contracts to build-time scripts, request-time server scripts, browser component interactivity, and multi-environment end-to-end workflows.
 

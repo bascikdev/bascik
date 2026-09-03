@@ -1,4 +1,4 @@
-# Switch from Vue
+# From Vue
 
 Vue and Bascik are both component-based. The key difference is that Bascik does all component work at build time and outputs vanilla HTML with no runtime framework. Switching is mostly mechanical: rename files, remove Vue-specific syntax, and replace reactive primitives with vanilla JS or build-time equivalents.
 

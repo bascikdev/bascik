@@ -1,4 +1,4 @@
-# Build Scripts Testing
+# Build Scripts
 
 Build-time scripts (`<script data-bascik-build>`) run in Node.js during compilation to generate static HTML, render Markdown content, compute canonical metadata, or fetch remote data before pages are written to `dist/`. To make build scripts testable and maintainable, separate business logic and data transformations into pure exported TypeScript modules.
 
