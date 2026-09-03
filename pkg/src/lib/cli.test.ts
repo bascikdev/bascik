@@ -321,4 +321,39 @@ describe("cli helper tests", () => {
       expect(serverDecision.errorMessage).toContain("--log");
     });
   });
+
+  describe("add subcommand", () => {
+    it("parses bascik add with package target and flags", () => {
+      const decision = resolveCliAction(["add", "@acme/ui", "--force", "--yes", "--dry-run"]);
+      expect(decision.action).toBe("add");
+      expect(decision.flags.addTargets).toEqual(["@acme/ui"]);
+      expect(decision.flags.force).toBe(true);
+      expect(decision.flags.yes).toBe(true);
+      expect(decision.flags.dryRun).toBe(true);
+    });
+
+    it("parses bascik add with multiple targets", () => {
+      const decision = resolveCliAction(["add", "@acme/ui/card", "@acme/ui/button"]);
+      expect(decision.action).toBe("add");
+      expect(decision.flags.addTargets).toEqual(["@acme/ui/card", "@acme/ui/button"]);
+    });
+
+    it("rejects bascik add without targets", () => {
+      const decision = resolveCliAction(["add"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("`bascik add` expects at least one package or component target");
+    });
+
+    it("rejects --force without add", () => {
+      const decision = resolveCliAction(["--build", "--force"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--force only applies to add");
+    });
+
+    it("rejects --dry-run without add", () => {
+      const decision = resolveCliAction(["--build", "--dry-run"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--dry-run only applies to add");
+    });
+  });
 });

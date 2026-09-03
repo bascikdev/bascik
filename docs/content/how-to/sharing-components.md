@@ -1,6 +1,26 @@
 # Sharing Components
 
-A Bascik components directory is plain files: HTML, paired CSS, paired scripts. There is no registry and no package format for components yet. This guide covers the ways to share components across projects today, and the constraint you will hit first.
+A Bascik components directory is plain files: HTML, paired CSS, and paired scripts. Sharing components between projects follows a copy-in model where components are copied directly into your project's `src/components/` directory and become first-class project files.
+
+## The primary path: `bascik add`
+
+The easiest way to share and consume components across projects is with `bascik add`. Install an npm package that exports Bascik components, then copy all or specific components into your project:
+
+```sh
+# Copy all components from the package
+bascik add @acme/ui
+
+# Copy a single component
+bascik add @acme/ui/card
+```
+
+When you run `bascik add`:
+- Files are copied directly into `src/components/` and belong to your project.
+- A `bascik-lock.json` file is created or updated to track package versions and file content hashes.
+- Re-adding an unmodified component updates it safely. If you locally edit a copied component, `bascik add` refuses to overwrite it unless you pass `--force`.
+- Run `bascik add --dry-run` to see what would be copied without writing files to disk.
+
+See [Publishing Components](/how-to/publishing-components) for details on creating packages compatible with `bascik add`.
 
 ## The constraint: names come from filenames
 
@@ -18,11 +38,11 @@ Component names are derived from filenames, regardless of subfolder nesting. Two
 </div>
 ```
 
-So a copied component that collides with a local one fails the build with an error naming both files. That is the first thing someone sharing components hits, and it is a feature: the collision is caught at build time, not at runtime. The fix is to rename one file with a prefix, for example `marketing-hero-card.html`, which also documents where the component came from.
+When using `bascik add` or manual copying, any collision with an existing project component is detected before writing anything. If a name collision occurs, rename the local file (e.g. `marketing-hero-card.html`) or adjust the package.
 
-## Approach 1: copy the files
+## Alternative 1: manual file copy
 
-For one or two components, copying is the honest answer. A component is a directory of plain files, so copying `hero-card.html` plus its paired `hero-card.css` and any companion scripts into your `src/components/` tree just works. Components may live in subfolders, so `src/components/marketing/hero-card.html` is discovered normally:
+For one or two components without npm packaging, copying files manually is straightforward. Copy `hero-card.html` plus its paired `hero-card.css` and companion scripts into `src/components/`:
 
 <!-- demo:shared-component -->
 ```html
@@ -34,24 +54,14 @@ For one or two components, copying is the honest answer. A component is a direct
 </div>
 ```
 
-The trade-off is drift: a fix made in one project does not reach the copies. Copy only components that are stable, and rename on the way in if there is any collision risk.
+The trade-off is drift: improvements made in one project must be copied manually to others.
 
-## Approach 2: a git submodule
+## Alternative 2: a git submodule
 
-When the shared set is larger or evolves, put the components in their own repository and consume it as a git submodule:
+When sharing a set of components across internal repositories, you can consume a shared repository as a git submodule:
 
 ```sh
 git submodule add https://github.com/your-org/shared-bascik-components.git src/components/shared
 ```
 
-Because components may live in subfolders, the submodule can sit directly inside `src/components/` and every component in it is discovered. The duplicate-name rule still applies: a submodule component whose filename collides with a local one fails the build, so prefix local names or submodule names to keep the namespaces distinct.
-
-The trade-off is workflow weight: submodules pin a commit, so consuming projects must update deliberately, and contributors who have never used submodules will trip on the empty-checkout step.
-
-## Approach 3: a package
-
-For a shared set with a versioning story, publish the components directory as an npm package and consume it from an `exec` step that copies or symlinks the package's components into `src/components/`. This gives you semantic versioning and a changelog, at the cost of maintaining the packaging script. Reach for it when the submodule workflow is hurting, not before.
-
-## What is coming
-
-A `bascik add` command is planned to install components from a registry or repository directly, which will become the primary path. Until it lands, the manual approaches above are the state of the world.
+Because components may live in subfolders, the submodule sits directly inside `src/components/` and every component in it is discovered automatically. The duplicate-name rule still applies: ensure filenames in the submodule do not collide with top-level project components.

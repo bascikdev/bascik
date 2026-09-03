@@ -160,10 +160,6 @@ describe('how-to guide demo markers', () => {
       'shared-component',
       'colliding-component',
     ],
-    'micro-sites.md': [
-      'micro-site-index',
-      'micro-site-config',
-    ],
   };
 
   it('every marker referenced by each guide resolves to a code block', async () => {

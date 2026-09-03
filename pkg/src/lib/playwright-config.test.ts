@@ -20,6 +20,7 @@ describe('Playwright project test selection', () => {
       '**/prod-server.test.ts',
       '**/preserve-server-form.test.ts',
       '**/caching-layer.test.ts',
+      '**/bascik-add-dev.test.ts',
       '**/base-serving.test.ts',
     ]],
     [devConfig, [
@@ -35,11 +36,15 @@ describe('Playwright project test selection', () => {
     [http1Config, [
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
+      '**/bascik-add.test.ts',
+      '**/bascik-add-dev.test.ts',
       '**/base-serving.test.ts',
     ]],
     [http2Config, [
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
+      '**/bascik-add.test.ts',
+      '**/bascik-add-dev.test.ts',
       '**/base-serving.test.ts',
     ]],
   ])('keeps mode exclusions on the default project', (config, expected) => {

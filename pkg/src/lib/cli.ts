@@ -22,6 +22,7 @@
 
 export type CliAction =
   | "init"
+  | "add"
   | "check"
   | "server"
   | "build"
@@ -43,6 +44,10 @@ export interface CliFlags {
   only?: string[];
   strict?: boolean;
   json?: boolean;
+  force?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
+  addTargets?: string[];
 }
 
 export interface CliDecision {
@@ -69,6 +74,10 @@ const BOOLEAN_FLAGS = new Set([
   "--check",
   "--strict",
   "--json",
+  "--force",
+  "--yes",
+  "-y",
+  "--dry-run",
   "--help",
   "-h",
   "--version",
@@ -90,16 +99,20 @@ const VALUE_FLAGS = new Set([
 const OPTIONAL_VALUE_FLAGS = new Set(["--log"]);
 
 /** Positional subcommands the CLI understands. */
-const KNOWN_SUBCOMMANDS = new Set(["init"]);
+const KNOWN_SUBCOMMANDS = new Set(["init", "add"]);
 
 /** Candidates for "Did you mean …" suggestions on unknown tokens. */
 const SUGGESTION_CANDIDATES = [
   "init",
+  "add",
   "--build",
   "--server",
   "--check",
   "--strict",
   "--json",
+  "--force",
+  "--yes",
+  "--dry-run",
   "--help",
   "--version",
   "--config",
@@ -352,15 +365,36 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     return { action: "version", flags };
   }
 
+  if (present.has("--force")) flags.force = true;
+  if (present.has("--yes") || present.has("-y")) flags.yes = true;
+  if (present.has("--dry-run")) flags.dryRun = true;
+
+  if (present.has("add")) {
+    if (present.has("init")) {
+      return error("Error: cannot specify multiple subcommands (init, add).");
+    }
+    if (positionals.length === 0) {
+      return error("Error: `bascik add` expects at least one package or component target (e.g. `bascik add @acme/ui` or `bascik add @acme/ui/card`).");
+    }
+    flags.addTargets = positionals;
+    return { action: "add", flags };
+  }
+
+  if (present.has("init")) {
+    if (positionals.length > 0) {
+      const hint = suggest(positionals[0]);
+      return error(
+        `Error: unexpected argument "${positionals[0]}".${hint ? ` Did you mean "${hint}"?` : ""}`,
+      );
+    }
+    return { action: "init", flags };
+  }
+
   if (positionals.length > 0) {
     const hint = suggest(positionals[0]);
     return error(
       `Error: unexpected argument "${positionals[0]}".${hint ? ` Did you mean "${hint}"?` : ""}`,
     );
-  }
-
-  if (present.has("init")) {
-    return { action: "init", flags };
   }
 
   if (present.has("--build") && present.has("--server")) {
@@ -372,6 +406,18 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (present.has("--strict")) flags.strict = true;
   if (present.has("--json")) flags.json = true;
+
+  if (flags.force) {
+    return error("Error: --force only applies to add.");
+  }
+
+  if (flags.yes) {
+    return error("Error: --yes only applies to add.");
+  }
+
+  if (flags.dryRun) {
+    return error("Error: --dry-run only applies to add.");
+  }
 
   const action: CliAction = present.has("--check")
     ? "check"
@@ -404,6 +450,7 @@ export const CLI_USAGE = `Usage: bascik [command] [options]
 
 Commands:
   init               Scaffold a new Bascik project in the current directory
+  add <package...>   Copy components from an installed npm package into src/components/
 
 Options:
   (no flags)         Start the dev server with watch mode
@@ -413,6 +460,9 @@ Options:
   --check            Validate the project (pages, components, config)
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
   --json             Emit structured JSON findings during --check
+  --force            Overwrite modified local components when running add
+  --yes, -y          Skip prompts during add
+  --dry-run          List what add would do without writing to disk
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)
   --port <n>         Override the server port

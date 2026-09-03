@@ -76,6 +76,7 @@ bascik --build   # production: transpile to dist/ only
 bascik --server  # production server: serve a pre-built dist/ over HTTP/1.1
                  # (HTTP/2 when http.tls.enabled is set)
 bascik --check   # static analysis: validate pages, components, and config without building
+bascik add <pkg> # copy components from an installed npm package into src/components/
 ```
 
 | Flag | Description |
@@ -84,6 +85,9 @@ bascik --check   # static analysis: validate pages, components, and config witho
 | `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
 | `--strict` | Treat warnings as errors during `--check` (exits with code 1 if warnings are found) |
 | `--json` | Emit findings as a structured JSON document during `--check` |
+| `--force` | Overwrite locally modified components during `bascik add` |
+| `--yes`, `-y` | Skip interactive confirmation during `bascik add` |
+| `--dry-run` | List what `bascik add` would do without writing files to disk |
 | `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
 | `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
 | `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
@@ -103,12 +107,42 @@ bascik --build --port=4321
 Rules the parser enforces:
 
 - `--build` and `--server` cannot be combined. Run the build first, then serve the output.
-- Unknown flags are rejected, as are positional arguments other than `init`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server.
+- Unknown flags are rejected, as are positional arguments other than `init` and `add`. `bascik build` (no dashes) is an error with a `Did you mean "--build"?` suggestion, not a silent dev server.
 - A flag that takes a value requires one (`--config` with no path is an error); a flag that takes none rejects one (`--build=yes` is an error).
 - Repeating a boolean flag is a no-op. For value flags the last occurrence wins; `--env-file` appends.
 - A flag always beats the matching environment variable, which beats the config file. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
 
 Unrecognized flags that appear before the first Bascik flag are treated as Node.js runtime flags and ignored, so profilers and wrappers (`0x`, `clinic`, `--inspect`) never break the CLI.
+
+## Adding components with `bascik add`
+
+`bascik add` copies components from an installed npm package directly into `src/components/`:
+
+```sh
+# Copy all components from a package
+bascik add @acme/ui
+
+# Copy a single component
+bascik add @acme/ui/card
+
+# Preview what would be copied without writing files
+bascik add @acme/ui --dry-run
+
+# Overwrite locally modified components
+bascik add @acme/ui --force
+```
+
+### The `bascik-lock.json` lockfile
+
+`bascik add` maintains a `bascik-lock.json` file in your project root. Unlike build artifacts in `dist/.bascik/`, `bascik-lock.json` is committed project state that tracks:
+- Installed component packages and versions
+- The list of copied files
+- Per-file SHA-256 content hashes
+
+When re-running `bascik add`:
+- Unmodified files are updated cleanly to newer package versions.
+- If a copied file was customized locally, `bascik add` detects the content hash mismatch and refuses to overwrite it without `--force`.
+
 
 ## Environment files and the site URL
 

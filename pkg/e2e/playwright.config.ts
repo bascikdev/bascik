@@ -16,6 +16,8 @@ const staticTestIgnore = [
   // serves dist/ with a minimal harness server that has none of this, so
   // this suite only runs against playwright.server*.config.ts.
   '**/caching-layer.test.ts',
+  // bascik-add-dev exercises dynamic component addition during live dev watching
+  '**/bascik-add-dev.test.ts',
 ];
 
 export default defineConfig({

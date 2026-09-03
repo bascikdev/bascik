@@ -82,6 +82,35 @@ export const runCli = async (
       exit(0);
       return { action: "init", exitCode: 0 };
     }
+    case "add": {
+      const { addComponents } = await import("./lib/add.ts");
+      const targets = decision.flags.addTargets ?? [];
+      try {
+        const result = await addComponents(targets, {
+          force: decision.flags.force,
+          yes: decision.flags.yes,
+          dryRun: decision.flags.dryRun,
+        });
+        if (decision.flags.dryRun) {
+          logger(`[bascik add] dry run: would copy ${result.copiedFiles.length} file(s).`);
+          for (const f of result.copiedFiles) {
+            logger(`  would copy: ${f.destPath}`);
+          }
+        } else {
+          logger(`[bascik add] successfully added ${result.copiedFiles.length} file(s).`);
+          for (const f of result.copiedFiles) {
+            logger(`  added: ${f.destPath}`);
+          }
+        }
+        exit(0);
+        return { action: "add", exitCode: 0 };
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(errMsg);
+        exit(1);
+        return { action: "add", exitCode: 1 };
+      }
+    }
     case "check": {
       const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
       const findings = await checkProject();

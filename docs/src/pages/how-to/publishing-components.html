@@ -36,8 +36,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Build a micro site with Bascik: a landing page, docs for one tool, a conference site, or an internal dashboard. One page, no framework, static deployment anywhere." />
-  <title>Micro Sites - Bascik Docs</title>
+    content="Publish reusable Bascik components as standard npm packages using the bascik.components contract. Components copy verbatim into consumer projects." />
+  <title>Publishing Components - Bascik Docs</title>
 </head>
 
 <body>
@@ -56,7 +56,7 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/how-to/micro-sites'));
+          console.log(renderSectionLabel('/how-to/publishing-components'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
@@ -64,7 +64,7 @@
           const { renderMd } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMd('./content/how-to/micro-sites.md'));
+          console.log(await renderMd('./content/how-to/publishing-components.md'));
         </script>
 
         <docs-pagination />
