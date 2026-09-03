@@ -1,4 +1,4 @@
-# Bascik Web Standards & Scoping Compatibility
+# Web Standards & Scoping Compatibility
 
 This page documents Bascik's support matrix against authoritative **W3C Recommendations**, **WHATWG Living Standards**, **IETF RFCs**, and **ECMA-262 specifications**, cross-referenced with **MDN Web Docs** documentation and **Baseline** browser compatibility tiers.
 

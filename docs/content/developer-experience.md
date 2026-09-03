@@ -1,4 +1,4 @@
-# Developer Experience Guide
+# Developer Experience
 
 This hands-on guide walks through your daily workflow in Bascik: running the local environment, leveraging editor tools, debugging, running tests, and inspecting production builds.
 

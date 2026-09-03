@@ -1,4 +1,4 @@
-# Switch from Astro
+# From Astro
 
 Astro and Bascik are both build-time component systems that output zero-JS HTML by default. The concepts translate closely: `.astro` files become `.html` component files, frontmatter code blocks become `<script data-bascik-build>` tags, `Astro.props` becomes `data-bascik-prop-*` attributes, and Astro's `<slot />` becomes Bascik's `data-bascik-slot` attribute.
 

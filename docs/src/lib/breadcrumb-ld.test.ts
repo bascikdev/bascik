@@ -38,8 +38,8 @@ describe('breadcrumbLd', () => {
     expect(result).toBe('');
   });
 
-  it('generates breadcrumbs for nested section pages (e.g. recipes/server-scripts)', async () => {
-    const sectionDir = join(tempDir, 'recipes');
+  it('generates breadcrumbs for nested section pages (e.g. how-to/server-scripts)', async () => {
+    const sectionDir = join(tempDir, 'how-to');
     const pageFile = join(sectionDir, 'server-scripts.html');
     const { mkdir } = await import('node:fs/promises');
     await mkdir(sectionDir, { recursive: true });

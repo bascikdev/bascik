@@ -1,0 +1,9 @@
+{# templates/page.njk #}
+<section>
+  <h2>{{ title }}</h2>
+  <ul>
+    {% for item in items %}
+      <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+</section>

@@ -122,7 +122,7 @@ Bascik validates routes scripts, route parameters, and output destinations durin
 - **Invalid Output Format:** If the script prints text that is not valid JSON or does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the received output.
 - **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
 
-## Common Recipes
+## Common How-to Examples
 
 ### 1. Markdown Blog Posts
 

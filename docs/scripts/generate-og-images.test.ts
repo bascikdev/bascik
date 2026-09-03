@@ -27,7 +27,7 @@ describe('generate-og-images', () => {
     expect(gettingStartedJpg.length).toBeGreaterThan(0);
     expect(gettingStartedJpg.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
 
-    const markdownJpg = await fs.readFile(path.join(ogDir, 'recipes-markdown.jpg'));
+    const markdownJpg = await fs.readFile(path.join(ogDir, 'how-to-markdown.jpg'));
     expect(markdownJpg.length).toBeGreaterThan(0);
     expect(markdownJpg.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
   }, 30000);

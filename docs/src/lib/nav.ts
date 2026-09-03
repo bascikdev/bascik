@@ -36,20 +36,19 @@ export const NAV: NavSection[] = [
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
       { href: '/build-scripts', label: 'Build Scripts' },
+      { href: '/server', label: 'Production Server' },
       { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/api-routes', label: 'API Routes' },
-      { href: '/server', label: 'Production Server' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
-      { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },
   {
     section: 'Reference', pages: [
       { href: '/faq', label: 'FAQ' },
-      { href: '/cli', label: 'CLI / Command Line' },
+      { href: '/cli', label: 'Command Line Interface (CLI)' },
       { href: '/configuration', label: 'Configuration' },
       { href: '/environment-variables', label: 'Environment Variables' },
-      { href: '/compatibility', label: 'Scoping Compatibility' },
+      { href: '/compatibility', label: 'Compatibility' },
       { href: '/deploying', label: 'Deploying' },
     ]
   },
@@ -74,16 +73,21 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Recipes', pages: [
-      { href: '/recipes/markdown', label: 'Markdown' },
-      { href: '/recipes/page-aware-scripts', label: 'Page-Aware Scripts' },
-      { href: '/recipes/server-scripts', label: 'Server Scripts' },
-      { href: '/recipes/templating', label: 'Templating' },
+    section: 'How-to', pages: [
+      { href: '/how-to/markdown', label: 'Markdown' },
+      { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
+      { href: '/how-to/server-scripts', label: 'Server Scripts' },
+      { href: '/how-to/templating', label: 'Templating' },
+      { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
+      { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
+      { href: '/how-to/sharing-components', label: 'Sharing Components' },
+      { href: '/how-to/micro-sites', label: 'Micro Sites' },
+      { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },
   {
     section: 'Internals', pages: [
-      { href: '/internals', label: 'Internals Overview' },
+      { href: '/internals', label: 'Overview' },
       { href: '/internals/architecture', label: 'Architecture' },
       { href: '/internals/transpilation-pipeline', label: 'Transpilation Pipeline' },
       { href: '/internals/scoping-system', label: 'Scoping System' },

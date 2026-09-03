@@ -1,4 +1,4 @@
-# Switch from React
+# From React
 
 React and Bascik both build UIs from reusable components. The core difference is that Bascik does all component work at build time and outputs vanilla HTML, there is no virtual DOM, no framework runtime, and no JSX. Switching is mostly mechanical: rename files, swap JSX syntax for HTML, and replace framework abstractions with their build-time or vanilla-JS equivalents.
 

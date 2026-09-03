@@ -94,6 +94,30 @@ Run `bascik --check --json` for machine-readable results, and `bascik --check --
 
 Yes. Bascik's output is vanilla HTML. Any library that works with HTML works with Bascik. Drop a `<script>` tag in and it loads like it always has. See the [JavaScript Libraries](/libraries) page for examples.
 
+## Can I use an npm package with no CDN build?
+
+Yes, by bundling it yourself. Bascik does not rewrite bare specifiers in client-side scripts, so `import x from 'some-package'` in a `<script type="module">` fails in the browser. Run esbuild as a `pipeline.exec` step with `phase: 'pre'`, write the bundle into `dist/assets/js/`, and import it from the page with a root-relative URL. See [Bundling npm Packages](/how-to/bundling-npm-packages) for the full recipe.
+
+## Should I fingerprint my assets?
+
+Probably not. Bascik inlines component CSS and JavaScript, so fingerprinting only matters for images, fonts, and other copied page assets. The production server already sends content-hash `ETag` headers, and `http.cacheControl` tunes per-extension caching with no build step. Fingerprinting is for immutable, far-future caching on a CDN, and it will not improve a Lighthouse score (`uses-long-cache-ttl` is unweighted in Lighthouse 10 and later). See [Asset Fingerprinting](/how-to/asset-fingerprinting).
+
+## How do I share components between projects?
+
+A components directory is plain files, so sharing means copying, a git submodule, or a package. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
+
+## Is Bascik a good fit for a one-page site?
+
+Yes, it is one of the things Bascik is best at. A landing page, docs for one tool, a conference site, or an internal dashboard can be a single page with no router, no server, and no framework. Run `bascik --build` and deploy the `dist/` directory to any static host. See [Micro Sites](/how-to/micro-sites).
+
+## Which templating library should I use with Bascik?
+
+**Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
+
+## Why is my build script returning stale data?
+
+The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
+
 ## Does Bascik add any JavaScript to my pages?
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.

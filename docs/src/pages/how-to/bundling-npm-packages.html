@@ -36,8 +36,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Templating recipes for Bascik: loops, partials, and layout composition using JavaScript template literals, shared helpers, EJS, Nunjucks, and Handlebars." />
-  <title>Templating Recipes - Bascik Docs</title>
+    content="Use any npm package in client-side JavaScript by bundling it with esbuild as a pipeline.exec step, writing the bundle into dist, and referencing it with a root-relative URL." />
+  <title>Bundling npm Packages - Bascik Docs</title>
 </head>
 
 <body>
@@ -56,7 +56,7 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/recipes/templating'));
+          console.log(renderSectionLabel('/how-to/bundling-npm-packages'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
@@ -64,7 +64,7 @@
           const { renderMd } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMd('./content/recipes/templating.md'));
+          console.log(await renderMd('./content/how-to/bundling-npm-packages.md'));
         </script>
 
         <docs-pagination />

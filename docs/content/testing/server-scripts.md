@@ -1,4 +1,4 @@
-# Server Scripts Testing
+# Server Scripts
 
 Server scripts (`<script data-bascik-server>`) execute in Node.js at request time to generate dynamic HTML content on HTTP/1.1 and HTTP/2 production servers (`bascik --server`). To keep server scripts maintainable, secure, and easily testable, separate backend business logic, database queries, and request parsing into pure exported TypeScript modules.
 

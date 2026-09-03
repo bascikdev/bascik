@@ -71,8 +71,8 @@ describe('basePath', () => {
 describe('score', () => {
   describe('tier 1 - category (section) match (>=2000)', () => {
     it('returns >=2600 for an exact category match on a page-level entry', () => {
-      const q = 'recipes';
-      expect(score(entry({ section: 'Recipes', navLabel: 'Markdown', heading: null }), q, tokens(q))).toBeGreaterThanOrEqual(2600);
+      const q = 'how-to';
+      expect(score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, tokens(q))).toBeGreaterThanOrEqual(2600);
     });
 
     it('does not trigger category match for multi-word query when section only contains one token', () => {
@@ -84,9 +84,9 @@ describe('score', () => {
     });
 
     it('returns category matches above page title matches', () => {
-      const q = 'recipes';
-      const catScore = score(entry({ section: 'Recipes', navLabel: 'Markdown', heading: null }), q, tokens(q));
-      const pageScore = score(entry({ section: 'Other', navLabel: 'Recipes', heading: null }), q, tokens(q));
+      const q = 'how-to';
+      const catScore = score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, tokens(q));
+      const pageScore = score(entry({ section: 'Other', navLabel: 'How-to', heading: null }), q, tokens(q));
       expect(catScore).toBeGreaterThan(pageScore);
     });
   });
@@ -157,10 +157,10 @@ describe('score', () => {
 
   describe('tier ordering guarantees', () => {
     it('category match always beats navLabel match', () => {
-      const q = 'recipes';
+      const q = 'how-to';
       const toks = tokens(q);
-      const cat = score(entry({ section: 'Recipes', navLabel: 'Markdown', heading: null }), q, toks);
-      const nl = score(entry({ section: 'Other', navLabel: 'Recipes', heading: null }), q, toks);
+      const cat = score(entry({ section: 'How-to', navLabel: 'Markdown', heading: null }), q, toks);
+      const nl = score(entry({ section: 'Other', navLabel: 'How-to', heading: null }), q, toks);
       expect(cat).toBeGreaterThan(nl);
     });
 
@@ -298,13 +298,13 @@ describe('buildResults', () => {
   });
 
   it('returns category pages in document order when searching by category name', () => {
-    const q = 'recipes';
+    const q = 'how-to';
     const toks = tokens(q);
     const testIndex = [
-      entry({ navLabel: 'Markdown', heading: null, section: 'Recipes', path: '/recipes/markdown' }),
-      entry({ navLabel: 'Page-Aware Scripts', heading: null, section: 'Recipes', path: '/recipes/page-aware-scripts' }),
-      entry({ navLabel: 'Server Scripts', heading: null, section: 'Recipes', text: 'These recipes show common patterns.', path: '/recipes/server-scripts' }),
-      entry({ navLabel: 'Templating', heading: null, section: 'Recipes', path: '/recipes/templating' }),
+      entry({ navLabel: 'Markdown', heading: null, section: 'How-to', path: '/how-to/markdown' }),
+      entry({ navLabel: 'Page-Aware Scripts', heading: null, section: 'How-to', path: '/how-to/page-aware-scripts' }),
+      entry({ navLabel: 'Server Scripts', heading: null, section: 'How-to', text: 'These guides show common patterns.', path: '/how-to/server-scripts' }),
+      entry({ navLabel: 'Templating', heading: null, section: 'How-to', path: '/how-to/templating' }),
       entry({ navLabel: 'Props', heading: null, section: 'Features', path: '/props' }),
     ];
 

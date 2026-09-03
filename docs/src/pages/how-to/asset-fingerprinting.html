@@ -36,8 +36,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Server script recipes for Bascik: escapeHtml helper, database queries, server-rendered pagination, and combining build and server scripts." />
-  <title>Server Script Recipes - Bascik Docs</title>
+    content="Content-hash asset filenames for immutable CDN caching in Bascik: when to fingerprint images and fonts, the http.cacheControl option that replaces fingerprinting for most sites, and an exec recipe." />
+  <title>Asset Fingerprinting - Bascik Docs</title>
 </head>
 
 <body>
@@ -56,7 +56,7 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/recipes/server-scripts'));
+          console.log(renderSectionLabel('/how-to/asset-fingerprinting'));
         </script>
         <script data-bascik-build>
           import { join } from 'node:path';
@@ -64,7 +64,7 @@
           const { renderMd } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMd('./content/recipes/server-scripts.md'));
+          console.log(await renderMd('./content/how-to/asset-fingerprinting.md'));
         </script>
 
         <docs-pagination />

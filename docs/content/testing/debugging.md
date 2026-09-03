@@ -1,4 +1,4 @@
-# Debugging & VS Code Integration
+# Debugging
 
 Bascik operates directly on vanilla HTML, CSS, and JavaScript, making step-debugging seamless across Node.js servers, unit tests, and browser engines.
 

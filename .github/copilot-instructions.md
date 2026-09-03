@@ -167,6 +167,20 @@ Each docs page has a `<title>` and `<meta name="description">` hardcoded in its 
 
 The mapping is straightforward: `docs/content/topic.md` corresponds to `docs/src/pages/topic.html`. The `<title>` should reflect the page's h1 (with ` - Bascik Docs` suffix for non-homepage pages), and the description should be a concise search-optimised summary drawn from the intro paragraph.
 
+## Page Naming Convention (h1 equals sidebar label)
+
+**A docs page's h1 must equal its sidebar (nav) label exactly**, with one explicit exception: `/compatibility` (label "Compatibility", h1 "Web Standards & Scoping Compatibility") because the full title is too long for a sidebar link.
+
+Rules:
+
+- Do not repeat the section name in the h1. The section label renders above it via `renderSectionLabel`.
+- Overview pages are named "Overview" everywhere; the section label supplies the context.
+- Do not use "Guide" as a suffix unless the sidebar says it too.
+- A sidebar label must fit a sidebar; shorten the label, not the h1, when the full title is long.
+- The `<title>` is the h1 plus ` - Bascik Docs` for non-homepage pages.
+
+This is enforced by `docs/src/lib/nav-label-h1.test.ts`, which parses `nav.ts` labels, reads h1s from `docs/content/*.md`, and asserts equality (plus the title convention). **When adding or renaming a docs page**, keep the h1, nav label, and `<title>` in sync so that test stays green.
+
 ## Keeping the Changelog Up to Date
 
 `CHANGELOG.md` is not actively maintained during pre-1.0 development: the 1.0.0 release entry will be written as a high-level announcement. **Once 1.0.0 ships**, resume normal changelog discipline: add an entry to `[Unreleased]` whenever you add a feature, fix a bug, or make any user-visible change to `pkg/src/`. One bullet per change, grouped under `### Added`, `### Fixed`, or `### Changed`.

@@ -412,7 +412,7 @@ pre code { background: none; border: none; padding: 0; color: #cdd6f4; font-size
   letter-spacing: .1em; color: var(--accent-fg); margin-bottom: 6px;
 }
 .page-intro,
-.docs-content h1 + p { font-size: 1.05rem; max-width: 600px; margin-bottom: 40px; }
+.docs-content h1 + p { font-size: 1.05rem; margin-bottom: 40px; }
 .page-intro:has(+ p),
 .docs-content h1 + p:has(+ p) { margin-bottom: 20px; }
 .steps {

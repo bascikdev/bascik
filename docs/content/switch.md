@@ -1,4 +1,4 @@
-# Switch to Bascik
+# Overview
 
 Moving an existing site to Bascik is mostly a mechanical transformation: extract repeated markup into component files, replace runtime framework logic with build-time equivalents, and let Bascik handle scoping. LLMs can do most of this automatically given the right context.
 

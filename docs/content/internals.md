@@ -1,4 +1,4 @@
-# Internals Guide
+# Overview
 
 Everything you need to work on the Bascik package itself, architecture, the transpilation pipeline, the scoping system, the dev server, and how to run the test suite.
 

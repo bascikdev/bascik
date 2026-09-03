@@ -155,6 +155,10 @@ That covers GitHub Pages, Netlify, Cloudflare Pages, AWS S3, Vercel, and any oth
 
 **No runtime required.** Bascik does not need Node.js at serve time for static sites. Any CDN or file server that can serve HTML files is sufficient.
 
+**Caching on a CDN.** For immutable, far-future caching of images and fonts, see [Asset Fingerprinting](/how-to/asset-fingerprinting). For most sites the built-in content-hash ETags plus `http.cacheControl` are enough, with no build step.
+
+**Small sites.** A landing page or docs for one tool can be a single page with no server at all. See [Micro Sites](/how-to/micro-sites).
+
 ### GitHub Actions example
 
 A minimal workflow for building and uploading to any static host:

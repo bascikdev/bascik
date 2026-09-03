@@ -1,4 +1,4 @@
-# Switch from Eleventy
+# From Eleventy
 
 Eleventy is a static site generator; Bascik is a build tool for HTML components. Both produce vanilla HTML with no client-side framework runtime. The main conceptual shift is that Bascik uses its own component format, vanilla HTML files resolved by tag name, instead of Nunjucks, Liquid, or Handlebars templates. Front matter and template inheritance map to build scripts and slot-based layout components.
 

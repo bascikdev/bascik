@@ -31,7 +31,7 @@ function resolveRoutePath(currentPath?: string): string {
     }
   }
   if (!path) return '';
-  return path === '/using-markdown' ? '/recipes/markdown' : path;
+  return path === '/using-markdown' ? '/how-to/markdown' : path;
 }
 
 /**

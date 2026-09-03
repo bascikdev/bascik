@@ -1,4 +1,4 @@
-# Build-time Scripts
+# Build Scripts
 
 Build-time scripts let you run Node.js code at transpile time and inject the output directly into the page with no client-side JavaScript required. Use them to pull in Markdown files, generate navigation from JSON, or fetch remote data at build time.
 
@@ -311,6 +311,8 @@ All build scripts on a page run concurrently. Bascik collects every `<script dat
 
 ## Script Caching
 
+When a page needs the same data in several places, read or fetch it **once at page level** in a single build script and apply it everywhere, not once per component instance. See the [fetch-once pattern](/how-to/templating#the-fetch-once-pattern) on the Templating page.
+
 Bascik caches build script output to `node_modules/.cache/bascik/script-cache/` so subsequent builds skip the Node.js subprocess entirely for unchanged scripts. The cache key is a SHA-256 hash of:
 
 - The script body
@@ -339,6 +341,8 @@ export default defineConfig({
   },
 });
 ```
+
+**This includes the fetch-once pattern.** A script that fetches from a remote API once at page level still has a cache key that cannot see the network response, so it will be served from cache with stale data across builds. Exclude any page or component whose build script depends on network data, or disable the cache for it. See [Templating](/how-to/templating#the-fetch-once-pattern) for the full pattern and warning.
 
 To clear the cache manually:
 

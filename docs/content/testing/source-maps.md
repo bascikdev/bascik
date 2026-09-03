@@ -1,4 +1,4 @@
-# Source Maps & Location Attribution
+# Source Maps
 
 Bascik eliminates the complexity of generating multi-megabyte `.map` files by combining zero-overhead `//# sourceURL` directives, 1:1 line number preservation, and build-time stack trace remapping.
 
