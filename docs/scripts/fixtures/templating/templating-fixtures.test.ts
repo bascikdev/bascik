@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extractDemoBlock } from '../../../src/lib/md-renderer.js';
+import type ejs from 'ejs';
 
 const FIXTURE_DIR = path.resolve(import.meta.dirname, '.');
 const TEMPLATING_MD = path.resolve(import.meta.dirname, '../../../content/how-to/templating.md');
@@ -58,9 +59,9 @@ describe('templating fixtures', () => {
   });
 
   it('ejs fixture renders the post list with escaped values', async () => {
-    const { default: ejs } = await import('ejs');
+    const ejsMod: typeof ejs = await import('ejs');
     const template = await readFile(path.join(FIXTURE_DIR, 'post-list.ejs'), 'utf8');
-    const html = ejs.render(template, {
+    const html = ejsMod.render(template, {
       rows: [
         { title: 'First post', href: '/posts/first' },
         { title: 'Second post', href: '/posts/second' },
@@ -71,8 +72,8 @@ describe('templating fixtures', () => {
   });
 
   it('ejs escapes values by default', async () => {
-    const { default: ejs } = await import('ejs');
-    expect(ejs.render('<p><%= value %></p>', { value: '<script>' })).toBe('<p>&lt;script&gt;</p>');
+    const ejsMod: typeof ejs = await import('ejs');
+    expect(ejsMod.render('<p><%= value %></p>', { value: '<script>' })).toBe('<p>&lt;script&gt;</p>');
   });
 
   it('nunjucks fixture renders the item list', async () => {
@@ -91,7 +92,7 @@ describe('templating fixtures', () => {
     // The fetch-once pattern: one read at page level, reused for both blocks
     expect(data.site).toBe('Bascik Demo');
     expect(data.articles).toHaveLength(2);
-    const list = data.articles.map(a => `<li><a href="${a.href}">${a.title}</a></li>`).join('');
+    const list = data.articles.map((a: { href: string; title: string }) => `<li><a href="${a.href}">${a.title}</a></li>`).join('');
     const json = JSON.stringify({ site: data.site, articles: data.articles });
     expect(list).toContain('/posts/first');
     expect(json).toContain('Bascik Demo');
@@ -117,7 +118,6 @@ describe('templating page demo markers', () => {
   ];
 
   it('every marker referenced by the page resolves to a code block', async () => {
-    const md = await readFile(TEMPLATING_MD, 'utf8');
     for (const marker of MARKERS) {
       const block = await extractDemoBlock('./content/how-to/templating.md', marker);
       expect(block, `marker "${marker}" missing or empty in templating.md`).not.toContain('not found');
