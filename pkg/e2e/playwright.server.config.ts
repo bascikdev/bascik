@@ -21,6 +21,7 @@ const prodServerTestIgnore = [
   // bascik add is a build-time authoring command with no runtime behavior;
   // serving a copied component is identical to serving any other component.
   '**/bascik-add.test.ts',
+  '**/bascik-add-dev.test.ts',
 ];
 
 export default defineConfig({

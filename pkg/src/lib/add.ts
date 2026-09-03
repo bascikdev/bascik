@@ -183,7 +183,9 @@ export const readPackageManifest = async (
  * Verifies that a target file path stays inside the target directory.
  */
 export const assertPathInside = (filePath: string, parentDir: string): void => {
-  const rel = relative(parentDir, filePath);
+  const resolvedParent = resolve(parentDir);
+  const resolvedFile = resolve(filePath);
+  const rel = relative(resolvedParent, resolvedFile);
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(
       `Path traversal detected: "${filePath}" is outside the directory "${parentDir}".`,
@@ -294,12 +296,13 @@ export const addComponents = async (
       const normalizedSelector = componentSelector.toLowerCase();
       candidateFiles = candidateFiles.filter((filePath) => {
         const rel = relative(pkgComponentsDir, filePath).replace(/\\/g, "/");
+        const normalizedRel = rel.toLowerCase();
         const derived = deriveComponentName(filePath);
         return (
           derived === normalizedSelector ||
-          rel === componentSelector ||
-          rel.startsWith(`${componentSelector}.`) ||
-          rel.startsWith(`${componentSelector}/`)
+          normalizedRel === normalizedSelector ||
+          normalizedRel.startsWith(`${normalizedSelector}.`) ||
+          normalizedRel.startsWith(`${normalizedSelector}/`)
         );
       });
 
@@ -338,7 +341,22 @@ export const addComponents = async (
     }
   }
 
-  // Check 1: Collision check against existing project components and within the batch
+  // Check 1: Destination path collisions across multiple targets/files in the batch
+  const destPathToSrcMap = new Map<string, string>();
+  for (const item of allFilesToCopy) {
+    if (destPathToSrcMap.has(item.destPath)) {
+      const existingSrc = destPathToSrcMap.get(item.destPath)!;
+      throw new Error(
+        `error: destination file collision for "${item.destPath}"\n` +
+        `  source 1: ${existingSrc}\n` +
+        `  source 2: ${item.srcPath}\n` +
+        `  Multiple add targets resolve to the same destination path. Refusing to overwrite.`,
+      );
+    }
+    destPathToSrcMap.set(item.destPath, item.srcPath);
+  }
+
+  // Check 2: Collision check against existing project components and within the batch
   const batchTagToFilePath = new Map<string, string>();
 
   for (const item of allFilesToCopy) {
@@ -379,7 +397,7 @@ export const addComponents = async (
     }
   }
 
-  // Check 2: Modification check on existing destination files
+  // Check 3: Modification check on existing destination files
   for (const item of allFilesToCopy) {
     if (existsSync(item.destPath)) {
       const currentLocalContent = await readFile(item.destPath, "utf8");

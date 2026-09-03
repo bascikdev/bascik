@@ -519,4 +519,74 @@ describe("bascik add", () => {
     expect(result.transpiledHtmlBody).toContain("bascik__fancy-button__btn");
     expect(result.usedComponents.length).toBe(1);
   });
+
+  // 17. Destination path collisions for non-HTML files across multiple targets refuse and write nothing.
+  it("refuses when non-HTML files from different targets collide at destination path, and writes nothing", async () => {
+    await setupFixturePackage(
+      "@pkg1/card",
+      {
+        name: "@pkg1/card",
+        version: "1.0.0",
+        bascik: { components: "./components" },
+      },
+      {
+        "components/card1.html": "<div>card 1</div>",
+        "components/shared.css": ".shared { color: red; }",
+      },
+    );
+
+    await setupFixturePackage(
+      "@pkg2/card",
+      {
+        name: "@pkg2/card",
+        version: "1.0.0",
+        bascik: { components: "./components" },
+      },
+      {
+        "components/card2.html": "<div>card 2</div>",
+        "components/shared.css": ".shared { color: blue; }",
+      },
+    );
+
+    await expect(
+      addComponents(["@pkg1/card", "@pkg2/card"], { cwd: testDir }),
+    ).rejects.toThrow(/error: destination file collision for .*shared\.css/);
+
+    // Verify nothing was written
+    await expect(
+      readFile(join(componentsDir, "card1.html"), "utf8"),
+    ).rejects.toThrow();
+    await expect(
+      readFile(join(componentsDir, "card2.html"), "utf8"),
+    ).rejects.toThrow();
+    await expect(
+      readFile(join(componentsDir, "shared.css"), "utf8"),
+    ).rejects.toThrow();
+  });
+
+  // 18. Case-insensitive component selector matching works consistently.
+  it("matches component selector case-insensitively across mixed-case file paths", async () => {
+    await setupFixturePackage(
+      "@acme/ui",
+      {
+        name: "@acme/ui",
+        version: "1.0.0",
+        bascik: { components: "./components" },
+      },
+      {
+        "components/UserProfile/UserProfile.html": "<div>User Profile</div>",
+        "components/UserProfile/UserProfile.css": ".profile { font-size: 14px; }",
+        "components/Button.html": "<button>Btn</button>",
+      },
+    );
+
+    const result = await addComponents(["@acme/ui/userprofile"], { cwd: testDir });
+    expect(result.copiedFiles.length).toBe(2);
+
+    const profileHtml = await readFile(
+      join(componentsDir, "UserProfile", "UserProfile.html"),
+      "utf8",
+    );
+    expect(profileHtml).toBe("<div>User Profile</div>");
+  });
 });
