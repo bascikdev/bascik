@@ -76,6 +76,16 @@ npx playwright test --config e2e/playwright.config.ts --ui
 
 In addition to mocked chokidar tests, watch mode includes real-filesystem tests in isolated temporary directories (`watch-fs.test.ts`). These verify real-world filesystem event sequences, atomic editor saves (temp file write followed by rename), stability thresholds (`awaitWriteFinish`), and debounce behavior without false-confidence gaps.
 
+### Time-Boundary Testing & Clock Strategy
+
+Bascik separates time management across three distinct execution tiers to ensure determinism and avoid test flakiness:
+
+1. **Exact temporal semantics in Vitest unit tests:** All internal framework modules that own deadlines, debouncing, rate limiting, and heartbeats accept an optional `FrameworkClock` dependency (`clock.ts`). In unit tests, Vitest fake timers (`vi.useFakeTimers()`) advance the clock deterministically without wall-clock sleep delays or CI race conditions.
+2. **Short, real protocol deadlines in E2E integration tests:** Playwright spawns Bascik server processes as separate OS processes. Because Vitest fake timers cannot cross process boundaries, E2E fixtures configure short, nonzero real timeouts (e.g. `http.apiTimeout: 500`) to prove end-to-end configuration wiring, HTTP 504 Gateway Timeout responses, and `AbortSignal` propagation without long wall-clock waits.
+3. **Browser-only scheduling via Playwright `page.clock`:** Browser-owned timers (such as client-side live-reload reconnect retry delays) operate in the browser DOM context. When testing browser timer behavior in isolation, Playwright's `page.clock` controls browser scheduling.
+4. **Real-time watchdogs for process startup and external I/O:** Server process startup, filesystem events, networking, and OS socket lifecycle operate on real wall-clock time.
+5. **No cross-process clock synchronization boundary:** Bascik deliberately does not expose hidden test endpoints, authorization tokens, or virtual clock control protocols over the network. Testing follows real protocol boundaries.
+
 ## How the E2E Suite Works
 
 The e2e fixture is a small but complete Bascik project at `pkg/e2e/`:

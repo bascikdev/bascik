@@ -243,6 +243,16 @@ Process-level handlers for `unhandledRejection` and `uncaughtException` log full
 
 Dynamic server-side execution (`data-bascik-server` scripts and API routes) uses an in-process module registry (`pkg/src/lib/script-registry.ts`) powered by native dynamic `import()`.
 
+#### Explicit Clock Ownership & Time Boundaries
+
+Bascik maintains a strict separation between framework-owned temporal semantics and ambient environment time:
+
+- **Explicit FrameworkClock Ownership:** Internal subsystems (API runtime deadlines, script registry timeouts, SSE heartbeats, sliding rate limiters, file watch debouncing, exec escalation timers, cache pruning, and shutdown drains) inject an explicit `FrameworkClock` (`clock.ts`), defaulting to the frozen `nativeClock` adapter.
+- **Native Production Behavior:** In production, `nativeClock` directly delegates to Node.js global timers without overhead, intermediate virtual queues, or custom scheduler loops.
+- **Initialization Ordering:** Clock adapters and options are resolved upon subsystem initialization prior to scheduling any timeouts or intervals, guaranteeing that cancellation handles remain valid throughout the lifecycle.
+- **Cancellation Invariants:** All scheduled timers (timeouts and intervals) maintain explicit cancellation handles that are cleared upon handler completion, client abort, error dispatch, or subsystem teardown to prevent unhandled rejections or resource leaks.
+- **User Code and Child Process Boundary:** User-authored scripts, arbitrary API route code, and external child processes (`pipeline.exec`) run in their own runtime contexts and manage their own timing. Bascik communicates cancellation to user handlers via standard WHATWG `AbortSignal` instances rather than intercepting user-level timers.
+
 #### Rationale: In-Process vs. Child Process vs. Worker Threads
 
 - **Rejected: Child process per request.** Spawning a fresh Node interpreter plus disk I/O per request per script block incurs 30 to 80 ms of overhead, eliminates caching, and risks fork-bomb resource exhaustion under concurrent load.
