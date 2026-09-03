@@ -4,7 +4,6 @@ import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProc
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
-import { getUniqueId } from "./names.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -444,7 +443,7 @@ describe("recursivelyTranspile – recursion guard", () => {
         fileContent: "<p>done</p>",
       },
     };
-    const usage = Array.from({ length: 20 }, (_, i) => `<test-single></test-single>`).join("");
+    const usage = Array.from({ length: 20 }, () => `<test-single></test-single>`).join("");
     const { usedComponents } = recursivelyTranspile(usage, singleComponent);
     expect(usedComponents).toHaveLength(20);
   });

@@ -2,7 +2,6 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import {
-  deepReadDir,
   deepReadDirFlat,
   listPages,
   getDirectoryPath,
@@ -11,14 +10,13 @@ import {
   toDistPath,
   deleteDistFile,
   deleteDistDir,
-  createDir,
   copyReplicatePath,
   copyStaticAssets,
   isInlineStylesheet,
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
-import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
+import { readdir, rm, copyFile, readFile, writeFile } from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
 
@@ -123,11 +121,13 @@ afterEach(() => {
   ] as any);
 });
 
-describe("deepReadDir", () => {
-  it("Reads path", async () => {
-    const paths = await deepReadDir("./");
-    expect(paths).toEqual([
-      ["dir/dir", "dir/dir/one.css", "dir/dir/one.html"],
+describe("deepReadDirFlat", () => {
+  it("reads path and flattens array", async () => {
+    const paths = await deepReadDirFlat("./");
+    expect(paths ?? []).toEqual([
+      "dir/dir",
+      "dir/dir/one.css",
+      "dir/dir/one.html",
       "dir/one.css",
       "dir/one.html",
     ]);
@@ -173,7 +173,7 @@ describe("deepReadDir", () => {
     const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
     vi.mocked(readdir).mockRejectedValueOnce(error);
 
-    await expect(deepReadDir("pages")).rejects.toBe(error);
+    await expect(deepReadDirFlat("pages")).rejects.toBe(error);
   });
 
   it("warns and continues when a subdirectory disappears during recursion", async () => {
@@ -186,20 +186,13 @@ describe("deepReadDir", () => {
     });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
-    await expect(deepReadDir("pages")).resolves.toEqual([[]]);
+    await expect(deepReadDirFlat("pages")).resolves.toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
       "Failed to read subdirectory %s",
       "pages/removed",
       missingError,
     );
     warnSpy.mockRestore();
-  });
-});
-
-describe("deepReadDirFlat", () => {
-  it("reads path and flattens array", async () => {
-    const paths = await deepReadDirFlat("./");
-    expect(paths ?? []).toEqual(["dir", "dir/one.css", "dir/one.html"]);
   });
 });
 
@@ -551,13 +544,6 @@ describe("isInlineStylesheet", () => {
   });
 });
 
-describe("createDir", () => {
-  it("test", async () => {
-    const dirPath = '"./dir"';
-    expect(await createDir(dirPath)).toBe(undefined);
-  });
-});
-
 describe("copyReplicatePath – CSS minification", () => {
   beforeEach(() => {
     vi.mocked(readFile).mockReset();
@@ -702,15 +688,6 @@ describe("getRelativePath – additional branches", () => {
   });
 });
 
-describe("deepReadDir – error path", () => {
-  it("propagates a configured root read failure", async () => {
-    const error = new Error("EACCES");
-    vi.mocked(readdir).mockRejectedValueOnce(error);
-
-    await expect(deepReadDir("./secret")).rejects.toBe(error);
-  });
-});
-
 describe("deleteDistFile – error handling", () => {
   it("silently swallows ENOENT", async () => {
     vi.mocked(rm).mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
@@ -774,16 +751,6 @@ describe("deleteDistDir – error handling", () => {
     vi.spyOn(console, "error").mockImplementation(() => { });
     await deleteDistDir("pages/assets");
     expect(console.error).toHaveBeenCalledWith("Error Deleting Dist Directory", err);
-  });
-});
-
-describe("createDir – error path", () => {
-  it("logs error when mkdir rejects", async () => {
-    const err = new Error("EPERM");
-    vi.mocked(mkdir).mockRejectedValueOnce(err as any);
-    vi.spyOn(console, "error").mockImplementation(() => { });
-    await createDir("./bad-path");
-    expect(console.error).toHaveBeenCalledWith("Error Creating Dist Directory", err);
   });
 });
 

@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
@@ -193,7 +193,13 @@ describe("index.ts CLI runner functions", () => {
     const { runCli } = await import("./index.ts");
 
     const initSpy = vi.spyOn(await import("./lib/init.ts"), "initProject").mockResolvedValueOnce(undefined);
-    const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce(true);
+    const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+      errors: 0,
+      warnings: 0,
+      pagesChecked: 1,
+      componentsChecked: 0,
+      items: [],
+    });
     const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serverProduction").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
@@ -203,6 +209,7 @@ describe("index.ts CLI runner functions", () => {
 
     const checkRes = await runCli(["--check"], { exitOnFinish: false });
     expect(checkRes.action).toBe("check");
+    expect(checkRes.exitCode).toBe(0);
     expect(checkSpy).toHaveBeenCalled();
 
     const serveRes = await runCli(["--server"], { exitOnFinish: false });
@@ -288,6 +295,145 @@ describe("index.ts CLI runner functions", () => {
       .mockRejectedValueOnce(new Error("check boom"));
     await expect(runCli(["--check"], { exitOnFinish: false })).rejects.toThrow("check boom");
     expect(checkSpy).toHaveBeenCalled();
+  });
+
+  describe("runCli --check flags (--strict, --json)", () => {
+    it("exits 0 on warnings without --strict", async () => {
+      const { runCli } = await import("./index.ts");
+      vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+        errors: 0,
+        warnings: 2,
+        pagesChecked: 1,
+        componentsChecked: 1,
+        items: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+            locations: [{ filePath: "pages/index.html", line: 1 }],
+          },
+        ],
+      });
+      const res = await runCli(["--check"], { exitOnFinish: false });
+      expect(res.action).toBe("check");
+      expect(res.exitCode).toBe(0);
+    });
+
+    it("exits 1 on warnings with --strict", async () => {
+      const { runCli } = await import("./index.ts");
+      vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+        errors: 0,
+        warnings: 1,
+        pagesChecked: 1,
+        componentsChecked: 0,
+        items: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+            locations: [{ filePath: "pages/index.html", line: 1 }],
+          },
+        ],
+      });
+      const res = await runCli(["--check", "--strict"], { exitOnFinish: false });
+      expect(res.action).toBe("check");
+      expect(res.exitCode).toBe(1);
+    });
+
+    it("emits JSON when --json is passed", async () => {
+      const { runCli } = await import("./index.ts");
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+      try {
+        vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+          errors: 0,
+          warnings: 1,
+          pagesChecked: 1,
+          componentsChecked: 0,
+          items: [
+            {
+              category: "unmatched-tag",
+              severity: "warning",
+              message: "<model-viewer>",
+              locations: [{ filePath: "pages/index.html", line: 1 }],
+            },
+          ],
+        });
+        const res = await runCli(["--check", "--json"], { exitOnFinish: false });
+        expect(res.action).toBe("check");
+        expect(res.exitCode).toBe(0);
+        expect(logSpy).toHaveBeenCalled();
+        const logged = logSpy.mock.calls[0][0];
+        const parsed = JSON.parse(logged);
+        expect(parsed.warnings).toBe(1);
+        expect(parsed.findings[0].category).toBe("unmatched-tag");
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
+
+    it("uses custom logger option for check output instead of console.log", async () => {
+      const { runCli } = await import("./index.ts");
+      const customLogger = vi.fn();
+      const consoleLogSpy = vi.spyOn(console, "log");
+      try {
+        vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+          errors: 0,
+          warnings: 1,
+          pagesChecked: 1,
+          componentsChecked: 0,
+          items: [
+            {
+              category: "unmatched-tag",
+              severity: "warning",
+              message: "<model-viewer>",
+              locations: [{ filePath: "pages/index.html", line: 1 }],
+            },
+          ],
+        });
+        const res = await runCli(["--check", "--json"], {
+          exitOnFinish: false,
+          logger: customLogger,
+        });
+        expect(res.action).toBe("check");
+        expect(res.exitCode).toBe(0);
+        expect(customLogger).toHaveBeenCalled();
+        const logged = customLogger.mock.calls[0][0];
+        const parsed = JSON.parse(logged);
+        expect(parsed.warnings).toBe(1);
+        expect(consoleLogSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleLogSpy.mockRestore();
+      }
+    });
+
+    it("reports invalid config shape through check findings model instead of startup crash", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bascik-cli-check-invalid-config-"));
+      try {
+        await writeFile(
+          join(dir, "bascik.config.js"),
+          "export default { http: { prt: 8080 } };",
+          "utf8",
+        );
+        await mkdir(join(dir, "src/pages"), { recursive: true });
+        await writeFile(join(dir, "src/pages/index.html"), "<p>ok</p>", "utf8");
+        const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
+        const result = spawnSync(process.execPath, [cliPath, "--check", "--json"], {
+          cwd: dir,
+          encoding: "utf8",
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).not.toContain("Failed to load bascik.config");
+
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.errors).toBeGreaterThan(0);
+        const configFinding = parsed.findings.find((f: { category: string; message: string }) => f.category === "config-validation");
+        expect(configFinding).toBeDefined();
+        expect(configFinding.message).toContain("http.prt");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }, 30000);
   });
 });
 

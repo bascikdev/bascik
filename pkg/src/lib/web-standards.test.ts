@@ -16,9 +16,10 @@ import {
   scopeAnchorNames,
 } from './styles.ts';
 import { prefixElementAttribute, namespaceScriptTags } from './javascript.ts';
-import { INLINE_TAGS, minifyHtml } from './html-minifier.ts';
+import { INLINE_TAGS } from './html-minifier.ts';
 import { MIME_MAP } from './mime.ts';
-import { makeEtag, makeStatEtag } from './server.ts';
+import { makeStatEtag } from './server.ts';
+import { makeEtag } from './names.ts';
 import { escapeXml, buildSitemapXml } from './sitemap.ts';
 
 describe('Web Standards Validation via @webref & MDN BCD', () => {

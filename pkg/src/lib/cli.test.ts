@@ -282,6 +282,26 @@ describe("cli helper tests", () => {
       expect(decision.flags.host).toBe("0.0.0.0");
       expect(decision.flags.logLevel).toBe("warn");
     });
+
+    it("parses --strict and --json flags with --check", () => {
+      const decision = resolveCliAction(["--check", "--strict", "--json"]);
+      expect(decision.action).toBe("check");
+      expect(decision.flags.strict).toBe(true);
+      expect(decision.flags.json).toBe(true);
+    });
+
+    it("rejects --strict without --check", () => {
+      const decision = resolveCliAction(["--build", "--strict"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--strict only applies to --check");
+    });
+
+    it("rejects --json without --check", () => {
+      const decision = resolveCliAction(["--build", "--json"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--json");
+      expect(decision.errorMessage).toContain("--check");
+    });
   });
 
   describe("--log gating", () => {

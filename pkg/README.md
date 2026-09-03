@@ -102,12 +102,14 @@ export const bascikConfig = {
   },
   watch: [], // re-transpile all pages when these paths change in dev
 
-  scopeScriptBlocks: true, // wrap scripts in IIFEs, rewrite selectors
-  inheritAttributes: true, // forward non-bascik attrs onto the component root
-  scopeAttribute: {
-    class: true, // scope class attribute values
-    id: true, // scope id attribute values
-    name: true, // scope name attribute values
+  scoping: {
+    scripts: true, // wrap scripts in IIFEs, rewrite selectors
+    attributes: {
+      class: true, // scope class attribute values
+      id: true, // scope id attribute values
+      name: true, // scope name attribute values
+    },
+    inherit: true, // forward non-bascik attrs onto the component root
   },
 
   minify: {
@@ -116,8 +118,9 @@ export const bascikConfig = {
     js: false,
     identifiers: true, // hash class/id names to short hex strings
   },
-  inlineStyles: false, // false | true | ['src/css/styles.css']
-  cacheHttp: false, // HTTP cache headers on dev server responses
+  http: {
+    httpCache: true, // HTTP cache headers on server responses
+  },
 };
 
 // Options applied only during `bascik --build`, merged over bascikConfig

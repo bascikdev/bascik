@@ -15,6 +15,8 @@ bascik --server   # start the production HTTP server; runs data-bascik-server sc
 
 If your site has no `data-bascik-server` scripts, you do not need `bascik --server`: any static host will do.
 
+> **What's actually in memory.** On boot, `bascik --server` reads every compiled HTML page out of `dist/` into an in-memory store, the exact same store the dev server uses, so page lookups and `data-bascik-server` execution never touch the filesystem per request. Component CSS and JavaScript are already inlined into that HTML at build time, so they are in memory too. Only standalone static assets (images, fonts, favicons, the webmanifest, and any other file copied verbatim from `src/pages/`) are read from `dist/` on disk per request.
+
 ## Server Scripts vs API Routes
 
 Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, but they serve different architectural purposes:

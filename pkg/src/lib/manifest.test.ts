@@ -18,7 +18,7 @@ vi.mock("./config.js", () => ({
 
 import { manifestCollector } from "./manifest.ts";
 import { BascikConfig } from "./config.ts";
-import { readFile, rm, mkdir, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

@@ -38,12 +38,10 @@
  * - Scripts run during both `bascik` (dev) and `bascik --build` (production).
  */
 
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
-import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -51,26 +49,18 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
 import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
+import {
+  ATTR,
+  BUILD_FLAG,
+  SERVER_FLAG,
+  ROUTES_FLAG,
+  SCRIPT_TAG_PREFIX,
+} from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
-
-export { cleanStackTrace, stripAnsiEscapeCodes };
-
-// Quote-aware open-tag scanning.  An attribute is a bare name with an
-// optional `="..."`/`='...'`/`=bare` value; `>` inside a quoted value must
-// not terminate the open tag, and `data-bascik-build` must be an actual
-// attribute name — never a substring of another attribute's value.
-const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
-const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
-const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
-const FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
-const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})?`;
-const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
-
-const SCRIPT_TAG_PREFIX = "<script\\b";
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
   "gi",
 );
 
@@ -83,9 +73,6 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
-
-/** Per-build-script execution timeout (ms). Keeps a hung script from hanging the build forever. */
-const BUILD_SCRIPT_TIMEOUT = 60_000;
 
 // ─── Build-script output cache ───────────────────────────────────────────────
 // Caches child-process output on disk, keyed by a SHA-256 hash of the script
@@ -120,7 +107,7 @@ const readCachedFile = async (absPath: string, relKey: string): Promise<string> 
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
   "gi",
 );
 

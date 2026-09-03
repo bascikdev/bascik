@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { adaptHttp1 } from "./http.ts";
 import { adaptHttp2 } from "./http2.ts";
-import { isNetworkResetError, onError, createRequestHandler } from "./server.ts";
+import { isNetworkResetError, createRequestHandler } from "./server.ts";
 import { installProcessCrashHandlers } from "./crash-net.ts";
 
 describe("Crash Net - Bug 4: isNetworkResetError error codes", () => {

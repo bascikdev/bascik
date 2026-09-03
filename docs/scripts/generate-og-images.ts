@@ -16,8 +16,8 @@
  *   yarn workspace bascik-docs generate:og
  */
 
-import { mkdir, readdir, readFile, writeFile, stat } from 'node:fs/promises';
-import { join, resolve, dirname, relative } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
 import { Resvg } from '@resvg/resvg-js';
@@ -262,7 +262,6 @@ export function renderOgSvg(
 ): string {
   if (isHome) {
     // 2. Special full-screen Hero layout for the home page (fallback card style)
-    const titleLines = wrapText("HTML components. Zero runtime.", 20, 2);
     const descLines = wrapDescription(description, 52, 4);
 
     const titleStartY = 205; // Pushed down from 175 to add more vertical breathing room below logo

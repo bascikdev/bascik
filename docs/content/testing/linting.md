@@ -136,3 +136,32 @@ Run standards checks alongside Bascik's structural validator:
 ```sh
 npm run check:standards && npx bascik --check
 ```
+
+### Strict CI Gates with `--strict`
+
+To fail CI pipelines if any warnings exist (such as unmatched tags or unused components), pass `--strict`:
+
+```sh
+npm run check:standards && npx bascik --check --strict
+```
+
+## CI Gating Strategy for `bascik --check`
+
+Use two gates in CI, one blocking and one advisory:
+
+1. Blocking gate (default): `npx bascik --check`
+2. Advisory gate (optional): `npx bascik --check --strict`
+
+Blocking categories are typically `error` findings, including configuration failures, circular component references, route collisions, script mode conflicts, and API handler errors.
+
+Advisory categories are typically `warning` findings, including unknown `data-bascik-*` attributes and component ordering convention findings.
+
+If your team wants warning-free enforcement, use `--strict` in required CI checks.
+
+### Machine-Readable Diagnostics with `--json`
+
+To integrate Bascik diagnostics with CI summary reporters or automated PR bots, pass `--json`:
+
+```sh
+npx bascik --check --json > check-report.json
+```

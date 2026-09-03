@@ -1,12 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { extractCustomTags, checkProject } from "./check.ts";
+import { BascikConfig } from "./config.ts";
+import {
+  extractCustomTags,
+  checkProject,
+  formatFindingsHuman,
+  formatFindingsJson,
+} from "./check.ts";
 
-const { listPagesMock, listComponentsMock } = vi.hoisted(() => ({
+const { listPagesMock, listComponentsMock, deepReadDirFlatMock } = vi.hoisted(() => ({
   listPagesMock: vi.fn(),
   listComponentsMock: vi.fn(),
+  deepReadDirFlatMock: vi.fn(),
 }));
+
+const { userConfigMock, modeOverridesMock } = vi.hoisted(() => ({
+  userConfigMock: {} as Record<string, unknown>,
+  modeOverridesMock: {} as Record<string, unknown>,
+}));
+
+type MutableBascikConfigForTest = {
+  directory: typeof BascikConfig.directory;
+};
 
 vi.mock("./config.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("./config.ts")>();
@@ -25,10 +41,16 @@ vi.mock("./config.js", async (importOriginal) => {
 vi.mock("./file-system.js", () => ({
   listPages: listPagesMock,
   getRelativePath: (filePath: string) => filePath,
+  deepReadDirFlat: deepReadDirFlatMock,
 }));
 
 vi.mock("./components.js", () => ({
   listComponents: listComponentsMock,
+}));
+
+vi.mock("./userConfig.js", () => ({
+  config: userConfigMock,
+  modeOverrides: modeOverridesMock,
 }));
 
 describe("extractCustomTags", () => {
@@ -78,6 +100,8 @@ describe("checkProject", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
+  let originalSiteUrl: string | undefined;
+  let originalDirectory: typeof BascikConfig.directory;
 
   const setupProject = async (files: Record<string, string>) => {
     for (const [rel, content] of Object.entries(files)) {
@@ -88,8 +112,23 @@ describe("checkProject", () => {
   };
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    listPagesMock.mockReset();
+    listComponentsMock.mockReset();
+    deepReadDirFlatMock.mockReset();
+    Object.keys(userConfigMock).forEach((key) => delete userConfigMock[key]);
+    Object.keys(modeOverridesMock).forEach((key) => delete modeOverridesMock[key]);
+    deepReadDirFlatMock.mockResolvedValue([]);
     originalCwd = process.cwd();
+    originalSiteUrl = process.env.BASCIK_SITE_URL;
+    process.env.BASCIK_SITE_URL = "https://example.com";
+    originalDirectory = { ...BascikConfig.directory };
+    const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+    mutableConfig.directory = {
+      ...BascikConfig.directory,
+      pages: "src/pages",
+      components: "src/components",
+      api: "src/api",
+    };
     workDir = join(originalCwd, `.check-test-${process.pid}-${Date.now()}`);
     await mkdir(workDir, { recursive: true });
     process.chdir(workDir);
@@ -100,13 +139,20 @@ describe("checkProject", () => {
 
   afterEach(async () => {
     process.chdir(originalCwd);
+    if (originalSiteUrl === undefined) {
+      delete process.env.BASCIK_SITE_URL;
+    } else {
+      process.env.BASCIK_SITE_URL = originalSiteUrl;
+    }
+    const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+    mutableConfig.directory = originalDirectory;
     await rm(workDir, { recursive: true, force: true });
     errorSpy.mockRestore();
     warnSpy.mockRestore();
     logSpy.mockRestore();
   });
 
-  it("returns true and logs success when all tags are known components", async () => {
+  it("returns 0 errors when all tags are known components", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -116,14 +162,12 @@ describe("checkProject", () => {
       "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(errorSpy).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no errors"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(0);
   });
 
-  it("returns false and reports unknown component tags as errors", async () => {
+  it("reports unknown component tags as warnings (not errors)", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card><ghost-tag></ghost-tag>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -133,13 +177,15 @@ describe("checkProject", () => {
       "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<ghost-tag>"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(1);
+    const item = findings.items.find((i) => i.message.includes("<ghost-tag>"));
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe("warning");
   });
 
-  it("warns (without failing) about unused components", async () => {
+  it("warns about unused components", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -153,11 +199,10 @@ describe("checkProject", () => {
       },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<lonely-widget>"),
-    );
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(1);
+    expect(findings.items.some((i) => i.message.includes("lonely-widget"))).toBe(true);
   });
 
   it("detects component usage inside other component files", async () => {
@@ -176,68 +221,34 @@ describe("checkProject", () => {
       },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    // inner-comp is used by outer-comp — no unused warning
-    expect(warnSpy).not.toHaveBeenCalled();
-    expect(errorSpy).not.toHaveBeenCalled();
-  });
-
-  it("treats files with build scripts as potentially using every component", async () => {
-    await setupProject({
-      "pages/index.html":
-        '<script data-bascik-build>console.log("x")</script>',
-      "components/maybe-used/maybe-used.html": "<div>m</div>",
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({
-      "maybe-used": {
-        fileName: join(workDir, "components/maybe-used/maybe-used.html"),
-      },
-    });
-
-    await expect(checkProject()).resolves.toBe(true);
-    // No unused warning: the build script might generate the usage
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it("still reports unknown tags in files that contain build scripts", async () => {
-    await setupProject({
-      "pages/index.html":
-        '<script data-bascik-build>console.log("x")</script><ghost-tag></ghost-tag>',
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({});
-
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<ghost-tag>"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(0);
   });
 
   it("skips unreadable files without failing the whole check", async () => {
     listPagesMock.mockResolvedValue([join(workDir, "pages/missing.html")]);
     listComponentsMock.mockResolvedValue({});
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
   });
 
-  it("uses plural 'Unknown components' when multiple unknown tags appear in one file", async () => {
+  it("records all unknown tags as separate findings", async () => {
     await setupProject({
       "pages/index.html": "<ghost-one></ghost-one><ghost-two></ghost-two>",
     });
     listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
     listComponentsMock.mockResolvedValue({});
 
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unknown components"),
-    );
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("<ghost-one>"));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("<ghost-two>"));
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(2);
+    expect(findings.items.some((i) => i.message.includes("<ghost-one>"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("<ghost-two>"))).toBe(true);
   });
 
-  it("uses plural 'Unused components' when multiple components are unused", async () => {
+  it("reports all unused components", async () => {
     await setupProject({
       "pages/index.html": "<p>no components used</p>",
       "components/widget-a/widget-a.html": "<div>a</div>",
@@ -249,29 +260,11 @@ describe("checkProject", () => {
       "widget-b": { fileName: join(workDir, "components/widget-b/widget-b.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unused components"),
-    );
-  });
-
-  it("includes unused-count note in success log when there are unused components", async () => {
-    await setupProject({
-      "pages/index.html": "<my-used></my-used>",
-      "components/my-used/my-used.html": "<div>used</div>",
-      "components/not-used/not-used.html": "<div>not used</div>",
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({
-      "my-used": { fileName: join(workDir, "components/my-used/my-used.html") },
-      "not-used": { fileName: join(workDir, "components/not-used/not-used.html") },
-    });
-
-    await expect(checkProject()).resolves.toBe(true);
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("unused"),
-    );
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(2);
+    expect(findings.items.some((i) => i.message.includes("widget-a"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("widget-b"))).toBe(true);
   });
 
   describe("API Route Validations (Prompt 49)", () => {
@@ -283,10 +276,9 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(false);
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("no recognized HTTP method handler"),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.message.includes("no recognized HTTP method handler"))).toBe(true);
     });
 
     it("reports error when two route files resolve to the same URL", async () => {
@@ -298,10 +290,9 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(false);
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Collision"),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.category === "route-collision")).toBe(true);
     });
 
     it("reports warning when an exported name looks like a method but is not uppercase (e.g. Post or get)", async () => {
@@ -312,11 +303,507 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(true);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('method export "get" must be uppercase'),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBe(0);
+      expect(findings.warnings).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.message.includes('must be uppercase'))).toBe(true);
+    });
+  });
+
+  describe("Prompt 50 TDD Requirements", () => {
+    it("TDD step 1 anchor: unknown tags (<model-viewer>) are warnings not errors, and unused component is detected despite build script", async () => {
+      await setupProject({
+        "pages/index.html":
+          '<model-viewer src="model.gltf"></model-viewer>\n<script data-bascik-build>console.log("build")</script>',
+        "components/unused-card/unused-card.html": "<div>unused</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "unused-card": { fileName: join(workDir, "components/unused-card/unused-card.html") },
+      });
+
+      const findings = await checkProject();
+      // Should have 0 errors and 2 warnings (unmatched model-viewer tag, and unused-card component)
+      expect(findings.errors).toBe(0);
+      expect(findings.warnings).toBe(2);
+
+      const unmatched = findings.items.find((i) => i.category === "unmatched-tag");
+      expect(unmatched).toBeDefined();
+      expect(unmatched?.severity).toBe("warning");
+      expect(unmatched?.message).toContain("<model-viewer>");
+
+      const unused = findings.items.find((i) => i.category === "unused-component");
+      expect(unused).toBeDefined();
+      expect(unused?.severity).toBe("warning");
+      expect(unused?.message).toContain("unused-card");
+    });
+
+    it("checkProject prints nothing directly to console", async () => {
+      await setupProject({
+        "pages/index.html": "<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      await checkProject();
       expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it("groups findings by category with every location and line number", async () => {
+      await setupProject({
+        "pages/index.html": "<p>line1</p>\n<ion-icon></ion-icon>",
+        "pages/gallery.html": "<ion-icon></ion-icon>\n<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "pages/index.html"),
+        join(workDir, "pages/gallery.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const ionIcon = findings.items.find((i) => i.message.includes("<ion-icon>"));
+      expect(ionIcon?.locations).toHaveLength(2);
+      expect(ionIcon?.locations[0].line).toBe(2);
+      expect(ionIcon?.locations[1].line).toBe(1);
+
+      const human = formatFindingsHuman(findings);
+      expect(human).toContain("Components with no matching file");
+      expect(human).toContain("<ion-icon>");
+      expect(human).toContain("<model-viewer>");
+    });
+
+    it("provides suggestion for near-miss component names but not unrelated names", async () => {
+      await setupProject({
+        "pages/about.html": "<my-crd></my-crd><xyz-completely-unrelated></xyz-completely-unrelated>",
+        "components/my-card/my-card.html": "<div>card</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/about.html")]);
+      listComponentsMock.mockResolvedValue({
+        "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
+      });
+
+      const findings = await checkProject();
+      const myCrd = findings.items.find((i) => i.message.includes("<my-crd>"));
+      expect(myCrd?.suggestion).toBe("my-card");
+
+      const unrelated = findings.items.find((i) => i.message.includes("<xyz-completely-unrelated>"));
+      expect(unrelated?.suggestion).toBeUndefined();
+
+      const human = formatFindingsHuman(findings);
+      expect(human).toContain("did you mean <my-card>?");
+    });
+
+    it("narrows build-script exemption: suppresses unused warning when component name appears as string literal in build script", async () => {
+      await setupProject({
+        "pages/index.html":
+          '<script data-bascik-build>\n  const comp = "dynamic-card";\n</script>',
+        "components/dynamic-card/dynamic-card.html": "<div>dynamic</div>",
+        "components/truly-unused/truly-unused.html": "<div>unused</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
+        "truly-unused": { fileName: join(workDir, "components/truly-unused/truly-unused.html") },
+      });
+
+      const findings = await checkProject();
+      const unusedDynamic = findings.items.find((i) => i.message.includes("dynamic-card"));
+      expect(unusedDynamic).toBeUndefined();
+
+      const unusedTruly = findings.items.find((i) => i.message.includes("truly-unused"));
+      expect(unusedTruly).toBeDefined();
+    });
+
+    it("produces documented JSON schema with formatFindingsJson driven by same data", async () => {
+      await setupProject({
+        "pages/index.html": "<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const jsonStr = formatFindingsJson(findings);
+      const parsed = JSON.parse(jsonStr);
+
+      expect(parsed).toMatchObject({
+        errors: 0,
+        warnings: 1,
+        findings: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+          },
+        ],
+      });
+      expect(Array.isArray(parsed.findings[0].locations)).toBe(true);
+    });
+  });
+
+  describe("Prompt 51 Validations", () => {
+    it("reports config validation findings from prompt 05", async () => {
+      Object.assign(userConfigMock, {
+        http: { prt: 8080 },
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.find((i) => i.category === "config-validation");
+      expect(cfg).toBeDefined();
+      expect(cfg?.severity).toBe("error");
+      expect(cfg?.message).toContain("http.prt");
+    });
+
+    it("reports missing directory.pages path as config-validation error with actionable message and config location", async () => {
+      Object.assign(userConfigMock, {
+        directory: { pages: "src/missing-pages" },
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find(
+        (i) => i.category === "config-validation" && i.message.includes("directory.pages"),
+      );
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain("src/missing-pages");
+      expect(item?.message).toContain("does not exist");
+      expect(item?.locations).toEqual([{ filePath: "bascik.config.js" }]);
+    });
+
+    it("promotes missing site URL to an error when sitemap/robots features are enabled", async () => {
+      delete process.env.BASCIK_SITE_URL;
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "missing-site-url");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain("BASCIK_SITE_URL");
+    });
+
+    it("warns for unknown data-bascik-* attributes and lists known attributes", async () => {
+      await setupProject({
+        "pages/index.html": '<div data-bascik-props="x"></div>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "unknown-bascik-attribute");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("warning");
+      expect(item?.message).toContain("data-bascik-prop-");
+    });
+
+    it("only checks actual open-tag attribute names for unknown data-bascik-*", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<p>literal data-bascik-not-real text should not be treated as an attribute</p>',
+          '<div data-bascik-propps="x"></div>',
+        ].join("\n"),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const unknownAttrs = findings.items.filter((i) => i.category === "unknown-bascik-attribute");
+      expect(unknownAttrs).toHaveLength(1);
+      expect(unknownAttrs[0].message).toContain('"data-bascik-propps"');
+      expect(unknownAttrs[0].locations).toEqual([{ filePath: "pages/index.html", line: 2 }]);
+    });
+
+    it("reports data-bascik-build + data-bascik-server conflicts as errors", async () => {
+      await setupProject({
+        "pages/index.html": '<script data-bascik-build data-bascik-server>console.log(1)</script>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "script-mode-conflict");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+    });
+
+    it("reports duplicate component names with both file paths", async () => {
+      await setupProject({
+        "pages/index.html": "<p>ok</p>",
+        "src/components/a/card.html": "<div>a</div>",
+        "src/components/b/card.html": "<div>b</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockRejectedValue(
+        new Error(
+          "error: two component files both define the tag <card>\n" +
+          `  ${join(workDir, "src/components/a/card.html")}\n` +
+          `  ${join(workDir, "src/components/b/card.html")}\n\n` +
+          "rename one file",
+        ),
+      );
+      deepReadDirFlatMock.mockResolvedValue([
+        join(workDir, "src/components/a/card.html"),
+        join(workDir, "src/components/b/card.html"),
+      ]);
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "duplicate-component-name");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.locations).toHaveLength(2);
+    });
+
+    it("detects indirect circular component references with a full cycle path", async () => {
+      await setupProject({
+        "pages/index.html": "<a-card></a-card>",
+        "components/a-card/a-card.html": "<b-card></b-card>",
+        "components/b-card/b-card.html": "<c-card></c-card>",
+        "components/c-card/c-card.html": "<a-card></a-card>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "a-card": { fileName: join(workDir, "components/a-card/a-card.html") },
+        "b-card": { fileName: join(workDir, "components/b-card/b-card.html") },
+        "c-card": { fileName: join(workDir, "components/c-card/c-card.html") },
+      });
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "circular-component-reference");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain("<a-card> -> <b-card> -> <c-card> -> <a-card>");
+    });
+
+    it("does not count self-reference inside data-bascik-preserve subtree as a cycle", async () => {
+      await setupProject({
+        "pages/index.html": "<safe-card></safe-card>",
+        "components/safe-card/safe-card.html": '<div data-bascik-preserve><safe-card></safe-card></div>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "safe-card": { fileName: join(workDir, "components/safe-card/safe-card.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+    });
+
+    it("does not count component-like tags inside script strings as cycle references", async () => {
+      await setupProject({
+        "pages/index.html": "<script-card></script-card>",
+        "components/script-card/script-card.html": "<script>const x = '<script-card></script-card>';</script>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "script-card": { fileName: join(workDir, "components/script-card/script-card.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+    });
+
+    it("does not create a false cycle when a page basename matches a component name", async () => {
+      await setupProject({
+        "pages/safe-card.html": "<safe-card></safe-card>",
+        "components/safe-card/safe-card.html": "<div>ok</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/safe-card.html")]);
+      listComponentsMock.mockResolvedValue({
+        "safe-card": { fileName: join(workDir, "components/safe-card/safe-card.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.items.some((i) => i.category === "circular-component-reference")).toBe(false);
+    });
+
+    it("marks watchPaths as warning and exec script path failures as error for severity parity", async () => {
+      Object.assign(userConfigMock, {
+        pipeline: {
+          watchPaths: ["src/missing"],
+          exec: [{ script: "scripts/missing.ts" }],
+        },
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.filter((i) => i.category === "config-validation");
+      expect(cfg.some((i) => i.message.includes("pipeline.watchPaths[0]") && i.severity === "warning")).toBe(true);
+      expect(cfg.some((i) => i.message.includes("pipeline.exec[0].script") && i.severity === "error")).toBe(true);
+    });
+
+    it("marks inlineStyles missing paths as warning for severity parity", async () => {
+      Object.assign(userConfigMock, {
+        assets: {
+          inlineStyles: ["src/missing.css"],
+        },
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.filter((i) => i.category === "config-validation");
+      expect(cfg.some((i) => i.message.includes("assets.inlineStyles[0]") && i.severity === "warning")).toBe(true);
+    });
+
+    it("marks unreadable TLS key/cert paths as error for severity parity", async () => {
+      Object.assign(userConfigMock, {
+        http: {
+          tls: {
+            enabled: true,
+            keyFile: "certs/missing.key",
+            certFile: "certs/missing.crt",
+          },
+        },
+      });
+      await setupProject({ "pages/index.html": "<p>ok</p>" });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const cfg = findings.items.filter((i) => i.category === "config-validation");
+      expect(cfg.some((i) => i.message.includes("http.tls.keyFile") && i.severity === "error")).toBe(true);
+      expect(cfg.some((i) => i.message.includes("http.tls.certFile") && i.severity === "error")).toBe(true);
+    });
+
+    it("uses explicit --config path as finding location when provided", async () => {
+      const originalArgv = [...process.argv];
+      try {
+        process.argv = [
+          originalArgv[0],
+          originalArgv[1] ?? "pkg/src/index.ts",
+          "--check",
+          "--config",
+          "configs/custom.config.ts",
+        ];
+        Object.assign(userConfigMock, {
+          http: { prt: 8080 },
+        });
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "configs/custom.config.ts": "export default {};",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        const cfg = findings.items.find((i) => i.category === "config-validation");
+        expect(cfg).toBeDefined();
+        expect(cfg?.locations[0]?.filePath).toBe("configs/custom.config.ts");
+      } finally {
+        process.argv = originalArgv;
+      }
+    });
+
+    it("reports directory.pages as an error when it exists but has no html pages", async () => {
+      await mkdir(join(workDir, "src/pages"), { recursive: true });
+      listPagesMock.mockResolvedValue([]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "pages-directory");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain("has no HTML pages");
+    });
+
+    it("reports exact duplicate page route output paths with prompt 30 wording", async () => {
+      await setupProject({
+        "src/pages/blog/[slug].html": "<script data-bascik-routes>[]</script>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "src/pages/blog/first.html"),
+        join(workDir, "src/pages/blog/first.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "duplicate-route-resolution");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain('Duplicate route output path "/blog/first"');
+      expect(item?.locations).toEqual([
+        { filePath: join(workDir, "src/pages/blog/first.html") },
+        { filePath: join(workDir, "src/pages/blog/first.html") },
+      ]);
+    });
+
+    it("reports case-insensitive duplicate page route output paths with prompt 30 wording", async () => {
+      await setupProject({
+        "src/pages/blog/First.html": "<p>A</p>",
+        "src/pages/blog/first.html": "<p>B</p>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "src/pages/blog/First.html"),
+        join(workDir, "src/pages/blog/first.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const item = findings.items.find((i) => i.category === "duplicate-route-resolution");
+      expect(item).toBeDefined();
+      expect(item?.severity).toBe("error");
+      expect(item?.message).toContain('Case-insensitive route output collision between "/blog/First" and "/blog/first"');
+      expect(item?.locations).toEqual([
+        { filePath: join(workDir, "src/pages/blog/First.html") },
+        { filePath: join(workDir, "src/pages/blog/first.html") },
+      ]);
+    });
+
+    it("warns when component templates place script before markup and style after markup", async () => {
+      await setupProject({
+        "pages/index.html": "<ordered-card></ordered-card>",
+        "components/ordered-card/ordered-card.html": "<script>1</script><div>Card</div><style>.x{}</style>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "ordered-card": { fileName: join(workDir, "components/ordered-card/ordered-card.html") },
+      });
+
+      const findings = await checkProject();
+      const ordering = findings.items.filter((i) => i.category === "component-structure-order");
+      expect(ordering.length).toBe(2);
+      expect(ordering.every((i) => i.severity === "warning")).toBe(true);
+    });
+
+    it("does not emit missing-required-prop warnings because the cheap global heuristic is too noisy", async () => {
+      await setupProject({
+        "pages/index.html": "<card-title></card-title>",
+        "components/card-title/card-title.html": "<h2 data-bascik-prop-title></h2>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "card-title": { fileName: join(workDir, "components/card-title/card-title.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.items.some((i) => i.category === "missing-required-prop")).toBe(false);
+    });
+
+    it("clean project reports no findings and exits clean in findings model", async () => {
+      await setupProject({
+        "pages/index.html": "<card-title data-bascik-prop-title=\"Hello\"></card-title>",
+        "components/card-title/card-title.html": "<style>.x{color:red}</style><h2 data-bascik-prop-title></h2><script>1</script>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "card-title": { fileName: join(workDir, "components/card-title/card-title.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.errors).toBe(0);
+      expect(findings.warnings).toBe(0);
+      expect(findings.items).toHaveLength(0);
     });
   });
 });

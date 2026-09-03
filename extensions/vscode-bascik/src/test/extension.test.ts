@@ -352,10 +352,6 @@ suite('Extension Integration Suite', () => {
       const nonHyphenatedUri = vscode.Uri.file(
         path.join(workspaceFolder.uri.fsPath, 'src', 'components', 'card.html'),
       );
-      const doc = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<article><p>Card</p></article>',
-      });
       // Test file with fsPath ending with src/components/card.html
       const fileDoc = await vscode.workspace.openTextDocument(nonHyphenatedUri);
       const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);

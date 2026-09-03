@@ -39,11 +39,11 @@ Source templates often contain sample code, embedded JSON-LD, or CSS rules that 
 Before custom tags are extracted, `stripElementContents` removes the inner content of elements that legitimately contain raw text:
 
 - Standard protected elements: `<script>`, `<style>`, `<textarea>`
-- User-configured skip elements: `skipTranspilingElementContents` (which defaults to `["code"]`)
+- User-configured preserve tags: `scoping.preserve` (which defaults to `["code"]`)
 
 ```ts
 const stripElementContents = (html: string): string => {
-  const extra = (BascikConfig.skipTranspilingElementContents ?? [])
+  const extra = (BascikConfig.scoping?.preserve ?? [])
     .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
     .filter(Boolean);
   const protectedTags = ["script", "style", "textarea", ...extra];
@@ -67,16 +67,76 @@ A loop runs until output stabilizes to handle nested tags (such as `<code>...<co
 
 `<script data-bascik-build>` blocks execute arbitrary JavaScript at build time and can output component markup dynamically. Running build scripts during `bascik --check` would be slow and could cause unwanted side effects.
 
-Instead, when `check.ts` detects a `<script data-bascik-build>` block in a file, it marks every known component as "potentially used" by that page. Because unused component warnings are non-fatal, this heuristic prevents false-positive warnings without compromising error detection for static markup.
+Rather than disabling the unused component check project-wide, `check.ts` checks build script source text for string literal references (e.g. `"my-card"`, `'my-card'`, or `` `my-card` ``). A component is marked as potentially used only when its name appears as a string literal in a build script. Unreferenced components continue to be reported as unused warnings.
+
+### The Findings Model & Extension Points
+
+`checkProject` returns a structured data model rather than writing directly to terminal streams:
+
+```ts
+export type FindingSeverity = "error" | "warning";
+
+export interface FindingLocation {
+  filePath: string;
+  line?: number;
+}
+
+export interface CheckFinding {
+  category: string;
+  severity: FindingSeverity;
+  message: string;
+  locations: FindingLocation[];
+  suggestion?: string;
+}
+
+export interface CheckFindings {
+  errors: number;
+  warnings: number;
+  pagesChecked: number;
+  componentsChecked: number;
+  items: CheckFinding[];
+}
+```
+
+This model decouples diagnostic analysis from presentation:
+- **`formatFindingsHuman(findings)`**: Groups findings by category, renders file and line locations, suggests near-miss matches, and provides category descriptions.
+- **`formatFindingsJson(findings)`**: Serializes the findings model to a stable JSON schema for CI automation.
+
+#### Adding a New Check
+
+To add a new validation check:
+1. Perform static analysis during the scanning pass in `checkProject`.
+2. Push a new `CheckFinding` object to `items` with an appropriate category identifier, severity (`"error"` or `"warning"`), message, and location array.
+3. Add a category entry to `CATEGORY_META` in `check.ts` with a human-readable title and explanation for the terminal formatter.
 
 ### Diagnostics Output Summary
 
 `bascik --check` produces categorized diagnostic reporting:
 
-| Diagnostic Type | Severity | Exit Code | Description |
-| --- | --- | --- | --- |
-| Unknown Component Tag | Error | 1 | A hyphenated tag (e.g. `<missing-btn>`) was used in HTML, but no matching file exists in `src/components/`. |
-| Unused Component File | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page or component file. |
+| Diagnostic Type | Category | Severity | Exit Code | Description |
+| --- | --- | --- | --- | --- |
+| Unknown Component Tag | `unmatched-tag` | Warning | 0 | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged. |
+| Unused Component File | `unused-component` | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
+| Config Validation | `config-validation` | Error/Warning | Depends | Prompt 05 validation results projected into findings with key-based severity mapping. |
+| Missing Site URL | `missing-site-url` | Error | 1 | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. |
+| Pages Directory Issue | `pages-directory` | Error | 1 | Configured pages directory cannot be read or contains no page HTML files. |
+| Duplicate Component Name | `duplicate-component-name` | Error | 1 | Multiple component files define the same custom tag name. |
+| Circular Component Reference | `circular-component-reference` | Error | 1 | Direct or indirect component graph cycle detected (full cycle path included). |
+| Unknown Bascik Directive | `unknown-bascik-attribute` | Warning | 0 | A `data-bascik-*` attribute is unrecognized and likely a typo. |
+| Script Mode Conflict | `script-mode-conflict` | Error | 1 | A script tag has both `data-bascik-build` and `data-bascik-server`. |
+| Duplicate Route Resolution | `duplicate-route-resolution` | Error | 1 | Multiple pages resolve to the same route path. |
+| API Route Missing Handler | `missing-method-handler` | Error | 1 | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.). |
+| API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path. |
+| API Route Invalid Case | `invalid-method-case` | Warning | 0 | Method export name is not uppercase (e.g. `get` instead of `GET`). |
+| Component Order Convention | `component-structure-order` | Warning | 0 | Advises `<style>` above markup and `<script>` below markup in component templates. |
+
+`missing-required-prop` is intentionally omitted from the diagnostics model. The low-cost project-wide signal is noisy for real sites (conditional render paths and dynamic content supply), and `--check` favors actionable findings over speculative warnings.
+
+### Worked Extension Examples
+
+- **Unknown directive checks**: scan stripped HTML for `data-bascik-*`, compare against known directive sets, and emit `unknown-bascik-attribute` warnings with line locations.
+- **Cycle checks**: build a component dependency graph from custom-tag occurrences, then DFS for back-edges and report each full cycle path.
+- **Config reuse checks**: call `validateUserConfig(...)`, map each returned key to check-level severity, and emit `config-validation` findings instead of writing directly to stderr.
 
 ## Aggregated Build Errors
 

@@ -27,9 +27,13 @@ import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
-import { escapeHtml } from "./escape-html.ts";
-
-export { cleanStackTrace, escapeHtml };
+import { stripAnsiEscapeCodes } from "./script-runner.ts";
+import {
+  ATTR,
+  BUILD_FLAG,
+  ROUTES_FLAG,
+  SCRIPT_TAG_PREFIX,
+} from "./html-patterns.ts";
 
 /** Request context passed to every `data-bascik-server` script. */
 export interface ServerRequest {
@@ -54,20 +58,7 @@ export interface ServerScriptContext extends Record<string, unknown> {
 const createServerScriptRegex = (): RegExp =>
   /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gi;
 
-// Strip ANSI terminal color sequences so server-side HTML injection never leaks terminal formatting.
-const stripAnsiEscapeCodes = (value: string): string =>
-  value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, "")
-    .replace(/\u001B[@-Z\\-_]/g, "");
-
-const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
-const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
-const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
-const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
-const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
-
-const SCRIPT_TAG_PREFIX = "<script\\b";
-
+// ─── Conflict regexes ────────────────────────────────────────────────────────
 const SERVER_BUILD_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",

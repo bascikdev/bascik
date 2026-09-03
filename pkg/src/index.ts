@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile, mkdir, appendFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, appendFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
@@ -42,13 +42,15 @@ export const setupBuildLogging = async (buildLogPath: string): Promise<string> =
 
 export const runCli = async (
   args: string[] = process.argv.slice(2),
-  options: { exitOnFinish?: boolean } = {}
+  options: { exitOnFinish?: boolean; logger?: (...args: unknown[]) => void } = {}
 ): Promise<{ action: string; exitCode?: number }> => {
   const exit = (code: number) => {
     if (options.exitOnFinish !== false) {
       process.exit(code);
     }
   };
+
+  const logger = options.logger ?? console.log.bind(console);
 
   const decision = resolveCliAction(args);
   const buildLogPath = decision.flags.log;
@@ -81,10 +83,22 @@ export const runCli = async (
       return { action: "init", exitCode: 0 };
     }
     case "check": {
-      const { checkProject } = await import("./lib/check.ts");
-      const ok = await checkProject();
-      exit(ok ? 0 : 1);
-      return { action: "check", exitCode: ok ? 0 : 1 };
+      const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
+      const findings = await checkProject();
+      if (decision.flags.json) {
+        logger(formatFindingsJson(findings));
+      } else {
+        logger(formatFindingsHuman(findings));
+      }
+      const exitCode = decision.flags.strict
+        ? findings.errors + findings.warnings > 0
+          ? 1
+          : 0
+        : findings.errors > 0
+          ? 1
+          : 0;
+      exit(exitCode);
+      return { action: "check", exitCode };
     }
     case "server": {
       const { serverProduction } = await import("./lib/serve.ts");

@@ -13,8 +13,6 @@ import {
 } from "./server.ts";
 import { adaptHttp1 } from "./http.ts";
 
-export { _rateLimiter } from "./server.ts";
-
 export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeaders): { req: BascikRequest; res: BascikResponse } => {
   let rawIp = "unknown";
   try {
@@ -41,11 +39,7 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
     get destroyed() { return stream.destroyed; },
     writable: stream,
     respond(status, headers) {
-      const respHeaders: Record<string, string | number> = { ...headers };
-      if (":status" in respHeaders) {
-        delete respHeaders[":status"];
-      }
-      stream.respond({ ":status": status, ...respHeaders });
+      stream.respond({ ":status": status, ...headers });
     },
     write(chunk) { return stream.write(chunk); },
     end(chunk) {

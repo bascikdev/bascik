@@ -82,6 +82,8 @@ bascik --check   # static analysis: validate pages, components, and config witho
 | --- | --- |
 | `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
 | `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
+| `--strict` | Treat warnings as errors during `--check` (exits with code 1 if warnings are found) |
+| `--json` | Emit findings as a structured JSON document during `--check` |
 | `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
 | `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
 | `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
@@ -259,24 +261,103 @@ Run `bascik --check` from your project root to validate all pages, component fil
 bascik --check
 ```
 
-It reports:
-
-- **Errors:**
-  - Hyphenated tags that have no matching component file
-  - API route files under `directory.api` that export no recognized method handler
-  - Two or more API route files that resolve to the same route URL (collision)
-- **Warnings:**
-  - Component files that exist but are never referenced
-  - API route method exports that are lowercase or mixed-case (e.g. `get` or `Post`)
-- **Success:** exits with code `0` when no errors are found
-
-Example output:
+Findings are grouped by category with every location listed, brief explanations, and near-match suggestions:
 
 ```terminal
-[bascik check] ✓ 8 pages and 12 components checked - no errors
+bascik --check
+
+Components with no matching file (3)
+  These are either typos, or third-party web components. Bascik does not
+  transpile them; they are passed through to the browser unchanged.
+
+  <model-viewer>     src/pages/gallery.html:42
+  <ion-icon>         src/components/nav/nav.html:8, src/pages/index.html:14
+  <my-crd>           src/pages/about.html:31
+                     did you mean <my-card>?
+
+Unused components (1)
+  Defined but never referenced. Safe to delete, or referenced only from a
+  build script, which this check cannot always see.
+
+  src/components/legacy-banner/legacy-banner.html
+
+✓ 0 errors, 4 warnings
 ```
 
-`bascik --check` exits with code `1` when errors are found, which makes it suitable for CI:
+### Check Reference
+
+`bascik --check` runs the following validations:
+
+| Check | Category | Severity |
+| --- | --- | --- |
+| Config key and value validation (prompt 05 model) | `config-validation` | Error or warning by key |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled | `missing-site-url` | Error |
+| Pages directory unreadable or empty | `pages-directory` | Error |
+| Duplicate component tag names | `duplicate-component-name` | Error |
+| Circular component references | `circular-component-reference` | Error |
+| Unknown `data-bascik-*` attributes | `unknown-bascik-attribute` | Warning |
+| A script tag with both `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
+| Duplicate route resolution from page paths | `duplicate-route-resolution` | Error |
+| API route file with no recognized method export | `missing-method-handler` | Error |
+| Multiple API route files resolving to one URL | `route-collision` | Error |
+| Method-like API export with wrong casing (`get`, `Post`) | `invalid-method-case` | Warning |
+| Unmatched component tag usage | `unmatched-tag` | Warning |
+| Unused component file | `unused-component` | Warning |
+| Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
+
+`missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
+
+Key severity mapping details from prompt 05 validation data:
+
+- `pipeline.exec[].script` missing path: Error
+- `http.tls.keyFile`/`http.tls.certFile` unreadable: Error
+- `pipeline.watchPaths[]` missing path: Warning
+- `assets.inlineStyles[]` missing path: Warning
+
+Success exits with code `0` when no errors are found.
+
+### Failing CI on warnings with `--strict`
+
+By default, warnings do not fail the command. Pass `--strict` to treat warnings as errors and exit with code 1:
+
+```sh
+bascik --check --strict
+```
+
+### JSON output with `--json`
+
+Pass `--json` to emit findings using a stable, documented JSON schema for CI/CD status integrations:
+
+```sh
+bascik --check --json
+```
+
+Schema:
+
+```json
+{
+  "errors": 0,
+  "warnings": 1,
+  "pagesChecked": 8,
+  "componentsChecked": 12,
+  "findings": [
+    {
+      "category": "unmatched-tag",
+      "severity": "warning",
+      "message": "<model-viewer>",
+      "locations": [
+        {
+          "filePath": "src/pages/gallery.html",
+          "line": 42
+        }
+      ],
+      "suggestion": "my-viewer"
+    }
+  ]
+}
+```
+
+`bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 
 ```sh
 bascik --check && bascik --build

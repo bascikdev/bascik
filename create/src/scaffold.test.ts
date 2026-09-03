@@ -38,10 +38,9 @@ vi.mock("node:fs/promises", () => ({
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
-const mockReadFile = readFile as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
 vi.spyOn(console, "log").mockImplementation(() => { });
@@ -466,7 +465,6 @@ describe("scaffold", () => {
 
   it("injects the project name into the index page", async () => {
     await scaffold("hello-world", "/tmp");
-    const paths = allWrittenPaths();
     const indexCall = mockWriteFile.mock.calls.find((c) =>
       String(c[0]).endsWith("index.html"),
     );

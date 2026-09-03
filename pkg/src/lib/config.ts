@@ -283,10 +283,13 @@ export const initBascikConfig = (
     host?: string;
     logLevel?: LogLevel;
     only?: string[];
+    allowInvalidConfig?: boolean;
   } = {},
   deps: ConfigValidationDeps = {},
 ) => {
   const safeUserConfig = typeof userConfig === "object" && userConfig !== null ? userConfig : {};
+  let effectiveUserConfig: UserConfig = safeUserConfig;
+  let effectiveModeOverrides: { dev?: UserConfig; build?: UserConfig; server?: UserConfig } | UserConfig = modeOverrides;
   const isBuild = flags.isBuild ?? false;
   const isProdServer = flags.isProdServer ?? false;
   const activeMode: "dev" | "build" | "server" = isBuild ? "build" : isProdServer ? "server" : "dev";
@@ -295,17 +298,22 @@ export const initBascikConfig = (
   // report together in one aggregated error rather than one fix-at-a-time.
   const validationErrors = validateUserConfig(safeUserConfig, modeOverrides, deps);
   if (validationErrors.length > 0) {
-    throw new Error(formatConfigErrors(validationErrors));
+    if (flags.allowInvalidConfig === true) {
+      effectiveUserConfig = {};
+      effectiveModeOverrides = {};
+    } else {
+      throw new Error(formatConfigErrors(validationErrors));
+    }
   }
 
   let activeOverride: UserConfig = {};
-  if (typeof modeOverrides === "object" && modeOverrides !== null) {
-    if ("dev" in modeOverrides || "build" in modeOverrides || "server" in modeOverrides) {
-      const typedOverrides = modeOverrides as { dev?: UserConfig; build?: UserConfig; server?: UserConfig };
+  if (typeof effectiveModeOverrides === "object" && effectiveModeOverrides !== null) {
+    if ("dev" in effectiveModeOverrides || "build" in effectiveModeOverrides || "server" in effectiveModeOverrides) {
+      const typedOverrides = effectiveModeOverrides as { dev?: UserConfig; build?: UserConfig; server?: UserConfig };
       activeOverride = typedOverrides[activeMode] ?? {};
     } else {
       if (activeMode !== "dev") {
-        activeOverride = modeOverrides as UserConfig;
+        activeOverride = effectiveModeOverrides as UserConfig;
       }
     }
   }
@@ -321,16 +329,16 @@ export const initBascikConfig = (
     {} as BascikConfigOptions,
     defaultConfig as unknown as BascikConfigOptions,
     activeModeDefaultConfig as unknown as BascikConfigOptions,
-    safeUserConfig as unknown as BascikConfigOptions,
+    effectiveUserConfig as unknown as BascikConfigOptions,
     activeOverride as unknown as BascikConfigOptions,
   );
 
-  if (typeof safeUserConfig.minify === "boolean") {
+  if (typeof effectiveUserConfig.minify === "boolean") {
     merged.minify = {
-      html: safeUserConfig.minify,
-      css: safeUserConfig.minify,
-      js: safeUserConfig.minify,
-      identifiers: safeUserConfig.minify,
+      html: effectiveUserConfig.minify,
+      css: effectiveUserConfig.minify,
+      js: effectiveUserConfig.minify,
+      identifiers: effectiveUserConfig.minify,
     };
   }
   if (typeof activeOverride.minify === "boolean") {
@@ -424,5 +432,6 @@ export const { BascikConfig } = initBascikConfig(
     host: envHost,
     logLevel: envLogLevel as LogLevel | undefined,
     only: cliDecision.flags.only,
+    allowInvalidConfig: cliDecision.action === "check",
   },
 );

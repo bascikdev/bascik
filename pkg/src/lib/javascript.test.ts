@@ -1,7 +1,6 @@
 import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
 import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
-import { minifyJs } from "./js-minifier.ts";
 import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";
 

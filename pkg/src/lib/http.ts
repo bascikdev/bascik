@@ -31,11 +31,7 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
     get destroyed() { return resMsg.destroyed; },
     writable: resMsg,
     respond(status, headers) {
-      const respHeaders: Record<string, any> = { ...headers };
-      if (":status" in respHeaders) {
-        delete respHeaders[":status"];
-      }
-      resMsg.writeHead(status, respHeaders);
+      resMsg.writeHead(status, headers);
     },
     write(chunk) { return resMsg.write(chunk); },
     end(chunk) {

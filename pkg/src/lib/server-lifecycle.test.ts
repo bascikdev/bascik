@@ -1,11 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   setServerHealthState,
   getServerHealthState,
   isHealthEndpoint,
   handleHealthCheck,
-  DEFAULT_DRAIN_TIMEOUT_MS,
-  MAX_PORT_INCREMENTS,
 } from "./server-lifecycle.ts";
 
 describe("Health state management", () => {

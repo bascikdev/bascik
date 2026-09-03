@@ -32,7 +32,7 @@ switch (decision.action) {
 }
 ```
 
-`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
+`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
 
 The dynamic `import()` calls are intentional: they avoid loading modules when not needed (`init` and `--check` exit before reaching `transpile.ts`; `--build` never starts the server).
 
@@ -71,7 +71,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
 | `serve.ts` | Production server entrypoint (`bascik --server`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
-| `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.prodServer.enableTls`, runs shared request handlers, and manages server instances. |
+| `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs shared request handlers, and manages server instances. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
@@ -152,9 +152,14 @@ In dev mode, `pageProcessing()` writes the transpiled HTML to the in-memory stor
 
 `paths.ts` is the single source of truth for converting page filenames into canonical URL paths. The in-memory server key, `BASCIK_PAGE_PATH` build-script value, and sitemap generator all use the same conversion. Directory indexes use a trailing slash, so `src/pages/blog/index.html` becomes `/blog/`. Sitemap serialization percent-encodes each segment after canonicalization, while the server decodes incoming paths before lookup.
 
-### Process-isolated script execution
+### Process-isolated build scripts vs in-process server scripts
 
-Both `<script data-bascik-build>` (run at build time) and `<script data-bascik-server>` (run at request time) are executed in complete isolation. Instead of using `eval` or Node's `vm` module, which can leak state or restrict standard Node.js APIs, Bascik writes script content to a temporary `.mjs` file on disk and runs it as a standalone Node.js subprocess. This process-level isolation ensures that user scripts cannot pollute the memory of the compiler or server, natively supports ES modules, top-level `await`, dynamic imports, and captures stdout cleanly before removing the temporary files. To maintain accurate debugging diagnostics across process boundaries, Bascik appends `//# sourceURL` directives and cleans child-process stack traces, mapping temporary `.mjs` paths and line offsets back to the original source file.
+Bascik separates the execution model of build-time scripts from request-time server scripts:
+
+- **Build scripts (`<script data-bascik-build>`):** Executed in complete isolation. Instead of using `eval` or Node's `vm` module, which can leak state or restrict standard Node.js APIs, Bascik writes build script content to a temporary `.mjs` file on disk and runs it as a standalone Node.js subprocess (batched per page and constrained by a memory-aware semaphore). This process-level isolation ensures that user build scripts cannot pollute the memory of the compiler or server, natively supports ES modules, top-level `await`, dynamic imports, and captures stdout cleanly before removing temporary files.
+- **Server scripts (`<script data-bascik-server>`):** Executed in-process at request time as Node.js ESM modules via `ScriptRegistry`. During `bascik --build`, the script source is extracted into the sidecar (`dist/.bascik/server-scripts.json`) and replaced in the HTML with an inert placeholder tag (`<script type="text/bascik-server" data-bascik-server-id="...">`). When `bascik --server` boots, it loads the sidecar into memory once. Incoming requests execute the registered module in-process with the `{ req }` context and inject the returned markup into the document flow without subprocess spawn overhead.
+
+To maintain accurate debugging diagnostics across execution boundaries, Bascik appends `//# sourceURL` directives and cleans stack traces (`stack-trace.ts`), mapping temporary paths and line offsets back to the original source HTML file.
 
 ### Incremental rebuilds via reverse component index
 

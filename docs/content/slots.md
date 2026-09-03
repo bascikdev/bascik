@@ -77,7 +77,7 @@ Leading and trailing whitespace is trimmed from all slot content at build time. 
 
 Whitespace *within* slot content is preserved exactly as written.
 
-> **Code examples stay literal by default.** Bascik skips transpilation inside `<code>` elements by default, so slot trimming only applies to regular component resolution. If you opt into `skipTranspilingElementContents: ['code', 'pre']`, raw `<pre>` content is preserved too.
+> **Code examples stay literal by default.** Bascik skips transpilation inside `<code>` elements by default, so slot trimming only applies to regular component resolution. If you configure `scoping.preserve: ['code', 'pre']`, raw `<pre>` content is preserved too.
 
 **MDN reference.** Bascik slots are build-time insertion points built with standard HTML plus `data-*` attributes. For the actual elements you place into slots, treat [MDN's HTML reference](https://developer.mozilla.org/en-US/docs/Web/HTML) as the primary source of truth.
 

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import zlib from "node:zlib";
 import { getBrotliQuality } from "./mem.ts";
-import { BascikConfig } from "./config.ts";
 import { onError, type BascikResponse } from "./server.ts";
 import { mem } from "./mem.ts";
 

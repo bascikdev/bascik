@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 describe("Pipeline Gaps and Logging (Prompt 43)", () => {
   it("rejects %00 null byte in path with 400 Bad Request", async () => {

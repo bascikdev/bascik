@@ -100,7 +100,7 @@ npm install pg
 </script>
 ```
 
-> **Connection pooling.** Each `data-bascik-server` block runs in a fresh Node.js child process, so in-process pools are not shared across requests. For production Postgres, use an external pooler such as [PgBouncer](https://www.pgbouncer.org/).
+> **Connection pooling.** `data-bascik-server` blocks execute in-process via Bascik's `ScriptRegistry`. For long-lived database connections, you can keep client or pool instances across requests or use an external pooler such as [PgBouncer](https://www.pgbouncer.org/).
 
 ## Combining build and server scripts
 

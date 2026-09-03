@@ -69,7 +69,26 @@ If you have two files that differ only in case (for example `my-card.html` and `
 
 During a build, Bascik emits a warning naming the unresolved tag, and the tag ships to the output unchanged. The build does not fail.
 
-However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party web components such as `<model-viewer>` and `<ion-icon>` currently fail `--check` (an upcoming update changes this validation to emit a warning instead).
+Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
+
+## Why does `--check` list my third-party web components?
+
+Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
+
+## What does `bascik --check` actually check?
+
+`bascik --check` validates pages, components, config, and API route files in one pass. It reports:
+
+- Config and path validation issues (including missing script paths and unreadable TLS files)
+- Missing site URL when sitemap/robots generation is enabled
+- Duplicate component tag names and circular component references
+- Unknown `data-bascik-*` attribute names (likely typos)
+- Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`
+- API route method/export problems and route collisions
+- Unmatched or unused components
+- Advisory conventions such as component `<style>` placement and `<script>` placement ordering
+
+Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
 
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 

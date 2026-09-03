@@ -1,17 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getSecurityHeaders, SECURITY_HEADERS } from "./server.ts";
+import { describe, it, expect } from "vitest";
+import { getSecurityHeaders } from "./server.ts";
 
 describe("Security Headers (Prompt 45)", () => {
   it("does not include deprecated interest-cohort permissions-policy", () => {
-    expect(SECURITY_HEADERS["permissions-policy"]).toBeUndefined();
+    const headers = getSecurityHeaders();
+    expect(headers["permissions-policy"]).toBeUndefined();
   });
 
   it("includes Cross-Origin Opener Policy (COOP) header", () => {
-    expect(SECURITY_HEADERS["cross-origin-opener-policy"]).toBe("same-origin-allow-popups");
+    const headers = getSecurityHeaders();
+    expect(headers["cross-origin-opener-policy"]).toBe("same-origin-allow-popups");
   });
 
   it("includes Cross-Origin Resource Policy (CORP) header", () => {
-    expect(SECURITY_HEADERS["cross-origin-resource-policy"]).toBe("cross-origin");
+    const headers = getSecurityHeaders();
+    expect(headers["cross-origin-resource-policy"]).toBe("cross-origin");
   });
 
   it("does not set Content-Security-Policy header by default", () => {

@@ -514,7 +514,7 @@ export const prefixElementAttribute = (
           if (!updatedMatch.includes(attributeName)) return;
           const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {
             // https://www.codemzy.com/blog/regex-groups-with-replace
-            return updatedMatch.replace(regexp, (match, start, middle, end) => {
+            return updatedMatch.replace(regexp, (_match, start, _middle, end) => {
               return `${start}${dot}${obfuscatedAttributeName}${end}`;
             });
           };
@@ -934,7 +934,7 @@ export const namespaceScriptTags = (
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = component.fileContent.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
-    (match, open, code, close, offset) => {
+    (match, open, code, close, _offset) => {
       // Server scripts, build scripts, and route scripts run in Node.js — never wrap in browser IIFE
       if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
 

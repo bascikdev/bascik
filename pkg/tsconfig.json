@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    // No unused imports or params
+    "noUnusedLocals": true,
+    "noUnusedParameters": true, 
+
     // Type-check only — Node 24 strips types natively; tsc is used for IDE support and CI checks
     "noEmit": true,
 

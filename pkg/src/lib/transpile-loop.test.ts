@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { recursivelyTranspile } from "./processing.ts";
 import * as componentsModule from "./components.ts";
 import type { ComponentList } from "./types.ts";
