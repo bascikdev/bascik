@@ -78,7 +78,7 @@ function extractLinks(text: string, isHtml: boolean): string[] {
   const prose = stripCode(text, isHtml);
   // Markdown links: [label](/path) and HTML href="/path"
   const mdRe = /\]\((\/[^)\s]*)\)/g;
-  const hrefRe = /href="(\/[^"#]*)"/g;
+  const hrefRe = /href=["'](\/[^"]*)["']/g;
   let m: RegExpExecArray | null;
   while ((m = mdRe.exec(prose))) links.push(m[1]);
   while ((m = hrefRe.exec(prose))) links.push(m[1]);

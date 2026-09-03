@@ -20,8 +20,9 @@ async function readFixture(name: string): Promise<string> {
 describe('bundling guide fixtures', () => {
   it('the esbuild recipe bundles a real package', async () => {
     const { build } = await import('esbuild');
+    const { tmpdir } = await import('node:os');
     const entry = path.join(FIXTURE_DIR, 'confetti-entry.mjs');
-    const outfile = path.join(FIXTURE_DIR, '.tmp-bundle-test.mjs');
+    const outfile = path.join(tmpdir(), 'bascik-fixture-bundle-test.mjs');
     const result = await build({
       entryPoints: [entry],
       bundle: true,
@@ -65,23 +66,35 @@ describe('bundling guide fixtures', () => {
 });
 
 describe('fingerprinting guide fixtures', () => {
-  it('the fingerprint script hashes and renames a real asset', async () => {
-    const { mkdtemp, rm } = await import('node:fs/promises');
+  it('the fingerprint script hashes, renames, and rewrites references', async () => {
+    const { mkdtemp, rm, mkdir, writeFile, readdir, readFile } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const tempDir = await mkdtemp(path.join(tmpdir(), 'fingerprint-test-'));
     try {
-      const { writeFile, readdir } = await import('node:fs/promises');
-      const assetDir = path.join(tempDir, 'assets', 'img');
-      await (await import('node:fs/promises')).mkdir(assetDir, { recursive: true });
+      // Build a minimal dist/ tree the fixture script expects
+      const assetDir = path.join(tempDir, 'dist', 'assets', 'img');
+      await mkdir(assetDir, { recursive: true });
       await writeFile(path.join(assetDir, 'hero.png'), 'fake-png-data-v1');
+      await writeFile(
+        path.join(tempDir, 'dist', 'index.html'),
+        '<img src="/assets/img/hero.png" alt="Hero">',
+      );
 
-      const { createHash } = await import('node:crypto');
-      const buf = await readFile(path.join(assetDir, 'hero.png'), null);
-      const hash = createHash('sha256').update(buf).digest('hex').slice(0, 10);
-      expect(hash).toMatch(/^[0-9a-f]{10}$/);
+      // Run the actual fixture script with cwd at the temp project root
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const run = promisify(execFile);
+      await run('node', [path.join(FIXTURE_DIR, 'fingerprint-assets.mjs')], { cwd: tempDir });
 
+      // The asset was renamed with a content hash
       const files = await readdir(assetDir);
-      expect(files).toContain('hero.png');
+      expect(files.some(f => /^hero\.[0-9a-f]{10}\.png$/.test(f))).toBe(true);
+      expect(files).not.toContain('hero.png');
+
+      // The HTML reference was rewritten to the hashed name
+      const page = await readFile(path.join(tempDir, 'dist', 'index.html'), 'utf8');
+      expect(page).toMatch(/src="\/assets\/img\/hero\.[0-9a-f]{10}\.png"/);
+      expect(page).not.toContain('/assets/img/hero.png"');
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -159,6 +172,8 @@ describe('how-to guide demo markers', () => {
       for (const marker of markers) {
         const block = await extractDemoBlock(rel, marker);
         expect(block, `${page}: marker "${marker}" missing or empty`).not.toContain('not found');
+        expect(block, `${page}: marker "${marker}" has no code block after it`).not.toContain('no code block');
+        expect(block, `${page}: marker "${marker}" could not read the MD file`).not.toContain('File not found');
         expect(block.trim(), `${page}: marker "${marker}" resolved to an empty block`).not.toBe('');
       }
     }

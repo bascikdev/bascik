@@ -121,6 +121,8 @@ describe('templating page demo markers', () => {
     for (const marker of MARKERS) {
       const block = await extractDemoBlock('./content/how-to/templating.md', marker);
       expect(block, `marker "${marker}" missing or empty in templating.md`).not.toContain('not found');
+      expect(block, `marker "${marker}" has no code block after it`).not.toContain('no code block');
+      expect(block, `marker "${marker}" could not read the MD file`).not.toContain('File not found');
       expect(block.trim(), `marker "${marker}" resolved to an empty block`).not.toBe('');
     }
   });
