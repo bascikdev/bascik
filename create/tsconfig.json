@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true, 
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "strict": true,
