@@ -23,6 +23,7 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
     path: reqMsg.url,
     headers: reqMsg.headers,
     remoteIp,
+    rawStream: reqMsg,
   };
 
   const res: BascikResponse = {

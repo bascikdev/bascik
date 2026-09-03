@@ -53,6 +53,7 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:fs", () => ({
   createReadStream: vi.fn(),
+  existsSync: vi.fn(() => false),
 }));
 
 vi.mock("./mem.js", () => ({

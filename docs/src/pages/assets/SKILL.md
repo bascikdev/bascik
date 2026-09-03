@@ -953,34 +953,36 @@ Rules:
 
 ### data-bascik-server
 
-Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Unlike `data-bascik-build` (which executes once at transpile time), server scripts execute on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
+Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from './lib/escape-html.mjs';
+  import { escapeHtml } from '@bascik/bascik';
 
-  const req = JSON.parse(process.env.BASCIK_REQUEST);
-  const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
-  console.log(`<p>Welcome, ${name}!</p>`);
+  export default function({ req }) {
+    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    return `<p>Welcome, ${name}!</p>`;
+  }
 </script>
 ```
 
-`process.env.BASCIK_REQUEST` is a JSON string with four keys:
+Handlers receive `{ req }` as their first argument and `{ signal }` as their second argument. `req` contains:
 
-* `path`: URL path without query string, e.g. `"/about"`
-* `method`: HTTP method in uppercase, e.g. `"GET"`
-* `headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
-* `searchParams`: parsed query params as string-to-string object
+* `req.path`: URL path without query string, e.g. `"/about"`
+* `req.method`: HTTP method in uppercase, e.g. `"GET"`
+* `req.headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
+* `req.searchParams`: parsed query params as string-to-string object
 
-Bascik intentionally does not inject a global `escapeHtml()` helper into every server script. If you want a shared escape utility, keep it in a project file or import it explicitly.
+Bascik exports `escapeHtml` from `@bascik/bascik` to escape user-controlled strings before inserting into HTML markup.
 
 Rules:
 * Top-level `import` and `await` are supported.
 * `data-bascik-server` blocks are stripped from emitted HTML into a sidecar file (`dist/.bascik/server-scripts.json`) leaving an inert placeholder (`<script type="text/bascik-server">`), so Node server source is never shipped to browsers in static builds.
-* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute on each request.
+* When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute in-process on each request.
 * They are NOT executed during `bascik --build` itself.
-* Scripts are NOT wrapped in an IIFE (they are Node.js code, not browser JS).
-* On error, a warning is logged and the tag is replaced with an empty string.
+* Execution is bounded by `scripts.timeout` in `bascik.config.ts`.
+* On error, behavior is governed by `scripts.onServerScriptError` (`'error'` or `'warn'`). Under `'warn'`, the error is logged and the tag is replaced with an empty string without failing other scripts or the page.
+* In-process caveat: synchronous blocking code blocks Node's single-threaded event loop and cannot be interrupted by timeouts; always use async APIs.
 
 ---
 
@@ -1247,7 +1249,28 @@ More flags: `--config <path>` (load a specific config file), `--port <n>`, `--ho
 
 **Gotchas with `--only`:** Targeted builds skip cleaning `directory.out` so existing compiled pages survive. Sitemap and robots generation is skipped with a warning to avoid delisting unbuilt pages. Artifacts (`dist/.bascik/manifest.json`, `dist/.bascik/csp-hashes.json`) merge updated entries into existing files.
 
-**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Only needed when the site uses `data-bascik-server` scripts** for per-request dynamic content (personalized dashboards, user-specific data, server-rendered pagination). Sites with no server scripts can be deployed to any static host with no runtime server required. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts execute per-request in both modes.
+**`bascik --server`:** starts the production server against a pre-built `dist/` directory (HTTP/1.1 by default; HTTP/2 when TLS is enabled). **Needed when the site uses `data-bascik-server` scripts or API routes (`src/api/`)** for per-request dynamic content. Sites with only static pages and no server scripts or API routes can be deployed to any static host. Run `bascik --build` first, then `bascik --server`. Unlike the dev server, `--server` does not watch files or inject live-reload. `data-bascik-server` scripts and API routes execute per-request in both modes.
+
+### API Routes (`src/api/`)
+
+Define HTTP endpoints in TypeScript/JavaScript files under `src/api/` (`directory.api`). Handlers take a standard WHATWG `Request` and return a standard `Response`:
+
+```ts
+// src/api/contact.ts
+export const POST = async (request: Request): Promise<Response> => {
+  const data = await request.json();
+  if (!data.name) return Response.json({ error: "name is required" }, { status: 400 });
+  return Response.json({ ok: true }, { status: 201 });
+};
+```
+
+* **Method exports:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. Unexported methods return `405 Method Not Allowed` with an accurate `Allow` header.
+* **Derived HEAD & Auto OPTIONS:** `HEAD` auto-derives from `GET` (headers only, body stripped); `OPTIONS` auto-responds 204 with `Allow`.
+* **Context argument:** `(request, { params, remoteIp }, { signal })`. Route params are parsed from `[param]` segments. `remoteIp` is proxy-aware when `http.trustProxy` is true. `signal` provides cooperative abort on `http.apiTimeout`.
+* **Streaming request body:** `request.body` is a WHATWG stream with `duplex: 'half'`. Handlers call `.json()`, `.text()`, etc. `http.maxBodySize` (default 1 MB) counts streamed bytes and aborts with 413 without memory buffering.
+* **Security & secrets:** Handlers run in-process with access to `process.env`. Handler source files in `src/api/` are never served or copied to static builds. Thrown errors return 500 with zero stack/path info leaked to clients. No CORS headers are added by default.
+* **Zero config & portable:** Standard WHATWG contract lifts directly into Cloudflare Workers, Deno, or Bun without rewrite.
+* **Gotchas:** Static builds (`bascik --build`) cannot serve API routes and warn at build time. Handlers run in-process on the server; synchronous infinite loops cannot be interrupted by timers. No automatic compression or CORS headers are added by default.
 
 **`http` config block:** configure the server in `bascik.config.ts`:
 ```ts

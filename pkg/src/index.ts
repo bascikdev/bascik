@@ -7,8 +7,9 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
+import { escapeHtml } from "./lib/escape-html.ts";
 
-export { readVersion, installProcessCrashHandlers };
+export { readVersion, installProcessCrashHandlers, escapeHtml };
 
 export const resolveBuildLogPath = (args: string[]): string | undefined => {
   return resolveCliAction(args).flags.log;

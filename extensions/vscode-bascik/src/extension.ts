@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
+import { analyzeApiRouteSource } from './api-rules';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr'
@@ -182,6 +183,25 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
   const isComponentDocument =
     document.uri.scheme === 'file' && normalizedDocumentPath.includes('/src/components/');
+  const isApiRouteDocument =
+    document.uri.scheme === 'file' &&
+    normalizedDocumentPath.includes('/src/api/') &&
+    (languageId === 'typescript' || languageId === 'javascript');
+
+  if (isApiRouteDocument) {
+    const apiDiags = analyzeApiRouteSource(text);
+    for (const diag of apiDiags) {
+      const severity =
+        diag.severity === 'error'
+          ? vscode.DiagnosticSeverity.Error
+          : vscode.DiagnosticSeverity.Warning;
+      const start = new vscode.Position(0, 0);
+      const end = new vscode.Position(0, Math.min(text.length, 10));
+      const vdiag = new vscode.Diagnostic(new vscode.Range(start, end), diag.message, severity);
+      vdiag.source = 'bascik';
+      diagnostics.push(vdiag);
+    }
+  }
 
   // Warn if a component file name in src/components is not hyphenated per WHATWG HTML §4.13
   if (languageId === 'html' && document.uri.scheme === 'file') {

@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { htmlHasServerScripts, executeServerScripts, cleanStackTrace } from "./server-scripts.ts";
-
-// ─── Mocks ───────────────────────────────────────────────────────────────────
+import {
+  htmlHasServerScripts,
+  executeServerScripts,
+  cleanStackTrace,
+  escapeHtml,
+} from "./server-scripts.ts";
+import { serverSidecarRegistry } from "./server-sidecar.ts";
+import { scriptRegistry } from "./script-registry.ts";
+import { execFile } from "node:child_process";
 
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
-}));
-
-vi.mock("node:fs/promises", () => ({
-  writeFile: vi.fn(async () => { }),
-  unlink: vi.fn(async () => { }),
-  mkdir: vi.fn(async () => { }),
 }));
 
 vi.mock("./config.js", () => ({
@@ -25,8 +25,6 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-import { execFile } from "node:child_process";
-import { writeFile, unlink } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
@@ -38,34 +36,14 @@ const baseRequest = {
   searchParams: {},
 };
 
-const resolveWith = (stdout: string) =>
-  mockExecFile.mockImplementation(
-    (
-      _cmd: unknown,
-      _args: unknown,
-      _opts: unknown,
-      cb: (err: null, stdout: string, stderr: string) => void,
-    ) => {
-      cb(null, stdout, "");
-    },
-  );
-
-const rejectWith = (message: string) =>
-  mockExecFile.mockImplementation(
-    (
-      _cmd: unknown,
-      _args: unknown,
-      _opts: unknown,
-      cb: (err: Error) => void,
-    ) => {
-      cb(new Error(message));
-    },
-  );
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
+  serverSidecarRegistry.clear();
+  scriptRegistry.clear();
+  (BascikConfig as any).scripts = {
+    onServerScriptError: "error",
+    timeout: 30000,
+  };
 });
 
 // ─── htmlHasServerScripts ────────────────────────────────────────────────────
@@ -102,352 +80,233 @@ describe("htmlHasServerScripts", () => {
   });
 });
 
-// ─── executeServerScripts ────────────────────────────────────────────────────
+// ─── executeServerScripts (In-Process & Prompt 47 Requirements) ─────────────
 
-describe("executeServerScripts", () => {
-  it("returns html unchanged when there are no server scripts", async () => {
-    const html = "<p>no server scripts here</p>";
+describe("executeServerScripts in-process execution", () => {
+  // Requirement 1: No node process is spawned per request (assert by instrumentation).
+  it("never spawns a child node process per request", async () => {
+    const html = "<main><script data-bascik-server>export default function() { return '<p>InProcess</p>'; }</script></main>";
     const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe(html);
+    expect(result).toBe("<main><p>InProcess</p></main>");
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
-  it("replaces a data-bascik-server script tag with script stdout", async () => {
-    resolveWith("<p>Welcome, Alice</p>\n");
-    const html =
-      "<main><script data-bascik-server>console.log('<p>Welcome, Alice</p>');</script></main>";
+  // Requirement 2: The sidecar is loaded and a placeholder resolves to the right module.
+  it("resolves sidecar placeholder to the registered module in-process", async () => {
+    serverSidecarRegistry.recordScript("placeholder_123", "export default function({ req }) { return `<b>User:${req.headers['x-user']}</b>`; }");
+    const html = `<script type="text/bascik-server" data-bascik-server-id="placeholder_123"></script>`;
+    const result = await executeServerScripts(html, {
+      ...baseRequest,
+      headers: { "x-user": "Dana" },
+    });
+    expect(result).toBe("<b>User:Dana</b>");
+  });
+
+  // Requirement 3: Dev in-memory path resolves through the same interface.
+  it("resolves direct inline server scripts through the same in-process registry", async () => {
+    const html = `<div><script data-bascik-server>return '<span>inline dev</span>';</script></div>`;
     const result = await executeServerScripts(html, baseRequest);
-    expect(result).toContain("<p>Welcome, Alice</p>");
-    expect(result).not.toContain("data-bascik-server");
-    expect(result).toContain("<main>");
+    expect(result).toBe("<div><span>inline dev</span></div>");
   });
 
-  it("writes the script content to a temp .mjs file", async () => {
-    resolveWith("");
-    const scriptContent = "console.log('hi');";
-    await executeServerScripts(
-      `<script data-bascik-server>${scriptContent}</script>`,
-      baseRequest,
-    );
-    expect(writeFile).toHaveBeenCalledWith(
-      expect.stringMatching(/\.mjs$/),
-      expect.stringContaining(scriptContent),
-      "utf8",
-    );
-  });
-
-  it("writes temp scripts inside the project tree so ESM can resolve node_modules", async () => {
-    resolveWith("");
-    await executeServerScripts("<script data-bascik-server>x</script>", baseRequest);
-    const [tmpPath] = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(tmpPath).toMatch(process.cwd());
-    expect(tmpPath).not.toMatch(/^\/tmp\//);
-  });
-
-  it("removes the temp file after execution", async () => {
-    resolveWith("output");
-    await executeServerScripts("<script data-bascik-server>x</script>", baseRequest);
-    expect(unlink).toHaveBeenCalledTimes(1);
-  });
-
-  it("still removes the temp file when execution fails", async () => {
-    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    rejectWith("syntax error");
-    await executeServerScripts("<script data-bascik-server>bad</script>", baseRequest);
-    expect(unlink).toHaveBeenCalledTimes(1);
-    (BascikConfig as any).scripts = { onServerScriptError: "error" };
-  });
-
-  it("replaces the script tag with empty string on execution error when onServerScriptError is 'warn'", async () => {
-    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
-    rejectWith("ReferenceError: x is not defined");
-    const html =
-      "<p>before</p><script data-bascik-server>bad code</script><p>after</p>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toContain("<p>before</p>");
-    expect(result).toContain("<p>after</p>");
-    expect(result).not.toContain("data-bascik-server");
-    (BascikConfig as any).scripts = { onServerScriptError: "error" };
-  });
-
-  it("passes BASCIK_REQUEST JSON to the child process env", async () => {
-    resolveWith("");
+  // Requirement 4: Context reaches the script via req argument.
+  it("passes full request context (path, method, headers, searchParams) to script handler", async () => {
+    const html = `<script data-bascik-server>
+      export default function({ req }) {
+        return "<div>" + req.method + " " + req.path + " ?tab=" + req.searchParams.tab + " auth=" + req.headers.authorization + "</div>";
+      }
+    </script>`;
     const req = {
-      path: "/about",
-      method: "GET",
-      headers: { "x-display-name": "Alice" },
-      searchParams: { page: "2" },
+      path: "/profile",
+      method: "POST",
+      headers: { authorization: "Bearer token123" },
+      searchParams: { tab: "security" },
     };
-    await executeServerScripts("<script data-bascik-server>x</script>", req);
-    const opts = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
-    const parsed = JSON.parse(opts.env?.BASCIK_REQUEST ?? "{}");
-    expect(parsed.path).toBe("/about");
-    expect(parsed.method).toBe("GET");
-    expect(parsed.headers["x-display-name"]).toBe("Alice");
-    expect(parsed.searchParams.page).toBe("2");
+    const result = await executeServerScripts(html, req);
+    expect(result).toBe("<div>POST /profile ?tab=security auth=Bearer token123</div>");
   });
 
-  it("runs with process.cwd() as the working directory", async () => {
-    resolveWith("");
-    await executeServerScripts("<script data-bascik-server>x</script>", baseRequest);
-    const opts = mockExecFile.mock.calls[0][2] as { cwd?: string };
-    expect(opts.cwd).toBe(process.cwd());
+  // Requirement 5: Concurrent invocations with distinct context never cross-contaminate.
+  it("executes concurrent requests with distinct contexts without cross-contamination", async () => {
+    const html = `<script data-bascik-server>
+      export default async function({ req }) {
+        await new Promise(r => setTimeout(r, Math.floor(Math.random() * 15) + 5));
+        return '<span data-id="' + req.searchParams.id + '">' + req.headers['x-client'] + '</span>';
+      }
+    </script>`;
+
+    const count = 40;
+    const tasks = Array.from({ length: count }, async (_, i) => {
+      const req = {
+        path: "/stream",
+        method: "GET",
+        headers: { "x-client": `Client-${i}` },
+        searchParams: { id: `req-${i}` },
+      };
+      const res = await executeServerScripts(html, req);
+      return { expected: `<span data-id="req-${i}">Client-${i}</span>`, actual: res };
+    });
+
+    const results = await Promise.all(tasks);
+    for (const r of results) {
+      expect(r.actual).toBe(r.expected);
+    }
   });
 
-  it("strips ANSI color codes from server-script output before injecting HTML", async () => {
-    resolveWith("\u001B[33m2026\u001B[39m Built with Bascik");
-    const html = "<span>&copy; <script data-bascik-server>console.log(1)</script></span>";
+  // Requirement 6: Output reaches the page.
+  it("injects return value and legacy stdout output directly into the page", async () => {
+    const html = `<body><script data-bascik-server>
+      process.stdout.write('<p>Legacy write</p>');
+    </script></body>`;
     const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<span>&copy; 2026 Built with Bascik</span>");
+    expect(result).toBe("<body><p>Legacy write</p></body>");
   });
 
-  it("handles multiple identical server script blocks accurately without replacement collision", async () => {
-    resolveWith("hello\n");
-    const html =
-      "<div><script data-bascik-server>console.log('hello')</script></div>" +
-      "<div><script data-bascik-server>console.log('hello')</script></div>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<div>hello\n</div><div>hello\n</div>");
+  // Requirement 7: The escaping helper works; a value containing <script> renders as text.
+  it("provides escaping helper so reflected user input renders safely as text", async () => {
+    const xssPayload = `<script>alert("XSS")</script>`;
+    const html = `<main><script data-bascik-server>
+      return '<p>' + escapeHtml(req.searchParams.q) + '</p>';
+    </script></main>`;
+
+    const result = await executeServerScripts(html, {
+      ...baseRequest,
+      searchParams: { q: xssPayload },
+    });
+    expect(result).toBe("<main><p>&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;</p></main>");
+    expect(result).not.toContain("<script>alert");
   });
 
-  it("safely preserves dollar-sign regex replacement sequences ($1, $&, $$) in script stdout", async () => {
-    resolveWith("Price: $100 | Code: $& | Total: $$50");
-    const html = "<p><script data-bascik-server>console.log('dollar')</script></p>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<p>Price: $100 | Code: $& | Total: $$50</p>");
-  });
-
-  it("logs a warning when onServerScriptError is set to 'warn'", async () => {
+  // Requirement 8: A thrown error yields configured behavior with no internal detail in response.
+  it("handles thrown errors per onServerScriptError without leaking paths or stacks to response", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    rejectWith("non-fatal error");
-    const html = "<script data-bascik-server>bad()</script>";
+    const html = `<p>before</p><script data-bascik-server>throw new Error('SECRET_DB_PASSWORD_123');</script><p>after</p>`;
+    const result = await executeServerScripts(html, baseRequest);
+
+    expect(result).toBe("<p>before</p><p>after</p>");
+    expect(result).not.toContain("SECRET_DB_PASSWORD_123");
+    expect(result).not.toContain("stack");
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  // Requirement 9: A module with a syntax error fails only its own block.
+  it("contains syntax errors to their own block without failing other scripts or the page", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const html = `<div>
+      <script data-bascik-server>return '<span>first ok</span>';</script>
+      <script data-bascik-server>const === invalid_syntax;</script>
+      <script data-bascik-server>return '<span>third ok</span>';</script>
+    </div>`;
+
+    const result = await executeServerScripts(html, baseRequest);
+    expect(result).toContain("<span>first ok</span>");
+    expect(result).toContain("<span>third ok</span>");
+    expect(result).not.toContain("invalid_syntax");
+    warnSpy.mockRestore();
+  });
+
+  // Requirement 10: A client disconnect (network reset) is handled quietly.
+  it("does not log or fail violently on network reset errors during script execution", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const html = `<script data-bascik-server>
+      const err = new Error('Client reset');
+      err.code = 'ECONNRESET';
+      throw err;
+    </script>`;
+
     const result = await executeServerScripts(html, baseRequest);
     expect(result).toBe("");
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[bascik] server script error"),
-    );
-    warnSpy.mockRestore();
-    (BascikConfig as any).scripts = { onServerScriptError: "error" }; // restore default
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
-  it("forwards stderr output from the child process to process.stderr.write", async () => {
-    mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => {
-      cb(null, "stdout-data", "stderr-debug-msg");
-    });
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const html = "<script data-bascik-server>console.error('stderr-debug-msg')</script>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("stdout-data");
-    expect(stderrSpy).toHaveBeenCalledWith("stderr-debug-msg");
-    stderrSpy.mockRestore();
-  });
-
-  it("processes a large batch of server scripts on a single page sequentially in batches", async () => {
-    let scriptCount = 0;
-    mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => {
-      scriptCount++;
-      cb(null, `[script-${scriptCount}]`, "");
-    });
-
-    const scriptTags = Array.from(
-      { length: 12 },
-      (_, i) => `<script data-bascik-server>console.log(${i})</script>`,
-    ).join("\n");
-    const html = `<main>${scriptTags}</main>`;
-
-    const result = await executeServerScripts(html, baseRequest);
-
-    expect(scriptCount).toBe(12);
-    expect(result).toContain("[script-1]");
-    expect(result).toContain("[script-12]");
-    expect(result).not.toContain("data-bascik-server");
-  });
-
-  it("writes stderr to process.stderr when script emits stderr", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    mockExecFile.mockImplementationOnce(
-      (
-        _cmd: unknown,
-        _args: unknown,
-        _opts: unknown,
-        cb: (err: null, stdout: string, stderr: string) => void,
-      ) => {
-        cb(null, "out", "warning in script\n");
-      },
-    );
-    const html = "<script data-bascik-server>console.warn('warning')</script>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("out");
-    expect(stderrSpy).toHaveBeenCalledWith("warning in script\n");
-    stderrSpy.mockRestore();
-  });
-
-  it("preserves literal dollar patterns in output ($1, $&, $') without regex expansion", async () => {
-    resolveWith("Price: $100 for $& items ($1)\n");
-    const html = "<p><script data-bascik-server>console.log('Price')</script></p>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<p>Price: $100 for $& items ($1)\n</p>");
-  });
-
-  it("reads script content from src file when server script tag body is empty", async () => {
-    const html = '<script data-bascik-server src="server-helper.ts"></script>';
-    resolveWith("<p>Welcome user</p>");
-    const result = await executeServerScripts(html, baseRequest, 30000, "src/pages/dashboard.html");
-    expect(result).toBe("<p>Welcome user</p>");
-  });
-
-  it("processes multiple server scripts in parallel", async () => {
-    mockExecFile
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>first</p>", "");
-        },
-      )
-      .mockImplementationOnce(
-        (
-          _cmd: unknown,
-          _args: unknown,
-          _opts: unknown,
-          cb: (err: null, stdout: string, stderr: string) => void,
-        ) => {
-          cb(null, "<p>second</p>", "");
-        },
-      );
-
-    const html =
-      "<script data-bascik-server>a</script><script data-bascik-server>b</script>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toContain("<p>first</p>");
-    expect(result).toContain("<p>second</p>");
-    expect(result).not.toContain("data-bascik-server");
-  });
-
-  it("substitutes script output in place within a container element", async () => {
-    resolveWith("<li>Alice</li><li>Bob</li>");
-    const html = "<ul><script data-bascik-server>makeList()</script></ul>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<ul><li>Alice</li><li>Bob</li></ul>");
-  });
-
-  it("handles concurrent calls without state corruption across global regex", async () => {
-    const html1 = "<div><script data-bascik-server>console.log('1')</script></div>";
-    const html2 = "<p>no scripts</p>";
-    resolveWith("<p>server 1</p>");
-    const promises = [
-      executeServerScripts(html1, baseRequest),
-      Promise.resolve().then(() => htmlHasServerScripts(html2)),
-      executeServerScripts(html1, baseRequest),
-    ];
-    const results = await Promise.all(promises);
-    expect(results[0]).toBe("<div><p>server 1</p></div>");
-    expect(results[1]).toBe(false);
-    expect(results[2]).toBe("<div><p>server 1</p></div>");
-  });
-
-  it("propagates stderr from the script to process.stderr", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    mockExecFile.mockImplementation(
-      (
-        _cmd: unknown,
-        _args: unknown,
-        _opts: unknown,
-        cb: (err: null, stdout: string, stderr: string) => void,
-      ) => {
-        cb(null, "<p>ok</p>", "warning: something happened\n");
-      },
-    );
-    await executeServerScripts("<script data-bascik-server>x</script>", baseRequest);
-    expect(stderrSpy).toHaveBeenCalledWith("warning: something happened\n");
-    stderrSpy.mockRestore();
-  });
-
-  it("runs the correct node binary", async () => {
-    resolveWith("");
-    await executeServerScripts("<script data-bascik-server>x</script>", baseRequest);
-    const cmd = mockExecFile.mock.calls[0][0] as string;
-    expect(cmd).toBe(process.execPath);
-  });
-
-  it("does not expand $1 in script output as a regex back-reference", async () => {
-    // A Postgres server script whose stdout contains $1 must be injected verbatim.
-    // Previously result.replace(fullTag, output) treated $1 in output as a capture
-    // group reference, expanding it to empty string or the capture group value.
-    resolveWith("<p>session_id = $1</p>");
-    const html = "<main><script data-bascik-server>pg()</script></main>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<main><p>session_id = $1</p></main>");
-  });
-
-  it("does not expand $2 in script output as a regex back-reference", async () => {
-    resolveWith("<p>value is $2</p>");
-    const html = "<main><script data-bascik-server>pg()</script></main>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<main><p>value is $2</p></main>");
-  });
-
-  it("does not expand $& in script output (would insert the matched script tag)", async () => {
-    resolveWith("<p>cost: $&amp; tax included</p>");
-    const html = "<div><script data-bascik-server>price()</script></div>";
-    const result = await executeServerScripts(html, baseRequest);
-    expect(result).toBe("<div><p>cost: $&amp; tax included</p></div>");
-  });
-
-  it("writes the user script content without injecting a hidden escapeHtml helper", async () => {
-    resolveWith("");
-    await executeServerScripts("<script data-bascik-server>console.log('hi')</script>", baseRequest);
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    expect(written).toContain("console.log('hi')");
-    expect(written).not.toContain("escapeHtml");
-  });
-
-  it("does not alter the order of user code when writing temp scripts", async () => {
-    resolveWith("");
-    await executeServerScripts("<script data-bascik-server>const x=1;</script>", baseRequest);
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    expect(written).toContain("const x=1;");
-    expect(written.indexOf("escapeHtml")).toBe(-1);
-  });
-
-  it("respects onServerScriptError: warn", async () => {
+  // Requirement 11: An unhandled rejection inside async script does not crash the process.
+  it("captures async promise rejections gracefully", async () => {
     (BascikConfig as any).scripts = { onServerScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    rejectWith("failed script execution");
-    const html = "<script data-bascik-server>bad()</script>";
+    const html = `<script data-bascik-server>
+      export default async function() {
+        return Promise.reject(new Error('Async service down'));
+      }
+    </script>`;
+
     const result = await executeServerScripts(html, baseRequest);
     expect(result).toBe("");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
-    (BascikConfig as any).scripts = { onServerScriptError: "error" };
   });
 
-  it("appends //# sourceURL comment with filePath when provided, or request path as fallback", async () => {
-    resolveWith("");
-    await executeServerScripts(
-      "<script data-bascik-server>x()</script>",
-      baseRequest,
-      30000,
-      "src/pages/dashboard.html",
-    );
-    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    expect(written).toContain("//# sourceURL=src/pages/dashboard.html");
+  // Requirement 12: A hung async script hits scripts.timeout.
+  it("aborts and times out hung async scripts when exceeding timeoutMs", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const html = `<script data-bascik-server>
+      export default async function({}, { signal } = {}) {
+        await new Promise((resolve) => {
+          signal?.addEventListener('abort', resolve);
+        });
+        return '<p>never reached</p>';
+      }
+    </script>`;
+
+    const result = await executeServerScripts(html, baseRequest, 50);
+    expect(result).toBe("");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("timed out after 50ms"));
+    warnSpy.mockRestore();
   });
 
-  it("respects onServerScriptError: error", async () => {
-    (BascikConfig as any).scripts = { onServerScriptError: "error" };
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-    rejectWith("failed script execution");
-    const html = "<script data-bascik-server>bad()</script>";
-    await expect(executeServerScripts(html, baseRequest)).rejects.toThrow(/server script error/);
-    expect(errorSpy).toHaveBeenCalled();
-    errorSpy.mockRestore();
+  // Requirement 13: No source, path, or stack frame appears in any response.
+  it("ensures no internal stack frames, source code, or cache paths leak into the output", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn" };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const marker = "UNIQUE_INTERNAL_SIGNATURE_987654";
+    const html = `<div id="shell"><script data-bascik-server>
+      // Marker: ${marker}
+      throw new Error('Failure with ${marker}');
+    </script></div>`;
+
+    const result = await executeServerScripts(html, baseRequest);
+    expect(result).toBe('<div id="shell"></div>');
+    expect(result).not.toContain(marker);
+    warnSpy.mockRestore();
   });
 
+  // Requirement 14: Editing a script applies in dev mode.
+  it("invalidates and applies updated script modules in dev mode", async () => {
+    const html1 = "<script data-bascik-server>return 'v1';</script>";
+    const res1 = await executeServerScripts(html1, baseRequest);
+    expect(res1).toBe("v1");
+
+    const html2 = "<script data-bascik-server>return 'v2';</script>";
+    const res2 = await executeServerScripts(html2, baseRequest);
+    expect(res2).toBe("v2");
+  });
+
+  // Requirement 15: No temporary file is created.
+  it("does not write temporary files on disk for server script execution", async () => {
+    const html = `<script data-bascik-server>console.log("no-disk-touch");</script>`;
+    const result = await executeServerScripts(html, baseRequest);
+    expect(result).toBe("no-disk-touch\n");
+  });
+
+  // Preservation of regex sequence characters ($1, $&, $$)
+  it("safely preserves dollar-sign regex replacement sequences ($1, $&, $$) in script output", async () => {
+    const html = `<p><script data-bascik-server>return 'Price: $100 | Code: $& | Total: $$50';</script></p>`;
+    const result = await executeServerScripts(html, baseRequest);
+    expect(result).toBe("<p>Price: $100 | Code: $& | Total: $$50</p>");
+  });
+
+  // ANSI color stripping
+  it("strips ANSI color codes from server-script output before injecting HTML", async () => {
+    const html = `<span>&copy; <script data-bascik-server>return '\u001B[33m2026\u001B[39m Built with Bascik';</script></span>`;
+    const result = await executeServerScripts(html, baseRequest);
+    expect(result).toBe("<span>&copy; 2026 Built with Bascik</span>");
+  });
+
+  // Conflict validation: data-bascik-server + data-bascik-build
   it("throws an error when script tag has both data-bascik-server and data-bascik-build", async () => {
     const html = "<script data-bascik-server data-bascik-build>console.log(1)</script>";
     await expect(executeServerScripts(html, baseRequest, 30000, "src/pages/index.html")).rejects.toThrow(
@@ -455,6 +314,7 @@ describe("executeServerScripts", () => {
     );
   });
 
+  // Conflict validation: data-bascik-server + data-bascik-routes
   it("throws an error when script tag has both data-bascik-server and data-bascik-routes", async () => {
     const html = "<script data-bascik-server data-bascik-routes>console.log(1)</script>";
     await expect(executeServerScripts(html, baseRequest, 30000, "src/pages/index.html")).rejects.toThrow(

@@ -33,6 +33,7 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
     path: headers[":path"] as string,
     headers: headers as Record<string, string | string[] | undefined>,
     remoteIp,
+    rawStream: stream,
   };
 
   const res: BascikResponse = {

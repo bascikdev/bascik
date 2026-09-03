@@ -11,6 +11,7 @@ import { manifestCollector } from "./lib/manifest.ts";
 import { readVersion } from "./lib/version.ts";
 import { serverSidecarRegistry } from "./lib/server-sidecar.ts";
 import { cspHashCollector } from "./lib/csp-hashes.ts";
+import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./lib/api-routes.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -49,6 +50,21 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       await manifestCollector.recordFileFromDisk(cspPath);
     }
     await manifestCollector.writeManifest(version);
+
+    // Prompt 48: Warn when API routes are found in src/api/ during static builds
+    const apiDir = BascikConfig.directory?.api ?? "src/api";
+    const absoluteApiDir = resolve(projectRoot, apiDir);
+    const apiFiles = await scanApiRouteFiles(absoluteApiDir);
+    if (apiFiles.length > 0) {
+      try {
+        const routes = buildApiRouteTree(apiFiles, absoluteApiDir, BascikConfig.base);
+        const routePaths = routes.map((r) => r.path);
+        console.warn("\n" + formatApiRouteWarning(routePaths, apiDir));
+      } catch (err) {
+        console.warn("\n" + (err as Error).message);
+      }
+    }
+
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {

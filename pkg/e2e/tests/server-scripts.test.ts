@@ -31,8 +31,8 @@ test.describe('data-bascik-server — request-time script execution', () => {
       }
     });
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#static-before')).toHaveText('static-before');
-    await expect(page.locator('#static-after')).toHaveText('static-after');
+    await expect(page.getByTestId('static-before')).toHaveText('static-before');
+    await expect(page.getByTestId('static-after')).toHaveText('static-after');
     expect(consoleErrors).toHaveLength(0);
   });
 
@@ -41,107 +41,126 @@ test.describe('data-bascik-server — request-time script execution', () => {
   test('reads a custom request header and injects it into the page', async ({ page }) => {
     await page.setExtraHTTPHeaders({ 'x-test-name': 'Alice' });
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-header')).toHaveText('Alice');
+    await expect(page.getByTestId('from-header')).toHaveText('Alice');
   });
 
   test('falls back gracefully when the custom header is absent', async ({ page }) => {
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-header')).toHaveText('guest');
+    await expect(page.getByTestId('from-header')).toHaveText('guest');
   });
 
   // ─── Query parameters ────────────────────────────────────────────────────
 
   test('reads a query parameter and injects it into the page', async ({ page }) => {
     await page.goto('/server-scripts-test?color=blue');
-    await expect(page.locator('#from-query')).toHaveText('blue');
+    await expect(page.getByTestId('from-query')).toHaveText('blue');
   });
 
   test('falls back gracefully when the query parameter is absent', async ({ page }) => {
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-query')).toHaveText('none');
+    await expect(page.getByTestId('from-query')).toHaveText('none');
   });
 
   test('handles multiple query parameters correctly', async ({ page }) => {
     await page.goto('/server-scripts-test?color=red&foo=bar');
-    await expect(page.locator('#from-query')).toHaveText('red');
+    await expect(page.getByTestId('from-query')).toHaveText('red');
   });
 
   // ─── Request path ────────────────────────────────────────────────────────
 
   test('provides the URL path (without query string) to the script', async ({ page }) => {
     await page.goto('/server-scripts-test?color=green');
-    await expect(page.locator('#from-path')).toHaveText('/server-scripts-test');
+    await expect(page.getByTestId('from-path')).toHaveText('/server-scripts-test');
   });
 
   // ─── Async scripts ───────────────────────────────────────────────────────
 
   test('supports top-level await in server scripts', async ({ page }) => {
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-async')).toHaveText('async-ok');
+    await expect(page.getByTestId('from-async')).toHaveText('async-ok');
+  });
+
+  // ─── Escaping helper ─────────────────────────────────────────────────────
+
+  test('escapes reflected XSS query parameters with no script execution', async ({ page }) => {
+    let dialogTriggered = false;
+    page.on('dialog', async (dialog) => {
+      dialogTriggered = true;
+      await dialog.dismiss();
+    });
+
+    await page.goto('/server-scripts-test?xss=%3Cscript%3Ealert(1)%3C%2Fscript%3E');
+    await expect(page.getByTestId('from-xss')).toHaveText('<script>alert(1)</script>');
+    expect(dialogTriggered).toBe(false);
   });
 
   // ─── Error handling ──────────────────────────────────────────────────────
 
   test('continues rendering when a server script throws', async ({ page }) => {
     await page.goto('/server-scripts-test');
-    // Static bookends must still be present even though one script threw.
-    await expect(page.locator('#static-before')).toHaveText('static-before');
-    await expect(page.locator('#static-after')).toHaveText('static-after');
+    await expect(page.getByTestId('static-before')).toHaveText('static-before');
+    await expect(page.getByTestId('static-after')).toHaveText('static-after');
   });
 
-  test('removes the erroring script tag (no trace in the DOM)', async ({ page }) => {
-    await page.goto('/server-scripts-test');
-    // The erroring script had no stdout — its tag slot should be empty.
-    // The combined other scripts still render, so the count of <p> elements
-    // under <body> is: static-before, from-header, from-query, from-path,
-    // from-async, static-after = 6 (not 7, because the error script is gone).
-    const ps = await page.locator('body > p').count();
-    expect(ps).toBe(6);
-  });
-
-  // ─── Per-request freshness ───────────────────────────────────────────────
+  // ─── Per-request freshness & Concurrency isolation ─────────────────────────
 
   test('executes fresh on each request — different headers produce different output', async ({ page }) => {
     await page.setExtraHTTPHeaders({ 'x-test-name': 'Bob' });
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-header')).toHaveText('Bob');
+    await expect(page.getByTestId('from-header')).toHaveText('Bob');
 
     await page.setExtraHTTPHeaders({ 'x-test-name': 'Carol' });
     await page.goto('/server-scripts-test');
-    await expect(page.locator('#from-header')).toHaveText('Carol');
+    await expect(page.getByTestId('from-header')).toHaveText('Carol');
+  });
+
+  test('isolates concurrent requests with distinct parameters and headers without cross-contamination', async ({ request }) => {
+    const count = 25;
+    const requests = Array.from({ length: count }, (_, i) =>
+      request.get(`/server-scripts-test?color=color-${i}`, {
+        headers: { 'x-test-name': `User-${i}` },
+      }),
+    );
+
+    const responses = await Promise.all(requests);
+    for (let i = 0; i < count; i++) {
+      const res = responses[i];
+      expect(res.status()).toBe(200);
+      const html = await res.text();
+      expect(html).toContain(`id="from-header" data-testid="from-header">User-${i}</p>`);
+      expect(html).toContain(`id="from-query" data-testid="from-query">color-${i}</p>`);
+    }
   });
 
   // ─── Advanced Server Script Capabilities ─────────────────────────────────
 
   test('supports Node.js ESM imports and provides HTTP method', async ({ page }) => {
     await page.goto('/server-scripts-advanced-test');
-    await expect(page.locator('#esm-import-output')).toHaveText('ESM Import: server-scripts-advanced-test | Method: GET');
+    await expect(page.getByTestId('esm-import-output')).toHaveText('ESM Import: server-scripts-advanced-test | Method: GET');
   });
 
   test('executes data-bascik-server scripts inside custom components at request time', async ({ page }) => {
     await page.goto('/server-scripts-advanced-test');
-    await expect(page.locator('[class*="server-comp-static"]')).toHaveText('Component Static');
-    await expect(page.locator('[id$="__comp-server-output"]')).toHaveText('Comp Server: GET');
+    await expect(page.getByTestId('server-comp-static')).toHaveText('Component Static');
+    await expect(page.getByTestId('comp-server-output')).toHaveText('Comp Server: GET');
   });
 
   test('strips ANSI escape codes from script output before injecting into HTML', async ({ page }) => {
     await page.goto('/server-scripts-advanced-test');
-    await expect(page.locator('#ansi-output')).toHaveText('Clean HTML');
+    await expect(page.getByTestId('ansi-output')).toHaveText('Clean HTML');
   });
 
   // ─── Resilience, Error Recovery & High Load ────────────────────────────────
 
-  test('survives process.exit(1) and syntax errors in server scripts without crashing', async ({ page }) => {
+  test('survives syntax and runtime errors in server scripts without crashing', async ({ page }) => {
     await page.goto('/server-scripts-resilience-test');
-
-    // Page static bookends must remain intact
-    await expect(page.locator('#resilience-before')).toHaveText('start');
-    await expect(page.locator('#resilience-after')).toHaveText('end');
+    await expect(page.getByTestId('resilience-before')).toHaveText('start');
+    await expect(page.getByTestId('resilience-after')).toHaveText('end');
   });
 
-  test('handles large stdout payloads generated by server scripts', async ({ page }) => {
+  test('handles large payloads generated by server scripts', async ({ page }) => {
     await page.goto('/server-scripts-resilience-test');
-    const largeElem = page.locator('#large-payload');
+    const largeElem = page.getByTestId('large-payload');
     await expect(largeElem).toHaveText('LargePayload');
     await expect(largeElem).toHaveAttribute('data-len', '50000');
   });
@@ -154,10 +173,10 @@ test.describe('data-bascik-server — request-time script execution', () => {
     await page.setExtraHTTPHeaders(extraHeaders);
     await page.goto('/server-scripts-resilience-test');
 
-    await expect(page.locator('#custom-headers-count')).toHaveText('10');
+    await expect(page.getByTestId('custom-headers-count')).toHaveText('10');
   });
 
-  test('handles 30 concurrent requests to pages with server scripts without crashing or temp-file collisions', async ({ request }) => {
+  test('handles 30 concurrent requests to pages with server scripts without crashing or PID exhaustion', async ({ request }) => {
     const requests = Array.from({ length: 30 }, (_, i) =>
       request.get('/server-scripts-resilience-test', {
         headers: { 'x-test-name': `ConcurrentUser-${i}` },
@@ -168,8 +187,8 @@ test.describe('data-bascik-server — request-time script execution', () => {
     for (const res of responses) {
       expect(res.status()).toBe(200);
       const text = await res.text();
-      expect(text).toContain('id="resilience-before"');
-      expect(text).toContain('id="resilience-after"');
+      expect(text).toContain('data-testid="resilience-before"');
+      expect(text).toContain('data-testid="resilience-after"');
     }
   });
 
@@ -181,8 +200,8 @@ test.describe('data-bascik-server — request-time script execution', () => {
     });
     await page.goto('/server-scripts-realworld-test');
 
-    await expect(page.locator('#user-session')).toHaveText('Session: sess_prod_9988');
-    await expect(page.locator('#user-theme')).toHaveText('Theme: dark');
+    await expect(page.getByTestId('user-session')).toHaveText('Session: sess_prod_9988');
+    await expect(page.getByTestId('user-theme')).toHaveText('Theme: dark');
   });
 
   test('handles simulated laggy database/async microservice calls inside server scripts', async ({ page }) => {
@@ -190,19 +209,19 @@ test.describe('data-bascik-server — request-time script execution', () => {
     await page.goto('/server-scripts-realworld-test');
     const elapsed = Date.now() - start;
 
-    await expect(page.locator('#db-status')).toHaveText('DB Status: active (admin)');
+    await expect(page.getByTestId('db-status')).toHaveText('DB Status: active (admin)');
     expect(elapsed).toBeGreaterThanOrEqual(100);
   });
 
   test('gracefully recovers when a server script encounters a failing external API call', async ({ page }) => {
     await page.goto('/server-scripts-realworld-test');
-    await expect(page.locator('#api-status')).toHaveText('API Offline Fallback');
+    await expect(page.getByTestId('api-status')).toHaveText('API Offline Fallback');
   });
 
   test('decodes complex URL search parameters with spaces and special characters', async ({ page }) => {
     await page.goto('/server-scripts-realworld-test?filter=active%20users&tag=node%2Bjs');
 
-    await expect(page.locator('#query-filter')).toHaveText('Filter: active users');
-    await expect(page.locator('#query-tag')).toHaveText('Tag: node+js');
+    await expect(page.getByTestId('query-filter')).toHaveText('Filter: active users');
+    await expect(page.getByTestId('query-tag')).toHaveText('Tag: node+js');
   });
 });

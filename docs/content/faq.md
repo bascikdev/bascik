@@ -271,6 +271,12 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
 
+## Can a server script slow down other requests?
+
+Yes, if it executes long-running synchronous code or blocks Node's event loop.
+
+Server scripts (`<script data-bascik-server>`) execute in-process within the same Node.js runtime to eliminate fork overhead and process starvation. Because Node runs JavaScript on a single thread, synchronous computations (such as heavy regex matching or CPU loops) block the event loop while they run, delaying concurrent requests. Always use asynchronous APIs with `await`, pass `signal` to `fetch()` or database clients to respect `scripts.timeout`, and offload intensive CPU tasks to worker threads.
+
 ## Why did part of my page disappear after HTML minification?
 
 Current Bascik versions shield scripts, `<pre>`, and `<textarea>` before stripping HTML comments, so a literal `<!--` inside JavaScript or JSON-LD cannot consume the rest of the document. Scripts nested inside a container also remain in that container. If output still disappears, check for an unclosed ordinary HTML comment outside those raw-text regions and compare with `minify.html: false`, which disables page and component HTML minification.
@@ -325,3 +331,23 @@ Common causes:
 - **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
 
 Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).
+
+## Can Bascik handle form submissions and API requests?
+
+Yes. Define API route handlers in TypeScript or JavaScript under `src/api/` (such as `src/api/contact.ts` or `src/api/users/[id].ts`). Handlers take a standard WHATWG `Request` and return a standard `Response`. You can accept POST JSON, parse form bodies, set custom status codes, and issue cookies directly without external backend dependencies. Run `bascik --server` to serve API routes in production.
+
+## Do I need a separate backend server for my API?
+
+No. If you run Bascik with `bascik --server`, API routes run in-process on the same port and server as your pages and assets. If you prefer static CDN hosting for pages, you can also lift your `src/api/` handlers directly to Cloudflare Workers, Netlify Edge Functions, or AWS Lambda since they use standard web `Request` and `Response` interfaces.
+
+## Why does Bascik not include middleware chains or interceptors?
+
+Bascik favors explicit, standard TypeScript composition over implicit framework middleware. Because handlers take a standard `Request` and return a `Response`, you can compose auth guards, logging, or input validators using plain functions: `export const POST = withAuth(async (req) => ...);`. This keeps handlers transparent, portable, and easily testable without mocking framework internals.
+
+## How big a request body can an API route accept?
+
+By default, Bascik limits API route request bodies to `1048576` bytes (1 MB). You can configure this with `http.maxBodySize` in `bascik.config.ts`. Bascik counts bytes on the fly as they stream from the client and immediately terminates oversized requests with `413 Payload Too Large` without buffering the entire body into memory.
+
+## Why did my API route return 504?
+
+API route execution is guarded by `http.apiTimeout` (default: 10,000 ms). If your handler does not return a `Response` before this timeout elapses, Bascik aborts the request and responds with `504 Gateway Timeout`. Handlers receive a cooperative `AbortSignal` in their context to cancel long-running database queries or external fetch requests.

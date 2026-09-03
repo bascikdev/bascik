@@ -72,6 +72,32 @@ describe('formatCurrency', () => {
 });
 ```
 
+## Testing API Route Handlers
+
+Because Bascik API routes use the web standard `Request` and `Response` contract, you can unit test handlers directly by passing a `Request` object without spinning up a live network server or using heavy mock libraries:
+
+```ts
+// src/api/contact.test.ts
+import { describe, it, expect } from 'vitest';
+import { POST } from './contact.ts';
+
+describe('POST /api/contact', () => {
+  it('creates contact message successfully', async () => {
+    const request = new Request('http://localhost/api/contact', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice', email: 'alice@example.com' }),
+    });
+
+    const response = await POST(request, { params: {}, remoteIp: '127.0.0.1' });
+    expect(response.status).toBe(201);
+
+    const data = await response.json();
+    expect(data.ok).toBe(true);
+  });
+});
+```
+
 ## Property-Based Testing with fast-check
 
 For complex parsers, string token replacers, and mathematical transforms, use property-based testing (`fast-check`) to generate thousands of randomized inputs and verify system invariants across all edge cases:

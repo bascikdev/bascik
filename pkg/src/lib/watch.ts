@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
 import chokidar from "chokidar";
 import type { Stats } from "node:fs";
+import { resolve } from "node:path";
 import {
   pageProcessing,
   processAllPages,
@@ -18,6 +20,7 @@ import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { debounce } from "./debounce.ts";
+import { apiRouteRegistry } from "./server-api.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -187,6 +190,41 @@ export const watchFiles = async () => {
       .on("add", async () => processAllPages().catch(onWatchError))
       .on("change", async () => processAllPages().catch(onWatchError))
       .on("unlink", async () => processAllPages().catch(onWatchError)));
+  }
+
+  // Watch API routes directory in dev mode if it exists or routes are present
+  const apiDir = BascikConfig.directory?.api ?? "src/api";
+  if (!BascikConfig.isBuild && existsSync(resolve(process.cwd(), apiDir))) {
+    w(chokidar
+      .watch([apiDir], {
+        ...watchOptions,
+        ignoreInitial: true,
+        persistent: true,
+      })
+      .on("add", async (path) => {
+        try {
+          await apiRouteRegistry.invalidateFile(path);
+          eventEmitter.emit("api-route-changed", { path, type: "add" });
+        } catch (err) {
+          onWatchError(err);
+        }
+      })
+      .on("change", async (path) => {
+        try {
+          await apiRouteRegistry.invalidateFile(path);
+          eventEmitter.emit("api-route-changed", { path, type: "change" });
+        } catch (err) {
+          onWatchError(err);
+        }
+      })
+      .on("unlink", async (path) => {
+        try {
+          await apiRouteRegistry.invalidateFile(path);
+          eventEmitter.emit("api-route-changed", { path, type: "unlink" });
+        } catch (err) {
+          onWatchError(err);
+        }
+      }));
   }
 
   // Watch config file to print a restart hint when modified

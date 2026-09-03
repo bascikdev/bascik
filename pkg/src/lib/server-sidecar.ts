@@ -5,6 +5,7 @@ import { BascikConfig } from "./config.ts";
 export interface ServerScriptEntry {
   id: string;
   source: string;
+  modulePath?: string;
 }
 
 export interface ServerScriptsSidecar {
@@ -16,8 +17,8 @@ class ServerSidecarRegistry {
   private scripts = new Map<string, ServerScriptEntry>();
   private loadedSidecar: Record<string, ServerScriptEntry> | null = null;
 
-  recordScript(id: string, source: string): void {
-    this.scripts.set(id, { id, source });
+  recordScript(id: string, source: string, modulePath?: string): void {
+    this.scripts.set(id, { id, source, modulePath });
   }
 
   recordScripts(scripts: Record<string, ServerScriptEntry>): void {
@@ -105,12 +106,17 @@ export const extractServerScriptsToSidecar = (
   let scriptOrdinal = 0;
   return html.replace(
     /<script\b((?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi,
-    (_match, _openAttrs, scriptContent) => {
+    (_match, openAttrs, scriptContent) => {
       scriptOrdinal++;
       const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
-      serverSidecarRegistry.recordScript(id, scriptContent);
+      let srcPath: string | undefined;
+      const srcMatch = (openAttrs as string).match(/\bsrc=["']([^"']+)["']/i);
+      if (srcMatch) {
+        srcPath = srcMatch[1];
+      }
+      serverSidecarRegistry.recordScript(id, scriptContent, srcPath);
       if (outMap) {
-        outMap[id] = { id, source: scriptContent };
+        outMap[id] = { id, source: scriptContent, modulePath: srcPath };
       }
       return `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
     },

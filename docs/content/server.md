@@ -6,7 +6,7 @@ Bascik generates static output, HTML, CSS, and JS that a CDN or any file server 
 
 Server script source code never reaches the browser in any mode. In static builds, server script source is stripped from output HTML files and stored in a private build sidecar (`dist/.bascik/server-scripts.json`), leaving an inert placeholder (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) in the HTML. Browsers ignore scripts with custom MIME types without executing them or logging console errors. When `bascik --server` runs, it loads the sidecar at boot time and executes the server scripts on each request.
 
-The mechanism is `data-bascik-server`: a script tag that runs on the server on every request and injects its stdout into the page. Everything else, layout, navigation, styles, components, is still compiled at build time. You get the performance of static assets with the flexibility of server-rendered sections exactly where you need them.
+The mechanism is `data-bascik-server`: a script tag that runs on the server in-process on every request and injects its returned markup into the page. Everything else, layout, navigation, styles, components, is still compiled at build time. You get the performance of static assets with the flexibility of server-rendered sections exactly where you need them.
 
 ```sh
 bascik --build   # compile to dist/ (static assets)
@@ -15,60 +15,93 @@ bascik --server   # start the production HTTP server; runs data-bascik-server sc
 
 If your site has no `data-bascik-server` scripts, you do not need `bascik --server`: any static host will do.
 
+## Server Scripts vs API Routes
+
+Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, but they serve different architectural purposes:
+
+| Feature | Server Scripts (`data-bascik-server`) | API Routes (`src/api/*.ts`) |
+| :--- | :--- | :--- |
+| **Destination** | Injected directly into HTML pages | Standalone JSON, streaming, or binary HTTP endpoints |
+| **Methods** | GET only (page render) | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD` |
+| **Contract** | Returns HTML string markup | Takes WHATWG `Request` and returns WHATWG `Response` |
+| **Response Control** | Cannot set HTTP status code or custom headers | Full control over status codes, response headers, and cookies |
+| **Use Cases** | Page personalization, user greetings, auth state in UI | Form submissions, webhook receivers, authenticated REST APIs |
+
+Use `data-bascik-server` when rendering HTML into the document flow. Use API routes when returning data, receiving client submissions, or controlling response headers.
+
 ## Server scripts: `data-bascik-server`
 
-Tag a `<script>` block with `data-bascik-server` to run it at **request time** on the server instead of at build time. The script's stdout is injected into the page in place of the script tag, on every request.
+Tag a `<script>` block with `data-bascik-server` to run it at **request time** on the server. Server scripts run in-process through Bascik's script registry as ESM modules. The script returns markup (or uses a default exported function) which is injected into the page in place of the script tag on every request.
 
 ```html
 <script data-bascik-server>
-  const req = JSON.parse(process.env.BASCIK_REQUEST);
-  const name = (req.headers['x-display-name'] ?? 'Guest')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  console.log(`<p>Welcome, ${name}!</p>`);
+  import { escapeHtml } from '@bascik/bascik';
+
+  export default function({ req }) {
+    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    return `<p>Welcome, ${name}!</p>`;
+  }
 </script>
 ```
 
 This lets you personalize pages per visitor, reading session cookies, querying a database, or rendering content based on query parameters, without a full server framework.
 
-### Request context
+### Request context and arguments
 
-Every server script receives `process.env.BASCIK_REQUEST`, a JSON string with four fields:
+Every server script receives a context object `{ req }` as its first argument and execution options `{ signal }` as its second argument:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `path` | `string` | URL path without the query string, e.g. `"/about"` |
-| `method` | `string` | HTTP method in uppercase, e.g. `"GET"` |
-| `headers` | `object` | Request headers as string-to-string. HTTP/2 pseudo-headers (`:path`, `:method`, etc.) are excluded. |
-| `searchParams` | `object` | Query parameters as string-to-string, e.g. `{ "page": "2" }` |
+| `req.path` | `string` | URL path without the query string, e.g. `"/about"` |
+| `req.method` | `string` | HTTP method in uppercase, e.g. `"GET"` |
+| `req.headers` | `object` | Request headers as string-to-string. HTTP/2 pseudo-headers (`:path`, `:method`, etc.) are excluded. |
+| `req.searchParams` | `object` | Query parameters as string-to-string, e.g. `{ "page": "2" }` |
 
 ```html
 <script data-bascik-server>
-  const { path, method, headers, searchParams } = JSON.parse(process.env.BASCIK_REQUEST);
+  export default function({ req }) {
+    const page = parseInt(req.searchParams.page ?? '1', 10);
+    const sessionId = req.headers['cookie']?.match(/session=([^;]+)/)?.[1];
 
-  const page = parseInt(searchParams.page ?? '1', 10);
-  const sessionId = headers['cookie']?.match(/session=([^;]+)/)?.[1];
-
-  console.log(`<p>Page ${page} - session: ${sessionId ?? 'none'}</p>`);
+    return `<p>Page ${page} - session: ${sessionId ?? 'none'}</p>`;
+  }
 </script>
 ```
 
+> **Migration note:** Server scripts execute in-process. Request context is delivered explicitly via `{ req }`. For backward compatibility with earlier scripts, `process.stdout.write()`, `console.log()`, and `process.env.BASCIK_REQUEST` continue to be supported per-invocation, but returning a string from your handler function is the recommended pattern.
+
+### Timeouts and cancellation (`AbortSignal`)
+
+Server script execution is bounded by `scripts.timeout` in `bascik.config.ts`. Handlers receive `{ signal }` in the second argument. Pass `signal` to `fetch()` or database clients so long-running async calls are aborted automatically when the deadline expires:
+
+```html
+<script data-bascik-server>
+  export default async function({ req }, { signal } = {}) {
+    const res = await fetch('https://api.example.com/user', { signal });
+    const data = await res.json();
+    return `<div>User: ${escapeHtml(data.name)}</div>`;
+  }
+</script>
+```
+
+> **Event loop caveat:** Because server scripts run in-process, synchronous blocking code (such as `while(true) {}` or expensive CPU loops) blocks Node's single-threaded event loop and cannot be interrupted by timeouts. Always use asynchronous I/O and standard timers for background work.
+
 ### Using top-level `await` and `import`
 
-Server scripts are run as Node.js ESM modules. Both top-level `await` and top-level `import` work:
+Server scripts are run as Node.js ESM modules. Both `await` and `import` work seamlessly:
 
 ```html
 <script data-bascik-server>
   import { readFile } from 'node:fs/promises';
+  import { escapeHtml } from '@bascik/bascik';
 
-  const { path } = JSON.parse(process.env.BASCIK_REQUEST);
-  const slug = path.split('/').pop();
-  const content = await readFile(`./data/${slug}.json`, 'utf8');
-  const { title, body } = JSON.parse(content);
+  export default async function({ req }) {
+    const slug = req.path.split('/').pop();
+    const content = await readFile(`./data/${slug}.json`, 'utf8');
+    const { title, body } = JSON.parse(content);
 
-  console.log(`<h1>${title}</h1><p>${body}</p>`);
+    return `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(body)}</p>`;
+  }
 </script>
 ```
 
@@ -88,9 +121,12 @@ The script's working directory is your project root (`process.cwd()`), so relati
 
 <!-- runs on every request: greets the signed-in user -->
 <script data-bascik-server>
-  const { headers } = JSON.parse(process.env.BASCIK_REQUEST);
-  const user = headers['x-display-name'] ?? 'Guest';
-  console.log(`<p class="greeting">Hello, ${user}</p>`);
+  import { escapeHtml } from '@bascik/bascik';
+
+  export default function({ req }) {
+    const user = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    return `<p class="greeting">Hello, ${user}</p>`;
+  }
 </script>
 ```
 
@@ -132,45 +168,37 @@ When built, each generated HTML file (e.g. `dist/blog/hello-world.html`) retains
 
 ### Escaping user-controlled output
 
-The output of a server script is injected as raw HTML, so values from headers, cookies, query params, or database rows must be HTML-escaped before they are written to `stdout`. Bascik does not escape your output for you automatically, because that would get in the way of normal raw HTML output.
-
-Use a small helper in your own script, or keep it inline if you only need it once.
+The output of a server script is injected as raw HTML, so values from headers, cookies, query params, or database rows must be HTML-escaped before interpolation into markup. Bascik exports `escapeHtml` from `@bascik/bascik` to make escaping straightforward.
 
 ```html
 <script data-bascik-server>
-  const { headers, searchParams } = JSON.parse(process.env.BASCIK_REQUEST);
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  import { escapeHtml } from '@bascik/bascik';
 
-  const name = escapeHtml(headers['x-display-name'] ?? 'Guest');
-  const tab = escapeHtml(searchParams.tab ?? 'overview');
-  console.log(`<p>Hello ${name} - tab: ${tab}</p>`);
+  export default function({ req }) {
+    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    const tab = escapeHtml(req.searchParams.tab ?? 'overview');
+    return `<p>Hello ${name} - tab: ${tab}</p>`;
+  }
 </script>
 ```
 
-This keeps the escape logic explicit, local, and easy to customize for your app.
+This keeps data flow secure while allowing your script to emit raw HTML markup when needed.
 
 ## Practical examples
 
-> **Escape user-controlled output.** Any value from a request (cookies, query params, headers, database rows) must be HTML-escaped before writing with `console.log`. Keep the helper in your server script, or import a shared one, instead of relying on a hidden global.
+> **Escape user-controlled output.** Any value from a request (cookies, query params, headers, database rows) must be HTML-escaped before interpolating into template literals. Use `import { escapeHtml } from '@bascik/bascik'`.
 
 ### Reading request context
 
 ```html
 <script data-bascik-server>
-  const { headers, searchParams } = JSON.parse(process.env.BASCIK_REQUEST);
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  import { escapeHtml } from '@bascik/bascik';
 
-  const user = escapeHtml(headers['x-display-name'] ?? 'Guest');
-  const tab = escapeHtml(searchParams.tab ?? 'overview');
-  console.log(`<p>Hello ${user} - tab: ${tab}</p>`);
+  export default function({ req }) {
+    const user = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+    const tab = escapeHtml(req.searchParams.tab ?? 'overview');
+    return `<p>Hello ${user} - tab: ${tab}</p>`;
+  }
 </script>
 ```
 
@@ -181,17 +209,14 @@ Read a session cookie, look up the user in SQLite, and render a greeting.
 ```html
 <script data-bascik-server>
   import Database from 'better-sqlite3';
-  const { headers } = JSON.parse(process.env.BASCIK_REQUEST);
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  import { escapeHtml } from '@bascik/bascik';
 
-  const sessionId = headers['cookie']?.match(/session=([^;]+)/)?.[1];
-  const db = new Database('./data/app.db');
-  const user = sessionId && db.prepare('SELECT name FROM users WHERE session_id = ?').get(sessionId);
-  console.log(user ? `<p>Hello, ${escapeHtml(user.name)}</p>` : '<p>Not signed in.</p>');
+  export default function({ req }) {
+    const sessionId = req.headers['cookie']?.match(/session=([^;]+)/)?.[1];
+    const db = new Database('./data/app.db');
+    const user = sessionId && db.prepare('SELECT name FROM users WHERE session_id = ?').get(sessionId);
+    return user ? `<p>Hello, ${escapeHtml(user.name)}</p>` : '<p>Not signed in.</p>';
+  }
 </script>
 ```
 
@@ -202,17 +227,14 @@ Use `searchParams` to drive server-rendered pagination with no client-side JavaS
 ```html
 <script data-bascik-server>
   import Database from 'better-sqlite3';
-  const { searchParams } = JSON.parse(process.env.BASCIK_REQUEST);
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  import { escapeHtml } from '@bascik/bascik';
 
-  const page = Math.max(1, Number(searchParams.page ?? 1));
-  const db = new Database('./data/app.db');
-  const items = db.prepare('SELECT title FROM articles ORDER BY created_at DESC LIMIT 20 OFFSET ?').all((page - 1) * 20);
-  console.log(`<ul>${items.map(a => `<li>${escapeHtml(a.title)}</li>`).join('')}</ul>`);
+  export default function({ req }) {
+    const page = Math.max(1, Number(req.searchParams.page ?? 1));
+    const db = new Database('./data/app.db');
+    const items = db.prepare('SELECT title FROM articles ORDER BY created_at DESC LIMIT 20 OFFSET ?').all((page - 1) * 20);
+    return `<ul>${items.map(a => `<li>${escapeHtml(a.title)}</li>`).join('')}</ul>`;
+  }
 </script>
 ```
 
@@ -227,20 +249,18 @@ npm install pg
 ```html
 <script data-bascik-server>
   import pg from 'pg';
-  const escapeHtml = (value) => String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  import { escapeHtml } from '@bascik/bascik';
 
-  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-  const { rows } = await db.query('SELECT title FROM articles ORDER BY created_at DESC LIMIT 10');
-  await db.end();
-  console.log(`<ul>${rows.map(r => `<li>${escapeHtml(r.title)}</li>`).join('')}</ul>`);
+  export default async function() {
+    const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    const { rows } = await db.query('SELECT title FROM articles ORDER BY created_at DESC LIMIT 10');
+    await db.end();
+    return `<ul>${rows.map(r => `<li>${escapeHtml(r.title)}</li>`).join('')}</ul>`;
+  }
 </script>
 ```
 
-> **Connection pooling.** Each `data-bascik-server` block runs in a fresh Node.js child process, so in-process pools cannot be shared across requests. For production Postgres use an external pooler such as [PgBouncer](https://www.pgbouncer.org/).
+> **Connection pooling.** Because server scripts execute in-process within the same Node runtime, in-process database pools can be initialized and shared efficiently.
 
 ## Server configuration
 

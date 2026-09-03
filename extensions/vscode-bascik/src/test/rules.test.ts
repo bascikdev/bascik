@@ -2,6 +2,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { matchCompatibilityRules } from '../rules';
+import { analyzeApiRouteSource } from '../api-rules';
 
 suite('Bascik HTML Grammar', () => {
   test('highlights prop attribute directives with hyphenated targets', () => {
@@ -72,6 +73,38 @@ suite('Compatibility Rules Suite', () => {
       const js = 'const btn = document.getElementById("submit"); btn.classList.add("active");';
       const matches = matchCompatibilityRules(js, 'js');
       assert.strictEqual(matches.length, 0);
+    });
+  });
+
+  suite('API Route Diagnostics', () => {
+    test('reports error when no recognized method is exported', () => {
+      const code = 'export const helper = () => "not a method";';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'error' && d.message.includes('does not export any recognized HTTP method')));
+    });
+
+    test('reports warning for lowercase or mixed-case export that looks like a method', () => {
+      const code = 'export const post = async () => new Response("ok");';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'warning' && d.message.includes('must be uppercase')));
+    });
+
+    test('reports warning when handler return type is not Response or Promise<Response>', () => {
+      const code = 'export const GET = async (): Promise<string> => "hello";';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'warning' && d.message.includes('must return a standard WHATWG Response')));
+    });
+
+    test('reports info diagnostic when request.json() is called without try/catch', () => {
+      const code = 'export const POST = async (req: Request) => { const body = await req.json(); return Response.json(body); };';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(diags.some((d) => d.severity === 'info' && d.message.includes('try/catch')));
+    });
+
+    test('does not report info diagnostic when request.json() is within try/catch', () => {
+      const code = 'export const POST = async (req: Request) => { try { const body = await req.json(); return Response.json(body); } catch { return new Response("bad json", { status: 400 }); } };';
+      const diags = analyzeApiRouteSource(code);
+      assert.ok(!diags.some((d) => d.severity === 'info' && d.message.includes('try/catch')));
     });
   });
 });

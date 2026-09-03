@@ -38,6 +38,7 @@ import {
   MAX_PORT_INCREMENTS,
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
+import { apiRouteRegistry } from "./server-api.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
@@ -123,6 +124,7 @@ export interface BascikRequest {
   path?: string;
   headers: Record<string, string | string[] | undefined>;
   remoteIp: string;
+  rawStream?: any;
 }
 
 export interface BascikResponse {
@@ -280,18 +282,6 @@ export const createRequestHandler = () => {
         return;
       }
 
-      // ── Method guard: GET and HEAD only ──────────────────────────────────
-      const isHead = req.method === "HEAD";
-      if (req.method !== "GET" && !isHead) {
-        responseStatus = 405;
-        if (res.writable && typeof (res.writable as any).resume === "function") {
-          try { (res.writable as any).resume(); } catch { }
-        }
-        res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
-        res.end("Method Not Allowed");
-        return;
-      }
-
       // ── Path traversal guard for all requests ────────────────────────────
       if (
         pathname.includes("/../") ||
@@ -319,7 +309,28 @@ export const createRequestHandler = () => {
         res.end("Not Found");
         return;
       }
+
+      // ── API route matching and dispatch ──────────────────────────────────
+      // Runs before the GET/HEAD method guard so POST, PUT, DELETE, etc. work.
+      const apiMatch = apiRouteRegistry.match(pathname);
+      if (apiMatch) {
+        responseStatus = await apiRouteRegistry.dispatch(req, res, apiMatch, secHeaders);
+        return;
+      }
+
       pathname = baseRelativePathname;
+
+      // ── Method guard: GET and HEAD only ──────────────────────────────────
+      const isHead = req.method === "HEAD";
+      if (req.method !== "GET" && !isHead) {
+        responseStatus = 405;
+        if (res.writable && typeof (res.writable as any).resume === "function") {
+          try { (res.writable as any).resume(); } catch { }
+        }
+        res.respond(405, { "allow": "GET, HEAD", "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Method Not Allowed");
+        return;
+      }
 
       // ── Static asset (has extension, not .html) ──────────────────────────
       const ext = extname(pathname).toLowerCase();
@@ -819,6 +830,7 @@ export const startServerInstance = async (
 };
 
 export const startServer = async (): Promise<string> => {
+  await apiRouteRegistry.init();
   const enableTls = !!BascikConfig.http.tls?.enabled;
   if (enableTls) {
     const { startHttp2Server } = await import("./http2.ts");

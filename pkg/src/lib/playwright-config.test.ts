@@ -15,6 +15,7 @@ describe('Playwright project test selection', () => {
   it.each([
     [staticConfig, [
       '**/server-scripts.test.ts',
+      '**/api-routes.test.ts',
       '**/dev-server-reload.test.ts',
       '**/prod-server.test.ts',
       '**/preserve-server-form.test.ts',

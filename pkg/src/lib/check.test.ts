@@ -273,4 +273,50 @@ describe("checkProject", () => {
     );
     expect(errorSpy).not.toHaveBeenCalled();
   });
+
+  describe("API Route Validations (Prompt 49)", () => {
+    it("reports error when an API route file exports no recognized method handlers", async () => {
+      await setupProject({
+        "pages/index.html": "<p>hello</p>",
+        "src/api/invalid.ts": "export const helper = () => {};",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      await expect(checkProject()).resolves.toBe(false);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("no recognized HTTP method handler"),
+      );
+    });
+
+    it("reports error when two route files resolve to the same URL", async () => {
+      await setupProject({
+        "pages/index.html": "<p>hello</p>",
+        "src/api/users.ts": "export const GET = () => new Response('users');",
+        "src/api/users/index.ts": "export const GET = () => new Response('users index');",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      await expect(checkProject()).resolves.toBe(false);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Collision"),
+      );
+    });
+
+    it("reports warning when an exported name looks like a method but is not uppercase (e.g. Post or get)", async () => {
+      await setupProject({
+        "pages/index.html": "<p>hello</p>",
+        "src/api/users.ts": "export const get = () => new Response('users');\nexport const POST = () => new Response('created');",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      await expect(checkProject()).resolves.toBe(true);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('method export "get" must be uppercase'),
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
 });

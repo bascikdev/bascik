@@ -77,6 +77,7 @@ To keep deployment artifacts clean, the following files are excluded from static
 - **Page templates**: `.html` files in `src/pages/` are transpiled into compiled pages
 - **TypeScript files**: `.ts` source files used by build scripts or helper modules
 - **Other source files**: `.mjs`, `.cjs`, `.mts`, and `.cts` modules, source maps (`.map`), and Markdown (`.md`)
+- **API route handlers**: files in `src/api/` (`directory.api`) are runtime handlers executed in server mode and are never copied to static `dist/`. Because handler source code is strictly protected and never published, accessing private environment secrets via `process.env` in handlers remains secure.
 - **Test files**: any test file matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
 - **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into `<head>`)
 - **Hidden paths**: every dotfile and every file below a dot-directory

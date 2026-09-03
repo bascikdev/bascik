@@ -78,4 +78,19 @@ test.describe('Static Assets & Inlined Styles handling', () => {
     const res3 = await request.get('/inlined-global.css');
     expect(res3.status()).toBe(404);
   });
+
+  test('does not leak API handler source code into build output or static assets', async () => {
+    const API_MARKER = 'SECRET_SOURCE_CODE_MARKER_API_HANDLER_DO_NOT_LEAK_12345';
+    const distDirectory = join(import.meta.dirname, '..', 'dist');
+    const entries = await readdir(distDirectory, { recursive: true, withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile());
+    const contents = await Promise.all(
+      files.map((entry) => readFile(join(entry.parentPath, entry.name), 'utf8').catch(() => '')),
+    );
+
+    // No emitted file should contain the API handler source code marker
+    expect(contents.some((content) => content.includes(API_MARKER))).toBe(false);
+    // No .ts file from src/api should be in dist/
+    expect(files.some((f) => f.name.endsWith('.ts'))).toBe(false);
+  });
 });
