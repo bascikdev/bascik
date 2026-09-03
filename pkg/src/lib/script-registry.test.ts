@@ -208,7 +208,7 @@ describe("ScriptRegistry", () => {
   });
 
   // 10. A hung async module hits the timeout and the AbortSignal fires.
-  it("times out hung async modules and signals abort via AbortSignal", async () => {
+  it("times out hung async modules and signals abort via AbortSignal with exact fake timer advancement", async () => {
     const filePath = join(tempDir, "timeout-handler.mjs");
     await writeFile(
       filePath,
@@ -222,11 +222,154 @@ describe("ScriptRegistry", () => {
     );
 
     const registry = new ScriptRegistry({ isDev: false });
-    const result = await registry.invoke(filePath, {}, { timeoutMs: 50 });
+    // Pre-load module while real timers / async import work normally
+    await registry.load(filePath);
 
-    expect(result.ok).toBe(false);
-    expect(result.timedOut).toBe(true);
-    expect(result.error?.message).toContain("50ms");
+    vi.useFakeTimers();
+    try {
+      const invokePromise = registry.invoke(filePath, {}, { timeoutMs: 10000 });
+
+      // Pending before deadline
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(vi.getTimerCount()).toBe(1);
+
+      // Exactly at deadline
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await invokePromise;
+
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.error?.message).toContain("10000ms");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles race condition where upstream abort fires before timeout", async () => {
+    const filePath = join(tempDir, "upstream-abort.mjs");
+    await writeFile(
+      filePath,
+      `export default async function(context, { signal }) {
+        return new Promise((resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new Error('Aborted upstream'));
+          });
+        });
+      }`
+    );
+
+    const controller = new AbortController();
+    const registry = new ScriptRegistry({ isDev: false });
+    await registry.load(filePath);
+
+    vi.useFakeTimers();
+    try {
+      const invokePromise = registry.invoke(
+        filePath,
+        {},
+        { timeoutMs: 10000, signal: controller.signal }
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+      controller.abort();
+
+      const result = await invokePromise;
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cleans up timer when handler resolves before timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const filePath = join(tempDir, "fast-resolve.mjs");
+      await writeFile(
+        filePath,
+        `export default async function() {
+          return 'fast-result';
+        }`
+      );
+
+      const registry = new ScriptRegistry({ isDev: false });
+      const result = await registry.invoke(filePath, {}, { timeoutMs: 10000 });
+
+      expect(result.ok).toBe(true);
+      expect(result.value).toBe("fast-result");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ensures a canceled late timer callback cannot mutate completed result or trigger late abort", async () => {
+    const filePath = join(tempDir, "fast-no-late-abort.mjs");
+    await writeFile(
+      filePath,
+      `export default async function(context, { signal }) {
+        return 'quick-value';
+      }`
+    );
+
+    const registry = new ScriptRegistry({ isDev: false });
+    await registry.load(filePath);
+
+    vi.useFakeTimers();
+    try {
+      const result = await registry.invoke(filePath, {}, { timeoutMs: 10000 });
+      expect(result.ok).toBe(true);
+      expect(result.value).toBe("quick-value");
+      expect(result.timedOut).toBeUndefined();
+
+      // Advance past timeout
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(result.ok).toBe(true);
+      expect(result.timedOut).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cleans up timer when handler rejects before timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const filePath = join(tempDir, "fast-reject.mjs");
+      await writeFile(
+        filePath,
+        `export default async function() {
+          throw new Error('fast-error');
+        }`
+      );
+
+      const registry = new ScriptRegistry({ isDev: false });
+      const result = await registry.invoke(filePath, {}, { timeoutMs: 10000 });
+
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(false);
+      expect(result.error?.message).toBe("fast-error");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cleans up timer and handles module load failure before invocation", async () => {
+    vi.useFakeTimers();
+    try {
+      const nonExistentPath = join(tempDir, "does-not-exist.mjs");
+      const registry = new ScriptRegistry({ isDev: false });
+      const result = await registry.invoke(nonExistentPath, {}, { timeoutMs: 10000 });
+
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // 11. A synchronous infinite loop is NOT interrupted, pinning the documented limitation.
@@ -237,7 +380,7 @@ describe("ScriptRegistry", () => {
       filePath,
       `export default function() {
         const start = Date.now();
-        while (Date.now() - start < 60) {
+        while (Date.now() - start < 10) {
           // busy wait
         }
         return 'completed-sync';
@@ -245,8 +388,8 @@ describe("ScriptRegistry", () => {
     );
 
     const registry = new ScriptRegistry({ isDev: false });
-    // Setting timeout to 10ms cannot preempt synchronous execution during the busy loop
-    const result = await registry.invoke(filePath, {}, { timeoutMs: 10 });
+    // Setting timeout to 2ms cannot preempt synchronous execution during the busy loop
+    const result = await registry.invoke(filePath, {}, { timeoutMs: 2 });
     // Synchronous execution ran to completion on the event loop
     expect(result.ok).toBe(true);
     expect(result.value).toBe("completed-sync");

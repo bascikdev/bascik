@@ -18,6 +18,7 @@ import { Readable, PassThrough } from "node:stream";
 import { scriptRegistry } from "./script-registry.ts";
 import { BascikConfig } from "./config.ts";
 import { isNetworkResetError, type BascikRequest } from "./server.ts";
+import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
 
 export const ALLOWED_METHODS = [
   "GET",
@@ -43,6 +44,7 @@ export interface ExecuteApiRouteOptions {
   remoteIp: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  clock?: FrameworkClock;
 }
 
 export class PayloadTooLargeError extends Error {
@@ -149,7 +151,7 @@ export const createWebRequest = (
 export const executeApiRoute = async (
   options: ExecuteApiRouteOptions
 ): Promise<Response> => {
-  const { filePath, request, params, remoteIp, signal: userSignal, timeoutMs } = options;
+  const { filePath, request, params, remoteIp, signal: userSignal, timeoutMs, clock = nativeClock } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
   let loadedModule: any;
@@ -234,11 +236,11 @@ export const executeApiRoute = async (
     }
   }
 
-  let timer: NodeJS.Timeout | undefined;
+  let timer: TimeoutHandle | undefined;
   let didTimeout = false;
 
   if (effectiveTimeout && effectiveTimeout > 0) {
-    timer = setTimeout(() => {
+    timer = clock.setTimeout(() => {
       didTimeout = true;
       abortController.abort(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
     }, effectiveTimeout);
@@ -311,7 +313,7 @@ export const executeApiRoute = async (
     );
     return new Response("Internal Server Error", { status: 500 });
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) clock.clearTimeout(timer);
     if (upstreamSignalUnsubscribe) upstreamSignalUnsubscribe();
   }
 };

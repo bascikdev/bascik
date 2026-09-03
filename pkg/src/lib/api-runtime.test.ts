@@ -529,35 +529,271 @@ describe("API runtime execution", () => {
       expect(streamDestroyed).toBe(true);
     });
 
-    it("7. A hung handler hits apiTimeout, responds 504, and the AbortSignal fires", async () => {
-      let aborted = false;
-      const dummyModule = {
-        GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
-          return new Promise<Response>((_resolve) => {
-            signal.addEventListener("abort", () => {
-              aborted = true;
+    it("7. A hung handler hits apiTimeout, responds 504, and the AbortSignal fires with exact fake timer advancement", async () => {
+      vi.useFakeTimers();
+      try {
+        let aborted = false;
+        const dummyModule = {
+          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+            return new Promise<Response>((_resolve) => {
+              signal.addEventListener("abort", () => {
+                aborted = true;
+              });
+              // Never resolves
             });
-            // Never resolves
-          });
-        },
-      };
-      vi.spyOn(scriptRegistry, "load").mockResolvedValue({
-        filePath: "/app/src/api/timeout.ts",
-        module: dummyModule,
-        version: 0,
-      });
+          },
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/timeout.ts",
+          module: dummyModule,
+          version: 0,
+        });
 
-      const webReq = new Request("http://localhost:8080/api/timeout");
-      const res = await executeApiRoute({
-        filePath: "/app/src/api/timeout.ts",
-        request: webReq,
-        params: {},
-        remoteIp: "127.0.0.1",
-        timeoutMs: 50, // 50ms timeout
-      });
+        const webReq = new Request("http://localhost:8080/api/timeout");
+        const executePromise = executeApiRoute({
+          filePath: "/app/src/api/timeout.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
 
-      expect(res.status).toBe(504);
-      expect(aborted).toBe(true);
+        // 1ms before deadline
+        await vi.advanceTimersByTimeAsync(9999);
+        expect(aborted).toBe(false);
+        expect(vi.getTimerCount()).toBe(1);
+
+        // Exactly at deadline
+        await vi.advanceTimersByTimeAsync(1);
+        const res = await executePromise;
+
+        expect(res.status).toBe(504);
+        expect(aborted).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ensures a canceled late timer callback cannot mutate completed response or re-abort", async () => {
+      vi.useFakeTimers();
+      try {
+        let abortCount = 0;
+        let signalRef: AbortSignal | undefined;
+        const dummyModule = {
+          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+            signalRef = signal;
+            signal.addEventListener("abort", () => {
+              abortCount++;
+            });
+            return new Response("completed-quickly");
+          },
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/fast-race.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const webReq = new Request("http://localhost:8080/api/fast-race");
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/fast-race.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("completed-quickly");
+        expect(abortCount).toBe(0);
+        expect(signalRef?.aborted).toBe(false);
+
+        // Advance timers past the deadline
+        await vi.advanceTimersByTimeAsync(20000);
+        expect(abortCount).toBe(0);
+        expect(signalRef?.aborted).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer when upstream abort signal fires before timeout", async () => {
+      vi.useFakeTimers();
+      try {
+        let aborted = false;
+        const dummyModule = {
+          GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
+            return new Promise<Response>((_resolve) => {
+              signal.addEventListener("abort", () => {
+                aborted = true;
+              });
+            });
+          },
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/upstream-abort.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const controller = new AbortController();
+        const webReq = new Request("http://localhost:8080/api/upstream-abort");
+        const executePromise = executeApiRoute({
+          filePath: "/app/src/api/upstream-abort.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+          signal: controller.signal,
+        });
+
+        await vi.advanceTimersByTimeAsync(5000);
+        controller.abort();
+
+        const res = await executePromise;
+        expect(res.status).toBe(500);
+        expect(aborted).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer when handler resolves before timeout", async () => {
+      vi.useFakeTimers();
+      try {
+        const dummyModule = {
+          GET: async () => new Response("ok"),
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/fast.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const webReq = new Request("http://localhost:8080/api/fast");
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/fast.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(200);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer when handler throws before timeout", async () => {
+      vi.useFakeTimers();
+      try {
+        const dummyModule = {
+          GET: async () => {
+            throw new Error("handler-error");
+          },
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/error-fast.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const webReq = new Request("http://localhost:8080/api/error-fast");
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/error-fast.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(500);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer on derived HEAD request", async () => {
+      vi.useFakeTimers();
+      try {
+        const dummyModule = {
+          GET: async () => new Response("head-content", { headers: { "x-test": "val" } }),
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/head.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const webReq = new Request("http://localhost:8080/api/head", { method: "HEAD" });
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/head.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.headers.get("x-test")).toBe("val");
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer when handler returns invalid non-Response object", async () => {
+      vi.useFakeTimers();
+      try {
+        const dummyModule = {
+          GET: async () => ({ not: "a response" }),
+        };
+        vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+          filePath: "/app/src/api/invalid.ts",
+          module: dummyModule,
+          version: 0,
+        });
+
+        const webReq = new Request("http://localhost:8080/api/invalid");
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/invalid.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(500);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("cleans up timer when module load throws before invocation", async () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(scriptRegistry, "load").mockRejectedValue(new Error("load failed"));
+
+        const webReq = new Request("http://localhost:8080/api/load-fail");
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/load-fail.ts",
+          request: webReq,
+          params: {},
+          remoteIp: "127.0.0.1",
+          timeoutMs: 10000,
+        });
+
+        expect(res.status).toBe(500);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("8. A synchronous infinite loop is not interrupted (pins documented limitation)", async () => {
