@@ -35,6 +35,7 @@ import {
   handleHealthCheck,
   DEFAULT_DRAIN_TIMEOUT_MS,
   MAX_PORT_INCREMENTS,
+  createGracefulShutdownHandler,
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
@@ -773,51 +774,14 @@ export const startServerInstance = async (
   server.on("error", (error) => console.error(error));
 
   // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
-  let shuttingDown = false;
   const drainTimeout = BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
-  const gracefulShutdown = (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    setServerHealthState("draining");
-    console.log(`\nReceived ${signal}, shutting down gracefully…`);
-
-    // 1. Stop accepting new connections
-    if (typeof (server as any).closeIdleConnections === "function") {
-      try {
-        (server as any).closeIdleConnections();
-      } catch { }
-    }
-
-    // 2. Custom protocol cleanup callback (sockets/sessions)
-    if (onShutdown) {
-      try {
-        onShutdown();
-      } catch { }
-    }
-
-    if (typeof (server as any).closeAllConnections === "function") {
-      try {
-        (server as any).closeAllConnections();
-      } catch { }
-    }
-
-    // 3. Await registered shutdown handlers (watchers, exec children)
-    runShutdownHandlers().catch((err) => {
-      console.error("[bascik] Error running shutdown handlers:", err);
-    });
-
-    server.close((err) => {
-      if (err) console.error("Error closing server:", err);
-      process.exit(0);
-    });
-
-    // Force exit if server close hangs past configured drain timeout
-    setTimeout(() => {
-      console.error("Graceful shutdown timeout: forcing exit");
-      process.exit(1);
-    }, drainTimeout).unref();
-  };
+  const gracefulShutdown = createGracefulShutdownHandler({
+    server,
+    drainTimeout,
+    onShutdown,
+    runShutdownHandlers,
+  });
 
   process.setMaxListeners(process.getMaxListeners() + 2);
   const sigtermHandler = () => { void gracefulShutdown("SIGTERM"); };
