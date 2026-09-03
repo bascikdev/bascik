@@ -92,6 +92,7 @@ export const NAV: NavSection[] = [
       { href: '/internals/transpilation-pipeline', label: 'Transpilation Pipeline' },
       { href: '/internals/scoping-system', label: 'Scoping System' },
       { href: '/internals/server', label: 'Server Architecture' },
+      { href: '/internals/time-boundaries', label: 'Time Boundaries' },
       { href: '/internals/diagnostics', label: 'Diagnostics' },
       { href: '/internals/minification', label: 'Minification' },
       { href: '/internals/testing', label: 'Testing Internals' },
