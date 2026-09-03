@@ -27,7 +27,6 @@ import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
-import { escapeHtml } from "./escape-html.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
   ATTR,

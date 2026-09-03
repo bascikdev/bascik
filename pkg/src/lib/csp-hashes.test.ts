@@ -10,7 +10,7 @@ vi.mock("./config.js", () => ({
 
 import { cspHashCollector } from "./csp-hashes.ts";
 import { BascikConfig } from "./config.ts";
-import { readFile, rm, mkdir } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";

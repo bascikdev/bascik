@@ -35,10 +35,10 @@ describe("API runtime execution", () => {
 
   it("routes to the exported method handler", async () => {
     const dummyModule = {
-      GET: async (req: Request, ctx: { params: Record<string, string>; remoteIp: string }) => {
+      GET: async (_req: Request, ctx: { params: Record<string, string>; remoteIp: string }) => {
         return Response.json({ ok: true, method: "GET", remoteIp: ctx.remoteIp });
       },
-      POST: async (req: Request, ctx: { params: Record<string, string> }) => {
+      POST: async (req: Request, _ctx: { params: Record<string, string> }) => {
         const body = await req.json();
         return Response.json({ ok: true, body }, { status: 201 });
       },
@@ -480,10 +480,8 @@ describe("API runtime execution", () => {
 
     it("6. The stream is destroyed on limit exceeded, not drained", async () => {
       let streamDestroyed = false;
-      let handlerInvoked = false;
       const dummyModule = {
         POST: async (req: Request) => {
-          handlerInvoked = true;
           await req.text();
           return Response.json({ ok: true });
         },
@@ -535,7 +533,7 @@ describe("API runtime execution", () => {
       let aborted = false;
       const dummyModule = {
         GET: async (_req: Request, _ctx: any, { signal }: { signal: AbortSignal }) => {
-          return new Promise<Response>((resolve) => {
+          return new Promise<Response>((_resolve) => {
             signal.addEventListener("abort", () => {
               aborted = true;
             });
@@ -657,7 +655,7 @@ describe("API runtime execution", () => {
       });
 
       const webReq = new Request("http://localhost:8080/api/client-disconnect");
-      const res = await executeApiRoute({
+      await executeApiRoute({
         filePath: "/app/src/api/client-disconnect.ts",
         request: webReq,
         params: {},

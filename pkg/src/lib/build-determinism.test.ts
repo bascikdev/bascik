@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdir, rm, writeFile, readFile, readdir, stat } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -42,22 +42,6 @@ vi.mock("./config.js", () => ({
 
 import { transpilePage } from "./processing.ts";
 import { BascikConfig } from "./config.ts";
-
-async function getAllFiles(dir: string, baseDir: string = dir): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  const entries = await readdir(dir);
-  for (const entry of entries) {
-    const fullPath = join(dir, entry);
-    const relPath = fullPath.slice(baseDir.length + 1);
-    const st = await stat(fullPath);
-    if (st.isDirectory()) {
-      Object.assign(result, await getAllFiles(fullPath, baseDir));
-    } else {
-      result[relPath] = await readFile(fullPath, "utf-8");
-    }
-  }
-  return result;
-}
 
 describe("Build determinism", () => {
   it("transpiling pages with components, scoped IDs, and attributes produces byte-identical output across runs", async () => {

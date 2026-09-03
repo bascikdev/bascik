@@ -16,7 +16,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { resolveCliAction } from "./cli.ts";
-import { matchesPageGlob, filterPagesByOnlyGlobs } from "./targeted-build.ts";
+import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector, type BuildManifest } from "./manifest.ts";
 import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
 import { generateSitemapFiles } from "./sitemap.ts";

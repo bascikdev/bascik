@@ -36,22 +36,6 @@ const mockExecFile = _mockExecFile;
 const mockRm = _mockRm;
 const mockPlatform = (os as any).platform as ReturnType<typeof vi.fn>;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const makeExecSucceed = () => {
-  mockExec.mockImplementation(
-    (_cmd: string, cb: (err: null, stdout: string, stderr: string) => void) => {
-      cb(null, "", "");
-    },
-  );
-};
-
-const makeExecFail = (msg = "openssl not found") => {
-  mockExec.mockImplementation((_cmd: string, cb: (err: Error) => void) => {
-    cb(new Error(msg));
-  });
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {

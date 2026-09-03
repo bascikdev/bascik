@@ -84,9 +84,8 @@ const rewriteImageSetFunctions = (css: string, base: string): string => {
   const imageSetPattern = /(?:-webkit-)?image-set\(/gi;
   let result = "";
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
 
-  while ((match = imageSetPattern.exec(css)) !== null) {
+  while (imageSetPattern.exec(css) !== null) {
     let position = imageSetPattern.lastIndex;
     let depth = 1;
     let quote = "";
@@ -162,7 +161,7 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
 
   return tag.replace(
     /\s([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g,
-    (match, rawName: string, rawValue: string, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+    (match, rawName: string, _rawValue: string, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
       const name = rawName.toLowerCase();
       const value = doubleValue ?? singleValue ?? unquotedValue ?? "";
       let rewritten = value;

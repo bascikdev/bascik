@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';

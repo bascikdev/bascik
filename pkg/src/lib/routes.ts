@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";

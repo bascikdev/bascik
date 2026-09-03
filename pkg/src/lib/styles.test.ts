@@ -30,7 +30,6 @@ import {
   resolveCssImportsSync,
   hoistCssImports,
 } from "./styles.ts";
-import { minifyCss } from "./css-minifier.ts";
 import { prefixElementAttribute } from "./javascript.ts";
 import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";

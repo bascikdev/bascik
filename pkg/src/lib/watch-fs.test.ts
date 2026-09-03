@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm, writeFile, rename, unlink, mkdir } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm, writeFile, rename, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BascikConfig } from "./config.ts";
 
 describe("Watch Mode Real-Filesystem Scenarios (Prompt 44)", () => {
   let tempDir: string;

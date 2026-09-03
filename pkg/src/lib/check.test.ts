@@ -7,7 +7,6 @@ import {
   checkProject,
   formatFindingsHuman,
   formatFindingsJson,
-  type CheckFindings,
 } from "./check.ts";
 
 const { listPagesMock, listComponentsMock, deepReadDirFlatMock } = vi.hoisted(() => ({

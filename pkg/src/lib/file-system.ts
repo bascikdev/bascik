@@ -6,7 +6,7 @@ import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
-import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
+import { isStaticAssetPath } from "./asset-filter.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 

@@ -25,7 +25,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { execFile } from "node:child_process";
-import { writeFile, unlink, readFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;

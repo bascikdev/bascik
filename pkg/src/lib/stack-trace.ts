@@ -24,7 +24,7 @@ export const cleanStackTrace = (
 
   const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath}):(\\d+)`, "g");
 
-  const mappedTrace = rawTrace.replace(regex, (match, lineStr) => {
+  const mappedTrace = rawTrace.replace(regex, (_match, lineStr) => {
     const lineNum = parseInt(lineStr, 10);
     const mappedLine = lineOffset + lineNum - 1;
     return `${realPath}:${mappedLine}`;

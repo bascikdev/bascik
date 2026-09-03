@@ -6,7 +6,6 @@ import {
   ScriptRegistry,
   scriptRegistry,
   type ScriptInvocationContext,
-  type ScriptExecutionResult,
 } from "./script-registry.ts";
 
 describe("ScriptRegistry", () => {
@@ -20,7 +19,7 @@ describe("ScriptRegistry", () => {
 
   afterEach(async () => {
     scriptRegistry.clear();
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    await rm(tempDir, { recursive: true, force: true }).catch(() => { });
   });
 
   // 1. Loading by resolved path returns the same module instance twice.
@@ -149,7 +148,7 @@ describe("ScriptRegistry", () => {
       }`
     );
 
-    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     const registry = new ScriptRegistry({ isDev: false });
     const result = await registry.invoke(filePath, {}, { originalSourcePath: "src/pages/index.html", lineOffset: 12 });
@@ -175,7 +174,7 @@ describe("ScriptRegistry", () => {
       }`
     );
 
-    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     const registry = new ScriptRegistry({ isDev: false });
     const result = await registry.invoke(filePath, {});
@@ -197,7 +196,7 @@ describe("ScriptRegistry", () => {
       }`
     );
 
-    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
 
     const registry = new ScriptRegistry({ isDev: false });
     const result = await registry.invoke(filePath, {});

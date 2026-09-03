@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { getSecurityHeaders } from "./server.ts";
 
 describe("Security Headers (Prompt 45)", () => {

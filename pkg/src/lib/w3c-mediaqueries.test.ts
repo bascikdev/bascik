@@ -13,10 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   convertCssElementSelectorsToClasses,
-  prefixKeyframes,
   scopeCssCustomProperties,
-  scopeLayerNames,
-  scopeContainerNames,
   scopeInlineStyleTags,
   shieldCssStrings,
 } from './styles.ts';

@@ -371,6 +371,41 @@ describe("index.ts CLI runner functions", () => {
       }
     });
 
+    it("uses custom logger option for check output instead of console.log", async () => {
+      const { runCli } = await import("./index.ts");
+      const customLogger = vi.fn();
+      const consoleLogSpy = vi.spyOn(console, "log");
+      try {
+        vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+          errors: 0,
+          warnings: 1,
+          pagesChecked: 1,
+          componentsChecked: 0,
+          items: [
+            {
+              category: "unmatched-tag",
+              severity: "warning",
+              message: "<model-viewer>",
+              locations: [{ filePath: "pages/index.html", line: 1 }],
+            },
+          ],
+        });
+        const res = await runCli(["--check", "--json"], {
+          exitOnFinish: false,
+          logger: customLogger,
+        });
+        expect(res.action).toBe("check");
+        expect(res.exitCode).toBe(0);
+        expect(customLogger).toHaveBeenCalled();
+        const logged = customLogger.mock.calls[0][0];
+        const parsed = JSON.parse(logged);
+        expect(parsed.warnings).toBe(1);
+        expect(consoleLogSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleLogSpy.mockRestore();
+      }
+    });
+
     it("reports invalid config shape through check findings model instead of startup crash", async () => {
       const dir = await mkdtemp(join(tmpdir(), "bascik-cli-check-invalid-config-"));
       try {

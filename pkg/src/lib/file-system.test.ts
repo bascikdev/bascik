@@ -16,7 +16,7 @@ import {
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
-import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
+import { readdir, rm, copyFile, readFile, writeFile } from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
 

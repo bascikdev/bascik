@@ -16,7 +16,6 @@
 
 import { Readable, PassThrough } from "node:stream";
 import { scriptRegistry } from "./script-registry.ts";
-import { cleanStackTrace } from "./stack-trace.ts";
 import { BascikConfig } from "./config.ts";
 import { isNetworkResetError, type BascikRequest } from "./server.ts";
 

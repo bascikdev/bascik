@@ -1,10 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   RateLimiter,
   getClientIp,
-  DEFAULT_RATE_LIMIT_WINDOW_MS,
-  DEFAULT_RATE_LIMIT_MAX,
-  MAX_TRACKED_IPS,
 } from "./rate-limit.ts";
 
 describe("getClientIp", () => {

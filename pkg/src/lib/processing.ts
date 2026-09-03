@@ -56,7 +56,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -93,7 +93,7 @@ import { minifyJs } from "./js-minifier.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
-import { deriveInstanceId, getUniqueId } from "./names.ts";
+import { deriveInstanceId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";

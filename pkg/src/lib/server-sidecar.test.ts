@@ -13,7 +13,7 @@ import {
   extractServerScriptsToSidecar,
 } from "./server-sidecar.ts";
 import { htmlHasServerScripts, executeServerScripts } from "./server-scripts.ts";
-import { readFile, rm, mkdir } from "node:fs/promises";
+import { rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -50,11 +50,9 @@ describe("server-scripts sidecar", () => {
     const rawHtml = `<script data-bascik-server>console.log("hello");</script>`;
     extractServerScriptsToSidecar(rawHtml, "src/pages/test.html");
 
-    const sidecarPath = join(outDir, ".bascik", "server-scripts.json");
     await mkdir(join(outDir, ".bascik"), { recursive: true });
 
     // Write sidecar
-    const oldOut = (serverSidecarRegistry as any);
     const scripts = serverSidecarRegistry.getAllScripts();
     expect(Object.keys(scripts).length).toBe(1);
 

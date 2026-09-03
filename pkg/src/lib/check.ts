@@ -650,6 +650,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
           category: "component-structure-order",
           severity: "warning",
           message: "component template convention: place <script> blocks after HTML markup.",
+          // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
           locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstScript) }],
         });
       }
@@ -659,6 +660,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
           category: "component-structure-order",
           severity: "warning",
           message: "component template convention: place <style> blocks above HTML markup.",
+          // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
           locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
         });
       }

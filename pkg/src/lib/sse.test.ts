@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   SseManager,
-  DEFAULT_HEARTBEAT_INTERVAL_MS,
-  DEFAULT_MAX_SSE_CONNECTIONS,
 } from "./sse.ts";
 
 describe("SseManager", () => {

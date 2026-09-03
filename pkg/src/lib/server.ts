@@ -1,6 +1,5 @@
 import { stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";

@@ -2476,7 +2476,6 @@ describe("startServerInstance signal handler cleanup", () => {
   });
 
   it("rejects with RangeError if port search exceeds 65535", async () => {
-    let portAttempt = 65535;
     const mockOverflowServer: any = {
       once: vi.fn((event: string, cb: any) => {
         if (event === "error") {
@@ -2484,8 +2483,7 @@ describe("startServerInstance signal handler cleanup", () => {
         }
         return mockOverflowServer;
       }),
-      listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
-        portAttempt = port;
+      listen: vi.fn((_port: number, _hostnameOrCb: any, _cb?: () => void) => {
         return mockOverflowServer;
       }),
       on: vi.fn().mockReturnThis(),
@@ -2502,7 +2500,7 @@ describe("startServerInstance signal handler cleanup", () => {
     try {
       const mockServer: any = {
         once: vi.fn().mockReturnThis(),
-        listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
+        listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
           const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
           callback?.();
           return mockServer;
@@ -2532,7 +2530,7 @@ describe("startServerInstance signal handler cleanup", () => {
     try {
       const mockServer: any = {
         once: vi.fn().mockReturnThis(),
-        listen: vi.fn((port: number, hostnameOrCb: any, cb?: () => void) => {
+        listen: vi.fn((_port: number, hostnameOrCb: any, cb?: () => void) => {
           const callback = typeof hostnameOrCb === "function" ? hostnameOrCb : cb;
           callback?.();
           return mockServer;

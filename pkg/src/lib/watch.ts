@@ -19,7 +19,6 @@ import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
-import { debounce } from "./debounce.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 
 export const watchFiles = async () => {
@@ -32,10 +31,6 @@ export const watchFiles = async () => {
   const watchers: ReturnType<typeof chokidar.watch>[] = [];
   const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };
   registerShutdownHandler(() => Promise.all(watchers.map(watcher => watcher.close())).then(() => { }));
-
-  const debouncedProcessAllPages = debounce(() => {
-    processAllPages().catch(onWatchError);
-  }, 50);
 
   const watchOptions: NonNullable<Parameters<typeof chokidar.watch>[1]> = {
     atomic: true,
@@ -104,7 +99,7 @@ export const watchFiles = async () => {
           !!(stats?.isFile() && !path.endsWith(".html")),
         persistent: !BascikConfig.isBuild,
       })
-      .on("add", (path) => {
+      .on("add", (_path) => {
         if (initialScanDone) processAllPages().catch(onWatchError);
       })
       .on("change", (path) => pageProcessing(path).catch(onWatchError))

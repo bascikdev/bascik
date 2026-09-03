@@ -38,12 +38,10 @@
  * - Scripts run during both `bascik` (dev) and `bascik --build` (production).
  */
 
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
-import { freemem, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -75,9 +73,6 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
-
-/** Per-build-script execution timeout (ms). Keeps a hung script from hanging the build forever. */
-const BUILD_SCRIPT_TIMEOUT = 60_000;
 
 // ─── Build-script output cache ───────────────────────────────────────────────
 // Caches child-process output on disk, keyed by a SHA-256 hash of the script

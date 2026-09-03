@@ -12,11 +12,10 @@
  */
 
 import { readdir } from "node:fs/promises";
-import { join, resolve, relative, extname } from "node:path";
+import { join, relative, extname } from "node:path";
 import { existsSync } from "node:fs";
-import { BascikConfig } from "./config.ts";
 import { extractRouteParamNames, isDynamicRoute } from "./routes.ts";
-import { withBasePath, stripBasePath } from "./base-path.ts";
+import { withBasePath } from "./base-path.ts";
 
 export interface ApiRouteDefinition {
   /** Normalized route path, e.g. "/api/users" or "/api/users/[id]" (including base if applicable) */

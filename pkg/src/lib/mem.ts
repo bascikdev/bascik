@@ -1,7 +1,6 @@
 import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
 import { getHttpPath } from "./paths.ts";
-import { getRelativePath } from "./file-system.ts";
 import { htmlHasServerScripts } from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
