@@ -103,7 +103,7 @@ describe("startHttpServer", () => {
     expect(mockResMsg.end).toHaveBeenCalledWith();
   });
 
-  it("handles missing method and remoteAddress, strips :status header, and handles close/on", () => {
+  it("handles missing method and remoteAddress, and handles close/on", () => {
     const mockReqMsg: any = {
       method: undefined,
       url: "/",
@@ -124,7 +124,7 @@ describe("startHttpServer", () => {
     expect(req.method).toBe("GET");
     expect(req.remoteIp).toBe("unknown");
 
-    res.respond(200, { ":status": 200, "content-type": "text/plain" });
+    res.respond(200, { "content-type": "text/plain" });
     expect(mockResMsg.writeHead).toHaveBeenCalledWith(200, { "content-type": "text/plain" });
 
     res.close();

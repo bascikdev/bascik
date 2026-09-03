@@ -117,7 +117,7 @@ vi.mock("./mime.js", () => ({
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 import { startHttp2Server } from "./http2.ts";
-import { _rateLimiter, startServerInstance } from "./server.ts";
+import { resetActiveRateLimiter, startServerInstance } from "./server.ts";
 import { mem } from "./mem.ts";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -138,7 +138,7 @@ const mockStat = stat as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  _rateLimiter.clear();
+  resetActiveRateLimiter();
   mockMem.isBooting = false;
   // No exact-match pages by default: http2 falls back to mem.getPage (mocked per-test).
   mockMem.getPageExact.mockReturnValue(undefined);

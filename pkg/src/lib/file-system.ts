@@ -96,6 +96,18 @@ export async function copyReplicatePath(
   // Make dir path for file
   await mkdir(destDir, { recursive: true });
 
+  // Helper: compare generated/transformed text hash with destination file hash and write if changed
+  const writeIfChanged = async (content: string, isMinified = false): Promise<void> => {
+    const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
+    const contentHash = createHash("sha256").update(content).digest("hex");
+    manifestCollector.recordFile(destPath, content);
+    if (contentHash === destHash) return;
+    await writeFile(destPath, content);
+    if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+      console.log(isMinified ? "copied (minified):" : "copied:", displayRelativePath(src));
+    }
+  };
+
   // Only copy if file hashes differ
   try {
     const isMinifyCss = BascikConfig.minify?.css ?? false;
@@ -118,28 +130,14 @@ export async function copyReplicatePath(
         console.warn(`[bascik] CSS minification failed for ${src}, falling back to unminified copy:`, minErr);
         minified = css;
       }
-      const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
-      const minifiedHash = createHash("sha256").update(minified).digest("hex");
-      manifestCollector.recordFile(destPath, minified);
-      if (minifiedHash === destHash) return;
-      await writeFile(destPath, minified);
-      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log("copied (minified):", displayRelativePath(src));
-      }
+      await writeIfChanged(minified, true);
       return;
     } else if (BascikConfig.base !== "/" && (isCss || isWebManifest)) {
       const source = (await readFile(src)).toString();
       const transformed = isCss
         ? rewriteCssBasePaths(source, BascikConfig.base)
         : rewriteManifestBasePaths(source, BascikConfig.base);
-      const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
-      const transformedHash = createHash("sha256").update(transformed).digest("hex");
-      manifestCollector.recordFile(destPath, transformed);
-      if (transformedHash === destHash) return;
-      await writeFile(destPath, transformed);
-      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log("copied:", displayRelativePath(src));
-      }
+      await writeIfChanged(transformed, false);
       return;
     } else if (minifyJsCfg && src.endsWith(".js")) {
       const minifyFn = minifyJsCfg === true ? minifyJs : minifyJsCfg;
@@ -155,14 +153,7 @@ export async function copyReplicatePath(
         console.warn(`[bascik] JS minification failed for ${src}, falling back to unminified copy:`, minErr);
         minified = (await readFile(src)).toString();
       }
-      const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
-      const minifiedHash = createHash("sha256").update(minified).digest("hex");
-      manifestCollector.recordFile(destPath, minified);
-      if (minifiedHash === destHash) return;
-      await writeFile(destPath, minified);
-      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log("copied (minified):", displayRelativePath(src));
-      }
+      await writeIfChanged(minified, true);
       return;
     }
 
@@ -187,9 +178,22 @@ export const listPages = async () => {
   return deepReadDirFlat(BascikConfig.directory.pages, /\.html$/);
 };
 
+type NestedPaths = (string | NestedPaths)[];
+
+const flattenPaths = (items: NestedPaths): string[] => {
+  const result: string[] = [];
+  for (const item of items) {
+    if (Array.isArray(item)) {
+      result.push(...flattenPaths(item));
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+};
+
 // Taken from https://stackoverflow.com/a/71166133/1469690
-// Returns any[] because the recursive structure cannot be expressed as a fixed-depth generic.
-export const deepReadDir = async (dirPath: string, isRoot = true): Promise<any[]> => {
+const deepReadDir = async (dirPath: string, isRoot = true): Promise<NestedPaths> => {
   try {
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
@@ -218,9 +222,7 @@ export const deepReadDirFlat = async (
   dirPath: string,
   filter?: RegExp,
 ): Promise<string[]> => {
-  const files = (await deepReadDir(dirPath)).flat(
-    Number.POSITIVE_INFINITY,
-  ) as string[];
+  const files = flattenPaths(await deepReadDir(dirPath));
   if (!filter) return files;
   return files.filter((filePath) => `${filePath}`.match(filter));
 };
@@ -343,13 +345,5 @@ export const deleteDistDir = async (dirPath: string): Promise<void> => {
     // Don't check prior, per node.js doc's say not to because race conditions
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     console.error("Error Deleting Dist Directory", error);
-  }
-};
-
-export const createDir = async (path: string): Promise<void> => {
-  try {
-    await mkdir(path, { recursive: true });
-  } catch (error) {
-    console.error("Error Creating Dist Directory", error);
   }
 };

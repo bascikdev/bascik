@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   htmlHasServerScripts,
   executeServerScripts,
-  cleanStackTrace,
-  escapeHtml,
 } from "./server-scripts.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
+import { escapeHtml } from "./escape-html.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { execFile } from "node:child_process";

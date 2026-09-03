@@ -4,10 +4,10 @@ import {
   executeBuildScripts,
   extractScriptDeps,
   collectAllScriptDeps,
-  cleanStackTrace,
   SCRIPT_CACHE_VERSION,
   clearBuildScriptCaches,
 } from "./build-scripts.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 

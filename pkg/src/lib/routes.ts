@@ -6,10 +6,15 @@ import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
-import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
+import { runModule } from "./script-runner.ts";
+import {
+  ATTR,
+  ROUTES_FLAG,
+  BUILD_FLAG,
+  SERVER_FLAG,
+  SCRIPT_TAG_PREFIX,
+} from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
-
-export { stripAnsiEscapeCodes };
 
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
 const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
@@ -21,15 +26,6 @@ const WINDOWS_RESERVED_NAMES = new Set([
   "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
   "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
 ]);
-
-const BARE_TOKEN = String.raw`[^\s"'=<>\`]+`;
-const ATTR_VALUE = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN})`;
-const ATTR = String.raw`${BARE_TOKEN}(?:\s*=\s*${ATTR_VALUE})?`;
-const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
-const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`;
-const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})?`;
-
-const SCRIPT_TAG_PREFIX = "<script\\b";
 
 const ROUTES_SCRIPT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,

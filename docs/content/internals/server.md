@@ -51,8 +51,10 @@ For production HTTP/2 protocol parity during local development, enable TLS in `b
 
 ```ts
 export default {
-  prodServer: {
-    enableTls: true, // Server boots over https://localhost:8443 (HTTP/2)
+  http: {
+    tls: {
+      enabled: true, // Server boots over https://localhost:8443 (HTTP/2)
+    },
   },
 };
 ```
@@ -140,9 +142,9 @@ Pages containing `<script data-bascik-server>` blocks are executed on every requ
 3. **Markup injection:** The script's returned markup replaces the `<script data-bascik-server>` tag in the response HTML.
 4. **Source remapping:** Exceptions and stack traces are remapped back to source HTML filenames and line numbers (`stack-trace.ts`).
 
-### Caching and performance (`cacheHttp`)
+### Caching and performance (`http.httpCache`)
 
-Production mode enables `cacheHttp: true` by default:
+Production mode enables `http.httpCache: true` by default:
 
 - **ETag support:** Generates strong ETag hashes for HTML responses and returns `304 Not Modified` when the client's `if-none-match` header matches.
 - **Cache-Control headers:** Adds `Cache-Control: public, max-age=3600` to static assets.
@@ -166,7 +168,7 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 | Entry Module | `transpile.ts` | `serve.ts` |
 | Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
 | Brotli Quality | `BROTLI_MIN_QUALITY = 1` | `BROTLI_MAX_QUALITY = 11` |
-| HTTP Caching | Disabled (`cacheHttp: false`) | Enabled (`cacheHttp: true` with ETags & 304s) |
+| HTTP Caching | Disabled (`http.httpCache: false`) | Enabled (`http.httpCache: true` with ETags & 304s) |
 | Rate Limiting | Disabled | Active (500 req / 10s per IP) |
 | Live Reload SSE | Injected & active | Stripped & inactive |
 | File Watchers | Active for assets, pages, components | Inactive |

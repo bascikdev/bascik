@@ -46,10 +46,8 @@ export const sseManager = new SseManager();
 
 import { makeEtag } from "./names.ts";
 
-export { makeEtag };
-
 // ─── Security headers sent on every response ──────────────────────────────────
-export const SECURITY_HEADERS: Record<string, string> = {
+const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "SAMEORIGIN",
   "referrer-policy": "strict-origin-when-cross-origin",
@@ -73,10 +71,7 @@ export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> 
 
 // Weak stat-based ETag for static files: no extra file read needed
 export const makeStatEtag = (mtimeMs: number, size: number): string =>
-  `W/"${mtimeMs.toString(36)}-${fileStatSizeToString(size)}"`;
-
-// Keep formatting clean and fast
-const fileStatSizeToString = (size: number): string => size.toString(36);
+  `W/"${mtimeMs.toString(36)}-${size.toString(36)}"`;
 
 // ─── Per-IP rate limiting ─────────────────────────────────────────────────────
 export const RATE_WINDOW_MS = DEFAULT_RATE_LIMIT_WINDOW_MS;
@@ -104,15 +99,6 @@ export const resetActiveRateLimiter = (): void => {
     activeRateLimiter.destroy();
     activeRateLimiter = null;
   }
-};
-
-/** Exported for backward-compatibility with tests */
-export const _rateLimiter = {
-  clear() {
-    if (activeRateLimiter) {
-      activeRateLimiter.clear();
-    }
-  },
 };
 
 export const isRateLimited = (ip: string): boolean => {
