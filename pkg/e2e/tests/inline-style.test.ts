@@ -28,10 +28,6 @@ function cardTitle(card: Locator) {
   return card.locator('.bascik__inline-style__card-title');
 }
 
-function cardBody(card: Locator) {
-  return card.locator('.bascik__inline-style__card-body');
-}
-
 function highlightBox(card: Locator) {
   return card.locator('.bascik__inline-style__highlight-box');
 }

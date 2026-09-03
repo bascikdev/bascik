@@ -28,7 +28,6 @@ test.describe('w3c-selectors-test page', () => {
     const feat1 = page.getByTestId('feat-1');
     const reg1 = page.getByTestId('reg-1');
     const feat2 = page.getByTestId('feat-2');
-    const feat3 = page.getByTestId('feat-3');
 
     const feat1Bg = await feat1.evaluate((el) => getComputedStyle(el).backgroundColor);
     const reg1Bg = await reg1.evaluate((el) => getComputedStyle(el).backgroundColor);

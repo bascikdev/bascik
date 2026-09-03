@@ -1,5 +1,5 @@
 export const GET = async (
-  request: Request,
+  _request: Request,
   context: { params: Record<string, string>; remoteIp: string }
 ): Promise<Response> => {
   return Response.json({

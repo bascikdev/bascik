@@ -36,10 +36,6 @@ function mainCell(i: Locator) {
   return i.locator('.bascik__css-grid__main-cell');
 }
 
-function footer(i: Locator) {
-  return i.locator('.bascik__css-grid__footer-cell');
-}
-
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
