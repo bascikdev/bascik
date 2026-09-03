@@ -114,10 +114,6 @@ No. Bascik does not host a centralized component registry or index. Instead, Bas
 
 The copied files belong to your project and are meant to be customized. When you edit a copied component, `bascik-lock.json` detects the content modification via its recorded SHA-256 hash. If you later re-run `bascik add <package>`, Bascik protects your work by refusing to overwrite your modified files unless you explicitly pass the `--force` flag.
 
-## Is Bascik a good fit for a one-page site?
-
-Yes, it is one of the things Bascik is best at. A landing page, docs for one tool, a conference site, or an internal dashboard can be a single page with no router, no server, and no framework. Run `bascik --build` and deploy the `dist/` directory to any static host. See [Micro Sites](/how-to/micro-sites).
-
 ## Which templating library should I use with Bascik?
 
 **Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
