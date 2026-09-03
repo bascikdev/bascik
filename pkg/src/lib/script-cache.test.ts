@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -69,6 +69,123 @@ describe("script-cache configuration and scoping", () => {
     expect(remaining).toContain("new-entry.json");
     expect(remaining).not.toContain("old-entry.json");
 
+    await rm(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("script-cache - deterministic clock-driven TTL and throttle boundaries", () => {
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+
+  /** Fake clock whose `now()` is set explicitly per test; timer scheduling is unused by pruneScriptCache. */
+  const makeFakeClock = (initialNow: number) => {
+    let current = initialNow;
+    return {
+      now: () => current,
+      set: (value: number) => { current = value; },
+      setTimeout: () => { throw new Error("not used by pruneScriptCache"); },
+      clearTimeout: () => { },
+      setInterval: () => { throw new Error("not used by pruneScriptCache"); },
+      clearInterval: () => { },
+    };
+  };
+
+  let tempDir: string;
+
+  beforeEach(async () => {
+    resetScriptCachePruneThrottle();
+    tempDir = join(tmpdir(), `bascik-cache-clock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(tempDir, { recursive: true });
+  });
+
+  it("prunes an entry exactly at the seven-day TTL boundary (inclusive)", async () => {
+    const baseNow = Date.UTC(2026, 8, 3, 0, 0, 0);
+    const fileMtime = baseNow - SEVEN_DAYS_MS; // exactly SEVEN_DAYS_MS old
+    const filePath = join(tempDir, "exact-ttl.json");
+    await writeFile(filePath, "{}", "utf8");
+    await utimes(filePath, new Date(fileMtime), new Date(fileMtime));
+
+    const clock = makeFakeClock(baseNow);
+    await pruneScriptCache(tempDir, true, clock);
+
+    const remaining = await readdir(tempDir);
+    // now - mtimeMs === SEVEN_DAYS_MS is NOT > TTL, so the documented rule keeps it.
+    expect(remaining).toContain("exact-ttl.json");
+  });
+
+  it("prunes an entry one millisecond past the TTL boundary", async () => {
+    const baseNow = Date.UTC(2026, 8, 3, 0, 0, 0);
+    const fileMtime = baseNow - SEVEN_DAYS_MS - 1; // one ms older than the TTL
+    const filePath = join(tempDir, "just-older.json");
+    await writeFile(filePath, "{}", "utf8");
+    await utimes(filePath, new Date(fileMtime), new Date(fileMtime));
+
+    const clock = makeFakeClock(baseNow);
+    await pruneScriptCache(tempDir, true, clock);
+
+    const remaining = await readdir(tempDir);
+    expect(remaining).not.toContain("just-older.json");
+  });
+
+  it("keeps an entry one millisecond newer than the TTL boundary", async () => {
+    const baseNow = Date.UTC(2026, 8, 3, 0, 0, 0);
+    const fileMtime = baseNow - SEVEN_DAYS_MS + 1; // one ms newer than the TTL
+    const filePath = join(tempDir, "just-newer.json");
+    await writeFile(filePath, "{}", "utf8");
+    await utimes(filePath, new Date(fileMtime), new Date(fileMtime));
+
+    const clock = makeFakeClock(baseNow);
+    await pruneScriptCache(tempDir, true, clock);
+
+    const remaining = await readdir(tempDir);
+    expect(remaining).toContain("just-newer.json");
+  });
+
+  it("throttles non-forced pruning for one hour and resumes exactly at the boundary", async () => {
+    const baseNow = Date.UTC(2026, 8, 3, 0, 0, 0);
+    const clock = makeFakeClock(baseNow);
+
+    const oldFile = join(tempDir, "old-entry.json");
+    await writeFile(oldFile, "{}", "utf8");
+    const staleMtime = baseNow - SEVEN_DAYS_MS - 1;
+    await utimes(oldFile, new Date(staleMtime), new Date(staleMtime));
+
+    // First non-forced prune runs (throttle starts at 0) and removes the stale entry.
+    await pruneScriptCache(tempDir, false, clock);
+    expect(await readdir(tempDir)).not.toContain("old-entry.json");
+
+    // Re-create a stale entry and advance to just before the one-hour throttle boundary.
+    await writeFile(oldFile, "{}", "utf8");
+    await utimes(oldFile, new Date(staleMtime), new Date(staleMtime));
+    clock.set(baseNow + ONE_HOUR_MS - 1);
+    await pruneScriptCache(tempDir, false, clock);
+    expect(await readdir(tempDir)).toContain("old-entry.json"); // still throttled, no prune ran
+
+    // Advance to exactly the one-hour boundary: throttle has elapsed, prune runs.
+    clock.set(baseNow + ONE_HOUR_MS);
+    await pruneScriptCache(tempDir, false, clock);
+    expect(await readdir(tempDir)).not.toContain("old-entry.json");
+  });
+
+  it("forced pruning bypasses only the throttle, not the TTL retention policy", async () => {
+    const baseNow = Date.UTC(2026, 8, 3, 0, 0, 0);
+    const clock = makeFakeClock(baseNow);
+
+    const freshFile = join(tempDir, "fresh.json");
+    await writeFile(freshFile, "{}", "utf8");
+    // Freshly written file has an mtime effectively "now" on disk, well within the TTL.
+
+    // Exhaust the throttle first.
+    await pruneScriptCache(tempDir, false, clock);
+    // Immediately force again: throttle would normally block this, but force bypasses it.
+    await pruneScriptCache(tempDir, true, clock);
+
+    // The fresh file is not older than the seven-day TTL, so it survives even
+    // though the throttle was bypassed.
+    expect(await readdir(tempDir)).toContain("fresh.json");
+  });
+
+  afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 });

@@ -41,7 +41,26 @@ import { apiRouteRegistry } from "./server-api.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
-export const sseManager = new SseManager();
+// ─── SSE live-reload manager ──────────────────────────────────────────────────
+// Constructed lazily so its heartbeat timer is never created as an import-time
+// side effect; the timer only starts once the dev server actually handles its
+// first live-reload connection.
+let activeSseManager: SseManager | null = null;
+
+export const getSseManager = (): SseManager => {
+  if (!activeSseManager) {
+    activeSseManager = new SseManager();
+  }
+  return activeSseManager;
+};
+
+/** For testing or reconfiguration: reset the active SSE manager. */
+export const resetSseManager = (): void => {
+  if (activeSseManager) {
+    activeSseManager.destroy();
+    activeSseManager = null;
+  }
+};
 
 import { makeEtag } from "./names.ts";
 
@@ -522,6 +541,7 @@ export const createRequestHandler = () => {
         } catch { }
         if (openPagePath) mem.trackOpenPage(openPagePath);
 
+        const sseManager = getSseManager();
         const client = sseManager.addClient(res, openPagePath);
         if (!client) {
           return;
