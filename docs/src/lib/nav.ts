@@ -77,8 +77,10 @@ export const NAV: NavSection[] = [
       { href: '/how-to/markdown', label: 'Markdown' },
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
       { href: '/how-to/server-scripts', label: 'Server Scripts' },
-      { href: '/how-to/templating', label: 'Templating' },
-      { href: '/libraries', label: 'JavaScript Libraries' },
+      { href: '/how-to/templating', label: 'Templating' },      { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
+      { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
+      { href: '/how-to/sharing-components', label: 'Sharing Components' },
+      { href: '/how-to/micro-sites', label: 'Micro Sites' },      { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },
   {

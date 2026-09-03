@@ -1470,6 +1470,8 @@ Bascik adds zero JavaScript to output pages by default, but places no restrictio
 ### How to Include
 Add a CDN `<script src>` tag to the page `<head>` or a shared head component. Bascik passes external script tags through completely unchanged.
 
+**Bare specifiers do not work in client scripts.** Bascik does not rewrite `import x from 'some-package'` in a `<script type="module">`; the browser receives it verbatim and fails with `Failed to resolve module specifier`. Bare specifiers work only in `data-bascik-build` and `data-bascik-server` scripts, which run in Node.js. For an npm package with no CDN build, bundle it with esbuild as a `pipeline.exec` step (`phase: 'pre'`), write the bundle into `dist/assets/js/`, and import it from the page with a root-relative URL.
+
 ```html
 <head>
   <script src="https://unpkg.com/petite-vue" defer init></script>

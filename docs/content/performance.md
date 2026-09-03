@@ -115,6 +115,8 @@ Only preload what you actually use on the current page. Preloading resources tha
 
 > **MDN reference.** [`<link rel="preload">`](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/preload) on MDN documents every valid `as` value, CORS handling, and browser support notes.
 
+> **Fingerprinting and Lighthouse.** Content-hash asset fingerprinting is a CDN caching technique, not a Lighthouse technique. The `uses-long-cache-ttl` audit is unweighted in Lighthouse 10 and later, so fingerprinting will not move the score. Bascik inlines component CSS and JavaScript, so fingerprinting only applies to images, fonts, and other copied page assets. See [Asset Fingerprinting](/how-to/asset-fingerprinting).
+
 ## Prefetching the Next Page
 
 `<link rel="prefetch">` fetches a resource during idle time and caches it for a future navigation. When you know the user is very likely to go to a specific page next, like the next step of a checkout flow or the top item in your navigation, prefetch it and the navigation will feel instant.

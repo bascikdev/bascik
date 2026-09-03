@@ -284,6 +284,7 @@ Bascik places no restrictions on which libraries you use. A few common patterns:
 - **[HTMX](https://htmx.org):** add `hx-get`, `hx-post` attributes to elements for server-driven partial updates.
 - **[Stimulus](https://stimulus.hotwired.dev):** attach controllers to elements via `data-controller`; pairs well with Bascik's component structure.
 - **Chart.js, D3, Leaflet:** include via CDN and initialize with a `<script>` block in the component. Bascik scopes the ID selector used to find the mount element automatically.
+- **A package with no CDN build:** bundle it with esbuild as a `pipeline.exec` step and import the bundle with a root-relative URL. Bascik does not rewrite bare specifiers in client scripts. See [Bundling npm Packages](/how-to/bundling-npm-packages).
 
 ```html
 <!-- src/components/bar-chart.html -->

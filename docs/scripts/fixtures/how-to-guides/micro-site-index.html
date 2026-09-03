@@ -1,0 +1,24 @@
+<!-- src/pages/index.html: an entire micro site can be one page. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Launch Page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    .hero { padding: 4rem 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="hero">
+    <h1>One Page Is Enough</h1>
+    <p>A landing page needs no router, no server, and no framework.</p>
+    <a href="#signup">Join the list</a>
+  </main>
+  <section id="signup">
+    <form action="https://form-service.example/subscribe" method="post">
+      <input type="email" name="email" placeholder="you@example.com" required>
+      <button type="submit">Subscribe</button>
+    </form>
+  </section>
+</body>
+</html>

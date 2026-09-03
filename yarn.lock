@@ -1840,6 +1840,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/canvas-confetti@npm:^1":
+  version: 1.9.0
+  resolution: "@types/canvas-confetti@npm:1.9.0"
+  checksum: 10c0/ffe2c674d466b8e13472c81ab2a97056f3433fd40a3513dbc1bb76764e4e7c3ff0a2a58d37b16ea6a245c831077c553db321b069dda6572eab59f2be61137b2e
+  languageName: node
+  linkType: hard
+
 "@types/chai@npm:^5.2.2":
   version: 5.2.3
   resolution: "@types/chai@npm:5.2.3"
@@ -2949,10 +2956,13 @@ __metadata:
     "@lhci/cli": "npm:^0.14.0"
     "@playwright/test": "npm:^1.62.0"
     "@resvg/resvg-js": "npm:^2.6.2"
+    "@types/canvas-confetti": "npm:^1"
     "@types/node": "npm:^24.0.0"
     "@types/nunjucks": "npm:^3"
     "@vitest/coverage-v8": "npm:^4.1.10"
+    canvas-confetti: "npm:^1.9.4"
     ejs: "npm:^6.0.1"
+    esbuild: "npm:^0.28.2"
     handlebars: "npm:^4.7.9"
     lighthouse: "npm:^12.4.0"
     marked: "npm:^18.0.7"
@@ -3522,6 +3532,13 @@ __metadata:
   version: 1.0.30001809
   resolution: "caniuse-lite@npm:1.0.30001809"
   checksum: 10c0/cac2ed4e66cc6c4cbf126b94d2c02012566eb92f93c89949290f99edcd2bdc4ed1290b5c537ccb9b42c773936a479ed468e5d4e9b8938b126a0947090e42e008
+  languageName: node
+  linkType: hard
+
+"canvas-confetti@npm:^1.9.4":
+  version: 1.9.4
+  resolution: "canvas-confetti@npm:1.9.4"
+  checksum: 10c0/08f11b5fa20b365922108828d7488f9b3eac2afdf39bc478339268c1250b5215df82682d7074520a3f0f72f4728f9703bbc937dcfe793f196b44e6e8ac0b1f7b
   languageName: node
   linkType: hard
 
