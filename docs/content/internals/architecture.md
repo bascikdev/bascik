@@ -152,9 +152,14 @@ In dev mode, `pageProcessing()` writes the transpiled HTML to the in-memory stor
 
 `paths.ts` is the single source of truth for converting page filenames into canonical URL paths. The in-memory server key, `BASCIK_PAGE_PATH` build-script value, and sitemap generator all use the same conversion. Directory indexes use a trailing slash, so `src/pages/blog/index.html` becomes `/blog/`. Sitemap serialization percent-encodes each segment after canonicalization, while the server decodes incoming paths before lookup.
 
-### Process-isolated script execution
+### Process-isolated build scripts vs in-process server scripts
 
-Both `<script data-bascik-build>` (run at build time) and `<script data-bascik-server>` (run at request time) are executed in complete isolation. Instead of using `eval` or Node's `vm` module, which can leak state or restrict standard Node.js APIs, Bascik writes script content to a temporary `.mjs` file on disk and runs it as a standalone Node.js subprocess. This process-level isolation ensures that user scripts cannot pollute the memory of the compiler or server, natively supports ES modules, top-level `await`, dynamic imports, and captures stdout cleanly before removing the temporary files. To maintain accurate debugging diagnostics across process boundaries, Bascik appends `//# sourceURL` directives and cleans child-process stack traces, mapping temporary `.mjs` paths and line offsets back to the original source file.
+Bascik separates the execution model of build-time scripts from request-time server scripts:
+
+- **Build scripts (`<script data-bascik-build>`):** Executed in complete isolation. Instead of using `eval` or Node's `vm` module, which can leak state or restrict standard Node.js APIs, Bascik writes build script content to a temporary `.mjs` file on disk and runs it as a standalone Node.js subprocess (batched per page and constrained by a memory-aware semaphore). This process-level isolation ensures that user build scripts cannot pollute the memory of the compiler or server, natively supports ES modules, top-level `await`, dynamic imports, and captures stdout cleanly before removing temporary files.
+- **Server scripts (`<script data-bascik-server>`):** Executed in-process at request time as Node.js ESM modules via `ScriptRegistry`. During `bascik --build`, the script source is extracted into the sidecar (`dist/.bascik/server-scripts.json`) and replaced in the HTML with an inert placeholder tag (`<script type="text/bascik-server" data-bascik-server-id="...">`). When `bascik --server` boots, it loads the sidecar into memory once. Incoming requests execute the registered module in-process with the `{ req }` context and inject the returned markup into the document flow without subprocess spawn overhead.
+
+To maintain accurate debugging diagnostics across execution boundaries, Bascik appends `//# sourceURL` directives and cleans stack traces (`stack-trace.ts`), mapping temporary paths and line offsets back to the original source HTML file.
 
 ### Incremental rebuilds via reverse component index
 
