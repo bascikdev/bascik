@@ -18,6 +18,9 @@ const baseFixtureDir = join(e2eDir, 'base-fixture');
 const prodServerTestIgnore = [
   '**/dev-server-reload.test.ts',
   '**/dist-lifecycle.test.ts',
+  // bascik add is a build-time authoring command with no runtime behavior;
+  // serving a copied component is identical to serving any other component.
+  '**/bascik-add.test.ts',
 ];
 
 export default defineConfig({

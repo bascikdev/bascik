@@ -154,6 +154,14 @@ export const isPageAwareBuildScript = (
   return false;
 };
 
+/**
+ * Derives the component tag name from a file path.
+ * Lowercases the base name without the file extension.
+ */
+export const deriveComponentName = (fileName: string): string => {
+  return fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+};
+
 export const listComponents = async (): Promise<ComponentList> => {
   if (componentListCache) return componentListCache;
   const componentFileNames =
@@ -173,7 +181,7 @@ export const listComponents = async (): Promise<ComponentList> => {
   // Check for duplicate component names across files
   const nameToFilePaths = new Map<string, string[]>();
   for (const fileName of componentHtmlFileNames) {
-    const componentName = fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+    const componentName = deriveComponentName(fileName);
     const existing = nameToFilePaths.get(componentName) ?? [];
     existing.push(fileName);
     nameToFilePaths.set(componentName, existing);
@@ -200,7 +208,7 @@ export const listComponents = async (): Promise<ComponentList> => {
     componentHtmlFileNames.map(async (fileName) => {
       // Name the file name without the extension.
       // Name is used in all the mappings components
-      const componentName = fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+      const componentName = deriveComponentName(fileName);
       if (NATIVE_HTML_ELEMENTS.has(componentName)) {
         console.warn(
           `warning: Component "${componentName}" has the same name as a native HTML element. ` +

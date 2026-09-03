@@ -104,7 +104,15 @@ Probably not. Bascik inlines component CSS and JavaScript, so fingerprinting onl
 
 ## How do I share components between projects?
 
-A components directory is plain files, so sharing means copying, a git submodule, or a package. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
+A components directory is plain files, so sharing means using `bascik add` from an npm package, copying files directly, or using a git submodule. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
+
+## Is there a component registry?
+
+No. Bascik does not host a centralized component registry or index. Instead, Bascik uses standard npm packages as the distribution mechanism via the `bascik.components` field in `package.json`. You install packages using standard package managers (npm, yarn, pnpm) and copy components in with `bascik add`. This avoids a proprietary registry ecosystem, lets you inspect installed files directly, and keeps the build independent of remote network registries.
+
+## What happens if I edit a component I added?
+
+The copied files belong to your project and are meant to be customized. When you edit a copied component, `bascik-lock.json` detects the content modification via its recorded SHA-256 hash. If you later re-run `bascik add <package>`, Bascik protects your work by refusing to overwrite your modified files unless you explicitly pass the `--force` flag.
 
 ## Is Bascik a good fit for a one-page site?
 

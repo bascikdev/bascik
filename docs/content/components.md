@@ -605,3 +605,10 @@ Placing the skip link at the top of a `<site-nav>` component guarantees it is re
 ```
 
 Because `id="main-content"` is written on the page shell (`<main id="main-content">`), the `id` is not hashed, ensuring the component's `<a href="#main-content">` skip link always resolves cleanly to the main landmark.
+
+## Sharing and Distributing Components
+
+Components can be shared across projects or distributed as npm packages:
+
+- **Adding components:** Use `bascik add <package>` to copy components from npm packages directly into your project's `src/components/` directory. See [Sharing Components](/how-to/sharing-components).
+- **Publishing components:** Set up a package with the `bascik.components` directory contract to allow other developers to add your components. See [Publishing Components](/how-to/publishing-components).
