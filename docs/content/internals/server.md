@@ -216,7 +216,7 @@ When receiving `SIGTERM` or `SIGINT`:
 1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable`.
 2. Idle keep-alive connections are closed with `closeIdleConnections()`.
 3. The server drains in-flight requests during `http.timeouts.drain` (default 5000 ms).
-4. All registered shutdown handlers (watchers, exec child processes) are completed.
+4. Registered shutdown handlers (watchers, exec child processes) are started, and shutdown-handler failures are logged.
 5. Sockets and sessions are closed and the process terminates cleanly.
 
 ### Port conflict policy
@@ -261,12 +261,15 @@ Because modules run in-process, handlers receive request data via an explicit co
 
 #### Timeout, Cancellation, and Limitations
 
-- **Timeout:** Invocations accept a configurable timeout parameter. When a timeout occurs, the runner aborts an `AbortSignal` passed to the handler and returns a structured failure.
+- **Timeout:** Invocations accept a configurable timeout. On deadline, the registry aborts the invocation signal and returns a structured timeout result.
+- **Cleanup:** Timeout handles and upstream abort listeners are always cleared after invocation settlement.
 - **Synchronous CPU Limitation:** In Node's single-threaded event loop, synchronous blocking loops (such as `while(true)`) cannot be forcibly preempted by an in-process timer. Authors must structure long-running tasks asynchronously.
+
+For the full cross-subsystem time model, ownership boundaries, and deterministic testing strategy, see [Time Boundaries](/internals/time-boundaries).
 
 ### Graceful shutdown
 
-The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it stops accepting new connections, closes active SSE streams, destroys HTTP/2 sessions, shuts down filesystem watchers, and exits cleanly within a 10-second grace period.
+The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it marks readiness as draining, stops accepting new connections, starts registered cleanup handlers for resources such as watchers and exec children, and closes active protocol resources. If the server has not closed within the configured `http.timeouts.drain` window (default 5000 ms), Bascik force-exits with a nonzero status.
 
 ## E2E Server Testing
 

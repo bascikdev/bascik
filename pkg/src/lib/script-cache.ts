@@ -1,6 +1,7 @@
 import { readdir, stat, unlink } from "node:fs/promises";
 import { matchesGlob, join } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { nativeClock, type FrameworkClock } from "./clock.ts";
 
 /** Max age for script cache files before pruning (7 days in ms) */
 const SCRIPT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -44,10 +45,14 @@ export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {
 
 /**
  * Prune disk cache entries older than TTL or exceeding maximum capacity.
- * One-line policy: prune cached JSON files older than 7 days to prevent unbounded directory growth.
+ * Forced pruning bypasses only the one-hour throttle, not the retention (TTL) policy.
  */
-export const pruneScriptCache = async (cacheDir: string, force = false): Promise<void> => {
-  const now = Date.now();
+export const pruneScriptCache = async (
+  cacheDir: string,
+  force = false,
+  clock: FrameworkClock = nativeClock,
+): Promise<void> => {
+  const now = clock.now();
   if (!force && now - lastPruneTime < PRUNE_THROTTLE_MS) {
     return;
   }

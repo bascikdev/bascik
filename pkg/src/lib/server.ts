@@ -35,13 +35,33 @@ import {
   handleHealthCheck,
   DEFAULT_DRAIN_TIMEOUT_MS,
   MAX_PORT_INCREMENTS,
+  createGracefulShutdownHandler,
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
-export const sseManager = new SseManager();
+// ─── SSE live-reload manager ──────────────────────────────────────────────────
+// Constructed lazily so its heartbeat timer is never created as an import-time
+// side effect; the timer only starts once the dev server actually handles its
+// first live-reload connection.
+let activeSseManager: SseManager | null = null;
+
+export const getSseManager = (): SseManager => {
+  if (!activeSseManager) {
+    activeSseManager = new SseManager();
+  }
+  return activeSseManager;
+};
+
+/** For testing or reconfiguration: reset the active SSE manager. */
+export const resetSseManager = (): void => {
+  if (activeSseManager) {
+    activeSseManager.destroy();
+    activeSseManager = null;
+  }
+};
 
 import { makeEtag } from "./names.ts";
 
@@ -522,6 +542,7 @@ export const createRequestHandler = () => {
         } catch { }
         if (openPagePath) mem.trackOpenPage(openPagePath);
 
+        const sseManager = getSseManager();
         const client = sseManager.addClient(res, openPagePath);
         if (!client) {
           return;
@@ -753,51 +774,14 @@ export const startServerInstance = async (
   server.on("error", (error) => console.error(error));
 
   // ── Graceful shutdown on SIGTERM / SIGINT ────────────────────────────────
-  let shuttingDown = false;
   const drainTimeout = BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
-  const gracefulShutdown = (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    setServerHealthState("draining");
-    console.log(`\nReceived ${signal}, shutting down gracefully…`);
-
-    // 1. Stop accepting new connections
-    if (typeof (server as any).closeIdleConnections === "function") {
-      try {
-        (server as any).closeIdleConnections();
-      } catch { }
-    }
-
-    // 2. Custom protocol cleanup callback (sockets/sessions)
-    if (onShutdown) {
-      try {
-        onShutdown();
-      } catch { }
-    }
-
-    if (typeof (server as any).closeAllConnections === "function") {
-      try {
-        (server as any).closeAllConnections();
-      } catch { }
-    }
-
-    // 3. Await registered shutdown handlers (watchers, exec children)
-    runShutdownHandlers().catch((err) => {
-      console.error("[bascik] Error running shutdown handlers:", err);
-    });
-
-    server.close((err) => {
-      if (err) console.error("Error closing server:", err);
-      process.exit(0);
-    });
-
-    // Force exit if server close hangs past configured drain timeout
-    setTimeout(() => {
-      console.error("Graceful shutdown timeout: forcing exit");
-      process.exit(1);
-    }, drainTimeout).unref();
-  };
+  const gracefulShutdown = createGracefulShutdownHandler({
+    server,
+    drainTimeout,
+    onShutdown,
+    runShutdownHandlers,
+  });
 
   process.setMaxListeners(process.getMaxListeners() + 2);
   const sigtermHandler = () => { void gracefulShutdown("SIGTERM"); };

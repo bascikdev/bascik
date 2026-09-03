@@ -297,7 +297,7 @@ Under `bascik --server`, if the configured port is already in use (`EADDRINUSE`)
 When running in containerized environments or behind load balancers:
 
 - **Health Endpoint (`/_health`, `/_health/ready`, `/_health/live`):** Returns `200 OK` when the server is ready to accept traffic, and `503 Service Unavailable` during boot and during the shutdown drain. The health check is fast, un-cached, and excluded from rate limiting and standard access logs.
-- **Graceful Shutdown:** On receiving `SIGTERM` or `SIGINT`, the server enters the drain phase, stops accepting new connections, drains in-flight requests within `http.timeouts.drain` (default 5000 ms), awaits all cleanup handlers (watchers and exec processes), and then exits cleanly.
+- **Graceful Shutdown:** On receiving `SIGTERM` or `SIGINT`, the server enters the drain phase, stops accepting new connections, starts cleanup handlers for resources such as watchers and exec processes, and waits for the server to close within `http.timeouts.drain` (default 5000 ms).
 
 `http.httpCache` defaults to `true` in `--server` mode and `false` in the dev server. When `true`, pages receive `ETag` headers and the server returns `304 Not Modified` when a client's cached copy is still fresh. Static assets also get `Cache-Control: public, max-age=3600`. Set `httpCache: false` to disable all of this if you are behind a CDN that manages caching itself.
 
@@ -361,7 +361,7 @@ In `--server` mode the server enforces a per-IP request limit of **500 requests 
 
 ### Graceful shutdown
 
-The server listens for `SIGTERM` and `SIGINT` in both dev and production. On either signal it stops accepting new connections, destroys open HTTP/2 sessions (if running in HTTPS mode) and live-reload SSE connections, and exits once in-flight requests finish. If draining takes longer than 10 seconds, the process force-exits. This means `systemd` stop, `docker stop`, and Kubernetes pod eviction all wait for requests to complete before the process ends.
+The server listens for `SIGTERM` and `SIGINT` in both dev and production. On either signal it marks readiness as draining, stops accepting new connections, starts registered cleanup handlers, and closes open HTTP/2 sessions and live-reload SSE connections. If the server has not closed within `http.timeouts.drain` (default 5000 ms), the process force-exits with a nonzero status. Configure deployment termination windows to exceed this drain deadline.
 
 ### Path traversal protection
 

@@ -76,6 +76,18 @@ npx playwright test --config e2e/playwright.config.ts --ui
 
 In addition to mocked chokidar tests, watch mode includes real-filesystem tests in isolated temporary directories (`watch-fs.test.ts`). These verify real-world filesystem event sequences, atomic editor saves (temp file write followed by rename), stability thresholds (`awaitWriteFinish`), and debounce behavior without false-confidence gaps.
 
+### Time-Boundary Testing Model
+
+Bascik uses five test mechanics for time-sensitive behavior. This keeps framework timing deterministic in unit tests while preserving real runtime boundaries in integration tests:
+
+1. **Framework internals with fake timers:** Modules that own semantic time accept `FrameworkClock` and are tested with Vitest fake timers (`vi.useFakeTimers()`).
+2. **Static architectural enforcement:** `time-boundary.test.ts` prevents direct ambient timer usage in designated semantic-time modules.
+3. **Cross-process E2E deadlines with real time:** Playwright runs Bascik in a separate process, so E2E timeout assertions use short real deadlines to verify `AbortSignal` propagation and HTTP timeout responses.
+4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
+5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
+
+For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
+
 ## How the E2E Suite Works
 
 The e2e fixture is a small but complete Bascik project at `pkg/e2e/`:
@@ -127,9 +139,12 @@ Each fixture page renders two or more instances of the component under test so i
 
 ### Testing philosophy: scoping engine verification
 
-In standard web application testing, best practices dictate using explicit `data-testid` attributes to decouple Playwright tests from visual styling or class name changes.
+Use locator strategy based on test intent:
 
-In Bascik's compiler test suite, however, the primary objective is to verify that the transpilation and scoping engine transforms HTML, CSS, and JavaScript correctly. As a result, E2E tests deliberately target generated scoped class names (such as `.bascik__my-comp__wrapper`) and rewritten element IDs (such as `[id$="__btn"]`). Using `data-testid` attributes in compiler tests would bypass assertions on class name scoping, attribute prefixing, and selector rewrites, leaving compiler regressions undetected.
+- **Behavior-oriented E2E tests:** Prefer resilient user-facing locators like `page.getByRole(...)`, `page.getByLabel(...)`, and explicit `page.getByTestId(...)`, so assertions survive identifier minification and style refactors.
+- **Compiler-output verification tests:** When the transformed selector or identifier is the behavior under test, deliberately assert transform-aware selectors (for example generated scoped class names or rewritten IDs).
+
+This keeps ordinary feature tests robust while still verifying compiler transforms directly when required.
 
 ## E2E Test Files
 

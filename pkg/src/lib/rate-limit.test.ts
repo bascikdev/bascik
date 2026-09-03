@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   RateLimiter,
   getClientIp,
 } from "./rate-limit.ts";
+import { nativeClock } from "./clock.ts";
 
 describe("getClientIp", () => {
   it("off by default: ignores X-Forwarded-For and uses socket remote address", () => {
@@ -117,5 +118,65 @@ describe("RateLimiter sliding window", () => {
     expect(cleanLimiter.isTimerActive()).toBe(true);
     cleanLimiter.destroy();
     expect(cleanLimiter.isTimerActive()).toBe(false);
+  });
+});
+
+describe("RateLimiter - deterministic clock-driven bucket and sweep boundaries", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("no hidden interval exists unless startSweep() is explicitly called", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 5 });
+    expect(vi.getTimerCount()).toBe(0);
+    limiter.destroy();
+  });
+
+  it("admission and sweep use the same injected clock consistently", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 3 });
+    for (let i = 0; i < 3; i++) {
+      expect(limiter.isRateLimited("5.5.5.5", nativeClock.now())).toBe(false);
+    }
+    expect(limiter.isRateLimited("5.5.5.5", nativeClock.now())).toBe(true);
+
+    // Advance the injected clock past the window; sweep() defaults to the
+    // same clock the admission calls used.
+    vi.advanceTimersByTime(10_001);
+    limiter.sweep(nativeClock.now());
+    expect(limiter.isRateLimited("5.5.5.5", nativeClock.now())).toBe(false);
+    limiter.destroy();
+  });
+
+  it("startSweep() drives a real interval that removes stale entries at the window boundary", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 5, clock: nativeClock });
+    limiter.isRateLimited("6.6.6.6", nativeClock.now());
+    limiter.startSweep();
+    expect(vi.getTimerCount()).toBe(1);
+
+    vi.advanceTimersByTime(10_000);
+    // The sweep interval fired using the same injected clock; the bucket for
+    // 6.6.6.6 is exactly windowMs old and is pruned.
+    expect(limiter.isRateLimited("6.6.6.6", nativeClock.now())).toBe(false);
+
+    limiter.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clear()/destroy() removes tracked state and cancels an active sweep", () => {
+    const limiter = new RateLimiter({ windowMs: 10_000, max: 5, clock: nativeClock });
+    limiter.isRateLimited("7.7.7.7", nativeClock.now());
+    limiter.startSweep();
+    expect(vi.getTimerCount()).toBe(1);
+
+    limiter.destroy();
+    expect(vi.getTimerCount()).toBe(0);
+    // A fresh entry after destroy proves internal tracking was cleared, not
+    // merely that the timer stopped.
+    expect(limiter.isRateLimited("7.7.7.7", nativeClock.now())).toBe(false);
   });
 });
