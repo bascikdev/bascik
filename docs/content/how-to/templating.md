@@ -2,8 +2,6 @@
 
 Bascik does not ship a proprietary template language or a custom server-side component framework. The core compiler focuses on what it does best: compiling static HTML components, scoping CSS and JavaScript, and executing plain Node.js scripts at build time or request time. When a project requires loops, partials, or layout composition, you can use native JavaScript features or any template engine from the npm ecosystem.
 
-**Handlebars is the recommended templating library.** It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default so a forgotten escape does not become an injection bug. For a single interpolated value on a single page, the dependency-free helper below is enough; when a template grows past about twenty lines of helper code, that is the signal to reach for Handlebars.
-
 ## Why Bascik stays out of the template layer
 
 Traditional web frameworks often bundle proprietary templating languages, custom JSX compilers, or bespoke reactivity runtimes. Bascik intentionally avoids this layer for several reasons:
@@ -13,7 +11,9 @@ Traditional web frameworks often bundle proprietary templating languages, custom
 - **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and printed to standard output via `console.log`.
 - **Ecosystem flexibility:** Simple sites often only need native JavaScript template literals and a small helper module. Content-heavy publications or complex applications might prefer EJS, Nunjucks, or Handlebars. You choose the right tool for your project without framework lock-in.
 
-## Handlebars, the recommended option
+## Handlebars
+
+**Handlebars is the recommended templating library.** It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default so a forgotten escape does not become an injection bug. For a single interpolated value on a single page, the dependency-free helper below is enough; when a template grows past about twenty lines of helper code, that is the signal to reach for Handlebars.
 
 Install Handlebars once and import it in any build or server script.
 
