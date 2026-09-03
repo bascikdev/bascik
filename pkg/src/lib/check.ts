@@ -15,11 +15,16 @@
 import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { existsSync } from "node:fs";
-import { listPages, getRelativePath } from "./file-system.ts";
+import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { scanApiRouteFiles, fileToApiRoutePath } from "./api-routes.ts";
+import { getHttpPath } from "./paths.ts";
+import { buildMissingSiteUrlError } from "./sitemap.ts";
+import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
+import { config as userConfig, modeOverrides } from "./userConfig.ts";
+import { validateUserConfig, type ConfigValidationError } from "./config-validation.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -47,6 +52,15 @@ export interface CheckFindings {
 
 const VALID_API_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const API_METHOD_LIKE_REGEX = /\bexport\s+(?:async\s+)?(?:const|function|let|var)\s+([a-zA-Z0-9_$]+)\b/g;
+const KNOWN_BASCIK_DATA_EXACT = new Set([
+  "data-bascik-slot",
+  "data-bascik-build",
+  "data-bascik-server",
+  "data-bascik-routes",
+  "data-bascik-preserve",
+  "data-bascik-server-id",
+]);
+const KNOWN_BASCIK_DATA_PREFIX = ["data-bascik-prop-", "data-bascik-attr-"];
 
 /** Simple edit distance (Levenshtein) with no external dependencies. */
 const editDistance = (a: string, b: string): number => {
@@ -176,23 +190,279 @@ const extractBuildScripts = (html: string): string[] => {
   return scripts;
 };
 
+const stripComments = (source: string): string => {
+  return source.replace(/<!--[\s\S]*?-->/g, (match) => {
+    const newlines = match.match(/\n/g);
+    return newlines ? newlines.join("") : " ";
+  });
+};
+
+const getLineAt = (source: string, index: number): number => {
+  let line = 1;
+  for (let i = 0; i < index; i++) {
+    if (source.charCodeAt(i) === 10) line++;
+  }
+  return line;
+};
+
+interface OpenTagData {
+  attrs: string;
+  line: number;
+}
+
+const extractOpenTagData = (html: string): OpenTagData[] => {
+  const out: OpenTagData[] = [];
+  const noComments = stripComments(html);
+  const stripped = stripElementContents(noComments);
+  const regex = /<[a-z][a-z0-9:-]*\b([^>]*)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(stripped)) !== null) {
+    out.push({
+      attrs: match[1] ?? "",
+      line: getLineAt(stripped, match.index),
+    });
+  }
+  return out;
+};
+
+const extractAttributeNames = (attrs: string): string[] => {
+  const names: string[] = [];
+  const attrRegex = /(?:^|\s)([^\s"'<>\/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+  let attrMatch: RegExpExecArray | null;
+  while ((attrMatch = attrRegex.exec(attrs)) !== null) {
+    names.push((attrMatch[1] ?? "").toLowerCase());
+  }
+  return names;
+};
+
+const extractUnknownBascikAttributes = (
+  html: string,
+): Array<{ attr: string; line: number }> => {
+  const out: Array<{ attr: string; line: number }> = [];
+  for (const tag of extractOpenTagData(html)) {
+    for (const name of extractAttributeNames(tag.attrs)) {
+      if (!name.startsWith("data-bascik-")) continue;
+      const isKnownPrefix = KNOWN_BASCIK_DATA_PREFIX.some((prefix) => name.startsWith(prefix));
+      if (KNOWN_BASCIK_DATA_EXACT.has(name) || isKnownPrefix) continue;
+      out.push({ attr: name, line: tag.line });
+    }
+  }
+  return out;
+};
+
+const hasBuildServerConflict = (attrs: string): boolean => {
+  return /\bdata-bascik-build\b/i.test(attrs) && /\bdata-bascik-server\b/i.test(attrs);
+};
+
+const mapConfigErrorSeverity = (error: ConfigValidationError): FindingSeverity => {
+  if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
+  if (error.key.startsWith("assets.inlineStyles[")) return "warning";
+  return "error";
+};
+
+const resolveConfigSourcePath = (): string => {
+  const argv = process.argv.slice(2);
+  const inline = argv.find((arg) => arg.startsWith("--config="));
+  const inlinePath = inline ? inline.slice("--config=".length) : undefined;
+  const configFlagIndex = argv.indexOf("--config");
+  const flaggedPath =
+    configFlagIndex !== -1 && argv[configFlagIndex + 1] && !argv[configFlagIndex + 1].startsWith("-")
+      ? argv[configFlagIndex + 1]
+      : undefined;
+  const explicitPath = inlinePath || flaggedPath;
+  if (explicitPath) {
+    return relative(process.cwd(), resolve(process.cwd(), explicitPath)).replace(/\\/g, "/");
+  }
+
+  const jsPath = resolve(process.cwd(), "bascik.config.js");
+  if (existsSync(jsPath)) return "bascik.config.js";
+  const tsPath = resolve(process.cwd(), "bascik.config.ts");
+  if (existsSync(tsPath)) return "bascik.config.ts";
+  return "bascik.config.js";
+};
+
+const canonicalPath = (filePath: string): string => resolve(process.cwd(), filePath).replace(/\\/g, "/");
+
+const maskPreservedSubtrees = (html: string): string => {
+  let result = html;
+  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi;
+  let previous = "";
+  while (previous !== result) {
+    previous = result;
+    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
+      return `${open}${" ".repeat(inner.length)}${close}`;
+    });
+  }
+  return result;
+};
+
+const findComponentCycles = (
+  graph: Map<string, Set<string>>,
+): string[][] => {
+  const state = new Map<string, 0 | 1 | 2>();
+  const stack: string[] = [];
+  const cycles: string[][] = [];
+  const seen = new Set<string>();
+
+  const visit = (node: string): void => {
+    state.set(node, 1);
+    stack.push(node);
+    const deps = graph.get(node) ?? new Set<string>();
+    for (const dep of deps) {
+      const depState = state.get(dep) ?? 0;
+      if (depState === 0) {
+        visit(dep);
+        continue;
+      }
+      if (depState === 1) {
+        const idx = stack.lastIndexOf(dep);
+        if (idx >= 0) {
+          const cycle = [...stack.slice(idx), dep];
+          const key = cycle.join(" -> ");
+          if (!seen.has(key)) {
+            seen.add(key);
+            cycles.push(cycle);
+          }
+        }
+      }
+    }
+    stack.pop();
+    state.set(node, 2);
+  };
+
+  for (const node of graph.keys()) {
+    if ((state.get(node) ?? 0) === 0) visit(node);
+  }
+
+  return cycles;
+};
+
 /**
  * Run the static check across pages, components, and API routes.
  * Produces structured data without printing.
  */
 export const checkProject = async (): Promise<CheckFindings> => {
-  const [pages, componentList] = await Promise.all([
-    listPages(),
-    listComponents() as Promise<ComponentList>,
-  ]);
+  const items: CheckFinding[] = [];
+  const configSource = resolveConfigSourcePath();
 
-  const pageList = pages ?? [];
+  const formatConfigValue = (value: unknown): string => {
+    if (typeof value === "string") return `\"${value}\"`;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  };
+
+  const configErrors = validateUserConfig(userConfig, modeOverrides, { env: process.env, cwd: process.cwd() });
+  for (const error of configErrors) {
+    const valueSuffix = error.value === undefined ? "" : ` (received ${formatConfigValue(error.value)})`;
+    items.push({
+      category: "config-validation",
+      severity: mapConfigErrorSeverity(error),
+      message: `${error.key}: ${error.message}${valueSuffix}`,
+      locations: [{ filePath: configSource }],
+    });
+  }
+
+  const needsSiteUrl =
+    (BascikConfig.generate?.sitemap ?? true) ||
+    (BascikConfig.generate?.robots ?? true);
+  if (needsSiteUrl) {
+    const siteUrl = getSiteUrl();
+    if (!siteUrl) {
+      const features: string[] = [];
+      if (BascikConfig.generate?.sitemap ?? true) features.push("generate.sitemap");
+      if (BascikConfig.generate?.robots ?? true) features.push("generate.robots");
+      items.push({
+        category: "missing-site-url",
+        severity: "error",
+        message: buildMissingSiteUrlError(features).replace(/\s+/g, " ").trim(),
+        locations: [{ filePath: configSource }],
+      });
+    }
+  }
+
+  let pageList: string[] = [];
+  try {
+    pageList = (await listPages()) ?? [];
+  } catch (error) {
+    items.push({
+      category: "pages-directory",
+      severity: "error",
+      message: `could not read pages directory "${BascikConfig.directory?.pages ?? "src/pages"}": ${error instanceof Error ? error.message : String(error)}`,
+      locations: [{ filePath: configSource }],
+    });
+  }
+
+  const pagesDir = resolve(process.cwd(), BascikConfig.directory?.pages ?? "src/pages");
+  if (existsSync(pagesDir) && pageList.length === 0) {
+    items.push({
+      category: "pages-directory",
+      severity: "error",
+      message: `directory.pages "${BascikConfig.directory?.pages ?? "src/pages"}" has no HTML pages.`,
+      locations: [{ filePath: configSource }],
+    });
+  }
+
+  let componentList: ComponentList = {};
+  let componentFilePaths: string[] = [];
+  try {
+    componentList = await (listComponents() as Promise<ComponentList>);
+    componentFilePaths = Object.values(componentList)
+      .map((c) => c.fileName)
+      .filter((f): f is string => Boolean(f));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const duplicateBlockRegex = /error:\s*two component files both define the tag <([^>]+)>\s*\n([\s\S]*?)(?:\n\n|$)/gi;
+    let matchedDuplicate = false;
+    let block: RegExpExecArray | null;
+    while ((block = duplicateBlockRegex.exec(message)) !== null) {
+      matchedDuplicate = true;
+      const tag = (block[1] ?? "").toLowerCase();
+      const pathMatches = (block[2] ?? "").match(/^\s+(.+)$/gm) ?? [];
+      const locations = pathMatches
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((filePath) => ({ filePath: toDisplay(filePath) }));
+      items.push({
+        category: "duplicate-component-name",
+        severity: "error",
+        message: `duplicate component tag <${tag}> is defined by multiple files`,
+        locations,
+      });
+    }
+    if (!matchedDuplicate) {
+      items.push({
+        category: "component-list",
+        severity: "error",
+        message,
+        locations: [{ filePath: configSource }],
+      });
+    }
+
+    const componentDir = resolve(process.cwd(), BascikConfig.directory?.components ?? "src/components");
+    if (existsSync(componentDir)) {
+      const htmlFiles = await deepReadDirFlat(componentDir, /\.html$/i);
+      const nameToPaths = new Map<string, string[]>();
+      for (const filePath of htmlFiles) {
+        const componentName = filePath.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
+        const list = nameToPaths.get(componentName) ?? [];
+        list.push(filePath);
+        nameToPaths.set(componentName, list);
+      }
+      for (const [name, paths] of nameToPaths.entries()) {
+        if (paths.length === 0) continue;
+        componentList[name] = componentList[name] ?? {
+          fileName: paths[0],
+          fileContent: "",
+        };
+      }
+      componentFilePaths = htmlFiles;
+    }
+  }
+
   const knownComponents = new Set(Object.keys(componentList));
-
-  // Absolute paths to every component HTML file
-  const componentFilePaths: string[] = Object.values(componentList)
-    .map((c) => c.fileName)
-    .filter((f): f is string => Boolean(f));
 
   // Scan every page AND every component source file for hyphenated tags
   const allFilePaths = [...pageList, ...componentFilePaths];
@@ -203,17 +473,32 @@ export const checkProject = async (): Promise<CheckFindings> => {
         const html = await readFile(filePath, "utf8");
         return {
           filePath,
+          html,
           occurrences: extractCustomTagOccurrences(html),
           buildScripts: extractBuildScripts(html),
         };
       } catch {
-        return { filePath, occurrences: [], buildScripts: [] };
+        return { filePath, html: "", occurrences: [], buildScripts: [] };
       }
     }),
   );
 
   const usedComponents = new Set<string>();
   const unmatchedTagLocations = new Map<string, FindingLocation[]>();
+  const unknownBascikAttrs = new Map<string, FindingLocation[]>();
+  const componentGraph = new Map<string, Set<string>>();
+  const scriptBuildServerConflicts: FindingLocation[] = [];
+  const componentPathByName = new Map<string, string>();
+  const componentNameByPath = new Map<string, string>();
+
+  for (const [componentName, componentData] of Object.entries(componentList)) {
+    const fileName = componentData.fileName;
+    if (!fileName) continue;
+    const canonical = canonicalPath(fileName);
+    componentPathByName.set(componentName, canonical);
+    componentNameByPath.set(canonical, componentName);
+    componentGraph.set(canonical, new Set<string>());
+  }
 
   // Check build script sources for string literal references to components
   for (const { buildScripts } of scanResults) {
@@ -228,8 +513,38 @@ export const checkProject = async (): Promise<CheckFindings> => {
     }
   }
 
-  for (const { filePath, occurrences } of scanResults) {
+  for (const { filePath, html, occurrences } of scanResults) {
     const displayPath = toDisplay(filePath);
+
+    for (const unknown of extractUnknownBascikAttributes(html)) {
+      const list = unknownBascikAttrs.get(unknown.attr) ?? [];
+      list.push({ filePath: displayPath, line: unknown.line });
+      unknownBascikAttrs.set(unknown.attr, list);
+    }
+
+    const scriptTagRegex = /<script\b([^>]*)>/gi;
+    let scriptMatch: RegExpExecArray | null;
+    while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
+      if (hasBuildServerConflict(scriptMatch[1] ?? "")) {
+        scriptBuildServerConflicts.push({ filePath: displayPath, line: getLineAt(html, scriptMatch.index) });
+      }
+    }
+
+    const ownerPath = canonicalPath(filePath);
+    if (componentNameByPath.has(ownerPath)) {
+      const maskedPreserve = maskPreservedSubtrees(html);
+      const deps = extractCustomTagOccurrences(maskedPreserve)
+        .map((o) => o.tag)
+        .filter((tag) => knownComponents.has(tag));
+      for (const dep of deps) {
+        const depPath = componentPathByName.get(dep);
+        if (!depPath) continue;
+        const edges = componentGraph.get(ownerPath) ?? new Set<string>();
+        edges.add(depPath);
+        componentGraph.set(ownerPath, edges);
+      }
+    }
+
     for (const { tag, line } of occurrences) {
       if (knownComponents.has(tag)) {
         usedComponents.add(tag);
@@ -241,8 +556,6 @@ export const checkProject = async (): Promise<CheckFindings> => {
     }
   }
 
-  const items: CheckFinding[] = [];
-
   // Unmatched tags -> warnings
   for (const [tag, locations] of unmatchedTagLocations.entries()) {
     const suggestion = suggestComponentName(tag, knownComponents);
@@ -253,6 +566,105 @@ export const checkProject = async (): Promise<CheckFindings> => {
       locations,
       suggestion,
     });
+  }
+
+  for (const [attr, locations] of unknownBascikAttrs.entries()) {
+    const known = [...KNOWN_BASCIK_DATA_EXACT, ...KNOWN_BASCIK_DATA_PREFIX.map((p) => `${p}...`)]
+      .sort()
+      .join(", ");
+    items.push({
+      category: "unknown-bascik-attribute",
+      severity: "warning",
+      message: `unknown attribute "${attr}". Known attributes: ${known}`,
+      locations,
+    });
+  }
+
+  if (scriptBuildServerConflicts.length > 0) {
+    items.push({
+      category: "script-mode-conflict",
+      severity: "error",
+      message: "<script> tag has both data-bascik-build and data-bascik-server. Remove one attribute.",
+      locations: scriptBuildServerConflicts,
+    });
+  }
+
+  const cycles = findComponentCycles(componentGraph);
+  for (const cycle of cycles) {
+    const start = cycle[0];
+    const sourceName = componentNameByPath.get(start);
+    const sourcePath = sourceName ? componentList[sourceName]?.fileName : undefined;
+    items.push({
+      category: "circular-component-reference",
+      severity: "error",
+      message: `component cycle detected: ${cycle.map((path) => `<${componentNameByPath.get(path) ?? path}>`).join(" -> ")}`,
+      locations: sourcePath ? [{ filePath: toDisplay(sourcePath) }] : [],
+    });
+  }
+
+  // Route output collisions from page path resolution.
+  const pagesByRouteExact = new Map<string, string[]>();
+  const firstRouteByLower = new Map<string, { route: string; filePath: string }>();
+  for (const pagePath of pageList) {
+    const rel = getRelativePath(pagePath, "pages");
+    const route = getHttpPath(rel, BascikConfig.directory?.pages ?? "src/pages");
+
+    const list = pagesByRouteExact.get(route) ?? [];
+    list.push(pagePath);
+    pagesByRouteExact.set(route, list);
+
+    const lowerRoute = route.toLowerCase();
+    const firstSeen = firstRouteByLower.get(lowerRoute);
+    if (firstSeen && firstSeen.route !== route) {
+      items.push({
+        category: "duplicate-route-resolution",
+        severity: "error",
+        message: `Case-insensitive route output collision between "${firstSeen.route}" and "${route}", skipping duplicate`,
+        locations: [{ filePath: toDisplay(firstSeen.filePath) }, { filePath: toDisplay(pagePath) }],
+      });
+    } else if (!firstSeen) {
+      firstRouteByLower.set(lowerRoute, { route, filePath: pagePath });
+    }
+  }
+  for (const [route, files] of pagesByRouteExact.entries()) {
+    if (files.length < 2) continue;
+    items.push({
+      category: "duplicate-route-resolution",
+      severity: "error",
+      message: `Duplicate route output path "${route}", skipping duplicate`,
+      locations: files.map((filePath) => ({ filePath: toDisplay(filePath) })),
+    });
+  }
+
+  // Component template convention: styles first, scripts last.
+  for (const filePath of componentFilePaths) {
+    try {
+      const html = await readFile(filePath, "utf8");
+      const noComments = stripComments(html);
+      const firstHtmlTag = noComments.search(/<(?!\/?(?:style|script)\b)[a-z]/i);
+      const firstScript = noComments.search(/<script\b/i);
+      const firstStyle = noComments.search(/<style\b/i);
+
+      if (firstScript >= 0 && (firstHtmlTag < 0 || firstScript < firstHtmlTag)) {
+        items.push({
+          category: "component-structure-order",
+          severity: "warning",
+          message: "component template convention: place <script> blocks after HTML markup.",
+          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstScript) }],
+        });
+      }
+
+      if (firstStyle >= 0 && firstHtmlTag >= 0 && firstStyle > firstHtmlTag) {
+        items.push({
+          category: "component-structure-order",
+          severity: "warning",
+          message: "component template convention: place <style> blocks above HTML markup.",
+          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
+        });
+      }
+    } catch {
+      // Ignore unreadable component files here.
+    }
   }
 
   // ── API route static analysis (Prompt 49) ───────────────────────────
@@ -373,6 +785,46 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "API route collisions",
     description: "Multiple API route files resolve to the same URL path.",
   },
+  "config-validation": {
+    title: "Configuration validation",
+    description: "Configuration keys, values, and path references that need correction.",
+  },
+  "missing-site-url": {
+    title: "Missing site URL",
+    description: `Features requiring ${SITE_URL_ENV_VAR} are enabled but no site URL is configured.`,
+  },
+  "duplicate-component-name": {
+    title: "Duplicate component names",
+    description: "Multiple component files define the same tag name.",
+  },
+  "circular-component-reference": {
+    title: "Circular component references",
+    description: "Component templates reference each other in a cycle, which causes runaway expansion.",
+  },
+  "unknown-bascik-attribute": {
+    title: "Unknown data-bascik attributes",
+    description: "Likely typos in special Bascik attributes that are ignored at build time.",
+  },
+  "script-mode-conflict": {
+    title: "Conflicting script modes",
+    description: "A single script tag cannot be both build-time and server-time.",
+  },
+  "pages-directory": {
+    title: "Pages directory issues",
+    description: "The configured pages directory must exist, be readable, and contain at least one HTML page.",
+  },
+  "duplicate-route-resolution": {
+    title: "Duplicate route resolution",
+    description: "Multiple pages resolve to the same route path.",
+  },
+  "component-structure-order": {
+    title: "Component style and script order",
+    description: "Component templates should place styles above markup and scripts below markup.",
+  },
+  "component-list": {
+    title: "Component scan failures",
+    description: "Component discovery failed and needs correction before a reliable check run.",
+  },
 };
 
 /**
@@ -428,7 +880,9 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
           section += `    - ${loc.filePath}\n`;
         }
       } else {
-        const locStr = item.locations.map((loc) => loc.filePath).join(", ");
+        const locStr = item.locations
+          .map((loc) => (loc.line !== undefined ? `${loc.filePath}:${loc.line}` : loc.filePath))
+          .join(", ");
         section += `  ${item.message} (${locStr})\n`;
       }
     }

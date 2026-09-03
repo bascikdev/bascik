@@ -211,7 +211,7 @@ btn.addEventListener('click', () => {
 
 ## HTML, CSS, and JavaScript Together
 
-All three can live in a single file. A `<style>` block, the markup, and a `<script>` block in any order; Bascik handles all of them.
+All three can live in a single file. Follow the component convention order: place `<style>` blocks above markup, then markup, then `<script>` blocks below markup.
 
 <!-- demo:source-usage-alert -->
 ```html
@@ -339,6 +339,8 @@ All three can live in a single file. A `<style>` block, the markup, and a `<scri
 ## Companion CSS and Script Files
 
 Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `.ts`/`.js`/`.mjs` files is a matter of personal preference.
+
+For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is now validated by `bascik --check` as an advisory warning (`component-structure-order`).
 
 Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time.
 

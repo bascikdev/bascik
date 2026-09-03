@@ -1382,14 +1382,14 @@ Build failed with 2 page errors:
   Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics.
 
 #### 4. Static Analysis (`bascik --check`)
-Run `bascik --check` from your project root to validate pages, component files, and API route files without starting the dev server or writing any output:
+Run `bascik --check` from your project root to validate pages, component files, config, and API route files without starting the dev server or writing any output:
 
 ```sh
 bascik --check
 ```
 
-Bascik scans every `.html` and API route file in your project directories and reports:
-* **Warnings (exit code 0):** Unmatched hyphenated tags (including third-party web components) and unused component files:
+Bascik scans project sources and reports:
+* **Warnings (exit code 0):** Unmatched hyphenated tags (including third-party web components), unused component files, unknown `data-bascik-*` attributes, and component ordering conventions (`<style>` above markup, `<script>` below).
   ```terminal
   Components with no matching file (1)
     These are either typos, or third-party web components. Bascik does not
@@ -1397,17 +1397,19 @@ Bascik scans every `.html` and API route file in your project directories and re
 
     <model-viewer>     src/pages/gallery.html:42
   ```
-* **Errors (exit code 1):** API route files missing method handlers or route collisions.
+* **Errors (exit code 1):** Config validation failures, missing site URL for sitemap/robots generation, duplicate component names, circular component references, script mode conflicts (`data-bascik-build` + `data-bascik-server` on one tag), duplicate route resolution, API route files missing method handlers, and API route collisions.
 * **Strict mode:** Pass `--strict` to treat warnings as errors and exit with code `1`.
 * **JSON output:** Pass `--json` to output structured findings for CI integration.
 * **Success**: Exits with code `0` when no errors are found (or under `--strict` when no errors or warnings).
+
+`missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic is noisy for real projects and creates speculative warnings.
 
 Run in CI:
 ```sh
 bascik --check && bascik --build
 ```
 
-**What `bascik --check` does not cover:** it validates component references only, not CSS or JavaScript syntax. A CSS syntax error can cause bascik's scoping transforms to produce garbled output without any warning. Use external tools alongside `--check`:
+**What `bascik --check` does not cover:** it does not replace CSS/JS syntax linting. Use external tools alongside `--check`:
 
 | Tool | What it catches |
 |---|---|

@@ -284,16 +284,37 @@ Unused components (1)
 ✓ 0 errors, 4 warnings
 ```
 
-It reports:
+### Check Reference
 
-- **Errors:**
-  - API route files under `directory.api` that export no recognized method handler
-  - Two or more API route files that resolve to the same route URL (collision)
-- **Warnings:**
-  - Hyphenated tags with no matching component file (such as third-party custom elements or mistyped tags)
-  - Component files that exist but are never referenced
-  - API route method exports that are lowercase or mixed-case (e.g. `get` or `Post`)
-- **Success:** exits with code `0` when no errors are found
+`bascik --check` runs the following validations:
+
+| Check | Category | Severity |
+| --- | --- | --- |
+| Config key and value validation (prompt 05 model) | `config-validation` | Error or warning by key |
+| Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled | `missing-site-url` | Error |
+| Pages directory unreadable or empty | `pages-directory` | Error |
+| Duplicate component tag names | `duplicate-component-name` | Error |
+| Circular component references | `circular-component-reference` | Error |
+| Unknown `data-bascik-*` attributes | `unknown-bascik-attribute` | Warning |
+| A script tag with both `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
+| Duplicate route resolution from page paths | `duplicate-route-resolution` | Error |
+| API route file with no recognized method export | `missing-method-handler` | Error |
+| Multiple API route files resolving to one URL | `route-collision` | Error |
+| Method-like API export with wrong casing (`get`, `Post`) | `invalid-method-case` | Warning |
+| Unmatched component tag usage | `unmatched-tag` | Warning |
+| Unused component file | `unused-component` | Warning |
+| Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
+
+`missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
+
+Key severity mapping details from prompt 05 validation data:
+
+- `pipeline.exec[].script` missing path: Error
+- `http.tls.keyFile`/`http.tls.certFile` unreadable: Error
+- `pipeline.watchPaths[]` missing path: Warning
+- `assets.inlineStyles[]` missing path: Warning
+
+Success exits with code `0` when no errors are found.
 
 ### Failing CI on warnings with `--strict`
 

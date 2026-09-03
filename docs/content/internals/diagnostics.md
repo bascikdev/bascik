@@ -39,7 +39,7 @@ Source templates often contain sample code, embedded JSON-LD, or CSS rules that 
 Before custom tags are extracted, `stripElementContents` removes the inner content of elements that legitimately contain raw text:
 
 - Standard protected elements: `<script>`, `<style>`, `<textarea>`
-- User-configured skip elements: `skipTranspilingElementContents` (which defaults to `["code"]`)
+- User-configured preserve tags: `scoping.preserve` (which defaults to `["code"]`)
 
 ```ts
 const stripElementContents = (html: string): string => {
@@ -117,9 +117,26 @@ To add a new validation check:
 | --- | --- | --- | --- | --- |
 | Unknown Component Tag | `unmatched-tag` | Warning | 0 | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged. |
 | Unused Component File | `unused-component` | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
+| Config Validation | `config-validation` | Error/Warning | Depends | Prompt 05 validation results projected into findings with key-based severity mapping. |
+| Missing Site URL | `missing-site-url` | Error | 1 | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. |
+| Pages Directory Issue | `pages-directory` | Error | 1 | Configured pages directory cannot be read or contains no page HTML files. |
+| Duplicate Component Name | `duplicate-component-name` | Error | 1 | Multiple component files define the same custom tag name. |
+| Circular Component Reference | `circular-component-reference` | Error | 1 | Direct or indirect component graph cycle detected (full cycle path included). |
+| Unknown Bascik Directive | `unknown-bascik-attribute` | Warning | 0 | A `data-bascik-*` attribute is unrecognized and likely a typo. |
+| Script Mode Conflict | `script-mode-conflict` | Error | 1 | A script tag has both `data-bascik-build` and `data-bascik-server`. |
+| Duplicate Route Resolution | `duplicate-route-resolution` | Error | 1 | Multiple pages resolve to the same route path. |
 | API Route Missing Handler | `missing-method-handler` | Error | 1 | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.). |
 | API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path. |
 | API Route Invalid Case | `invalid-method-case` | Warning | 0 | Method export name is not uppercase (e.g. `get` instead of `GET`). |
+| Component Order Convention | `component-structure-order` | Warning | 0 | Advises `<style>` above markup and `<script>` below markup in component templates. |
+
+`missing-required-prop` is intentionally omitted from the diagnostics model. The low-cost project-wide signal is noisy for real sites (conditional render paths and dynamic content supply), and `--check` favors actionable findings over speculative warnings.
+
+### Worked Extension Examples
+
+- **Unknown directive checks**: scan stripped HTML for `data-bascik-*`, compare against known directive sets, and emit `unknown-bascik-attribute` warnings with line locations.
+- **Cycle checks**: build a component dependency graph from custom-tag occurrences, then DFS for back-edges and report each full cycle path.
+- **Config reuse checks**: call `validateUserConfig(...)`, map each returned key to check-level severity, and emit `config-validation` findings instead of writing directly to stderr.
 
 ## Aggregated Build Errors
 

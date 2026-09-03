@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
@@ -370,6 +370,35 @@ describe("index.ts CLI runner functions", () => {
         logSpy.mockRestore();
       }
     });
+
+    it("reports invalid config shape through check findings model instead of startup crash", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bascik-cli-check-invalid-config-"));
+      try {
+        await writeFile(
+          join(dir, "bascik.config.js"),
+          "export default { http: { prt: 8080 } };",
+          "utf8",
+        );
+        await mkdir(join(dir, "src/pages"), { recursive: true });
+        await writeFile(join(dir, "src/pages/index.html"), "<p>ok</p>", "utf8");
+        const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.ts");
+        const result = spawnSync(process.execPath, [cliPath, "--check", "--json"], {
+          cwd: dir,
+          encoding: "utf8",
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).not.toContain("Failed to load bascik.config");
+
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.errors).toBeGreaterThan(0);
+        const configFinding = parsed.findings.find((f: { category: string; message: string }) => f.category === "config-validation");
+        expect(configFinding).toBeDefined();
+        expect(configFinding.message).toContain("http.prt");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }, 30000);
   });
 });
 
