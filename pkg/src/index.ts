@@ -81,10 +81,22 @@ export const runCli = async (
       return { action: "init", exitCode: 0 };
     }
     case "check": {
-      const { checkProject } = await import("./lib/check.ts");
-      const ok = await checkProject();
-      exit(ok ? 0 : 1);
-      return { action: "check", exitCode: ok ? 0 : 1 };
+      const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
+      const findings = await checkProject();
+      if (decision.flags.json) {
+        console.log(formatFindingsJson(findings));
+      } else {
+        console.log(formatFindingsHuman(findings));
+      }
+      const exitCode = decision.flags.strict
+        ? findings.errors + findings.warnings > 0
+          ? 1
+          : 0
+        : findings.errors > 0
+          ? 1
+          : 0;
+      exit(exitCode);
+      return { action: "check", exitCode };
     }
     case "server": {
       const { serverProduction } = await import("./lib/serve.ts");

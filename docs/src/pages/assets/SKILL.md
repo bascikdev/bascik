@@ -1379,30 +1379,30 @@ Build failed with 2 page errors:
   ```terminal
   [bascik] Unresolved component tag in "pages/about.html": <my-mistyped> - no matching component file found. Run `bascik --check` for a full report.
   ```
-  Use `bascik --check` as the strict CI gate for unresolved component references.
+  Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics.
 
 #### 4. Static Analysis (`bascik --check`)
-Run `bascik --check` from your project root to validate pages and component files without starting the dev server or writing any output:
+Run `bascik --check` from your project root to validate pages, component files, and API route files without starting the dev server or writing any output:
 
 ```sh
 bascik --check
 ```
 
-Bascik scans every `.html` file in your pages and components directories and reports:
-* **Errors:** hyphenated tags with no matching component file (the tag renders as-is in the HTML output):
+Bascik scans every `.html` and API route file in your project directories and reports:
+* **Warnings (exit code 0):** Unmatched hyphenated tags (including third-party web components) and unused component files:
   ```terminal
-  [bascik check] Unknown component in "pages/about.html": <my-missing> - no matching component file found
-  ```
-* **Warnings:** component files that are never referenced:
-  ```terminal
-  [bascik check] Unused component: <old-widget> - defined but never referenced
-  ```
-* **Success**:
-  ```terminal
-  [bascik check] ✓ 8 pages and 12 components checked - no errors
-  ```
+  Components with no matching file (1)
+    These are either typos, or third-party web components. Bascik does not
+    transpile them; they are passed through to the browser unchanged.
 
-Exits with code `1` on errors, suitable for CI:
+    <model-viewer>     src/pages/gallery.html:42
+  ```
+* **Errors (exit code 1):** API route files missing method handlers or route collisions.
+* **Strict mode:** Pass `--strict` to treat warnings as errors and exit with code `1`.
+* **JSON output:** Pass `--json` to output structured findings for CI integration.
+* **Success**: Exits with code `0` when no errors are found (or under `--strict` when no errors or warnings).
+
+Run in CI:
 ```sh
 bascik --check && bascik --build
 ```
@@ -1867,5 +1867,5 @@ Bascik logs a warning and still loads the component, but it will replace every o
 Component names are normalized to lowercase at load time. `My-Card.html` registers as `my-card` and is referenced as `<my-card>`. If two files differ only in case, the last one loaded wins. Convention: always use lowercase, hyphenated filenames.
 
 **What happens if I reference a component that doesn't exist?**
-During a build (`bascik --build`), Bascik emits a warning naming the unresolved tag, and the tag ships to the HTML output unchanged without failing the build. However, `bascik --check` currently treats an unknown hyphenated tag as an error and exits with code 1. This is why third-party custom elements (such as `<model-viewer>` or `<ion-icon>`) currently cause `--check` to fail (an upcoming update changes this validation to emit a warning instead).
+During a build (`bascik --build`), Bascik emits a warning naming the unresolved tag, and the tag ships to the HTML output unchanged without failing the build. Similarly, `bascik --check` treats an unknown hyphenated tag as a warning (exit code 0), allowing third-party custom elements (such as `<model-viewer>` or `<ion-icon>`) to pass without failing the check. Pass `--strict` if you want warnings to fail the check.
 

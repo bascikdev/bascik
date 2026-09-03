@@ -193,7 +193,13 @@ describe("index.ts CLI runner functions", () => {
     const { runCli } = await import("./index.ts");
 
     const initSpy = vi.spyOn(await import("./lib/init.ts"), "initProject").mockResolvedValueOnce(undefined);
-    const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce(true);
+    const checkSpy = vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+      errors: 0,
+      warnings: 0,
+      pagesChecked: 1,
+      componentsChecked: 0,
+      items: [],
+    });
     const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serverProduction").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
@@ -203,6 +209,7 @@ describe("index.ts CLI runner functions", () => {
 
     const checkRes = await runCli(["--check"], { exitOnFinish: false });
     expect(checkRes.action).toBe("check");
+    expect(checkRes.exitCode).toBe(0);
     expect(checkSpy).toHaveBeenCalled();
 
     const serveRes = await runCli(["--server"], { exitOnFinish: false });
@@ -288,6 +295,81 @@ describe("index.ts CLI runner functions", () => {
       .mockRejectedValueOnce(new Error("check boom"));
     await expect(runCli(["--check"], { exitOnFinish: false })).rejects.toThrow("check boom");
     expect(checkSpy).toHaveBeenCalled();
+  });
+
+  describe("runCli --check flags (--strict, --json)", () => {
+    it("exits 0 on warnings without --strict", async () => {
+      const { runCli } = await import("./index.ts");
+      vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+        errors: 0,
+        warnings: 2,
+        pagesChecked: 1,
+        componentsChecked: 1,
+        items: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+            locations: [{ filePath: "pages/index.html", line: 1 }],
+          },
+        ],
+      });
+      const res = await runCli(["--check"], { exitOnFinish: false });
+      expect(res.action).toBe("check");
+      expect(res.exitCode).toBe(0);
+    });
+
+    it("exits 1 on warnings with --strict", async () => {
+      const { runCli } = await import("./index.ts");
+      vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+        errors: 0,
+        warnings: 1,
+        pagesChecked: 1,
+        componentsChecked: 0,
+        items: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+            locations: [{ filePath: "pages/index.html", line: 1 }],
+          },
+        ],
+      });
+      const res = await runCli(["--check", "--strict"], { exitOnFinish: false });
+      expect(res.action).toBe("check");
+      expect(res.exitCode).toBe(1);
+    });
+
+    it("emits JSON when --json is passed", async () => {
+      const { runCli } = await import("./index.ts");
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+      try {
+        vi.spyOn(await import("./lib/check.ts"), "checkProject").mockResolvedValueOnce({
+          errors: 0,
+          warnings: 1,
+          pagesChecked: 1,
+          componentsChecked: 0,
+          items: [
+            {
+              category: "unmatched-tag",
+              severity: "warning",
+              message: "<model-viewer>",
+              locations: [{ filePath: "pages/index.html", line: 1 }],
+            },
+          ],
+        });
+        const res = await runCli(["--check", "--json"], { exitOnFinish: false });
+        expect(res.action).toBe("check");
+        expect(res.exitCode).toBe(0);
+        expect(logSpy).toHaveBeenCalled();
+        const logged = logSpy.mock.calls[0][0];
+        const parsed = JSON.parse(logged);
+        expect(parsed.warnings).toBe(1);
+        expect(parsed.findings[0].category).toBe("unmatched-tag");
+      } finally {
+        logSpy.mockRestore();
+      }
+    });
   });
 });
 

@@ -41,6 +41,8 @@ export interface CliFlags {
   siteUrl?: string;
   envFiles: string[];
   only?: string[];
+  strict?: boolean;
+  json?: boolean;
 }
 
 export interface CliDecision {
@@ -65,6 +67,8 @@ const BOOLEAN_FLAGS = new Set([
   "--build",
   "--server",
   "--check",
+  "--strict",
+  "--json",
   "--help",
   "-h",
   "--version",
@@ -94,6 +98,8 @@ const SUGGESTION_CANDIDATES = [
   "--build",
   "--server",
   "--check",
+  "--strict",
+  "--json",
   "--help",
   "--version",
   "--config",
@@ -364,6 +370,9 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     );
   }
 
+  if (present.has("--strict")) flags.strict = true;
+  if (present.has("--json")) flags.json = true;
+
   const action: CliAction = present.has("--check")
     ? "check"
     : present.has("--server")
@@ -371,6 +380,14 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       : present.has("--build")
         ? "build"
         : "dev";
+
+  if (flags.strict && action !== "check") {
+    return error("Error: --strict only applies to --check.");
+  }
+
+  if (flags.json && action !== "check") {
+    return error("Error: --json only applies to --check.");
+  }
 
   if (flags.log !== undefined && action !== "build") {
     return error("Error: --log only applies to --build.");
@@ -394,6 +411,8 @@ Options:
   --server           Serve the production build over HTTP/1.1
                      (HTTP/2 when http.tls.enabled is set)
   --check            Validate the project (pages, components, config)
+  --strict           Treat warnings as errors during --check (exits 1 on warnings)
+  --json             Emit structured JSON findings during --check
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)
   --port <n>         Override the server port

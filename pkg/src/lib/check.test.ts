@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { extractCustomTags, checkProject } from "./check.ts";
+import {
+  extractCustomTags,
+  checkProject,
+  formatFindingsHuman,
+  formatFindingsJson,
+  type CheckFindings,
+} from "./check.ts";
 
 const { listPagesMock, listComponentsMock } = vi.hoisted(() => ({
   listPagesMock: vi.fn(),
@@ -106,7 +112,7 @@ describe("checkProject", () => {
     logSpy.mockRestore();
   });
 
-  it("returns true and logs success when all tags are known components", async () => {
+  it("returns 0 errors when all tags are known components", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -116,14 +122,12 @@ describe("checkProject", () => {
       "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(errorSpy).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no errors"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(0);
   });
 
-  it("returns false and reports unknown component tags as errors", async () => {
+  it("reports unknown component tags as warnings (not errors)", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card><ghost-tag></ghost-tag>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -133,13 +137,15 @@ describe("checkProject", () => {
       "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<ghost-tag>"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(1);
+    const item = findings.items.find((i) => i.message.includes("<ghost-tag>"));
+    expect(item).toBeDefined();
+    expect(item?.severity).toBe("warning");
   });
 
-  it("warns (without failing) about unused components", async () => {
+  it("warns about unused components", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card>",
       "components/my-card/my-card.html": "<div>card</div>",
@@ -153,11 +159,10 @@ describe("checkProject", () => {
       },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<lonely-widget>"),
-    );
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(1);
+    expect(findings.items.some((i) => i.message.includes("lonely-widget"))).toBe(true);
   });
 
   it("detects component usage inside other component files", async () => {
@@ -176,68 +181,34 @@ describe("checkProject", () => {
       },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    // inner-comp is used by outer-comp — no unused warning
-    expect(warnSpy).not.toHaveBeenCalled();
-    expect(errorSpy).not.toHaveBeenCalled();
-  });
-
-  it("treats files with build scripts as potentially using every component", async () => {
-    await setupProject({
-      "pages/index.html":
-        '<script data-bascik-build>console.log("x")</script>',
-      "components/maybe-used/maybe-used.html": "<div>m</div>",
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({
-      "maybe-used": {
-        fileName: join(workDir, "components/maybe-used/maybe-used.html"),
-      },
-    });
-
-    await expect(checkProject()).resolves.toBe(true);
-    // No unused warning: the build script might generate the usage
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it("still reports unknown tags in files that contain build scripts", async () => {
-    await setupProject({
-      "pages/index.html":
-        '<script data-bascik-build>console.log("x")</script><ghost-tag></ghost-tag>',
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({});
-
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("<ghost-tag>"),
-    );
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(0);
   });
 
   it("skips unreadable files without failing the whole check", async () => {
     listPagesMock.mockResolvedValue([join(workDir, "pages/missing.html")]);
     listComponentsMock.mockResolvedValue({});
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
   });
 
-  it("uses plural 'Unknown components' when multiple unknown tags appear in one file", async () => {
+  it("records all unknown tags as separate findings", async () => {
     await setupProject({
       "pages/index.html": "<ghost-one></ghost-one><ghost-two></ghost-two>",
     });
     listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
     listComponentsMock.mockResolvedValue({});
 
-    await expect(checkProject()).resolves.toBe(false);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unknown components"),
-    );
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("<ghost-one>"));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("<ghost-two>"));
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(2);
+    expect(findings.items.some((i) => i.message.includes("<ghost-one>"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("<ghost-two>"))).toBe(true);
   });
 
-  it("uses plural 'Unused components' when multiple components are unused", async () => {
+  it("reports all unused components", async () => {
     await setupProject({
       "pages/index.html": "<p>no components used</p>",
       "components/widget-a/widget-a.html": "<div>a</div>",
@@ -249,29 +220,11 @@ describe("checkProject", () => {
       "widget-b": { fileName: join(workDir, "components/widget-b/widget-b.html") },
     });
 
-    await expect(checkProject()).resolves.toBe(true);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unused components"),
-    );
-  });
-
-  it("includes unused-count note in success log when there are unused components", async () => {
-    await setupProject({
-      "pages/index.html": "<my-used></my-used>",
-      "components/my-used/my-used.html": "<div>used</div>",
-      "components/not-used/not-used.html": "<div>not used</div>",
-    });
-    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
-    listComponentsMock.mockResolvedValue({
-      "my-used": { fileName: join(workDir, "components/my-used/my-used.html") },
-      "not-used": { fileName: join(workDir, "components/not-used/not-used.html") },
-    });
-
-    await expect(checkProject()).resolves.toBe(true);
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("unused"),
-    );
-    expect(errorSpy).not.toHaveBeenCalled();
+    const findings = await checkProject();
+    expect(findings.errors).toBe(0);
+    expect(findings.warnings).toBe(2);
+    expect(findings.items.some((i) => i.message.includes("widget-a"))).toBe(true);
+    expect(findings.items.some((i) => i.message.includes("widget-b"))).toBe(true);
   });
 
   describe("API Route Validations (Prompt 49)", () => {
@@ -283,10 +236,9 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(false);
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("no recognized HTTP method handler"),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.message.includes("no recognized HTTP method handler"))).toBe(true);
     });
 
     it("reports error when two route files resolve to the same URL", async () => {
@@ -298,10 +250,9 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(false);
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Collision"),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.category === "route-collision")).toBe(true);
     });
 
     it("reports warning when an exported name looks like a method but is not uppercase (e.g. Post or get)", async () => {
@@ -312,11 +263,142 @@ describe("checkProject", () => {
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
       listComponentsMock.mockResolvedValue({});
 
-      await expect(checkProject()).resolves.toBe(true);
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('method export "get" must be uppercase'),
-      );
+      const findings = await checkProject();
+      expect(findings.errors).toBe(0);
+      expect(findings.warnings).toBeGreaterThan(0);
+      expect(findings.items.some((i) => i.message.includes('must be uppercase'))).toBe(true);
+    });
+  });
+
+  describe("Prompt 50 TDD Requirements", () => {
+    it("TDD step 1 anchor: unknown tags (<model-viewer>) are warnings not errors, and unused component is detected despite build script", async () => {
+      await setupProject({
+        "pages/index.html":
+          '<model-viewer src="model.gltf"></model-viewer>\n<script data-bascik-build>console.log("build")</script>',
+        "components/unused-card/unused-card.html": "<div>unused</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "unused-card": { fileName: join(workDir, "components/unused-card/unused-card.html") },
+      });
+
+      const findings = await checkProject();
+      // Should have 0 errors and 2 warnings (unmatched model-viewer tag, and unused-card component)
+      expect(findings.errors).toBe(0);
+      expect(findings.warnings).toBe(2);
+
+      const unmatched = findings.items.find((i) => i.category === "unmatched-tag");
+      expect(unmatched).toBeDefined();
+      expect(unmatched?.severity).toBe("warning");
+      expect(unmatched?.message).toContain("<model-viewer>");
+
+      const unused = findings.items.find((i) => i.category === "unused-component");
+      expect(unused).toBeDefined();
+      expect(unused?.severity).toBe("warning");
+      expect(unused?.message).toContain("unused-card");
+    });
+
+    it("checkProject prints nothing directly to console", async () => {
+      await setupProject({
+        "pages/index.html": "<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      await checkProject();
       expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it("groups findings by category with every location and line number", async () => {
+      await setupProject({
+        "pages/index.html": "<p>line1</p>\n<ion-icon></ion-icon>",
+        "pages/gallery.html": "<ion-icon></ion-icon>\n<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([
+        join(workDir, "pages/index.html"),
+        join(workDir, "pages/gallery.html"),
+      ]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const ionIcon = findings.items.find((i) => i.message.includes("<ion-icon>"));
+      expect(ionIcon?.locations).toHaveLength(2);
+      expect(ionIcon?.locations[0].line).toBe(2);
+      expect(ionIcon?.locations[1].line).toBe(1);
+
+      const human = formatFindingsHuman(findings);
+      expect(human).toContain("Components with no matching file");
+      expect(human).toContain("<ion-icon>");
+      expect(human).toContain("<model-viewer>");
+    });
+
+    it("provides suggestion for near-miss component names but not unrelated names", async () => {
+      await setupProject({
+        "pages/about.html": "<my-crd></my-crd><xyz-completely-unrelated></xyz-completely-unrelated>",
+        "components/my-card/my-card.html": "<div>card</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/about.html")]);
+      listComponentsMock.mockResolvedValue({
+        "my-card": { fileName: join(workDir, "components/my-card/my-card.html") },
+      });
+
+      const findings = await checkProject();
+      const myCrd = findings.items.find((i) => i.message.includes("<my-crd>"));
+      expect(myCrd?.suggestion).toBe("my-card");
+
+      const unrelated = findings.items.find((i) => i.message.includes("<xyz-completely-unrelated>"));
+      expect(unrelated?.suggestion).toBeUndefined();
+
+      const human = formatFindingsHuman(findings);
+      expect(human).toContain("did you mean <my-card>?");
+    });
+
+    it("narrows build-script exemption: suppresses unused warning when component name appears as string literal in build script", async () => {
+      await setupProject({
+        "pages/index.html":
+          '<script data-bascik-build>\n  const comp = "dynamic-card";\n</script>',
+        "components/dynamic-card/dynamic-card.html": "<div>dynamic</div>",
+        "components/truly-unused/truly-unused.html": "<div>unused</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
+        "truly-unused": { fileName: join(workDir, "components/truly-unused/truly-unused.html") },
+      });
+
+      const findings = await checkProject();
+      const unusedDynamic = findings.items.find((i) => i.message.includes("dynamic-card"));
+      expect(unusedDynamic).toBeUndefined();
+
+      const unusedTruly = findings.items.find((i) => i.message.includes("truly-unused"));
+      expect(unusedTruly).toBeDefined();
+    });
+
+    it("produces documented JSON schema with formatFindingsJson driven by same data", async () => {
+      await setupProject({
+        "pages/index.html": "<model-viewer></model-viewer>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const jsonStr = formatFindingsJson(findings);
+      const parsed = JSON.parse(jsonStr);
+
+      expect(parsed).toMatchObject({
+        errors: 0,
+        warnings: 1,
+        findings: [
+          {
+            category: "unmatched-tag",
+            severity: "warning",
+            message: "<model-viewer>",
+          },
+        ],
+      });
+      expect(Array.isArray(parsed.findings[0].locations)).toBe(true);
     });
   });
 });

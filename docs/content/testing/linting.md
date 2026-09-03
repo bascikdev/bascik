@@ -136,3 +136,19 @@ Run standards checks alongside Bascik's structural validator:
 ```sh
 npm run check:standards && npx bascik --check
 ```
+
+### Strict CI Gates with `--strict`
+
+To fail CI pipelines if any warnings exist (such as unmatched tags or unused components), pass `--strict`:
+
+```sh
+npm run check:standards && npx bascik --check --strict
+```
+
+### Machine-Readable Diagnostics with `--json`
+
+To integrate Bascik diagnostics with CI summary reporters or automated PR bots, pass `--json`:
+
+```sh
+npx bascik --check --json > check-report.json
+```
