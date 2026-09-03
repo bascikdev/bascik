@@ -1,8 +1,8 @@
-# Server Script Recipes
+# Server Scripts
 
 `data-bascik-server` scripts are plain Node.js ESM modules. Bascik gives you the request context and injects stdout into the page. Everything else, helpers, database clients, template logic, is your own code.
 
-These recipes show common patterns. Adapt them to your project rather than treating them as required APIs.
+These guides show common patterns. Adapt them to your project rather than treating them as required APIs.
 
 ## Shared helper file
 

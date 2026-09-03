@@ -21,7 +21,7 @@ const SECTION_LABELS: Record<string, string> = {
   internals: 'Internals',
   switch: 'Switch',
   testing: 'Testing & Debugging',
-  recipes: 'Recipes',
+  'how-to': 'How-to',
   resources: 'Resources',
 };
 

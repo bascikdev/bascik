@@ -1,4 +1,4 @@
-# Markdown Recipes
+# Markdown
 
 Bascik does not ship a Markdown pipeline, but build-time scripts are Node.js, so any Markdown library works. This page shows common patterns using `marked`, `gray-matter`, `markdown-it`, and the `unified` / `remark` ecosystem.
 

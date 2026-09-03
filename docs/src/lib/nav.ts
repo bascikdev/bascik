@@ -74,11 +74,11 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Recipes', pages: [
-      { href: '/recipes/markdown', label: 'Markdown' },
-      { href: '/recipes/page-aware-scripts', label: 'Page-Aware Scripts' },
-      { href: '/recipes/server-scripts', label: 'Server Scripts' },
-      { href: '/recipes/templating', label: 'Templating' },
+    section: 'How-to', pages: [
+      { href: '/how-to/markdown', label: 'Markdown' },
+      { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
+      { href: '/how-to/server-scripts', label: 'Server Scripts' },
+      { href: '/how-to/templating', label: 'Templating' },
     ]
   },
   {

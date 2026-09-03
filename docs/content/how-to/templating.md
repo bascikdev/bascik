@@ -1,4 +1,4 @@
-# Templating Recipes
+# Templating
 
 Bascik does not ship a proprietary template language or a custom server-side component framework. The core compiler focuses on what it does best: compiling static HTML components, scoping CSS and JavaScript, and executing plain Node.js scripts at build time or request time. When a project requires loops, partials, or layout composition, you can use native JavaScript features or any template engine from the npm ecosystem.
 

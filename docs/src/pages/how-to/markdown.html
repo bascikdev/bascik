@@ -37,7 +37,7 @@
   </script>
   <meta name="description"
     content="Bascik does not ship a Markdown pipeline, but build-time scripts are Node.js - so any Markdown library works out of the box." />
-  <title>Markdown Recipes - Bascik Docs</title>
+  <title>Markdown - Bascik Docs</title>
 </head>
 
 <body>
@@ -55,17 +55,17 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/recipes/markdown'));
+          console.log(renderSectionLabel('/how-to/markdown'));
         </script>
 
-        <!-- Intro rendered from docs/content/recipes/markdown.md. -->
+        <!-- Intro rendered from docs/content/how-to/markdown.md. -->
         <script data-bascik-build>
           import { join } from 'node:path';
           import { pathToFileURL } from 'node:url';
           const { renderMdRange } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMdRange('./content/recipes/markdown.md', { to: 'marked' }));
+          console.log(await renderMdRange('./content/how-to/markdown.md', { to: 'marked' }));
         </script>
 
         <component-demo>
@@ -85,7 +85,7 @@
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
                 const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
-                console.log(await extractDemoBlock('./content/recipes/markdown.md', 'source-md'));
+                console.log(await extractDemoBlock('./content/how-to/markdown.md', 'source-md'));
               </script>
             </code-block>
           </div>
@@ -95,7 +95,7 @@
                 import { join } from 'node:path';
                 import { pathToFileURL } from 'node:url';
                 const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
-                console.log(await extractDemoBlock('./content/recipes/markdown.md', 'output-html'));
+                console.log(await extractDemoBlock('./content/how-to/markdown.md', 'output-html'));
               </script>
             </code-block>
           </div>
@@ -107,7 +107,7 @@
           const { renderMdRange } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMdRange('./content/recipes/markdown.md', { from: 'marked' }, { stripDemoBlocks: true }));
+          console.log(await renderMdRange('./content/how-to/markdown.md', { from: 'marked' }, { stripDemoBlocks: true }));
         </script>
 
         <docs-pagination />

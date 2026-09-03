@@ -32,7 +32,7 @@ describe('renderSectionLabel', () => {
     expect(renderSectionLabel('/testing/build-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/server-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/exec-scripts')).toBe('<p class="section-label">Testing & Debugging</p>');
-    expect(renderSectionLabel('/recipes/markdown')).toBe('<p class="section-label">Recipes</p>');
+    expect(renderSectionLabel('/how-to/markdown')).toBe('<p class="section-label">How-to</p>');
   });
 
   it('returns empty string for unknown paths', () => {

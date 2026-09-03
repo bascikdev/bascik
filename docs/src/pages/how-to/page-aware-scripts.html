@@ -55,9 +55,9 @@
           const { renderSectionLabel } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
           );
-          console.log(renderSectionLabel('/recipes/page-aware-scripts'));
+          console.log(renderSectionLabel('/how-to/page-aware-scripts'));
         </script>
-        <!-- Content rendered from docs/content/recipes/page-aware-scripts.md at build time.
+        <!-- Content rendered from docs/content/how-to/page-aware-scripts.md at build time.
              To update page content, edit the MD file, not this file. -->
         <script data-bascik-build>
           import { join } from 'node:path';
@@ -65,7 +65,7 @@
           const { renderMd } = await import(
             pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
           );
-          console.log(await renderMd('./content/recipes/page-aware-scripts.md'));
+          console.log(await renderMd('./content/how-to/page-aware-scripts.md'));
         </script>
 
         <div class="callout">
