@@ -761,6 +761,12 @@ Build scripts receive these `process.env` variables:
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
 
+### The Fetch-Once Pattern
+
+When a data-driven page needs the same data in several places, read or fetch it **once at page level** in a single `data-bascik-build` script, then apply it everywhere on the page. Not once per component instance. The same data object can feed a second script, a JSON payload for client JavaScript, or a component prop, without a second network round trip or file read.
+
+**Cache exclusion gotcha:** the build script cache keys on script content and statically scanned local dependencies. It **cannot see network fetches**, `readdir` directory reads, or computed file paths. A script whose output depends on a remote API will be served from cache with stale data across builds, and nothing will tell you. Exclude such scripts via `scripts.cache.exclude` (see below), or disable the cache for them.
+
 ### Build Script Output Cache
 
 Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms startup each). Bascik caches script output on disk so unchanged scripts skip the spawn on subsequent builds or server restarts.

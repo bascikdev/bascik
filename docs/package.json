@@ -33,6 +33,7 @@
     "@playwright/test": "^1.62.0",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.0.0",
+    "@types/nunjucks": "^3",
     "@vitest/coverage-v8": "^4.1.10",
     "lighthouse": "^12.4.0",
     "opentype.js": "^2.0.0",
@@ -42,6 +43,9 @@
   },
   "dependencies": {
     "@bascik/bascik": "workspace:*",
-    "marked": "^18.0.7"
+    "ejs": "^6.0.1",
+    "handlebars": "^4.7.9",
+    "marked": "^18.0.7",
+    "nunjucks": "^3.2.4"
   }
 }

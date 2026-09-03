@@ -1,0 +1,8 @@
+<!-- templates/post-list.ejs -->
+<ul class="post-list">
+  <% rows.forEach((row)=> { %>
+    <li><a href="<%= row.href %>">
+        <%= row.title %>
+      </a></li>
+    <% }); %>
+</ul>

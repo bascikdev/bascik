@@ -94,6 +94,14 @@ Run `bascik --check --json` for machine-readable results, and `bascik --check --
 
 Yes. Bascik's output is vanilla HTML. Any library that works with HTML works with Bascik. Drop a `<script>` tag in and it loads like it always has. See the [JavaScript Libraries](/libraries) page for examples.
 
+## Which templating library should I use with Bascik?
+
+**Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
+
+## Why is my build script returning stale data?
+
+The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
+
 ## Does Bascik add any JavaScript to my pages?
 
 No. Bascik is a build-time tool. The output is vanilla HTML, CSS, and exactly the JavaScript you wrote. No runtime script is injected into your pages.

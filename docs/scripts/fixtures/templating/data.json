@@ -1,0 +1,7 @@
+{
+  "site": "Bascik Demo",
+  "articles": [
+    { "title": "First article", "href": "/posts/first" },
+    { "title": "Second article", "href": "/posts/second" }
+  ]
+}

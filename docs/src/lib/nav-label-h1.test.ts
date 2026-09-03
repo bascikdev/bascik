@@ -47,9 +47,9 @@ async function readPageTitle(href: string): Promise<string | null> {
   const rel = href.replace(/^\//, '');
   const candidates = rel
     ? [
-        path.join(DOCS_ROOT, 'src', 'pages', `${rel}.html`),
-        path.join(DOCS_ROOT, 'src', 'pages', rel, 'index.html'),
-      ]
+      path.join(DOCS_ROOT, 'src', 'pages', `${rel}.html`),
+      path.join(DOCS_ROOT, 'src', 'pages', rel, 'index.html'),
+    ]
     : [path.join(DOCS_ROOT, 'src', 'pages', 'index.html')];
   for (const file of candidates) {
     try {
