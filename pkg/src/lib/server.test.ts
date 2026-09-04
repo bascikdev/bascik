@@ -81,7 +81,7 @@ vi.mock("./config.js", () => ({
       requests: true,
     },
     isProdServer: false,
-    directory: { pages: "src/pages", components: "src/components", out: "dist" },
+    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
   },
 }));
 

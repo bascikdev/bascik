@@ -118,9 +118,23 @@ export interface MinifyOptions {
 
 export interface DirectoryOptions {
   pages: string;
-  components: string;
+  /**
+   * Every configured components root, resolved to an absolute path (realpath
+   * when the directory exists), deduplicated, in author order. Normalized once
+   * in `config.ts`; consumers never re-check for a single string. Roots may sit
+   * outside the project root (monorepo shared components).
+   */
+  components: string[];
   out: string;
   api: string;
+}
+
+/** User-facing `directory` shape: `components` accepts one path or many. */
+export interface DirectoryInput {
+  pages?: string;
+  components?: string | string[];
+  out?: string;
+  api?: string;
 }
 
 export interface ScopingAttributesOptions {
@@ -240,7 +254,7 @@ export interface BascikConfigOptions {
 }
 
 export type UserConfig = {
-  directory?: Partial<DirectoryOptions>;
+  directory?: DirectoryInput;
   scoping?: {
     scriptBlocks?: boolean;
     inheritAttributes?: boolean;

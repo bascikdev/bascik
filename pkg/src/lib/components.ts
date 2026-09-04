@@ -164,11 +164,15 @@ export const deriveComponentName = (fileName: string): string => {
 
 export const listComponents = async (): Promise<ComponentList> => {
   if (componentListCache) return componentListCache;
-  const componentFileNames =
-    (await deepReadDirFlat(
-      BascikConfig.directory.components,
-      /\.(html|css|js|ts|mjs)$/,
-    )) ?? [];
+  // Every configured root is scanned; the union feeds one collision map so a
+  // duplicate filename across roots is the same error as across subfolders.
+  const componentFileNames = (
+    await Promise.all(
+      BascikConfig.directory.components.map(
+        async (root) => (await deepReadDirFlat(root, /\.(html|css|js|ts|mjs)$/)) ?? [],
+      ),
+    )
+  ).flat();
   const componentHtmlFileNames = (componentFileNames as string[]).filter(
     (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
   );
@@ -194,8 +198,9 @@ export const listComponents = async (): Promise<ComponentList> => {
       collisions.push(
         `error: two component files both define the tag <${tag}>\n` +
         `${formattedPaths}\n` +
-        `  Component names come from the filename, so subfolders do not create separate\n` +
-        `  namespaces. Rename one file, for example marketing-${tag}.html.`,
+        `  Component names come from the filename, so neither subfolders nor the roots\n` +
+        `  listed in directory.components create separate namespaces.\n` +
+        `  Rename one file, for example marketing-${tag}.html.`,
       );
     }
   }

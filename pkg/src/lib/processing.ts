@@ -66,6 +66,7 @@ import {
   getRelativePath,
   deepReadDirFlat,
 } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
 import { getLiveReloadScript } from "./live-reload.ts";
 import {
@@ -318,7 +319,7 @@ const buildScopingPipeline = (instanceId: string): ComponentTransform[] => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const getDisplayPath = (path: string): string => {
-  if (BascikConfig.directory?.components && path.includes(BascikConfig.directory.components)) {
+  if (findComponentRoot(path) !== undefined) {
     return getRelativePath(path, "components");
   }
   if (BascikConfig.directory?.pages && path.includes(BascikConfig.directory.pages)) {

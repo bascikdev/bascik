@@ -1,9 +1,10 @@
-import { readdir, rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
+import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath } from "node:fs/promises";
 import { join, dirname, resolve, relative, isAbsolute, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
+import { displayComponentRoot, findComponentRoot, getComponentRoots } from "./component-roots.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
@@ -12,37 +13,65 @@ import { manifestCollector } from "./manifest.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
-/** Resolve an absolute path to a `parentDir/...` relative path, normalizing separators. */
+/**
+ * Strip a `<configuredDir>/` marker from a normalized path. Uses the LAST
+ * occurrence so a path like `/Users/x/my-pages/pages/a.png` keeps only the
+ * tail after the real directory.
+ */
+const stripDirMarker = (normalizedPath: string, configuredDir: string): string => {
+  const marker = `${configuredDir}/`;
+  const markerIndex = normalizedPath.lastIndexOf(marker);
+  const suffix = markerIndex >= 0 ? normalizedPath.slice(markerIndex + marker.length) : normalizedPath;
+  return suffix.replace(/^\.?\//, "").replace(/^\//, "");
+};
+
+/**
+ * Resolve an absolute path to a `parentDir/...` relative path, normalizing
+ * separators. For components, the owning root comes from `findComponentRoot`;
+ * a root outside the project is displayed cwd-relative
+ * (`../shared/components/x.html`), never as an absolute path.
+ */
 export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
   const normalizedPath = path.replace(/\\/g, "/");
-  const configuredDir = (parentDir === "pages"
-    ? BascikConfig.directory.pages
-    : BascikConfig.directory.components
-  ).replace(/\\/g, "/");
 
-  if (normalizedPath === parentDir || normalizedPath === configuredDir) {
-    return parentDir;
-  }
+  if (normalizedPath === parentDir) return parentDir;
 
   if (normalizedPath.startsWith(`${parentDir}/`)) {
     const relative = normalizedPath.slice(parentDir.length + 1).replace(/^\.?\//, "").replace(/^\//, "");
     return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
   }
 
-  const configuredDirMarker = `${configuredDir}/`;
-  const markerIndex = normalizedPath.lastIndexOf(configuredDirMarker);
-  const suffix = markerIndex >= 0
-    ? normalizedPath.slice(markerIndex + configuredDirMarker.length)
-    : normalizedPath;
+  if (parentDir === "pages") {
+    const configuredDir = BascikConfig.directory.pages.replace(/\\/g, "/");
+    if (normalizedPath === configuredDir) return parentDir;
+    const relative = stripDirMarker(normalizedPath, configuredDir);
+    return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
+  }
 
-  const relative = (suffix ?? "").replace(/^\.?\//, "").replace(/^\//, "");
+  const owningRoot = findComponentRoot(normalizedPath);
+  if (owningRoot !== undefined) {
+    const prefix = displayComponentRoot(owningRoot);
+    const relative = normalizedPath.slice(owningRoot.length).replace(/^\/+/, "");
+    return relative ? `${prefix}/${relative}`.replace(/\/+/g, "/") : prefix;
+  }
+
+  // No configured root contains the path (relative roots in tests, or a
+  // path handed over in a different spelling): fall back to marker matching
+  // against each configured root in turn.
+  for (const root of getComponentRoots()) {
+    if (normalizedPath === root) return parentDir;
+    if (normalizedPath.lastIndexOf(`${root}/`) >= 0) {
+      const relative = stripDirMarker(normalizedPath, root);
+      return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
+    }
+  }
+  const relative = normalizedPath.replace(/^\.?\//, "").replace(/^\//, "");
   return relative ? `${parentDir}/${relative}`.replace(/\/+/g, "/") : parentDir;
 };
 
 const displayRelativePath = (path: string): string => {
   const normalized = path.replace(/\\/g, "/");
   const pagesDir = BascikConfig.directory.pages.replace(/\\/g, "/");
-  const componentsDir = BascikConfig.directory.components.replace(/\\/g, "/");
 
   if (normalized.includes(`/${pagesDir}/`)) {
     return `pages/${normalized.split(`/${pagesDir}/`)[1]}`;
@@ -50,11 +79,18 @@ const displayRelativePath = (path: string): string => {
   if (normalized.startsWith(`${pagesDir}/`)) {
     return normalized;
   }
-  if (normalized.includes(`/${componentsDir}/`)) {
-    return `components/${normalized.split(`/${componentsDir}/`)[1]}`;
+  const owningRoot = findComponentRoot(normalized);
+  if (owningRoot !== undefined) {
+    const rel = normalized.slice(owningRoot.length).replace(/^\/+/, "");
+    return `${displayComponentRoot(owningRoot)}/${rel}`;
   }
-  if (normalized.startsWith(`${componentsDir}/`)) {
-    return normalized;
+  for (const componentsDir of getComponentRoots()) {
+    if (normalized.includes(`/${componentsDir}/`)) {
+      return `components/${normalized.split(`/${componentsDir}/`)[1]}`;
+    }
+    if (normalized.startsWith(`${componentsDir}/`)) {
+      return normalized;
+    }
   }
   const outDirRel = relative(process.cwd(), BascikConfig.directory.out) || "dist";
   return normalized.replace(/^\.\//, "").replace(/^\//, "").replace(new RegExp(`^${outDirRel}/`), "");
@@ -192,19 +228,81 @@ const flattenPaths = (items: NestedPaths): string[] => {
   return result;
 };
 
-// Taken from https://stackoverflow.com/a/71166133/1469690
-const deepReadDir = async (dirPath: string, isRoot = true): Promise<NestedPaths> => {
+/** realpath that never throws; falls back to the input when the fs cannot answer. */
+const safeRealpath = async (path: string): Promise<string> => {
   try {
+    return await realpath(path);
+  } catch {
+    return path;
+  }
+};
+
+/**
+ * Recursive directory read that follows symlinks.
+ *
+ * Symlink policy (prompt 80): a symlinked directory is recursed and a
+ * symlinked file is included, both under their LINK path so results stay
+ * under the configured root. A per-traversal set of visited realpaths makes
+ * cycles (`root/loop -> root`) terminate with one warning naming the link. A
+ * dangling link (target missing) is skipped with one warning. Real entries at
+ * each level are processed before symlinks so that when a link aliases a
+ * sibling directory the real directory always wins.
+ *
+ * Originally adapted from https://stackoverflow.com/a/71166133/1469690
+ */
+const deepReadDir = async (
+  dirPath: string,
+  isRoot = true,
+  visited: Set<string> = new Set(),
+): Promise<NestedPaths> => {
+  try {
+    if (isRoot) visited.add(await safeRealpath(dirPath));
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
     // Sort directory entries byte-wise at each level for deterministic traversal
     dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    return Promise.all(
-      dirents.map(async (dirent: Dirent) => {
+    const isLink = (dirent: Dirent): boolean =>
+      typeof dirent.isSymbolicLink === "function" && dirent.isSymbolicLink();
+    const realEntries = dirents.filter((dirent) => !isLink(dirent));
+    const linkEntries = dirents.filter(isLink);
+
+    const realResults = await Promise.all(
+      realEntries.map(async (dirent: Dirent) => {
         const path = join(dirPath, dirent.name);
-        return dirent.isDirectory() ? await deepReadDir(path, false) : path;
+        if (!dirent.isDirectory()) return path;
+        visited.add(await safeRealpath(path));
+        return deepReadDir(path, false, visited);
       }),
     );
+
+    const linkResults: NestedPaths = [];
+    for (const dirent of linkEntries) {
+      const path = join(dirPath, dirent.name);
+      let target: Awaited<ReturnType<typeof stat>>;
+      try {
+        target = await stat(path);
+      } catch {
+        console.warn("[bascik] warning: skipping dangling symlink %s (target does not exist)", path);
+        continue;
+      }
+      if (!target.isDirectory()) {
+        linkResults.push(path);
+        continue;
+      }
+      const real = await safeRealpath(path);
+      if (visited.has(real)) {
+        console.warn(
+          "[bascik] warning: symlink cycle: %s points at %s, which is already being scanned; skipping",
+          path,
+          real,
+        );
+        continue;
+      }
+      visited.add(real);
+      linkResults.push(await deepReadDir(path, false, visited));
+    }
+
+    return [...realResults, ...linkResults];
   } catch (error) {
     if (isRoot) throw error;
     console.warn("Failed to read subdirectory %s", dirPath, error);
@@ -269,7 +367,6 @@ export const toDistPath = (srcPath: string): string => {
   } else {
     const sourceSegments = normalizedSrc.split("/");
     const configuredPagesDir = BascikConfig.directory.pages.replace(/\\/g, "/").replace(/\/+$/, "");
-    const configuredComponentsDir = BascikConfig.directory.components.replace(/\\/g, "/").replace(/\/+$/, "");
     const hasConfiguredRoot = (configuredDir: string): boolean => {
       const root = configuredDir.replace(/^\/+|\/+$/g, "");
       return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
@@ -278,7 +375,8 @@ export const toDistPath = (srcPath: string): string => {
       normalizedSrc.startsWith("pages/") ||
       normalizedSrc.startsWith("components/") ||
       hasConfiguredRoot(configuredPagesDir) ||
-      hasConfiguredRoot(configuredComponentsDir);
+      findComponentRoot(normalizedSrc) !== undefined ||
+      getComponentRoots().some((root) => hasConfiguredRoot(root));
     const isAbsoluteSource = normalizedSrc.startsWith("/") || /^[A-Za-z]:\//.test(normalizedSrc);
     if (
       sourceSegments.includes("..") ||

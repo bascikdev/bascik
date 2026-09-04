@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, appendFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
@@ -91,13 +91,14 @@ export const runCli = async (
           yes: decision.flags.yes,
           dryRun: decision.flags.dryRun,
         });
+        const targetDir = relative(process.cwd(), result.targetComponentsDir).replace(/\\/g, "/") || ".";
         if (decision.flags.dryRun) {
-          logger(`[bascik add] dry run: would copy ${result.copiedFiles.length} file(s).`);
+          logger(`[bascik add] dry run: would copy ${result.copiedFiles.length} file(s) into ${targetDir}.`);
           for (const f of result.copiedFiles) {
             logger(`  would copy: ${f.destPath}`);
           }
         } else {
-          logger(`[bascik add] successfully added ${result.copiedFiles.length} file(s).`);
+          logger(`[bascik add] successfully added ${result.copiedFiles.length} file(s) into ${targetDir}.`);
           for (const f of result.copiedFiles) {
             logger(`  added: ${f.destPath}`);
           }

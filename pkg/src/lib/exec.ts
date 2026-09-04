@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
@@ -119,10 +119,12 @@ const runScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<nu
 
   const siteUrl = getSiteUrl() ?? '';
   const pagesDir = resolve(process.cwd(), BascikConfig.directory?.pages ?? 'src/pages');
-  const componentsDir = resolve(process.cwd(), BascikConfig.directory?.components ?? 'src/components');
+  const componentRoots = (BascikConfig.directory?.components ?? ['src/components'])
+    .map((root) => resolve(process.cwd(), root));
 
   const resolvedScript = resolve(cwd, scriptPath);
-  if (resolvedScript.startsWith(pagesDir) || resolvedScript.startsWith(componentsDir)) {
+  const isInside = (dir: string): boolean => resolvedScript === dir || resolvedScript.startsWith(dir + sep);
+  if (isInside(pagesDir) || componentRoots.some(isInside)) {
     console.warn(`[bascik] warning: exec script "${scriptPath}" is located inside source directories (pages/components). Keep exec scripts in scripts/ or project root.`);
   }
 

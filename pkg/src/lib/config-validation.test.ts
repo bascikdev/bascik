@@ -345,6 +345,55 @@ describe("directory paths (fs half)", () => {
   });
 });
 
+describe("directory.components shape (string | string[])", () => {
+  it("accepts a single string", () => {
+    expect(
+      validateConfigShape({ directory: { components: "src/components" } }, { cwd: "/project" }),
+    ).toHaveLength(0);
+  });
+
+  it("accepts an array of strings, including paths outside the project", () => {
+    expect(
+      validateConfigShape(
+        { directory: { components: ["../../shared/components", "src/components"] } },
+        { cwd: "/project" },
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("rejects an empty array", () => {
+    const errors = validateConfigShape({ directory: { components: [] } }, { cwd: "/project" });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("directory.components");
+    expect(errors[0].message).toMatch(/non-empty/);
+  });
+
+  it("rejects an array containing a non-string element", () => {
+    const errors = validateConfigShape(
+      { directory: { components: ["src/components", 42] } } as any,
+      { cwd: "/project" },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("directory.components[1]");
+    expect(errors[0].value).toBe(42);
+  });
+
+  it("rejects an array containing an empty string element", () => {
+    const errors = validateConfigShape(
+      { directory: { components: ["src/components", ""] } },
+      { cwd: "/project" },
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("directory.components[1]");
+  });
+
+  it("still rejects a non-string, non-array value", () => {
+    const errors = validateConfigShape({ directory: { components: 7 } } as any, { cwd: "/project" });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("directory.components");
+  });
+});
+
 describe("directory.out escape check", () => {
   it("rejects an out directory that escapes the project root", () => {
     const errors = validateConfigShape(

@@ -77,6 +77,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import {
   addElementClassesInHtml,
@@ -876,13 +877,16 @@ export const getComponentScripts = async (
     return { scriptMap };
   }
 
-  const htmlDir = dirname(htmlFileName);
-  const compDir = BascikConfig.directory.components;
-  const isSubfolder = htmlDir !== compDir && htmlDir.startsWith(compDir);
+  const htmlDir = dirname(htmlFileName).replace(/\\/g, "/");
+  // The root that actually contains this component decides flat vs subfolder
+  // layout. With several roots, a global "first root" would silently fall back
+  // to basename matching for every component in the other roots.
+  const compDir = findComponentRoot(htmlFileName);
+  const isSubfolder = compDir !== undefined && htmlDir !== compDir && htmlDir.startsWith(`${compDir}/`);
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
-    const scriptDir = dirname(scriptPath);
+    const scriptDir = dirname(scriptPath).replace(/\\/g, "/");
     if (isSubfolder) {
       return scriptDir === htmlDir || scriptDir.startsWith(htmlDir + "/");
     } else {

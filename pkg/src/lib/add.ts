@@ -53,6 +53,12 @@ export interface BascikLockfile {
 
 export interface AddResult {
   copiedFiles: CopiedFileInfo[];
+  /**
+   * Absolute directory the files were (or would be) copied into. With several
+   * `directory.components` roots this is the first listed one, so the CLI can
+   * tell the user where the files landed.
+   */
+  targetComponentsDir: string;
 }
 
 const LOCKFILE_NAME = "bascik-lock.json";
@@ -225,10 +231,12 @@ export const addComponents = async (
   options: AddOptions = {},
 ): Promise<AddResult> => {
   const cwd = options.cwd ?? process.cwd();
+  // `bascik add` targets the FIRST configured root; order is otherwise
+  // documentation-only because duplicates across roots are build errors.
   const configuredComponentsDir = options.componentsDir ??
     (options.cwd
       ? join(options.cwd, "src", "components")
-      : (BascikConfig.directory?.components ?? "src/components"));
+      : (BascikConfig.directory?.components?.[0] ?? "src/components"));
   const targetComponentsDir = isAbsolute(configuredComponentsDir)
     ? configuredComponentsDir
     : resolve(cwd, configuredComponentsDir);
@@ -435,6 +443,7 @@ export const addComponents = async (
   // If dryRun, return what would happen without writing
   if (options.dryRun) {
     return {
+      targetComponentsDir,
       copiedFiles: allFilesToCopy.map((item) => ({
         srcPath: item.srcPath,
         destPath: item.destPath,
@@ -497,6 +506,7 @@ export const addComponents = async (
   }
 
   return {
+    targetComponentsDir,
     copiedFiles: allFilesToCopy.map((item) => ({
       srcPath: item.srcPath,
       destPath: item.destPath,

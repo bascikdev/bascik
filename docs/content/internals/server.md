@@ -95,8 +95,8 @@ Four native filesystem watchers (chokidar) handle source file updates in develop
 
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
-3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
-4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and `directory.components` are excluded when nested inside it.
+3. **Component watcher:** Listens for changes in every configured `directory.components` root. This is the only watcher with `followSymlinks: true`, so a symlinked directory inside a root triggers rebuilds; chokidar reports the link path, which is what the inverted component index expects. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
+4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
 
 ### Live reload (`live-reload.ts`, `sse.ts`)
 

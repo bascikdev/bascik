@@ -22,7 +22,7 @@ vi.mock("./config.js", () => ({
     scripts: {
       onRoutesScriptError: "error",
     },
-    directory: { pages: "src/pages", components: "src/components", out: "dist" },
+    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
   },
 }));
 

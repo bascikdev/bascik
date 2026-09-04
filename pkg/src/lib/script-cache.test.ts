@@ -11,7 +11,7 @@ vi.mock("./config.js", () => ({
       onBuildScriptError: "error",
       timeout: 30000,
     },
-    directory: { out: "dist", pages: "src/pages", components: "src/components" },
+    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
     isBuild: true,
   },
 }));

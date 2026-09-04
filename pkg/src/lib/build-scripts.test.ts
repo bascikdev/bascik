@@ -30,7 +30,7 @@ vi.mock("./config.js", () => ({
     base: "/",
     isBuild: false,
     scripts: { cache: { enabled: true }, onBuildScriptError: "error", importRoot: "src" },
-    directory: { pages: "src/pages", components: "src/components", out: "dist" },
+    directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
   },
 }));
 

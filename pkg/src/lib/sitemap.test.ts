@@ -31,7 +31,7 @@ vi.mock("./config.js", () => ({
   BascikConfig: {
     base: "/",
     generate: { sitemap: true, robots: true, sitemapLastmod: false },
-    directory: { pages: "/project/src/pages", components: "/project/src/components", out: "dist" },
+    directory: { pages: "/project/src/pages", components: ["/project/src/components"], out: "dist" },
     isBuild: true,
   },
 }));

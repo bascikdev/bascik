@@ -64,6 +64,27 @@ suite('Extension Integration Suite', () => {
       );
     });
 
+    test('provides definition for a component in a second configured components root', async () => {
+      // bascik.config.ts in the fixture lists ['src/components', 'shared-components'].
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<shared-pill>Hi</shared-pill>',
+      });
+      const pos = new vscode.Position(0, 4); // inside 'shared-pill'
+      const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeDefinitionProvider',
+        doc.uri,
+        pos,
+      );
+
+      assert.ok(locations && locations.length > 0, 'Definition in the second root should be found');
+      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      assert.ok(
+        targetPath.endsWith('shared-components/shared-pill.html'),
+        `Expected location to end with shared-components/shared-pill.html, got ${targetPath}`,
+      );
+    });
+
     test('returns undefined for built-in HTML element', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'html',
@@ -559,6 +580,22 @@ suite('Extension Integration Suite', () => {
         d.message.includes('Under WHATWG HTML §4.13, custom elements should include a hyphen'),
       );
       assert.ok(match, 'Expected non-hyphenated component warning');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('reports non-hyphenated component name warning for files in a second configured components root', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      assert.ok(workspaceFolder, 'Workspace folder should be open');
+
+      const uri = vscode.Uri.file(
+        path.join(workspaceFolder.uri.fsPath, 'shared-components', 'widget.html'),
+      );
+      const fileDoc = await vscode.workspace.openTextDocument(uri);
+      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('Under WHATWG HTML §4.13, custom elements should include a hyphen'),
+      );
+      assert.ok(match, 'Expected non-hyphenated component warning for a file in the second root');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
   });

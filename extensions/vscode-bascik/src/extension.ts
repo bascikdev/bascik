@@ -13,15 +13,61 @@ function normalizeComponentName(name: string): string {
   return name.replace(/\\/g, '/').split('/').pop()?.replace(/\.html$/i, '').toLowerCase() ?? '';
 }
 
+const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
+const DEFAULT_COMPONENT_ROOTS = ['src/components'];
+
+/**
+ * Read `directory.components` from the workspace's bascik.config file.
+ *
+ * This is a lexical (regex) read because the extension cannot execute a
+ * TypeScript config. It accepts the same shapes as the runtime: a single
+ * string or an array of strings. Values are relative to the project root and
+ * may point outside it (monorepo shared components). Falls back to the runtime
+ * default `['src/components']` when the config is missing or unparseable.
+ */
+function readComponentRoots(workspaceRoot: string): string[] {
+  for (const candidate of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(workspaceRoot, candidate);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const source = fs.readFileSync(configPath, 'utf8');
+      const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
+      if (match?.[1]) {
+        const literals = Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (m) => m[1]);
+        if (literals.length > 0) return literals;
+      }
+    } catch {
+      // unreadable config: fall through to the default
+    }
+    break;
+  }
+  return DEFAULT_COMPONENT_ROOTS;
+}
+
+/** Absolute, forward-slash component roots for the workspace. */
+function resolveComponentRoots(workspaceRoot: string): string[] {
+  return readComponentRoots(workspaceRoot).map((root) =>
+    path.resolve(workspaceRoot, root).replace(/\\/g, '/').replace(/\/+$/, ''),
+  );
+}
+
+/** True when `fsPath` is inside any configured component root of its workspace. */
+function isInsideComponentRoot(fsPath: string): boolean {
+  const normalized = fsPath.replace(/\\/g, '/');
+  const workspaceRoot = getWorkspaceRoot();
+  const roots = workspaceRoot
+    ? resolveComponentRoots(workspaceRoot)
+    : DEFAULT_COMPONENT_ROOTS.map((root) => `/${root}`);
+  return roots.some((root) =>
+    workspaceRoot
+      ? normalized === root || normalized.startsWith(`${root}/`)
+      : normalized.includes(`${root}/`),
+  );
+}
+
 function findComponentMap(workspaceRoot: string): Map<string, string> {
   const components = new Map<string, string>();
-  const dir = path.join(workspaceRoot, 'src', 'components');
-
-  if (!fs.existsSync(dir)) {
-    return components;
-  }
-
-  const stack = [dir];
+  const stack = resolveComponentRoots(workspaceRoot).filter((dir) => fs.existsSync(dir));
   while (stack.length > 0) {
     const current = stack.pop();
     if (!current || !fs.existsSync(current)) continue;
@@ -118,7 +164,6 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
 const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
 
 const DEFAULT_IMPORT_ROOT = 'src';
-const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
 
 /**
  * Read `scripts.importRoot` from the workspace's bascik.config file.
@@ -376,7 +421,7 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   const diagnostics: vscode.Diagnostic[] = [];
   const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
   const isComponentDocument =
-    document.uri.scheme === 'file' && normalizedDocumentPath.includes('/src/components/');
+    document.uri.scheme === 'file' && isInsideComponentRoot(normalizedDocumentPath);
   const isApiRouteDocument =
     document.uri.scheme === 'file' &&
     normalizedDocumentPath.includes('/src/api/') &&
@@ -397,10 +442,11 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     }
   }
 
-  // Warn if a component file name in src/components is not hyphenated per WHATWG HTML §4.13
+  // Warn if a component file name in any configured components root is not
+  // hyphenated per WHATWG HTML §4.13
   if (languageId === 'html' && document.uri.scheme === 'file') {
     const fsPath = document.uri.fsPath.replace(/\\/g, '/');
-    if (fsPath.includes('/src/components/')) {
+    if (isInsideComponentRoot(fsPath)) {
       const fileName = path.basename(fsPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, '').toLowerCase();
       if (!nameWithoutExt.includes('-') && !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)) {

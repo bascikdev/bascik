@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { out: "dist", pages: "src/pages", components: "src/components" },
+    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
     isBuild: true,
     generate: {
       manifest: true,

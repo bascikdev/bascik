@@ -10,7 +10,7 @@ vi.mock("./config.js", () => ({
     minify: {
       identifiers: false,
     },
-    directory: { out: "dist", pages: "src/pages", components: "src/components" },
+    directory: { out: "dist", pages: "src/pages", components: ["src/components"] },
     isBuild: true,
   },
   shouldLog: vi.fn(() => true),

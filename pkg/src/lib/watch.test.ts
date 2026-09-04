@@ -157,7 +157,7 @@ vi.mock("./config.js", () => ({
   BascikConfig: {
     directory: {
       pages: "/project/src/pages",
-      components: "/project/src/components",
+      components: ["/project/src/components"],
       out: "dist",
     },
     pipeline: {
@@ -252,6 +252,21 @@ describe("watchFiles – watcher setup", () => {
     expect(mockWatch.mock.calls[2][0]).toContain("/project/src/components");
   });
 
+  it("watches every configured component root and follows symlinks there only", async () => {
+    const previous = (BascikConfig as any).directory.components;
+    (BascikConfig as any).directory.components = ["/shared/components", "/project/src/components"];
+    try {
+      await watchFiles();
+      expect(mockWatch.mock.calls[2][0]).toEqual(["/shared/components", "/project/src/components"]);
+      expect(mockWatch.mock.calls[2][1]).toMatchObject({ followSymlinks: true });
+      // Pages watchers are unchanged by this prompt.
+      expect(mockWatch.mock.calls[0][1]).toMatchObject({ followSymlinks: false });
+      expect(mockWatch.mock.calls[1][1]).toMatchObject({ followSymlinks: false });
+    } finally {
+      (BascikConfig as any).directory.components = previous;
+    }
+  });
+
   it("watches the import root directory", async () => {
     await watchFiles();
     expect(mockWatch.mock.calls[3][0]).toEqual(["/project/src"]);
@@ -277,7 +292,7 @@ describe("watchFiles – import root watcher (watcher 3)", () => {
   const getIgnoreFn = (): ((path: string) => boolean) =>
     (mockWatch.mock.calls[3][1] as { ignored: (path: string) => boolean }).ignored;
 
-  it("excludes directory.pages and directory.components when nested inside the import root", () => {
+  it("excludes directory.pages and every directory.components root when nested inside the import root", () => {
     const ignored = getIgnoreFn();
     expect(ignored("/project/src/pages/index.html")).toBe(true);
     expect(ignored("/project/src/components/x/x.ts")).toBe(true);

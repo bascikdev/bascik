@@ -117,10 +117,14 @@ export const watchFiles = async () => {
       }));
   });
 
-  // Transpile pages if components change
+  // Transpile pages if components change. Every configured root is watched;
+  // symlinks are followed here (and only here) so a linked shared directory
+  // inside a root triggers rebuilds. Chokidar reports link paths, which is
+  // what selectivelyProcessPages expects.
   w(chokidar
-    .watch([BascikConfig.directory.components], {
+    .watch([...BascikConfig.directory.components], {
       ...watchOptions,
+      followSymlinks: true,
       ignored: (path: string, stats?: Stats): boolean => {
         return !!(
           stats?.isFile() && !(path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js") || path.endsWith(".ts") || path.endsWith(".mjs"))
@@ -188,14 +192,14 @@ export const watchFiles = async () => {
   const importRoot = getImportRoot();
   if (!BascikConfig.isBuild && existsSync(importRoot)) {
     const pagesDir = resolve(process.cwd(), BascikConfig.directory.pages);
-    const componentsDir = resolve(process.cwd(), BascikConfig.directory.components);
+    const componentRoots = BascikConfig.directory.components.map((root) => resolve(process.cwd(), root));
     // Watchers 2 and 3 already own the pages and components trees; excluding
     // them here avoids double-firing rebuilds. Inlined stylesheets and directory.api
     // are not owned by pages/components watchers, but inlined stylesheets have their
     // own dedicated watcher below so exclude them to avoid redundant processing.
     const isOwnedByOtherWatcher = (path: string): boolean =>
       path === pagesDir || path.startsWith(pagesDir + sep) ||
-      path === componentsDir || path.startsWith(componentsDir + sep) ||
+      componentRoots.some((root) => path === root || path.startsWith(root + sep)) ||
       isInlineStylesheet(path);
     w(chokidar
       .watch([importRoot], {

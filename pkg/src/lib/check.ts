@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { existsSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
@@ -160,7 +161,7 @@ const toDisplay = (filePath: string): string => {
     if (normalized.includes(BascikConfig.directory?.pages?.replace(/\\/g, "/") ?? "src/pages")) {
       return getRelativePath(filePath, "pages");
     }
-    if (normalized.includes(BascikConfig.directory?.components?.replace(/\\/g, "/") ?? "src/components")) {
+    if (findComponentRoot(normalized) !== undefined) {
       return getRelativePath(filePath, "components");
     }
   } catch {
@@ -441,9 +442,15 @@ export const checkProject = async (): Promise<CheckFindings> => {
       });
     }
 
-    const componentDir = resolve(process.cwd(), BascikConfig.directory?.components ?? "src/components");
-    if (existsSync(componentDir)) {
-      const htmlFiles = await deepReadDirFlat(componentDir, /\.html$/i);
+    // Scan every configured root so components outside the failing one are
+    // still known and their tags are not reported as unmatched.
+    const componentRoots = (BascikConfig.directory?.components ?? ["src/components"])
+      .map((root) => resolve(process.cwd(), root))
+      .filter((root) => existsSync(root));
+    if (componentRoots.length > 0) {
+      const htmlFiles = (
+        await Promise.all(componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)))
+      ).flat();
       const nameToPaths = new Map<string, string[]>();
       for (const filePath of htmlFiles) {
         const componentName = filePath.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();

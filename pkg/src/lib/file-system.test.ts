@@ -27,7 +27,7 @@ vi.mock("./config.js", () => ({
     base: "/",
     directory: {
       pages: "pages",
-      components: "components",
+      components: ["components"],
       out: "dist",
     },
     minify: { css: false, js: false, html: false },
@@ -672,6 +672,42 @@ describe("getRelativePath — Windows separators", () => {
     } finally {
       (BascikConfig.directory as any).pages = original;
     }
+  });
+});
+
+describe("getRelativePath – multiple component roots", () => {
+  const withRoots = (roots: string[], fn: () => void) => {
+    const previous = BascikConfig.directory.components;
+    (BascikConfig.directory as { components: string[] }).components = roots;
+    try {
+      fn();
+    } finally {
+      (BascikConfig.directory as { components: string[] }).components = previous;
+    }
+  };
+
+  it("keeps the components/<rel> form for a root inside the project", () => {
+    const inside = resolve("src/components");
+    withRoots(["/outside/shared/components", inside], () => {
+      expect(getRelativePath(`${inside}/card/card.html`, "components")).toBe("components/card/card.html");
+    });
+  });
+
+  it("displays a cwd-relative path, never absolute, for a root outside the project", () => {
+    const outside = resolve("../shared/components");
+    withRoots([outside, resolve("src/components")], () => {
+      expect(getRelativePath(`${outside}/hello-card.html`, "components")).toBe(
+        "../shared/components/hello-card.html",
+      );
+    });
+  });
+
+  it("toDistPath accepts a component path under an outside root but still rejects unknown absolute paths", () => {
+    const outside = resolve("../shared/components");
+    withRoots([outside], () => {
+      expect(() => toDistPath(`${outside}/hello-card.html`)).not.toThrow();
+      expect(() => toDistPath("/workspace/project/source.html")).toThrow(/outside.*output directory/i);
+    });
   });
 });
 

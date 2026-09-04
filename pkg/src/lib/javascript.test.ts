@@ -1,5 +1,8 @@
 import fc from "fast-check";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prefixElementAttribute, namespaceScriptTags, getComponentScripts } from "./javascript.ts";
 import { BascikConfig } from "./config.ts";
 import type { BascikComponent } from "./types.ts";
@@ -14,7 +17,7 @@ vi.mock("./config.js", () => ({
     },
     directory: {
       pages: "src/pages",
-      components: "src/components",
+      components: ["src/components"],
       out: "dist",
     },
   },
@@ -1756,5 +1759,38 @@ describe("getComponentScripts", () => {
   it("returns an empty script map for an empty file list", async () => {
     const res = await getComponentScripts("src/components/my-comp.html", []);
     expect(res.scriptMap.size).toBe(0);
+  });
+
+  describe("with multiple component roots", () => {
+    let base: string;
+    const originalRoots = BascikConfig.directory.components;
+
+    afterEach(() => {
+      (BascikConfig.directory as { components: string[] }).components = originalRoots;
+      if (base) rmSync(base, { recursive: true, force: true });
+    });
+
+    it("matches companion scripts by folder for a subfolder component in the SECOND root", async () => {
+      base = realpathSync(mkdtempSync(join(tmpdir(), "bascik-scripts-roots-")));
+      const firstRoot = join(base, "shared/components");
+      const secondRoot = join(base, "site/src/components");
+      const compDir = join(secondRoot, "shared-badge");
+      mkdirSync(firstRoot, { recursive: true });
+      mkdirSync(compDir, { recursive: true });
+      // A companion whose basename does not match the component name: it is
+      // only picked up by the subfolder (same-folder) rule, never by the
+      // flat-layout basename rule, so it proves which rule ran.
+      const helper = join(compDir, "helper.ts");
+      writeFileSync(helper, "export const x = 1;");
+      // A same-basename script in the FIRST root must not be attached under
+      // the subfolder rule.
+      const decoy = join(firstRoot, "shared-badge.ts");
+      writeFileSync(decoy, "export const decoy = 1;");
+      (BascikConfig.directory as { components: string[] }).components = [firstRoot, secondRoot];
+
+      const res = await getComponentScripts(join(compDir, "shared-badge.html"), [helper, decoy]);
+      expect(res.scriptMap.has("helper.ts")).toBe(true);
+      expect(res.scriptMap.has("shared-badge.ts")).toBe(false);
+    });
   });
 });

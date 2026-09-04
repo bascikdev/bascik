@@ -243,6 +243,22 @@ directory: {
 }
 ```
 
+`directory.components` accepts one directory or an array of directories. Every listed root is scanned recursively for components, watched in dev mode, and known to `bascik --check`. Roots may point outside the project root, which is how several sites in one repository share a components directory:
+
+```ts
+directory: {
+  components: ['../../shared/components', 'src/components'],
+}
+```
+
+Rules that apply across all roots:
+
+- **Names are unique across all roots.** A component's tag comes from its filename, so two roots (or two subfolders) that both contain `hero.html` fail the build with the same collision error, listing every path. Rename one, for example `marketing-hero.html`.
+- **`bascik add` targets the first listed root** and prints where the files landed. A team can keep vendored components separate from hand-written ones by listing a dedicated root first, for example `['src/vendor-components', 'src/components']`.
+- **Roots may not be nested inside one another.** `['src/components', 'src/components/shared']` is rejected at startup because the parent already includes the child.
+- **Duplicate roots are detected by real path**, so a symlink to an already-listed directory is rejected, not scanned twice.
+- **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
+
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers.
 
 The following built-in exclusions always apply:
@@ -412,7 +428,7 @@ Pages, components, and the import root are **three independent directories**. Ba
 ```ts
 // sites/marketing/bascik.config.ts: one repo, several sites, shared code
 export default defineConfig({
-  directory: { components: '../../shared/components' },
+  directory: { components: ['../../shared/components', 'src/components'] },
   scripts: { importRoot: '../../shared/scripts' },
 });
 ```

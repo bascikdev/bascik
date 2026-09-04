@@ -262,10 +262,33 @@ export const validateConfigShape = (
   /* directory */
   if (isPlainObject(raw.directory)) {
     const dir = raw.directory;
-    for (const key of ["pages", "components", "out", "public", "api"] as const) {
+    for (const key of ["pages", "out", "public", "api"] as const) {
       const value = dir[key];
       if (value !== undefined && typeof value !== "string") {
         push(`directory.${key}`, value, "expected a string path");
+      }
+    }
+    // components accepts one root or many. Outside-project roots are a
+    // supported feature (monorepo shared components), so there is no escape
+    // check here; duplicate and nested roots need the filesystem and are
+    // checked in config.ts.
+    const components = dir.components;
+    if (components !== undefined) {
+      if (typeof components === "string") {
+        if (components.trim() === "") {
+          push("directory.components", components, "expected a non-empty directory path");
+        }
+      } else if (Array.isArray(components)) {
+        if (components.length === 0) {
+          push("directory.components", components, "expected a non-empty array of directory paths");
+        }
+        components.forEach((entry, index) => {
+          if (typeof entry !== "string" || entry.trim() === "") {
+            push(`directory.components[${index}]`, entry, "expected a non-empty directory path");
+          }
+        });
+      } else {
+        push("directory.components", components, "expected a string path or an array of string paths");
       }
     }
     if (typeof dir.out === "string") {
