@@ -76,8 +76,9 @@
   <section class="subscription card" aria-busy="true" data-testid="dash-sub">
     <p class="pending" role="status" data-testid="dash-sub-pending">Loading subscription…</p>
     <script data-bascik-stream>
-      export default async function ({ req }, { signal }) {
-        await wait(Number(req.searchParams.sub ?? 0), signal);
+      export default async function (request, context, { signal }) {
+        const sub = new URL(request.url).searchParams.get('sub');
+        await wait(Number(sub ?? 0), signal);
         return '<h2 class="result" data-testid="dash-sub-result">Pro plan</h2>';
       }
       function wait(ms, signal) {
@@ -93,8 +94,9 @@
   <section class="billing card" aria-busy="true" data-testid="dash-bill">
     <p class="pending" role="status" data-testid="dash-bill-pending">Loading billing…</p>
     <script data-bascik-stream>
-      export default async function ({ req }, { signal }) {
-        await wait(Number(req.searchParams.bill ?? 0), signal);
+      export default async function (request, context, { signal }) {
+        const bill = new URL(request.url).searchParams.get('bill');
+        await wait(Number(bill ?? 0), signal);
         return '<ul class="result" data-testid="dash-bill-result"><li>Invoice 1</li></ul>';
       }
       function wait(ms, signal) {

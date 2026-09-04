@@ -22,12 +22,12 @@ import {
   planServerScripts,
   streamServerScripts,
   executeServerScripts,
-  transformServerScriptSource,
   type ScriptSegment,
 } from "./server-scripts.ts";
 import { extractServerScriptsToSidecar, serverSidecarRegistry } from "./server-sidecar.ts";
 
-const req = { path: "/x", method: "GET", headers: {}, searchParams: {} };
+const req = new Request("http://localhost/x");
+const ctx = { remoteIp: "127.0.0.1" };
 
 type D = { promise: Promise<{ ok: true; value: string }>; resolve: (v: string) => void };
 const deferred = (): D => {
@@ -59,8 +59,8 @@ beforeEach(() => {
 describe("planServerScripts", () => {
   it("yields alternating static and script segments in document order with the right modes", () => {
     const html =
-      `<p>a</p><script data-bascik-server>1</script><p>b</p>` +
-      `<script data-bascik-stream>2</script><p>c</p><script data-bascik-server>3</script><p>d</p>`;
+      `<p>a</p><script data-bascik-server>export default function() { return 1; }</script><p>b</p>` +
+      `<script data-bascik-stream>export default function() { return 2; }</script><p>c</p><script data-bascik-server>export default function() { return 3; }</script><p>d</p>`;
     const plan = planServerScripts(html, "/p.html");
     expect(plan.segments.map((s) => (s.kind === "static" ? "static" : s.mode))).toEqual([
       "static", "server", "static", "stream", "static", "server", "static",
@@ -72,7 +72,7 @@ describe("planServerScripts", () => {
   });
 
   it("reports firstStreamIndex -1 for a server-only page", () => {
-    expect(planServerScripts(`<script data-bascik-server>1</script>`).firstStreamIndex).toBe(-1);
+    expect(planServerScripts(`<script data-bascik-server>export default function() { return 1; }</script>`).firstStreamIndex).toBe(-1);
   });
 
   it.each([
@@ -93,7 +93,7 @@ describe("planServerScripts", () => {
   });
 
   it("throws when a placeholder's stream marker disagrees with its sidecar entry", () => {
-    serverSidecarRegistry.recordScript("p1", "return 'x';", undefined, undefined, undefined, "server");
+    serverSidecarRegistry.recordScript("p1", "export default function() { return 'x'; }", undefined, undefined, undefined, "server");
     expect(() =>
       planServerScripts(`<script type="text/bascik-server" data-bascik-server-id="p1" data-bascik-stream></script>`),
     ).toThrow(/stale sidecar/);
@@ -113,12 +113,12 @@ describe("planServerScripts", () => {
   });
 
   it("round-trips multi-byte UTF-8 static content byte-exact", async () => {
-    const html = `<p>héllo 日本 🚀</p><script data-bascik-stream>/*T*/</script><p>ünïcode</p>`;
+    const html = `<p>héllo 日本 🚀</p><script data-bascik-stream>export default function() { return '/*T*/'; }</script><p>ünïcode</p>`;
     const t = deferred();
     route({ "/*T*/": t });
     const plan = planServerScripts(html);
     const { writes, sink } = makeSink();
-    const s = streamServerScripts(plan, req, 1000, undefined, sink);
+    const s = streamServerScripts(plan, req, ctx, 1000, undefined, sink);
     await s.ready;
     s.commit();
     t.resolve("<b>ok</b>");
@@ -128,12 +128,12 @@ describe("planServerScripts", () => {
 });
 
 describe("streamServerScripts", () => {
-  const TWO = `<p>a</p><script data-bascik-stream>/*T1*/</script><p>b</p><script data-bascik-stream>/*T2*/</script><p>c</p>`;
+  const TWO = `<p>a</p><script data-bascik-stream>export default function() { return '/*T1*/'; }</script><p>b</p><script data-bascik-stream>export default function() { return '/*T2*/'; }</script><p>c</p>`;
 
   it("ready rejects when a server job throws under 'error' and nothing was written", async () => {
     route({ "/*S*/": { fail: new Error("boom") } });
     const { writes, sink } = makeSink();
-    const s = streamServerScripts(planServerScripts(`<p>a</p><script data-bascik-server>/*S*/</script>`), req, 1000, undefined, sink);
+    const s = streamServerScripts(planServerScripts(`<p>a</p><script data-bascik-server>export default function() { return '/*S*/'; }</script>`), req, ctx, 1000, undefined, sink);
     await expect(s.ready).rejects.toThrow(/boom/);
     expect(writes).toHaveLength(0);
     // `done` resolves quietly after a phase-one failure: the failure was
@@ -147,7 +147,7 @@ describe("streamServerScripts", () => {
     const t2 = deferred();
     route({ "/*T1*/": t1, "/*T2*/": t2 });
     const { writes, sink } = makeSink();
-    const s = streamServerScripts(planServerScripts(TWO), req, 1000, undefined, sink);
+    const s = streamServerScripts(planServerScripts(TWO), req, ctx, 1000, undefined, sink);
     await s.ready;
     s.commit();
     await tick();
@@ -171,7 +171,7 @@ describe("streamServerScripts", () => {
         const t2 = deferred();
         route({ "/*T1*/": { fail: new Error("kaput") }, "/*T2*/": t2 });
         const { writes, sink } = makeSink();
-        const s = streamServerScripts(planServerScripts(TWO), req, 1000, undefined, sink);
+        const s = streamServerScripts(planServerScripts(TWO), req, ctx, 1000, undefined, sink);
         await s.ready;
         s.commit();
         t2.resolve("<i>2</i>");
@@ -196,7 +196,7 @@ describe("streamServerScripts", () => {
     route({ "/*T1*/": t1, "/*T2*/": t2 });
     const { sink } = makeSink();
     const abort = new AbortController();
-    const s = streamServerScripts(planServerScripts(TWO), req, 1000, undefined, sink, abort.signal);
+    const s = streamServerScripts(planServerScripts(TWO), req, ctx, 1000, undefined, sink, abort.signal);
     await s.ready;
     s.commit();
     await tick();
@@ -214,25 +214,19 @@ describe("stream scripts share the server-script machinery", () => {
     const t = deferred();
     route({ "/*T*/": t });
     t.resolve("<b>x</b>");
-    expect(await executeServerScripts(`<p>a</p><script data-bascik-stream>/*T*/</script>`, req)).toBe("<p>a</p><b>x</b>");
+    expect(await executeServerScripts(`<p>a</p><script data-bascik-stream>export default function() { return '/*T*/'; }</script>`, req, ctx)).toBe("<p>a</p><b>x</b>");
   });
 
   it("class names inside a component's stream-script source are scoped like server-script source", async () => {
     const { prefixElementAttribute } = await import("./javascript.ts");
     const make = (directive: string) => ({
       name: "swap-card",
-      fileContent: `<div class="card"><script data-bascik-${directive}>return '<h2 class="result">x</h2>';</script></div>`,
+      fileContent: `<div class="card"><script data-bascik-${directive}>export default function() { return '<h2 class="result">x</h2>'; }</script></div>`,
       cssFileContent: ".card{} .result{}",
     }) as any;
     const server = prefixElementAttribute(make("server"), "class", "abc", true).fileContent as string;
     const stream = prefixElementAttribute(make("stream"), "class", "abc", true).fileContent as string;
     expect(stream).toContain(`class="bascik__swap-card__result"`);
     expect(stream.replace("data-bascik-stream", "data-bascik-server")).toBe(server);
-  });
-
-  it("transformServerScriptSource is directive-agnostic (same source, same module)", () => {
-    const src = "return `<p>${escapeHtml(req.path)}</p>`;";
-    expect(transformServerScriptSource(src)).toBe(transformServerScriptSource(src));
-    expect(transformServerScriptSource(src)).toContain("const escapeHtml");
   });
 });

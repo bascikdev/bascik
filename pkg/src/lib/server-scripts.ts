@@ -12,9 +12,8 @@
  * @example
  * ```html
  * <script data-bascik-server>
- * import { escapeHtml } from '@bascik/bascik';
- * export default function({ req }) {
- *   const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+ * export default function(request, context) {
+ *   const name = request.headers.get('x-display-name') ?? 'Guest';
  *   return `<p>Welcome, ${name}</p>`;
  * }
  * </script>
@@ -44,22 +43,9 @@ import {
 import type { ServerScriptMode } from "./server-sidecar.ts";
 
 /** Request context passed to every `data-bascik-server` script. */
-export interface ServerRequest {
-  /** URL path without the query string, e.g. `"/about"`. */
-  path: string;
-  /** HTTP method in uppercase, e.g. `"GET"`. */
-  method: string;
-  /**
-   * Request headers as a plain object.
-   * HTTP/2 pseudo-headers (`:path`, `:method`, etc.) are excluded.
-   */
-  headers: Record<string, string>;
-  /** Parsed query parameters as a plain string-to-string object. */
-  searchParams: Record<string, string>;
-}
-
-export interface ServerScriptContext extends Record<string, unknown> {
-  req: ServerRequest;
+export interface ServerScriptContext {
+  /** The remote IP address of the client. */
+  remoteIp: string;
 }
 
 // Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>.
@@ -108,66 +94,6 @@ export const htmlHasServerScripts = (html: string | Buffer): boolean => {
 
 /** Default execution timeout per server-script (ms). */
 export const DEFAULT_SCRIPT_TIMEOUT_MS = 30_000;
-
-/**
- * Transforms authored server script source into a valid ESM module that exports a default handler.
- * Supports:
- * 1. Authored `export default function({ req }) { ... }` or `export default async ({ req }) => ...`
- * 2. Authored `return <markup>;` top-level body statements
- * 3. Legacy `process.stdout.write(...)` or `console.log(...)` inside the script body (intercepted per-invocation)
- */
-export const transformServerScriptSource = (source: string): string => {
-  const trimmed = source.trim();
-
-  const escapeHtmlHelper = `const escapeHtml = (val) => {
-  if (val === null || val === undefined) return "";
-  return String(val).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-};`;
-
-  // If already exports a default function/object
-  if (/^\s*export\s+default\b/m.test(trimmed)) {
-    return `${escapeHtmlHelper}\n${trimmed}`;
-  }
-
-  // Wrap in default async export function with escapeHtml available in scope
-  return `${escapeHtmlHelper}
-export default async function({ req }, { signal } = {}) {
-  let __bascik_out = "";
-  const process = {
-    ...globalThis.process,
-    env: {
-      ...globalThis.process?.env,
-      BASCIK_REQUEST: JSON.stringify(req),
-    },
-    stdout: {
-      ...globalThis.process?.stdout,
-      write: (chunk) => {
-        if (chunk !== undefined && chunk !== null) {
-          __bascik_out += String(chunk);
-        }
-        return true;
-      },
-    },
-  };
-  const console = {
-    ...globalThis.console,
-    log: (...args) => {
-      __bascik_out += args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\\n";
-    },
-    warn: globalThis.console?.warn?.bind(globalThis.console),
-    error: globalThis.console?.error?.bind(globalThis.console),
-  };
-
-  const __result = await (async () => {
-${trimmed}
-  })();
-
-  if (__result !== undefined && __result !== null) {
-    return String(__result);
-  }
-  return __bascik_out;
-};`;
-};
 
 interface ScriptJob {
   fullTag: string;
@@ -281,6 +207,15 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
       segments.push({ kind: "static", bytes: Buffer.from(html.slice(cursor, index), "utf8") });
     }
     if (mode === "stream" && firstStreamIndex === -1) firstStreamIndex = segments.length;
+
+    if (!placeholderValue && !srcPath && !/^\s*export\s+default\b/m.test(scriptContent)) {
+      const where = filePath ? ` in "${filePath}"` : "";
+      throw new Error(
+        `[bascik] error: Inline server script must export default a function${where} at line ${startLine}. ` +
+        `Example: export default function(request) { return '<p>Hello</p>'; }`,
+      );
+    }
+
     segments.push({
       kind: "script",
       mode,
@@ -302,7 +237,8 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
  */
 export const runServerScriptJob = async (
   job: ScriptJob,
-  request: ServerRequest,
+  request: Request,
+  context: ServerScriptContext,
   timeoutMs: number,
   filePath?: string,
   signal?: AbortSignal,
@@ -359,27 +295,20 @@ export const runServerScriptJob = async (
     return rethrowLeadingSlash(err);
   }
   const trimmedCode = rewrittenCode.trim();
-  const transformedCode = transformServerScriptSource(rewrittenCode);
-  const transformedSourceIndex = transformedCode.indexOf(trimmedCode);
-  const generatedPrefixLines = transformedSourceIndex < 0
-    ? 0
-    : (transformedCode.slice(0, transformedSourceIndex).match(/\n/g) ?? []).length;
   const authoredLeadingLines = (rewrittenCode.slice(0, rewrittenCode.indexOf(trimmedCode)).match(/\n/g) ?? []).length;
   const lineOffset = job.sourceLine === undefined || moduleFilePath
     ? job.startLine
-    : job.sourceLine + authoredLeadingLines - generatedPrefixLines;
-  const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(transformedCode)}`;
+    : job.sourceLine + authoredLeadingLines;
+  const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
   const specifier = moduleFilePath ?? dataUri;
-
-  const context: ServerScriptContext = { req: request };
 
   const originalSourcePath = containingFile
     ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
-    : request.path;
+    : new URL(request.url).pathname;
 
   const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
     specifier,
-    context,
+    [request, context],
     {
       timeoutMs,
       originalSourcePath,
@@ -401,7 +330,8 @@ export const runServerScriptJob = async (
 
   const rawTrace = err.stack || err.message;
   const cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset);
-  const errorMsg = `[bascik] server script error at "${request.path}":\n${cleanedMsg}`;
+  const requestPath = new URL(request.url).pathname;
+  const errorMsg = `[bascik] server script error at "${requestPath}":\n${cleanedMsg}`;
   if (behavior === "error") throw new Error(errorMsg);
   if (behavior === "warn") console.warn(errorMsg);
   return "";
@@ -414,13 +344,14 @@ export const runServerScriptJob = async (
  */
 export const executeServerScriptPlan = async (
   plan: ServerScriptPlan,
-  request: ServerRequest,
+  request: Request,
+  context: ServerScriptContext,
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
 ): Promise<Buffer> => {
   const outputs = await Promise.all(
     plan.segments.map((segment) =>
-      segment.kind === "script" ? runServerScriptJob(segment.job, request, timeoutMs, filePath) : undefined,
+      segment.kind === "script" ? runServerScriptJob(segment.job, request, context, timeoutMs, filePath) : undefined,
     ),
   );
   return Buffer.concat(
@@ -438,13 +369,14 @@ export const executeServerScriptPlan = async (
  */
 export const executeServerScripts = async (
   html: string,
-  request: ServerRequest,
+  request: Request,
+  context: ServerScriptContext,
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
 ): Promise<string> => {
   const plan = planServerScripts(html, filePath);
   if (plan.segments.every((segment) => segment.kind === "static")) return html;
-  return (await executeServerScriptPlan(plan, request, timeoutMs, filePath)).toString("utf8");
+  return (await executeServerScriptPlan(plan, request, context, timeoutMs, filePath)).toString("utf8");
 };
 
 /**
@@ -489,7 +421,8 @@ export interface ServerScriptStreamer {
  */
 export const streamServerScripts = (
   plan: ServerScriptPlan,
-  request: ServerRequest,
+  request: Request,
+  context: ServerScriptContext,
   timeoutMs: number,
   filePath: string | undefined,
   sink: ResponseSink,
@@ -499,7 +432,7 @@ export const streamServerScripts = (
   for (let i = 0; i < plan.segments.length; i++) {
     const segment = plan.segments[i];
     if (segment.kind === "script" && segment.mode === "server") {
-      serverOutputs.set(i, runServerScriptJob(segment.job, request, timeoutMs, filePath, signal));
+      serverOutputs.set(i, runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal));
     }
   }
   const ready = Promise.all(serverOutputs.values()).then(() => undefined);
@@ -511,7 +444,7 @@ export const streamServerScripts = (
 
   const runStreamJob = async (segment: ScriptSegment): Promise<string> => {
     try {
-      return await runServerScriptJob(segment.job, request, timeoutMs, filePath, signal);
+      return await runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal);
     } catch (err) {
       if (signal?.aborted) return "";
       // Status is already committed; this can never be a 500. Same message

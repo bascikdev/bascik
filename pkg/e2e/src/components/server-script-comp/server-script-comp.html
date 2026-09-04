@@ -1,8 +1,8 @@
 <div class="server-comp">
   <p class="server-comp-static" data-testid="server-comp-static">Component Static</p>
   <script data-bascik-server>
-    export default function ({ req }) {
-      return `<p id="comp-server-output" data-testid="comp-server-output">Comp Server: ${req.method}</p>`;
+    export default function (request) {
+      return `<p id="comp-server-output" data-testid="comp-server-output">Comp Server: ${request.method}</p>`;
     }
   </script>
 </div>

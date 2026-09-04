@@ -103,8 +103,9 @@ vi.mock("./server-scripts.js", () => {
     executeServerScripts,
     // The plan is stored on the page (prompt 67); makePage builds a stub plan
     // carrying the html so the executor can forward it to the spy.
-    executeServerScriptPlan: vi.fn(async (plan: any, request: unknown, timeout: number, filePath: string) =>
-      Buffer.from(await executeServerScripts(plan.__html, request, timeout, filePath)),
+    executeServerScriptPlan: vi.fn(
+      async (plan: any, request: unknown, context: unknown, timeout: number, filePath: string) =>
+        Buffer.from(await executeServerScripts(plan.__html, request, context, timeout, filePath)),
     ),
     streamServerScripts: vi.fn(),
     DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
@@ -1311,18 +1312,17 @@ describe("onError and server resiliency edge cases", () => {
 
     expect(mockExecute).toHaveBeenCalledWith(
       "<script data-bascik-server>1</script>",
-      {
-        path: "/dashboard",
-        method: "GET",
-        headers: expect.objectContaining({
-          "cookie": "session=abc12345",
-          "x-custom-header": "test-val",
-        }),
-        searchParams: { user: "alice", tab: "overview" },
-      },
-      expect.any(Number),
+      expect.any(Request),
+      { remoteIp: "127.0.0.1" },
+      30000,
       "/abs/pages/about.html",
     );
+
+    const webReq = mockExecute.mock.calls[0][1] as Request;
+    expect(webReq.url).toBe("https://localhost:8443/dashboard?user=alice&tab=overview");
+    expect(webReq.method).toBe("GET");
+    expect(webReq.headers.get("cookie")).toBe("session=abc12345");
+    expect(webReq.headers.get("x-custom-header")).toBe("test-val");
 
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2263,10 +2263,10 @@ describe("startHttp2Server – server-scripts execution", () => {
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/greeting?color=blue", "GET", "", undefined, { "x-test": "val" }));
-    const [, ctx] = mockExecute.mock.calls[0] as [string, { path: string; searchParams: Record<string, string>; headers: Record<string, string> }];
-    expect(ctx.path).toBe("/greeting");
-    expect(ctx.searchParams).toMatchObject({ color: "blue" });
-    expect(ctx.headers).toMatchObject({ "x-test": "val" });
+    const [, req] = mockExecute.mock.calls[0] as [string, Request];
+    expect(new URL(req.url).pathname).toBe("/greeting");
+    expect(new URL(req.url).searchParams.get("color")).toBe("blue");
+    expect(req.headers.get("x-test")).toBe("val");
   });
 
   it("returns HEAD with no body for server-script pages", async () => {

@@ -397,8 +397,8 @@ describe("boot state", () => {
 describe("storePage precomputes serverScriptPlan", () => {
   it("stores a 5-segment plan for a page with two server scripts whose bytes round-trip", async () => {
     const html =
-      `<p>a</p><script data-bascik-server>return '1';</script><p>b</p>` +
-      `<script data-bascik-stream>return '2';</script><p>c</p>`;
+      `<p>a</p><script data-bascik-server>export default function() { return '1'; }</script><p>b</p>` +
+      `<script data-bascik-stream>export default function() { return '2'; }</script><p>c</p>`;
     await mem.storePage({ relativePagePath: "plan-page", absolutePagePath: "plan-page", pageContent: html, usedComponentsNames: [] });
     const page = mem.getPage("plan-page")!;
     expect(page.serverScriptPlan).toBeDefined();

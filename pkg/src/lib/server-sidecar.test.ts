@@ -19,14 +19,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 describe("server-scripts sidecar", () => {
-  const baseRequest = {
-    method: "GET",
-    url: "/dashboard",
-    path: "/dashboard",
-    pathname: "/dashboard",
-    headers: {},
-    searchParams: {},
-  };
+  const baseRequest = new Request("http://localhost/dashboard");
+  const baseContext = { remoteIp: "127.0.0.1" };
 
   beforeEach(() => {
     serverSidecarRegistry.clear();
@@ -34,7 +28,7 @@ describe("server-scripts sidecar", () => {
 
   it("replaces <script data-bascik-server> with inert placeholder and records source in registry", () => {
     const SECRET = "TOP_SECRET_NODE_CODE_12345";
-    const rawHtml = `<main><script data-bascik-server>const secret = "${SECRET}"; console.log(secret);</script></main>`;
+    const rawHtml = `<main><script data-bascik-server>export default function() { const secret = "${SECRET}"; return secret; }</script></main>`;
 
     const extracted = extractServerScriptsToSidecar(rawHtml, "src/pages/dashboard.html");
     expect(extracted).not.toContain(SECRET);
@@ -48,7 +42,7 @@ describe("server-scripts sidecar", () => {
   it("writes dist/.bascik/server-scripts.json and loads it back", async () => {
     const outDir = join(tmpdir(), `bascik-sidecar-test-${Date.now()}`);
     (serverSidecarRegistry as any).loadedSidecar = null;
-    const rawHtml = `<script data-bascik-server>console.log("hello");</script>`;
+    const rawHtml = `<script data-bascik-server>export default function() { return "hello"; }</script>`;
     extractServerScriptsToSidecar(rawHtml, "src/pages/test.html");
 
     await mkdir(join(outDir, ".bascik"), { recursive: true });
@@ -61,11 +55,11 @@ describe("server-scripts sidecar", () => {
   });
 
   it("maps multiple server scripts per page in order and executes them via placeholder", async () => {
-    const rawHtml = `<div><script data-bascik-server>console.log("part1");</script><script data-bascik-server>console.log("part2");</script></div>`;
+    const rawHtml = `<div><script data-bascik-server>export default function() { return "part1"; }</script><script data-bascik-server>export default function() { return "part2"; }</script></div>`;
     const extracted = extractServerScriptsToSidecar(rawHtml, "src/pages/multi.html");
 
-    const result = await executeServerScripts(extracted, baseRequest);
-    expect(result).toBe("<div>part1\npart2\n</div>");
+    const result = await executeServerScripts(extracted, baseRequest, baseContext);
+    expect(result).toBe("<div>part1part2</div>");
   });
 
   it("preserves authored page identity for inline relative imports", async () => {
@@ -83,6 +77,7 @@ describe("server-scripts sidecar", () => {
     const result = await executeServerScripts(
       extracted,
       baseRequest,
+      baseContext,
       undefined,
       "dist/server-inline-page.html",
     );
@@ -107,6 +102,7 @@ describe("server-scripts sidecar", () => {
     await expect(executeServerScripts(
       extracted,
       baseRequest,
+      baseContext,
       undefined,
       "dist/consumer.html",
     )).resolves.toBe("<p>inline import</p>");
@@ -116,7 +112,7 @@ describe("server-scripts sidecar", () => {
     const outDir = join(tmpdir(), `bascik-sidecar-lines-${Date.now()}`);
     const previousOutDir = BascikConfig.directory.out;
     const rawHtml = `${"<p>consumer spacing</p>\n".repeat(20)}<script data-bascik-server data-bascik-source-file="src%2Fcomponents%2Ffailing-card.html" data-bascik-source-line="8">
-throw new Error('component sidecar failure');
+export default function() { throw new Error('component sidecar failure'); }
 </script>`;
     const extracted = extractServerScriptsToSidecar(
       rawHtml,
@@ -140,8 +136,8 @@ throw new Error('component sidecar failure');
         sourceLine: 8,
       });
       await expect(
-        executeServerScripts(extracted, baseRequest, undefined, "dist/consumer.html"),
-      ).rejects.toThrow("src/components/failing-card.html:9");
+        executeServerScripts(extracted, baseRequest, baseContext, undefined, "dist/consumer.html"),
+      ).rejects.toThrow("src/components/failing-card.html:8");
     } finally {
       BascikConfig.directory.out = previousOutDir;
       await rm(outDir, { recursive: true, force: true });
@@ -152,7 +148,7 @@ throw new Error('component sidecar failure');
     serverSidecarRegistry.clear();
     const missingPlaceholderHtml = `<script type="text/bascik-server" data-bascik-server-id="unknown_id"></script>`;
 
-    await expect(executeServerScripts(missingPlaceholderHtml, baseRequest)).rejects.toThrow(
+    await expect(executeServerScripts(missingPlaceholderHtml, baseRequest, baseContext)).rejects.toThrow(
       /Server script placeholder "unknown_id" could not be resolved from sidecar/,
     );
   });

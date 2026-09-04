@@ -44,6 +44,7 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
+import { createWebRequest, requestOrigin } from "./api-runtime.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
@@ -668,21 +669,8 @@ export const createRequestHandler = () => {
         // unresolvable sidecar id) is this page's 500; headers are not sent yet.
         if ("error" in page.serverScriptPlan) throw page.serverScriptPlan.error;
         const plan = page.serverScriptPlan;
-        const qIdx = req.path.indexOf("?");
-        const searchParams = Object.fromEntries(
-          new URLSearchParams(qIdx === -1 ? "" : req.path.slice(qIdx + 1)),
-        );
-        const requestHeaders: Record<string, string> = {};
-        for (const [k, v] of Object.entries(req.headers)) {
-          if (k.startsWith(":")) continue; // skip HTTP/2 pseudo-headers
-          requestHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
-        }
-        const request = {
-          path: pathname,
-          method: req.method ?? "GET",
-          headers: requestHeaders,
-          searchParams,
-        };
+        const request = createWebRequest(req, requestOrigin(req));
+        const context = { remoteIp: req.remoteIp };
         const timeout = BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
         responseHeaders["cache-control"] = "private, no-store";
         // The plan was built at store time (prompt 67): no regex scan and no
@@ -692,7 +680,7 @@ export const createRequestHandler = () => {
           // No `stream` scripts (or HEAD): today's buffered path, byte for byte.
           // HEAD keeps this path so it can report content-length with no body,
           // matching the static-file HEAD branch.
-          const htmlBuf = await executeServerScriptPlan(plan, request, timeout, page.absolutePagePath);
+          const htmlBuf = await executeServerScriptPlan(plan, request, context, timeout, page.absolutePagePath);
           responseHeaders["content-length"] = htmlBuf.byteLength;
           res.respond(responseStatus, responseHeaders);
           return res.end(isHead ? undefined : htmlBuf);
@@ -708,7 +696,7 @@ export const createRequestHandler = () => {
         const abort = new AbortController();
         const sink = createResponseSink(res, abort);
         try {
-          const streamer = streamServerScripts(plan, request, timeout, page.absolutePagePath, sink, abort.signal);
+          const streamer = streamServerScripts(plan, request, context, timeout, page.absolutePagePath, sink, abort.signal);
           await streamer.ready;
           res.respond(responseStatus, responseHeaders);
           streamer.commit();

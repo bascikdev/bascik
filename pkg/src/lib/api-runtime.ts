@@ -77,6 +77,16 @@ export const createByteLimitTransform = (
 };
 
 /**
+ * Derive the truthful origin (scheme + authority) for a request.
+ */
+export const requestOrigin = (rawReq: BascikRequest, config = BascikConfig): string => {
+  const scheme = config.http.tls?.enabled ? "https" : "http";
+  const authority = rawReq.headers[":authority"] ?? rawReq.headers.host ?? "localhost";
+  const authorityStr = Array.isArray(authority) ? authority[0] : authority;
+  return `${scheme}://${authorityStr}`;
+};
+
+/**
  * Construct a WHATWG Request from a BascikRequest.
  * Excludes HTTP/2 pseudo-headers (headers starting with ':').
  * Enforces streaming byte count up to maxBodySize without buffering.
