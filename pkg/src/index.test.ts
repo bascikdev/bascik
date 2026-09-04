@@ -200,7 +200,7 @@ describe("index.ts CLI runner functions", () => {
       componentsChecked: 0,
       items: [],
     });
-    const serveSpy = vi.spyOn(await import("./lib/serve.ts"), "serverProduction").mockResolvedValueOnce("http://localhost:8080");
+    const serveSpy = vi.spyOn(await import("./lib/server-prod.ts"), "startProdServer").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
 
     const initRes = await runCli(["init"], { exitOnFinish: false });
@@ -248,7 +248,7 @@ describe("index.ts CLI runner functions", () => {
   }, 30000);
 
   it("prints a clean error (no unhandled rejection banner, no Node stack) when --server finds no dist/", async () => {
-    // Regression anchor: the `--server` guard message in serve.ts used to
+    // Regression anchor: the `--server` guard message in server-prod.ts used to
     // surface as an unhandled top-level rejection with a full stack trace.
     const dir = await mkdtemp(join(tmpdir(), "bascik-cli-serve-"));
     try {

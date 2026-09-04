@@ -98,10 +98,12 @@ vi.mock("./worker-pool.js", () => {
         const relativePagePath = typeof job === "string"
           ? (pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`))
           : job.relativePagePath;
+        // Mirrors page-worker.ts (prompt 86): the HTML arrives as UTF-8 bytes
+        // in a transferred ArrayBuffer, never as a string.
         return {
           relativePagePath,
           absolutePagePath: pagePath,
-          distHtml: "<html></html>",
+          distHtmlBytes: new TextEncoder().encode("<html></html>"),
           usedComponentsNames: ["my-comp"],
           fileDependencies: ["scripts/md-renderer.ts"],
         };
@@ -1655,6 +1657,26 @@ describe("processAllPages – side effects", () => {
     expect(result).toEqual(["pages/index.html"]);
   });
 
+  it("prompt 86: forwards transferred worker bytes to the store and disk writer without decoding to a string", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    const { writeFile } = await import("node:fs/promises");
+    (writeFile as ReturnType<typeof vi.fn>).mockClear();
+    await processAllPages({ useWorkers: true });
+
+    const stored = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(Buffer.isBuffer(stored.pageContent)).toBe(true);
+    expect(stored.pageContent.toString("utf8")).toBe("<html></html>");
+
+    // queueTranspiledPageWrite runs asynchronously; let it settle.
+    await new Promise((r) => setImmediate(r));
+    const pageWrite = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([path]) => String(path).endsWith("index.html"),
+    );
+    expect(pageWrite).toBeDefined();
+    expect(Buffer.isBuffer(pageWrite![1])).toBe(true);
+    expect(Buffer.from(pageWrite![1]).toString("utf8")).toBe("<html></html>");
+  });
+
   it("prioritizes open pages over other pages during dev mode (main thread)", async () => {
     (mem as any).openPages = ["/about"];
     const pages = ["src/pages/index.html", "src/pages/about.html", "src/pages/faq.html"];
@@ -2474,6 +2496,42 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
 
     const single = recursivelyTranspile(pageHtml1, componentList, [], "src/pages/index.html").transpiledHtmlBody;
     expect(run1.startsWith(single)).toBe(true);
+  });
+});
+
+describe("recursivelyTranspile – flat string output (prompt 85)", () => {
+  const componentList = {
+    "list-row": {
+      name: "list-row",
+      fileName: "components/list-row.html",
+      fileContent: '<li class="row"><row-badge></row-badge><span data-bascik-prop-label></span></li>',
+    },
+    "row-badge": {
+      name: "row-badge",
+      fileName: "components/row-badge.html",
+      fileContent: '<em class="badge">*</em>',
+    },
+  };
+  const page =
+    "<ul>" +
+    Array.from({ length: 250 }, (_, i) => `<list-row data-bascik-prop-label="Row ${i}"></list-row>`).join("") +
+    "</ul>";
+
+  it("output is byte-identical to a fresh run and free of source-file markers", () => {
+    const first = recursivelyTranspile(page, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    const second = recursivelyTranspile(page, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    expect(first).toBe(second);
+    expect(first).not.toContain("bascik-source-file");
+    expect(first.match(/<li class="/g)).toHaveLength(250);
+    expect(first.match(/<em class="/g)).toHaveLength(250);
+    expect(first).toContain("<span>Row 249</span>");
+  });
+
+  it("returned body is a flat V8 string after 500 splices", async () => {
+    const { isFlatString } = await import("./string-flatness-probe.test-helper.ts");
+    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(page, componentList, [], "src/pages/index.html");
+    expect(usedComponents).toHaveLength(500);
+    expect(isFlatString(transpiledHtmlBody)).toBe(true);
   });
 });
 

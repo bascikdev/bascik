@@ -447,6 +447,13 @@ export const executeServerScripts = async (
   return (await executeServerScriptPlan(plan, request, timeoutMs, filePath)).toString("utf8");
 };
 
+/**
+ * How many `stream` jobs beyond the one the write cursor is waiting on may be
+ * in flight at once (prompt 84). One keeps a fast consumer overlapping
+ * adjacent jobs while a stalled socket caps unwritten output held in heap.
+ */
+export const STREAM_LOOKAHEAD = 1;
+
 /** Where streamed bytes go. Prompt 66 gives this backpressure; here it is a plain write. */
 export interface ResponseSink {
   write(buf: Buffer): Promise<void>;
@@ -473,9 +480,10 @@ export interface ServerScriptStreamer {
  *
  * Phase two (after the caller commits): walk the segments in document order.
  * Static bytes are written as reached; `server` outputs are already known;
- * `stream` jobs are started eagerly when phase two begins and their bytes are
- * awaited when their turn comes, so a fast later script waits for an earlier
- * slow one. A `stream` job that throws under `"error"` cannot become a 500
+ * `stream` jobs are dispatched through a bounded lookahead window
+ * (`STREAM_LOOKAHEAD`) that advances with the write cursor, so a stalled
+ * socket also stalls dispatch and their bytes are awaited when their turn
+ * comes. A `stream` job that throws under `"error"` cannot become a 500
  * (headers are sent): it is logged at error severity and written as empty.
  * If `signal` aborts, the walk stops and the sink is not called again.
  */
@@ -523,16 +531,32 @@ export const streamServerScripts = (
       return;
     }
     await committed;
-    // Start every stream job now; bytes still wait their turn.
-    const streamOutputs = new Map<number, Promise<string>>();
+    // Bounded dispatch (prompt 84): a stream job starts only when the write
+    // cursor has reached it or it is within STREAM_LOOKAHEAD stream jobs of
+    // the next one due. `sink.write` awaits `drain`, so a stalled socket
+    // stops the cursor and therefore stops dispatch; resolved outputs never
+    // pile up in heap beyond the window.
+    const streamIndices: number[] = [];
     for (let i = 0; i < plan.segments.length; i++) {
       const segment = plan.segments[i];
-      if (segment.kind === "script" && segment.mode === "stream") {
-        streamOutputs.set(i, runStreamJob(segment));
-      }
+      if (segment.kind === "script" && segment.mode === "stream") streamIndices.push(i);
     }
+    const streamOutputs = new Map<number, Promise<string>>();
+    let nextDue = 0; // position in streamIndices of the first job at or after the cursor
+    let nextToDispatch = 0; // position in streamIndices of the first job not yet started
+    const dispatchWindow = (cursor: number): void => {
+      while (nextDue < streamIndices.length && streamIndices[nextDue] < cursor) nextDue++;
+      const limit = Math.min(streamIndices.length, nextDue + STREAM_LOOKAHEAD + 1);
+      while (nextToDispatch < limit) {
+        if (signal?.aborted) return;
+        const index = streamIndices[nextToDispatch++];
+        streamOutputs.set(index, runStreamJob(plan.segments[index] as ScriptSegment));
+      }
+    };
+
     for (let i = 0; i < plan.segments.length; i++) {
       if (signal?.aborted) return;
+      dispatchWindow(i);
       const segment = plan.segments[i];
       if (segment.kind === "static") {
         await sink.write(segment.bytes);

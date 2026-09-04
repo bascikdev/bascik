@@ -1,18 +1,20 @@
 /**
- * @module serve
+ * @module server-prod
  *
  * Production Server
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * `bascik --server` starts the HTTP server against a previously-built
- * `dist/` directory.  Run `bascik --build` first to produce `dist/`, then
- * `bascik --server` to start the production server.
+ * `bascik --server` runs the same HTTP server as dev mode (`server.ts`, the
+ * shared core) against a previously-built `dist/` directory. Run
+ * `bascik --build` first to produce `dist/`, then `bascik --server`.
  *
- * Unlike the dev server (`bascik`), the production server does NOT:
+ * Relative to the dev server (`server-dev.ts`), production does NOT:
  *   - Watch source files for changes
  *   - Inject the live-reload SSE script
  *   - Rebuild pages on demand
  *
+ * Everything else (routing, headers, compression, server scripts, streaming,
+ * error pages) is the shared code path, so behavior matches dev.
  * `data-bascik-server` script blocks preserved in `dist/` HTML are executed
  * on every request, exactly as in dev mode.
  */
@@ -111,13 +113,12 @@ const loadDistIntoMemory = async (): Promise<void> => {
 
 /**
  * Entry point for `bascik --server`.
- * Loads output directory into memory and starts the production HTTP/2 server.
+ * Loads output directory into memory and starts the shared HTTP server.
  */
-export const serverProduction = async (): Promise<string> => {
+export const startProdServer = async (): Promise<string> => {
   await loadDistIntoMemory();
   const { startServer } = await import("./server.ts");
   const url = await startServer();
   if (url) console.log(`Server running at ${url}`);
   return url;
 };
-export const serveProduction = serverProduction;

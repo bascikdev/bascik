@@ -97,6 +97,41 @@ test.describe('Production Server (`bascik --server`) Engine', () => {
     expect(res.headers()['content-encoding']).toBe('br');
   });
 
+  test('falls back to gzip for a legacy client whose Accept-Encoding lacks br', async ({ request }) => {
+    const { gunzipSync } = await import('node:zlib');
+    const identity = await request.get('/scope-test', { headers: { 'accept-encoding': 'identity' } });
+    expect(identity.headers()['content-encoding']).toBeUndefined();
+    const plain = await identity.body();
+
+    // Playwright's request fixture transparently decodes; ask for the raw
+    // bytes by sending a non-br, gzip-only header and comparing after gunzip.
+    const res = await request.get('/scope-test', {
+      headers: { 'accept-encoding': 'gzip, deflate' },
+    });
+    expect(res.status()).toBe(200);
+    expect(res.headers()['content-encoding']).toBe('gzip');
+    expect(res.headers()['vary']).toBe('Accept-Encoding');
+    const body = await res.body();
+    // Fixture may or may not have already decoded the body.
+    const decoded = body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body;
+    expect(decoded.equals(plain)).toBe(true);
+  });
+
+  test('gzip fallback carries its own ETag variant and honors If-None-Match with 304', async ({ request }) => {
+    const first = await request.get('/scope-test', { headers: { 'accept-encoding': 'gzip' } });
+    const etag = first.headers()['etag'];
+    expect(etag).toMatch(/-gzip"$/);
+    const brEtag = (await request.get('/scope-test', { headers: { 'accept-encoding': 'br' } })).headers()['etag'];
+    expect(brEtag).toMatch(/-br"$/);
+    expect(brEtag).not.toBe(etag);
+
+    const second = await request.get('/scope-test', {
+      headers: { 'accept-encoding': 'gzip', 'if-none-match': etag },
+    });
+    expect(second.status()).toBe(304);
+    expect((await second.body()).length).toBe(0);
+  });
+
   // ── 5. Static Asset Serving & ETags ────────────────────────────────────────
 
   test('serves static assets from dist/ with ETags and 304 support', async ({ request }) => {

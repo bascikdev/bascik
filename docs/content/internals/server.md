@@ -7,7 +7,7 @@ Bascik's server infrastructure powers both local development (`bascik`) and per-
 Bascik separates protocol management from request routing using a 4-tier architecture:
 
 ```text
-       [transpile.ts (Dev) / serve.ts (Prod)]
+  [server-dev.ts (Dev) / server-prod.ts (Prod)]
                           │
                           ▼ (startServer)
                  [server.ts Orchestrator]
@@ -69,11 +69,13 @@ During local development, `bascik` compiles pages into memory and starts the wat
 
 The `MemoryStore` class manages rendered pages during development without writing intermediate files to disk on every edit:
 
-- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
+- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli and Gzip buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
 - `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
 Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers. Under `--build` and `--server`, Brotli compression uses maximum quality (`BROTLI_MAX_QUALITY = 11`) to ensure optimal payload sizes.
+
+Every stored page is also gzip-compressed in the background (`Z_BEST_SPEED` in dev, `Z_BEST_COMPRESSION` in build and production) as a fallback for clients whose `Accept-Encoding` does not include `br`: older browsers, some corporate proxies, and many crawlers. On each request the server picks the best encoding the client accepts that is already computed: `br`, then `gzip`, then identity. A page is servable immediately after store; if a client asks for `br` before the Brotli job finishes, it receives gzip (if ready) or the raw bytes rather than waiting. Each background job checks that the page has not been re-stored in the meantime before attaching its result, so a stale compression result never shadows newer content.
 
 ### Error page handling
 
@@ -109,7 +111,7 @@ Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik 
 - **Build Error Overlay:** Broadcasts `event: build-error` containing file, line, and stack info to display an overlay in the browser, clearing on subsequent successful builds.
 - **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
 - **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
-- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `serve.ts` as defense in depth.
+- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 
@@ -126,15 +128,15 @@ This prioritization operates identically whether running on the main thread or a
 
 ## Production Server Mode (`bascik --server`)
 
-When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
+When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`server-prod.ts`). It is the same `server.ts` core that dev mode uses; `server-prod.ts` only adds the boot-time `dist/` load, and `server-dev.ts` only adds watching, live reload, and the boot page.
 
 ### Boot-Time Loading: Pages in Memory, Assets on Disk
 
-Production mode skips file watchers and live-reload injection, but it does **not** skip in-memory page storage. `serve.ts#loadDistIntoMemory` walks the built `dist/` directory at boot and reads every `.html` file into the same `MemoryStore` (`mem.ts`) that dev mode uses, so page lookups and `data-bascik-server` execution are served from memory on every request, identical to dev mode.
+Production mode skips file watchers and live-reload injection, but it does **not** skip in-memory page storage. `server-prod.ts#loadDistIntoMemory` walks the built `dist/` directory at boot and reads every `.html` file into the same `MemoryStore` (`mem.ts`) that dev mode uses, so page lookups and `data-bascik-server` execution are served from memory on every request, identical to dev mode.
 
 Only non-HTML static assets, images, fonts, favicons, the webmanifest, and any other file copied verbatim from `src/pages/`, are read from the `dist/` filesystem per request via `createReadStream`. Component CSS and JavaScript are always inlined into the HTML at build time, so they are already in memory as part of the page buffer; there is no separate in-memory cache for them to miss.
 
-At boot time, `serve.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
+At boot time, `server-prod.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
 
 ### Per-request `data-bascik-server` and `data-bascik-stream` execution (`server-scripts.ts`)
 
@@ -145,8 +147,8 @@ When a request arrives:
 1. **Plan evaluation and buffered path:** If the page plan contains no script segments, or only `server` scripts, or if the HTTP method is `HEAD`, the request handler takes the buffered execution path. All `server` scripts execute concurrently in-process via `ScriptRegistry`. If any script throws under `scripts.onServerScriptError: 'error'`, execution halts and the server responds with an HTTP 500 error page. When all scripts resolve, the full document is assembled, headers (including `Content-Length` and `ETag`) are set, compression is applied if eligible, and the complete buffered response is sent.
 2. **Two-phase stream execution:** If the plan contains at least one `stream` script segment and the method is not `HEAD`:
    - **Phase 1 (Server script resolution):** All `server` scripts on the page resolve first via `ScriptRegistry`. If any `server` script fails under `scripts.onServerScriptError: 'error'`, the response aborts with an HTTP 500 before any byte reaches the network.
-   - **Phase 2 (Header commit and ordered chunk delivery):** Once all `server` scripts succeed, the server commits response headers (`transfer-encoding: chunked` on HTTP/1.1 or DATA frames on HTTP/2, `cache-control: private, no-store`, without `Content-Length`, `ETag`, or Brotli `Content-Encoding`). Static HTML bytes prior to the first stream tag are flushed immediately. All `stream` script jobs run concurrently, but their resulting chunks are written to the response sink in exact source document order.
-3. **Backpressure and disconnect handling:** Chunk writes check the return value of `res.write()`. If a write returns `false`, production pauses until the underlying socket emits `drain`. If the client disconnects before streaming completes (`close` event), all pending script jobs are aborted immediately via their passed `AbortSignal` (`{ signal }`), and `res.end()` is never called on a destroyed stream.
+   - **Phase 2 (Header commit and ordered chunk delivery):** Once all `server` scripts succeed, the server commits response headers (`transfer-encoding: chunked` on HTTP/1.1 or DATA frames on HTTP/2, `cache-control: private, no-store`, without `Content-Length`, `ETag`, or Brotli `Content-Encoding`). Static HTML bytes prior to the first stream tag are flushed immediately. `stream` script jobs are dispatched through a bounded lookahead window (`STREAM_LOOKAHEAD = 1`): the job the write cursor is waiting on plus the next adjacent stream job may run concurrently, and later jobs start only as the cursor advances. Resulting chunks are written to the response sink in exact source document order.
+3. **Backpressure and disconnect handling:** Chunk writes check the return value of `res.write()`. If a write returns `false`, production pauses until the underlying socket emits `drain`. Because job dispatch is tied to the write cursor, a stalled socket also stops new `stream` jobs from starting, so unwritten script output held in heap per connection stays bounded by the lookahead window rather than growing with the number of stream tags on the page. If the client disconnects before streaming completes (`close` event), all pending script jobs are aborted immediately via their passed `AbortSignal` (`{ signal }`), and `res.end()` is never called on a destroyed stream.
 4. **Post-commit errors:** Because response headers are already committed before `stream` output begins, a runtime error in a `data-bascik-stream` script cannot return an HTTP 500. Instead, the error is logged at the configured severity (`scripts.onServerScriptError`), an empty string is emitted for that slot, and the rest of the document streams to completion. The author's placeholder markup remains in the DOM.
 
 #### Why stream pages skip ETag, Brotli, and `content-length`
@@ -159,7 +161,7 @@ Production mode enables `http.httpCache: true` by default:
 
 - **ETag support:** Generates strong ETag hashes for static assets and buffered HTML responses (pages without `data-bascik-stream` scripts), returning `304 Not Modified` when the client's `if-none-match` header matches.
 - **Cache-Control headers:** Adds `Cache-Control: public, max-age=3600` to static assets.
-- **Max-quality Brotli compression:** Uses `BROTLI_MAX_QUALITY = 11` for static assets and buffered HTML responses for optimal bandwidth savings. Streaming responses bypass compression to preserve real-time chunk delivery.
+- **Max-quality Brotli compression with Gzip fallback:** Uses `BROTLI_MAX_QUALITY = 11` for static assets and buffered HTML responses for optimal bandwidth savings. Clients that do not advertise `br` in `Accept-Encoding` receive `Z_BEST_COMPRESSION` Gzip instead, with its own `"hash-gzip"` ETag variant. Streaming responses bypass compression to preserve real-time chunk delivery.
 
 ### Production rate limiting
 
@@ -176,7 +178,8 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 
 | Capability | Development (`bascik`) | Production (`bascik --server`) |
 | --- | --- | --- |
-| Entry Module | `transpile.ts` | `serve.ts` |
+| Entry Module | `transpile.ts` via `server-dev.ts` | `server-prod.ts` |
+| Shared Core | `server.ts` | `server.ts` |
 | Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
 | Brotli Quality | `BROTLI_MIN_QUALITY = 1` | `BROTLI_MAX_QUALITY = 11` |
 | HTTP Caching | Disabled (`http.httpCache: false`) | Enabled (`http.httpCache: true` with ETags & 304s) |
@@ -238,9 +241,9 @@ Static asset requests are normalized and validated to ensure the resolved path r
 
 ### Content-Hash ETags and Caching Layer
 
-Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (e.g. `"hash-br"`).
+Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (`"hash-br"`, `"hash-gzip"`), so a `304` is only returned when the client's cached representation matches the encoding it would receive now.
 
-Compression negotiation supports Brotli (`br`) and Gzip (`gzip`), respecting a size threshold and skipping already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
+Compression negotiation supports Brotli (`br`) with Gzip (`gzip`) as the fallback for legacy clients, for both in-memory pages and static assets. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
 
 ### Crash Net & Stream Error Handling
 

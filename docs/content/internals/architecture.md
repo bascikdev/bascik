@@ -23,8 +23,8 @@ switch (decision.action) {
     process.exit(ok ? 0 : 1);
   }
   case "prodServer": {
-    const { serveProduction } = await import("./lib/serve.js");
-    await serveProduction();
+    const { startProdServer } = await import("./lib/server-prod.js");
+    await startProdServer();
     break;
   }
   default:
@@ -32,7 +32,7 @@ switch (decision.action) {
 }
 ```
 
-`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
+`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it calls `startDevServer()` from `server-dev.ts`, which binds `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `server-dev.ts` and `server-prod.ts` are deliberately thin: both boot the same shared `server.ts`, and each holds only what is specific to its mode, so a page that works locally behaves the same when deployed. `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
 
 The dynamic `import()` calls are intentional: they avoid loading modules when not needed (`init` and `--check` exit before reaching `transpile.ts`; `--build` never starts the server).
 
@@ -66,13 +66,14 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `mem.ts` | In-memory page store. Stores brotli-compressed page buffers keyed by HTTP path, and maintains a reverse index mapping each component name to the set of pages that use it. |
 | `mime.ts` | A static MIME type map used by the HTTP/2 server and the watch system's file-type filter. |
 | `names.ts` | Generates unique instance IDs (`getUniqueId`) and hashes long scoped names to short alphanumeric strings (`minifyAttributeName` via SHA-256 with Base62 encoding) when identifier minification is enabled. |
-| `page-worker.ts` | Worker thread entry point. Receives a page path, calls `transpilePage()` (pure computation, no side effects), and posts the result back to the pool. |
+| `page-worker.ts` | Worker thread entry point. Receives a page job, calls `transpilePage()`, encodes the rendered HTML to UTF-8 bytes, and posts the result back with that `ArrayBuffer` in the `postMessage` transfer list so the page crosses the thread boundary with no structured clone copy. |
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
-| `serve.ts` | Production server entrypoint (`bascik --server`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
+| `server-dev.ts` | Dev server additions (`bascik`). Binds the shared `server.ts` immediately, starts dev `exec` scripts alongside it, and flips the boot flag (`boot-done`) once the initial transpile lands. |
+| `server-prod.ts` | Production server additions (`bascik --server`). Pre-loads pre-rendered `dist/` HTML and the server-script sidecar into `mem.ts`, then boots the shared `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
-| `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs shared request handlers, and manages server instances. |
+| `server.ts` | Shared server core used by both dev and production. Dispatches to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs the request handler, and manages server instances. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
@@ -92,8 +93,9 @@ index.ts
   ├── (--check only)
   │     └── check.ts ← components.ts, file-system.ts
   ├── (--server / prod server)
-  │     └── serve.ts → server.ts
+  │     └── server-prod.ts → server.ts
   └── transpile.ts
+        ├── (dev only) server-dev.ts → server.ts
         ├── config.ts ← userConfig.ts ← bascik.config.ts / bascik.config.js
         ├── watch.ts
         │     └── processing.ts
@@ -141,7 +143,7 @@ For package distribution, the source code in `pkg/src/` is compiled by `tsc` usi
 
 ### CPU-aware worker pool (opt-in)
 
-When `useWorkers: true` is set in `bascik.config.ts` (default `false`), `processAllPages()` creates `Math.min(os.cpus().length, pageCount)` worker threads via `worker-pool.ts` instead of transpiling sequentially on the main thread. Each worker is initialized once with the pre-computed `componentList` and `globalStylesHtml`, then reused for every page assigned to it. The main thread dispatches page paths through the pool's task queue and collects results to apply side effects (memory storage, event emission) after all workers complete.
+When `useWorkers: true` is set in `bascik.config.ts` (default `false`), `processAllPages()` creates `Math.min(os.cpus().length, pageCount)` worker threads via `worker-pool.ts` instead of transpiling sequentially on the main thread. Each worker is initialized once with the pre-computed `componentList` and `globalStylesHtml`, then reused for every page assigned to it. The main thread dispatches page jobs through the pool's task queue and collects results to apply side effects (memory storage, event emission) after all workers complete. Each result's HTML arrives as a transferred `Uint8Array` rather than a cloned string; the main thread wraps it in a `Buffer` view and forwards those bytes directly to the in-memory page store and the disk writer without decoding.
 
 Spinning up the pool has a fixed cost, each worker loads the transpiler's module graph independently before it can process its first page. This pays for itself on larger sites with CPU-heavy per-page work, but for small sites (or sites whose slow parts are I/O-bound, like `<script data-bascik-build>` blocks) sequential transpilation on the main thread is often faster overall. See the [`useWorkers`](/configuration#useworkers) config option.
 

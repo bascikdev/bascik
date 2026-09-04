@@ -350,6 +350,89 @@ describe("prompt 66: backpressure and disconnect abort", () => {
   });
 });
 
+describe("prompt 84: stream jobs are dispatched through a bounded lookahead window", () => {
+  const THREE =
+    `<p>a</p><script data-bascik-stream>export default async () => { /*T1*/ return ''; }</script>` +
+    `<p>b</p><script data-bascik-stream>export default async () => { /*T2*/ return ''; }</script>` +
+    `<p>c</p><script data-bascik-stream>export default async () => { /*T3*/ return ''; }</script><p>d</p>`;
+
+  /** Markers of every stream job whose invoke() has started, in start order. */
+  const startedMarkers = (): string[] =>
+    invokeMock.mock.calls
+      .map((c) => decodeURIComponent(String(c[0])))
+      .flatMap((src) => (["/*T1*/", "/*T2*/", "/*T3*/"] as const).filter((m) => src.includes(m)));
+
+  it("under a stalled sink, a stream job beyond the lookahead window does not start until earlier bytes are written", async () => {
+    const t1 = deferred();
+    const t2 = deferred();
+    const t3 = deferred();
+    routeInvokes({ "/*T1*/": t1, "/*T2*/": t2, "/*T3*/": t3 });
+    // The very first write (the "<p>a</p>" prefix) stalls on backpressure.
+    const { res, calls, done } = await serve(THREE, "GET", [false]);
+    await tick();
+    await tick();
+    // Current segment plus one adjacent stream job may run; the third must not.
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/"]);
+
+    // Resolving the in-window jobs while stalled still does not widen the window.
+    t1.resolve("<i>1</i>");
+    t2.resolve("<i>2</i>");
+    await tick();
+    await tick();
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/"]);
+    expect(res.write).toHaveBeenCalledTimes(1);
+
+    // Once the socket drains and T1's chunk is written, T3 enters the window.
+    res.emit("drain");
+    await tick();
+    await tick();
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/", "/*T3*/"]);
+
+    t3.resolve("<i>3</i>");
+    await done;
+    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>");
+    expect(res.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("a fast consumer still runs in-window stream jobs concurrently and completes without waiting on a stall", async () => {
+    const t1 = deferred();
+    const t2 = deferred();
+    const t3 = deferred();
+    routeInvokes({ "/*T1*/": t1, "/*T2*/": t2, "/*T3*/": t3 });
+    const { calls, done } = await serve(THREE, "GET");
+    await tick();
+    // T2 is dispatched while T1 is still pending: adjacent jobs overlap.
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/"]);
+    t1.resolve("<i>1</i>");
+    await tick();
+    await tick();
+    // T1's chunk is on the wire, so T3 is dispatched while T2 is still pending.
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/", "/*T3*/"]);
+    t2.resolve("<i>2</i>");
+    t3.resolve("<i>3</i>");
+    await done;
+    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p><i>3</i><p>d</p>");
+  });
+
+  it("client close while stalled never dispatches the not-yet-started jobs", async () => {
+    const t1 = deferred();
+    const t2 = deferred();
+    const t3 = deferred();
+    routeInvokes({ "/*T1*/": t1, "/*T2*/": t2, "/*T3*/": t3 });
+    const { res, done } = await serve(THREE, "GET", [false]);
+    await tick();
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/"]);
+
+    res.destroyed = true;
+    res.emit("close");
+    t1.resolve("<i>1</i>");
+    t2.resolve("<i>2</i>");
+    await done;
+    expect(startedMarkers()).toEqual(["/*T1*/", "/*T2*/"]);
+    expect(res.end).not.toHaveBeenCalled();
+  });
+});
+
 describe("prompt 67: the plan is precomputed, never rebuilt on the request path", () => {
   it("serving a stream page twice calls planServerScripts zero times and never decodes page.content", async () => {
     const serverScripts = await import("./server-scripts.ts");

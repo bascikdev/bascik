@@ -124,6 +124,7 @@ import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
+import type { PageWorkerResult } from "./page-worker.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
@@ -413,6 +414,25 @@ const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
   console.error(aggregateError.message);
 };
 
+/**
+ * Force V8 to materialize `value` as a flat (contiguous) string (prompt 85).
+ *
+ * Every `replaceTag` splice is `prefix + insert + suffix`, and V8 represents
+ * that as a `ConsString` node rather than copying. After hundreds of splices
+ * the page is a deep concatenation tree, and the first downstream consumer
+ * (regex scan, minifier, `Buffer.from`) pays a synchronous flatten pause.
+ *
+ * `Buffer.byteLength` hands the string to V8's C++ `String::Flatten` on every
+ * call, which rewrites the cons tree in place into a flat sequential string
+ * and returns the same string object. Pure-JS probes such as `charCodeAt` or
+ * `indexOf` are not reliable here: once TurboFan inlines them they walk the
+ * cons tree without flattening it. Byte-neutral; one linear pass at most.
+ */
+const flattenString = (value: string): string => {
+  if (value.length > 0) Buffer.byteLength(value);
+  return value;
+};
+
 export const recursivelyTranspile = (
   transpiledHtmlBody: string,
   componentList: ComponentList,
@@ -458,19 +478,23 @@ export const recursivelyTranspile = (
     }
     const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
     if (!partial.name) {
-      const cleanedHtml = transpiledHtmlBody
-        .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-        .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
+      const cleanedHtml = flattenString(
+        transpiledHtmlBody
+          .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
+          .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, ""),
+      );
       return { transpiledHtmlBody: cleanedHtml, usedComponents };
     }
     // Cast: getFirstComponent merges component list data so all required fields are present
     let component = partial as BascikComponent;
 
     if (!component.fileContent) {
-      const cleanedHtml = transpiledHtmlBody
-        .replace(component.content || "", "")
-        .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-        .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
+      const cleanedHtml = flattenString(
+        transpiledHtmlBody
+          .replace(component.content || "", "")
+          .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
+          .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, ""),
+      );
       return {
         transpiledHtmlBody: cleanedHtml,
         usedComponents
@@ -693,7 +717,16 @@ export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string |
 
 const pageProcessingQueues = new Map<string, Promise<unknown>>();
 
-const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> => {
+/**
+ * The subset of a page result the disk writer needs. `distHtml` may already be
+ * UTF-8 bytes (a buffer transferred from a worker, prompt 86); `writeFile` and
+ * the manifest hash both accept bytes directly, so no decode happens here.
+ */
+type PageWriteInput = Pick<TranspilePageResult, "relativePagePath" | "absolutePagePath"> & {
+  distHtml: string | Buffer;
+};
+
+const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
   const directoryPath = getDirectoryPath(result.relativePagePath);
   try {
     await mkdir(join(BascikConfig.directory.out, directoryPath), { recursive: true });
@@ -709,7 +742,7 @@ const writeTranspiledPage = async (result: TranspilePageResult): Promise<void> =
   }
 };
 
-const queueTranspiledPageWrite = (result: TranspilePageResult): Promise<void> => {
+const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
   const pagePath = result.absolutePagePath;
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   const queued = current
@@ -907,77 +940,60 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
     const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
     const poolSize = Math.min(cpus().length, allJobs.length);
-    const pool = new WorkerPool<PageJob, TranspilePageResult | null>(
+    const pool = new WorkerPool<PageJob, PageWorkerResult | null>(
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
-    const results: (TranspilePageResult | null)[] = [];
+    const results: PageWorkerResult[] = [];
     const pageErrors: PageProcessingError[] = [...expansionErrors];
+
+    // Apply main-thread side effects for one worker result. The page bytes
+    // arrived as a transferred ArrayBuffer (prompt 86); wrap them in a Buffer
+    // view (no copy) and hand that view to the store and the disk writer.
+    // Nothing on this path needs the HTML as a string.
+    const runWorkerJob = async (job: PageJob): Promise<PageWorkerResult | null> => {
+      try {
+        const result = await pool.run(job);
+        if (result) {
+          if (result.serverScripts) {
+            serverSidecarRegistry.recordScripts(result.serverScripts);
+          }
+          if (!BascikConfig.isBuild) {
+            const { distHtmlBytes } = result;
+            const pageBytes = Buffer.from(distHtmlBytes.buffer, distHtmlBytes.byteOffset, distHtmlBytes.byteLength);
+            await mem.storePage({
+              relativePagePath: result.relativePagePath,
+              absolutePagePath: result.absolutePagePath,
+              pageContent: pageBytes,
+              usedComponentsNames: result.usedComponentsNames,
+              fileDependencies: result.fileDependencies,
+            });
+            void queueTranspiledPageWrite({
+              relativePagePath: result.relativePagePath,
+              absolutePagePath: result.absolutePagePath,
+              distHtml: pageBytes,
+            });
+          }
+          eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+        }
+        return result;
+      } catch (error) {
+        pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
+        return null;
+      }
+    };
+
     try {
       if (openJobs.length > 0) {
-        const openResults = await Promise.all(
-          openJobs.map(async (job) => {
-            try {
-              const result = await pool.run(job);
-              if (result) {
-                if (result.serverScripts) {
-                  serverSidecarRegistry.recordScripts(result.serverScripts);
-                }
-                if (!BascikConfig.isBuild) {
-                  await mem.storePage({
-                    relativePagePath: result.relativePagePath,
-                    absolutePagePath: result.absolutePagePath,
-                    pageContent: result.distHtml,
-                    usedComponentsNames: result.usedComponentsNames,
-                    fileDependencies: result.fileDependencies,
-                  });
-                  void queueTranspiledPageWrite(result);
-                }
-                eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
-              }
-              return result;
-            } catch (error) {
-              pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
-              return null;
-            }
-          }),
-        );
-        for (const result of openResults) {
+        for (const result of await Promise.all(openJobs.map(runWorkerJob))) {
           if (result) results.push(result);
         }
       }
 
       if (restJobs.length > 0) {
-        const restResults = await Promise.all(
-          restJobs.map(async (job) => {
-            try {
-              const result = await pool.run(job);
-              if (result) {
-                if (result.serverScripts) {
-                  serverSidecarRegistry.recordScripts(result.serverScripts);
-                }
-                if (!BascikConfig.isBuild) {
-                  await mem.storePage({
-                    relativePagePath: result.relativePagePath,
-                    absolutePagePath: result.absolutePagePath,
-                    pageContent: result.distHtml,
-                    usedComponentsNames: result.usedComponentsNames,
-                    fileDependencies: result.fileDependencies,
-                  });
-                  void queueTranspiledPageWrite(result);
-                }
-                eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
-              }
-              return result;
-            } catch (error) {
-              pageErrors.push(normalizePageError(job.pagePath, error, "worker transpile"));
-              return null;
-            }
-          }),
-        );
-        for (const result of restResults) {
+        for (const result of await Promise.all(restJobs.map(runWorkerJob))) {
           if (result) results.push(result);
         }
       }
@@ -1327,8 +1343,6 @@ export const transpilePage = async (
       relativePagePath,
       absolutePagePath: pagePath,
       distHtml,
-      usedComponentsNames: allUsedComponents.map(({ name }) => name),
-      fileDependencies,
     });
   }
 

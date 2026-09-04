@@ -131,8 +131,8 @@ export const runCli = async (
       return { action: "check", exitCode };
     }
     case "server": {
-      const { serverProduction } = await import("./lib/serve.ts");
-      await serverProduction();
+      const { startProdServer } = await import("./lib/server-prod.ts");
+      await startProdServer();
       return { action: "server", exitCode: 0 };
     }
     case "dev":

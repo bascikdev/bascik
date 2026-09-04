@@ -2,6 +2,33 @@ import { describe, it, expect, vi } from "vitest";
 import { recursivelyTranspile } from "./processing.ts";
 import * as componentsModule from "./components.ts";
 import type { ComponentList } from "./types.ts";
+import { isFlatString, makeConsString } from "./string-flatness-probe.test-helper.ts";
+
+describe("Prompt 85: recursivelyTranspile returns a flat V8 string", () => {
+  it("probe sanity: the splice loop shape used by replaceTag really produces a cons string", () => {
+    const cons = makeConsString("<p>x</p>".repeat(2000), 200);
+    expect(isFlatString(cons)).toBe(false);
+  });
+
+  it("hundreds of sequential and nested substitutions return a flat string, not a cons tree", () => {
+    const componentList: ComponentList = {
+      "item-card": {
+        fileContent: `<div class="card"><inner-badge></inner-badge><p data-bascik-prop-title></p></div>`,
+      },
+      "inner-badge": {
+        fileContent: `<span class="badge">new</span>`,
+      },
+    };
+    const body = Array.from(
+      { length: 300 },
+      (_, i) => `<item-card title="Item ${i}"></item-card>`,
+    ).join("\n");
+
+    const result = recursivelyTranspile(body, componentList);
+    expect(result.usedComponents).toHaveLength(600);
+    expect(isFlatString(result.transpiledHtmlBody)).toBe(true);
+  });
+});
 
 describe("Prompt 34: Transpile loop performance & operation count guard", () => {
   it("bounds full-document scanning operations linearly with component instances", () => {

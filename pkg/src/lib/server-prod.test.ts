@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { mem } from "./mem.ts";
-import { serveProduction } from "./serve.ts";
+import { startProdServer } from "./server-prod.ts";
 
 const { startServerMock } = vi.hoisted(() => ({
   startServerMock: vi.fn().mockResolvedValue(undefined),
@@ -28,14 +28,14 @@ vi.mock("./config.js", async (importOriginal) => {
   };
 });
 
-describe("serveProduction", () => {
+describe("startProdServer", () => {
   let workDir: string;
   let originalCwd: string;
 
   beforeEach(async () => {
     startServerMock.mockClear();
     originalCwd = process.cwd();
-    workDir = join(originalCwd, `.serve-test-${process.pid}-${Date.now()}`);
+    workDir = join(originalCwd, `.server-prod-test-${process.pid}-${Date.now()}`);
     await mkdir(join(workDir, "dist"), { recursive: true });
     process.chdir(workDir);
   });
@@ -47,10 +47,10 @@ describe("serveProduction", () => {
 
   it("throws a helpful error when dist/ does not exist", async () => {
     await rm(join(workDir, "dist"), { recursive: true, force: true });
-    await expect(serveProduction()).rejects.toThrow(
+    await expect(startProdServer()).rejects.toThrow(
       /could not read .*dist\/ directory/,
     );
-    await expect(serveProduction()).rejects.toThrow(/bascik --build/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
     expect(startServerMock).not.toHaveBeenCalled();
   });
 
@@ -58,7 +58,7 @@ describe("serveProduction", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
 
-    await serveProduction();
+    await startProdServer();
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("no HTML pages found"),
@@ -80,7 +80,7 @@ describe("serveProduction", () => {
     await writeFile(join(workDir, "dist", "styles.css"), "body{}");
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
 
-    await serveProduction();
+    await startProdServer();
 
     expect(startServerMock).toHaveBeenCalledOnce();
 
@@ -107,7 +107,7 @@ describe("serveProduction", () => {
     await writeFile(sentinelPath, "preserved");
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
 
-    await serveProduction();
+    await startProdServer();
 
     await expect(import("node:fs/promises").then(({ readFile }) => readFile(sentinelPath, "utf8")))
       .resolves.toBe("preserved");
@@ -118,7 +118,7 @@ describe("serveProduction", () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>only</h1>");
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
 
-    await serveProduction();
+    await startProdServer();
 
     expect(log).toHaveBeenCalledWith("Loaded 1 page from dist/");
     log.mockRestore();

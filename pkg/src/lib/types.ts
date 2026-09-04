@@ -307,8 +307,15 @@ export interface StoredPage {
   absolutePagePath: string;
   content: Buffer;
   // Computed asynchronously in the background; undefined until brotli
-  // compression finishes, in which case the server serves uncompressed.
+  // compression finishes, in which case the server falls back to gzip
+  // (if ready) or identity.
   compressedContent: Buffer | undefined;
+  /**
+   * Gzip fallback for clients whose Accept-Encoding lacks `br` (legacy
+   * browsers, some proxies and crawlers). Computed in the background after
+   * store like `compressedContent`; undefined until ready.
+   */
+  gzipContent?: Buffer;
   usedComponentsSet: Set<string>;
   /** Relative paths of local file dependencies referenced by build scripts on this page. */
   fileDependenciesSet?: Set<string>;

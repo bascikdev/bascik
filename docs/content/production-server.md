@@ -105,8 +105,10 @@ When TLS is enabled:
 ## Compression: Brotli & Gzip
 
 When `http.compression: true` is enabled (the default):
-- Static HTML pages are pre-compressed with Brotli in the background at startup.
-- Fast Brotli and Gzip streams compress static assets and API route responses based on client `Accept-Encoding`.
+
+- Static HTML pages are pre-compressed with both Brotli and Gzip in the background at startup.
+- The server reads each request's `Accept-Encoding` header and picks the best match: Brotli for modern browsers, Gzip for legacy clients, proxies, and crawlers that do not advertise `br`, and uncompressed bytes otherwise. Each variant carries its own `ETag`.
+- Fast Brotli and Gzip streams compress static assets based on client `Accept-Encoding`.
 - Responses containing streaming scripts (`data-bascik-stream`) skip compression to preserve incremental chunk delivery.
 
 ## In-Memory Caching & ETags

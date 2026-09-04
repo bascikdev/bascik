@@ -63,6 +63,36 @@ describe("storePage + getPage round-trip", () => {
     });
   });
 
+  it("page gzipContent is eventually populated alongside brotli, and both round-trip to the original bytes", async () => {
+    const { gunzipSync, brotliDecompressSync } = await import("node:zlib");
+    await storeSample("gz-test");
+    await vi.waitFor(() => {
+      const page = mem.getPage("gz-test");
+      expect(Buffer.isBuffer(page?.gzipContent)).toBe(true);
+      expect(Buffer.isBuffer(page?.compressedContent)).toBe(true);
+    });
+    const page = mem.getPage("gz-test")!;
+    expect(gunzipSync(page.gzipContent!).equals(page.content)).toBe(true);
+    expect(brotliDecompressSync(page.compressedContent!).equals(page.content)).toBe(true);
+  });
+
+  it("a stale background gzip result never attaches to a page that was re-stored in the meantime", async () => {
+    await storeSample("gz-race");
+    const first = mem.getPage("gz-race")!;
+    await mem.storePage({
+      relativePagePath: "gz-race",
+      absolutePagePath: "gz-race",
+      pageContent: "<html><body>replaced</body></html>",
+    });
+    const second = mem.getPage("gz-race")!;
+    expect(second.content).not.toBe(first.content);
+    await vi.waitFor(() => {
+      expect(Buffer.isBuffer(second.gzipContent)).toBe(true);
+    });
+    const { gunzipSync } = await import("node:zlib");
+    expect(gunzipSync(second.gzipContent!).toString()).toBe("<html><body>replaced</body></html>");
+  });
+
   it("stores usedComponentsSet as a Set", async () => {
     await storeSample("comp-test", ["my-nav", "my-footer"]);
     const page = mem.getPage("comp-test");
