@@ -38,11 +38,118 @@ const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css'
 const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
 const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
 
-const restoreFileIfChanged = async (filePath: string, originalContent: string): Promise<void> => {
+/**
+ * Resolve once the page has navigated to a document whose inlined <head>
+ * <style> text contains `marker`.
+ *
+ * Why not `expect.poll` over `allInnerTexts()`: the live-reload client calls
+ * `location.reload()` on the SSE `reload` event, and evaluating the old
+ * document's DOM while that navigation is in flight throws "Execution
+ * context was destroyed" instead of returning false, which aborts the poll.
+ *
+ * Why not a single `waitForEvent('framenavigated')`: the previous test's
+ * `afterEach` restores the same CSS asset, and that restore can produce a
+ * reload that lands after this test has already opened the page. Waiting on
+ * "the next navigation" would then observe the stale reload and read a
+ * document that predates this test's write. Attaching the listener BEFORE
+ * the write and checking each navigation's document for the marker makes the
+ * wait deterministic regardless of how many reloads precede the right one.
+ */
+const waitForReloadWithStyle = (
+  page: import('@playwright/test').Page,
+  marker: string,
+  timeout = 15000,
+): Promise<number> => {
+  let resolveDone!: (navigations: number) => void;
+  let rejectDone!: (err: Error) => void;
+  const done = new Promise<number>((res, rej) => {
+    resolveDone = res;
+    rejectDone = rej;
+  });
+  let navigations = 0;
+  const timer = setTimeout(() => {
+    page.off('framenavigated', onNav);
+    rejectDone(new Error(`no reload carried ${JSON.stringify(marker)} within ${timeout}ms (${navigations} navigation(s) seen)`));
+  }, timeout);
+  const onNav = async (frame: import('@playwright/test').Frame) => {
+    if (frame !== page.mainFrame()) return;
+    navigations++;
+    try {
+      await frame.waitForLoadState('domcontentloaded');
+      const styles = await frame.locator('head style').allTextContents();
+      if (styles.some((s) => s.includes(marker))) {
+        clearTimeout(timer);
+        page.off('framenavigated', onNav);
+        resolveDone(navigations);
+      }
+    } catch {
+      // This document was torn down by a further reload before we could read
+      // it; the next framenavigated will re-check.
+    }
+  };
+  page.on('framenavigated', onNav);
+  return done;
+};
+
+/**
+ * Restore a fixture. Returns true when a write actually happened (and so the
+ * dev server will rebuild and broadcast a reload for affected open pages).
+ */
+const restoreFileIfChanged = async (filePath: string, originalContent: string): Promise<boolean> => {
   const currentContent = await readFile(filePath, 'utf8').catch(() => null);
   if (currentContent !== originalContent) {
     await writeFile(filePath, originalContent, 'utf8');
+    return true;
   }
+  return false;
+};
+
+/**
+ * Subscribe to the dev server's SSE stream as if a tab had `httpPath` open,
+ * and resolve once one `reload` event for that page arrives. Used by
+ * `afterEach` so the rebuild caused by restoring a fixture is fully consumed
+ * before the next test starts; otherwise that reload can land on the next
+ * test's freshly opened page and interrupt its own navigation.
+ *
+ * This is an event wait, not a sleep: it resolves the moment the server says
+ * the page was re-transpiled, and rejects loudly if that never happens.
+ */
+const subscribeToServerReload = async (
+  httpPath: string,
+  timeout = 15000,
+): Promise<{ reload: Promise<void> }> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  const res = await fetch(`http://localhost:9443/bascik-live-reload`, {
+    headers: { Referer: `http://localhost:9443${httpPath}` },
+    signal: controller.signal,
+  });
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffered = '';
+  const readUntil = async (pattern: RegExp, what: string): Promise<void> => {
+    try {
+      while (!pattern.test(buffered)) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error(`SSE stream closed before ${what} for ${httpPath}`);
+        buffered += decoder.decode(value, { stream: true });
+      }
+    } catch (err) {
+      if (controller.signal.aborted) throw new Error(`no ${what} for ${httpPath} within ${timeout}ms`);
+      throw err;
+    }
+  };
+  // `connected` is written in `addClient`, and the server attaches its
+  // `transpiled` listener synchronously in the same tick right after. A file
+  // write we issue after observing `connected` therefore cannot be processed
+  // before that listener exists, so the resulting reload is guaranteed to
+  // reach this subscription.
+  await readUntil(/^data: connected$/m, 'connected');
+  const reload = readUntil(/^data: reload\b/m, 'reload').finally(() => {
+    clearTimeout(timer);
+    controller.abort();
+  });
+  return { reload };
 };
 
 test.describe('Dev Server Live-Reload & Watch Engine', () => {
@@ -71,7 +178,16 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await restoreFileIfChanged(componentPath, originalComponentContent);
     await restoreFileIfChanged(contentDocPath, originalContentDoc);
     await restoreFileIfChanged(subfolderPagePath, originalSubfolderPage);
-    await restoreFileIfChanged(inlinedGlobalCssPath, originalInlinedGlobalCss);
+    // Restoring the inlined global stylesheet rebuilds every page and
+    // broadcasts a reload to any open /scope-test tab. Subscribe first so the
+    // event cannot be missed, then wait for it, so that reload is consumed
+    // here rather than arriving during the next test.
+    const cssChanged = (await readFile(inlinedGlobalCssPath, 'utf8').catch(() => null)) !== originalInlinedGlobalCss;
+    if (cssChanged) {
+      const { reload } = await subscribeToServerReload('/scope-test');
+      await restoreFileIfChanged(inlinedGlobalCssPath, originalInlinedGlobalCss);
+      await reload;
+    }
     await restoreFileIfChanged(scopeTestCssPath, originalScopeTestCss);
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
@@ -464,12 +580,13 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await page.goto('/scope-test');
 
     const styleMarker = `.inlined-dyn-test-${Date.now()} { color: rgb(123, 45, 67); }`;
+    // Arm the listener before the write so the reload cannot be missed, then
+    // wait for the navigation whose document carries the new rule. See
+    // waitForReloadWithStyle for why neither expect.poll nor a bare
+    // waitForEvent('framenavigated') is sufficient here.
+    const reloaded = waitForReloadWithStyle(page, styleMarker);
     await writeFile(inlinedGlobalCssPath, originalInlinedGlobalCss + '\n' + styleMarker, 'utf8');
-
-    await expect.poll(async () => {
-      const styles = await page.locator('head style').allInnerTexts();
-      return styles.some((s) => s.includes(styleMarker));
-    }, { timeout: 15000 }).toBe(true);
+    await expect(reloaded).resolves.toBeGreaterThanOrEqual(1);
   });
 
   test('prioritizes open browser tab during full rebuild and reloads immediately when global styles change', async ({ page }) => {
@@ -477,19 +594,14 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(page.locator('h1')).toBeVisible();
 
     const uniqueRule = `.global-prio-rule-${Date.now()} { color: rgb(45, 90, 135); }`;
+    const reloaded = waitForReloadWithStyle(page, uniqueRule);
     const start = performance.now();
     await writeFile(inlinedGlobalCssPath, originalInlinedGlobalCss + '\n' + uniqueRule, 'utf8');
 
-    // The open page /scope-test must be prioritized during processAllPages and reloaded very quickly
-    await expect.poll(async () => {
-      try {
-        const styles = await page.locator('head style').allInnerTexts();
-        return styles.some((s) => s.includes(uniqueRule));
-      } catch {
-        return false;
-      }
-    }, { timeout: 15000 }).toBe(true);
-
+    // The open page /scope-test must be prioritized during processAllPages and
+    // reloaded very quickly: measure until the document carrying the new rule
+    // has actually arrived.
+    await expect(reloaded).resolves.toBeGreaterThanOrEqual(1);
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
   });
