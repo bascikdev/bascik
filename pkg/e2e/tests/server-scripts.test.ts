@@ -15,7 +15,7 @@
  *   2. Read a query parameter (`?color=`) and output it
  *   3. Output the request path
  *   4. Use top-level `await` (async server script)
- *   5. Throw an intentional error to test graceful degradation
+ *   5. Use author-owned escaping for XSS prevention
  */
 import { test, expect } from '@playwright/test';
 
@@ -80,7 +80,7 @@ test.describe('data-bascik-server — request-time script execution', () => {
     await expect(page.getByTestId('from-async')).toHaveText('async-ok');
   });
 
-  // ─── Escaping helper ─────────────────────────────────────────────────────
+  // ─── Author-owned escaping ───────────────────────────────────────────────
 
   test('escapes reflected XSS query parameters with no script execution', async ({ page }) => {
     let dialogTriggered = false;
@@ -92,6 +92,14 @@ test.describe('data-bascik-server — request-time script execution', () => {
     await page.goto('/server-scripts-test?xss=%3Cscript%3Ealert(1)%3C%2Fscript%3E');
     await expect(page.getByTestId('from-xss')).toHaveText('<script>alert(1)</script>');
     expect(dialogTriggered).toBe(false);
+  });
+
+  test('does not auto-escape output (regression anchor)', async ({ page }) => {
+    await page.setExtraHTTPHeaders({ 'x-test-name': '<b>bold</b>' });
+    await page.goto('/server-scripts-test');
+    const el = page.getByTestId('from-header');
+    await expect(el).toHaveText('bold');
+    expect(await el.innerHTML()).toContain('<b>bold</b>');
   });
 
   // ─── Error handling ──────────────────────────────────────────────────────

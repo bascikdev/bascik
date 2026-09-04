@@ -64,7 +64,7 @@ Someone adding one interpolated value to one page should not install anything. T
 <!-- demo:helper-module -->
 ```js
 // lib/interpolate.mjs
-export const escapeHtml = (value) => String(value)
+export const escape = (value) => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
@@ -77,7 +77,7 @@ export const interpolate = (template, data) =>
       .trim()
       .split('.')
       .reduce((obj, key) => (obj == null ? undefined : obj[key]), data);
-    return value == null ? '' : escapeHtml(value);
+    return value == null ? '' : escape(value);
   });
 ```
 

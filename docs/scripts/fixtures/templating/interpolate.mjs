@@ -1,6 +1,6 @@
 // Dependency-free ${path.to.value} interpolation helper.
 // Escapes HTML by default; missing keys render as empty strings.
-export const escapeHtml = (value) => String(value)
+export const escape = (value) => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
@@ -13,5 +13,5 @@ export const interpolate = (template, data) =>
       .trim()
       .split('.')
       .reduce((obj, key) => (obj == null ? undefined : obj[key]), data);
-    return value == null ? '' : escapeHtml(value);
+    return value == null ? '' : escape(value);
   });

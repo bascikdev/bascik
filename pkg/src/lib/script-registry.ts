@@ -25,8 +25,6 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { isNetworkResetError } from "./server.ts";
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
 
-export type ScriptInvocationContext = Record<string, unknown>;
-
 export interface LoadedScriptModule {
   filePath: string;
   module: any;
@@ -135,7 +133,7 @@ export class ScriptRegistry {
    */
   async invoke<T = unknown>(
     specifier: string,
-    context: ScriptInvocationContext,
+    args: readonly unknown[],
     options: ScriptExecutionOptions = {},
   ): Promise<ScriptExecutionResult<T>> {
     const isUrl = specifier.startsWith("data:") || specifier.startsWith("file:");
@@ -178,7 +176,7 @@ export class ScriptRegistry {
 
       // Execute handler passing isolated context and controller options
       const resultPromise = Promise.resolve(
-        handler(context, {
+        handler(...args, {
           signal: controller.signal,
         }),
       );
@@ -189,13 +187,14 @@ export class ScriptRegistry {
         value = await Promise.race([
           resultPromise,
           new Promise<never>((_, reject) => {
-            controller.signal.addEventListener("abort", () => {
+            const onAbort = () => {
               if (didTimeout) {
                 reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
               } else {
                 reject(controller.signal.reason);
               }
-            }, { once: true });
+            };
+            controller.signal.addEventListener("abort", onAbort, { once: true });
           }),
         ]);
       } else {

@@ -12,7 +12,9 @@
 
   <!-- 1. Script with runtime error -->
   <script data-bascik-server>
-    throw new Error('Resilience test error');
+    export default function () {
+      throw new Error('Resilience test error');
+    }
   </script>
 
   <!-- 2. Script with syntax error -->
@@ -30,8 +32,8 @@
 
   <!-- 4. Script reading multiple request headers -->
   <script data-bascik-server>
-    export default function ({ req }) {
-      const count = Object.keys(req.headers).filter(k => k.startsWith('x-stress-')).length;
+    export default function (request) {
+      const count = [...request.headers.keys()].filter(k => k.startsWith('x-stress-')).length;
       return `<p id="custom-headers-count" data-testid="custom-headers-count">${count}</p>`;
     }
   </script>

@@ -18,7 +18,7 @@ import {
   type ApiRouteDefinition,
   type ApiRouteMatch,
 } from "./api-routes.ts";
-import { createWebRequest, executeApiRoute } from "./api-runtime.ts";
+import { createWebRequest, executeApiRoute, requestOrigin } from "./api-runtime.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import type { BascikRequest, BascikResponse } from "./server.ts";
 
@@ -92,7 +92,7 @@ export class ApiRouteRegistry {
     match: ApiRouteMatch,
     secHeaders: Record<string, string>
   ): Promise<number> {
-    const webReq = createWebRequest(req);
+    const webReq = createWebRequest(req, requestOrigin(req));
     const webRes = await executeApiRoute({
       filePath: match.route.filePath,
       request: webReq,

@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
 import { analyzeApiRouteSource } from './api-rules';
 import { findModuleSpecifiers } from './module-specifiers';
+import { analyzeServerScriptSource } from './server-script-rules';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr'
@@ -240,7 +241,7 @@ function collectLeadingSlashDiagnostics(
   blockStart: number,
   attrs: Map<string, string | true>,
 ): vscode.Diagnostic[] {
-  if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server') && !attrs.has('data-bascik-routes')) {
+  if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server') && !attrs.has('data-bascik-routes') && !attrs.has('data-bascik-stream')) {
     return [];
   }
   const out: vscode.Diagnostic[] = [];
@@ -616,39 +617,77 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       const scriptBody = scriptMatch[2] ?? '';
       const scriptBodyOffset = (scriptMatch.index ?? 0) + openTag.length;
       const attrs = parseScriptOpenTagAttributes(openTag);
-      if (attrs.has('data-bascik-build') && attrs.has('data-bascik-server')) {
-        const start = document.positionAt(scriptMatch.index ?? 0);
-        const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
-        const diag = new vscode.Diagnostic(
-          new vscode.Range(start, end),
-          'data-bascik-build and data-bascik-server cannot both appear on the same <script> tag. Remove one - a script runs at build time or at request time, not both.',
-          vscode.DiagnosticSeverity.Error,
-        );
-        diag.source = 'bascik';
-        diagnostics.push(diag);
+
+      const directiveAttrs = [
+        'data-bascik-build',
+        'data-bascik-server',
+        'data-bascik-routes',
+        'data-bascik-stream',
+      ];
+      const presentDirectives = directiveAttrs.filter((d) => attrs.has(d));
+      for (let i = 0; i < presentDirectives.length; i++) {
+        for (let j = i + 1; j < presentDirectives.length; j++) {
+          const d1 = presentDirectives[i];
+          const d2 = presentDirectives[j];
+          let message: string;
+          if (
+            (d1 === 'data-bascik-build' && d2 === 'data-bascik-server') ||
+            (d1 === 'data-bascik-server' && d2 === 'data-bascik-build')
+          ) {
+            message =
+              'data-bascik-build and data-bascik-server cannot both appear on the same <script> tag. Remove one - a script runs at build time or at request time, not both.';
+          } else if (
+            (d1 === 'data-bascik-routes' && d2 === 'data-bascik-server') ||
+            (d1 === 'data-bascik-server' && d2 === 'data-bascik-routes')
+          ) {
+            message =
+              'data-bascik-routes and data-bascik-server cannot both appear on the same <script> tag. Remove one - a routes script runs at build time, while a server script runs at request time.';
+          } else if (
+            (d1 === 'data-bascik-routes' && d2 === 'data-bascik-build') ||
+            (d1 === 'data-bascik-build' && d2 === 'data-bascik-routes')
+          ) {
+            message =
+              'data-bascik-routes and data-bascik-build cannot both appear on the same <script> tag. Remove one.';
+          } else {
+            message = `${d1} and ${d2} cannot both appear on the same <script> tag. Remove one.`;
+          }
+
+          const start = document.positionAt(scriptMatch.index ?? 0);
+          const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
+          const diag = new vscode.Diagnostic(
+            new vscode.Range(start, end),
+            message,
+            vscode.DiagnosticSeverity.Error,
+          );
+          diag.source = 'bascik';
+          diagnostics.push(diag);
+        }
       }
-      if (attrs.has('data-bascik-routes') && attrs.has('data-bascik-server')) {
-        const start = document.positionAt(scriptMatch.index ?? 0);
-        const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
-        const diag = new vscode.Diagnostic(
-          new vscode.Range(start, end),
-          'data-bascik-routes and data-bascik-server cannot both appear on the same <script> tag. Remove one - a routes script runs at build time, while a server script runs at request time.',
-          vscode.DiagnosticSeverity.Error,
-        );
-        diag.source = 'bascik';
-        diagnostics.push(diag);
+
+      if (attrs.has('data-bascik-server') || attrs.has('data-bascik-stream')) {
+        const directive = attrs.has('data-bascik-stream') ? 'stream' : 'server';
+        const hasSrcAttribute = /\ssrc\s*=/i.test(openTag);
+        const serverDiags = analyzeServerScriptSource(scriptBody, {
+          hasSrcAttribute,
+          directive,
+        });
+
+        for (const sd of serverDiags) {
+          const start = document.positionAt(scriptBodyOffset + sd.start);
+          const end = document.positionAt(scriptBodyOffset + sd.end);
+          let severity = vscode.DiagnosticSeverity.Error;
+          if (sd.severity === 'warning') {
+            severity = vscode.DiagnosticSeverity.Warning;
+          } else if (sd.severity === 'info') {
+            severity = vscode.DiagnosticSeverity.Information;
+          }
+          const diag = new vscode.Diagnostic(new vscode.Range(start, end), sd.message, severity);
+          diag.source = 'bascik';
+          diag.code = sd.code;
+          diagnostics.push(diag);
+        }
       }
-      if (attrs.has('data-bascik-routes') && attrs.has('data-bascik-build')) {
-        const start = document.positionAt(scriptMatch.index ?? 0);
-        const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
-        const diag = new vscode.Diagnostic(
-          new vscode.Range(start, end),
-          'data-bascik-routes and data-bascik-build cannot both appear on the same <script> tag. Remove one.',
-          vscode.DiagnosticSeverity.Error,
-        );
-        diag.source = 'bascik';
-        diagnostics.push(diag);
-      }
+
       diagnostics.push(
         ...collectLeadingSlashDiagnostics(document, openTag, scriptBody, scriptMatch.index ?? 0, attrs),
       );
@@ -796,8 +835,4 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
   );
-}
-
-export function deactivate(): void {
-  // no-op
 }

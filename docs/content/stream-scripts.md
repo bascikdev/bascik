@@ -14,11 +14,11 @@ Tag any `<script>` block with `data-bascik-stream` to run it as a streaming scri
 <section class="feed-panel" aria-busy="true">
   <p class="pending" role="status">Loading live activity…</p>
   <script data-bascik-stream>
-    import { escapeHtml } from '@bascik/bascik';
+    import { escape } from '@/lib/server.ts';
 
-    export default async function({ req }, { signal }) {
-      const feed = await fetchActivityFeed(req, signal);
-      return `<div class="result">${feed.map(item => `<p>${escapeHtml(item.text)}</p>`).join('')}</div>`;
+    export default async function (request, context, { signal }) {
+      const feed = await fetchActivityFeed(request, signal);
+      return `<div class="result">${feed.map(item => `<p>${escape(item.text)}</p>`).join('')}</div>`;
     }
   </script>
 </section>
@@ -26,16 +26,16 @@ Tag any `<script>` block with `data-bascik-stream` to run it as a streaming scri
 
 The browser receives and renders the shell immediately, parsing and painting incrementally as each chunk arrives. No client JavaScript framework or runtime library is added to the page.
 
-> **Server vs Stream scripts:** Use `data-bascik-server` when the output must be present before anything is sent, or when a script failure should result in an HTTP 500 error page. Use `data-bascik-stream` when the page shell should paint immediately while slow backend queries resolve.
+> **Server vs Stream scripts:** Use `data-bascik-server` when the output must be present before anything is sent, or when a script failure should result in an HTTP 500 error page. Use `data-bascik-stream` when the page shell should paint immediately while slow backend queries resolve. For escaping and injection guidelines, see [Escaping and injection](/server-scripts#escaping-and-injection).
 
 ## Execution Model & Request Flow
 
-Stream scripts use the same authoring model as `data-bascik-server` (receiving `{ req }` as the first argument and `{ signal }` as the second argument), with one key architectural difference: the server does not wait for stream scripts before committing HTTP response headers.
+Stream scripts use the same handler signature as `data-bascik-server` and API routes: `(request, context, { signal })`. With stream scripts, one key architectural difference applies: the server does not wait for stream scripts before committing HTTP response headers.
 
 ```html
 <script data-bascik-stream>
-  export default async function({ req }, { signal }) {
-    const data = await loadUserData(req.headers['cookie'], signal);
+  export default async function (request, context, { signal }) {
+    const data = await loadUserData(request.headers.get('cookie'), signal);
     return `<article>${data.html}</article>`;
   }
 </script>
@@ -80,11 +80,11 @@ Wrap the placeholder and script in a container that reserves its final dimension
 <section class="panel" aria-busy="true">
   <p class="pending" role="status">Loading account details…</p>
   <script data-bascik-stream>
-    import { escapeHtml } from '@bascik/bascik';
+    import { escape } from '@/lib/server.ts';
 
-    export default async function({ req }, { signal }) {
-      const account = await loadAccount(req, signal);
-      return `<article class="result"><h3>${escapeHtml(account.name)}</h3></article>`;
+    export default async function (request, context, { signal }) {
+      const account = await loadAccount(request, signal);
+      return `<article class="result"><h3>${escape(account.name)}</h3></article>`;
     }
   </script>
 </section>
@@ -118,8 +118,8 @@ Add a subtle loading animation with pure CSS keyframes:
 
 <div class="skeleton" role="status" aria-label="Loading data">
   <script data-bascik-stream>
-    export default async function({ req }, { signal }) {
-      const content = await fetchDetails(req, signal);
+    export default async function (request, context, { signal }) {
+      const content = await fetchDetails(request, signal);
       return `<div class="result">${content}</div>`;
     }
   </script>
@@ -156,8 +156,8 @@ In Bascik streaming, source order is delivery order: bytes before the first stre
   <section class="metrics" aria-busy="true">
     <p class="pending" role="status">Loading metrics…</p>
     <script data-bascik-stream>
-      export default async function({ req }, { signal }) {
-        const stats = await loadMetrics(req, signal);
+      export default async function (request, context, { signal }) {
+        const stats = await loadMetrics(request, signal);
         return `<div class="result">${stats.summary}</div>`;
       }
     </script>
@@ -166,8 +166,8 @@ In Bascik streaming, source order is delivery order: bytes before the first stre
   <section class="billing" aria-busy="true">
     <p class="pending" role="status">Loading billing…</p>
     <script data-bascik-stream>
-      export default async function({ req }, { signal }) {
-        const bills = await loadBilling(req, signal);
+      export default async function (request, context, { signal }) {
+        const bills = await loadBilling(request, signal);
         return `<div class="result">${bills.total}</div>`;
       }
     </script>
@@ -208,11 +208,11 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 <section class="stream-panel" aria-busy="true">
   <p class="pending" role="status">Loading live status…</p>
   <script data-bascik-stream>
-    import { escapeHtml } from '@bascik/bascik';
+    import { escape } from '@/lib/server.ts';
 
-    export default async function({ req }, { signal }) {
-      const data = await fetchStatus(req, signal);
-      return `<p class="result">System online: ${escapeHtml(data.uptime)}</p>`;
+    export default async function (request, context, { signal }) {
+      const data = await fetchStatus(request, signal);
+      return `<p class="result">System online: ${escape(data.uptime)}</p>`;
     }
   </script>
 </section>

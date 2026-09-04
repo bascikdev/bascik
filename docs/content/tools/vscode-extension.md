@@ -18,10 +18,31 @@ The extension is generated from the compatibility rules in [Scoping Compatibilit
 - **Style Coexistence Conflicts (Warning):** Flags if a component has both a companion `.css` file and an inline `<style>` tag, encouraging consistent stylesheet structure within your project.
 
 ### 3. CSS Scoping Compatibility Warnings
+
 - **Global Selector Warnings:** Flags CSS selectors that Bascik's scoping engine cannot isolate. For example, using `[id]` selectors is flagged because they cannot be scoped without DOM wrapping and would apply globally.
 
 ### 4. JavaScript Scoping Compatibility Warnings
+
 - **Risky Selector Rewriting Patterns:** Warns on patterns that cannot be reliably rewritten at build time, such as runtime assignments to `el.id` or `el.name`. It directs you to stable alternatives, like querying the scoped element once and operating on its reference directly.
+
+### 5. Server Script Diagnostics
+
+The extension analyzes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks for contract validity and injection sinks:
+
+- **Missing Default Export (`server-script-missing-default-export`, Error):** Requires a default exported function `(request, context, { signal })`.
+- **Bascik Import (`server-script-bascik-import`, Error):** Flags imports from `@bascik/bascik` in server scripts because helpers belong in your project (such as `@/lib/server.ts`).
+- **URL Attribute Sink (`server-script-sink-url-attribute`, Warning):** Flags interpolations inside URL attributes (`href`, `src`, `action`, etc.). HTML entity escaping does not neutralize `javascript:` or `data:` URLs.
+- **Event Handler Sink (`server-script-sink-event-handler`, Warning):** Flags interpolations inside inline event handlers (`onclick`, etc.). Untrusted values should move to `data-*` attributes.
+- **Unquoted Attribute Sink (`server-script-sink-unquoted-attribute`, Warning):** Flags unquoted attribute values where spaces allow attribute breakout.
+- **Inline Script Sink (`server-script-sink-inline-script`, Warning):** Flags interpolations inside inline `<script>` tags where HTML entity escaping is ineffective in JavaScript context.
+- **Style Sink (`server-script-sink-style`, Warning):** Flags interpolations inside `style` attributes or `<style>` blocks.
+- **Unescaped Request Text Sink (`server-script-sink-text-unescaped`, Info):** Flags unescaped request-derived values in HTML body text when not wrapped in an escaping function.
+
+**Severity Policy:**
+- Structural sink misuse (`url-attribute`, `event-handler`, `unquoted-attribute`, `inline-script`, `style`) is flagged as a **Warning** because entity escaping cannot neutralize these contexts, regardless of data origin.
+- Unescaped request text (`text-unescaped`) is flagged as **Info** because the extension cannot see your application's data layer or database safety guarantees.
+
+See the [Server Scripts](/server-scripts) documentation for complete escaping and injection guidance.
 
 The extension does **not** warn on class names that only appear in JavaScript and never in a `class="…"` HTML attribute. Those classes are automatically discovered and scoped by the build pipeline. A `classList.toggle('active')` call is fully supported even if `active` never appears in the component template.
 

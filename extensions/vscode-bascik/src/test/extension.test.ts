@@ -598,5 +598,50 @@ suite('Extension Integration Suite', () => {
       assert.ok(match, 'Expected non-hyphenated component warning for a file in the second root');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
+
+    test('reports server script missing default export error', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-server>\nconst x = 1;\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((d) => d.code === 'server-script-missing-default-export');
+      assert.ok(match, 'Expected server-script-missing-default-export diagnostic');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+    });
+
+    test('reports stream script href sink warning', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-stream>\nexport default async (request) => {\n  return `<a href="${x}">link</a>`;\n};\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((d) => d.code === 'server-script-sink-url-attribute');
+      assert.ok(match, 'Expected server-script-sink-url-attribute warning');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+    });
+
+    test('reports conflict error when script has both data-bascik-stream and data-bascik-build', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-stream data-bascik-build>\nexport default async () => "";\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find((d) =>
+        d.message.includes('data-bascik-build and data-bascik-stream cannot both appear') ||
+        d.message.includes('data-bascik-stream and data-bascik-build cannot both appear'),
+      );
+      assert.ok(match, 'Expected error diagnostic for conflicting stream and build directives');
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+    });
+
+    test('clean server script yields zero bascik diagnostics in that block', async () => {
+      const doc = await vscode.workspace.openTextDocument({
+        language: 'html',
+        content: '<script data-bascik-server>\nimport { escape } from "@/lib/server.ts";\nexport default async (request, context, { signal }) => {\n  const user = escape(request.headers.get("x-user") ?? "guest");\n  return `<p>Hello ${user}</p>`;\n};\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri).filter((d) => d.source === 'bascik');
+      assert.strictEqual(diagnostics.length, 0);
+    });
   });
 });

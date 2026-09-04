@@ -15,8 +15,9 @@
   <section data-testid="stream-slot" aria-busy="true">
     <p data-testid="stream-skeleton" role="status">Loading account...</p>
     <script data-bascik-stream>
-      export default async function ({ req }, { signal }) {
-        const requested = Number(req.searchParams.delay ?? 0);
+      export default async function (request, context, { signal }) {
+        const searchParams = new URL(request.url).searchParams;
+        const requested = Number(searchParams.get('delay') ?? 0);
         const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 0;
         if (delay > 0) {
           await new Promise((resolve, reject) => {
@@ -34,8 +35,9 @@
        the whole first chunk, even though this tag is later in source than the
        stream script. Its bytes still land in source order. -->
   <script data-bascik-server>
-    export default async function ({ req }, { signal }) {
-      const requested = Number(req.searchParams.second ?? 0);
+    export default async function (request, context, { signal }) {
+      const searchParams = new URL(request.url).searchParams;
+      const requested = Number(searchParams.get('second') ?? 0);
       const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 0;
       if (delay > 0) {
         await new Promise((resolve, reject) => {

@@ -27,7 +27,8 @@ import { SERVER_ATTR_NAME, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, STREAM_ATTR_NAME, 
 import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags } from "./javascript.ts";
 
-const baseRequest = { path: "/", method: "GET", headers: {}, searchParams: {} };
+const baseRequest = new Request("http://localhost/");
+const baseContext = { remoteIp: "127.0.0.1" };
 
 beforeEach(() => {
   serverSidecarRegistry.clear();
@@ -58,7 +59,7 @@ describe("server-script regexes treat hyphen-suffixed attributes as unrelated", 
 
   it("executeServerScripts leaves a bare data-bascik-server-id script (no placeholder type) untouched", async () => {
     const html = '<script data-bascik-server-id="x">y</script>';
-    expect(await executeServerScripts(html, baseRequest)).toBe(html);
+    expect(await executeServerScripts(html, baseRequest, baseContext)).toBe(html);
   });
 
   it("html-minifier treats a hyphen-suffixed script as an ordinary client script (hoisted out of its container)", () => {

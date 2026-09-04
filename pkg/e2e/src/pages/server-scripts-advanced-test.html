@@ -11,8 +11,8 @@
   <!-- ESM Node.js built-in module imports & HTTP method -->
   <script data-bascik-server>
     import { basename } from 'node:path';
-    export default function ({ req }) {
-      return `<p id="esm-import-output" data-testid="esm-import-output">ESM Import: ${basename(req.path)} | Method: ${req.method}</p>`;
+    export default function (request) {
+      return `<p id="esm-import-output" data-testid="esm-import-output">ESM Import: ${basename(new URL(request.url).pathname)} | Method: ${request.method}</p>`;
     }
   </script>
 
@@ -21,8 +21,10 @@
 
   <!-- ANSI escape code stripping check -->
   <script data-bascik-server>
-    const ansiOutput = '\u001b[31m<p id="ansi-output" data-testid="ansi-output">Clean HTML</p>\u001b[0m';
-    process.stdout.write(ansiOutput);
+    export default function () {
+      const ansiOutput = '\u001b[31m<p id="ansi-output" data-testid="ansi-output">Clean HTML</p>\u001b[0m';
+      return ansiOutput;
+    }
   </script>
 </body>
 

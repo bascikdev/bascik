@@ -10,8 +10,8 @@
 
   <!-- 1. Cookie Header Parsing -->
   <script data-bascik-server>
-    export default function ({ req }) {
-      const rawCookies = req.headers['cookie'] ?? '';
+    export default function (request) {
+      const rawCookies = request.headers.get('cookie') ?? '';
       const cookies = Object.fromEntries(
         rawCookies.split(';').map(c => c.trim().split('=').map(decodeURIComponent)).filter(pair => pair.length === 2)
       );
@@ -47,9 +47,10 @@
 
   <!-- 4. Complex Query Params & Special Character Handling -->
   <script data-bascik-server>
-    export default function ({ req }) {
-      const filter = req.searchParams.filter ?? 'none';
-      const tag = req.searchParams.tag ?? 'all';
+    export default function (request) {
+      const searchParams = new URL(request.url).searchParams;
+      const filter = searchParams.get('filter') ?? 'none';
+      const tag = searchParams.get('tag') ?? 'all';
       return `<p id="query-filter" data-testid="query-filter">Filter: ${filter}</p><p id="query-tag" data-testid="query-tag">Tag: ${tag}</p>`;
     }
   </script>

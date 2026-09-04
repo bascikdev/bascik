@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Readable } from "node:stream";
-import { executeApiRoute, createWebRequest } from "./api-runtime.ts";
+import { executeApiRoute, createWebRequest, requestOrigin } from "./api-runtime.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import type { BascikRequest } from "./server.ts";
 
@@ -923,6 +923,34 @@ describe("API runtime execution", () => {
       });
 
       expect(res.status).toBe(500);
+    });
+
+    it("returns truthful origin based on TLS and authority/host headers", () => {
+      const config = { http: { tls: { enabled: true } } } as any;
+      const req1: BascikRequest = {
+        method: "GET",
+        headers: { ":authority": "example.com" },
+        remoteIp: "127.0.0.1",
+      };
+      // @ts-ignore
+      expect(requestOrigin(req1, config)).toBe("https://example.com");
+
+      const config2 = { http: { tls: { enabled: false } } } as any;
+      const req2: BascikRequest = {
+        method: "GET",
+        headers: { host: "example.com:8080" },
+        remoteIp: "127.0.0.1",
+      };
+      // @ts-ignore
+      expect(requestOrigin(req2, config2)).toBe("http://example.com:8080");
+
+      const req3: BascikRequest = {
+        method: "GET",
+        headers: {},
+        remoteIp: "127.0.0.1",
+      };
+      // @ts-ignore
+      expect(requestOrigin(req3, config2)).toBe("http://localhost");
     });
   });
 });
