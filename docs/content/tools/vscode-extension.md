@@ -8,7 +8,7 @@ The extension is generated from the compatibility rules in [Scoping Compatibilit
 
 ### 1. Code Navigation
 - **Go to Definition:** Command-click (or Ctrl-click) any custom component tag (e.g. `<my-component>`) to instantly jump to its definition HTML file in your project.
-- **Go to Definition for Script Imports:** Command-click (or Ctrl-click) a `./` or `../` specifier in a static import, bare import, `export ... from`, dynamic `import()`, or quoted or unquoted `src` attribute inside a `<script data-bascik-build>`, `<script data-bascik-routes>`, or `<script data-bascik-server>` tag to jump straight to an existing file on disk. Bare package specifiers, missing targets, import-like text outside JavaScript code, and imports in plain client `<script>` tags are not resolved.
+- **Go to Definition for Script Imports:** Command-click (or Ctrl-click) a `./`, `../`, `@/`, or leading-`/` specifier in a static import, bare import, `export ... from`, dynamic `import()`, or quoted or unquoted `src` attribute inside a `<script data-bascik-build>`, `<script data-bascik-routes>`, or `<script data-bascik-server>` tag to jump straight to an existing file on disk. `@/` and `/` resolve against `scripts.importRoot` (read from `bascik.config.ts` by a best-effort text match, default `src`). Bare package specifiers (including `@scope/pkg`), missing targets, import-like text outside JavaScript code, and imports in plain client `<script>` tags are not resolved.
 
 ### 2. Markup and Script Structural Warnings
 - **Unclosed Component Tags (Warning):** If a custom component tag is not self-closing and lacks a corresponding closing tag (for example, `<my-card>` without `</my-card>`), the extension flags it. This helps you prevent unintentional self-closing layout collapse.

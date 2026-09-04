@@ -240,6 +240,23 @@ export async function renderCards(jsonPath) {
 
 > **Import paths in build scripts:** You can use standard static imports, bare imports, `export ... from`, and dynamic `import()`. Bascik rewrites genuine `./` and `../` ESM specifiers relative to the containing page, component, or external script file. Import-like text in comments, strings, template raw text, and regular expression literals is left unchanged, while imports inside `${...}` template expressions are resolved normally.
 
+### Import root aliases
+
+Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
+
+```html
+<script data-bascik-build>
+  import { renderMd } from '@/lib/md-renderer.ts';
+  console.log(await renderMd('./content/about.md'));
+</script>
+```
+
+`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. A leading slash is accepted as an alternative and means exactly the same thing: `/lib/md-renderer.ts` is the import root, **never the filesystem root**. Both forms also work in `<script data-bascik-server>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
+
+> **Only script blocks are rewritten.** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use `./` or `../`. Quoted data paths passed to functions (`readFile('/content/x.md')`) are not module specifiers and keep their `process.cwd()` semantics. Only the exact `@/` prefix is an alias; scoped packages such as `@scope/pkg` are left for Node to resolve.
+
+Editing an alias-imported helper invalidates the script cache and, in dev mode, rebuilds the pages that depend on it. Point `pipeline.watchPaths` at the import root directory so the watcher sees the edit. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared folder.
+
 ## Environment Variables
 
 Environment variables set in your shell or a `.env` file (Bascik loads `./.env` automatically at startup; no dependency needed) are available via `process.env`. Use this for API keys, deployment URLs, or feature flags that should be baked into the build without shipping to the browser:

@@ -29,7 +29,7 @@ vi.mock("./config.js", () => ({
   BascikConfig: {
     base: "/",
     isBuild: false,
-    scripts: { cache: { enabled: true }, onBuildScriptError: "error" },
+    scripts: { cache: { enabled: true }, onBuildScriptError: "error", importRoot: "src" },
     directory: { pages: "src/pages", components: "src/components", out: "dist" },
   },
 }));
@@ -663,6 +663,77 @@ describe("extractScriptDeps", () => {
   ])("does not collect generic dependencies from regex literals after statement boundaries", (source) => {
     expect(extractScriptDeps(source)).toEqual([]);
   });
+
+  it("resolves @/ and / import-root aliases to cwd-relative keys under the default import root", () => {
+    const script = "import { a } from '@/lib/a.ts';\nimport { b } from '/lib/b.ts';\nimport { c } from '../c.ts';";
+    const deps = extractScriptDeps(script, resolve(process.cwd(), "src/pages/nested"));
+    expect(deps).toContain("src/lib/a.ts");
+    expect(deps).toContain("src/lib/b.ts");
+    expect(deps).toContain("src/pages/c.ts");
+    expect(deps).not.toContain("lib/a.ts");
+  });
+
+  it("resolves aliases against an explicit import root outside the project", () => {
+    const deps = extractScriptDeps(
+      "import { a } from '@/lib/a.ts';",
+      resolve(process.cwd(), "src/pages"),
+      { importRoot: resolve(process.cwd(), "../shared") },
+    );
+    expect(deps).toContain("../shared/lib/a.ts");
+  });
+
+  it("does not treat scoped packages as import-root aliases", () => {
+    expect(extractScriptDeps("import x from '@scope/pkg';")).toEqual([]);
+  });
+});
+
+// ─── import-root aliases in executeBuildScripts ──────────────────────────────
+
+describe("import-root aliases (@/ and /)", () => {
+  it("rewrites @/ and / imports to the import root regardless of page depth", async () => {
+    resolveWith("");
+    const expected = pathToFileURL(resolve(process.cwd(), "src/lib/helper.ts")).href;
+
+    for (const pageFile of ["src/pages/a.html", "src/pages/deeply/nested/b.html"]) {
+      (writeFile as ReturnType<typeof vi.fn>).mockClear();
+      await executeBuildScripts(
+        "<script data-bascik-build>import { a } from '@/lib/helper.ts';\nimport { b } from '/lib/helper.ts';</script>",
+        pageFile,
+      );
+      const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+      expect(written).toContain(`import { a } from '${expected}';`);
+      expect(written).toContain(`import { b } from '${expected}';`);
+    }
+  });
+
+  it.each(["@/lib/entry.ts", "/lib/entry.ts"])("reads src=\"%s\" from the import root and re-bases its relative imports", async (src) => {
+    const entryPath = resolve(process.cwd(), "src/lib/entry.ts");
+    mockReadFile.mockImplementation(async (path: string) => {
+      if (String(path) === entryPath) return "import './sibling.ts';";
+      throw new Error("ENOENT");
+    });
+    resolveWith("");
+
+    await executeBuildScripts(`<script data-bascik-build src="${src}"></script>`, "src/pages/deeply/nested/page.html");
+
+    expect(mockReadFile).toHaveBeenCalledWith(entryPath, "utf8");
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(([p]) => String(p).endsWith(".mjs"))?.[1] as string;
+    expect(written).toContain(`import '${pathToFileURL(resolve(process.cwd(), "src/lib/sibling.ts")).href}'`);
+  });
+
+  it("collectAllScriptDeps includes alias targets so the dev watcher rebuilds on edit", async () => {
+    const html = `
+      <script data-bascik-build>
+        import { a } from '@/lib/alias-helper.ts';
+        import { b } from '/lib/slash-helper.ts';
+      </script>
+      <script data-bascik-routes src="@/lib/routes-entry.ts"></script>
+    `;
+    const deps = await collectAllScriptDeps(html, "src/pages/deeply/nested/page.html");
+    expect(deps).toContain("src/lib/alias-helper.ts");
+    expect(deps).toContain("src/lib/slash-helper.ts");
+    expect(deps).toContain("src/lib/routes-entry.ts");
+  });
 });
 
 // ─── collectAllScriptDeps ───────────────────────────────────────────────────
@@ -930,6 +1001,40 @@ describe("build-script output cache", () => {
     mockWriteFile.mockClear();
     mockReadFile.mockClear();
     await executeBuildScripts(html, "docs/src/pages/internals/example.html");
+    const secondKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+
+    expect(firstKey).toBeDefined();
+    expect(secondKey).toBeDefined();
+    expect(dependencyReads).toBe(2);
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("invalidates cache when a file imported via the @/ import root alias changes", async () => {
+    mockReadFile.mockReset();
+    mockWriteFile.mockReset();
+    clearBuildScriptCaches();
+    let helperVersion = "v1";
+    let dependencyReads = 0;
+    mockReadFile.mockImplementation((path: string) => {
+      const file = String(path);
+      if (file.includes("script-cache")) return Promise.reject(new Error("ENOENT"));
+      if (file === resolve(process.cwd(), "src/lib/helper.ts")) {
+        dependencyReads++;
+        return Promise.resolve(`export const label = '${helperVersion}';`);
+      }
+      return Promise.reject(new Error("ENOENT"));
+    });
+    resolveWith("<p>rendered</p>");
+    const html = "<script data-bascik-build>import { label } from '@/lib/helper.ts'; console.log(label);</script>";
+
+    await executeBuildScripts(html, "src/pages/deeply/nested/example.html");
+    const firstKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
+
+    helperVersion = "v2";
+    clearBuildScriptCaches();
+    mockWriteFile.mockClear();
+    mockReadFile.mockClear();
+    await executeBuildScripts(html, "src/pages/deeply/nested/example.html");
     const secondKey = mockWriteFile.mock.calls.find(([path]) => String(path).endsWith(".json"))?.[0];
 
     expect(firstKey).toBeDefined();

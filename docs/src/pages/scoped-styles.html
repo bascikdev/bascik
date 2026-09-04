@@ -4,19 +4,19 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { canonical } from '../lib/canonical.ts';
+    import { canonical } from '@/lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { openGraph } from '../lib/open-graph.ts';
+    import { openGraph } from '@/lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { breadcrumbLd } from '../lib/breadcrumb-ld.ts';
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <script data-bascik-build>
-    import { articleSchema } from '../lib/article-schema.ts';
+    import { articleSchema } from '@/lib/article-schema.ts';
     console.log(await articleSchema());
   </script>
   <meta name="description"
@@ -34,12 +34,12 @@
 
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { renderSectionLabel } from '../lib/render-nav.ts';
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
           console.log(renderSectionLabel('/scoped-styles'));
         </script>
         <!-- Intro and concise demo context rendered from docs/content/scoped-styles.md. -->
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-styles.md', { to: 'Where Scoped CSS Can Live' }));
                     console.log(await renderMdRange('./content/scoped-styles.md', { from: 'See it in action', to: 'Source and output' }));
         </script>
@@ -54,7 +54,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'source-usage'));
               </script>
             </code-block>
@@ -62,7 +62,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'source-html'));
               </script>
             </code-block>
@@ -70,7 +70,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'output-html'));
               </script>
             </code-block>
@@ -78,12 +78,12 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Where Scoped CSS Can Live', to: 'Selector and animation lab' }));
         </script>
 
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Selector and animation lab', to: 'Class Scoping' }, { stripDemoBlocks: true }));
         </script>
 
@@ -94,7 +94,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-usage'));
               </script>
             </code-block>
@@ -102,7 +102,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-html'));
               </script>
             </code-block>
@@ -110,7 +110,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-css'));
               </script>
             </code-block>
@@ -118,7 +118,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-html'));
               </script>
             </code-block>
@@ -126,7 +126,7 @@
           <div data-bascik-slot="output-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-styles.md', 'scope-lab-output-css'));
               </script>
             </code-block>
@@ -134,7 +134,7 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-styles.md', { from: 'Class Scoping', to: 'See it in action' }));
         </script>
 

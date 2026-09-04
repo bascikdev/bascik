@@ -4,15 +4,15 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { canonical } from '../lib/canonical.ts';
+    import { canonical } from '@/lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { openGraph } from '../lib/open-graph.ts';
+    import { openGraph } from '@/lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { breadcrumbLd } from '../lib/breadcrumb-ld.ts';
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <meta name="description"
@@ -61,14 +61,14 @@
       <!-- Content -->
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { renderSectionLabel } from '../lib/render-nav.ts';
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
           console.log(renderSectionLabel('/getting-started'));
         </script>
 
         <!-- Content rendered from docs/content/getting-started.md at build time.
              To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
-          import { renderMd } from '../lib/md-renderer.ts';
+          import { renderMd } from '@/lib/md-renderer.ts';
           console.log(await renderMd('./content/getting-started.md'));
         </script>
 
@@ -82,7 +82,7 @@
               <p>The file name becomes the tag name.</p>
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '../lib/md-renderer.ts';
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
                   console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
                 </script>
               </code-block>
@@ -96,7 +96,7 @@
               <p>No imports or registration. Just use the tag.</p>
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
                 <script data-bascik-build>
-                  import { extractDemoBlock } from '../lib/md-renderer.ts';
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
                   console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
                 </script>
               </code-block>

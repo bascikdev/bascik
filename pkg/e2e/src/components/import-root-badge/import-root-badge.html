@@ -1,0 +1,16 @@
+<div class="import-root-badge" data-testid="import-root-badge">
+  <!-- Primary alias form: @/ resolves against scripts.importRoot (default src). -->
+  <script data-bascik-build>
+    import { importRootMarker } from '@/lib/import-root-helper.ts';
+    console.log(`<span data-testid="import-root-alias">${importRootMarker()}</span>`);
+  </script>
+
+  <!-- Alternative form: a leading / means the import root, never the filesystem root. -->
+  <script data-bascik-build>
+    import { importRootMarker } from '/lib/import-root-helper.ts';
+    console.log(`<span data-testid="import-root-slash">${importRootMarker()}</span>`);
+  </script>
+
+  <!-- src= attribute honors the same alias. -->
+  <script data-bascik-build src="@/lib/import-root-src-entry.ts"></script>
+</div>

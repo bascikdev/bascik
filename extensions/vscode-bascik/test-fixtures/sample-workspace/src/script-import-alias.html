@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Script Import Alias Navigation Fixture</title>
+</head>
+
+<body>
+  <script data-bascik-build>
+    import { helperFn as aliasHelper } from '@/lib/nav-helper.ts';
+    console.log(await aliasHelper());
+  </script>
+
+  <script data-bascik-server>
+    import { helperFn as slashHelper } from '/lib/nav-helper.ts';
+    console.log(await slashHelper());
+  </script>
+
+  <script data-bascik-routes>
+    export { helperFn as aliasRouteHelper } from '@/lib/nav-helper.ts';
+  </script>
+
+  <script data-bascik-build>
+    const aliasMod = await import('@/lib/nav-helper.ts');
+    console.log(aliasMod);
+  </script>
+
+  <script data-bascik-build src="@/lib/nav-helper.ts"></script>
+
+  <script data-bascik-server src="/lib/nav-helper.ts"></script>
+
+  <script data-bascik-build>
+    import scoped from '@scope/nav-helper.ts';
+    console.log(scoped);
+  </script>
+
+  <script data-bascik-build>
+    import { helperFn as missingAlias } from '@/lib/missing-helper.ts';
+    console.log(missingAlias);
+  </script>
+</body>
+
+</html>

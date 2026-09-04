@@ -11,7 +11,9 @@ export default defineConfig({
     preserve: ['pre', 'code'],
   },
   pipeline: {
-    watchPaths: ['src/content/'],
+    // src/lib/ holds helpers imported via the @/ import-root alias. Dependency
+    // tracking picks the pages to rebuild; a watcher still has to see the edit.
+    watchPaths: ['src/content/', 'src/lib/'],
     workers: true,
     exec: [
       { script: 'scripts/generate-manifest.ts' },

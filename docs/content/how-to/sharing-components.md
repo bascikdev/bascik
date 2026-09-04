@@ -2,6 +2,8 @@
 
 A Bascik components directory is plain files: HTML, paired CSS, and paired scripts. Sharing components between projects follows a copy-in model where components are copied directly into your project's `src/components/` directory and become first-class project files.
 
+This page is about separate repositories. If all of your sites live in one repository, you do not need to copy anything: point each site's `directory.components` and `scripts.importRoot` at shared folders instead. See [Monorepos](/how-to/monorepos).
+
 ## The primary path: `bascik add`
 
 The easiest way to share and consume components across projects is with `bascik add`. Install an npm package that exports Bascik components, then copy all or specific components into your project:

@@ -6,7 +6,8 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { runModule } from "./script-runner.ts";
-import { rewriteRelativeModuleSpecifiers } from "./module-specifiers.ts";
+import { resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   ROUTES_FLAG,
@@ -341,15 +342,17 @@ export const executeRoutesScript = async (
     return { routes: null, cleanedHtml };
   }
 
+  const importRoot = getImportRoot();
   let trimmedScript = scriptContent.trim();
   let moduleFilePath: string | undefined;
   if (!trimmedScript) {
     const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     if (srcMatch) {
       const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
-      const resolvedPath = filePath
-        ? resolve(dirname(filePath), srcPath)
-        : resolve(process.cwd(), srcPath);
+      const containingDir = filePath
+        ? dirname(resolve(process.cwd(), filePath))
+        : process.cwd();
+      const resolvedPath = resolveScriptSrcPath(srcPath, containingDir, importRoot);
       moduleFilePath = resolvedPath;
       try {
         trimmedScript = await readFile(resolvedPath, "utf8");
@@ -402,7 +405,7 @@ export const executeRoutesScript = async (
       : filePath
         ? dirname(resolve(process.cwd(), filePath))
         : process.cwd();
-    const preparedScript = rewriteRelativeModuleSpecifiers(trimmedScript, scriptBaseDir);
+    const preparedScript = rewriteModuleSpecifiers(trimmedScript, scriptBaseDir, { importRoot });
     await writeFile(tmpPath, preparedScript + sourceUrlComment, "utf8");
     const result = await runModule(tmpPath, extraEnv);
     stdout = result.stdout;

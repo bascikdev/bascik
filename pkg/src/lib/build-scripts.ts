@@ -51,9 +51,12 @@ import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
   findCallArgumentStringLiterals,
   findModuleSpecifiers,
-  rewriteRelativeModuleSpecifiers,
+  resolveScriptSrcPath,
+  resolveSpecifierPath,
+  rewriteModuleSpecifiers,
 } from "./module-specifiers.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
+import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   BUILD_FLAG,
@@ -86,7 +89,12 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 7;
+export const SCRIPT_CACHE_VERSION = 8;
+
+export interface ImportRootOptions {
+  /** Absolute import root that `@/` and `/` specifiers resolve against. */
+  importRoot?: string;
+}
 
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
@@ -129,6 +137,7 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
   const scriptBaseDir = sourceFile
     ? dirname(resolve(process.cwd(), sourceFile))
     : process.cwd();
+  const importRoot = getImportRoot();
 
   const visited = new Set<string>();
   const queue: string[] = [];
@@ -137,10 +146,10 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
     const script = match[1];
     const srcPath = getHtmlAttributeValue(match[0], "src");
     if (srcPath) {
-      const absPath = resolve(scriptBaseDir, srcPath);
+      const absPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
       queue.push(relative(process.cwd(), absPath).replace(/\\/g, "/"));
     }
-    const deps = extractScriptDeps(script, scriptBaseDir);
+    const deps = extractScriptDeps(script, scriptBaseDir, { importRoot });
     for (const d of deps) queue.push(d);
   }
 
@@ -155,7 +164,10 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
     try {
       const content = await readCachedFile(absPath, relKey);
       const fileDir = dirname(absPath);
-      const nested = extractScriptDeps(content, fileDir);
+      // Helper files loaded from disk are not rewritten by Bascik, so only
+      // their relative imports are followed; importRoot is passed for parity
+      // with the cache key walk.
+      const nested = extractScriptDeps(content, fileDir, { importRoot });
       for (const n of nested) {
         if (!visited.has(n)) queue.push(n);
       }
@@ -169,14 +181,21 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
 
 // Extract relative paths the script depends on from quoted string literals:
 //   './content/foo.md', 'scripts/md-renderer.mjs', './data/items.json'
-export const extractScriptDeps = (script: string, esmBaseDir: string = process.cwd()): string[] => {
+// ESM specifiers additionally honor the `@/` and `/` import-root aliases so
+// the cache key and the dev watcher cover alias-imported helpers.
+export const extractScriptDeps = (
+  script: string,
+  esmBaseDir: string = process.cwd(),
+  options: ImportRootOptions = {},
+): string[] => {
   const seen = new Set<string>();
+  const importRoot = options.importRoot ?? getImportRoot();
 
   const moduleSpecifiers = findModuleSpecifiers(script);
   const moduleRanges = new Set(moduleSpecifiers.map(({ start, end }) => `${start}:${end}`));
   for (const { value: specifier } of moduleSpecifiers) {
-    if (!(specifier.startsWith("./") || specifier.startsWith("../"))) continue;
-    const absPath = resolve(esmBaseDir, specifier);
+    const absPath = resolveSpecifierPath(specifier, esmBaseDir, importRoot);
+    if (absPath === undefined) continue;
     seen.add(relative(process.cwd(), absPath).replace(/\\/g, "/"));
   }
 
@@ -189,7 +208,12 @@ export const extractScriptDeps = (script: string, esmBaseDir: string = process.c
   return [...seen];
 };
 
-export const resolveBuildScriptImports = rewriteRelativeModuleSpecifiers;
+export const resolveBuildScriptImports = (
+  source: string,
+  baseDir: string,
+  options: ImportRootOptions = {},
+): string =>
+  rewriteModuleSpecifiers(source, baseDir, { importRoot: options.importRoot ?? getImportRoot() });
 
 const computeScriptCacheKey = async (
   script: string,
@@ -201,10 +225,12 @@ const computeScriptCacheKey = async (
   routeStr: string = "",
   pageFile: string = "",
   pagePath: string = "",
+  importRoot: string = getImportRoot(),
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
   hash.update(script);
+  hash.update(relative(process.cwd(), importRoot).replace(/\\/g, "/")); // alias target can change output
   hash.update(isBuild ? "1" : "0");
   hash.update(filePath);   // BASCIK_SOURCE_FILE
   hash.update(pageFile);   // BASCIK_PAGE_FILE
@@ -214,7 +240,7 @@ const computeScriptCacheKey = async (
   hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
 
   const visited = new Set<string>();
-  const queue = [...extractScriptDeps(script, baseDir)];
+  const queue = [...extractScriptDeps(script, baseDir, { importRoot })];
 
   while (queue.length > 0) {
     const rawDep = queue.shift()!;
@@ -231,7 +257,7 @@ const computeScriptCacheKey = async (
 
       // Scan file content for nested dependencies relative to the file's directory
       const fileDir = dirname(absPath);
-      const nested = extractScriptDeps(content, fileDir);
+      const nested = extractScriptDeps(content, fileDir, { importRoot });
       for (const n of nested) {
         if (!visited.has(n)) queue.push(n);
       }
@@ -310,6 +336,7 @@ export const executeBuildScripts = async (
 
   const defaultSourceFile = options?.sourceFile ?? filePath ?? "";
   const pageFile = options?.pageFile ?? filePath ?? "";
+  const importRoot = getImportRoot();
   const resolvedSiteUrl = getSiteUrl();
   const siteUrl = resolvedSiteUrl ?? "";
   const routeStr = route ? JSON.stringify(route) : "";
@@ -359,11 +386,21 @@ export const executeBuildScripts = async (
       throw new Error(`${errorMsg}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
     }
 
+    let scriptBaseDir = sourceFile
+      ? dirname(resolve(process.cwd(), sourceFile))
+      : filePath
+        ? dirname(resolve(process.cwd(), filePath))
+        : process.cwd();
+
     let trimmedScript = scriptContent.trim();
     if (!trimmedScript) {
       const srcPath = getHtmlAttributeValue(openTag, "src");
       if (srcPath) {
-        const resolvedPath = sourceFile ? resolve(dirname(sourceFile), srcPath) : (filePath ? resolve(dirname(filePath), srcPath) : resolve(process.cwd(), srcPath));
+        // `src=` follows the same rules as ESM specifiers: relative and bare
+        // paths resolve against the containing file, `@/` and `/` against the
+        // import root. The script's own imports then re-base to that file.
+        const resolvedPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
+        scriptBaseDir = dirname(resolvedPath);
         try {
           trimmedScript = await readFile(resolvedPath, "utf8");
         } catch (err) {
@@ -372,27 +409,10 @@ export const executeBuildScripts = async (
       }
     }
 
-    let scriptBaseDir = sourceFile
-      ? dirname(resolve(process.cwd(), sourceFile))
-      : filePath
-        ? dirname(resolve(process.cwd(), filePath))
-        : process.cwd();
-
-    if (!scriptContent.trim()) {
-      const srcPath = getHtmlAttributeValue(openTag, "src");
-      if (srcPath) {
-        scriptBaseDir = sourceFile
-          ? dirname(resolve(dirname(sourceFile), srcPath))
-          : filePath
-            ? dirname(resolve(dirname(filePath), srcPath))
-            : dirname(resolve(process.cwd(), srcPath));
-      }
-    }
-
-    const preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir);
+    const preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir, { importRoot });
 
     const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath)
+      ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath, importRoot)
       : null;
 
     const prefix = html.slice(0, index);

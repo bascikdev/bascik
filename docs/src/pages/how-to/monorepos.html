@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Run several Bascik sites from one repository with a shared components directory and a shared scripts import root. Pages, components, and scripts.importRoot are independent paths, so no monorepo mode is needed." />
+  <title>Monorepos - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/how-to/monorepos'));
+        </script>
+        <!-- Content rendered from docs/content/how-to/monorepos.md at build time.
+             To update page content, edit the MD file, not this file. -->
+        <script data-bascik-build>
+          import { renderMd } from '@/lib/md-renderer.ts';
+          console.log(await renderMd('./content/how-to/monorepos.md'));
+        </script>
+
+        <div class="callout">
+          <p><strong>Next:</strong> Copying components between separate repositories? See <a
+              href="/how-to/sharing-components">Sharing Components</a>.</p>
+        </div>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

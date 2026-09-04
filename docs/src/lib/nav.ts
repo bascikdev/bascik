@@ -82,6 +82,7 @@ export const NAV: NavSection[] = [
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
       { href: '/how-to/sharing-components', label: 'Sharing Components' },
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
+      { href: '/how-to/monorepos', label: 'Monorepos' },
       { href: '/libraries', label: 'JavaScript Libraries' },
     ]
   },

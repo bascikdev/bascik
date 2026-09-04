@@ -117,6 +117,56 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
 
 const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
 
+const DEFAULT_IMPORT_ROOT = 'src';
+const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
+
+/**
+ * Read `scripts.importRoot` from the workspace's bascik.config file.
+ *
+ * The extension cannot execute a TypeScript config file, so this is a
+ * best-effort regex read (`importRoot: '...'`) with a fallback to the runtime
+ * default `src`. It mirrors `pkg/src/lib/import-root.ts`: the value is relative
+ * to the project root and may point outside it (monorepo shared scripts).
+ */
+function readImportRoot(workspaceRoot: string): string {
+  for (const candidate of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(workspaceRoot, candidate);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const source = fs.readFileSync(configPath, 'utf8');
+      const match = /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source);
+      if (match?.[1]) return match[1];
+    } catch {
+      // unreadable config: fall through to the default
+    }
+    break;
+  }
+  return DEFAULT_IMPORT_ROOT;
+}
+
+/**
+ * Resolve a script specifier or `src=` value the way Bascik's runtime does
+ * (`pkg/src/lib/module-specifiers.ts`): `./` and `../` against the document's
+ * directory, `@/` and a leading `/` against the import root (never the
+ * filesystem root), and bare `src=` paths against the document's directory.
+ * Returns undefined for external specifiers (packages, `node:`, URLs).
+ */
+function resolveScriptTarget(
+  value: string,
+  documentDir: string,
+  importRootAbs: string,
+  kind: 'specifier' | 'src',
+): string | undefined {
+  if (value.startsWith('./') || value.startsWith('../')) return path.resolve(documentDir, value);
+  if (value.startsWith('@/')) return path.resolve(importRootAbs, value.slice(2));
+  if (value.startsWith('/')) return path.resolve(importRootAbs, value.replace(/^\/+/, ''));
+  if (kind === 'src') {
+    if (/^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
+    return path.resolve(documentDir, value);
+  }
+  return undefined;
+}
+
 function parseScriptOpenTagAttributes(openTag: string): Map<string, string | true> {
   const attrs = new Map<string, string | true>();
   const insideTag = openTag
@@ -164,6 +214,10 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       }
 
       const baseDir = path.dirname(document.uri.fsPath);
+      const workspaceRoot = getWorkspaceRoot();
+      const importRootAbs = workspaceRoot
+        ? path.resolve(workspaceRoot, readImportRoot(workspaceRoot))
+        : path.resolve(baseDir, DEFAULT_IMPORT_ROOT);
 
       // Cursor inside the open tag: check for the src attribute value.
       if (offset >= blockStart && offset <= openTagEnd) {
@@ -174,9 +228,8 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
         const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
         const valueEnd = valueStart + srcValue.length;
         if (offset < valueStart || offset > valueEnd) return undefined;
-        if (path.isAbsolute(srcValue) || /^[a-z][a-z\d+.-]*:/i.test(srcValue)) return undefined;
-        const resolved = path.resolve(baseDir, srcValue);
-        if (!fs.existsSync(resolved)) return undefined;
+        const resolved = resolveScriptTarget(srcValue, baseDir, importRootAbs, 'src');
+        if (!resolved || !fs.existsSync(resolved)) return undefined;
         return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
       }
 
@@ -184,9 +237,8 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       const bodyOffset = offset - openTagEnd;
       for (const { start, end, value: specifier } of findModuleSpecifiers(scriptBody)) {
         if (bodyOffset < start || bodyOffset > end) continue;
-        if (!(specifier.startsWith('./') || specifier.startsWith('../'))) return undefined;
-        const resolved = path.resolve(baseDir, specifier);
-        if (!fs.existsSync(resolved)) return undefined;
+        const resolved = resolveScriptTarget(specifier, baseDir, importRootAbs, 'specifier');
+        if (!resolved || !fs.existsSync(resolved)) return undefined;
         return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
       }
 

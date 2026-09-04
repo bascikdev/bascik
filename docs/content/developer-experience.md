@@ -72,17 +72,19 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
 </user-card>
 ```
 
-The same gesture works for relative imports and `src="..."` attributes inside build and server scripts:
+The same gesture works for relative imports, `@/` and `/` import-root aliases, and `src="..."` attributes inside build and server scripts:
 
 ```html
 <!-- Hold Cmd/Ctrl and click the path to open src/lib/canonical.ts -->
 <script data-bascik-build>
-  import { canonical } from '../lib/canonical.ts';
+  import { canonical } from '@/lib/canonical.ts';
   console.log(await canonical());
 </script>
 
 <script data-bascik-server src="./scripts/greet.ts"></script>
 ```
+
+Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from `bascik.config.ts` with a best-effort text match, so it follows a custom import root without executing your config.
 
 ### Structural & Scoping Warnings in the Problems Panel
 

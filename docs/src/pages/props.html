@@ -4,19 +4,19 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { canonical } from '../lib/canonical.ts';
+    import { canonical } from '@/lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { openGraph } from '../lib/open-graph.ts';
+    import { openGraph } from '@/lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { breadcrumbLd } from '../lib/breadcrumb-ld.ts';
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <script data-bascik-build>
-    import { articleSchema } from '../lib/article-schema.ts';
+    import { articleSchema } from '@/lib/article-schema.ts';
     console.log(await articleSchema());
   </script>
   <meta name="description"
@@ -34,19 +34,19 @@
 
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { renderSectionLabel } from '../lib/render-nav.ts';
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
           console.log(renderSectionLabel('/props'));
         </script>
 
         <!-- Intro rendered from docs/content/props.md. -->
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/props.md', { to: 'Define and pass props' }));
         </script>
 
         <!-- Present the demo section before the detailed reference. -->
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/props.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
@@ -59,7 +59,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'source-usage'));
               </script>
             </code-block>
@@ -67,7 +67,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'source-html'));
               </script>
             </code-block>
@@ -75,7 +75,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'source-css'));
               </script>
             </code-block>
@@ -83,7 +83,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'output-html'));
               </script>
             </code-block>
@@ -91,7 +91,7 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/props.md', { from: 'Define and pass props', to: 'Props with Existing Attributes' }, { stripDemoBlocks: true }));
         </script>
 
@@ -103,7 +103,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'basic-props-usage'));
               </script>
             </code-block>
@@ -111,7 +111,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'basic-props-html'));
               </script>
             </code-block>
@@ -119,7 +119,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'basic-props-css'));
               </script>
             </code-block>
@@ -127,7 +127,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { extractDemoBlock } from '../lib/md-renderer.ts';
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/props.md', 'basic-props-output-html'));
               </script>
             </code-block>
@@ -136,7 +136,7 @@
 
         <!-- Remaining reference follows the runnable examples. -->
         <script data-bascik-build>
-          import { renderMdRange } from '../lib/md-renderer.ts';
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/props.md', { from: 'Props with Existing Attributes', to: 'See it in action' }));
         </script>
 

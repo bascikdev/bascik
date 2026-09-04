@@ -169,6 +169,7 @@ export default defineConfig({
     onRoutesScriptError: 'error',
     onServerScriptError: 'error',
     timeout: 30000,
+    importRoot: 'src',
   },
   onMinifyError: 'warn', // 'warn' in dev; 'error' in --build and --server
   http: {
@@ -398,8 +399,25 @@ scripts: {
   onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
   onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
   timeout: 30000,               // execution timeout in ms
+  importRoot: 'src',            // directory that @/ and / resolve against
 }
 ```
+
+#### `scripts.importRoot`
+
+The directory that `@/` and leading-`/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Build Scripts](/build-scripts#import-root-aliases) for the alias rules.
+
+Pages, components, and the import root are **three independent directories**. Bascik never derives one from another and none of them need to share a parent, which is what makes a monorepo layout work:
+
+```ts
+// sites/marketing/bascik.config.ts: one repo, several sites, shared code
+export default defineConfig({
+  directory: { components: '../../shared/components' },
+  scripts: { importRoot: '../../shared/scripts' },
+});
+```
+
+Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. See [Monorepos](/how-to/monorepos).
 
 ### `http`
 

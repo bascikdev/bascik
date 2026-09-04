@@ -230,17 +230,100 @@ export const findCallArgumentStringLiterals = (source: string): ModuleSpecifier[
   );
 };
 
-export const rewriteRelativeModuleSpecifiers = (source: string, baseDir: string): string => {
+/**
+ * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
+ *
+ * - `relative`: `./` or `../`, resolved against the containing file's directory.
+ * - `root`: `@/` or a leading `/`, resolved against the configured import root
+ *   (`scripts.importRoot`, default `src`). Inside Bascik script blocks a leading
+ *   slash means the import root, never the filesystem root.
+ * - `external`: everything else (bare packages such as `marked` or `@scope/pkg`,
+ *   `node:` builtins, `file:`/`https:`/`data:` URLs). Left untouched for Node.
+ *
+ * `@scope/pkg` is deliberately NOT a root alias: only the exact `@/` prefix is.
+ */
+export type SpecifierClass = "relative" | "root" | "external";
+
+export const classifySpecifier = (value: string): SpecifierClass => {
+  if (value.startsWith("./") || value.startsWith("../")) return "relative";
+  if (value.startsWith("@/") || value.startsWith("/")) return "root";
+  return "external";
+};
+
+/** Strip the alias prefix so the remainder can be joined onto the import root. */
+const stripRootPrefix = (value: string): string =>
+  value.startsWith("@/") ? value.slice(2) : value.replace(/^\/+/, "");
+
+export interface RewriteModuleSpecifierOptions {
+  /** Absolute path of the import root that `@/` and `/` resolve against. */
+  importRoot: string;
+}
+
+/**
+ * Resolve a specifier to an absolute filesystem path using Bascik's rules.
+ * Returns `undefined` for external specifiers, which are left to Node.
+ */
+export const resolveSpecifierPath = (
+  value: string,
+  baseDir: string,
+  importRoot: string,
+): string | undefined => {
+  switch (classifySpecifier(value)) {
+    case "relative":
+      return resolve(baseDir, value);
+    case "root":
+      return resolve(importRoot, stripRootPrefix(value));
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * Resolve the `src="…"` attribute of a build, server, or routes script tag.
+ * Relative and bare paths resolve against the containing file's directory
+ * (unchanged behavior); `@/` and `/` resolve against the import root. This is
+ * the single helper every script kind must use so `src=` semantics cannot drift.
+ */
+export const resolveScriptSrcPath = (
+  srcPath: string,
+  containingDir: string,
+  importRoot: string,
+): string =>
+  classifySpecifier(srcPath) === "root"
+    ? resolve(importRoot, stripRootPrefix(srcPath))
+    : resolve(containingDir, srcPath);
+
+/**
+ * Rewrite every genuine ESM specifier (static import, bare import, export-from,
+ * dynamic import) that Bascik owns to an absolute `file://` URL, so the script
+ * can execute from a temp module under `node_modules/.cache/bascik/` while
+ * still resolving the author's helpers. External specifiers, comments, strings,
+ * template raw text, and regex literals are left byte-for-byte unchanged.
+ */
+export const rewriteModuleSpecifiers = (
+  source: string,
+  baseDir: string,
+  { importRoot }: RewriteModuleSpecifierOptions,
+): string => {
   const replacements = findModuleSpecifiers(source)
-    .filter(({ value }) => value.startsWith("./") || value.startsWith("../"))
+    .map((specifier) => ({
+      ...specifier,
+      resolved: resolveSpecifierPath(specifier.value, baseDir, importRoot),
+    }))
+    .filter((specifier): specifier is ModuleSpecifier & { resolved: string } => specifier.resolved !== undefined)
     .sort((left, right) => right.start - left.start);
 
   let rewritten = source;
-  for (const { start, end, value } of replacements) {
+  for (const { start, end, resolved } of replacements) {
+    // String concatenation (not String.replace) so `$&`, `$1`, and similar
+    // tokens in paths are inserted literally.
     rewritten =
       rewritten.slice(0, start) +
-      pathToFileURL(resolve(baseDir, value)).href +
+      pathToFileURL(resolved).href +
       rewritten.slice(end);
   }
   return rewritten;
 };
+
+/** @deprecated Use `rewriteModuleSpecifiers`. Kept as an alias for one release. */
+export const rewriteRelativeModuleSpecifiers = rewriteModuleSpecifiers;

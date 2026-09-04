@@ -28,7 +28,8 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
-import { rewriteRelativeModuleSpecifiers } from "./module-specifiers.ts";
+import { resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   BUILD_FLAG,
@@ -242,6 +243,8 @@ export const executeServerScripts = async (
     };
   });
 
+  const importRoot = getImportRoot();
+
   await Promise.all(
     scriptJobs.map(async (job) => {
       let codeToExecute = job.scriptContent.trim();
@@ -249,9 +252,10 @@ export const executeServerScripts = async (
 
       if (job.srcPath) {
         const containingFile = job.sourceFile ?? filePath;
-        const resolvedPath = containingFile
-          ? resolve(dirname(containingFile), job.srcPath)
-          : resolve(process.cwd(), job.srcPath);
+        const containingDir = containingFile
+          ? dirname(resolve(process.cwd(), containingFile))
+          : process.cwd();
+        const resolvedPath = resolveScriptSrcPath(job.srcPath, containingDir, importRoot);
         moduleFilePath = resolvedPath;
         if (!codeToExecute) {
           try {
@@ -268,7 +272,7 @@ export const executeServerScripts = async (
         : containingFile
           ? dirname(resolve(process.cwd(), containingFile))
           : process.cwd();
-      const rewrittenCode = rewriteRelativeModuleSpecifiers(codeToExecute, scriptBaseDir);
+      const rewrittenCode = rewriteModuleSpecifiers(codeToExecute, scriptBaseDir, { importRoot });
       const trimmedCode = rewrittenCode.trim();
       const transformedCode = transformServerScriptSource(rewrittenCode);
       const transformedSourceIndex = transformedCode.indexOf(trimmedCode);

@@ -172,6 +172,15 @@ export interface ScriptsOptions {
   onRoutesScriptError: "warn" | "error";
   onServerScriptError: "warn" | "error";
   timeout: number;
+  /**
+   * Directory that `@/` and `/` import specifiers (and script tag `src=`
+   * values) resolve against inside build, server, and routes scripts.
+   * Relative to the project root; kept as written and resolved at use sites.
+   * Independent of `directory.pages` and `directory.components`; may point
+   * outside the project (for example `../shared/scripts` in a monorepo).
+   * Default `"src"`.
+   */
+  importRoot: string;
 }
 
 export interface HttpTlsOptions {
@@ -253,6 +262,7 @@ export type UserConfig = {
     onRoutesScriptError?: "error" | "warn" | "ignore";
     onServerScriptError?: "error" | "warn" | "ignore";
     timeout?: number;
+    importRoot?: string;
   };
   onMinifyError?: "warn" | "error";
   http?: {

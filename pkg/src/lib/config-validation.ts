@@ -88,6 +88,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     onRoutesScriptError: null,
     onServerScriptError: null,
     timeout: null,
+    importRoot: null,
   },
   onMinifyError: null,
   http: {
@@ -397,6 +398,15 @@ export const validateConfigShape = (
         push(`scripts.${key}`, value, `expected ${SCRIPT_ERROR_ACTIONS}`);
       }
     }
+    // importRoot is read-only and may legitimately resolve outside the project
+    // root (monorepo shared scripts), so there is deliberately no escape check
+    // here, unlike directory.out.
+    if (scripts.importRoot !== undefined) {
+      const importRoot = scripts.importRoot;
+      if (typeof importRoot !== "string" || importRoot.length === 0) {
+        push("scripts.importRoot", importRoot, 'expected a non-empty directory path like "src"');
+      }
+    }
   }
 
   if (raw.onMinifyError !== undefined && !VALID_MINIFY_ERROR_VALUES.has(raw.onMinifyError as string)) {
@@ -589,6 +599,37 @@ export const validateConfigPaths = (
   }
 
   return errors;
+};
+
+/* ── Warnings (non-fatal) ─────────────────────────────────────────────── */
+
+/**
+ * Non-fatal findings about user-supplied paths. A project with no shared
+ * helpers has no import root directory and is still valid, so a missing
+ * `scripts.importRoot` is reported as a warning, never an error.
+ */
+export const collectConfigWarnings = (
+  raw: unknown,
+  deps: { fs?: ConfigValidationFs; cwd?: string } = {},
+): ConfigValidationError[] => {
+  const warnings: ConfigValidationError[] = [];
+  if (!isPlainObject(raw)) return warnings;
+
+  const fs = deps.fs ?? defaultFs;
+  const cwd = deps.cwd ?? process.cwd();
+
+  if (isPlainObject(raw.scripts) && typeof raw.scripts.importRoot === "string" && raw.scripts.importRoot.length > 0) {
+    const importRoot = raw.scripts.importRoot;
+    if (!fs.existsSync(resolve(cwd, importRoot))) {
+      warnings.push({
+        key: "scripts.importRoot",
+        value: importRoot,
+        message: "directory does not exist; @/ and / imports in scripts will fail until it is created",
+      });
+    }
+  }
+
+  return warnings;
 };
 
 /* ── Orchestration ────────────────────────────────────────────────────── */
