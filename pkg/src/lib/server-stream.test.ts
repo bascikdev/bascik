@@ -123,10 +123,10 @@ const makePage = (content: string) => ({
   usedComponentsSet: new Set<string>(),
 });
 
-const serve = async (content: string, method = "GET", made = makeRes()) => {
+const serve = async (content: string, method = "GET", writeReturns: boolean[] = []) => {
   (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(makePage(content));
   const handler = createRequestHandler();
-  const { res, calls } = made;
+  const { res, calls } = makeRes(writeReturns);
   const done = handler(
     { method, path: "/x", headers: {}, remoteIp: "127.0.0.1" },
     res as any,
@@ -280,8 +280,7 @@ describe("prompt 66: backpressure and disconnect abort", () => {
     const t2 = deferred();
     routeInvokes({ "/*T1*/": t1, "/*T2*/": t2 });
     // First write (the "<p>a</p>" prefix) reports a full buffer.
-    const made = makeRes([false]);
-    const { res, calls, done } = await serve(TWO, "GET", made);
+    const { res, calls, done } = await serve(TWO, "GET", [false]);
     t1.resolve("<i>1</i>");
     t2.resolve("<i>2</i>");
     await tick();
@@ -302,8 +301,7 @@ describe("prompt 66: backpressure and disconnect abort", () => {
       observedSignal = options.signal;
       return t1.promise;
     });
-    const made = makeRes();
-    const { res, calls, done } = await serve(TWO, "GET", made);
+    const { res, calls, done } = await serve(TWO, "GET");
     await tick();
     expect(observedSignal).toBeDefined();
     const writesBefore = res.write.mock.calls.length;
@@ -326,8 +324,7 @@ describe("prompt 66: backpressure and disconnect abort", () => {
     const t2 = deferred();
     routeInvokes({ "/*T1*/": t1, "/*T2*/": t2 });
     // Hold the FINAL static write open by returning false for it.
-    const made = makeRes([true, true, true, true, false]);
-    const { res, done } = await serve(TWO, "GET", made);
+    const { res, done } = await serve(TWO, "GET", [true, true, true, true, false]);
     t1.resolve("<i>1</i>");
     t2.resolve("<i>2</i>");
     await tick();
@@ -343,8 +340,7 @@ describe("prompt 66: backpressure and disconnect abort", () => {
   it("removes its close listener when the response completes (no listener accumulation)", async () => {
     const t = deferred();
     routeInvokes({ "/*T*/": t });
-    const made = makeRes();
-    const { res, done } = await serve(STREAM_PAGE, "GET", made);
+    const { res, done } = await serve(STREAM_PAGE, "GET");
     await tick();
     expect(res.listenerCount("close")).toBeGreaterThan(0);
     t.resolve("<p>slow</p>");

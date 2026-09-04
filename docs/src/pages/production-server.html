@@ -20,7 +20,7 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Run Bascik as a production HTTP/2 server. Use data-bascik-server scripts to personalize pages at request time - no framework required." />
+    content="Run Bascik as a production HTTP/1.1 and HTTP/2 server. High-performance in-memory page serving, Brotli compression, and TLS." />
   <title>Production Server - Bascik Docs</title>
 </head>
 
@@ -35,20 +35,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/server'));
+          console.log(renderSectionLabel('/production-server'));
         </script>
 
-        <!-- Content rendered from docs/content/server.md at build time.
-             To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/server.md'));
+          console.log(await renderMd('./content/production-server.md'));
         </script>
-
-        <div class="callout">
-          <p><strong>Next:</strong> Learn how <a href="/build-scripts">build scripts</a> run at transpile time, or see
-            the <a href="/configuration">configuration reference</a> for all <code>serve</code> options.</p>
-        </div>
 
         <docs-pagination />
       </main>

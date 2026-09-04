@@ -76,10 +76,14 @@ describe("planServerScripts", () => {
   });
 
   it.each([
-    ["server", "build"], ["server", "routes"], ["stream", "server"], ["stream", "build"], ["stream", "routes"],
-  ])("throws in the planner (not the executor) for data-bascik-%s + data-bascik-%s", (a, b) => {
+    ["server", "build", "data-bascik-server and data-bascik-build"],
+    ["server", "routes", "data-bascik-server and data-bascik-routes"],
+    ["stream", "server", "data-bascik-server and data-bascik-stream"],
+    ["stream", "build", "data-bascik-stream and data-bascik-build"],
+    ["stream", "routes", "data-bascik-stream and data-bascik-routes"],
+  ])("throws in the planner (not the executor) for data-bascik-%s + data-bascik-%s", (a, b, expected) => {
     expect(() => planServerScripts(`<script data-bascik-${a} data-bascik-${b}>x</script>`, "/p.html")).toThrow(
-      new RegExp(`both data-bascik-${a} and data-bascik-${b}|both data-bascik-${b} and data-bascik-${a}`),
+      `both ${expected}`,
     );
     expect(invokeMock).not.toHaveBeenCalled();
   });

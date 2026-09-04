@@ -20,8 +20,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Server script how-to guides for Bascik: escapeHtml helper, database queries, server-rendered pagination, and combining build and server scripts." />
-  <title>Server Scripts - Bascik Docs</title>
+    content="Configure custom file watching in Bascik with pipeline.watchPaths. Automatically trigger re-transpilation and live reload on content edits." />
+  <title>Watch Paths - Bascik Docs</title>
 </head>
 
 <body>
@@ -36,11 +36,11 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/how-to/server-scripts'));
+          console.log(renderSectionLabel('/watch-paths'));
         </script>
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/how-to/server-scripts.md'));
+          console.log(await renderMd('./content/watch-paths.md'));
         </script>
 
         <docs-pagination />

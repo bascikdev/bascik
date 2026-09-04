@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Progressively stream HTML chunks with data-bascik-stream scripts. Paint the page shell immediately while async backend data resolves." />
+  <title>Stream Scripts - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/stream-scripts'));
+        </script>
+
+        <!-- Intro rendered from docs/content/stream-scripts.md. -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/stream-scripts.md', { to: 'data-bascik-stream' }));
+        </script>
+
+        <component-demo data-bascik-prop-file="src/pages/stream-scripts.html">
+          <div data-bascik-slot="example">
+            <aside class="alert-box">
+              <strong class="alert-box-title">System Online</strong>
+              <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
+            </aside>
+          </div>
+          <div data-bascik-slot="source-usage">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/stream-scripts.md', 'source-usage'));
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="output-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/stream-scripts.md', 'output-html'));
+              </script>
+            </code-block>
+          </div>
+        </component-demo>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/stream-scripts.md', { from: 'data-bascik-stream' }, { stripDemoBlocks: true }));
+        </script>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>
