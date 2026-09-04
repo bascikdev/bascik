@@ -95,6 +95,73 @@ suite('Extension Integration Suite', () => {
     });
   });
 
+  suite('Script Import Definitions', () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    const fixtureUri = workspaceFolder
+      ? vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'src', 'script-import-nav.html'))
+      : undefined;
+
+    const definitionInside = async (needle: string): Promise<vscode.Location[]> => {
+      assert.ok(fixtureUri, 'Workspace folder should be open');
+      const doc = await vscode.workspace.openTextDocument(fixtureUri);
+      const text = doc.getText();
+      const index = text.indexOf(needle);
+      assert.ok(index >= 0, `Fixture should contain ${needle}`);
+      // Position the cursor a few characters before the end of the needle so it
+      // lands inside the specifier string or attribute value.
+      const position = doc.positionAt(index + needle.length - 3);
+      return vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeDefinitionProvider',
+        doc.uri,
+        position,
+      );
+    };
+
+    const assertNavHelper = (locations: vscode.Location[] | undefined) => {
+      assert.ok(locations && locations.length > 0, 'Definition should be found');
+      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      assert.ok(
+        targetPath.endsWith('src/lib/nav-helper.ts'),
+        `Expected location to end with src/lib/nav-helper.ts, got ${targetPath}`,
+      );
+    };
+
+    test('provides definition for relative import in data-bascik-build script', async () => {
+      const locations = await definitionInside("helperFn } from './lib/nav-helper.ts'");
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for relative import in data-bascik-server script', async () => {
+      const locations = await definitionInside("serverHelper } from './lib/nav-helper.ts'");
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for src attribute on data-bascik-build script', async () => {
+      const locations = await definitionInside('<script data-bascik-build src="./lib/nav-helper.ts">');
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for src attribute on data-bascik-server script', async () => {
+      const locations = await definitionInside('<script data-bascik-server src="./lib/nav-helper.ts">');
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for dynamic import in data-bascik-build script', async () => {
+      const locations = await definitionInside("await import('./lib/nav-helper.ts')");
+      assertNavHelper(locations);
+    });
+
+    test('returns no definition for bare specifier in data-bascik-build script', async () => {
+      const locations = await definitionInside("from 'node:fs/promises'");
+      assert.ok(!locations || locations.length === 0, 'No definition for bare specifier');
+    });
+
+    test('returns no definition for relative import in client script', async () => {
+      const locations = await definitionInside("clientHelper } from './lib/nav-helper.ts'");
+      assert.ok(!locations || locations.length === 0, 'No definition for client script import');
+    });
+  });
+
   suite('Diagnostics', () => {
     test('reports info when an ID reference is not declared in the component', async () => {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];

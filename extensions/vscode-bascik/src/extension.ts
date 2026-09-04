@@ -114,6 +114,124 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
   }
 }
 
+const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+
+function parseScriptOpenTagAttributes(openTag: string): Map<string, string | true> {
+  const attrs = new Map<string, string | true>();
+  const insideTag = openTag
+    .replace(/^<script\b/i, '')
+    .replace(/>$/, '');
+  const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(insideTag)) !== null) {
+    const name = match[1]?.toLowerCase();
+    if (!name) continue;
+    const value = match[2] ?? match[3] ?? match[4];
+    attrs.set(name, value === undefined ? true : value);
+  }
+  return attrs;
+}
+
+const IMPORT_SPECIFIER_MATCHERS: Array<{
+  regex: RegExp;
+  quoteGroup: number;
+  specifierGroup: number;
+}> = [
+  {
+    regex: /(^|[;\n\r])\s*import\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
+    quoteGroup: 2,
+    specifierGroup: 3,
+  },
+  {
+    regex: /(^|[;\n\r])\s*import\s*(['"])([^'"\n\r]+)\2/gm,
+    quoteGroup: 2,
+    specifierGroup: 3,
+  },
+  {
+    regex: /(^|[;\n\r])\s*export\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
+    quoteGroup: 2,
+    specifierGroup: 3,
+  },
+  {
+    regex: /\bimport\s*\(\s*(['"])([^'"\n\r]+)\1\s*\)/g,
+    quoteGroup: 1,
+    specifierGroup: 2,
+  },
+];
+
+class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
+  provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    _token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.Definition> {
+    if (document.languageId !== 'html') {
+      return undefined;
+    }
+
+    const text = document.getText();
+    const offset = document.offsetAt(position);
+
+    SCRIPT_BLOCK_RE.lastIndex = 0;
+    let scriptMatch: RegExpExecArray | null;
+    while ((scriptMatch = SCRIPT_BLOCK_RE.exec(text)) !== null) {
+      const openTag = scriptMatch[1];
+      const scriptBody = scriptMatch[2] ?? '';
+      const blockStart = scriptMatch.index ?? 0;
+      const openTagEnd = blockStart + openTag.length;
+      const blockEnd = blockStart + openTag.length + scriptBody.length + '</script>'.length;
+      if (offset < blockStart || offset > blockEnd) continue;
+
+      const attrs = parseScriptOpenTagAttributes(openTag);
+      if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server')) {
+        return undefined;
+      }
+
+      const baseDir = path.dirname(document.uri.fsPath);
+
+      // Cursor inside the open tag: check for the src attribute value.
+      if (offset >= blockStart && offset <= openTagEnd) {
+        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(openTag);
+        if (!srcMatch) return undefined;
+        const srcValue = srcMatch[1] ?? srcMatch[2] ?? '';
+        if (!srcValue) return undefined;
+        const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
+        const valueEnd = valueStart + srcValue.length;
+        if (offset < valueStart || offset > valueEnd) return undefined;
+        if (!(srcValue.startsWith('./') || srcValue.startsWith('../'))) return undefined;
+        const resolved = path.resolve(baseDir, srcValue);
+        if (!fs.existsSync(resolved)) return undefined;
+        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+      }
+
+      // Cursor inside the script body: match the four import specifier patterns.
+      const bodyOffset = offset - openTagEnd;
+      for (const { regex, quoteGroup, specifierGroup } of IMPORT_SPECIFIER_MATCHERS) {
+        regex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(scriptBody)) !== null) {
+          const specifier = match[specifierGroup];
+          if (!specifier) continue;
+          const quoted = `${match[quoteGroup]}${specifier}${match[quoteGroup]}`;
+          const quotedIndex = match[0].lastIndexOf(quoted);
+          if (quotedIndex < 0) continue;
+          const specifierStart = (match.index ?? 0) + quotedIndex + 1;
+          const specifierEnd = specifierStart + specifier.length;
+          if (bodyOffset < specifierStart || bodyOffset > specifierEnd) continue;
+          if (!(specifier.startsWith('./') || specifier.startsWith('../'))) return undefined;
+          const resolved = path.resolve(baseDir, specifier);
+          if (!fs.existsSync(resolved)) return undefined;
+          return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+        }
+      }
+
+      return undefined;
+    }
+
+    return undefined;
+  }
+}
+
 function findMatchingClose(
   html: string,
   tagName: string,
@@ -241,22 +359,6 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     }
   };
 
-  const parseScriptOpenTagAttributes = (openTag: string): Map<string, string | true> => {
-    const attrs = new Map<string, string | true>();
-    const insideTag = openTag
-      .replace(/^<script\b/i, '')
-      .replace(/>$/, '');
-    const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
-    let match: RegExpExecArray | null;
-    while ((match = attrRe.exec(insideTag)) !== null) {
-      const name = match[1]?.toLowerCase();
-      if (!name) continue;
-      const value = match[2] ?? match[3] ?? match[4];
-      attrs.set(name, value === undefined ? true : value);
-    }
-    return attrs;
-  };
-
   const isJavaScriptScriptTag = (openTag: string): boolean => {
     const attrs = parseScriptOpenTagAttributes(openTag);
     const typeValue = attrs.get('type');
@@ -269,7 +371,7 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       || normalized === 'application/ecmascript';
   };
 
-  const scriptBlockRe = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+  const scriptBlockRe = SCRIPT_BLOCK_RE;
   const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
@@ -531,6 +633,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerDefinitionProvider(
       [{ language: 'html' }, { language: 'javascript' }, { language: 'typescript' }, { language: 'css' }],
       definitionProvider,
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      [{ language: 'html' }],
+      new ScriptImportDefinitionProvider(),
     ),
   );
 
