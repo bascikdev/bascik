@@ -818,16 +818,6 @@ export function activate(context: vscode.ExtensionContext): void {
     diagnostics.set(document.uri, items);
   };
 
-  context.subscriptions.push(
-    vscode.languages.registerCodeActionsProvider(
-      [{ language: 'html' }],
-      new ServerScriptQuickFixProvider(),
-      {
-        providedCodeActionKinds: ServerScriptQuickFixProvider.providedCodeActionKinds,
-      },
-    ),
-  );
-
   for (const document of vscode.workspace.textDocuments) {
     refreshDiagnostics(document);
   }
@@ -845,84 +835,4 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
   );
-}
-
-export class ServerScriptQuickFixProvider implements vscode.CodeActionProvider {
-  public static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
-
-  public provideCodeActions(
-    document: vscode.TextDocument,
-    _range: vscode.Range | vscode.Selection,
-    context: vscode.CodeActionContext,
-  ): vscode.CodeAction[] {
-    const actions: vscode.CodeAction[] = [];
-    for (const diagnostic of context.diagnostics) {
-      if (
-        diagnostic.source === 'bascik' &&
-        diagnostic.code === 'server-script-legacy-request-shape'
-      ) {
-        const lineOffset = document.offsetAt(diagnostic.range.start);
-        const docText = document.getText();
-
-        let replaceRange = diagnostic.range;
-        let replacement: string | undefined;
-
-        const diagText = document.getText(diagnostic.range);
-        if (/^\(\s*\{\s*req\s*\}\s*\)$/.test(diagText)) {
-          replacement = '(request, context, { signal })';
-        } else if (diagText === 'req.path') {
-          replacement = 'new URL(request.url).pathname';
-        } else if (diagText === 'req.method') {
-          replacement = 'request.method';
-        } else if (diagText === 'req.headers[') {
-          // Check if followed by ['key'] or ["key"] in document
-          const afterOffset = lineOffset + diagText.length;
-          const rest = docText.slice(afterOffset);
-          const headerMatch = /^\s*(['"][^'"]+['"])\s*\]/.exec(rest);
-          if (headerMatch) {
-            replaceRange = new vscode.Range(
-              diagnostic.range.start,
-              document.positionAt(afterOffset + headerMatch[0].length),
-            );
-            replacement = `request.headers.get(${headerMatch[1]})`;
-          } else {
-            replacement = "request.headers.get('x')";
-          }
-        } else if (diagText === 'req.searchParams') {
-          // Check if followed by .key or ['key']
-          const afterOffset = lineOffset + diagText.length;
-          const rest = docText.slice(afterOffset);
-          const propMatch = /^\.([a-zA-Z0-9_$]+)/.exec(rest);
-          const bracketMatch = /^\s*\[\s*(['"][^'"]+['"])\s*\]/.exec(rest);
-          if (propMatch) {
-            replaceRange = new vscode.Range(
-              diagnostic.range.start,
-              document.positionAt(afterOffset + propMatch[0].length),
-            );
-            replacement = `new URL(request.url).searchParams.get('${propMatch[1]}')`;
-          } else if (bracketMatch) {
-            replaceRange = new vscode.Range(
-              diagnostic.range.start,
-              document.positionAt(afterOffset + bracketMatch[0].length),
-            );
-            replacement = `new URL(request.url).searchParams.get(${bracketMatch[1]})`;
-          } else {
-            replacement = "new URL(request.url).searchParams.get('x')";
-          }
-        }
-
-        if (replacement) {
-          const action = new vscode.CodeAction(
-            'Rewrite to the standard Request API',
-            vscode.CodeActionKind.QuickFix,
-          );
-          action.diagnostics = [diagnostic];
-          action.edit = new vscode.WorkspaceEdit();
-          action.edit.replace(document.uri, replaceRange, replacement);
-          actions.push(action);
-        }
-      }
-    }
-    return actions;
-  }
 }

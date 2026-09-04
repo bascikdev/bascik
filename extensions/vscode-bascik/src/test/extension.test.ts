@@ -644,34 +644,4 @@ suite('Extension Integration Suite', () => {
       assert.strictEqual(diagnostics.length, 0);
     });
   });
-
-  suite('Code Actions (Quick Fixes)', () => {
-    test('rewrites req.headers[\'x-user\'] to request.headers.get(\'x-user\')', async () => {
-      const doc = await vscode.workspace.openTextDocument({
-        language: 'html',
-        content: '<script data-bascik-server>\nexport default async (request) => {\n  const user = req.headers[\'x-user\'];\n  return `<p>${user}</p>`;\n};\n</script>',
-      });
-      await vscode.window.showTextDocument(doc);
-      const targetNeedle = "req.headers['x-user']";
-      const index = doc.getText().indexOf(targetNeedle);
-      assert.ok(index >= 0);
-      const range = new vscode.Range(doc.positionAt(index), doc.positionAt(index + targetNeedle.length));
-
-      const codeActions = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-        'vscode.executeCodeActionProvider',
-        doc.uri,
-        range,
-        vscode.CodeActionKind.QuickFix.value,
-      );
-
-      assert.ok(codeActions && codeActions.length > 0, 'Code actions should be returned');
-      const action = codeActions.find((a) => a.title === 'Rewrite to the standard Request API');
-      assert.ok(action, 'Expected "Rewrite to the standard Request API" action');
-      assert.ok(action.edit, 'Action should have a workspace edit');
-
-      const editApplied = await vscode.workspace.applyEdit(action.edit);
-      assert.ok(editApplied, 'Workspace edit should be applied');
-      assert.ok(doc.getText().includes("request.headers.get('x-user')"), `Updated doc should have request.headers.get('x-user'), got: ${doc.getText()}`);
-    });
-  });
 });

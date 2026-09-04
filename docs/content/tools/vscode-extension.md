@@ -30,8 +30,6 @@ The extension is generated from the compatibility rules in [Scoping Compatibilit
 The extension analyzes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks for contract validity and injection sinks:
 
 - **Missing Default Export (`server-script-missing-default-export`, Error):** Requires a default exported function `(request, context, { signal })`.
-- **Legacy Request Shape (`server-script-legacy-request-shape`, Error):** Flags removed legacy patterns such as `({ req })`, `req.searchParams`, `req.headers[...]`, `req.path`, and `req.method`. Provides an automated Quick Fix to rewrite them to the standard Request API.
-- **Legacy Output (`server-script-legacy-output`, Error):** Flags `process.stdout.write`, `process.env.BASCIK_REQUEST`, or bare top-level `console.log`. Server scripts return markup from the default export.
 - **Bascik Import (`server-script-bascik-import`, Error):** Flags imports from `@bascik/bascik` in server scripts because helpers belong in your project (such as `@/lib/server.ts`).
 - **URL Attribute Sink (`server-script-sink-url-attribute`, Warning):** Flags interpolations inside URL attributes (`href`, `src`, `action`, etc.). HTML entity escaping does not neutralize `javascript:` or `data:` URLs.
 - **Event Handler Sink (`server-script-sink-event-handler`, Warning):** Flags interpolations inside inline event handlers (`onclick`, etc.). Untrusted values should move to `data-*` attributes.

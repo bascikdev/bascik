@@ -42,7 +42,7 @@ The diagnostic engine checks `.html`, `.css`, and `.js` files against known Basc
 The server-script diagnostic analyzer provides fast, pure-logic diagnostics for `<script data-bascik-server>` and `<script data-bascik-stream>` blocks:
 
 * **Offset Convention:** All diagnostics report `start` and `end` offsets relative to the script body string so the caller in `extension.ts` can compute exact document positions via `document.positionAt(scriptBodyOffset + offset)`.
-* **Contract Rules (Error):** Requires default exported handler `(request, context, { signal })`, flags legacy removed request shape usages (`({ req })`, `req.searchParams`, `req.headers[...]`, `req.path`, `req.method`), flags legacy output captures (`process.stdout.write`, `process.env.BASCIK_REQUEST`, top-level `console.log`), and rejects imports from `@bascik/bascik`.
+* **Contract Rules (Error):** Requires default exported handler `(request, context, { signal })` and rejects imports from `@bascik/bascik`.
 * **Structural Sink Rules (Warning):** Flags dangerous template literal interpolation sinks (`server-script-sink-url-attribute`, `server-script-sink-event-handler`, `server-script-sink-unquoted-attribute`, `server-script-sink-inline-script`, `server-script-sink-style`). Structural sinks fire regardless of whether the expression is wrapped in a helper function like `escape(...)` because HTML entity escaping cannot make these contexts safe.
 * **Text Sink Rule (Info):** `server-script-sink-text-unescaped` flags raw request-derived values in HTML body text when they are not wrapped in an escaping function call. It remains silent when wrapped (e.g. `escape(request.headers.get('x'))`) or when the value does not reference request/context data.
 
