@@ -14,12 +14,14 @@ The `extensions/vscode-bascik` package provides editor support for Bascik, inclu
 ```
 extensions/vscode-bascik/
 ├── src/
-│   ├── extension.ts              # Extension activation & provider registration
-│   ├── rules.ts                  # Diagnostic rules engine for compatibility checks
+│   ├── extension.ts              # Extension activation, provider registration, & diagnostics wiring
+│   ├── rules.ts                  # Diagnostic rules engine for scoping compatibility checks
+│   ├── server-script-rules.ts    # Pure analyzer for server and stream script contract & injection sinks
 │   ├── compatibility-rules.json  # Declarative rule definitions matching compatibility.md
 │   └── test/
-│       ├── extension.test.ts     # VS Code integration test suite
-│       └── rules.test.ts         # Fast unit tests for diagnostic rules
+│       ├── extension.test.ts          # VS Code integration test suite
+│       ├── rules.test.ts              # Fast unit tests for diagnostic rules
+│       └── server-script-rules.test.ts # Fast unit tests for server script rules
 └── package.json                  # Manifest with contribution points
 ```
 
@@ -35,7 +37,18 @@ The diagnostic engine checks `.html`, `.css`, and `.js` files against known Basc
 
 ---
 
-## 3. Development & Type Checking
+## 3. Server Script Diagnostics (`server-script-rules.ts`)
+
+The server-script diagnostic analyzer provides fast, pure-logic diagnostics for `<script data-bascik-server>` and `<script data-bascik-stream>` blocks:
+
+* **Offset Convention:** All diagnostics report `start` and `end` offsets relative to the script body string so the caller in `extension.ts` can compute exact document positions via `document.positionAt(scriptBodyOffset + offset)`.
+* **Contract Rules (Error):** Requires default exported handler `(request, context, { signal })`, flags legacy removed request shape usages (`({ req })`, `req.searchParams`, `req.headers[...]`, `req.path`, `req.method`), flags legacy output captures (`process.stdout.write`, `process.env.BASCIK_REQUEST`, top-level `console.log`), and rejects imports from `@bascik/bascik`.
+* **Structural Sink Rules (Warning):** Flags dangerous template literal interpolation sinks (`server-script-sink-url-attribute`, `server-script-sink-event-handler`, `server-script-sink-unquoted-attribute`, `server-script-sink-inline-script`, `server-script-sink-style`). Structural sinks fire regardless of whether the expression is wrapped in a helper function like `escape(...)` because HTML entity escaping cannot make these contexts safe.
+* **Text Sink Rule (Info):** `server-script-sink-text-unescaped` flags raw request-derived values in HTML body text when they are not wrapped in an escaping function call. It remains silent when wrapped (e.g. `escape(request.headers.get('x'))`) or when the value does not reference request/context data.
+
+---
+
+## 4. Development & Type Checking
 
 To compile and typecheck the extension:
 

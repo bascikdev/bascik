@@ -14,7 +14,7 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax.
+Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax. Server scripts and stream scripts receive this same `Request` object; see [Server Scripts](/server-scripts).
 
 ## File-Based Routing
 
@@ -42,7 +42,7 @@ A route file exports functions corresponding to standard HTTP methods: `GET`, `P
 
 ## The Request and Response Contract & Portability
 
-Because Bascik uses native web standard `Request` and `Response` objects, your handlers are completely portable. The exact same handler function can run without modification on serverless edge runtimes or alongside standard web adapters:
+Because Bascik uses native web standard `Request` and `Response` objects, your handlers are completely portable. `request.url` reflects the real scheme and host of the incoming request. The exact same handler function can run without modification on serverless edge runtimes or alongside standard web adapters:
 
 - Cloudflare Workers
 - Fastly Compute

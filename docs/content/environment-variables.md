@@ -1,6 +1,6 @@
 # Environment Variables
 
-Bascik automatically populates a collection of dedicated environment variables inside child processes when executing build scripts, dynamic route generators, server-rendered components, and lifecycle tasks. These variables give your scripts direct access to the active page path, filesystem locations, site configuration, dynamic route parameters, incoming HTTP requests, and compiler execution modes without requiring manual configuration or boilerplate.
+Bascik automatically populates a collection of dedicated environment variables inside child processes when executing build scripts, dynamic route generators, and lifecycle tasks. These variables give your scripts direct access to the active page path, filesystem locations, site configuration, dynamic route parameters, and compiler execution modes without requiring manual configuration or boilerplate.
 
 You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 
@@ -14,7 +14,6 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
 | `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
 | `BASCIK_ROUTE` | `data-bascik-build` (dynamic routes) | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`. |
-| `BASCIK_REQUEST` | `data-bascik-server` | JSON string of `{ path, method, headers, searchParams }` representing the incoming HTTP request. |
 | `BASCIK_BUILD` | All build scripts, worker threads, and exec scripts | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`). |
 | `BASCIK_SERVER` | Server scripts and worker threads | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.  |
 | `BASCIK_BUILD_LOG` | CLI runtime | Absolute filesystem path to the build log destination when invoked with `--log`. |
@@ -103,39 +102,6 @@ Dynamic route scripts receive:
 - `BASCIK_PAGES_DIR`: Absolute pages directory.
 - `BASCIK_SITE_URL`: Configured site URL.
 - `BASCIK_BUILD`: `"1"` in build mode, `"0"` in dev mode.
-
-## Server Scripts (`data-bascik-server`)
-
-`<script data-bascik-server>` blocks execute on every HTTP request when running with `bascik --server` or during development with server scripts enabled.
-
-### `BASCIK_REQUEST`
-
-Every server script receives `process.env.BASCIK_REQUEST`, a JSON string containing the HTTP request details:
-
-```ts
-interface ServerRequest {
-  path: string;
-  method: string;
-  headers: Record<string, string>;
-  searchParams: Record<string, string>;
-}
-```
-
-```html
-<script data-bascik-server>
-  const { path, method, headers, searchParams } = JSON.parse(process.env.BASCIK_REQUEST);
-
-  const theme = headers['cookie']?.includes('theme=dark') ? 'dark' : 'light';
-  const query = searchParams['q'] ?? '';
-
-  console.log(`<div data-theme="${theme}">Search results for: ${query}</div>`);
-</script>
-```
-
-- `path`: URL path without query string (e.g. `"/dashboard"`).
-- `method`: Uppercase HTTP method (e.g. `"GET"`, `"POST"`).
-- `headers`: Plain object of lowercased header names and string values (HTTP/2 pseudo-headers like `:path` are omitted).
-- `searchParams`: Plain object mapping query parameter names to string values.
 
 ## Compiler & Runtime Flags
 

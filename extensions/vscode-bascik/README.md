@@ -4,8 +4,10 @@ Editor companion for [Bascik](https://bascik.dev) projects. Provides component t
 
 ## Features
 
-- **Component navigation** — command-click a custom tag (e.g. `<my-card>`) to jump to the matching component file in `src/components`.
-- **Scoping diagnostics** — warns on CSS selectors and JavaScript patterns that Bascik's scoping engine cannot handle safely. The warning set is generated from the [Scoping Compatibility](https://bascik.dev/compatibility) matrix and stays in sync automatically.
+- **Component navigation:** command-click a custom tag (e.g. `<my-card>`) to jump to the matching component file in `src/components`.
+- **Script import navigation:** command-click `./`, `../`, and `@/` specifiers in `data-bascik-build`, `data-bascik-routes`, and `data-bascik-server` scripts to navigate directly to local files.
+- **Scoping diagnostics:** warns on CSS selectors and JavaScript patterns that Bascik's scoping engine cannot handle safely. The warning set is generated from the [Scoping Compatibility](https://bascik.dev/compatibility) matrix and stays in sync automatically.
+- **Server script diagnostics:** validates server and stream script contracts (`export default`, legacy request rewrites, output handling, import hygiene) and identifies structural HTML/JS/CSS injection sinks (`href`, `onclick`, unquoted attributes, inline `<script>`, styles, and unescaped request text). Includes quick fixes to migrate legacy request member expressions to standard WHATWG Request APIs.
 
 ## Local development
 

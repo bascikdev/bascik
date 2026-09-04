@@ -56,12 +56,14 @@ Inside the component template, import the helper module and execute request-time
 <script data-bascik-server>
   import { fetchCityWeather, formatWeatherReport } from './weather-service.js';
 
-  const apiKey = process.env.WEATHER_API_KEY ?? '';
-  try {
-    const data = await fetchCityWeather('Seattle', apiKey);
-    console.log(formatWeatherReport(data));
-  } catch (err) {
-    console.log('<p class="error-msg">Weather currently unavailable</p>');
+  export default async function (request) {
+    const apiKey = process.env.WEATHER_API_KEY ?? '';
+    try {
+      const data = await fetchCityWeather('Seattle', apiKey);
+      return formatWeatherReport(data);
+    } catch (err) {
+      return '<p class="error-msg">Weather currently unavailable</p>';
+    }
   }
 </script>
 ```
@@ -121,23 +123,21 @@ describe('fetchCityWeather', () => {
 
 ## Direct Server Script Handler Testing
 
-Under Bascik's in-process execution model, server scripts export standard async functions receiving `{ req }` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
+Under Bascik's in-process execution model, server scripts export standard async functions receiving a standard `Request` and returning HTML markup. You can test these handler functions directly in unit tests without starting an HTTP server or spawning child processes:
 
 ```ts
 // src/components/weather-widget/weather-widget.server.test.ts
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import weatherHandler from './weather-widget.server.ts';
 
 describe('weatherHandler', () => {
   it('renders greeting and weather for requested city query param', async () => {
-    const fakeReq = {
-      path: '/weather',
-      method: 'GET',
+    const request = new Request('http://localhost/weather?city=Seattle', {
       headers: { 'x-display-name': 'Alice' },
-      searchParams: { city: 'Seattle' },
-    };
+    });
+    const context = { remoteIp: '127.0.0.1' };
 
-    const output = await weatherHandler({ req: fakeReq });
+    const output = await weatherHandler(request, context, { signal: new AbortController().signal });
     expect(output).toContain('Seattle');
     expect(output).toContain('Alice');
   });

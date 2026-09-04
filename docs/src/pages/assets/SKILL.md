@@ -962,23 +962,30 @@ Tag a `<script>` block with `data-bascik-server` to run it **at request time** o
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from '@bascik/bascik';
+  import { escape } from '@/lib/server.ts';
 
-  export default function({ req }) {
-    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+  export default function (request) {
+    const name = escape(request.headers.get('x-display-name') ?? 'Guest');
     return `<p>Welcome, ${name}!</p>`;
   }
 </script>
 ```
 
-Handlers receive `{ req }` as their first argument and `{ signal }` as their second argument. `req` contains:
+Handlers receive `(request, context, { signal })`:
 
-* `req.path`: URL path without query string, e.g. `"/about"`
-* `req.method`: HTTP method in uppercase, e.g. `"GET"`
-* `req.headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
-* `req.searchParams`: parsed query params as string-to-string object
+* `request`: standard WHATWG `Request`, identical to API routes (`request.method`, `new URL(request.url).searchParams`, `request.headers.get(...)`)
+* `context`: `{ remoteIp }`
+* `{ signal }`: standard `AbortSignal` for timeouts and client disconnects
 
-Bascik exports `escapeHtml` from `@bascik/bascik` to escape user-controlled strings before inserting into HTML markup.
+> **Escaping gotcha:** Bascik does not escape output and ships no escaper. Output is raw HTML by contract. Write a five-line escaper in `src/lib/server.ts` or install `escape-html`. Untrusted data includes anything from `request`, database rows containing user input, and third-party APIs.
+
+| Sink | Correct treatment |
+| :--- | :--- |
+| Text between tags / Quoted attribute | HTML entity escape (`& < > " '`) |
+| Unquoted attribute | Never do this; quote the attribute |
+| `href`, `src`, `action` | Validate URL (`new URL(v, base)`), allow-list `http:`/`https:` (entity escaping does not stop `javascript:`) |
+| Inline `<script>` / `on*` attributes / `<style>` | Never interpolate untrusted data (use `data-*` attributes for static client scripts) |
+| Already-rendered HTML | HTML sanitizer at data layer |
 
 Rules:
 * Top-level `import` and `await` are supported.
@@ -991,15 +998,15 @@ Rules:
 
 ### data-bascik-stream
 
-Tag a `<script>` block with `data-bascik-stream` to run it at request time with chunked HTTP streaming. It uses the exact same authoring model as `data-bascik-server` (`export default async function ({ req }, { signal })`, `escapeHtml`, in-process execution, sidecar registry, and stack remapping). The only difference: the server does not wait for it. Response headers and all static HTML bytes preceding the tag are sent immediately. When the script resolves, its returned markup is written in document order via chunked transfer.
+Tag a `<script>` block with `data-bascik-stream` to run it at request time with chunked HTTP streaming. It uses the exact same authoring model as `data-bascik-server` (`export default async function (request, context, { signal })`, in-process execution, sidecar registry, and stack remapping). The only difference: the server does not wait for it. Response headers and all static HTML bytes preceding the tag are sent immediately. When the script resolves, its returned markup is written in document order via chunked transfer.
 
 ```html
 <script data-bascik-stream>
-  import { escapeHtml } from '@bascik/bascik';
+  import { escape } from '@/lib/server.ts';
 
-  export default async function({ req }, { signal }) {
-    const data = await loadData(req, signal);
-    return `<article>${escapeHtml(data.title)}</article>`;
+  export default async function (request, context, { signal }) {
+    const data = await loadData(request, signal);
+    return `<article>${escape(data.title)}</article>`;
   }
 </script>
 ```
@@ -1346,7 +1353,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`) with `--restart=unless-stopped`.
 * **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
-When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.
+When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `request.headers` or `context.remoteIp`.
 
 ### Development Workflow & Server Output
 Bascik's CLI is designed to provide clean, minimal, and informative terminal output.
