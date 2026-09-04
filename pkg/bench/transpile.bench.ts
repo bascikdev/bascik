@@ -139,7 +139,7 @@ const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_LIGHT
 
 // ── Benchmarks ────────────────────────────────────────────────────────────────────────────
 
-describe("minifyJs — slash-heavy scaling", () => {
+describe("minifyJs: slash-heavy scaling", () => {
   for (const { label, src } of SLASH_HEAVY) {
     bench(`slash-heavy ${label} (${src.length} bytes)`, () => {
       minifyJs(src);
@@ -147,7 +147,7 @@ describe("minifyJs — slash-heavy scaling", () => {
   }
 });
 
-describe("minifyJs — slash-light scaling", () => {
+describe("minifyJs: slash-light scaling", () => {
   for (const { label, src } of SLASH_LIGHT) {
     bench(`slash-light ${label} (${src.length} bytes)`, () => {
       minifyJs(src);
@@ -197,7 +197,7 @@ describe("CSS scoping — scopeCssCustomProperties", () => {
   });
 });
 
-describe("recursivelyTranspile — flat instance scaling", () => {
+describe("recursivelyTranspile: flat instance scaling", () => {
   bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
     recursivelyTranspile(FLAT_800, FLAT_LIST);
   });

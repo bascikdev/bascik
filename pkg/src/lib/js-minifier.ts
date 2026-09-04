@@ -202,7 +202,7 @@ const scanSegments = (js: string): Segment[] => {
       let couldBeRegex = false;
       if (next !== "/" && next !== "*") {
         if (!lastSig) {
-          // No significant code yet in this segment — check previous segment if any
+          // No significant code yet in this segment, check previous segment if any
           const lastSeg = segments[segments.length - 1];
           if (!lastSeg || !lastSeg.literal) {
             couldBeRegex = true;

@@ -950,7 +950,7 @@ export const namespaceScriptTags = (
   component.fileContent = component.fileContent.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open, code, close, _offset) => {
-      // Server, stream, build, and routes scripts run in Node.js — never wrap in browser IIFE
+      // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
       if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
 
       // Extract data-bascik-source attribute if present

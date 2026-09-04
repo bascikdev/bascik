@@ -267,7 +267,7 @@ const minifyScriptTagsInHtml = async (
     const [full, open, code, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
-    // Server and stream scripts run at request time in Node.js — skip them here
+    // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
     if (/\bsrc\s*=/i.test(open)) continue;
