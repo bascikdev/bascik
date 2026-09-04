@@ -78,8 +78,14 @@ const routeInvokes = (routes: Record<string, Deferred | { fail: Error }>) => {
 };
 
 type Call = ["respond", number, Record<string, string | number>] | ["write", Buffer] | ["end", Buffer | undefined];
-const makeRes = () => {
+/**
+ * Fake BascikResponse with a real listener table so tests can fire `drain`
+ * and `close`. `writeReturns` is consulted per write (default true).
+ */
+const makeRes = (writeReturns: boolean[] = []) => {
   const calls: Call[] = [];
+  const listeners = new Map<string, Set<() => void>>();
+  const emit = (event: string) => { for (const cb of [...(listeners.get(event) ?? [])]) cb(); };
   const res = {
     headersSent: false,
     destroyed: false,
@@ -90,14 +96,19 @@ const makeRes = () => {
     }),
     write: vi.fn((chunk: string | Buffer) => {
       calls.push(["write", Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
-      return true;
+      return writeReturns.length > 0 ? writeReturns.shift()! : true;
     }),
     end: vi.fn((chunk?: string | Buffer) => {
       calls.push(["end", chunk === undefined ? undefined : Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
     }),
     close: vi.fn(),
-    on: vi.fn(),
-    off: vi.fn(),
+    on: vi.fn((event: string, cb: () => void) => {
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event)!.add(cb);
+    }),
+    off: vi.fn((event: string, cb: () => void) => { listeners.get(event)?.delete(cb); }),
+    emit,
+    listenerCount: (event: string) => listeners.get(event)?.size ?? 0,
   };
   return { res, calls };
 };
@@ -111,10 +122,10 @@ const makePage = (content: string) => ({
   usedComponentsSet: new Set<string>(),
 });
 
-const serve = async (content: string, method = "GET") => {
+const serve = async (content: string, method = "GET", made = makeRes()) => {
   (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(makePage(content));
   const handler = createRequestHandler();
-  const { res, calls } = makeRes();
+  const { res, calls } = made;
   const done = handler(
     { method, path: "/x", headers: {}, remoteIp: "127.0.0.1" },
     res as any,
@@ -255,5 +266,89 @@ describe("step 2a: mixed page ordering and failure semantics", () => {
     expect(res.write).not.toHaveBeenCalled();
     expect(respondCall(calls)![2]).toHaveProperty("content-length");
     expect(body(calls)).toBe("");
+  });
+});
+
+describe("prompt 66: backpressure and disconnect abort", () => {
+  const TWO =
+    `<p>a</p><script data-bascik-stream>export default async () => { /*T1*/ return ''; }</script>` +
+    `<p>b</p><script data-bascik-stream>export default async () => { /*T2*/ return ''; }</script><p>c</p>`;
+
+  it("a false return from write pauses production until drain, then all bytes arrive in order and end is called once", async () => {
+    const t1 = deferred();
+    const t2 = deferred();
+    routeInvokes({ "/*T1*/": t1, "/*T2*/": t2 });
+    // First write (the "<p>a</p>" prefix) reports a full buffer.
+    const made = makeRes([false]);
+    const { res, calls, done } = await serve(TWO, "GET", made);
+    t1.resolve("<i>1</i>");
+    t2.resolve("<i>2</i>");
+    await tick();
+    await tick();
+    expect(res.write).toHaveBeenCalledTimes(1);
+    expect(res.end).not.toHaveBeenCalled();
+
+    res.emit("drain");
+    await done;
+    expect(body(calls)).toBe("<p>a</p><i>1</i><p>b</p><i>2</i><p>c</p>");
+    expect(res.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("client close aborts unfinished jobs through the signal and stops all writes", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const t1 = deferred();
+    invokeMock.mockImplementation(async (_spec: string, _ctx: unknown, options: { signal?: AbortSignal }) => {
+      observedSignal = options.signal;
+      return t1.promise;
+    });
+    const made = makeRes();
+    const { res, calls, done } = await serve(TWO, "GET", made);
+    await tick();
+    expect(observedSignal).toBeDefined();
+    const writesBefore = res.write.mock.calls.length;
+
+    res.destroyed = true;
+    res.emit("close");
+    await tick();
+    expect(observedSignal!.aborted).toBe(true);
+
+    t1.resolve("<i>late</i>");
+    await done;
+    expect(res.write.mock.calls.length).toBe(writesBefore);
+    expect(body(calls)).not.toContain("late");
+    // No end() on a destroyed response.
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it("close after the last write but before end: end is not called on a destroyed response", async () => {
+    const t1 = deferred();
+    const t2 = deferred();
+    routeInvokes({ "/*T1*/": t1, "/*T2*/": t2 });
+    // Hold the FINAL static write open by returning false for it.
+    const made = makeRes([true, true, true, true, false]);
+    const { res, done } = await serve(TWO, "GET", made);
+    t1.resolve("<i>1</i>");
+    t2.resolve("<i>2</i>");
+    await tick();
+    await tick();
+    await tick();
+    expect(res.write).toHaveBeenCalledTimes(5);
+    res.destroyed = true;
+    res.emit("close");
+    await expect(done).resolves.toBeUndefined();
+    expect(res.end).not.toHaveBeenCalled();
+  });
+
+  it("removes its close listener when the response completes (no listener accumulation)", async () => {
+    const t = deferred();
+    routeInvokes({ "/*T*/": t });
+    const made = makeRes();
+    const { res, done } = await serve(STREAM_PAGE, "GET", made);
+    await tick();
+    expect(res.listenerCount("close")).toBeGreaterThan(0);
+    t.resolve("<p>slow</p>");
+    await done;
+    expect(res.listenerCount("close")).toBe(0);
+    expect(res.listenerCount("drain")).toBe(0);
   });
 });

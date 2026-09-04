@@ -44,6 +44,7 @@ describe("Prompt 38 - 500 Error Page and Fallback", () => {
       }),
       close: vi.fn(),
       on: vi.fn(),
+      off: vi.fn(),
     };
   });
 

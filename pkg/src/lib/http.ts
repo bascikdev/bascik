@@ -43,6 +43,7 @@ export const adaptHttp1 = (reqMsg: http.IncomingMessage, resMsg: http.ServerResp
     },
     close() { resMsg.destroy(); },
     on(event, cb) { resMsg.on(event, cb); },
+    off(event, cb) { resMsg.off(event, cb); },
   };
 
   return { req, res };

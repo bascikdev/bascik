@@ -13,6 +13,7 @@ import {
   planServerScripts,
   streamServerScripts,
 } from "./server-scripts.ts";
+import { createResponseSink } from "./response-sink.ts";
 import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
@@ -145,7 +146,8 @@ export interface BascikResponse {
   write(chunk: string | Buffer): boolean;
   end(chunk?: string | Buffer): void;
   close(code?: number): void;
-  on(event: "close", cb: () => void): void;
+  on(event: "close" | "drain" | "finish", cb: () => void): void;
+  off(event: "close" | "drain" | "finish", cb: () => void): void;
 }
 
 export const isNetworkResetError = (err: unknown): boolean => {
@@ -700,29 +702,27 @@ export const createRequestHandler = () => {
         // content-length, then static bytes and `stream` outputs flow in
         // document order. No etag, no content-encoding: the body is not a
         // known whole.
+        // The sink honors backpressure (awaits `drain` after a false write)
+        // and aborts every unfinished job when the client disconnects.
         const abort = new AbortController();
-        // prompt 66: replace with a drain-aware sink wired to res.on("close").
-        const sink = {
-          write: async (buf: Buffer): Promise<void> => {
-            if (res.destroyed || abort.signal.aborted) return;
-            res.write(buf);
-          },
-        };
-        const streamer = streamServerScripts(plan, request, timeout, page.absolutePagePath, sink, abort.signal);
-        await streamer.ready;
-        res.respond(responseStatus, responseHeaders);
-        streamer.commit();
+        const sink = createResponseSink(res, abort);
         try {
-          await streamer.done;
-        } catch (streamErr) {
-          // Script failures are absorbed inside phase two; only transport
-          // errors reach here. Headers are sent, so never respond again.
-          if (!isNetworkResetError(streamErr)) {
-            console.error("[bascik] streamed response failed after commit:", streamErr);
+          const streamer = streamServerScripts(plan, request, timeout, page.absolutePagePath, sink, abort.signal);
+          await streamer.ready;
+          res.respond(responseStatus, responseHeaders);
+          streamer.commit();
+          try {
+            await streamer.done;
+          } catch (streamErr) {
+            // Script failures are absorbed inside phase two; only transport
+            // errors reach here. Headers are sent, so never respond again.
+            if (!isNetworkResetError(streamErr)) {
+              console.error("[bascik] streamed response failed after commit:", streamErr);
+            }
+            abort.abort();
           }
-          abort.abort();
-          if (!res.destroyed) res.end();
-          return;
+        } finally {
+          sink.dispose();
         }
         if (!res.destroyed) res.end();
         return;

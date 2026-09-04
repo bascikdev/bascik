@@ -143,4 +143,35 @@ describe("adaptHttp2", () => {
     adaptHttp2(mockStream, { ":method": "GET", ":path": "/" });
     expect(mockStream.on).toHaveBeenCalledWith("error", expect.any(Function));
   });
+
+  it("forwards on/off for drain and close to the stream, and off actually removes the listener (prompt 66)", async () => {
+    const { EventEmitter } = await import("node:events");
+    const emitter = new EventEmitter();
+    const mockStream: any = Object.assign(emitter, {
+      headersSent: false,
+      destroyed: false,
+      session: { socket: { remoteAddress: "127.0.0.1" } },
+      respond: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      close: vi.fn(),
+    });
+    const { res } = adaptHttp2(mockStream, { ":method": "GET", ":path": "/" });
+    let drains = 0;
+    let closes = 0;
+    const onDrain = () => { drains++; };
+    const onClose = () => { closes++; };
+    res.on("drain", onDrain);
+    res.on("close", onClose);
+    emitter.emit("drain");
+    emitter.emit("close");
+    expect(drains).toBe(1);
+    expect(closes).toBe(1);
+    res.off("drain", onDrain);
+    res.off("close", onClose);
+    emitter.emit("drain");
+    emitter.emit("close");
+    expect(drains).toBe(1);
+    expect(closes).toBe(1);
+  });
 });
