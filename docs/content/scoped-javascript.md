@@ -22,6 +22,7 @@ Component templates can contain multiple `<script>` tags. Bascik processes each 
 - **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
 - **Build scripts (`<script data-bascik-build>`):** Executed during build/dev time in Node.js to generate dynamic markup. Can also use `src="..."` to run a local script file.
 - **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. Can also use `src="..."` to run a local script file.
+- **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time in Node.js with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
 - **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
 
 > **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories.

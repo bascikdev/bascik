@@ -113,7 +113,7 @@ The E2E suite supports four execution modes:
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
-Each configuration owns its mode-specific `testIgnore` list on the `default` project. Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. A unit regression test imports all four configs and pins their project exclusions before any browser starts.
+Each configuration owns its mode-specific `testIgnore` list on the `default` project. Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports all four configs and pins their project exclusions before any browser starts.
 
 Tests navigate to pages on the active server and assert against the live browser DOM.
 

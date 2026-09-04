@@ -743,9 +743,9 @@ Components work inside `<head>` to organize metadata and shared links:
 * Use `console.log()` or `process.stdout.write()` to output HTML.
 * Build scripts run before component resolution, so their output can contain component tags.
 * All build scripts on a page execute concurrently via `Promise.all` (capped by a memory semaphore), and output is assembled in document order once all scripts complete.
-* On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'` or `'error'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`.
-* **Stack Trace Remapping:** For both `<script data-bascik-build>` and `<script data-bascik-server>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
-* **Hard error:** combining `data-bascik-build` and `data-bascik-server` on the same tag throws and aborts the build. A script runs at build time or at request time, not both.
+* On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'`, `'error'`, or `'ignore'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`. For `data-bascik-stream` scripts, an error cannot produce an HTTP 500 because headers are already committed; the slot is emitted empty, the failure is logged at the configured severity, and the document completes.
+* **Stack Trace Remapping:** For `<script data-bascik-build>`, `<script data-bascik-server>`, and `<script data-bascik-stream>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
+* **Hard error:** combining any of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` on the same tag throws and aborts the build. Directives are mutually exclusive.
 
 ### Build Script Environment Variables
 
@@ -954,11 +954,11 @@ Rules:
 * In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
 * Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup. Route collisions with static pages or other templates cause build errors.
 * Concrete route URLs are automatically added to `sitemap.xml` with percent-encoding.
-* `data-bascik-routes`, `data-bascik-build`, and `data-bascik-server` are mutually exclusive and cannot be combined on the same tag.
+* `data-bascik-routes`, `data-bascik-build`, `data-bascik-server`, and `data-bascik-stream` are mutually exclusive and cannot be combined on the same tag.
 
 ### data-bascik-server
 
-Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters.
+Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters. All `data-bascik-server` scripts on a page resolve before the response is sent, returning a complete buffered response with `Content-Length`.
 
 ```html
 <script data-bascik-server>
@@ -986,8 +986,35 @@ Rules:
 * When served with `bascik --server` or the dev server, the sidecar is loaded and scripts execute in-process on each request.
 * They are NOT executed during `bascik --build` itself.
 * Execution is bounded by `scripts.timeout` in `bascik.config.ts`.
-* On error, behavior is governed by `scripts.onServerScriptError` (`'error'` or `'warn'`). Under `'warn'`, the error is logged and the tag is replaced with an empty string without failing other scripts or the page.
+* On error, behavior is governed by `scripts.onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`). Under `'error'`, the request halts and returns an HTTP 500. Under `'warn'`, the error is logged and the tag is replaced with an empty string without failing other scripts or the page.
 * In-process caveat: synchronous blocking code blocks Node's single-threaded event loop and cannot be interrupted by timeouts; always use async APIs.
+
+### data-bascik-stream
+
+Tag a `<script>` block with `data-bascik-stream` to run it at request time with chunked HTTP streaming. It uses the exact same authoring model as `data-bascik-server` (`export default async function ({ req }, { signal })`, `escapeHtml`, in-process execution, sidecar registry, and stack remapping). The only difference: the server does not wait for it. Response headers and all static HTML bytes preceding the tag are sent immediately. When the script resolves, its returned markup is written in document order via chunked transfer.
+
+```html
+<script data-bascik-stream>
+  import { escapeHtml } from '@bascik/bascik';
+
+  export default async function({ req }, { signal }) {
+    const data = await loadData(req, signal);
+    return `<article>${escapeHtml(data.title)}</article>`;
+  }
+</script>
+```
+
+Decision rule:
+* Use `data-bascik-server` when the output must be present before anything is sent, or when a failure must be an HTTP 500.
+* Use `data-bascik-stream` when the page shell and static layout should paint while this slow block loads.
+
+Rules & Gotchas:
+* **Mixed-page ordering:** All `data-bascik-server` scripts on the page resolve first. If any `server` script fails under `onServerScriptError: 'error'`, the response aborts with an HTTP 500 before any bytes are sent. Once all `server` scripts resolve, headers commit and `stream` chunks flow in document order. A slow `data-bascik-server` script on a page that also streams delays the first byte for the whole page.
+* **Error handling:** A `stream` script failure can never produce an HTTP 500 because headers are already committed. The slot emits an empty string, the error is logged at the configured `scripts.onServerScriptError` severity (with the dev overlay under `'error'`), and the document streams to completion.
+* **Header consequences:** Stream pages use `transfer-encoding: chunked` on HTTP/1.1 (DATA frames on HTTP/2) with `cache-control: private, no-store`. They omit `content-length`, `etag`, and Brotli `content-encoding`. `HEAD` requests always take the buffered execution path and execute the scripts.
+* **No config key:** There is no configuration key for streaming. Opt in per script with `data-bascik-stream`; opt out by using `data-bascik-server`.
+* **Zero-CLS Placeholders:** Everything the author writes before a `stream` tag is delivered and painted before the script runs. Use a component with a reserved-size container (`min-block-size` or `aspect-ratio`), `aria-busy`/`role="status"`, and either a one-cell grid stack (`grid-area: 1 / 1`) or a `:has(> .result)` rule to swap the placeholder visually. Bascik adds no CSS or JS for this. Put slow `stream` blocks last in source and place them with `grid-template-areas` or `order` so the rest of the layout paints first.
+* Note that code examples are illustrative; adjust module paths and database queries to your project.
 
 ---
 

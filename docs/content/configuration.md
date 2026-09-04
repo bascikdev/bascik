@@ -419,6 +419,12 @@ scripts: {
 }
 ```
 
+#### `scripts.onServerScriptError`
+
+Controls error handling for both `data-bascik-server` and `data-bascik-stream` scripts (`'error'`, `'warn'`, or `'ignore'`).
+- For a `data-bascik-server` script under `'error'`, execution halts and the server responds with an HTTP 500. Under `'warn'`, the error is logged to stderr and the tag is replaced with an empty string. Under `'ignore'`, the tag is replaced with an empty string silently.
+- For a `data-bascik-stream` script, response headers are already committed before stream output begins, so `'error'` cannot produce an HTTP 500. Instead, it logs the error to stderr and shows the dev overlay during development, emits an empty string for the script slot, and completes the document stream. Under `'warn'`, it logs to stderr without the dev overlay. Under `'ignore'`, the slot emits an empty string silently.
+
 #### `scripts.importRoot`
 
 The directory that `@/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. A bare leading `/` is not an alias and is rejected with an error that points at `@/` or `./`. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Build Scripts](/build-scripts#import-root-aliases) for the alias rules.

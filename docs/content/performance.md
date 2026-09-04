@@ -693,6 +693,8 @@ A framework SPA requires five sequential steps before the user sees content. A s
 
 This is why sites like McMaster-Carr, which could justify a rich SPA for their 600,000-product catalog, choose server-rendered HTML. Content is immediately useful to every user on every device, and search engines index it without executing JavaScript.
 
+With the production server, marking slow request-time blocks `<script data-bascik-stream>` lets the shell of a server-rendered page reach the browser before that backend work finishes. This moves Time to First Byte (TTFB) and First Contentful Paint (FCP) to roughly the static-page baseline while Largest Contentful Paint (LCP) still depends on the slowest `server` script and on any `stream` script placed before the LCP element. See [Placeholders that do not shift layout](/how-to/server-scripts#placeholders-that-do-not-shift-layout) for zero-CLS streaming recipes.
+
 > **Add interactivity surgically.** McMaster's search autocomplete is a small, focused script that loads after the page is visible. Bring a Trailer's live bid counter is a lightweight WebSocket updater, not a full application framework. Use Bascik's scoped `<script>` blocks or `<script defer>` to layer in interactivity after the HTML has painted, never block the first render for it.
 
 ## CSS-First Interactivity

@@ -158,15 +158,46 @@ When built, each generated HTML file (e.g. `dist/blog/hello-world.html`) retains
 </script>
 ```
 
-> **Note:** A single `<script>` tag cannot combine `data-bascik-routes` with `data-bascik-server` or `data-bascik-build`. All three directives are mutually exclusive.
+> **Note:** A single `<script>` tag cannot combine `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`, or `data-bascik-build`. All four directives are mutually exclusive.
 
 ### Rules and behavior
 
 - Scripts run on **every request** and are **never cached:** the output is always fresh.
 - During `bascik --build`, server script tags are **preserved as-is** in `dist/` and are NOT executed. Execution only happens when the page is served.
 - On error, Bascik logs an error or warning to stderr and replaces the script tag with an empty string rather than aborting the request. Stack traces are remapped back to the original source HTML file and line offset (for example, `src/pages/dashboard.html:25`) so clicking the terminal reference opens your source file at the exact failure line.
-- The script tag (including all its attributes and the closing `</script>` tag) is completely replaced by stdout output. Empty stdout means the tag slot becomes an empty string.
+- The script tag (including all its attributes and the closing `</script>` tag) is completely replaced by the script's returned markup. Empty stdout or empty return value means the tag slot becomes an empty string.
 - Anything written to stderr from within the script is forwarded to the server's stderr.
+
+### Streaming scripts: `data-bascik-stream`
+
+Bascik holds every static byte of the page in memory before the request arrives; only request-time script output is unknown. A `<script data-bascik-stream>` is written the same way as a `data-bascik-server` script (same `{ req }`, `{ signal }`, `escapeHtml`, imports, and error remapping) and differs in one way: the server does not wait for it. Headers and every static byte before the tag are sent immediately, and its output is sent when it resolves, in document order, in the same response, using HTTP chunked transfer. The browser parses and paints incrementally. No client runtime, no second request, and nothing added to the HTML.
+
+> **Which one?** Use `data-bascik-server` when the output must be present before anything is sent, or when a failure should be an HTTP 500. Use `data-bascik-stream` when the page should paint while this block loads.
+
+#### Mixed-page rule
+
+All `server` scripts on a page resolve before the first byte is sent; then `stream` output flows in source order. A slow `server` script on a page with `stream` scripts therefore delays first paint for everything; if it is slow, make it a `stream`.
+
+#### Errors
+
+`scripts.onServerScriptError` applies to both directives and controls how loudly a failure is reported (and the dev overlay under `'error'`). For a `server` script under `'error'`, the request is an HTTP 500. For a `stream` script the status is already committed, so the slot is emitted empty, the failure is logged at the configured severity, and the document completes. The author's placeholder stays visible, which is what it is there for.
+
+#### Header consequences
+
+For pages with at least one `stream` script:
+- No `content-length` header (`transfer-encoding: chunked` on HTTP/1.1 or DATA frames on HTTP/2).
+- No `etag` header.
+- No Brotli compression (`content-encoding`).
+- `cache-control: private, no-store`.
+- `HEAD` requests always take the buffered path and do run the scripts.
+
+#### Directives and configuration
+
+`stream` cannot be combined with `server`, `build`, or `routes` on one tag. All four directives are mutually exclusive.
+
+There is no config key for streaming and no default to discover. Opt in by writing the attribute; opt out by writing `data-bascik-server` instead (for example behind a proxy that requires `content-length`).
+
+See [Placeholders that do not shift layout](/how-to/server-scripts#placeholders-that-do-not-shift-layout) for placeholder markup and layout recipes.
 
 ### Escaping user-controlled output
 
