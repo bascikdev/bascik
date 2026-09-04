@@ -41,7 +41,7 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -80,7 +80,7 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 5;
+export const SCRIPT_CACHE_VERSION = 6;
 
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
@@ -116,16 +116,20 @@ const ALL_PAGE_SCRIPTS_RE = new RegExp(
  * and `<script data-bascik-routes>` blocks in `html`, recursively scanning
  * referenced local JS/TS/MJS files.
  */
-export const collectAllScriptDeps = async (html: string): Promise<string[]> => {
+export const collectAllScriptDeps = async (html: string, sourceFile?: string): Promise<string[]> => {
   const matches = [...html.matchAll(new RegExp(ALL_PAGE_SCRIPTS_RE.source, "gi"))];
   if (matches.length === 0) return [];
+
+  const scriptBaseDir = sourceFile
+    ? dirname(resolve(process.cwd(), sourceFile))
+    : process.cwd();
 
   const visited = new Set<string>();
   const queue: string[] = [];
 
   for (const match of matches) {
     const script = match[1];
-    const deps = extractScriptDeps(script);
+    const deps = extractScriptDeps(script, scriptBaseDir);
     for (const d of deps) queue.push(d);
   }
 
@@ -161,7 +165,7 @@ export const extractScriptDeps = (script: string, baseDir: string = process.cwd(
   )) {
     const specifier = m[1];
     if (specifier.includes("://")) continue;
-    if (baseDir === process.cwd()) {
+    if (baseDir === process.cwd() || !specifier.startsWith("./") && !specifier.startsWith("../")) {
       seen.add(specifier);
     } else {
       const absPath = resolve(baseDir, specifier);
@@ -172,8 +176,177 @@ export const extractScriptDeps = (script: string, baseDir: string = process.cwd(
   return [...seen];
 };
 
+const buildNonCodeMask = (script: string): boolean[] => {
+  const mask = new Array<boolean>(script.length).fill(false);
+  let i = 0;
+  let state: "code" | "line-comment" | "block-comment" | "single-quote" | "double-quote" | "template" = "code";
+
+  while (i < script.length) {
+    const ch = script[i];
+    const next = script[i + 1];
+
+    if (state === "code") {
+      if (ch === "/" && next === "/") {
+        state = "line-comment";
+        mask[i] = true;
+        i += 1;
+        mask[i] = true;
+      } else if (ch === "/" && next === "*") {
+        state = "block-comment";
+        mask[i] = true;
+        i += 1;
+        mask[i] = true;
+      } else if (ch === "'") {
+        state = "single-quote";
+        mask[i] = true;
+      } else if (ch === '"') {
+        state = "double-quote";
+        mask[i] = true;
+      } else if (ch === "`") {
+        state = "template";
+        mask[i] = true;
+      }
+      i += 1;
+      continue;
+    }
+
+    mask[i] = true;
+
+    if (state === "line-comment") {
+      if (ch === "\n") state = "code";
+      i += 1;
+      continue;
+    }
+
+    if (state === "block-comment") {
+      if (ch === "*" && next === "/") {
+        i += 1;
+        mask[i] = true;
+        state = "code";
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === "\\") {
+      if (i + 1 < script.length) {
+        i += 1;
+        mask[i] = true;
+      }
+      i += 1;
+      continue;
+    }
+
+    if ((state === "single-quote" && ch === "'") ||
+      (state === "double-quote" && ch === '"') ||
+      (state === "template" && ch === "`")) {
+      state = "code";
+    }
+
+    i += 1;
+  }
+
+  return mask;
+};
+
+const toFileUrlSpecifier = (specifier: string, baseDir: string): string =>
+  pathToFileURL(resolve(baseDir, specifier)).href;
+
+interface ImportSpecifierReplacement {
+  start: number;
+  end: number;
+  value: string;
+}
+
+const collectSpecifierReplacement = (
+  replacements: ImportSpecifierReplacement[],
+  matchIndex: number,
+  fullMatch: string,
+  quote: string,
+  specifier: string,
+  baseDir: string,
+): void => {
+  if (!(specifier.startsWith("./") || specifier.startsWith("../"))) return;
+  const quoted = `${quote}${specifier}${quote}`;
+  const quotedIndex = fullMatch.lastIndexOf(quoted);
+  if (quotedIndex < 0) return;
+
+  const start = matchIndex + quotedIndex + 1;
+  replacements.push({
+    start,
+    end: start + specifier.length,
+    value: toFileUrlSpecifier(specifier, baseDir),
+  });
+};
+
+export const resolveBuildScriptImports = (script: string, baseDir: string): string => {
+  const replacements: ImportSpecifierReplacement[] = [];
+  const nonCodeMask = buildNonCodeMask(script);
+
+  const matchers: Array<{
+    regex: RegExp;
+    quoteGroup: number;
+    specifierGroup: number;
+  }> = [
+      {
+        regex: /(^|[;\n\r])\s*import\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
+        quoteGroup: 2,
+        specifierGroup: 3,
+      },
+      {
+        regex: /(^|[;\n\r])\s*import\s*(['"])([^'"\n\r]+)\2/gm,
+        quoteGroup: 2,
+        specifierGroup: 3,
+      },
+      {
+        regex: /(^|[;\n\r])\s*export\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
+        quoteGroup: 2,
+        specifierGroup: 3,
+      },
+      {
+        regex: /\bimport\s*\(\s*(['"])([^'"\n\r]+)\1\s*\)/g,
+        quoteGroup: 1,
+        specifierGroup: 2,
+      },
+    ];
+
+  for (const { regex, quoteGroup, specifierGroup } of matchers) {
+    for (const match of script.matchAll(regex)) {
+      const fullMatch = match[0];
+      const matchIndex = match.index ?? -1;
+      if (matchIndex < 0) continue;
+
+      const importTokenIndex = fullMatch.search(/\b(?:import|export)\b/);
+      if (importTokenIndex < 0) continue;
+      if (nonCodeMask[matchIndex + importTokenIndex]) continue;
+
+      const quote = match[quoteGroup];
+      const specifier = match[specifierGroup];
+      if (!quote || !specifier) continue;
+      collectSpecifierReplacement(replacements, matchIndex, fullMatch, quote, specifier, baseDir);
+    }
+  }
+
+  if (replacements.length === 0) return script;
+
+  const ordered = replacements
+    .sort((a, b) => b.start - a.start)
+    .filter((replacement, index, arr) => index === 0 || replacement.end <= arr[index - 1].start);
+
+  let rewritten = script;
+  for (const replacement of ordered) {
+    rewritten =
+      rewritten.slice(0, replacement.start) +
+      replacement.value +
+      rewritten.slice(replacement.end);
+  }
+
+  return rewritten;
+};
+
 const computeScriptCacheKey = async (
   script: string,
+  baseDir: string,
   isBuild: boolean,
   filePath: string,
   siteUrl: string,
@@ -194,7 +367,7 @@ const computeScriptCacheKey = async (
   hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
 
   const visited = new Set<string>();
-  const queue = extractScriptDeps(script);
+  const queue = [...extractScriptDeps(script, baseDir)];
 
   while (queue.length > 0) {
     const rawDep = queue.shift()!;
@@ -301,7 +474,7 @@ export const executeBuildScripts = async (
     fullTag: string;
     index: number;
     openTag: string;
-    trimmedScript: string;
+    preparedScript: string;
     cacheKey: string | null;
     startLine: number;
     tmpPath: string;
@@ -349,8 +522,28 @@ export const executeBuildScripts = async (
       }
     }
 
+    let scriptBaseDir = sourceFile
+      ? dirname(resolve(process.cwd(), sourceFile))
+      : filePath
+        ? dirname(resolve(process.cwd(), filePath))
+        : process.cwd();
+
+    if (!scriptContent.trim()) {
+      const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      if (srcMatch) {
+        const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
+        scriptBaseDir = sourceFile
+          ? dirname(resolve(dirname(sourceFile), srcPath))
+          : filePath
+            ? dirname(resolve(dirname(filePath), srcPath))
+            : dirname(resolve(process.cwd(), srcPath));
+      }
+    }
+
+    const preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir);
+
     const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath)
+      ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath)
       : null;
 
     const prefix = html.slice(0, index);
@@ -368,7 +561,7 @@ export const executeBuildScripts = async (
       fullTag,
       index,
       openTag,
-      trimmedScript,
+      preparedScript,
       cacheKey,
       startLine,
       tmpPath,
@@ -416,7 +609,7 @@ export const executeBuildScripts = async (
     if (uncachedTasks.length === 1) {
       const task = uncachedTasks[0];
       try {
-        await writeFile(task.tmpPath, task.trimmedScript + sourceUrlComment, "utf8");
+        await writeFile(task.tmpPath, task.preparedScript + sourceUrlComment, "utf8");
         const { stdout, stderr } = await runModule(task.tmpPath, extraEnv);
         if (stderr) process.stderr.write(stderr);
         const output = stripAnsiEscapeCodes(stdout);
@@ -451,7 +644,7 @@ export const executeBuildScripts = async (
       try {
         await Promise.all(
           uncachedTasks.map((task) =>
-            writeFile(task.tmpPath, task.trimmedScript + sourceUrlComment, "utf8")
+            writeFile(task.tmpPath, task.preparedScript + sourceUrlComment, "utf8")
           ),
         );
 

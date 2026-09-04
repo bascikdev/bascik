@@ -56,7 +56,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -1260,10 +1260,13 @@ export const transpilePage = async (
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 
-  const fileDependencies = await collectAllScriptDeps(rawHtml);
+  const fileDependencies = await collectAllScriptDeps(rawHtml, pagePath);
   for (const comp of allUsedComponents) {
     if (comp.fileContent) {
-      const compDeps = await collectAllScriptDeps(comp.fileContent);
+      const componentSourcePath = comp.fileName
+        ? resolve(process.cwd(), BascikConfig.directory.components, comp.fileName)
+        : undefined;
+      const compDeps = await collectAllScriptDeps(comp.fileContent, componentSourcePath);
       for (const dep of compDeps) {
         if (!fileDependencies.includes(dep)) {
           fileDependencies.push(dep);

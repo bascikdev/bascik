@@ -232,15 +232,13 @@ export async function renderCards(jsonPath) {
 
 ```html
 <script data-bascik-build>
-  import { join } from 'node:path';
-  import { pathToFileURL } from 'node:url';
-  import { renderCards } from pathToFileURL(join(process.cwd(), 'scripts/render-cards.js')).href;
+  import { renderCards } from './scripts/render-cards.js';
 
   console.log(await renderCards('./content/team.json'));
 </script>
 ```
 
-> **Import paths in build scripts:** Node.js requires absolute paths when importing local modules from a dynamically executed script. Use `pathToFileURL(join(process.cwd(), 'path/to/your-script.js')).href` to import your own modules reliably from any build script.
+> **Import paths in build scripts:** You can use standard ESM relative imports in build scripts. Bascik resolves `./` and `../` specifiers relative to the page or component file that contains the script block, then executes the script from cache safely.
 
 ## Environment Variables
 

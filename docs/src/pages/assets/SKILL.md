@@ -875,11 +875,7 @@ Use it from any page's `<head>`:
 ```html
 <head>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
-    );
+    import { canonical } from '../../scripts/canonical.ts';
     console.log(await canonical());
   </script>
 </head>

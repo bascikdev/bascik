@@ -220,6 +220,7 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     const { BascikConfig: cfg } = initBascikConfig({ directory: { out: "custom-build" } });
     expect(cfg.directory.out).toMatch(/[/\\]custom-build$/);
   });
+
 });
 
 describe("CLI flag overrides (flag > env var > config file)", () => {

@@ -4,11 +4,6 @@
  * Usage in a page's `<script data-bascik-build>` block:
  *
  *   <script data-bascik-build>
- *     import { join } from 'node:path';
- *     import { pathToFileURL } from 'node:url';
- *     const { renderPagination } = await import(
- *       pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
- *     );
  *     console.log(renderPagination('/getting-started'));
  *   </script>
  *

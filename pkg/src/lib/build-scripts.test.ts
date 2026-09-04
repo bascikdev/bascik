@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   executeBuildScripts,
   extractScriptDeps,
@@ -117,6 +118,41 @@ describe("executeBuildScripts", () => {
     await executeBuildScripts("<script data-bascik-build>x()</script>", "src/pages/index.html");
     const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
     expect(written).toContain("//# sourceURL=src/pages/index.html");
+  });
+
+  it("rewrites relative static imports to absolute file URLs using the page directory as base", async () => {
+    resolveWith("");
+
+    await executeBuildScripts(
+      "<script data-bascik-build>import { renderSectionLabel } from '../../lib/render-nav.ts';\nconsole.log(renderSectionLabel('/x'));</script>",
+      "docs/src/pages/internals/time-boundaries.html",
+    );
+
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(written).toContain(
+      `import { renderSectionLabel } from '${pathToFileURL(resolve(process.cwd(), "docs/src/lib/render-nav.ts")).href}';`,
+    );
+  });
+
+  it("rewrites dynamic relative imports and leaves bare and absolute URL specifiers untouched", async () => {
+    resolveWith("");
+
+    await executeBuildScripts(
+      `<script data-bascik-build>
+         const { renderMd } = await import('../../lib/md-renderer.ts');
+         const marked = await import('marked');
+         const remote = await import('https://example.com/x.mjs');
+         console.log(Boolean(renderMd) && Boolean(marked) && Boolean(remote));
+       </script>`,
+      "docs/src/pages/internals/time-boundaries.html",
+    );
+
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(written).toContain(
+      `await import('${pathToFileURL(resolve(process.cwd(), "docs/src/lib/md-renderer.ts")).href}')`,
+    );
+    expect(written).toContain("await import('marked')");
+    expect(written).toContain("await import('https://example.com/x.mjs')");
   });
 
   it("removes the temp file after execution", async () => {
@@ -554,6 +590,18 @@ describe("collectAllScriptDeps", () => {
     `;
     const deps = await collectAllScriptDeps(html);
     expect(deps).toContain("scripts/route-generator.ts");
+  });
+
+  it("resolves page-relative import dependencies using the source file directory", async () => {
+    const html = `
+      <script data-bascik-build>
+        import { renderMd } from '../../lib/md-renderer.ts';
+        console.log(await renderMd('./content/cli.md'));
+      </script>
+    `;
+    const deps = await collectAllScriptDeps(html, "docs/src/pages/internals/architecture.html");
+    expect(deps).toContain("docs/src/lib/md-renderer.ts");
+    expect(deps).toContain("docs/src/pages/internals/content/cli.md");
   });
 
   it("throws an error when script tag has both data-bascik-build and data-bascik-server", async () => {

@@ -4,27 +4,15 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
-    );
+    import { canonical } from '../lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
-    );
+    import { openGraph } from '../lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
-    );
+    import { breadcrumbLd } from '../lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <meta name="description"
@@ -73,22 +61,14 @@
       <!-- Content -->
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-          );
+          import { renderSectionLabel } from '../lib/render-nav.ts';
           console.log(renderSectionLabel('/getting-started'));
         </script>
 
         <!-- Content rendered from docs/content/getting-started.md at build time.
              To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMd } from '../lib/md-renderer.ts';
           console.log(await renderMd('./content/getting-started.md'));
         </script>
 
@@ -102,11 +82,7 @@
               <p>The file name becomes the tag name.</p>
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
                 <script data-bascik-build>
-                  import { join } from 'node:path';
-                  import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(
-                    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-                  );
+                  import { extractDemoBlock } from '../lib/md-renderer.ts';
                   console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
                 </script>
               </code-block>
@@ -120,11 +96,7 @@
               <p>No imports or registration. Just use the tag.</p>
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
                 <script data-bascik-build>
-                  import { join } from 'node:path';
-                  import { pathToFileURL } from 'node:url';
-                  const { extractDemoBlock } = await import(
-                    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-                  );
+                  import { extractDemoBlock } from '../lib/md-renderer.ts';
                   console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
                 </script>
               </code-block>

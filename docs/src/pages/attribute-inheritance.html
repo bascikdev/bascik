@@ -4,35 +4,19 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
-    );
+    import { canonical } from '../lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
-    );
+    import { openGraph } from '../lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
-    );
+    import { breadcrumbLd } from '../lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { articleSchema } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
-    );
+    import { articleSchema } from '../lib/article-schema.ts';
     console.log(await articleSchema());
   </script>
   <meta name="description"
@@ -50,23 +34,15 @@
 
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-          );
+          import { renderSectionLabel } from '../lib/render-nav.ts';
           console.log(renderSectionLabel('/attribute-inheritance'));
         </script>
 
         <!-- Intro and demo context rendered from docs/content/attribute-inheritance.md. -->
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '../lib/md-renderer.ts';
           console.log(await renderMdRange('./content/attribute-inheritance.md', { to: 'How It Works' }));
-          console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
+                    console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/inherit-demo-card/">
@@ -78,9 +54,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '../lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-usage'));
               </script>
             </code-block>
@@ -88,9 +62,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '../lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-html'));
               </script>
             </code-block>
@@ -98,9 +70,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '../lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-css'));
               </script>
             </code-block>
@@ -108,9 +78,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '../lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'output-html'));
               </script>
             </code-block>
@@ -118,11 +86,7 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '../lib/md-renderer.ts';
           console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'How It Works', to: 'See it in action' }));
         </script>
 
