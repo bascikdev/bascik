@@ -98,10 +98,12 @@ vi.mock("./worker-pool.js", () => {
         const relativePagePath = typeof job === "string"
           ? (pagePath.startsWith("src/") ? pagePath.slice(4) : (pagePath.startsWith("pages/") ? pagePath : `pages/${pagePath}`))
           : job.relativePagePath;
+        // Mirrors page-worker.ts (prompt 86): the HTML arrives as UTF-8 bytes
+        // in a transferred ArrayBuffer, never as a string.
         return {
           relativePagePath,
           absolutePagePath: pagePath,
-          distHtml: "<html></html>",
+          distHtmlBytes: new TextEncoder().encode("<html></html>"),
           usedComponentsNames: ["my-comp"],
           fileDependencies: ["scripts/md-renderer.ts"],
         };
@@ -1653,6 +1655,26 @@ describe("processAllPages – side effects", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
     const result = await processAllPages({ useWorkers: false });
     expect(result).toEqual(["pages/index.html"]);
+  });
+
+  it("prompt 86: forwards transferred worker bytes to the store and disk writer without decoding to a string", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    const { writeFile } = await import("node:fs/promises");
+    (writeFile as ReturnType<typeof vi.fn>).mockClear();
+    await processAllPages({ useWorkers: true });
+
+    const stored = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(Buffer.isBuffer(stored.pageContent)).toBe(true);
+    expect(stored.pageContent.toString("utf8")).toBe("<html></html>");
+
+    // queueTranspiledPageWrite runs asynchronously; let it settle.
+    await new Promise((r) => setImmediate(r));
+    const pageWrite = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([path]) => String(path).endsWith("index.html"),
+    );
+    expect(pageWrite).toBeDefined();
+    expect(Buffer.isBuffer(pageWrite![1])).toBe(true);
+    expect(Buffer.from(pageWrite![1]).toString("utf8")).toBe("<html></html>");
   });
 
   it("prioritizes open pages over other pages during dev mode (main thread)", async () => {

@@ -22,28 +22,36 @@ Bascik accelerates multi-page builds using Node.js `worker_threads` via `pkg/src
 
 ### Message Structure
 
-Tasks dispatched to workers are strongly typed. All IPC communication happens via structured cloning:
+Each worker is initialized once with `workerData = { componentList, globalStylesHtml }` and then receives one `PageJob` (or a bare page path string) per `postMessage`. The pool tracks exactly one in-flight job per worker, so replies carry no correlation id. Shapes below are the real exports from `page-worker.ts`:
 
 ```ts
-// Request payload to worker
-interface WorkerTaskRequest {
-  id: number;
-  filePath: string;
-  sourceHtml: string;
-  config: SerializedBascikConfig;
-}
+// Request: a PageJob from processing.ts (cloned; small)
+{ pagePath, route, relativePagePath, preCleanedHtml }
 
-// Response payload from worker
-interface WorkerTaskResponse {
-  id: number;
-  success: boolean;
-  html?: string;
-  error?: {
-    message: string;
-    stack?: string;
-  };
-}
+// Response (PageWorkerMessage)
+| { ok: true; result: PageWorkerResult | null }
+| { ok: false; error: string }
+
+// PageWorkerResult = TranspilePageResult minus distHtml, plus:
+{ distHtmlBytes: Uint8Array }
 ```
+
+### Zero-copy page output (transfer list, not structured clone)
+
+The rendered page never crosses the thread boundary as a string. `page-worker.ts` encodes `distHtml` with `TextEncoder.encode()` into a `Uint8Array` that owns its whole `ArrayBuffer`, then posts it with that buffer in the transfer list:
+
+```ts
+port.postMessage({ ok: true, result }, [result.distHtmlBytes.buffer]);
+```
+
+Ownership moves to the main thread; the worker-side view is detached (length 0) after the call. On the main thread `processing.ts` wraps the bytes in a `Buffer` view (no copy) and hands that directly to `mem.storePage` and the disk writer. Nothing on the worker result path decodes the HTML back to a string.
+
+Rules when touching this path:
+
+- Use `TextEncoder.encode()`, never `Buffer.from(string)`, to produce the bytes. `Buffer.from` may return a slice of Node's shared 8 KB pool; transferring that `ArrayBuffer` would detach memory owned by unrelated buffers.
+- Add new large payload fields as transferable `ArrayBuffer`s in the transfer list. Small metadata (paths, component names, dependency lists, server script entries) stays as cloned fields.
+- A `null` result (page unreadable) is posted with no transfer list.
+- Tests: `page-worker.test.ts` asserts the transfer list contents, `byteOffset === 0`, detachment after a real `MessageChannel` and `Worker` hop, and byte-identical decode.
 
 ---
 
@@ -53,7 +61,7 @@ Worker threads run in isolated V8 contexts. When working on worker tasks, keep t
 
 1. **Process Arguments (`process.argv`):** Worker threads do not automatically inherit `process.argv` modifications made on the main thread. Configuration must be passed explicitly via worker data or task payloads.
 2. **Global State & Singletons:** Module-level caches or singletons in `pkg/src/` do not share memory across threads.
-3. **Filesystem Side-Effects:** Worker tasks must write build outputs (`dist/`) directly to disk or return final HTML strings for the main thread to write atomically.
+3. **Filesystem Side-Effects:** During `bascik --build` the worker writes `dist/` output itself inside `transpilePage`; in dev mode the main thread stores the transferred bytes in memory and writes them to disk. Return bytes, not strings, for anything large.
 4. **No Direct DOM or Window:** Worker environments are pure Node.js environments.
 
 ---
