@@ -12,6 +12,13 @@ export const getBrotliQuality = (config: { isBuild?: boolean; isProdServer?: boo
     : zlib.constants.BROTLI_MIN_QUALITY;
 };
 
+/** Gzip level mirrors the brotli policy: best compression in prod and build, fastest in dev. */
+export const getGzipLevel = (config: { isBuild?: boolean; isProdServer?: boolean } = BascikConfig): number => {
+  return config.isBuild || config.isProdServer
+    ? zlib.constants.Z_BEST_COMPRESSION
+    : zlib.constants.Z_BEST_SPEED;
+};
+
 interface StorePageArgs {
   relativePagePath: string;
   absolutePagePath: string;
@@ -188,6 +195,8 @@ class MemoryStore {
     // Fire-and-forget: compress in the background and attach the result once
     // done. In dev mode, quality 1 (min) is 200x faster than quality 11 (max)
     // and avoids queuing heavy zlib tasks that delay dev server shutdown.
+    // The `content === buffer` identity check drops a stale result if the
+    // page was re-stored while compression was still running.
     const quality = getBrotliQuality();
     zlib.brotliCompress(
       buffer,
@@ -200,6 +209,15 @@ class MemoryStore {
         }
       },
     );
+    // Gzip fallback for clients that do not accept br. Same background and
+    // staleness rules as brotli above.
+    zlib.gzip(buffer, { level: getGzipLevel() }, (err, gzipped) => {
+      if (err) return;
+      const current = this.#files.get(httpPath);
+      if (current && current.content === buffer) {
+        current.gzipContent = gzipped;
+      }
+    });
 
     //console.log('stored page in memory:', httpPath)
   }

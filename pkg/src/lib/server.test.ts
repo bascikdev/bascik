@@ -401,6 +401,114 @@ describe("startHttp2Server – stream handler", () => {
     expect(stream.end).toHaveBeenCalledWith(page.content);
   });
 
+  describe("gzip fallback for legacy clients that do not accept br", () => {
+    it("serves the gzip body with content-encoding: gzip and a gzip-suffixed etag", async () => {
+      const { BascikConfig } = await import("./config.ts");
+      (BascikConfig as any).http.httpCache = true;
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+        etag: '"abc"',
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "gzip, deflate"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          "content-encoding": "gzip",
+          "content-length": (page.gzipContent as Buffer).byteLength,
+          etag: '"abc-gzip"',
+          vary: "Accept-Encoding",
+        }),
+      );
+      expect(stream.end).toHaveBeenCalledWith(page.gzipContent);
+      (BascikConfig as any).http.httpCache = false;
+    });
+
+    it("still prefers br when the client accepts both br and gzip", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "gzip, br"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ "content-encoding": "br" }),
+      );
+      expect(stream.end).toHaveBeenCalledWith(page.compressedContent);
+    });
+
+    it("falls through to gzip when the client accepts br but brotli has not finished compressing yet", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: undefined,
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "br, gzip"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ "content-encoding": "gzip" }),
+      );
+      expect(stream.end).toHaveBeenCalledWith(page.gzipContent);
+    });
+
+    it("serves identity when the client accepts gzip but gzip has not finished compressing yet", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: undefined,
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "gzip"));
+      const headers = stream.respond.mock.calls[0][0];
+      expect(headers).not.toHaveProperty("content-encoding");
+      expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("never sends gzip to a client whose Accept-Encoding does not list it", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "deflate"));
+      const headers = stream.respond.mock.calls[0][0];
+      expect(headers).not.toHaveProperty("content-encoding");
+      expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("answers 304 for a gzip-suffixed If-None-Match from a gzip-only client", async () => {
+      const { BascikConfig } = await import("./config.ts");
+      (BascikConfig as any).http.httpCache = true;
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        gzipContent: Buffer.from("gzip-compressed"),
+        etag: '"abc"',
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "gzip", undefined, { "if-none-match": '"abc-gzip"' }));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 304, etag: '"abc-gzip"' }),
+      );
+      expect(stream.end).toHaveBeenCalledWith();
+      (BascikConfig as any).http.httpCache = false;
+    });
+  });
+
   it("sets no-cache headers when BascikConfig.http.httpCache is false", async () => {
     const page = makePage({ content: Buffer.from("<html></html>") });
     mockMem.getPage.mockReturnValue(page);

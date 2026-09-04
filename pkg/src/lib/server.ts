@@ -730,14 +730,22 @@ export const createRequestHandler = () => {
       }
 
       // ── ETag + conditional GET (skip for no-store pages) ─────────────────
+      // Pick the best encoding the client accepts that is already computed:
+      // br first, then gzip for legacy clients (or while brotli is still
+      // compressing in the background), else identity.
       const rawAcceptEncoding = req.headers["accept-encoding"] ?? "";
       const acceptEncoding = Array.isArray(rawAcceptEncoding)
         ? rawAcceptEncoding.join(", ")
         : rawAcceptEncoding;
-      const willCompressBr = /\bbr\b/.test(acceptEncoding) && !!page.compressedContent;
+      const acceptsBr = /\bbr\b/.test(acceptEncoding);
+      const acceptsGzip = /\bgzip\b/.test(acceptEncoding);
+      const pageEncoding: "br" | "gzip" | "identity" =
+        acceptsBr && page.compressedContent ? "br"
+          : acceptsGzip && page.gzipContent ? "gzip"
+            : "identity";
 
       const rawEtag = page.etag ?? makeEtag(page.content);
-      const effectivePageEtag = willCompressBr ? getEncodedEtag(rawEtag, "br") : rawEtag;
+      const effectivePageEtag = pageEncoding === "identity" ? rawEtag : getEncodedEtag(rawEtag, pageEncoding);
 
       if (BascikConfig.http.httpCache !== false && (req.headers["if-none-match"] === effectivePageEtag || req.headers["if-none-match"] === rawEtag)) {
         responseStatus = 304;
@@ -754,12 +762,18 @@ export const createRequestHandler = () => {
         responseHeaders["etag"] = effectivePageEtag;
       }
 
-      // ── Brotli or uncompressed ────────────────────────────────────────────
-      if (willCompressBr && page.compressedContent) {
+      // ── Brotli, gzip fallback, or uncompressed ─────────────────────────────────────
+      if (pageEncoding === "br" && page.compressedContent) {
         responseHeaders["content-encoding"] = "br";
         responseHeaders["content-length"] = page.compressedContent.byteLength;
         res.respond(responseStatus, responseHeaders);
         return res.end(isHead ? undefined : page.compressedContent);
+      }
+      if (pageEncoding === "gzip" && page.gzipContent) {
+        responseHeaders["content-encoding"] = "gzip";
+        responseHeaders["content-length"] = page.gzipContent.byteLength;
+        res.respond(responseStatus, responseHeaders);
+        return res.end(isHead ? undefined : page.gzipContent);
       }
 
       responseHeaders["content-length"] = page.content.byteLength;

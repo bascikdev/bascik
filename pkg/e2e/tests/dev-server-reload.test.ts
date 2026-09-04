@@ -572,6 +572,15 @@ test.describe('Dev Server In-Memory Routing & Brotli Compression', () => {
     expect(res.headers()['content-encoding']).toBe('br');
   });
 
+  test('falls back to gzip when the client sends Accept-Encoding without br', async ({ request }) => {
+    const res = await request.get('/scope-test', {
+      headers: { 'accept-encoding': 'gzip, deflate' },
+    });
+    expect(res.status()).toBe(200);
+    expect(res.headers()['content-encoding']).toBe('gzip');
+    expect((await res.text()).length).toBeGreaterThan(0);
+  });
+
   test('returns 404 for non-existent page routes', async ({ page }) => {
     const response = await page.goto('/nonexistent-dev-route-12345');
     expect(response?.status()).toBe(404);

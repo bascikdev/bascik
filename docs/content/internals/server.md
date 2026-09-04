@@ -69,11 +69,13 @@ During local development, `bascik` compiles pages into memory and starts the wat
 
 The `MemoryStore` class manages rendered pages during development without writing intermediate files to disk on every edit:
 
-- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
+- `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli and Gzip buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
 - `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
 - `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
 Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers. Under `--build` and `--server`, Brotli compression uses maximum quality (`BROTLI_MAX_QUALITY = 11`) to ensure optimal payload sizes.
+
+Every stored page is also gzip-compressed in the background (`Z_BEST_SPEED` in dev, `Z_BEST_COMPRESSION` in build and production) as a fallback for clients whose `Accept-Encoding` does not include `br`: older browsers, some corporate proxies, and many crawlers. On each request the server picks the best encoding the client accepts that is already computed: `br`, then `gzip`, then identity. A page is servable immediately after store; if a client asks for `br` before the Brotli job finishes, it receives gzip (if ready) or the raw bytes rather than waiting. Each background job checks that the page has not been re-stored in the meantime before attaching its result, so a stale compression result never shadows newer content.
 
 ### Error page handling
 
@@ -159,7 +161,7 @@ Production mode enables `http.httpCache: true` by default:
 
 - **ETag support:** Generates strong ETag hashes for static assets and buffered HTML responses (pages without `data-bascik-stream` scripts), returning `304 Not Modified` when the client's `if-none-match` header matches.
 - **Cache-Control headers:** Adds `Cache-Control: public, max-age=3600` to static assets.
-- **Max-quality Brotli compression:** Uses `BROTLI_MAX_QUALITY = 11` for static assets and buffered HTML responses for optimal bandwidth savings. Streaming responses bypass compression to preserve real-time chunk delivery.
+- **Max-quality Brotli compression with Gzip fallback:** Uses `BROTLI_MAX_QUALITY = 11` for static assets and buffered HTML responses for optimal bandwidth savings. Clients that do not advertise `br` in `Accept-Encoding` receive `Z_BEST_COMPRESSION` Gzip instead, with its own `"hash-gzip"` ETag variant. Streaming responses bypass compression to preserve real-time chunk delivery.
 
 ### Production rate limiting
 
@@ -239,9 +241,9 @@ Static asset requests are normalized and validated to ensure the resolved path r
 
 ### Content-Hash ETags and Caching Layer
 
-Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (e.g. `"hash-br"`).
+Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (`"hash-br"`, `"hash-gzip"`), so a `304` is only returned when the client's cached representation matches the encoding it would receive now.
 
-Compression negotiation supports Brotli (`br`) and Gzip (`gzip`), respecting a size threshold and skipping already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
+Compression negotiation supports Brotli (`br`) with Gzip (`gzip`) as the fallback for legacy clients, for both in-memory pages and static assets. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
 
 ### Crash Net & Stream Error Handling
 
