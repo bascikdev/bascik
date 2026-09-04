@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { existsSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
@@ -25,6 +26,7 @@ import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
 import { validateUserConfig, type ConfigValidationError } from "./config-validation.ts";
+import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -57,6 +59,7 @@ const KNOWN_BASCIK_DATA_EXACT = new Set([
   "data-bascik-build",
   "data-bascik-server",
   "data-bascik-routes",
+  "data-bascik-stream",
   "data-bascik-preserve",
   "data-bascik-server-id",
 ]);
@@ -160,7 +163,7 @@ const toDisplay = (filePath: string): string => {
     if (normalized.includes(BascikConfig.directory?.pages?.replace(/\\/g, "/") ?? "src/pages")) {
       return getRelativePath(filePath, "pages");
     }
-    if (normalized.includes(BascikConfig.directory?.components?.replace(/\\/g, "/") ?? "src/components")) {
+    if (findComponentRoot(normalized) !== undefined) {
       return getRelativePath(filePath, "components");
     }
   } catch {
@@ -183,7 +186,7 @@ const extractBuildScripts = (html: string): string[] => {
   while ((match = scriptRegex.exec(html)) !== null) {
     const attrs = match[1];
     const content = match[2];
-    if (/\bdata-bascik-build\b/i.test(attrs)) {
+    if (BUILD_DIRECTIVE_RE.test(attrs)) {
       scripts.push(content);
     }
   }
@@ -250,9 +253,30 @@ const extractUnknownBascikAttributes = (
   return out;
 };
 
-const hasBuildServerConflict = (attrs: string): boolean => {
-  return /\bdata-bascik-build\b/i.test(attrs) && /\bdata-bascik-server\b/i.test(attrs);
+// Whole-attribute-name directive tests (prompt 65 step 0).
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const SERVER_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${SERVER_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const ROUTES_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const STREAM_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${STREAM_ATTR_NAME}`, "i");
+
+/**
+ * The four script directives are mutually exclusive. Returns the pair of
+ * directive names present when two or more are, otherwise undefined.
+ */
+export const findDirectiveConflict = (attrs: string): [string, string] | undefined => {
+  const present: string[] = [];
+  if (BUILD_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-build");
+  if (SERVER_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-server");
+  if (ROUTES_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-routes");
+  if (STREAM_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-stream");
+  return present.length >= 2 ? [present[0], present[1]] : undefined;
 };
+
+const hasBuildServerConflict = (attrs: string): boolean => findDirectiveConflict(attrs) !== undefined;
 
 const mapConfigErrorSeverity = (error: ConfigValidationError): FindingSeverity => {
   if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
@@ -441,9 +465,15 @@ export const checkProject = async (): Promise<CheckFindings> => {
       });
     }
 
-    const componentDir = resolve(process.cwd(), BascikConfig.directory?.components ?? "src/components");
-    if (existsSync(componentDir)) {
-      const htmlFiles = await deepReadDirFlat(componentDir, /\.html$/i);
+    // Scan every configured root so components outside the failing one are
+    // still known and their tags are not reported as unmatched.
+    const componentRoots = (BascikConfig.directory?.components ?? ["src/components"])
+      .map((root) => resolve(process.cwd(), root))
+      .filter((root) => existsSync(root));
+    if (componentRoots.length > 0) {
+      const htmlFiles = (
+        await Promise.all(componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)))
+      ).flat();
       const nameToPaths = new Map<string, string[]>();
       for (const filePath of htmlFiles) {
         const componentName = filePath.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
@@ -584,7 +614,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
     items.push({
       category: "script-mode-conflict",
       severity: "error",
-      message: "<script> tag has both data-bascik-build and data-bascik-server. Remove one attribute.",
+      message: "<script> tag combines two script directives (data-bascik-build, data-bascik-server, data-bascik-routes, data-bascik-stream are mutually exclusive). Remove one attribute.",
       locations: scriptBuildServerConflicts,
     });
   }

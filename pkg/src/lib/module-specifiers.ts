@@ -14,8 +14,54 @@ interface Token {
   end: number;
 }
 
-const isIdentifierStart = (character: string): boolean => /[A-Za-z_$]/.test(character);
-const isIdentifierPart = (character: string): boolean => /[A-Za-z0-9_$]/.test(character);
+// Character classes as char-code tests. `scanCode` runs these once per source
+// character, and `RegExp.prototype.test` on a one-character string was the
+// largest self-time frame family in the tokenizer. Each predicate is verified
+// exhaustively against the regex it replaced across the whole BMP in
+// module-specifiers-scan.test.ts.
+const isSpaceCode = (code: number): boolean => {
+  // ECMAScript WhiteSpace + LineTerminator, exactly the `\s` class.
+  if (code <= 32) return code === 32 || (code >= 9 && code <= 13);
+  if (code < 0xa0) return false;
+  return (
+    code === 0xa0 ||
+    code === 0x1680 ||
+    (code >= 0x2000 && code <= 0x200a) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    code === 0x202f ||
+    code === 0x205f ||
+    code === 0x3000 ||
+    code === 0xfeff
+  );
+};
+const isAlphaCode = (code: number): boolean =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isDigitCode = (code: number): boolean => code >= 48 && code <= 57;
+const isIdStartCode = (code: number): boolean => isAlphaCode(code) || code === 95 || code === 36;
+const isIdPartCode = (code: number): boolean => isIdStartCode(code) || isDigitCode(code);
+const isNumberPartCode = (code: number): boolean =>
+  isAlphaCode(code) || isDigitCode(code) || code === 95 || code === 46;
+
+/** Test-only: the predicates above, for the exhaustive BMP equivalence test. */
+export const __charClassesForTests = {
+  isSpace: isSpaceCode,
+  isAlpha: isAlphaCode,
+  isDigit: isDigitCode,
+  isIdStart: isIdStartCode,
+  isIdPart: isIdPartCode,
+  isNumberPart: isNumberPartCode,
+};
+
+/** Test-only: counts tokenizer invocations for the single-pass guard. */
+export const __tokenizeStatsForTests = {
+  tokenizeCalls: 0,
+  reset(): void {
+    this.tokenizeCalls = 0;
+  },
+};
+
+const REGEX_PRECEDING_IDENTIFIERS = new Set(["case", "delete", "return", "throw", "typeof", "void", "yield"]);
 const CONTROL_HEAD_KEYWORDS = new Set(["catch", "for", "if", "switch", "while", "with"]);
 const STATEMENT_PREFIX_KEYWORDS = new Set(["do", "else", "finally", "try"]);
 
@@ -25,6 +71,7 @@ interface DelimiterContext {
 }
 
 const tokenizeJavaScript = (source: string): Token[] => {
+  __tokenizeStatsForTests.tokenizeCalls++;
   const tokens: Token[] = [];
 
   const scanCode = (start: number, stopAtClosingBrace: boolean): number => {
@@ -36,9 +83,10 @@ const tokenizeJavaScript = (source: string): Token[] => {
 
     while (index < source.length) {
       const character = source[index];
+      const code = source.charCodeAt(index);
       const next = source[index + 1];
 
-      if (/\s/.test(character)) {
+      if (isSpaceCode(code)) {
         index++;
         continue;
       }
@@ -113,7 +161,7 @@ const tokenizeJavaScript = (source: string): Token[] => {
             index++;
           } else if (source[index] === "/" && !inCharacterClass) {
             index++;
-            while (/[A-Za-z]/.test(source[index] ?? "")) index++;
+            while (index < source.length && isAlphaCode(source.charCodeAt(index))) index++;
             break;
           } else {
             index++;
@@ -124,19 +172,19 @@ const tokenizeJavaScript = (source: string): Token[] => {
         continue;
       }
 
-      if (isIdentifierStart(character)) {
+      if (isIdStartCode(code)) {
         const tokenStart = index++;
-        while (index < source.length && isIdentifierPart(source[index])) index++;
+        while (index < source.length && isIdPartCode(source.charCodeAt(index))) index++;
         const value = source.slice(tokenStart, index);
         tokens.push({ type: "identifier", value, start: tokenStart, end: index });
-        canStartRegex = ["case", "delete", "return", "throw", "typeof", "void", "yield"].includes(value);
+        canStartRegex = REGEX_PRECEDING_IDENTIFIERS.has(value);
         statementExpected = STATEMENT_PREFIX_KEYWORDS.has(value);
         continue;
       }
 
-      if (/[0-9]/.test(character)) {
+      if (isDigitCode(code)) {
         index++;
-        while (index < source.length && /[A-Za-z0-9_.]/.test(source[index])) index++;
+        while (index < source.length && isNumberPartCode(source.charCodeAt(index))) index++;
         canStartRegex = false;
         statementExpected = false;
         continue;
@@ -188,8 +236,7 @@ const tokenizeJavaScript = (source: string): Token[] => {
   return tokens.sort((left, right) => left.start - right.start);
 };
 
-export const findModuleSpecifiers = (source: string): ModuleSpecifier[] => {
-  const tokens = tokenizeJavaScript(source);
+const moduleSpecifiersFromTokens = (tokens: Token[]): ModuleSpecifier[] => {
   const specifiers: ModuleSpecifier[] = [];
 
   for (let index = 0; index < tokens.length; index++) {
@@ -223,11 +270,34 @@ export const findModuleSpecifiers = (source: string): ModuleSpecifier[] => {
   return specifiers;
 };
 
-export const findCallArgumentStringLiterals = (source: string): ModuleSpecifier[] => {
-  const tokens = tokenizeJavaScript(source);
-  return tokens.filter((token, index): token is Token & ModuleSpecifier =>
+const callArgumentLiteralsFromTokens = (tokens: Token[]): ModuleSpecifier[] =>
+  tokens.filter((token, index): token is Token & ModuleSpecifier =>
     token.type === "string" && ["(", ","].includes(tokens[index - 1]?.value),
   );
+
+export const findModuleSpecifiers = (source: string): ModuleSpecifier[] =>
+  moduleSpecifiersFromTokens(tokenizeJavaScript(source));
+
+export const findCallArgumentStringLiterals = (source: string): ModuleSpecifier[] =>
+  callArgumentLiteralsFromTokens(tokenizeJavaScript(source));
+
+export interface ScriptScan {
+  moduleSpecifiers: ModuleSpecifier[];
+  callArgumentLiterals: ModuleSpecifier[];
+}
+
+/**
+ * Tokenize `source` once and derive both the module specifiers and the
+ * call-argument string literals from the same token array. Equivalent to
+ * calling `findModuleSpecifiers` and `findCallArgumentStringLiterals`
+ * separately, at half the lexing cost. Dependency extraction needs both.
+ */
+export const scanScript = (source: string): ScriptScan => {
+  const tokens = tokenizeJavaScript(source);
+  return {
+    moduleSpecifiers: moduleSpecifiersFromTokens(tokens),
+    callArgumentLiterals: callArgumentLiteralsFromTokens(tokens),
+  };
 };
 
 /**

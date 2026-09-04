@@ -73,9 +73,11 @@ export interface TranspilePageResult {
   fileDependencies?: string[];
   serverScripts?: Record<string, {
     id: string;
+    mode: "server" | "stream";
     source: string;
     modulePath?: string;
     sourceFile?: string;
+    sourceLine?: number;
   }>;
 }
 export interface MinifyOptions {
@@ -118,9 +120,23 @@ export interface MinifyOptions {
 
 export interface DirectoryOptions {
   pages: string;
-  components: string;
+  /**
+   * Every configured components root, resolved to an absolute path (realpath
+   * when the directory exists), deduplicated, in author order. Normalized once
+   * in `config.ts`; consumers never re-check for a single string. Roots may sit
+   * outside the project root (monorepo shared components).
+   */
+  components: string[];
   out: string;
   api: string;
+}
+
+/** User-facing `directory` shape: `components` accepts one path or many. */
+export interface DirectoryInput {
+  pages?: string;
+  components?: string | string[];
+  out?: string;
+  api?: string;
 }
 
 export interface ScopingAttributesOptions {
@@ -240,7 +256,7 @@ export interface BascikConfigOptions {
 }
 
 export type UserConfig = {
-  directory?: Partial<DirectoryOptions>;
+  directory?: DirectoryInput;
   scoping?: {
     scriptBlocks?: boolean;
     inheritAttributes?: boolean;
@@ -296,8 +312,16 @@ export interface StoredPage {
   usedComponentsSet: Set<string>;
   /** Relative paths of local file dependencies referenced by build scripts on this page. */
   fileDependenciesSet?: Set<string>;
-  /** True when the stored HTML contains `data-bascik-server` script blocks. */
-  hasServerScripts: boolean;
+  /**
+   * Precomputed at store time (prompt 67). `undefined` when the page has no
+   * `data-bascik-server` / `data-bascik-stream` blocks; the server then takes
+   * the static/ETag/Brotli path. When defined, the server never rescans
+   * `content` and uses the plan's segments directly. A planner error
+   * (conflicting directives, unresolvable sidecar id) is stored as `{ error }`
+   * so one bad page yields a 500 for that page only and never blocks the rest
+   * of the site from loading.
+   */
+  serverScriptPlan?: import("./server-scripts.ts").ServerScriptPlan | { error: Error };
   /** Pre-computed ETag from the page content buffer for fast response headers. */
   etag?: string;
 }

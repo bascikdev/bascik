@@ -36,85 +36,9 @@ Output in the compiled HTML (`dist/index.html`):
 
 > **A few rules to know:** Top-level `import` and `await` are supported. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Write output with `console.log()`. Build scripts run during both dev and production builds. Component tags in the output are resolved normally, so your build script can emit `<my-card>` and it will be transpiled.
 
-## How Error Handling Works
+## Example Patterns
 
-Build scripts run as isolated Node.js ESM modules during transpilation. When a build script throws an exception, such as a missing file (`ENOENT`), a syntax error, or a failed network request, Bascik intercepts the error and reports it cleanly without crashing the dev server or CLI runner.
-
-### Terminal Error Formatting & Stack Remapping
-
-When a build script fails, Bascik prints the page file path along with the exact line and column number of the `<script data-bascik-build>` tag. Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source file and line offset:
-
-```text
-[bascik] build script error in "src/pages/deploying.html" at (line 14, column 3):
-Error: Cannot find module 'marked'
-    at src/pages/deploying.html:18:12
-```
-
-By filtering out the noise of internal V8 loader frames and child process execution headers, you only see the stack trace that relates directly to your templates and helper scripts. In VS Code or terminal emulators, you can `Cmd + Click` (or `Ctrl + Click`) the file reference directly in the error log to jump to the exact line in your source HTML file where the script failed.
-
-### Configuring Error Behavior
-
-You can control how script failures affect your build using the `scripts` error options in `bascik.config.ts`:
-
-```ts
-// bascik.config.ts
-export default {
-  scripts: {
-    onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
-    onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
-    onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
-  },
-};
-```
-
-Bascik supports three error modes:
-
-- `'error'` (default): Logs the error to `stderr` and throws an exception to immediately stop execution.
-- `'warn'`: Logs a warning to `stderr` and continues execution with an empty string replacement so the dev server stays active while you edit.
-- `'ignore'`: Silently ignores script execution errors.
-
-### Conflict Errors
-
-Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`) are mutually exclusive and cannot be combined on the same `<script>` tag:
-- Combining `data-bascik-build` and `data-bascik-server` is disallowed. A script can run at build time or at request time, but not both.
-- Combining `data-bascik-routes` with `data-bascik-build` or `data-bascik-server` is disallowed. Route generation scripts run independently at build time.
-
-Bascik throws an error with the file name and line position. The VS Code extension also highlights this as an error as you type.
-
-### Dynamic Route Context (BASCIK_ROUTE)
-
-When a build script runs inside a dynamic route template (for example, `src/pages/blog/[slug].html`), Bascik populates the `BASCIK_ROUTE` environment variable with a JSON string containing the current route parameters and custom data payload:
-
-```html
-<script data-bascik-build>
-  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-  console.log(`<h1>${data?.title || params?.slug}</h1>`);
-</script>
-```
-
-See [Dynamic Routes](/dynamic-routes) for the guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full list of variables available to build scripts.
-
-### Best Practices for Resilient Scripts
-
-When your build scripts read local files or fetch remote data, wrap file and network operations in `try / catch` blocks. Returning fallback markup or logging a warning keeps your page layout intact even if an external resource is temporarily missing:
-
-```ts
-// src/lib/md-renderer.ts
-import { readFile } from 'node:fs/promises';
-import { marked } from 'marked';
-
-export async function renderMd(filePath: string): Promise<string> {
-  try {
-    const md = await readFile(filePath, 'utf8');
-    return marked(md);
-  } catch (err) {
-    console.warn(`[md-renderer] Could not read ${filePath}: ${(err as Error).message}`);
-    return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
-  }
-}
-```
-
-## Example: Reading a Markdown File
+### Reading Markdown
 
 A common pattern is converting Markdown content to HTML at build time:
 
@@ -128,7 +52,7 @@ A common pattern is converting Markdown content to HTML at build time:
 </script>
 ```
 
-## Example: Generating a Nav from JSON
+### Generating Navigation from JSON
 
 Read a JSON data file and render HTML markup from it:
 
@@ -137,16 +61,14 @@ Read a JSON data file and render HTML markup from it:
   import { readFile } from 'node:fs/promises';
 
   const items = JSON.parse(await readFile('./content/nav.json', 'utf8'));
-  const links = items.map(item =>
-    `<li><a href="${item.href}">${item.label}</a></li>`
-  ).join('\n');
+  const links = items.map(item => `<li><a href="${item.href}">${item.label}</a></li>`).join('\n');
   console.log(`<ul>\n${links}\n</ul>`);
 </script>
 ```
 
-## Example: Fetching at Build Time
+### Fetching Remote Data at Build Time
 
-Node.js includes a global `fetch`. Use it to pull remote data at build time so the result is baked into the page:
+Node.js includes a global `fetch`. Use it to pull remote data at build time so the result is baked into static HTML:
 
 ```html
 <script data-bascik-build>
@@ -156,9 +78,9 @@ Node.js includes a global `fetch`. Use it to pull remote data at build time so t
 </script>
 ```
 
-## Head Components
+### Head Components & Dynamic Metadata
 
-Components work inside `<head>` as well as `<body>`. This lets you extract repeated meta tags, link tags, or any other head content into a reusable component:
+Build scripts work inside `<head>` as well as `<body>`. This lets you extract repeated meta tags or link tags into dynamic reusable components:
 
 ```html
 <!-- src/components/site-meta.html -->
@@ -172,24 +94,56 @@ Components work inside `<head>` as well as `<body>`. This lets you extract repea
 <head>
   <title>Home</title>
   <site-meta></site-meta>
+  <script data-bascik-build>
+    const apiUrl = process.env.API_URL ?? 'https://api.example.com';
+    console.log(`<meta name="api-url" content="${apiUrl}" />`);
+  </script>
 </head>
 ```
 
-Bascik resolves the component tag the same way it does in body content, the component HTML is substituted in place. CSS scoping and prop injection work normally.
+## Shared Modules & Import Aliases
 
-## When to Use Build Scripts
+Build scripts are standard Node.js ESM modules. You can write utility functions in your project and import them across pages with no special Bascik API required:
 
-Build scripts are the right tool when:
+```js
+// scripts/render-cards.ts
+import { readFile } from 'node:fs/promises';
 
-- Content lives in a file or API outside the HTML source (Markdown, JSON, CSV, remote endpoints).
-- You need to repeat the same transformation across multiple pages without copy-pasting logic.
-- Generated markup should be part of the static HTML output rather than rendered on the client.
+export async function renderCards(jsonPath: string) {
+  const items = JSON.parse(await readFile(jsonPath, 'utf8'));
+  return items.map(item => `
+    <div class="card">
+      <h3>${item.title}</h3>
+      <p>${item.description}</p>
+    </div>
+  `).join('\n');
+}
+```
 
-Prefer plain hardcoded HTML when the content is short, stable, and doesn't come from an external source.
+> **Import paths in build scripts:** You can use standard static imports, bare imports, `export ... from`, and dynamic `import()`. Bascik rewrites genuine `./` and `../` ESM specifiers relative to the containing page, component, or external script file.
 
-## npm Packages
+### Import Root Aliases (`@/`)
 
-A Bascik project is a Node.js project, so any npm package can be installed and used in build scripts. Install it once and import it anywhere:
+Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
+
+```html
+<script data-bascik-build>
+  import { renderMd } from '@/lib/md-renderer.ts';
+  console.log(await renderMd('./content/about.md'));
+</script>
+```
+
+`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. The alias also works in `<script data-bascik-server>`, `<script data-bascik-stream>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
+
+- **Helper resolution:** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use standard `./` or `../`.
+- **Data paths:** Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their standard `process.cwd()` semantics.
+- **Bare leading `/` is an error:** `import x from '/lib/x.ts'` (or `src="/lib/x.ts"`) inside a Bascik script is rejected because a leading slash is ambiguous between the filesystem root and site root. The error names both valid rewrites: `@/lib/x.ts` for the import root or `./lib/x.ts` for a path relative to the file. Plain client `<script>` tags are unaffected.
+
+Editing an alias-imported helper invalidates the script cache and, in dev mode, rebuilds the pages that depend on it automatically. Bascik watches the import root directory in dev mode and rebuilds only dependent pages. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared directory.
+
+## npm Packages in Build Scripts
+
+A Bascik project is a standard Node.js project, so any npm package can be installed and used in build scripts. Install it once and import it anywhere:
 
 ```sh
 npm install gray-matter
@@ -211,54 +165,6 @@ npm install gray-matter
 </script>
 ```
 
-## Shared Scripts
-
-Build scripts are just ESM modules. You can write utility functions in your project and import them across pages with no special Bascik API required:
-
-```js
-// scripts/render-cards.js
-import { readFile } from 'node:fs/promises';
-
-export async function renderCards(jsonPath) {
-  const items = JSON.parse(await readFile(jsonPath, 'utf8'));
-  return items.map(item => `
-    <div class="card">
-      <h3>${item.title}</h3>
-      <p>${item.description}</p>
-    </div>
-  `).join('\n');
-}
-```
-
-```html
-<script data-bascik-build>
-  import { renderCards } from './scripts/render-cards.js';
-
-  console.log(await renderCards('./content/team.json'));
-</script>
-```
-
-> **Import paths in build scripts:** You can use standard static imports, bare imports, `export ... from`, and dynamic `import()`. Bascik rewrites genuine `./` and `../` ESM specifiers relative to the containing page, component, or external script file. Import-like text in comments, strings, template raw text, and regular expression literals is left unchanged, while imports inside `${...}` template expressions are resolved normally.
-
-### Import root aliases
-
-Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
-
-```html
-<script data-bascik-build>
-  import { renderMd } from '@/lib/md-renderer.ts';
-  console.log(await renderMd('./content/about.md'));
-</script>
-```
-
-`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. The alias also works in `<script data-bascik-server>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
-
-> **Only script blocks are rewritten.** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use `./` or `../`. Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their `process.cwd()` semantics. Only the exact `@/` prefix is an alias; scoped packages such as `@scope/pkg` are left for Node to resolve.
-
-> **A bare leading `/` is a compile error.** `import x from '/lib/x.ts'` (or `src="/lib/x.ts"`) inside a Bascik script is rejected, because a leading slash is ambiguous: Node reads it as the filesystem root, HTML reads it as the site root. The error names both valid rewrites, `@/lib/x.ts` for the import root or `./lib/x.ts` for a path relative to the file. This is a hard error regardless of `scripts.onBuildScriptError`, since it is a mistake in the HTML rather than a runtime failure of your script. Plain client `<script>` tags are unaffected.
-
-Editing an alias-imported helper invalidates the script cache and, in dev mode, rebuilds the pages that depend on it automatically. Bascik watches the import root directory in dev mode and rebuilds only the dependent pages when a helper changes. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared folder.
-
 ## Environment Variables
 
 Environment variables set in your shell or a `.env` file (Bascik loads `./.env` automatically at startup; no dependency needed) are available via `process.env`. Use this for API keys, deployment URLs, or feature flags that should be baked into the build without shipping to the browser:
@@ -270,7 +176,7 @@ Environment variables set in your shell or a `.env` file (Bascik loads `./.env` 
 </script>
 ```
 
-### `BASCIK_SITE_URL` is both an input and an output
+### `BASCIK_SITE_URL`
 
 As an **input**, you set the site URL for the build via `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (see [Configuration precedence](/configuration#configuration-precedence)). As an **output**, Bascik forwards the resolved value to every build script as `BASCIK_SITE_URL`, so scripts can emit absolute canonical or Open Graph URLs.
 
@@ -286,62 +192,120 @@ When no source provides a value, the variable is **absent** from the script's en
 
 ### `BASCIK_BASE`
 
-Bascik forwards the normalized `base` config value to every build script as `BASCIK_BASE`. It is always present and defaults to `/`. This is useful when build output must expose the deployment prefix to client code, because Bascik deliberately does not rewrite URLs assembled inside JavaScript.
-
-The following is an illustrative pattern. Adapt the element and attribute placement to the page structure rather than treating it as a required API:
+Bascik forwards the normalized `base` config value to every build script as `BASCIK_BASE`. It is always present and defaults to `/`. This is useful when build output must expose the deployment prefix to client code, because Bascik deliberately does not rewrite URLs assembled inside JavaScript:
 
 ```html
 <!-- Emit the base once, at build time, into a data attribute. -->
 <script data-bascik-build>
-  console.log(`data-base="${process.env.BASCIK_BASE ?? "/"}"`);
+  console.log(`data-base="${process.env.BASCIK_BASE ?? '/'}"`);
 </script>
 ```
 
-Client code can read the emitted data attribute and prefix a runtime URL. The value was selected during the build, and reading it from the DOM adds no Bascik runtime.
+Client code can read the emitted data attribute and prefix a runtime URL.
 
-## Batched Execution
+### Dynamic Route Context (`BASCIK_ROUTE`)
 
-Uncached build scripts on a page are written to separate temporary modules and evaluated sequentially by one child-process runner. Their outputs are mapped back to the original tags and inserted in document order. Warm cache hits skip child-process execution entirely.
+When a build script runs inside a dynamic route template (for example, `src/pages/blog/[slug].html`), Bascik populates the `BASCIK_ROUTE` environment variable with a JSON string containing the current route parameters and custom data payload:
 
 ```html
-<!-- These scripts share one batch runner. -->
-<head>
-  <script data-bascik-build>
-    const { canonical } = await import(…);
-    console.log(await canonical());
-  </script>
-  <script data-bascik-build>
-    const { openGraph } = await import(…);
-    console.log(await openGraph());
-  </script>
-  <script data-bascik-build>
-    const { breadcrumbLd } = await import(…);
-    console.log(await breadcrumbLd());
-  </script>
-  <script data-bascik-build>
-    const { articleSchema } = await import(…);
-    console.log(await articleSchema());
-  </script>
-</head>
-<!-- Output is assembled in document order. -->
+<script data-bascik-build>
+  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+  console.log(`<h1>${data?.title || params?.slug}</h1>`);
+</script>
 ```
 
-## Script Caching
+See [Dynamic Routes](/dynamic-routes) for the complete guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full reference of variables available to build scripts.
 
-When a page needs the same data in several places, read or fetch it **once at page level** in a single build script and apply it everywhere, not once per component instance. See the [fetch-once pattern](/how-to/templating#the-fetch-once-pattern) on the Templating page.
+## Error Handling & Stack Remapping
 
-Bascik caches build script output to `node_modules/.cache/bascik/script-cache/` so subsequent builds skip the Node.js subprocess entirely for unchanged scripts. The cache key is a SHA-256 hash of:
+Build scripts run as isolated Node.js ESM modules during transpilation. When a build script throws an exception (such as `ENOENT`, a syntax error, or a failed network fetch), Bascik intercepts the error and reports it cleanly without crashing the dev server or CLI runner.
+
+### Terminal Error Formatting
+
+When a build script fails, Bascik prints the page file path along with the exact line and column number of the `<script data-bascik-build>` tag. Bascik automatically filters out internal V8 and child-process execution noise, remapping execution offsets back to your source file:
+
+```text
+[bascik] build script error in "src/pages/about.html" at (line 14, column 3):
+Error: Cannot find module 'marked'
+    at src/pages/about.html:18:12
+```
+
+In VS Code or modern terminal emulators, `Cmd + Click` (or `Ctrl + Click`) the file reference directly in the error log to jump straight to the source HTML line where the script failed.
+
+### Configuring Error Behavior
+
+Control failure handling using `scripts.onBuildScriptError` in `bascik.config.ts`:
+
+- `'error'` (default): Logs to `stderr` and immediately halts execution.
+- `'warn'`: Logs a warning to `stderr` and continues execution with an empty string replacement so the dev server stays active while you edit.
+- `'ignore'`: Silently replaces the failed script with an empty string.
+
+```ts
+// bascik.config.ts
+export default {
+  scripts: {
+    onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
+    onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
+    onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
+  },
+};
+```
+
+### Directive Conflicts
+
+Directives (`data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, `data-bascik-stream`) are mutually exclusive and cannot be combined on the same `<script>` tag:
+
+- Combining `data-bascik-build` with `data-bascik-server` or `data-bascik-stream` is disallowed (a script runs at build time or request time, not both).
+- Combining `data-bascik-server` and `data-bascik-stream` is disallowed (choose buffered or streaming execution).
+- Combining `data-bascik-routes` with other directives is disallowed (route scripts run independently).
+
+### Best Practices for Resilient Scripts
+
+When build scripts read local files or fetch remote data, wrap operations in `try / catch` blocks. Returning fallback markup or logging a warning keeps your page layout intact even if an external resource is temporarily unavailable:
+
+```ts
+// src/lib/md-renderer.ts
+import { readFile } from 'node:fs/promises';
+import { marked } from 'marked';
+
+export async function renderMd(filePath: string): Promise<string> {
+  try {
+    const md = await readFile(filePath, 'utf8');
+    return marked(md);
+  } catch (err) {
+    console.warn(`[md-renderer] Could not read ${filePath}: ${(err as Error).message}`);
+    return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
+  }
+}
+```
+
+## Performance: Batching & Output Caching
+
+### Batched Execution
+
+Uncached build scripts on a page are written to separate temporary modules and evaluated sequentially by one child-process runner. Their outputs are mapped back to original tags and inserted in document order:
+
+- Avoid calling `process.exit()` inside build scripts, as it terminates the batch runner and fails sibling scripts.
+- Avoid mutating global process state (`process.chdir()`, patching globals) between scripts on the same page.
+- If a build script emits nothing, Bascik replaces the tag with an empty string. Standard stdout is buffered up to 10 MB per script run.
+
+### SHA-256 Script Caching
+
+When a page needs the same data in several places, read or fetch it **once at page level** in a single build script and pass it down, rather than re-fetching per component instance (see the [fetch-once pattern](/how-to/templating#the-fetch-once-pattern)).
+
+Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`. Subsequent builds skip subprocess execution entirely for unchanged scripts. The cache key is a SHA-256 hash of:
 
 - The authored script body before temporary-module import rewriting
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
 
-### Invalidation Limits and Scoped Exclusions
+### Invalidation Limits & Cache Exclusions
 
-Bascik statically scans genuine relative ESM specifiers and quoted local data paths. ESM dependencies resolve from their containing script file, while generic data paths resolve from the project root. It **cannot** detect runtime dependencies such as:
+Bascik statically scans genuine relative ESM specifiers and quoted local data paths. It **cannot** detect runtime dependencies such as:
+
 - Network API calls and database queries
 - Directory reads (`readdir`)
-- Computed / dynamic file paths (e.g. `join(dir, name)` or template strings)
+- Computed or dynamic file paths (e.g. `join(dir, name)` or template strings)
 - Transitive dependencies inside external npm packages
 - Process environment variables not explicitly tracked in the key
 
@@ -349,6 +313,8 @@ If your script reads from any of these sources, configure `scripts.cache.exclude
 
 ```ts
 // bascik.config.ts
+import { defineConfig } from '@bascik/bascik/config';
+
 export default defineConfig({
   scripts: {
     cache: {
@@ -359,31 +325,21 @@ export default defineConfig({
 });
 ```
 
-**This includes the fetch-once pattern.** A script that fetches from a remote API once at page level still has a cache key that cannot see the network response, so it will be served from cache with stale data across builds. Exclude any page or component whose build script depends on network data, or disable the cache for it. See [Templating](/how-to/templating#the-fetch-once-pattern) for the full pattern and warning.
-
 To clear the cache manually:
 
 ```sh
 rm -rf node_modules/.cache/bascik/script-cache
 ```
 
-### Batch Isolation Constraints
+## Rules & Limitations
 
-To optimize performance, multiple uncached build scripts on the same page are batched in a single Node.js child process. Keep in mind:
-- Avoid calling `process.exit()` inside build scripts, as it terminates the batch runner and fails sibling scripts.
-- Avoid mutating global process state (`process.chdir()`, patching globals) between scripts on the same page.
-- If a build script emits nothing, Bascik replaces the tag with an empty string. Standard stdout is buffered up to 10 MB per script run.
+- **When to use build scripts:** Use build scripts when content lives in a file or API outside HTML source (Markdown, JSON, CSV, remote endpoints), when repeating transformations across pages, or when markup should be static. Prefer vanilla hardcoded HTML when content is short, stable, and self-contained.
+- **No streaming:** The full stdout of a build script is collected before injection. For streaming HTML chunks at request time, see [Stream Scripts](/stream-scripts).
+- **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Files outside all of those need a restart or a `watchPaths` entry (see [Watch Paths](/watch-paths)).
+- **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`.
+- **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
 
-> **Testing Build Scripts:** Read the [Build Scripts Testing Guide](/testing/build-scripts) to learn how to isolate build-time data pipelines into testable TypeScript modules, mock page environment variables, and verify fallback markup with Vitest.
-
-## Limitations
-
-- **No streaming:** the full stdout of the script is collected before injection. You cannot stream HTML into the page incrementally.
-- **No HMR awareness:** Local files a build script imports or reads are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild the dependent pages. Files outside all of those (or fetched over the network) need a restart or a `watchPaths` entry.
-- **ESM only:** Build scripts run as ES modules. Use `import`/`export` syntax; `require()` is not available. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`. The `.mjs` extension explicitly marks a file as ESM regardless of `package.json` settings; the "m" stands for "module." In a Bascik project with `"type": "module"` in `package.json` (the default), plain `.js` and `.ts` work identically, so `.mjs` is usually unnecessary.
-- **Node.js only:** browser globals like `window` and `document` are not available in build scripts.
-
-For per-request server-side rendering, see [Server scripts](/server).
+For per-request server-side rendering, see [Server Scripts](/server-scripts).
 
 <!-- demo:source-usage -->
 ```html

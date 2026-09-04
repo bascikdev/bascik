@@ -1,7 +1,7 @@
 import zlib from "node:zlib";
 import { relative, resolve } from "node:path";
 import { getHttpPath } from "./paths.ts";
-import { htmlHasServerScripts } from "./server-scripts.ts";
+import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { makeEtag } from "./names.ts";
 import type { StoredPage } from "./types.ts";
@@ -101,6 +101,22 @@ class MemoryStore {
       this.#files.get(httpPath)?.fileDependenciesSet,
     );
 
+    // The server-script plan is computed exactly once here, off the request
+    // path. Pages without scripts pay only a Buffer `includes` pre-filter.
+    // Planner errors are stored, not thrown: in dev the page must still be
+    // stored so the overlay can show the error, and in production boot one
+    // bad page must not stop the others from loading.
+    let serverScriptPlan: StoredPage["serverScriptPlan"];
+    if (htmlHasServerScripts(buffer)) {
+      try {
+        serverScriptPlan = planServerScripts(buffer.toString("utf8"), absolutePagePath);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(`[bascik] server-script plan failed for "${relativePagePath}": ${error.message}`);
+        serverScriptPlan = { error };
+      }
+    }
+
     const storedPage: StoredPage = {
       relativePagePath,
       absolutePagePath,
@@ -109,7 +125,7 @@ class MemoryStore {
       compressedContent: undefined,
       usedComponentsSet,
       fileDependenciesSet,
-      hasServerScripts: htmlHasServerScripts(pageContent),
+      serverScriptPlan,
     };
 
     // Store the raw content immediately so the page is servable right away.

@@ -95,8 +95,8 @@ Four native filesystem watchers (chokidar) handle source file updates in develop
 
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
-3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
-4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and `directory.components` are excluded when nested inside it.
+3. **Component watcher:** Listens for changes in every configured `directory.components` root. This is the only watcher with `followSymlinks: true`, so a symlinked directory inside a root triggers rebuilds; chokidar reports the link path, which is what the inverted component index expects. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
+4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
 
 ### Live reload (`live-reload.ts`, `sse.ts`)
 
@@ -136,22 +136,30 @@ Only non-HTML static assets, images, fonts, favicons, the webmanifest, and any o
 
 At boot time, `serve.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
 
-### Per-request `data-bascik-server` execution (`server-scripts.ts`)
+### Per-request `data-bascik-server` and `data-bascik-stream` execution (`server-scripts.ts`)
 
-Pages containing `<script data-bascik-server>` blocks are executed on every request:
+During memory store indexing (`mem.ts#storePage`), Bascik precomputes a `serverScriptPlan` containing alternating static byte chunks and script segment descriptors with their configured execution mode (`server` or `stream`). In production boot, `loadSidecar` runs before the store loop so sidecar metadata (including schema version 2 with script `mode`) is registered in memory. If a sidecar entry is missing or invalid, a clear stale-sidecar build error is reported.
 
-1. **Request context packaging:** Bascik provides explicit `{ req }` context (`path`, `method`, `headers`, `searchParams`) and `{ signal }` for timeout/cancellation to the script function.
-2. **In-process ScriptRegistry execution:** Server scripts run in-process as Node.js ESM modules via `ScriptRegistry`, avoiding the overhead and concurrency limits of child processes. Top-level `await` and `import` are fully supported. Before inline source is encoded as a data URI, genuine relative ESM specifiers are rewritten against the containing HTML file and import-root specifiers (`@/`) against `scripts.importRoot`. External `src` scripts (which accept the same aliases) resolve their imports against the external script file instead.
-3. **Markup injection:** The script's returned markup replaces the `<script data-bascik-server>` tag in the response HTML.
-4. **Source remapping:** Exceptions and stack traces are remapped back to source HTML filenames and line numbers (`stack-trace.ts`).
+When a request arrives:
+
+1. **Plan evaluation and buffered path:** If the page plan contains no script segments, or only `server` scripts, or if the HTTP method is `HEAD`, the request handler takes the buffered execution path. All `server` scripts execute concurrently in-process via `ScriptRegistry`. If any script throws under `scripts.onServerScriptError: 'error'`, execution halts and the server responds with an HTTP 500 error page. When all scripts resolve, the full document is assembled, headers (including `Content-Length` and `ETag`) are set, compression is applied if eligible, and the complete buffered response is sent.
+2. **Two-phase stream execution:** If the plan contains at least one `stream` script segment and the method is not `HEAD`:
+   - **Phase 1 (Server script resolution):** All `server` scripts on the page resolve first via `ScriptRegistry`. If any `server` script fails under `scripts.onServerScriptError: 'error'`, the response aborts with an HTTP 500 before any byte reaches the network.
+   - **Phase 2 (Header commit and ordered chunk delivery):** Once all `server` scripts succeed, the server commits response headers (`transfer-encoding: chunked` on HTTP/1.1 or DATA frames on HTTP/2, `cache-control: private, no-store`, without `Content-Length`, `ETag`, or Brotli `Content-Encoding`). Static HTML bytes prior to the first stream tag are flushed immediately. All `stream` script jobs run concurrently, but their resulting chunks are written to the response sink in exact source document order.
+3. **Backpressure and disconnect handling:** Chunk writes check the return value of `res.write()`. If a write returns `false`, production pauses until the underlying socket emits `drain`. If the client disconnects before streaming completes (`close` event), all pending script jobs are aborted immediately via their passed `AbortSignal` (`{ signal }`), and `res.end()` is never called on a destroyed stream.
+4. **Post-commit errors:** Because response headers are already committed before `stream` output begins, a runtime error in a `data-bascik-stream` script cannot return an HTTP 500. Instead, the error is logged at the configured severity (`scripts.onServerScriptError`), an empty string is emitted for that slot, and the rest of the document streams to completion. The author's placeholder markup remains in the DOM.
+
+#### Why stream pages skip ETag, Brotli, and `content-length`
+
+HTTP chunked streaming delivers bytes incrementally as they are produced. Calculating a `Content-Length` or `ETag` requires buffering the entire response in memory first, which defeats the purpose of early flushing. Similarly, max-quality Brotli compression (`BROTLI_MAX_QUALITY = 11`) requires large sliding lookahead buffers that prevent immediate chunk delivery. Consequently, pages with active `stream` scripts omit `Content-Length`, `ETag`, and Brotli `Content-Encoding` headers and emit `Cache-Control: private, no-store`.
 
 ### Caching and performance (`http.httpCache`)
 
 Production mode enables `http.httpCache: true` by default:
 
-- **ETag support:** Generates strong ETag hashes for HTML responses and returns `304 Not Modified` when the client's `if-none-match` header matches.
+- **ETag support:** Generates strong ETag hashes for static assets and buffered HTML responses (pages without `data-bascik-stream` scripts), returning `304 Not Modified` when the client's `if-none-match` header matches.
 - **Cache-Control headers:** Adds `Cache-Control: public, max-age=3600` to static assets.
-- **Max-quality Brotli compression:** Uses `BROTLI_MAX_QUALITY = 11` for optimal bandwidth savings.
+- **Max-quality Brotli compression:** Uses `BROTLI_MAX_QUALITY = 11` for static assets and buffered HTML responses for optimal bandwidth savings. Streaming responses bypass compression to preserve real-time chunk delivery.
 
 ### Production rate limiting
 

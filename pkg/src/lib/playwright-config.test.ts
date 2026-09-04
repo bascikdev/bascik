@@ -15,6 +15,7 @@ describe('Playwright project test selection', () => {
   it.each([
     [staticConfig, [
       '**/server-scripts.test.ts',
+      '**/server-scripts-stream.test.ts',
       '**/api-routes.test.ts',
       '**/dev-server-reload.test.ts',
       '**/prod-server.test.ts',
@@ -24,7 +25,6 @@ describe('Playwright project test selection', () => {
       '**/base-serving.test.ts',
     ]],
     [devConfig, [
-      '**/server-scripts.test.ts',
       '**/prod-server.test.ts',
       '**/sitemap.test.ts',
       '**/exec.test.ts',

@@ -1,0 +1,454 @@
+[
+  [
+    "a = b / c / d / e;",
+    "a=b / c / d / e;"
+  ],
+  [
+    "x /= 2; y /= z / 3;",
+    "x/=2;y/=z / 3;"
+  ],
+  [
+    "const r = (a + b) / (c - d) / e;",
+    "const r=(a+b)/ (c - d) /e;"
+  ],
+  [
+    "arr[0] / arr[1] / 2",
+    "arr[0]/ arr[1] /2"
+  ],
+  [
+    "obj.prop / other.prop",
+    "obj.prop / other.prop"
+  ],
+  [
+    "count++ / 2",
+    "count++/ 2"
+  ],
+  [
+    "a-- / b",
+    "a--/ b"
+  ],
+  [
+    "x = 1 / 2 /* c */ / 3;",
+    "x=1 / 2 / 3;"
+  ],
+  [
+    "return/*x*/value;",
+    "return value;"
+  ],
+  [
+    "typeof/**/x",
+    "typeof x"
+  ],
+  [
+    "a /* one */ / /* two */ b",
+    "a / b"
+  ],
+  [
+    "let a = 1 // trailing\n/ 2",
+    "let a=1;/ 2"
+  ],
+  [
+    "foo // c1\n// c2\nbar",
+    "foo;bar"
+  ],
+  [
+    "if (a) /* c */ b(); else /* d */ c();",
+    "if(a)b();else c();"
+  ],
+  [
+    "return /ab+c/.test(s);",
+    "return/ab+c/.test(s);"
+  ],
+  [
+    "case /x/: break;",
+    "case/x/:break;"
+  ],
+  [
+    "throw /err/;",
+    "throw/err/;"
+  ],
+  [
+    "typeof /re/",
+    "typeof/re/"
+  ],
+  [
+    "void /re/g",
+    "void/re/g"
+  ],
+  [
+    "x = a in /re/",
+    "x=a in/re/"
+  ],
+  [
+    "yield /y/",
+    "yield/y/"
+  ],
+  [
+    "await /aw/i",
+    "await/aw/i"
+  ],
+  [
+    "new /x/",
+    "new/x/"
+  ],
+  [
+    "do /x/.test(y); while(0)",
+    "do/x/.test(y);while(0)"
+  ],
+  [
+    "default: /x/",
+    "default:/x/"
+  ],
+  [
+    "instanceof /x/",
+    "instanceof/x/"
+  ],
+  [
+    "of /x/",
+    "of/x/"
+  ],
+  [
+    "delete /x/",
+    "delete/x/"
+  ],
+  [
+    "= /a/g; ( /b/ ); [ /c/ ]; , /d/; : /e/; ! /f/; ? /g/; & /h/; | /i/; + /j/; - /k/; * /l/; ; /m/",
+    "=/a/g;(/b/);[/c/];,/d/;:/e/;!/f/;?/g/;&/h/;|/i/;+/j/;-/k/;*/l/;;/m/"
+  ],
+  [
+    "x = y ? /a/ : /b/;",
+    "x=y?/a/:/b/;"
+  ],
+  [
+    "const re = /^\\d+$/; const m = s.match(re);",
+    "const re=/^\\d+$/;const m=s.match(re);"
+  ],
+  [
+    "return   /x/",
+    "return/x/"
+  ],
+  [
+    "return\n/x/",
+    "return/x/"
+  ],
+  [
+    "returnx / y",
+    "returnx / y"
+  ],
+  [
+    "notreturn / y",
+    "notreturn / y"
+  ],
+  [
+    "$ / y",
+    "$ / y"
+  ],
+  [
+    "_ / y",
+    "_ / y"
+  ],
+  [
+    "a9 / y",
+    "a9 / y"
+  ],
+  [
+    "/[/]/.test(x)",
+    "/[/]/.test(x)"
+  ],
+  [
+    "/[^/]+/g.exec(p)",
+    "/[^/]+/g.exec(p)"
+  ],
+  [
+    "x = /a[/]b/;",
+    "x=/a[/]b/;"
+  ],
+  [
+    "/[\\]/]/",
+    "/[\\]/]/"
+  ],
+  [
+    "/a\\/b/",
+    "/a\\/b/"
+  ],
+  [
+    "/\\\\/",
+    "/\\\\/"
+  ],
+  [
+    "/a\\\\/ / b",
+    "/a\\\\// b"
+  ],
+  [
+    "'a\\'b' / c",
+    "'a\\'b'/ c"
+  ],
+  [
+    "\"a\\\"b\" / c",
+    "\"a\\\"b\"/ c"
+  ],
+  [
+    "'\\\\' / x",
+    "'\\\\'/ x"
+  ],
+  [
+    "`\\`` / x",
+    "`\\``/ x"
+  ],
+  [
+    "`a ${b / c} d`",
+    "`a ${b / c} d`"
+  ],
+  [
+    "`line1\nline2   spaced`",
+    "`line1\nline2   spaced`"
+  ],
+  [
+    "'x' + \"y\" + `z`",
+    "'x'+\"y\"+`z`"
+  ],
+  [
+    "`${`nested ${x}`}`",
+    "`${`nested ${x}`}`"
+  ],
+  [
+    "\"//not comment\" / x",
+    "\"//not comment\"/ x"
+  ],
+  [
+    "'/* not comment */' / x",
+    "'/* not comment */'/ x"
+  ],
+  [
+    "a\n++b",
+    "a;++b"
+  ],
+  [
+    "a\n--b",
+    "a;--b"
+  ],
+  [
+    "a++\nb",
+    "a++b"
+  ],
+  [
+    "x\n?.y",
+    "x?.y"
+  ],
+  [
+    "x\n?.[0]",
+    "x?.[0]"
+  ],
+  [
+    "a\n.b()",
+    "a.b()"
+  ],
+  [
+    "return\nx",
+    "return;x"
+  ],
+  [
+    "let a = 1\nlet b = 2",
+    "let a=1;let b=2"
+  ],
+  [
+    "f()\ng()",
+    "f();g()"
+  ],
+  [
+    "a = b +\nc",
+    "a=b+c"
+  ],
+  [
+    "a = b\n+ c",
+    "a=b+c"
+  ],
+  [
+    "if (x) {\n}\nelse {\n}",
+    "if(x){}else{}"
+  ],
+  [
+    "try {\n} catch (e) {\n} finally {\n}",
+    "try{}catch(e){}finally{}"
+  ],
+  [
+    "do {\n} while (x)",
+    "do{}while(x)"
+  ],
+  [
+    "x = {\na: 1,\nb: 2\n}",
+    "x={a:1,b:2}"
+  ],
+  [
+    "}\n)",
+    "})"
+  ],
+  [
+    "1 .toString()",
+    "1 .toString()"
+  ],
+  [
+    "1.5.toFixed()",
+    "1.5.toFixed()"
+  ],
+  [
+    "a . b . c",
+    "a.b.c"
+  ],
+  [
+    "a + + b",
+    "a+ +b"
+  ],
+  [
+    "a - - b",
+    "a- -b"
+  ],
+  [
+    "a + +b",
+    "a+ +b"
+  ],
+  [
+    "x = a++ + ++b",
+    "x=a++ + ++b"
+  ],
+  [
+    "'unterminated",
+    "'unterminated"
+  ],
+  [
+    "\"unterminated",
+    "\"unterminated"
+  ],
+  [
+    "`unterminated ${",
+    "`unterminated ${"
+  ],
+  [
+    "/* unterminated",
+    ""
+  ],
+  [
+    "// unterminated",
+    ""
+  ],
+  [
+    "/unterminated regex",
+    "/unterminated regex"
+  ],
+  [
+    "= /unterminated\nnext",
+    "=/unterminated;next"
+  ],
+  [
+    "'a\\",
+    "'a\\"
+  ],
+  [
+    "/",
+    "/"
+  ],
+  [
+    "//",
+    ""
+  ],
+  [
+    "/*",
+    ""
+  ],
+  [
+    "*/",
+    "*/"
+  ],
+  [
+    "\\",
+    "\\"
+  ],
+  [
+    "/[",
+    "/["
+  ],
+  [
+    "/[a",
+    "/[a"
+  ],
+  [
+    "= /[/",
+    "=/[/"
+  ],
+  [
+    "= /\\",
+    "=/\\"
+  ],
+  [
+    "a /",
+    "a /"
+  ],
+  [
+    "a / ",
+    "a /"
+  ],
+  [
+    "/\n/",
+    "//"
+  ],
+  [
+    "(function(){ const el = document.getElementById('x'); el.addEventListener('click', () => { console.log(1 / 2); }); })();",
+    "(function(){const el=document.getElementById('x');el.addEventListener('click',()=>{console.log(1 / 2);});})();"
+  ],
+  [
+    "export default function f(a, b) {\n  // divide\n  return a / b;\n}",
+    "export default function f(a,b){return a / b;}"
+  ],
+  [
+    "const url = 'https://x.test/path'; // comment\nfetch(url).then(r => r.json())",
+    "const url='https://x.test/path';fetch(url).then(r=>r.json())"
+  ],
+  [
+    "for (let i = 0; i < n; i++) { total += arr[i] / n; }",
+    "for(let i=0;i<n;i++){total+=arr[i] / n;}"
+  ],
+  [
+    "while (x) x /= 2",
+    "while(x)x/=2"
+  ],
+  [
+    "label: for (;;) { break label }",
+    "label:for(;;){break label}"
+  ],
+  [
+    "class A extends B { m() { return super.m() / 2 } }",
+    "class A extends B{m(){return super.m()/ 2}}"
+  ],
+  [
+    "import x from 'y';\nexport { x }",
+    "import x from'y';export{x}"
+  ],
+  [
+    "async function f() { return await g() / 2 }",
+    "async function f(){return await g()/ 2}"
+  ],
+  [
+    "function* g() { yield /re/; yield x / y }",
+    "function*g(){yield/re/;yield x / y}"
+  ],
+  [
+    "switch (x) { case 1: return /a/; default: return a / b }",
+    "switch(x){case 1:return/a/;default:return a / b}"
+  ],
+  [
+    "x = { a: /re/, b: c / d }",
+    "x={a:/re/,b:c / d}"
+  ],
+  [
+    "arr.map(x => x / 2).filter(x => /^\\d/.test(x))",
+    "arr.map(x=>x / 2).filter(x=>/^\\d/.test(x))"
+  ],
+  [
+    "a = b\n/re/.test(c)",
+    "a=b;/re/.test(c)"
+  ],
+  [
+    "a = b\n/ c / d",
+    "a=b;/ c / d"
+  ]
+]

@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { components: "src/components" },
+    directory: { components: ["src/components"] },
     scoping: {
       deduplicateCss: true,
       preserve: [],

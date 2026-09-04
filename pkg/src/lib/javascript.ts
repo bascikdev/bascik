@@ -77,6 +77,18 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
+import { findComponentRoot } from "./component-roots.ts";
+import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+
+/**
+ * A `<script>` open tag carrying any Bascik directive (`build`, `server`,
+ * `routes`, `stream`) as a WHOLE attribute name. Such scripts run in Node and
+ * are never scoped or wrapped as browser JS. Whole-name matching means an
+ * unrelated `data-bascik-server-foo` attribute leaves the script an ordinary
+ * client script.
+ */
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import {
   addElementClassesInHtml,
@@ -444,7 +456,7 @@ export const prefixElementAttribute = (
       /<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi,
     )) {
       const openTag = scriptMatch[1];
-      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(openTag)) continue;
+      if (DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
       const src = scriptMatch[2];
 
       // classList.add/remove/toggle/contains/replace — extract every quoted token
@@ -507,7 +519,7 @@ export const prefixElementAttribute = (
   const scopedHtml = scopedAttrsHtml.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open) => {
-      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
+      if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
       let updatedMatch = match;
       uniqueAttributesToReplace.forEach(
         ({ attributeName, obfuscatedAttributeName }) => {
@@ -876,13 +888,16 @@ export const getComponentScripts = async (
     return { scriptMap };
   }
 
-  const htmlDir = dirname(htmlFileName);
-  const compDir = BascikConfig.directory.components;
-  const isSubfolder = htmlDir !== compDir && htmlDir.startsWith(compDir);
+  const htmlDir = dirname(htmlFileName).replace(/\\/g, "/");
+  // The root that actually contains this component decides flat vs subfolder
+  // layout. With several roots, a global "first root" would silently fall back
+  // to basename matching for every component in the other roots.
+  const compDir = findComponentRoot(htmlFileName);
+  const isSubfolder = compDir !== undefined && htmlDir !== compDir && htmlDir.startsWith(`${compDir}/`);
   const componentBaseName = basename(htmlFileName, ".html").toLowerCase();
 
   const matchingScriptFiles = scriptFileNames.filter((scriptPath) => {
-    const scriptDir = dirname(scriptPath);
+    const scriptDir = dirname(scriptPath).replace(/\\/g, "/");
     if (isSubfolder) {
       return scriptDir === htmlDir || scriptDir.startsWith(htmlDir + "/");
     } else {
@@ -935,8 +950,8 @@ export const namespaceScriptTags = (
   component.fileContent = component.fileContent.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open, code, close, _offset) => {
-      // Server scripts, build scripts, and route scripts run in Node.js — never wrap in browser IIFE
-      if (/\b(?:data-bascik-server|data-bascik-build|data-bascik-routes)\b/i.test(open)) return match;
+      // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
+      if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
 
       // Extract data-bascik-source attribute if present
       const sourceAttrMatch = open.match(/\bdata-bascik-source=["']([^"']+)["']/i);

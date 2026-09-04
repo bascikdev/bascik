@@ -50,7 +50,10 @@ export const adaptHttp2 = (stream: ServerHttp2Stream, headers: IncomingHttpHeade
       }
     },
     close(code) { stream.close(code); },
+    // Http2Stream emits 'aborted' before 'close' on peer RST_STREAM; 'close'
+    // always follows, so it is the one lifecycle event the sink needs.
     on(event, cb) { stream.on(event, cb); },
+    off(event, cb) { stream.off(event, cb); },
   };
 
   return { req, res };

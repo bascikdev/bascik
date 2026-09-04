@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Multiple Component Roots Test</title>
+</head>
+
+<body>
+  <h1>Multiple Component Roots</h1>
+
+  <!-- From the first root, src/components -->
+  <multi-root-card data-testid="first-root-card" data-bascik-prop-title="From src/components">
+    <p>first root</p>
+  </multi-root-card>
+
+  <!-- From the second root, shared-components (subfolder layout + companion .ts) -->
+  <shared-badge></shared-badge>
+
+  <!-- From src/components/linked-badge, a committed symlink to linked-components/ -->
+  <linked-badge></linked-badge>
+</body>
+
+</html>

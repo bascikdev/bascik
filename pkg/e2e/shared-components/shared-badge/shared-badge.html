@@ -1,0 +1,9 @@
+<!-- Lives in a SECOND components root (pkg/e2e/shared-components) outside
+     src/. Uses the subfolder layout so the companion script below is matched
+     by folder, exercising findComponentRoot for a non-first root in a real
+     build. -->
+<span class="shared-badge" data-testid="shared-badge">
+  <span data-testid="shared-badge-label">shared-badge-v1</span>
+  <span id="script-marker" data-testid="shared-badge-script-ran">pending</span>
+  <script src="shared-badge.ts"></script>
+</span>

@@ -126,7 +126,7 @@ describe("checkProject", () => {
     mutableConfig.directory = {
       ...BascikConfig.directory,
       pages: "src/pages",
-      components: "src/components",
+      components: ["src/components"],
       api: "src/api",
     };
     workDir = join(originalCwd, `.check-test-${process.pid}-${Date.now()}`);
@@ -559,6 +559,42 @@ describe("checkProject", () => {
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
       expect(item?.locations).toHaveLength(2);
+    });
+
+    it("falls back to scanning every configured component root, so <local-card> in a second root is known", async () => {
+      await setupProject({
+        "pages/index.html": "<hello-card></hello-card><local-card></local-card>",
+        "shared/components/hello-card.html": "<div>shared</div>",
+        "shared/components/dupe-card.html": "<div>a</div>",
+        "src/components/local-card.html": "<div>local</div>",
+        "src/components/dupe-card.html": "<div>b</div>",
+      });
+      const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+      mutableConfig.directory = {
+        ...BascikConfig.directory,
+        components: [join(workDir, "shared/components"), join(workDir, "src/components")],
+      };
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      // listComponents fails on the cross-root duplicate; --check must still
+      // discover every other component in every root.
+      listComponentsMock.mockRejectedValue(
+        new Error(
+          "error: two component files both define the tag <dupe-card>\n" +
+          `  ${join(workDir, "shared/components/dupe-card.html")}\n` +
+          `  ${join(workDir, "src/components/dupe-card.html")}\n\n` +
+          "rename one file",
+        ),
+      );
+      deepReadDirFlatMock.mockImplementation(async (dir: string) =>
+        dir.endsWith("shared/components")
+          ? [join(workDir, "shared/components/hello-card.html"), join(workDir, "shared/components/dupe-card.html")]
+          : [join(workDir, "src/components/local-card.html"), join(workDir, "src/components/dupe-card.html")],
+      );
+
+      const findings = await checkProject();
+      expect(deepReadDirFlatMock).toHaveBeenCalledTimes(2);
+      const unknown = findings.items.filter((i) => i.category === "unmatched-tag");
+      expect(unknown.map((i) => i.message)).toEqual([]);
     });
 
     it("detects indirect circular component references with a full cycle path", async () => {

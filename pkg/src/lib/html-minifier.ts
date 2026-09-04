@@ -9,6 +9,7 @@
 
 import { isJavaScriptScript } from "./script-types.ts";
 import { createContentShield } from "./shielding.ts";
+import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 
 const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
 
@@ -29,8 +30,12 @@ const shieldSensitiveContent = (htmlString: string): {
   return { html, restore: shield.restore };
 };
 
+// Whole-attribute-name match: `data-bascik-server-foo` is NOT a directive.
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+
 const isExtractableScript = (openTag: string): boolean =>
-  !/\b(?:data-bascik-build|data-bascik-server|data-bascik-routes)\b/i.test(openTag) &&
+  !DIRECTIVE_SCRIPT_RE.test(openTag) &&
   isJavaScriptScript(openTag);
 
 export const extractScriptTags = (htmlString: string): string => {

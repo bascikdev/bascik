@@ -36,14 +36,19 @@ export const NAV: NavSection[] = [
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
       { href: '/build-scripts', label: 'Build Scripts' },
-      { href: '/server', label: 'Production Server' },
+      { href: '/server-scripts', label: 'Server Scripts' },
+      { href: '/stream-scripts', label: 'Stream Scripts' },
       { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/api-routes', label: 'API Routes' },
+      { href: '/exec-scripts', label: 'Exec Scripts' },
+      { href: '/watch-paths', label: 'Watch Paths' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
     ]
   },
   {
     section: 'Reference', pages: [
+      { href: '/development-server', label: 'Development Server' },
+      { href: '/production-server', label: 'Production Server' },
       { href: '/faq', label: 'FAQ' },
       { href: '/cli', label: 'Command Line Interface (CLI)' },
       { href: '/configuration', label: 'Configuration' },
@@ -76,7 +81,6 @@ export const NAV: NavSection[] = [
     section: 'How-to', pages: [
       { href: '/how-to/markdown', label: 'Markdown' },
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
-      { href: '/how-to/server-scripts', label: 'Server Scripts' },
       { href: '/how-to/templating', label: 'Templating' },
       { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },

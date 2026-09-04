@@ -20,7 +20,7 @@ vi.mock("./build-scripts.js", () => ({
 }));
 vi.mock("./config.js", () => ({
   BascikConfig: {
-    directory: { components: "src/components" },
+    directory: { components: ["src/components"] },
     minify: { html: false },
   },
 }));

@@ -39,6 +39,7 @@ describe("server-api integration", () => {
       end: () => { },
       close: () => { },
       on: () => { },
+      off: () => { },
     };
     await handleRequest(reqGet, resGet);
     expect(status404).toBe(404);
@@ -64,6 +65,7 @@ describe("server-api integration", () => {
       end: () => { },
       close: () => { },
       on: () => { },
+      off: () => { },
     };
     await handleRequest(reqPost, resPost);
     expect(status405).toBe(405);
@@ -126,6 +128,7 @@ describe("server-api integration", () => {
       },
       close: () => { },
       on: () => { },
+      off: () => { },
     };
 
     await handleRequest(req, res);
@@ -183,6 +186,7 @@ describe("server-api integration", () => {
       end: () => { },
       close: () => { },
       on: () => { },
+      off: () => { },
     };
 
     await handleRequest(req, res);
@@ -211,6 +215,7 @@ describe("server-api integration", () => {
         end: () => { },
         close: () => { },
         on: () => { },
+        off: () => { },
       };
 
       await handleRequest(req, res);
@@ -235,6 +240,7 @@ describe("server-api integration", () => {
         end: () => { },
         close: () => { },
         on: () => { },
+        off: () => { },
       };
 
       await handleRequest(req, res);
@@ -259,6 +265,7 @@ describe("server-api integration", () => {
         end: () => { },
         close: () => { },
         on: () => { },
+        off: () => { },
       };
 
       await handleRequest(req, res);

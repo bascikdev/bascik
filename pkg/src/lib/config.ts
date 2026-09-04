@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { resolve, sep, relative } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
 import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
 import { resolveCliAction } from "./cli.ts";
@@ -8,6 +9,7 @@ import {
   normalizeBasePath,
   validateUserConfig,
   type ConfigValidationDeps,
+  type ConfigValidationError,
 } from "./config-validation.ts";
 import type {
   BascikConfigOptions,
@@ -122,7 +124,7 @@ export const buildDefaultConfig: Partial<UserConfig> = {
 export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"> = {
   directory: {
     pages: "src/pages",
-    components: "src/components",
+    components: ["src/components"],
     out: "dist",
     api: "src/api",
   },
@@ -256,6 +258,73 @@ const deepFreeze = <T>(value: T): Readonly<T> => {
   return value;
 };
 
+/**
+ * Normalize `directory.components` (string | string[]) into an ordered array
+ * of absolute roots. Each entry is resolved against `cwd` and, when it exists,
+ * replaced by its realpath so `a` and `link-to-a` compare equal. A missing
+ * directory keeps its resolved path so a fresh project with no components yet
+ * still boots.
+ *
+ * Two structural rules are enforced here, because they need the filesystem
+ * and therefore cannot live in the pure shape validator:
+ *   - duplicates by realpath are rejected (same directory spelled twice, or
+ *     reached through a symlink)
+ *   - a root nested inside another root is rejected, because the parent
+ *     already covers it and scanning both would double-report every file
+ * Errors use the validator's formatting so the user sees one consistent
+ * "Configuration errors" block.
+ */
+export const normalizeComponentRoots = (
+  input: string | string[] | undefined,
+  cwd: string,
+): string[] => {
+  const entries = input === undefined ? ["src/components"] : Array.isArray(input) ? input : [input];
+  const canonical = entries.map((entry) => {
+    const resolved = resolve(cwd, entry);
+    if (!existsSync(resolved)) return resolved;
+    try {
+      return realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
+  });
+
+  const errors: ConfigValidationError[] = [];
+  const display = (index: number): string => {
+    const rel = relative(cwd, canonical[index]).replace(/\\/g, "/");
+    return rel || ".";
+  };
+  for (let i = 0; i < canonical.length; i++) {
+    for (let j = i + 1; j < canonical.length; j++) {
+      const a = canonical[i];
+      const b = canonical[j];
+      if (a === b) {
+        errors.push({
+          key: "directory.components",
+          value: [entries[i], entries[j]],
+          message: `"${entries[i]}" and "${entries[j]}" are the same directory (${display(i)}). List each root once.`,
+        });
+      } else if (b.startsWith(a + sep)) {
+        errors.push({
+          key: "directory.components",
+          value: entries[j],
+          message: `"${display(j)}" is inside "${display(i)}"; the parent already includes it. Remove the nested entry.`,
+        });
+      } else if (a.startsWith(b + sep)) {
+        errors.push({
+          key: "directory.components",
+          value: entries[i],
+          message: `"${display(i)}" is inside "${display(j)}"; the parent already includes it. Remove the nested entry.`,
+        });
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(formatConfigErrors(errors));
+  }
+  return canonical;
+};
+
 const normalizeExec = (
   exec: ExecEntry[] | undefined,
 ): ExecEntry[] | undefined => {
@@ -379,7 +448,7 @@ export const initBascikConfig = (
   );
 
   const resolvedDirectory = { ...merged.directory };
-  (["pages", "components", "out"] as const).forEach((key) => {
+  (["pages", "out"] as const).forEach((key) => {
     if (resolvedDirectory[key]) {
       resolvedDirectory[key] = resolve(
         process.cwd(),
@@ -387,6 +456,12 @@ export const initBascikConfig = (
       );
     }
   });
+  // The user layer may still hold a bare string; deepMerge does not touch
+  // leaves, so this is the one place the shape is normalized to string[].
+  resolvedDirectory.components = normalizeComponentRoots(
+    resolvedDirectory.components as unknown as string | string[] | undefined,
+    process.cwd(),
+  );
 
   const BascikConfig: BascikConfigOptions = {
     ...merged,

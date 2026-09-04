@@ -7,6 +7,11 @@ const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const staticTestIgnore = [
   '**/server-scripts.test.ts',
+  // The static harness (e2e/server.ts) serves files and cannot execute server
+  // scripts; the `<script type="text/bascik-server" data-bascik-server-id>`
+  // placeholder is inert. Static output therefore cannot stream, and this
+  // suite would only fail for the wrong reason here.
+  '**/server-scripts-stream.test.ts',
   '**/api-routes.test.ts',
   '**/dev-server-reload.test.ts',
   '**/prod-server.test.ts',

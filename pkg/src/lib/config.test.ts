@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 
 // userConfig is mocked so config.ts can be imported without top-level await
 vi.mock("./userConfig.js", () => ({
@@ -31,7 +34,7 @@ describe("defaultConfig", () => {
 
   it("has default directory paths including out", () => {
     expect(defaultConfig.directory.pages).toMatch(/src[/\\]pages$/);
-    expect(defaultConfig.directory.components).toMatch(/src[/\\]components$/);
+    expect(defaultConfig.directory.components).toEqual(["src/components"]);
     expect(defaultConfig.directory.out).toMatch(/dist$/);
     expect(defaultConfig.directory.api).toBe("src/api");
     expect("public" in defaultConfig.directory).toBe(false);
@@ -93,7 +96,84 @@ describe("defaultConfig", () => {
     expect(cfg.scripts.importRoot).toBe("../shared/scripts");
     // The import root is independent of the pages and components directories.
     expect(cfg.directory.pages).toMatch(/src[/\\]pages$/);
-    expect(cfg.directory.components).toMatch(/src[/\\]components$/);
+    expect(cfg.directory.components).toHaveLength(1);
+    expect(cfg.directory.components[0]).toMatch(/src[/\\]components$/);
+  });
+});
+
+describe("directory.components normalization (string | string[] -> string[])", () => {
+  let baseDir: string;
+  let workDir: string;
+  let previousCwd: string;
+
+  beforeEach(() => {
+    previousCwd = process.cwd();
+    baseDir = realpathSync(mkdtempSync(join(tmpdir(), "bascik-config-roots-")));
+    // The project is a child of the temp base so `../shared` stays inside it.
+    workDir = join(baseDir, "site");
+    mkdirSync(workDir);
+    process.chdir(workDir);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  const init = (components: string | string[]) =>
+    initBascikConfig({ directory: { components } }, {}, {}, { fs: allowAllFs }).BascikConfig;
+
+  it("wraps a single string in an array and resolves it to an absolute realpath", () => {
+    mkdirSync(join(workDir, "x"));
+    expect(init("x").directory.components).toEqual([realpathSync(resolve(workDir, "x"))]);
+  });
+
+  it("keeps two roots in author order as absolute paths, including one outside the project", () => {
+    mkdirSync(join(baseDir, "shared", "components"), { recursive: true });
+    mkdirSync(join(workDir, "src", "components"), { recursive: true });
+    const roots = init(["../shared/components", "src/components"]).directory.components;
+    expect(roots).toEqual([
+      join(baseDir, "shared", "components"),
+      join(workDir, "src", "components"),
+    ]);
+  });
+
+  it("defaults to one entry ending in src/components", () => {
+    const { BascikConfig: cfg } = initBascikConfig({}, {}, {}, { fs: allowAllFs });
+    expect(cfg.directory.components).toHaveLength(1);
+    expect(cfg.directory.components[0]).toMatch(/[/\\]src[/\\]components$/);
+  });
+
+  it("keeps a non-existent entry as its resolved path without throwing", () => {
+    expect(init("does-not-exist-yet").directory.components).toEqual([
+      resolve(workDir, "does-not-exist-yet"),
+    ]);
+  });
+
+  it("rejects the same directory spelled two ways, naming both spellings", () => {
+    mkdirSync(join(workDir, "a"));
+    expect(() => init(["a", "./a/"])).toThrow(/directory\.components[\s\S]*"a"[\s\S]*"\.\/a\/"[\s\S]*same directory/);
+  });
+
+  it("rejects a symlink to an already-listed root as a duplicate", () => {
+    mkdirSync(join(workDir, "a"));
+    symlinkSync(join(workDir, "a"), join(workDir, "link-to-a"), "dir");
+    expect(() => init(["a", "link-to-a"])).toThrow(/same directory/);
+  });
+
+  it("rejects a root nested inside another root, naming parent and child", () => {
+    mkdirSync(join(workDir, "src", "components", "shared"), { recursive: true });
+    const expected = /"src\/components\/shared" is inside "src\/components"/;
+    expect(() => init(["src/components", "src/components/shared"])).toThrow(expected);
+    expect(() => init(["src/components/shared", "src/components"])).toThrow(expected);
+  });
+
+  it("does not mistake a sibling with a shared prefix for a nested root", () => {
+    mkdirSync(join(workDir, "src", "components"), { recursive: true });
+    mkdirSync(join(workDir, "src", "components-shared"), { recursive: true });
+    const roots = init(["src/components", "src/components-shared"]).directory.components;
+    expect(roots).toHaveLength(2);
+    expect(roots[1].endsWith(`${sep}components-shared`)).toBe(true);
   });
 });
 
@@ -146,7 +226,7 @@ describe("BascikConfig freeze and structure", () => {
 
   it("resolves directory paths to absolute paths", () => {
     expect(BascikConfig.directory.pages).toMatch(/[/\\]src[/\\]pages$/);
-    expect(BascikConfig.directory.components).toMatch(/[/\\]src[/\\]components$/);
+    expect(BascikConfig.directory.components[0]).toMatch(/[/\\]src[/\\]components$/);
     expect(BascikConfig.directory.out).toMatch(/[/\\]dist$/);
   });
 });

@@ -51,11 +51,10 @@ import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   classifySpecifier,
-  findCallArgumentStringLiterals,
-  findModuleSpecifiers,
   resolveScriptSrcPath,
   resolveSpecifierPath,
   rewriteModuleSpecifiers,
+  scanScript,
 } from "./module-specifiers.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
 import { getImportRoot } from "./import-root.ts";
@@ -195,7 +194,8 @@ export const extractScriptDeps = (
   const seen = new Set<string>();
   const importRoot = options.importRoot ?? getImportRoot();
 
-  const moduleSpecifiers = findModuleSpecifiers(script);
+  // One tokenization pass serves both extractions (prompt 82).
+  const { moduleSpecifiers, callArgumentLiterals } = scanScript(script);
   const moduleRanges = new Set(moduleSpecifiers.map(({ start, end }) => `${start}:${end}`));
   for (const { value: specifier } of moduleSpecifiers) {
     // Leading-slash specifiers are rejected by the executor with a located
@@ -207,7 +207,7 @@ export const extractScriptDeps = (
     seen.add(relative(process.cwd(), absPath).replace(/\\/g, "/"));
   }
 
-  for (const { start, end, value: specifier } of findCallArgumentStringLiterals(script)) {
+  for (const { start, end, value: specifier } of callArgumentLiterals) {
     if (!/(?:\.{1,2}\/|[a-zA-Z0-9_$-]+\/)[^\n:]+\.(?:md|mjs|js|jsx|ts|tsx|json|yaml|yml|css|html|txt|csv|svg)$/.test(specifier)) continue;
     if (specifier.includes("://")) continue;
     if (moduleRanges.has(`${start}:${end}`)) continue;

@@ -31,7 +31,7 @@ vi.mock("./config.js", () => ({
     },
     directory: {
       pages: "src/pages",
-      components: "src/components",
+      components: ["src/components"],
       out: "dist",
     },
     pipeline: {
@@ -1250,6 +1250,18 @@ describe("getDisplayPath", () => {
 
   it("returns the original path when it matches neither known directory", () => {
     expect(getDisplayPath("/some/other/path.html")).toBe("/some/other/path.html");
+  });
+
+  it("recognizes a component under any configured root", () => {
+    const previous = BascikConfig.directory.components;
+    (BascikConfig.directory as { components: string[] }).components = ["/shared/components", "src/components"];
+    try {
+      expect(getDisplayPath("src/components/my-nav.html")).toBe("components/my-nav.html");
+      expect(getDisplayPath("/shared/components/site-nav.html")).toMatch(/site-nav\.html$/);
+      expect(getDisplayPath("/shared/components/site-nav.html")).not.toBe("/shared/components/site-nav.html");
+    } finally {
+      (BascikConfig.directory as { components: string[] }).components = previous;
+    }
   });
 });
 

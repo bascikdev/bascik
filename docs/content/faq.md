@@ -16,7 +16,7 @@ Yes. In fact some of my earliest exposure to programming was to TI-Basic on my f
 
 Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote. You write reusable components in vanilla HTML, CSS, and JavaScript. At build time, Bascik resolves your custom tags to their component source, scopes CSS and JavaScript so they never collide across instances, and outputs a directory of vanilla HTML files.
 
-By default the output is fully static and can be hosted anywhere. If you need per-request dynamic content, the [production server](/server) lets you run server-side scripts that inject into specific sections of a page at request time, while everything else stays static.
+By default the output is fully static and can be hosted anywhere. If you need per-request dynamic content, the [production server](/production-server) lets you run [server scripts](/server-scripts) that inject into specific sections of a page at request time, while everything else stays static.
 
 For a deeper look: [Getting Started](/getting-started), [Scoped CSS](/scoped-styles), [Scoped JavaScript](/scoped-javascript), [Switch to Bascik](/switch).
 

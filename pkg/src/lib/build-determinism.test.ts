@@ -9,7 +9,7 @@ vi.mock("./config.js", () => ({
     base: "/",
     directory: {
       pages: "src/pages",
-      components: "src/components",
+      components: ["src/components"],
       out: "dist",
     },
     scoping: {

@@ -7,6 +7,12 @@ import autoprefixer from 'autoprefixer';
 import { transform } from 'esbuild';
 
 export default defineConfig({
+  // Two component roots: the default tree plus a shared directory outside
+  // src/. Exercises multi-root discovery, watching, and the subfolder
+  // companion-script rule for a non-first root (see multi-component-roots.test.ts).
+  directory: {
+    components: ['src/components', 'shared-components'],
+  },
   scoping: {
     preserve: ['pre', 'code'],
   },

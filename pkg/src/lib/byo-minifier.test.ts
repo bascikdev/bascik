@@ -36,7 +36,7 @@ vi.mock("./config.js", () => ({
     },
     directory: {
       pages: "src/pages",
-      components: "src/components",
+      components: ["src/components"],
       out: "dist",
     },
   },

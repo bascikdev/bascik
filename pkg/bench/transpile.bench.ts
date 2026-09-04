@@ -37,6 +37,7 @@ import {
 } from "../src/lib/processing.ts";
 import { replaceTag, getTag } from "../src/lib/components.ts";
 import { minifyHtml } from "../src/lib/html-minifier.ts";
+import { minifyJs } from "../src/lib/js-minifier.ts";
 import {
   convertCssElementSelectorsToClasses,
   scopeCssCustomProperties,
@@ -101,7 +102,58 @@ const PAGE_BODY_50 = Array.from(
   (_, i) => `<comp-${i}><p>slot content ${i}</p></comp-${i}>`,
 ).join("");
 
-// ── Benchmarks ────────────────────────────────────────────────────────────────
+// Component-expansion scaling inputs (prompt 63). One component repeated N
+// times on a flat page, plus a nested case where each instance introduces two
+// more components inside its template (3 substitutions per instance).
+const FLAT_LIST: ComponentList = {
+  "item-card": { fileContent: `<div class="card"><p data-bascik-prop-title></p></div>` },
+};
+const NESTED_LIST: ComponentList = {
+  "outer-box": {
+    fileContent: `<section class="o"><inner-dot></inner-dot><inner-dot></inner-dot><div data-bascik-slot></div></section>`,
+  },
+  "inner-dot": { fileContent: `<i class="d">.</i>` },
+};
+const flatPage = (n: number): string =>
+  Array.from({ length: n }, (_, i) => `<item-card title="Item ${i}"></item-card>`).join("\n");
+const nestedPage = (n: number): string =>
+  Array.from({ length: n }, (_, i) => `<outer-box>${i}</outer-box>`).join("\n");
+const FLAT_800 = flatPage(800);
+const FLAT_1600 = flatPage(1600);
+const FLAT_3200 = flatPage(3200);
+const NESTED_800 = nestedPage(800);
+
+// JS minifier scaling inputs (prompt 62). Slash-heavy exercises regex/division/
+// comment disambiguation on every `/`; slash-light is the common case. Sizes
+// double so a quadratic scan would show ~4x per step and a linear one ~2x.
+const SLASH_HEAVY_UNIT = "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
+const SLASH_LIGHT_UNIT = "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
+const JS_SIZES = [
+  { label: "~52KB", reps: 750 },
+  { label: "~107KB", reps: 1550 },
+  { label: "~217KB", reps: 3150 },
+  { label: "~437KB", reps: 6330 },
+] as const;
+const SLASH_HEAVY = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_HEAVY_UNIT.repeat(reps) }));
+const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_LIGHT_UNIT.repeat(reps) }));
+
+// ── Benchmarks ────────────────────────────────────────────────────────────────────────────
+
+describe("minifyJs: slash-heavy scaling", () => {
+  for (const { label, src } of SLASH_HEAVY) {
+    bench(`slash-heavy ${label} (${src.length} bytes)`, () => {
+      minifyJs(src);
+    });
+  }
+});
+
+describe("minifyJs: slash-light scaling", () => {
+  for (const { label, src } of SLASH_LIGHT) {
+    bench(`slash-light ${label} (${src.length} bytes)`, () => {
+      minifyJs(src);
+    });
+  }
+});
 
 describe("minifyHtml", () => {
   bench("small HTML (~200 chars)", () => {
@@ -142,6 +194,21 @@ describe("CSS scoping — convertCssElementSelectorsToClasses", () => {
 describe("CSS scoping — scopeCssCustomProperties", () => {
   bench("10 custom properties", () => {
     scopeCssCustomProperties(CUSTOM_PROPS_CSS, "my-comp__bench1234");
+  });
+});
+
+describe("recursivelyTranspile: flat instance scaling", () => {
+  bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_800, FLAT_LIST);
+  });
+  bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_1600, FLAT_LIST);
+  });
+  bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_3200, FLAT_LIST);
+  });
+  bench(`800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`, () => {
+    recursivelyTranspile(NESTED_800, NESTED_LIST);
   });
 });
 

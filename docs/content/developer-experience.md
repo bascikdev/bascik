@@ -385,4 +385,4 @@ Terminal Output:
 Serving dist/ at http://localhost:8080
 ```
 
-> **Deep Dive:** Read [Deploying](/deploying) for deployment targets and [Production Server](/server) for server options.
+> **Deep Dive:** Read [Deploying](/deploying) for deployment targets and [Production Server](/production-server) for server options.

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Run Node.js code on each request with data-bascik-server scripts. Personalize HTML pages without client JavaScript." />
+  <title>Server Scripts - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/server-scripts'));
+        </script>
+
+        <!-- Intro rendered from docs/content/server-scripts.md. -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/server-scripts.md', { to: 'data-bascik-server' }));
+        </script>
+
+        <component-demo data-bascik-prop-file="src/pages/server-scripts.html">
+          <div data-bascik-slot="example">
+            <alert-box data-bascik-prop-title="Session Active" data-bascik-prop-message="Logged in as Jane Doe">
+            </alert-box>
+          </div>
+          <div data-bascik-slot="source-usage">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/server-scripts.md', 'source-usage'));
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="output-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/server-scripts.md', 'output-html'));
+              </script>
+            </code-block>
+          </div>
+        </component-demo>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/server-scripts.md', { from: 'data-bascik-server' }, { stripDemoBlocks: true }));
+        </script>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

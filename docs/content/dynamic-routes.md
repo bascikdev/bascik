@@ -13,7 +13,7 @@ During the build or development startup:
 3. The script outputs a JSON list of route objects defining parameters and optional payload data.
 4. Bascik expands the single template into multiple concrete HTML files, writing them to `dist/` and updating the sitemap.
 
-## The Routes Script
+## data-bascik-routes
 
 To define the routes to generate, place a `<script data-bascik-routes>` element inside the template file. The script runs in Node.js at build time and must print a valid JSON array to standard output using `console.log()`.
 

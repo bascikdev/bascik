@@ -5,12 +5,18 @@
 .github/workflows/ci.yml
 .github/workflows/release.yml
 
+# Test files, test fixtures, and E2E suites across the workspace.
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+**/e2e/**
+docs/scripts/fixtures/**
+
 # Scaffold generator writes static templates; false-positive script-tag heuristic.
 create/src/scaffold.ts
 
-# Test fixtures and docs utilities that intentionally exercise script/regex behavior.
-docs/scripts/fixtures/**
-docs/src/lib/faq-schema.test.ts
+# Docs utilities that intentionally exercise script/regex behavior.
 docs/src/lib/md-renderer.ts
 docs/src/pages/libraries.html
 
@@ -20,11 +26,6 @@ extensions/vscode-bascik/src/rules.ts
 
 # Local TLS bypass is required for localhost/self-signed HTTP/2 coverage probes.
 pkg/bin/update-e2e-coverage.ts
-
-# E2E fixture content and tests with intentional dynamic/script patterns.
-pkg/e2e/src/components/head-meta/head-meta.html
-pkg/e2e/src/components/preserve-demo/preserve-demo.html
-pkg/src/lib/components.test.ts
 
 # Core library hotspots use controlled dynamic regex construction and intentional script assembly.
 pkg/src/lib/components.ts

@@ -135,6 +135,36 @@ describe("startHttpServer", () => {
     expect(mockResMsg.on).toHaveBeenCalledWith("close", cb);
   });
 
+  it("forwards on/off for drain and close to the response, and off actually removes the listener (prompt 66)", async () => {
+    const { EventEmitter } = await import("node:events");
+    const emitter = new EventEmitter();
+    const mockResMsg: any = Object.assign(emitter, {
+      headersSent: false,
+      destroyed: false,
+      writeHead: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      destroy: vi.fn(),
+    });
+    const { res } = adaptHttp1({ method: "GET", url: "/", headers: {}, socket: {} } as any, mockResMsg);
+    let drains = 0;
+    let closes = 0;
+    const onDrain = () => { drains++; };
+    const onClose = () => { closes++; };
+    res.on("drain", onDrain);
+    res.on("close", onClose);
+    emitter.emit("drain");
+    emitter.emit("close");
+    expect(drains).toBe(1);
+    expect(closes).toBe(1);
+    res.off("drain", onDrain);
+    res.off("close", onClose);
+    emitter.emit("drain");
+    emitter.emit("close");
+    expect(drains).toBe(1);
+    expect(closes).toBe(1);
+  });
+
   it("passes an onShutdown callback to startServerInstance that destroys open sockets even if socket.destroy throws", async () => {
     let connectionCb: ((socket: any) => void) | undefined;
     let shutdownCb: (() => void) | undefined;

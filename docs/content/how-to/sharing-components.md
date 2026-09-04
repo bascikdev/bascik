@@ -67,3 +67,17 @@ git submodule add https://github.com/your-org/shared-bascik-components.git src/c
 ```
 
 Because components may live in subfolders, the submodule sits directly inside `src/components/` and every component in it is discovered automatically. The duplicate-name rule still applies: ensure filenames in the submodule do not collide with top-level project components.
+
+The submodule does not have to live under `src/components/`. Since `directory.components` accepts an array, you can check it out anywhere and list it as a second root, which keeps vendored and hand-written components in separate trees:
+
+```sh
+git submodule add https://github.com/your-org/shared-bascik-components.git vendor/shared-components
+```
+
+```ts
+directory: {
+  components: ['src/components', 'vendor/shared-components'],
+}
+```
+
+Do not do both: a submodule inside `src/components/` that is also listed as its own root is rejected at startup as a nested root.
