@@ -958,27 +958,35 @@ Rules:
 
 ### data-bascik-server
 
-Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters. All `data-bascik-server` scripts on a page resolve before the response is sent, returning a complete buffered response with `Content-Length`.
+Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` as Node.js ESM modules on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters. All `data-bascik-server` scripts on a page resolve before the response is sent, returning a complete buffered response with `Content-Length`.
 
 ```html
 <script data-bascik-server>
-  import { escapeHtml } from '@bascik/bascik';
-
-  export default function({ req }) {
-    const name = escapeHtml(req.headers['x-display-name'] ?? 'Guest');
+  export default function (request) {
+    const name = request.headers.get('x-display-name') ?? 'Guest';
     return `<p>Welcome, ${name}!</p>`;
   }
 </script>
 ```
 
-Handlers receive `{ req }` as their first argument and `{ signal }` as their second argument. `req` contains:
+Every handler uses the standard signature `export default async function (request, context, { signal })`:
 
-* `req.path`: URL path without query string, e.g. `"/about"`
-* `req.method`: HTTP method in uppercase, e.g. `"GET"`
-* `req.headers`: request headers as string-to-string object (HTTP/2 pseudo-headers excluded)
-* `req.searchParams`: parsed query params as string-to-string object
+* `request`: a standard WHATWG `Request`, identical to API routes. Use `request.method`, `new URL(request.url).pathname`, `new URL(request.url).searchParams.get('page')`, and `request.headers.get('cookie')`.
+* `context`: `{ remoteIp }`, the data that has no home on `Request`.
+* `{ signal }`: an `AbortSignal` triggered when the request times out or the client disconnects. Pass it to `fetch()` and database clients so long-running calls cancel automatically.
 
-Bascik exports `escapeHtml` from `@bascik/bascik` to escape user-controlled strings before inserting into HTML markup.
+Bascik exports nothing for use inside a server script; there is no helper to import and nothing is injected into scope. Escaping is a property of the output sink (text node, attribute, URL, inline `<script>`, etc.), not a single function, so write your own small escaper in a shared module such as `src/lib/server.ts` (or use an npm package like `escape-html`) and import it with the `@/` alias:
+
+```html
+<script data-bascik-server>
+  import { escape } from '@/lib/server.ts';
+
+  export default function (request) {
+    const name = escape(request.headers.get('x-display-name') ?? 'Guest');
+    return `<p>Welcome, ${name}!</p>`;
+  }
+</script>
+```
 
 Rules:
 * Top-level `import` and `await` are supported.
@@ -991,15 +999,15 @@ Rules:
 
 ### data-bascik-stream
 
-Tag a `<script>` block with `data-bascik-stream` to run it at request time with chunked HTTP streaming. It uses the exact same authoring model as `data-bascik-server` (`export default async function ({ req }, { signal })`, `escapeHtml`, in-process execution, sidecar registry, and stack remapping). The only difference: the server does not wait for it. Response headers and all static HTML bytes preceding the tag are sent immediately. When the script resolves, its returned markup is written in document order via chunked transfer.
+Tag a `<script>` block with `data-bascik-stream` to run it at request time with chunked HTTP streaming. It uses the same handler signature as `data-bascik-server` (`export default async function (request, context, { signal })`, in-process execution, sidecar registry, and stack remapping). The only difference: the server does not wait for it. Response headers and all static HTML bytes preceding the tag are sent immediately. When the script resolves, its returned markup is written in document order via chunked transfer.
 
 ```html
 <script data-bascik-stream>
-  import { escapeHtml } from '@bascik/bascik';
+  import { escape } from '@/lib/server.ts';
 
-  export default async function({ req }, { signal }) {
-    const data = await loadData(req, signal);
-    return `<article>${escapeHtml(data.title)}</article>`;
+  export default async function (request, context, { signal }) {
+    const data = await loadData(request, signal);
+    return `<article>${escape(data.title)}</article>`;
   }
 </script>
 ```
@@ -1346,7 +1354,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Docker**: multi-stage build (build stage: `npx bascik --build`; serve stage: `npx bascik --server`) with `--restart=unless-stopped`.
 * **PaaS (Railway, Render, Fly.io)**: set start command to `bascik --build && bascik --server` and bind port `8080`.
 
-When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts receive them via `headers` in `BASCIK_REQUEST`.
+When using a reverse proxy, forward `X-Real-IP` and any auth headers so `data-bascik-server` scripts can read them via `request.headers.get(...)` and `context.remoteIp`.
 
 ### Development Workflow & Server Output
 Bascik's CLI is designed to provide clean, minimal, and informative terminal output.

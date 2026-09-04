@@ -16,7 +16,7 @@ const TEMPLATING_MD = path.resolve(import.meta.dirname, '../../../content/how-to
 
 describe('templating fixtures', () => {
   it('interpolate helper escapes HTML and resolves dotted paths', async () => {
-    const { interpolate, escapeHtml } = await import(
+    const { interpolate, escape } = await import(
       `file://${path.join(FIXTURE_DIR, 'interpolate.mjs')}`
     );
 
@@ -32,8 +32,8 @@ describe('templating fixtures', () => {
     expect(interpolate('<p>${article.missing}</p>', { article: {} }))
       .toBe('<p></p>');
 
-    // escapeHtml is exported for reuse
-    expect(escapeHtml('<b>')).toBe('&lt;b&gt;');
+    // The context-specific escape function is exported for reuse.
+    expect(escape('<b>')).toBe('&lt;b&gt;');
   });
 
   it('handlebars fixture renders the article list', async () => {
