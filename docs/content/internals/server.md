@@ -7,7 +7,7 @@ Bascik's server infrastructure powers both local development (`bascik`) and per-
 Bascik separates protocol management from request routing using a 4-tier architecture:
 
 ```text
-       [transpile.ts (Dev) / serve.ts (Prod)]
+  [server-dev.ts (Dev) / server-prod.ts (Prod)]
                           │
                           ▼ (startServer)
                  [server.ts Orchestrator]
@@ -109,7 +109,7 @@ Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik 
 - **Build Error Overlay:** Broadcasts `event: build-error` containing file, line, and stack info to display an overlay in the browser, clearing on subsequent successful builds.
 - **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
 - **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
-- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `serve.ts` as defense in depth.
+- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 
@@ -126,15 +126,15 @@ This prioritization operates identically whether running on the main thread or a
 
 ## Production Server Mode (`bascik --server`)
 
-When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`serve.ts`).
+When launched with `bascik --server` or `BASCIK_SERVER=1`, Bascik runs as a production HTTP server (`server-prod.ts`). It is the same `server.ts` core that dev mode uses; `server-prod.ts` only adds the boot-time `dist/` load, and `server-dev.ts` only adds watching, live reload, and the boot page.
 
 ### Boot-Time Loading: Pages in Memory, Assets on Disk
 
-Production mode skips file watchers and live-reload injection, but it does **not** skip in-memory page storage. `serve.ts#loadDistIntoMemory` walks the built `dist/` directory at boot and reads every `.html` file into the same `MemoryStore` (`mem.ts`) that dev mode uses, so page lookups and `data-bascik-server` execution are served from memory on every request, identical to dev mode.
+Production mode skips file watchers and live-reload injection, but it does **not** skip in-memory page storage. `server-prod.ts#loadDistIntoMemory` walks the built `dist/` directory at boot and reads every `.html` file into the same `MemoryStore` (`mem.ts`) that dev mode uses, so page lookups and `data-bascik-server` execution are served from memory on every request, identical to dev mode.
 
 Only non-HTML static assets, images, fonts, favicons, the webmanifest, and any other file copied verbatim from `src/pages/`, are read from the `dist/` filesystem per request via `createReadStream`. Component CSS and JavaScript are always inlined into the HTML at build time, so they are already in memory as part of the page buffer; there is no separate in-memory cache for them to miss.
 
-At boot time, `serve.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
+At boot time, `server-prod.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
 
 ### Per-request `data-bascik-server` and `data-bascik-stream` execution (`server-scripts.ts`)
 
@@ -176,7 +176,8 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 
 | Capability | Development (`bascik`) | Production (`bascik --server`) |
 | --- | --- | --- |
-| Entry Module | `transpile.ts` | `serve.ts` |
+| Entry Module | `transpile.ts` via `server-dev.ts` | `server-prod.ts` |
+| Shared Core | `server.ts` | `server.ts` |
 | Page Storage | `MemoryStore` in memory (`mem.ts`) | Pre-built files in `dist/` |
 | Brotli Quality | `BROTLI_MIN_QUALITY = 1` | `BROTLI_MAX_QUALITY = 11` |
 | HTTP Caching | Disabled (`http.httpCache: false`) | Enabled (`http.httpCache: true` with ETags & 304s) |

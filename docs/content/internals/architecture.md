@@ -23,8 +23,8 @@ switch (decision.action) {
     process.exit(ok ? 0 : 1);
   }
   case "prodServer": {
-    const { serveProduction } = await import("./lib/serve.js");
-    await serveProduction();
+    const { startProdServer } = await import("./lib/server-prod.js");
+    await startProdServer();
     break;
   }
   default:
@@ -32,7 +32,7 @@ switch (decision.action) {
 }
 ```
 
-`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it starts `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
+`transpile.ts` handles the normal dev and build flow. In build mode it awaits `watchFiles()` and exits. In dev mode it calls `startDevServer()` from `server-dev.ts`, which binds `server.ts` concurrently with `watchFiles()`, so the server is already bound to its port by the time transpilation finishes (requests arriving before page transpilation completes receive an in-memory boot page). `server-dev.ts` and `server-prod.ts` are deliberately thin: both boot the same shared `server.ts`, and each holds only what is specific to its mode, so a page that works locally behaves the same when deployed. `startServer()` orchestrates loading either `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled` and returns the origin URL. As a deliberate developer experience (DX) choice, `transpile.ts` delays printing `Server running at …` until after all initial tasks (`watchFiles()` and `exec`) complete, ensuring the clickable URL is displayed as the final line in the terminal output.
 
 The dynamic `import()` calls are intentional: they avoid loading modules when not needed (`init` and `--check` exit before reaching `transpile.ts`; `--build` never starts the server).
 
@@ -70,9 +70,10 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
-| `serve.ts` | Production server entrypoint (`bascik --server`). Pre-loads pre-rendered `dist/` HTML into `mem.ts` and boots `server.ts`. |
+| `server-dev.ts` | Dev server additions (`bascik`). Binds the shared `server.ts` immediately, starts dev `exec` scripts alongside it, and flips the boot flag (`boot-done`) once the initial transpile lands. |
+| `server-prod.ts` | Production server additions (`bascik --server`). Pre-loads pre-rendered `dist/` HTML and the server-script sidecar into `mem.ts`, then boots the shared `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, cleaning child-process stack traces and appending sourceURL comments before injecting stdout into the page. |
-| `server.ts` | Server orchestrator. Dispatches requests to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs shared request handlers, and manages server instances. |
+| `server.ts` | Shared server core used by both dev and production. Dispatches to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs the request handler, and manages server instances. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
@@ -92,8 +93,9 @@ index.ts
   ├── (--check only)
   │     └── check.ts ← components.ts, file-system.ts
   ├── (--server / prod server)
-  │     └── serve.ts → server.ts
+  │     └── server-prod.ts → server.ts
   └── transpile.ts
+        ├── (dev only) server-dev.ts → server.ts
         ├── config.ts ← userConfig.ts ← bascik.config.ts / bascik.config.js
         ├── watch.ts
         │     └── processing.ts

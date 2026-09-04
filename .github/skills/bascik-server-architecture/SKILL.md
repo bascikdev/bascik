@@ -5,7 +5,7 @@ description: Architecture, debugging, and maintenance of Bascik's built-in HTTP/
 
 # Bascik Server Architecture: HTTP/1.1, HTTP/2, TLS & SSE
 
-Bascik includes a zero-dependency server implemented in `pkg/src/lib/server.ts` and `pkg/src/lib/serve.ts` that powers both the development server (with live-reload) and production serving (`bascik --server`).
+Bascik includes a zero-dependency server whose shared core is `pkg/src/lib/server.ts`. Two thin mode modules sit on top of it: `pkg/src/lib/server-dev.ts` (development: watch, live reload, boot page) and `pkg/src/lib/server-prod.ts` (production, `bascik --server`: load `dist/` into memory). Keep mode-specific logic in those two files and everything else in the shared core so dev and deployed behavior stay identical.
 
 ---
 

@@ -3,9 +3,7 @@ import { rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
-import { runExecPhase, startExecParallel, startExecDev } from "./lib/exec.ts";
-import { mem } from "./lib/mem.ts";
-import { eventEmitter } from "./lib/events.ts";
+import { runExecPhase, startExecParallel } from "./lib/exec.ts";
 import { formatDuration } from "./lib/format.ts";
 import { manifestCollector } from "./lib/manifest.ts";
 import { readVersion } from "./lib/version.ts";
@@ -70,17 +68,11 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
   } else {
     await runExecPhase("pre");
     startExecParallel();
-    const { startServer } = await import("./lib/server.ts");
-    const serverReady = startServer().catch((err) => {
-      console.error("Server startup failed:", err);
-      if (options.exitOnError !== false) {
-        process.exit(1);
-      }
-      throw err;
-    });
-
-    const execReady = startExecDev();
-    const url = await serverReady;
+    // Dev mode is the shared server (server.ts) plus the additions in
+    // server-dev.ts; the production counterpart is server-prod.ts.
+    const { startDevServer } = await import("./lib/server-dev.ts");
+    const dev = startDevServer(options);
+    const url = await dev.url;
 
     await watchFiles();
     await runExecPhase("post");
@@ -94,9 +86,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       await manifestCollector.recordFileFromDisk(cspPath);
     }
     await manifestCollector.writeManifest(version);
-    await execReady;
-    mem.setBootingDone();
-    eventEmitter.emit("boot-done");
+    await dev.finishBoot();
     const totalElapsed = performance.now() - overallStart;
     console.log(`✓ All tasks completed in ${formatDuration(totalElapsed)}`);
     if (url) console.log(`Server running at ${url}`);
