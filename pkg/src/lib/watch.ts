@@ -190,11 +190,13 @@ export const watchFiles = async () => {
     const pagesDir = resolve(process.cwd(), BascikConfig.directory.pages);
     const componentsDir = resolve(process.cwd(), BascikConfig.directory.components);
     // Watchers 2 and 3 already own the pages and components trees; excluding
-    // them here avoids double-firing rebuilds. directory.api is not excluded:
-    // a page build script importing from it is a page dependency too.
+    // them here avoids double-firing rebuilds. Inlined stylesheets and directory.api
+    // are not owned by pages/components watchers, but inlined stylesheets have their
+    // own dedicated watcher below so exclude them to avoid redundant processing.
     const isOwnedByOtherWatcher = (path: string): boolean =>
       path === pagesDir || path.startsWith(pagesDir + sep) ||
-      path === componentsDir || path.startsWith(componentsDir + sep);
+      path === componentsDir || path.startsWith(componentsDir + sep) ||
+      isInlineStylesheet(path);
     w(chokidar
       .watch([importRoot], {
         ...watchOptions,
