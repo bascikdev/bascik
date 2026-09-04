@@ -30,7 +30,11 @@ export class WorkerPool<Task, Result> {
   }
 
   #spawn(): void {
-    const worker = new Worker(this.#workerScript, { workerData: this.#initData });
+    const execArgv = process.execArgv.filter((arg) => !arg.startsWith("--input-type"));
+    const worker = new Worker(this.#workerScript, {
+      workerData: this.#initData,
+      execArgv,
+    });
     worker.on("message", (message: any) => {
       const job = this.#pending.get(worker);
       this.#pending.delete(worker);

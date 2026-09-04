@@ -417,7 +417,7 @@ export default defineConfig({
 });
 ```
 
-Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. See [Monorepos](/how-to/monorepos).
+Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. The import root directory is watched automatically in dev mode with `directory.pages` and `directory.components` excluded when nested inside it. See [Monorepos](/how-to/monorepos).
 
 ### `http`
 

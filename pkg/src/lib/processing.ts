@@ -1287,11 +1287,12 @@ export const transpilePage = async (
 
   const fileDependencies = await collectAllScriptDeps(rawHtml, pagePath);
   for (const comp of allUsedComponents) {
-    if (comp.fileContent) {
+    const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
+    if (compContent) {
       const componentSourcePath = comp.fileName
         ? resolve(process.cwd(), comp.fileName)
         : undefined;
-      const compDeps = await collectAllScriptDeps(comp.fileContent, componentSourcePath);
+      const compDeps = await collectAllScriptDeps(compContent, componentSourcePath);
       for (const dep of compDeps) {
         if (!fileDependencies.includes(dep)) {
           fileDependencies.push(dep);

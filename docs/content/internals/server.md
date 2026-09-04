@@ -91,11 +91,12 @@ The boot page connects to `/bascik-live-reload`. When the requested page finishe
 
 ### Watch system (`watch.ts`)
 
-Three native filesystem watchers (chokidar) handle source file updates:
+Four native filesystem watchers (chokidar) handle source file updates in development mode:
 
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
+4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and `directory.components` are excluded when nested inside it.
 
 ### Live reload (`live-reload.ts`, `sse.ts`)
 

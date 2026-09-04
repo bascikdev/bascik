@@ -43,6 +43,8 @@ export interface BascikComponent {
   /** Set during file loading; not required for in-test component objects */
   fileName?: string;
   fileContent: string;
+  /** Preserved raw HTML before build script execution for dependency extraction */
+  scriptDependenciesContent?: string;
   cssFileContent?: string;
   /** The full matched usage tag string from the page HTML, e.g. `<my-nav class="x">...</my-nav>` */
   content?: string;
