@@ -9,7 +9,7 @@
  *   next write waits for `drain` (or `close`) instead of growing the queue
  *   without bound under a slow reader.
  * - Client disconnect (`close`) aborts the shared AbortController so every
- *   unfinished script job is cancelled through `ScriptRegistry.invoke`'s
+ *   unfinished script job is canceled through `ScriptRegistry.invoke`'s
  *   `options.signal`, and all further writes become no-ops.
  * - `dispose()` removes the `close` listener so a long-lived response object
  *   does not accumulate listeners across requests.

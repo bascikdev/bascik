@@ -27,8 +27,8 @@ const examined = (source: string): number => {
 describe("minifyJs scan complexity", () => {
   it("examines a linear number of characters for slash-heavy input", () => {
     const n = examined(SLASH_HEAVY_UNIT.repeat(400));
-    const twoN = examined(SLASH_HEAVY_UNIT.repeat(800));
-    const ratio = twoN / n;
+    const doubled = examined(SLASH_HEAVY_UNIT.repeat(800));
+    const ratio = doubled / n;
     expect(n).toBeGreaterThan(0);
     // Linear: ~2.0. Quadratic prefix rescans push this toward 4.0.
     expect(ratio).toBeLessThan(2.5);
@@ -36,14 +36,14 @@ describe("minifyJs scan complexity", () => {
 
   it("examines a linear number of characters for slash-light input", () => {
     const n = examined(SLASH_LIGHT_UNIT.repeat(400));
-    const twoN = examined(SLASH_LIGHT_UNIT.repeat(800));
-    expect(twoN / n).toBeLessThan(2.5);
+    const doubled = examined(SLASH_LIGHT_UNIT.repeat(800));
+    expect(doubled / n).toBeLessThan(2.5);
   });
 
   it("examines a linear number of characters for newline-heavy input (ASI join phase)", () => {
     const n = examined(NEWLINE_HEAVY_UNIT.repeat(400));
-    const twoN = examined(NEWLINE_HEAVY_UNIT.repeat(800));
-    expect(twoN / n).toBeLessThan(2.5);
+    const doubled = examined(NEWLINE_HEAVY_UNIT.repeat(800));
+    expect(doubled / n).toBeLessThan(2.5);
   });
 
   it("examines each input character a bounded number of times", () => {
