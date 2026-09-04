@@ -50,7 +50,7 @@ vi.mock("./events.js", () => ({
 import { createRequestHandler, resetActiveRateLimiter } from "./server.ts";
 import { mem } from "./mem.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { htmlHasServerScripts } from "./server-scripts.ts";
+import { htmlHasServerScripts, planServerScripts } from "./server-scripts.ts";
 
 type Deferred = { promise: Promise<{ ok: true; value: string }>; resolve: (v: string) => void; reject: (e: Error) => void };
 const deferred = (): Deferred => {
@@ -118,7 +118,8 @@ const makePage = (content: string) => ({
   absolutePagePath: "/abs/src/pages/x.html",
   content: Buffer.from(content),
   compressedContent: undefined,
-  hasServerScripts: htmlHasServerScripts(content),
+  // Store-time plan (prompt 67): the handler never re-plans.
+  serverScriptPlan: htmlHasServerScripts(content) ? planServerScripts(content, "/abs/src/pages/x.html") : undefined,
   usedComponentsSet: new Set<string>(),
 });
 
@@ -350,5 +351,39 @@ describe("prompt 66: backpressure and disconnect abort", () => {
     await done;
     expect(res.listenerCount("close")).toBe(0);
     expect(res.listenerCount("drain")).toBe(0);
+  });
+});
+
+describe("prompt 67: the plan is precomputed, never rebuilt on the request path", () => {
+  it("serving a stream page twice calls planServerScripts zero times and never decodes page.content", async () => {
+    const serverScripts = await import("./server-scripts.ts");
+    const t = deferred();
+    routeInvokes({ "/*T*/": t });
+    // makePage simulates store time (it plans once); the spies go on AFTER so
+    // they observe only the request path.
+    const page = makePage(STREAM_PAGE);
+    const planSpy = vi.spyOn(serverScripts, "planServerScripts");
+    const toStringSpy = vi.spyOn(page.content, "toString");
+    (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(page);
+    const handler = createRequestHandler();
+    for (let i = 0; i < 2; i++) {
+      const { res } = makeRes();
+      const done = handler({ method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" }, res as any);
+      t.resolve("<p>slow</p>");
+      await done;
+      expect(res.end).toHaveBeenCalledTimes(1);
+    }
+    expect(planSpy).not.toHaveBeenCalled();
+    expect(toStringSpy).not.toHaveBeenCalled();
+    planSpy.mockRestore();
+  });
+
+  it("a page whose stored plan carries an error yields a 500 for that page only", async () => {
+    const page = { ...makePage("<p>fine</p>"), serverScriptPlan: { error: new Error("conflicting directives") } };
+    (mem.getPage as ReturnType<typeof vi.fn>).mockReturnValue(page);
+    const handler = createRequestHandler();
+    const { res, calls } = makeRes();
+    await handler({ method: "GET", path: "/x", headers: {}, remoteIp: "127.0.0.1" }, res as any);
+    expect(respondCall(calls)![1]).toBe(500);
   });
 });

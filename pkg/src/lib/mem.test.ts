@@ -359,3 +359,47 @@ describe("boot state", () => {
     expect(mem.isBooting).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt 67: the server-script plan is computed at store time
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("storePage precomputes serverScriptPlan", () => {
+  it("stores a 5-segment plan for a page with two server scripts whose bytes round-trip", async () => {
+    const html =
+      `<p>a</p><script data-bascik-server>return '1';</script><p>b</p>` +
+      `<script data-bascik-stream>return '2';</script><p>c</p>`;
+    await mem.storePage({ relativePagePath: "plan-page", absolutePagePath: "plan-page", pageContent: html, usedComponentsNames: [] });
+    const page = mem.getPage("plan-page")!;
+    expect(page.serverScriptPlan).toBeDefined();
+    const plan = page.serverScriptPlan!;
+    expect("segments" in plan).toBe(true);
+    if (!("segments" in plan)) return;
+    expect(plan.segments.map((s) => (s.kind === "static" ? "static" : s.mode))).toEqual(["static", "server", "static", "stream", "static"]);
+    expect(plan.firstStreamIndex).toBe(3);
+    const rebuilt = Buffer.concat(plan.segments.map((s) => (s.kind === "static" ? s.bytes : Buffer.from(s.job.fullTag)))).toString();
+    expect(rebuilt).toBe(html);
+    expect((page as unknown as Record<string, unknown>).hasServerScripts).toBeUndefined();
+  });
+
+  it("stores no plan for a page without server scripts", async () => {
+    await mem.storePage({ relativePagePath: "static-page", absolutePagePath: "static-page", pageContent: "<p>static</p>", usedComponentsNames: [] });
+    expect(mem.getPage("static-page")!.serverScriptPlan).toBeUndefined();
+  });
+
+  it("stores a planner error on the page instead of throwing, so other pages still load", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    try {
+      const bad = `<script data-bascik-server data-bascik-build>x</script>`;
+      await expect(
+        mem.storePage({ relativePagePath: "bad-page", absolutePagePath: "bad-page", pageContent: bad, usedComponentsNames: [] }),
+      ).resolves.not.toThrow();
+      const page = mem.getPage("bad-page")!;
+      expect(page.serverScriptPlan).toBeDefined();
+      expect("error" in page.serverScriptPlan!).toBe(true);
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});

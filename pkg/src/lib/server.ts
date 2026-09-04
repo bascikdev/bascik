@@ -10,7 +10,6 @@ import { MIME_MAP } from "./mime.ts";
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
   executeServerScriptPlan,
-  planServerScripts,
   streamServerScripts,
 } from "./server-scripts.ts";
 import { createResponseSink } from "./response-sink.ts";
@@ -664,7 +663,11 @@ export const createRequestHandler = () => {
 
       // ── Pages with server scripts: generated fresh each request ──────────
       // Server-script output is personalized per-request; always prevent caching.
-      if (page.hasServerScripts) {
+      if (page.serverScriptPlan) {
+        // A planner error recorded at store time (conflicting directives,
+        // unresolvable sidecar id) is this page's 500; headers are not sent yet.
+        if ("error" in page.serverScriptPlan) throw page.serverScriptPlan.error;
+        const plan = page.serverScriptPlan;
         const qIdx = req.path.indexOf("?");
         const searchParams = Object.fromEntries(
           new URLSearchParams(qIdx === -1 ? "" : req.path.slice(qIdx + 1)),
@@ -682,10 +685,8 @@ export const createRequestHandler = () => {
         };
         const timeout = BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
         responseHeaders["cache-control"] = "private, no-store";
-        // Planning throws for predictable authoring errors (conflicting
-        // directives, unresolvable sidecar id, stale mode marker) BEFORE any
-        // byte is written, so those are still ordinary 500s.
-        const plan = planServerScripts(page.content.toString(), page.absolutePagePath);
+        // The plan was built at store time (prompt 67): no regex scan and no
+        // page.content.toString() on the request path.
 
         if (plan.firstStreamIndex === -1 || isHead) {
           // No `stream` scripts (or HEAD): today's buffered path, byte for byte.

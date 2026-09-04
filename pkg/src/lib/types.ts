@@ -312,8 +312,16 @@ export interface StoredPage {
   usedComponentsSet: Set<string>;
   /** Relative paths of local file dependencies referenced by build scripts on this page. */
   fileDependenciesSet?: Set<string>;
-  /** True when the stored HTML contains `data-bascik-server` script blocks. */
-  hasServerScripts: boolean;
+  /**
+   * Precomputed at store time (prompt 67). `undefined` when the page has no
+   * `data-bascik-server` / `data-bascik-stream` blocks; the server then takes
+   * the static/ETag/Brotli path. When defined, the server never rescans
+   * `content` and uses the plan's segments directly. A planner error
+   * (conflicting directives, unresolvable sidecar id) is stored as `{ error }`
+   * so one bad page yields a 500 for that page only and never blocks the rest
+   * of the site from loading.
+   */
+  serverScriptPlan?: import("./server-scripts.ts").ServerScriptPlan | { error: Error };
   /** Pre-computed ETag from the page content buffer for fast response headers. */
   etag?: string;
 }

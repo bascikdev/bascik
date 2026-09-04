@@ -101,7 +101,8 @@ vi.mock("./server-scripts.js", () => {
   const executeServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
   return {
     executeServerScripts,
-    planServerScripts: vi.fn((html: string) => ({ segments: [{ kind: "static", bytes: Buffer.from(html) }], firstStreamIndex: -1, __html: html })),
+    // The plan is stored on the page (prompt 67); makePage builds a stub plan
+    // carrying the html so the executor can forward it to the spy.
     executeServerScriptPlan: vi.fn(async (plan: any, request: unknown, timeout: number, filePath: string) =>
       Buffer.from(await executeServerScripts(plan.__html, request, timeout, filePath)),
     ),
@@ -230,16 +231,27 @@ const getStreamHandler = () => {
     | undefined;
 };
 
-/** Returns a mock page suitable for most response tests. */
-const makePage = (overrides: Record<string, unknown> = {}) => ({
-  relativePagePath: "pages/about.html",
-  absolutePagePath: "/abs/pages/about.html",
-  content: Buffer.from("<html>About</html>"),
-  compressedContent: undefined as Buffer | undefined,
-  hasServerScripts: false,
-  usedComponentsSet: new Set<string>(),
-  ...overrides,
-});
+/**
+ * Returns a mock page suitable for most response tests. Pass
+ * `hasServerScripts: true` to attach a stub `serverScriptPlan` built from the
+ * page content (the executor mock forwards `__html` to the spy).
+ */
+const makePage = (overrides: Record<string, unknown> = {}) => {
+  const { hasServerScripts, ...rest } = overrides as { hasServerScripts?: boolean } & Record<string, unknown>;
+  const page: Record<string, unknown> = {
+    relativePagePath: "pages/about.html",
+    absolutePagePath: "/abs/pages/about.html",
+    content: Buffer.from("<html>About</html>"),
+    compressedContent: undefined as Buffer | undefined,
+    usedComponentsSet: new Set<string>(),
+    ...rest,
+  };
+  if (hasServerScripts) {
+    const html = (page.content as Buffer).toString();
+    page.serverScriptPlan = { segments: [{ kind: "static", bytes: Buffer.from(html) }], firstStreamIndex: -1, __html: html };
+  }
+  return page;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Server setup

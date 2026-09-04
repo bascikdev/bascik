@@ -66,6 +66,12 @@ const loadDistIntoMemory = async (): Promise<void> => {
     );
   }
 
+  // ORDERING CONTRACT: the sidecar must be loaded BEFORE the store loop
+  // below. mem.storePage computes each page's server-script plan at store
+  // time (prompt 67) and resolves every `data-bascik-server-id` placeholder
+  // against serverSidecarRegistry while doing so. Reordering these two steps
+  // would record an "unresolvable placeholder" error on every server-script
+  // page.
   const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
   try {
     await serverSidecarRegistry.loadSidecar(sidecarPath);
