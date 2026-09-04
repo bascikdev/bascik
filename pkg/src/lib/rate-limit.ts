@@ -1,3 +1,5 @@
+import { nativeClock, type FrameworkClock, type IntervalHandle } from "./clock.ts";
+
 export const DEFAULT_RATE_LIMIT_WINDOW_MS = 10_000;
 export const DEFAULT_RATE_LIMIT_MAX = 500;
 export const MAX_TRACKED_IPS = 10_000;
@@ -42,6 +44,7 @@ export interface RateLimiterOptions {
   windowMs?: number;
   max?: number;
   maxTrackedIps?: number;
+  clock?: FrameworkClock;
 }
 
 export class RateLimiter {
@@ -50,16 +53,18 @@ export class RateLimiter {
   private maxTrackedIps: number;
   private bucketDurationMs: number;
   private trackedIps = new Map<string, IpBucketEntry>();
-  private sweepTimer: NodeJS.Timeout | null = null;
+  private sweepTimer: IntervalHandle | null = null;
+  private clock: FrameworkClock;
 
   constructor(options: RateLimiterOptions = {}) {
     this.windowMs = options.windowMs ?? DEFAULT_RATE_LIMIT_WINDOW_MS;
     this.max = options.max ?? DEFAULT_RATE_LIMIT_MAX;
     this.maxTrackedIps = options.maxTrackedIps ?? MAX_TRACKED_IPS;
     this.bucketDurationMs = Math.max(1, Math.floor(this.windowMs / SUB_BUCKETS));
+    this.clock = options.clock ?? nativeClock;
   }
 
-  public isRateLimited(ip: string, now: number = Date.now()): boolean {
+  public isRateLimited(ip: string, now: number = this.clock.now()): boolean {
     let entry = this.trackedIps.get(ip);
     if (!entry) {
       if (this.trackedIps.size >= this.maxTrackedIps) {
@@ -100,13 +105,13 @@ export class RateLimiter {
 
   public startSweep(): void {
     if (this.sweepTimer) return;
-    this.sweepTimer = setInterval(() => {
+    this.sweepTimer = this.clock.setInterval(() => {
       this.sweep();
     }, this.windowMs);
-    this.sweepTimer.unref();
+    (this.sweepTimer as unknown as NodeJS.Timeout).unref?.();
   }
 
-  public sweep(now: number = Date.now()): void {
+  public sweep(now: number = this.clock.now()): void {
     for (const [ip, entry] of this.trackedIps.entries()) {
       const elapsed = now - entry.bucketStartTime;
       if (elapsed >= this.windowMs) {
@@ -125,7 +130,7 @@ export class RateLimiter {
 
   public destroy(): void {
     if (this.sweepTimer) {
-      clearInterval(this.sweepTimer);
+      this.clock.clearInterval(this.sweepTimer);
       this.sweepTimer = null;
     }
     this.clear();

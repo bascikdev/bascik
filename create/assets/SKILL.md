@@ -1304,7 +1304,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 * **Security headers:** every response includes `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, `referrer-policy: strict-origin-when-cross-origin`, `permissions-policy: interest-cohort=()`. When serving over HTTPS/TLS (`enableTls: true` or `x-forwarded-proto: https`), `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS) is automatically included per RFC 6797.
 * **URL routing (dev and production):** pages are served at their filename without the `.html` extension. `dist/about.html` is at `/about`, `dist/blog/post.html` is at `/blog/post`, `dist/index.html` is at `/`. Unmatched paths fall through to `/404` if a `dist/404.html` exists.
 * **Rate limiting:** 500 requests per 10 seconds per IP. Clients over the limit get `429 Too Many Requests` with `Retry-After`. Not active in the dev server. When behind a reverse proxy the limit applies to the proxy's IP; use the proxy's own rate limiting for per-client control.
-* **Graceful shutdown:** SIGTERM and SIGINT stop accepting connections, destroy all open sessions and live-reload SSE connections, and drain in-flight requests before exiting. Force-exits after 10 seconds if anything hasn't drained.
+* **Graceful shutdown:** SIGTERM and SIGINT mark readiness as draining, stop accepting connections, start registered cleanup handlers, and close protocol resources. If the server has not closed within `http.timeouts.drain` (default 5000 ms), Bascik force-exits with a nonzero status.
 * **Path traversal protection:** static asset URLs are validated against `dist/`; requests that escape with `/../` sequences get `400 Bad Request`.
 * **Hidden-path protection:** after URL decoding, any request path containing a segment that starts with `.` gets `404 Not Found` before static file lookup.
 
@@ -1590,9 +1590,9 @@ Keep each mode's `testIgnore` list on its `default` project. Playwright project 
 
 The fixture config sets `minify.identifiers: false` so Playwright selectors can use readable scoped names like `bascik__my-comp__btn` instead of opaque hashes. However, in production builds (where `minify.identifiers: true` is enabled), Bascik compiles and minifies element IDs and class names. Consequently, relying on raw CSS selectors like `page.locator('.my-class')` or `page.locator('#my-id')` will fail because those identifiers are hashed and compressed.
 
-To handle this, keep a clear distinction between compiler testing and application testing:
-* **Compiler-Level E2E Tests (`pkg/e2e/`):** These verify that Bascik's scoping and transpilation systems work. They deliberately target exact compiled class names (e.g., `.bascik__my-comp__wrapper`) and rewritten IDs (e.g., `[id$="__btn"]`). Do not use generic `data-testid` attributes for these, as doing so would bypass verifying the actual compilation engine.
-* **Application-Level E2E Tests (`docs/e2e/`):** These verify user-facing behavior of application widgets. To make them resilient to identifier minification and hashing, use standard `data-testid` attributes (e.g., `data-testid="search-input"`) with Playwright's native `page.getByTestId(...)` locator, or native accessibility-based locators like `page.getByRole(...)` and `page.getByPlaceholder(...)`.
+Choose locators by test intent:
+* **Behavior-oriented E2E tests:** Prefer accessibility-based locators such as `page.getByRole(...)`, `page.getByLabel(...)`, and `page.getByPlaceholder(...)`, or explicit `data-testid` attributes with `page.getByTestId(...)`. These locators remain stable when identifier minification changes classes and IDs.
+* **Compiler-output verification tests:** When the transformed selector or identifier is itself under test, deliberately assert generated scoped class names or rewritten IDs. Do not use a behavior-only locator as a substitute for asserting the compiler output that the test is meant to verify.
 
 **Adding a new e2e test:**
 1. Add a component in `pkg/e2e/src/components/my-feature/`

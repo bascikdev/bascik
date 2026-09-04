@@ -33,7 +33,7 @@ export default defineConfig({
 
 ## Identifier Minification & Locator Strategy
 
-In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes `.b1a2`). Consequently, using CSS class locators like `page.locator('.search-box')` will fail in production.
+In production builds (`bascik --build`), identifier minification (`minify.identifiers: true`) hashes and compresses element IDs and class names (for example, `.card` becomes `.b1a2`). Behavior-oriented E2E tests should avoid depending on raw compiled class or ID selectors.
 
 ### Recommended Pattern: `data-testid` Attributes
 
@@ -64,6 +64,17 @@ test('search modal opens and filters results', async ({ page }) => {
   await expect(page.getByTestId('search-result').first()).toContainText('Scoped Styles');
 });
 ```
+
+For accessibility-oriented flows, role and label queries are equally strong defaults:
+
+- `page.getByRole('button', { name: 'Search' })`
+- `page.getByLabel('Email')`
+
+### When Transform-Aware Selectors Are Correct
+
+If your test intent is compiler-output verification, selector assertions may intentionally target transformed output. For example, in Bascik's compiler fixture suite, tests may assert generated scoped class tokens or rewritten IDs to verify the transpiler itself.
+
+Use this only when transformed identifiers are the explicit subject under test. For ordinary behavior tests, keep the resilient user-facing locator strategy above.
 
 ## Running E2E Tests
 

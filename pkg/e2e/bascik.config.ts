@@ -41,6 +41,7 @@ export default defineConfig({
 export const server = defineConfig({
   http: {
     port: Number(process.env.BASCIK_SERVER_PORT) || 9443,
+    apiTimeout: 500,
     tls: {
       enabled: process.env.BASCIK_ENABLE_TLS === 'true',
     },

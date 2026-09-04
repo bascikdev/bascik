@@ -93,9 +93,30 @@ test.describe('API routes core functionality', () => {
     expect(checkData.sideEffect).toBe(false);
   });
 
-  test('504 Gateway Timeout on hung handler', async ({ request }) => {
+  test('504 Gateway Timeout on hung handler and propagates AbortSignal without leaking internals', async ({ request }) => {
+    // 1. Send request to hung handler - must stay pending until Bascik times out and aborts it
     const res = await request.get('/api/timeout');
     expect(res.status()).toBe(504);
+
+    // 2. Response body should be standard Gateway Timeout with no internal stack or secrets leaked
+    const body = await res.text();
+    expect(body).toBe('Gateway Timeout');
+    expect(body).not.toContain('node_modules');
+    expect(body).not.toContain('Error:');
+
+    // 3. The handler observed the AbortSignal through a deterministic effect
+    const checkAbortRes = await request.post('/api/timeout');
+    expect(checkAbortRes.status()).toBe(200);
+    const checkAbortData = await checkAbortRes.json();
+    expect(checkAbortData.aborted).toBe(true);
+    expect(checkAbortData.reason).toContain('timed out');
+
+    // 4. Subsequent request after timeout still succeeds (server remains healthy)
+    const healthRes = await request.get('/api/health');
+    expect(healthRes.status()).toBe(200);
+    const healthData = await healthRes.json();
+    expect(healthData.ok).toBe(true);
+    expect(healthData.status).toBe('healthy');
   });
 
   test('500 Internal Server Error hides stack trace and secrets from response body', async ({ request }) => {

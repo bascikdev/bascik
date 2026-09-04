@@ -52,6 +52,7 @@ describe("defaultConfig", () => {
     expect(defaultConfig.http.port).toBeUndefined();
     expect(defaultConfig.http.tls.enabled).toBe(false);
     expect(defaultConfig.http.rateLimit).toBe(true);
+    expect(defaultConfig.http.apiTimeout).toBe(10000);
   });
 
   it("has default logging options", () => {

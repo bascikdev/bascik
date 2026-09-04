@@ -23,6 +23,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { isNetworkResetError } from "./server.ts";
+import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
 
 export type ScriptInvocationContext = Record<string, unknown>;
 
@@ -55,15 +56,18 @@ export interface ScriptExecutionResult<T = unknown> {
 
 export interface ScriptRegistryOptions {
   isDev?: boolean;
+  clock?: FrameworkClock;
 }
 
 export class ScriptRegistry {
   private cache = new Map<string, LoadedScriptModule>();
   private versionMap = new Map<string, number>();
   private isDev: boolean;
+  private clock: FrameworkClock;
 
   constructor(options: ScriptRegistryOptions = {}) {
     this.isDev = options.isDev ?? false;
+    this.clock = options.clock ?? nativeClock;
   }
 
   /**
@@ -152,11 +156,11 @@ export class ScriptRegistry {
       }
     }
 
-    let timer: NodeJS.Timeout | undefined;
+    let timer: TimeoutHandle | undefined;
     let didTimeout = false;
 
     if (timeoutMs && timeoutMs > 0) {
-      timer = setTimeout(() => {
+      timer = this.clock.setTimeout(() => {
         didTimeout = true;
         controller.abort(new Error(`Script execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
@@ -218,7 +222,7 @@ export class ScriptRegistry {
       };
     } finally {
       if (timer) {
-        clearTimeout(timer);
+        this.clock.clearTimeout(timer);
       }
       if (upstreamSignalUnsubscribe) {
         upstreamSignalUnsubscribe();
