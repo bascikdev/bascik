@@ -15,7 +15,9 @@ const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const devServerTestIgnore = [
-  '**/server-scripts.test.ts',
+  // server-scripts.test.ts and server-scripts-stream.test.ts run here on
+  // purpose (prompt 68): the dev server shares createRequestHandler with
+  // production and re-stores the server-script plan on every transpile.
   '**/prod-server.test.ts',
   '**/sitemap.test.ts',
   '**/exec.test.ts',

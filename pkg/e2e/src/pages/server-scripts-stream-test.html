@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Server Scripts Stream Test</title>
+</head>
+
+<body>
+  <header data-testid="stream-header">header</header>
+
+  <!-- The skeleton is ordinary author HTML. Nothing hides it; that is the
+       author's choice (see the how-to recipe). aria-busy and role="status"
+       model the accessible pending pattern the docs recommend. -->
+  <section data-testid="stream-slot" aria-busy="true">
+    <p data-testid="stream-skeleton" role="status">Loading account...</p>
+    <script data-bascik-stream>
+      export default async function ({ req }, { signal }) {
+        const requested = Number(req.searchParams.delay ?? 0);
+        const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 0;
+        if (delay > 0) {
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(resolve, delay);
+            signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+          });
+        }
+        return `<article data-testid="stream-result" data-delay="${delay}">account loaded</article>`;
+      }
+    </script>
+  </section>
+
+  <!-- Deliberately a plain server script on a page that also streams. All
+       `server` scripts resolve before the first byte, so a delay here delays
+       the whole first chunk, even though this tag is later in source than the
+       stream script. Its bytes still land in source order. -->
+  <script data-bascik-server>
+    export default async function ({ req }, { signal }) {
+      const requested = Number(req.searchParams.second ?? 0);
+      const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 0;
+      if (delay > 0) {
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(resolve, delay);
+          signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+        });
+      }
+      return '<p data-testid="stream-second">second</p>';
+    }
+  </script>
+
+  <footer data-testid="stream-footer">footer</footer>
+</body>
+
+</html>

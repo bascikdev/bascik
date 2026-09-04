@@ -1,0 +1,110 @@
+<!-- The reason data-bascik-stream exists: a full layout that paints while two
+     server-dependent cards load. Static blocks are FIRST in source (delivered
+     in the first chunk); the two stream cards are LAST in source and are
+     positioned by grid-template-areas. The placeholder and its visual swap are
+     entirely author CSS: each .card is a one-cell grid so placeholder and
+     result share the cell, and :has(> .result) hides the placeholder once a
+     result child exists. Bascik adds no CSS or JS. Class names inside the
+     returned markup are scoped with the component's CSS, which is what makes
+     the :has() selector match under identifier minification. -->
+<style>
+  .dash {
+    display: grid;
+    grid-template-columns: 10rem 1fr;
+    /* Reserve the card ROWS on the grid, not only on the cards: a card that
+       has not arrived yet has no box, so its row would otherwise be 0 tall and
+       everything below it would jump when the card lands. */
+    grid-template-rows: minmax(6rem, auto) auto minmax(6rem, auto) auto;
+    grid-template-areas:
+      "nav subscription"
+      "nav usage"
+      "nav billing"
+      "nav footer";
+  }
+
+  .nav {
+    grid-area: nav;
+  }
+
+  .usage {
+    grid-area: usage;
+    min-block-size: 3rem;
+  }
+
+  .foot {
+    grid-area: footer;
+  }
+
+  .subscription {
+    grid-area: subscription;
+  }
+
+  .billing {
+    grid-area: billing;
+  }
+
+  .card {
+    display: grid;
+    /* Reserve the FINAL size, including the result element's default margins,
+       so nothing below moves when a result lands (zero CLS). */
+    min-block-size: 6rem;
+  }
+
+  .card>* {
+    grid-area: 1 / 1;
+    margin: 0;
+  }
+
+  .card:has(> .result)>.pending {
+    display: none;
+  }
+
+  .result {
+    background: #fff;
+  }
+</style>
+<!-- Source order is delivery order. Every byte before the FIRST stream tag
+     (nav, usage, footer, and the subscription card's placeholder) is in the
+     first chunk. The billing card sits after the subscription script in
+     source, so its placeholder arrives when that script resolves; that is the
+     documented rule, not a defect. Authors order cards fastest-first when the
+     latency is predictable. -->
+<main class="dash" data-testid="dash">
+  <nav class="nav" data-testid="dash-nav">nav</nav>
+  <section class="usage" data-testid="dash-usage">usage</section>
+  <footer class="foot" data-testid="dash-footer">footer</footer>
+  <section class="subscription card" aria-busy="true" data-testid="dash-sub">
+    <p class="pending" role="status" data-testid="dash-sub-pending">Loading subscription…</p>
+    <script data-bascik-stream>
+      export default async function ({ req }, { signal }) {
+        await wait(Number(req.searchParams.sub ?? 0), signal);
+        return '<h2 class="result" data-testid="dash-sub-result">Pro plan</h2>';
+      }
+      function wait(ms, signal) {
+        const delay = Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 5000) : 0;
+        if (delay === 0) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const t = setTimeout(resolve, delay);
+          signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+        });
+      }
+    </script>
+  </section>
+  <section class="billing card" aria-busy="true" data-testid="dash-bill">
+    <p class="pending" role="status" data-testid="dash-bill-pending">Loading billing…</p>
+    <script data-bascik-stream>
+      export default async function ({ req }, { signal }) {
+        await wait(Number(req.searchParams.bill ?? 0), signal);
+        return '<ul class="result" data-testid="dash-bill-result"><li>Invoice 1</li></ul>';
+      }
+      function wait(ms, signal) {
+        const delay = Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 5000) : 0;
+        if (delay === 0) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const t = setTimeout(resolve, delay);
+          signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+        });
+      }
+    </script>
+  </section>
+</main>
