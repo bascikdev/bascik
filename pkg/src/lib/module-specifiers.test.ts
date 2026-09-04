@@ -6,7 +6,6 @@ import {
   classifySpecifier,
   findModuleSpecifiers,
   rewriteModuleSpecifiers,
-  rewriteRelativeModuleSpecifiers,
   resolveScriptSrcPath,
   resolveSpecifierPath,
 } from "./module-specifiers.ts";
@@ -131,10 +130,6 @@ describe("rewriteModuleSpecifiers with an import root", () => {
     const sharedRoot = resolve(process.cwd(), "../shared");
     const rewritten = rewriteModuleSpecifiers("import a from '@/lib/a.ts';", baseDir, { importRoot: sharedRoot });
     expect(rewritten).toBe(`import a from '${pathToFileURL(resolve(process.cwd(), "../shared/lib/a.ts")).href}';`);
-  });
-
-  it("keeps the legacy export name as an alias", () => {
-    expect(rewriteRelativeModuleSpecifiers).toBe(rewriteModuleSpecifiers);
   });
 });
 

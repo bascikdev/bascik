@@ -370,6 +370,3 @@ export const rewriteModuleSpecifiers = (
   }
   return rewritten;
 };
-
-/** @deprecated Use `rewriteModuleSpecifiers`. Kept as an alias for one release. */
-export const rewriteRelativeModuleSpecifiers = rewriteModuleSpecifiers;
