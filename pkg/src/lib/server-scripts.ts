@@ -35,6 +35,7 @@ import {
   BUILD_FLAG,
   ROUTES_FLAG,
   SCRIPT_TAG_PREFIX,
+  SERVER_ATTR_NAME,
   getHtmlAttributeValue,
 } from "./html-patterns.ts";
 
@@ -57,9 +58,16 @@ export interface ServerScriptContext extends Record<string, unknown> {
   req: ServerRequest;
 }
 
-// Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>
+// Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>.
+// The attribute is matched as a whole name (SERVER_ATTR_NAME) so
+// `data-bascik-server-id` alone is never a script; the placeholder form is
+// matched by the `type=` alternative only.
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const createServerScriptRegex = (): RegExp =>
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>/gi;
+  new RegExp(
+    String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s${SERVER_ATTR_NAME}(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>`,
+    "gi",
+  );
 
 // ─── Conflict regexes ────────────────────────────────────────────────────────
 const SERVER_BUILD_CONFLICT_RE = new RegExp(
@@ -72,7 +80,13 @@ const SERVER_ROUTES_CONFLICT_RE = new RegExp(
   "i",
 );
 
-/** Return `true` if `html` contains at least one `data-bascik-server` block or placeholder. */
+/**
+ * Return `true` if `html` contains at least one `data-bascik-server` block or placeholder.
+ *
+ * The Buffer path is a deliberately loose PRE-FILTER (`includes`), not a
+ * decision: a false positive only costs one regex run downstream. The string
+ * path is exact.
+ */
 export const htmlHasServerScripts = (html: string | Buffer): boolean => {
   if (Buffer.isBuffer(html)) {
     return html.includes("data-bascik-server") || html.includes("text/bascik-server");

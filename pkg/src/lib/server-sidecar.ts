@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
-import { getHtmlAttributeValue } from "./html-patterns.ts";
+import { SERVER_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
 
 export interface ServerScriptEntry {
   id: string;
@@ -114,8 +114,16 @@ export const extractServerScriptsToSidecar = (
   sourceFile?: string,
 ): string => {
   let scriptOrdinal = 0;
+  // Whole-attribute-name boundary: a placeholder's `data-bascik-server-id` must
+  // never re-match, or re-running this over placeholdered HTML would record the
+  // empty placeholder body over the real source.
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const serverScriptRe = new RegExp(
+    String.raw`<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s${SERVER_ATTR_NAME}(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>`,
+    "gi",
+  );
   return html.replace(
-    /<script\b((?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-server\b(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi,
+    serverScriptRe,
     (_match, openAttrs, scriptContent) => {
       scriptOrdinal++;
       const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;

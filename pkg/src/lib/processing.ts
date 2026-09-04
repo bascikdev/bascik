@@ -68,6 +68,11 @@ import {
 } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
+import { SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+
+// Request-time script directives as whole attribute names (prompt 65 step 0).
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const SERVER_OR_STREAM_SCRIPT_RE = new RegExp(String.raw`\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})`, "i");
 import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
@@ -262,8 +267,8 @@ const minifyScriptTagsInHtml = async (
     const [full, open, code, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
-    // Server scripts run at request time in Node.js — skip them here
-    if (/\bdata-bascik-server\b/i.test(open)) continue;
+    // Server and stream scripts run at request time in Node.js — skip them here
+    if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
     if (/\bsrc\s*=/i.test(open)) continue;
     ops.push({ index: m.index, len: full.length, open, code, close });
