@@ -1,0 +1,1 @@
+export const serverInlineMessage = "<p>inline import</p>";

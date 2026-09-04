@@ -88,6 +88,25 @@ import {
 import { stripPreserveDirectives } from "./shielding.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
+
+const annotateComponentScriptSources = (html: string, sourceFile: string): string => {
+  const encodedSourceFile = encodeURIComponent(sourceFile);
+  return html.replace(
+    /<script\b([^>]*\bdata-bascik-(?:build|server)\b[^>]*)>/gi,
+    (openTag, attributes: string, offset: number) => {
+      const openingLine = html.slice(0, offset).split(/\r?\n/).length +
+        openTag.split(/\r?\n/).length - 1;
+      const sourceFileAttribute = /\bdata-bascik-source-file=/i.test(attributes)
+        ? ""
+        : ` data-bascik-source-file="${encodedSourceFile}"`;
+      const sourceLineAttribute = /\bdata-bascik-source-line=/i.test(attributes)
+        ? ""
+        : ` data-bascik-source-line="${openingLine}"`;
+      return `<script${attributes}${sourceFileAttribute}${sourceLineAttribute}>`;
+    },
+  );
+};
+
 import { isJavaScriptScript } from "./script-types.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { deduplicateCss } from "./styles.ts";
@@ -451,6 +470,12 @@ export const recursivelyTranspile = (
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content);
       component.fileContent = injectPropAttributes(component.fileContent, props);
+      if (component.fileName) {
+        component.fileContent = annotateComponentScriptSources(
+          component.fileContent,
+          component.fileName,
+        );
+      }
 
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
       const currentOrdinal = (ordinalMap.get(component.name) ?? 0) + 1;
@@ -1254,8 +1279,8 @@ export const transpilePage = async (
       distHtml.slice(tag.closeIndex);
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
-  const serverScripts: Record<string, { id: string; source: string }> = {};
-  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts);
+  const serverScripts: Record<string, { id: string; source: string; modulePath?: string; sourceFile?: string; sourceLine?: number }> = {};
+  distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts, pagePath);
   cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
@@ -1264,7 +1289,7 @@ export const transpilePage = async (
   for (const comp of allUsedComponents) {
     if (comp.fileContent) {
       const componentSourcePath = comp.fileName
-        ? resolve(process.cwd(), BascikConfig.directory.components, comp.fileName)
+        ? resolve(process.cwd(), comp.fileName)
         : undefined;
       const compDeps = await collectAllScriptDeps(comp.fileContent, componentSourcePath);
       for (const dep of compDeps) {

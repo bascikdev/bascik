@@ -9,3 +9,11 @@ export const BUILD_FLAG = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE})?`
 export const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})?`;
 export const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
 export const SCRIPT_TAG_PREFIX = "<script\\b";
+
+export const getHtmlAttributeValue = (openTag: string, attribute: string): string | undefined => {
+	const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = openTag.match(
+		new RegExp(`\\s${escapedAttribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|(${BARE_TOKEN}))`, "i"),
+	);
+	return match ? (match[1] ?? match[2] ?? match[3]) : undefined;
+};

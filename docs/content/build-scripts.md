@@ -34,7 +34,7 @@ Output in the compiled HTML (`dist/index.html`):
 </html>
 ```
 
-> **A few rules to know:** Top-level `import` and `await` are supported. Paths are relative to the project root (where you run `bascik`). Write output with `console.log()`. Runs during both dev and production builds. Component tags in the output are resolved normally, so your build script can emit `<my-card>` and it will be transpiled.
+> **A few rules to know:** Top-level `import` and `await` are supported. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Write output with `console.log()`. Build scripts run during both dev and production builds. Component tags in the output are resolved normally, so your build script can emit `<my-card>` and it will be transpiled.
 
 ## How Error Handling Works
 
@@ -189,7 +189,7 @@ Prefer plain hardcoded HTML when the content is short, stable, and doesn't come 
 
 ## npm Packages
 
-A Bascik project is a Node.js project, any npm package can be installed and used in build scripts. Install it once and import it anywhere:
+A Bascik project is a Node.js project, so any npm package can be installed and used in build scripts. Install it once and import it anywhere:
 
 ```sh
 npm install gray-matter
@@ -238,7 +238,7 @@ export async function renderCards(jsonPath) {
 </script>
 ```
 
-> **Import paths in build scripts:** You can use standard ESM relative imports in build scripts. Bascik resolves `./` and `../` specifiers relative to the page or component file that contains the script block, then executes the script from cache safely.
+> **Import paths in build scripts:** You can use standard static imports, bare imports, `export ... from`, and dynamic `import()`. Bascik rewrites genuine `./` and `../` ESM specifiers relative to the containing page, component, or external script file. Import-like text in comments, strings, template raw text, and regular expression literals is left unchanged, while imports inside `${...}` template expressions are resolved normally.
 
 ## Environment Variables
 
@@ -280,31 +280,31 @@ The following is an illustrative pattern. Adapt the element and attribute placem
 
 Client code can read the emitted data attribute and prefix a runtime URL. The value was selected during the build, and reading it from the DOM adds no Bascik runtime.
 
-## Concurrent Execution
+## Batched Execution
 
-All build scripts on a page run concurrently. Bascik collects every `<script data-bascik-build>` tag at once and starts them all in parallel using `Promise.all`. A semaphore caps how many Node.js subprocesses are alive simultaneously based on available memory, but there is no document-order sequencing, so script 4 can finish before script 1. The outputs are stitched back into the page in their original positions once all scripts have resolved, so the HTML order is always preserved.
+Uncached build scripts on a page are written to separate temporary modules and evaluated sequentially by one child-process runner. Their outputs are mapped back to the original tags and inserted in document order. Warm cache hits skip child-process execution entirely.
 
 ```html
-<!-- These four scripts all start at the same time. -->
+<!-- These scripts share one batch runner. -->
 <head>
   <script data-bascik-build>
     const { canonical } = await import(…);
-    console.log(await canonical());        <!-- may finish 2nd -->
+    console.log(await canonical());
   </script>
   <script data-bascik-build>
     const { openGraph } = await import(…);
-    console.log(await openGraph());        <!-- may finish 4th -->
+    console.log(await openGraph());
   </script>
   <script data-bascik-build>
     const { breadcrumbLd } = await import(…);
-    console.log(await breadcrumbLd());     <!-- may finish 1st -->
+    console.log(await breadcrumbLd());
   </script>
   <script data-bascik-build>
     const { articleSchema } = await import(…);
-    console.log(await articleSchema());    <!-- may finish 3rd -->
+    console.log(await articleSchema());
   </script>
 </head>
-<!-- Output is always assembled in document order regardless of finish order. -->
+<!-- Output is assembled in document order. -->
 ```
 
 ## Script Caching
@@ -313,13 +313,13 @@ When a page needs the same data in several places, read or fetch it **once at pa
 
 Bascik caches build script output to `node_modules/.cache/bascik/script-cache/` so subsequent builds skip the Node.js subprocess entirely for unchanged scripts. The cache key is a SHA-256 hash of:
 
-- The script body
-- The contents of local static dependency files scanned from literal string imports
+- The authored script body before temporary-module import rewriting
+- The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
 
 ### Invalidation Limits and Scoped Exclusions
 
-Bascik statically scans literal quoted strings for local dependencies. It **cannot** detect runtime dependencies such as:
+Bascik statically scans genuine relative ESM specifiers and quoted local data paths. ESM dependencies resolve from their containing script file, while generic data paths resolve from the project root. It **cannot** detect runtime dependencies such as:
 - Network API calls and database queries
 - Directory reads (`readdir`)
 - Computed / dynamic file paths (e.g. `join(dir, name)` or template strings)

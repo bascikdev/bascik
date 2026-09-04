@@ -151,6 +151,46 @@ suite('Extension Integration Suite', () => {
       assertNavHelper(locations);
     });
 
+    test('provides definition for export-from in data-bascik-routes with closing-tag whitespace', async () => {
+      const locations = await definitionInside("routeHelper } from './lib/nav-helper.ts'");
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for unquoted relative src', async () => {
+      const locations = await definitionInside('<script data-bascik-build src=./lib/nav-helper.ts>');
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for a bare path src resolved relative to the document', async () => {
+      const locations = await definitionInside('<script data-bascik-routes src=lib/nav-helper.ts>');
+      assertNavHelper(locations);
+    });
+
+    test('provides definition for parent-relative src', async () => {
+      const locations = await definitionInside('<script data-bascik-server src=../src/lib/nav-helper.ts>');
+      assertNavHelper(locations);
+    });
+
+    test('returns no definition for a missing relative target', async () => {
+      const locations = await definitionInside('./lib/missing-helper.ts');
+      assert.ok(!locations || locations.length === 0, 'No definition for missing target');
+    });
+
+    for (const nonCodeImport of [
+      "// import './lib/nav-helper.ts'",
+      `\"import('./lib/nav-helper.ts')\"`,
+      "`import('./lib/nav-helper.ts')`",
+      "/import\\(['\"]\\.\\/lib\\/nav-helper\\.ts['\"]\\)/",
+      `if (ready) /import\\(['"]\\.\\/lib\\/nav-helper\\.ts['"]\\)/`,
+      `{ markReady(); } /import\\(['"]\\.\\.\\/lib\\/nav-helper\\.ts['"]\\)/`,
+      "obj.import('./lib/nav-helper.ts')",
+    ]) {
+      test(`returns no definition for non-code import ${nonCodeImport}`, async () => {
+        const locations = await definitionInside(nonCodeImport);
+        assert.ok(!locations || locations.length === 0, 'No definition for non-code import');
+      });
+    }
+
     test('returns no definition for bare specifier in data-bascik-build script', async () => {
       const locations = await definitionInside("from 'node:fs/promises'");
       assert.ok(!locations || locations.length === 0, 'No definition for bare specifier');

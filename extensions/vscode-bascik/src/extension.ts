@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
 import { analyzeApiRouteSource } from './api-rules';
+import { findModuleSpecifiers } from './module-specifiers';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr'
@@ -132,33 +133,6 @@ function parseScriptOpenTagAttributes(openTag: string): Map<string, string | tru
   return attrs;
 }
 
-const IMPORT_SPECIFIER_MATCHERS: Array<{
-  regex: RegExp;
-  quoteGroup: number;
-  specifierGroup: number;
-}> = [
-  {
-    regex: /(^|[;\n\r])\s*import\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
-    quoteGroup: 2,
-    specifierGroup: 3,
-  },
-  {
-    regex: /(^|[;\n\r])\s*import\s*(['"])([^'"\n\r]+)\2/gm,
-    quoteGroup: 2,
-    specifierGroup: 3,
-  },
-  {
-    regex: /(^|[;\n\r])\s*export\s+[\s\S]*?\s+from\s*(['"])([^'"\n\r]+)\2/gm,
-    quoteGroup: 2,
-    specifierGroup: 3,
-  },
-  {
-    regex: /\bimport\s*\(\s*(['"])([^'"\n\r]+)\1\s*\)/g,
-    quoteGroup: 1,
-    specifierGroup: 2,
-  },
-];
-
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
   provideDefinition(
     document: vscode.TextDocument,
@@ -179,11 +153,13 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       const scriptBody = scriptMatch[2] ?? '';
       const blockStart = scriptMatch.index ?? 0;
       const openTagEnd = blockStart + openTag.length;
-      const blockEnd = blockStart + openTag.length + scriptBody.length + '</script>'.length;
+      const blockEnd = blockStart + scriptMatch[0].length;
       if (offset < blockStart || offset > blockEnd) continue;
 
       const attrs = parseScriptOpenTagAttributes(openTag);
-      if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server')) {
+      if (!attrs.has('data-bascik-build') &&
+        !attrs.has('data-bascik-server') &&
+        !attrs.has('data-bascik-routes')) {
         return undefined;
       }
 
@@ -191,38 +167,27 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
 
       // Cursor inside the open tag: check for the src attribute value.
       if (offset >= blockStart && offset <= openTagEnd) {
-        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(openTag);
+        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(openTag);
         if (!srcMatch) return undefined;
-        const srcValue = srcMatch[1] ?? srcMatch[2] ?? '';
+        const srcValue = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3] ?? '';
         if (!srcValue) return undefined;
         const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
         const valueEnd = valueStart + srcValue.length;
         if (offset < valueStart || offset > valueEnd) return undefined;
-        if (!(srcValue.startsWith('./') || srcValue.startsWith('../'))) return undefined;
+        if (path.isAbsolute(srcValue) || /^[a-z][a-z\d+.-]*:/i.test(srcValue)) return undefined;
         const resolved = path.resolve(baseDir, srcValue);
         if (!fs.existsSync(resolved)) return undefined;
         return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
       }
 
-      // Cursor inside the script body: match the four import specifier patterns.
+      // Cursor inside the script body: inspect lexical ESM specifiers only.
       const bodyOffset = offset - openTagEnd;
-      for (const { regex, quoteGroup, specifierGroup } of IMPORT_SPECIFIER_MATCHERS) {
-        regex.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = regex.exec(scriptBody)) !== null) {
-          const specifier = match[specifierGroup];
-          if (!specifier) continue;
-          const quoted = `${match[quoteGroup]}${specifier}${match[quoteGroup]}`;
-          const quotedIndex = match[0].lastIndexOf(quoted);
-          if (quotedIndex < 0) continue;
-          const specifierStart = (match.index ?? 0) + quotedIndex + 1;
-          const specifierEnd = specifierStart + specifier.length;
-          if (bodyOffset < specifierStart || bodyOffset > specifierEnd) continue;
-          if (!(specifier.startsWith('./') || specifier.startsWith('../'))) return undefined;
-          const resolved = path.resolve(baseDir, specifier);
-          if (!fs.existsSync(resolved)) return undefined;
-          return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
-        }
+      for (const { start, end, value: specifier } of findModuleSpecifiers(scriptBody)) {
+        if (bodyOffset < start || bodyOffset > end) continue;
+        if (!(specifier.startsWith('./') || specifier.startsWith('../'))) return undefined;
+        const resolved = path.resolve(baseDir, specifier);
+        if (!fs.existsSync(resolved)) return undefined;
+        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
       }
 
       return undefined;
