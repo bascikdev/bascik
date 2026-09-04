@@ -10,10 +10,16 @@ export const SERVER_FLAG = String.raw`data-bascik-server(?:\s*=\s*${ATTR_VALUE})
 export const ROUTES_FLAG = String.raw`data-bascik-routes(?:\s*=\s*${ATTR_VALUE})?`;
 export const SCRIPT_TAG_PREFIX = "<script\\b";
 
+const ATTR_PAIR_REGEX =
+	/(?:^|\s)([^\s"'=<>\`]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+))/gi;
+
 export const getHtmlAttributeValue = (openTag: string, attribute: string): string | undefined => {
-	const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const match = openTag.match(
-		new RegExp(`\\s${escapedAttribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|(${BARE_TOKEN}))`, "i"),
-	);
-	return match ? (match[1] ?? match[2] ?? match[3]) : undefined;
+	const target = attribute.toLowerCase();
+	for (const match of openTag.matchAll(ATTR_PAIR_REGEX)) {
+		if (match[1]?.toLowerCase() === target) {
+			return match[2] ?? match[3] ?? match[4];
+		}
+	}
+	return undefined;
 };
+
