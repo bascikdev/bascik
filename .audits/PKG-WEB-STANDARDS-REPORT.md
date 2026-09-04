@@ -139,7 +139,7 @@ This document is structured specifically for automated AI agents and core engine
   * Disambiguates division operators from regex literals by checking expression-preceding keywords (`return`, `case`, `throw`, `yield`, `await`, etc.).
   * Protects template literals, string escapes, and ASI statement boundaries.
 * **Server-Side Scripts (`data-bascik-server`):**
-  * Executes per-request as isolated Node.js ESM modules with structured `process.env.BASCIK_REQUEST` JSON context. Strips ANSI formatting before HTML injection.
+  * Executes per request as isolated Node.js ESM modules. The default export receives a standard WHATWG `Request`, `{ remoteIp }` context, and `{ signal }`. Strips ANSI formatting before HTML injection.
 
 ---
 
