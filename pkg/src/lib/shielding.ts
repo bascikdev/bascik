@@ -2,6 +2,20 @@
 const SHIELD_TOKEN_PATTERN = /\x00BASCIK_SHIELD_(\d+)\x00/g;
 let nextShieldToken = 0;
 
+/**
+ * Test-only instrumentation for the operation-count guard in
+ * shielding.test.ts: how many full HTML tag scans shieldPreservedAttribute
+ * ran and how many values were hidden. Never read on production paths.
+ */
+export const __shieldStatsForTests = {
+  tagScans: 0,
+  hiddenValues: 0,
+  reset(): void {
+    this.tagScans = 0;
+    this.hiddenValues = 0;
+  },
+};
+
 export const createContentShield = (source: string): {
   hide: (value: string) => string;
   restore: (value: string) => string;
@@ -10,6 +24,7 @@ export const createContentShield = (source: string): {
   const ownedTokens = new Set<string>();
 
   const hide = (value: string): string => {
+    __shieldStatsForTests.hiddenValues++;
     let token: string;
     do {
       token = `\x00BASCIK_SHIELD_${nextShieldToken++}\x00`;
@@ -84,18 +99,46 @@ const getPreserveTokens = (tag: string): Set<string> | null => {
   );
 };
 
+const identityRestore = (value: string): string => value;
+
+/**
+ * True when nothing in `html` can possibly be preserved: every path that
+ * hides a value in `shieldPreservedAttribute` originates from either a
+ * `data-bascik-preserve` directive (matched case-insensitively) or an element
+ * whose tag name is in `preservedTags`. Absent both, the frame attribute sets
+ * stay empty, no content range is recorded, and the function returns its
+ * input unchanged. Checking `<tag` (not just `tag`) avoids scanning when the
+ * name only appears in text or an attribute value. Case-insensitive because
+ * HTML_TAG_PATTERN and the tag-name comparison lowercase the tag.
+ */
+const mayContainPreserved = (html: string, preservedTags: string[]): boolean => {
+  const lower = html.toLowerCase();
+  if (lower.includes("data-bascik-preserve")) return true;
+  for (const tag of preservedTags) {
+    if (lower.includes(`<${tag.toLowerCase()}`)) return true;
+  }
+  return false;
+};
+
 // Selective preserve extends content shielding to inherited attribute sets.
 export const shieldPreservedAttribute = (
   html: string,
   attribute: "id" | "name" | "class",
   preservedTags: string[] = [],
 ): { html: string; restore: (value: string) => string } => {
+  // Fast path (prompt 83): called three times per component instance; most
+  // component markup has no preserve directive and no preserved tag, so skip
+  // both full tag scans. Byte-identical to the slow path by construction.
+  if (!mayContainPreserved(html, preservedTags)) {
+    return { html, restore: identityRestore };
+  }
   const shield = createContentShield(html);
   const preservedTagSet = new Set(preservedTags.map((tag) => tag.toLowerCase()));
   const frames: PreserveFrame[] = [];
   const contentRanges: Array<{ start: number; end: number }> = [];
   let match: RegExpExecArray | null;
 
+  __shieldStatsForTests.tagScans++;
   HTML_TAG_PATTERN.lastIndex = 0;
   while ((match = HTML_TAG_PATTERN.exec(html)) !== null) {
     const tag = match[0];
@@ -146,6 +189,7 @@ export const shieldPreservedAttribute = (
   }
 
   const activeFrames: Array<{ tagName: string; attributes: Set<string> }> = [];
+  __shieldStatsForTests.tagScans++;
   result = result.replace(HTML_TAG_PATTERN, (tag) => {
     if (tag.startsWith("<!--")) return tag;
     const closingMatch = tag.match(/^<\/\s*([a-zA-Z][a-zA-Z0-9:-]*)/);
