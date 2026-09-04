@@ -37,6 +37,7 @@ import {
 } from "../src/lib/processing.ts";
 import { replaceTag, getTag } from "../src/lib/components.ts";
 import { minifyHtml } from "../src/lib/html-minifier.ts";
+import { minifyJs } from "../src/lib/js-minifier.ts";
 import {
   convertCssElementSelectorsToClasses,
   scopeCssCustomProperties,
@@ -101,7 +102,37 @@ const PAGE_BODY_50 = Array.from(
   (_, i) => `<comp-${i}><p>slot content ${i}</p></comp-${i}>`,
 ).join("");
 
-// ── Benchmarks ────────────────────────────────────────────────────────────────
+// JS minifier scaling inputs (prompt 62). Slash-heavy exercises regex/division/
+// comment disambiguation on every `/`; slash-light is the common case. Sizes
+// double so a quadratic scan would show ~4x per step and a linear one ~2x.
+const SLASH_HEAVY_UNIT = "const a = b / c / d; // note\nconst e = f / g; /* block */ x = y / z;\n";
+const SLASH_LIGHT_UNIT = "const alpha = beta + gamma;\nlet delta = epsilon(zeta, eta);\n";
+const JS_SIZES = [
+  { label: "~52KB", reps: 750 },
+  { label: "~107KB", reps: 1550 },
+  { label: "~217KB", reps: 3150 },
+  { label: "~437KB", reps: 6330 },
+] as const;
+const SLASH_HEAVY = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_HEAVY_UNIT.repeat(reps) }));
+const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_LIGHT_UNIT.repeat(reps) }));
+
+// ── Benchmarks ────────────────────────────────────────────────────────────────────────────
+
+describe("minifyJs — slash-heavy scaling", () => {
+  for (const { label, src } of SLASH_HEAVY) {
+    bench(`slash-heavy ${label} (${src.length} bytes)`, () => {
+      minifyJs(src);
+    });
+  }
+});
+
+describe("minifyJs — slash-light scaling", () => {
+  for (const { label, src } of SLASH_LIGHT) {
+    bench(`slash-light ${label} (${src.length} bytes)`, () => {
+      minifyJs(src);
+    });
+  }
+});
 
 describe("minifyHtml", () => {
   bench("small HTML (~200 chars)", () => {
