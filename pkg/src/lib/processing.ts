@@ -413,6 +413,25 @@ const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
   console.error(aggregateError.message);
 };
 
+/**
+ * Force V8 to materialize `value` as a flat (contiguous) string (prompt 85).
+ *
+ * Every `replaceTag` splice is `prefix + insert + suffix`, and V8 represents
+ * that as a `ConsString` node rather than copying. After hundreds of splices
+ * the page is a deep concatenation tree, and the first downstream consumer
+ * (regex scan, minifier, `Buffer.from`) pays a synchronous flatten pause.
+ *
+ * `Buffer.byteLength` hands the string to V8's C++ `String::Flatten` on every
+ * call, which rewrites the cons tree in place into a flat sequential string
+ * and returns the same string object. Pure-JS probes such as `charCodeAt` or
+ * `indexOf` are not reliable here: once TurboFan inlines them they walk the
+ * cons tree without flattening it. Byte-neutral; one linear pass at most.
+ */
+const flattenString = (value: string): string => {
+  if (value.length > 0) Buffer.byteLength(value);
+  return value;
+};
+
 export const recursivelyTranspile = (
   transpiledHtmlBody: string,
   componentList: ComponentList,
@@ -458,19 +477,23 @@ export const recursivelyTranspile = (
     }
     const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
     if (!partial.name) {
-      const cleanedHtml = transpiledHtmlBody
-        .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-        .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
+      const cleanedHtml = flattenString(
+        transpiledHtmlBody
+          .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
+          .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, ""),
+      );
       return { transpiledHtmlBody: cleanedHtml, usedComponents };
     }
     // Cast: getFirstComponent merges component list data so all required fields are present
     let component = partial as BascikComponent;
 
     if (!component.fileContent) {
-      const cleanedHtml = transpiledHtmlBody
-        .replace(component.content || "", "")
-        .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
-        .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, "");
+      const cleanedHtml = flattenString(
+        transpiledHtmlBody
+          .replace(component.content || "", "")
+          .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
+          .replace(/<!--bascik-source-file-end:[\s\S]*?-->/g, ""),
+      );
       return {
         transpiledHtmlBody: cleanedHtml,
         usedComponents

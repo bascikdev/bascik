@@ -17,5 +17,5 @@
     "lib": ["ES2025"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "node_modules"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-helper.ts", "node_modules"]
 }

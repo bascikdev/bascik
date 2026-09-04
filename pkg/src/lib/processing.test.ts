@@ -2477,6 +2477,42 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
   });
 });
 
+describe("recursivelyTranspile – flat string output (prompt 85)", () => {
+  const componentList = {
+    "list-row": {
+      name: "list-row",
+      fileName: "components/list-row.html",
+      fileContent: '<li class="row"><row-badge></row-badge><span data-bascik-prop-label></span></li>',
+    },
+    "row-badge": {
+      name: "row-badge",
+      fileName: "components/row-badge.html",
+      fileContent: '<em class="badge">*</em>',
+    },
+  };
+  const page =
+    "<ul>" +
+    Array.from({ length: 250 }, (_, i) => `<list-row data-bascik-prop-label="Row ${i}"></list-row>`).join("") +
+    "</ul>";
+
+  it("output is byte-identical to a fresh run and free of source-file markers", () => {
+    const first = recursivelyTranspile(page, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    const second = recursivelyTranspile(page, componentList, [], "src/pages/index.html").transpiledHtmlBody;
+    expect(first).toBe(second);
+    expect(first).not.toContain("bascik-source-file");
+    expect(first.match(/<li class="/g)).toHaveLength(250);
+    expect(first.match(/<em class="/g)).toHaveLength(250);
+    expect(first).toContain("<span>Row 249</span>");
+  });
+
+  it("returned body is a flat V8 string after 500 splices", async () => {
+    const { isFlatString } = await import("./string-flatness-probe.test-helper.ts");
+    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(page, componentList, [], "src/pages/index.html");
+    expect(usedComponents).toHaveLength(500);
+    expect(isFlatString(transpiledHtmlBody)).toBe(true);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Z: Dynamic Routes Pipeline Expansion
 // ─────────────────────────────────────────────────────────────────────────────
