@@ -1,8 +1,4 @@
 <script data-bascik-build="page">
-     import { join } from 'node:path';
-     import { pathToFileURL } from 'node:url';
-     const { renderPagination } = await import(
-          pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-     );
+     import { renderPagination } from '@/lib/render-nav.ts';
      console.log(renderPagination());
 </script>

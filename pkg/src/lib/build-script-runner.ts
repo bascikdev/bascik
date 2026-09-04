@@ -17,15 +17,29 @@ export interface ScriptRunResult {
   error?: string;
 }
 
-export async function runScriptFiles(files: string[]): Promise<ScriptRunResult[]> {
+export interface ScriptRunTask {
+  file: string;
+  sourceFile?: string;
+}
+
+export async function runScriptFiles(
+  files: Array<string | ScriptRunTask>,
+): Promise<ScriptRunResult[]> {
   const results: ScriptRunResult[] = [];
 
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+    const task = typeof files[i] === "string"
+      ? { file: files[i] as string }
+      : files[i] as ScriptRunTask;
     let stdout = "";
     let stderr = "";
     const origStdout = process.stdout.write;
     const origStderr = process.stderr.write;
+    const originalSourceFile = process.env.BASCIK_SOURCE_FILE;
+
+    if (task.sourceFile !== undefined) {
+      process.env.BASCIK_SOURCE_FILE = task.sourceFile;
+    }
 
     process.stdout.write = (chunk: any, encoding?: any, cb?: any) => {
       const callback = typeof encoding === "function" ? encoding : (typeof cb === "function" ? cb : undefined);
@@ -52,7 +66,7 @@ export async function runScriptFiles(files: string[]): Promise<ScriptRunResult[]
     };
 
     try {
-      await import(pathToFileURL(resolve(process.cwd(), file)).href);
+      await import(pathToFileURL(resolve(process.cwd(), task.file)).href);
       results.push({ id: i, ok: true, stdout, stderr });
     } catch (err) {
       results.push({
@@ -65,6 +79,13 @@ export async function runScriptFiles(files: string[]): Promise<ScriptRunResult[]
     } finally {
       process.stdout.write = origStdout;
       process.stderr.write = origStderr;
+      if (task.sourceFile !== undefined) {
+        if (originalSourceFile === undefined) {
+          delete process.env.BASCIK_SOURCE_FILE;
+        } else {
+          process.env.BASCIK_SOURCE_FILE = originalSourceFile;
+        }
+      }
     }
   }
 
@@ -78,7 +99,17 @@ const isMain =
     process.argv[1].endsWith("build-script-runner.ts"));
 
 if (isMain) {
-  const files = process.argv.slice(2);
-  const results = await runScriptFiles(files);
+  const tasks = process.argv.slice(2).map((argument): string | ScriptRunTask => {
+    try {
+      const parsed = JSON.parse(argument) as Partial<ScriptRunTask>;
+      if (typeof parsed === "object" && parsed !== null && typeof parsed.file === "string") {
+        return { file: parsed.file, sourceFile: parsed.sourceFile };
+      }
+    } catch {
+      // Backward-compatible plain file argument.
+    }
+    return argument;
+  });
+  const results = await runScriptFiles(tasks);
   process.stdout.write(JSON.stringify(results));
 }

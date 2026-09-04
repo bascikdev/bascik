@@ -65,6 +65,7 @@ describe("WorkerPool", () => {
     expect(WorkerMock).toHaveBeenCalledTimes(3);
     expect(WorkerMock).toHaveBeenCalledWith("/fake/worker.js", {
       workerData: { init: true },
+      execArgv: expect.any(Array),
     });
   });
 

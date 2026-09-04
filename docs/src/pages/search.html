@@ -12,19 +12,11 @@
   -->
   <docs-head />
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
-    );
+    import { canonical } from '@/lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
-    );
+    import { openGraph } from '@/lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <meta name="robots" content="noindex" />
@@ -44,11 +36,7 @@
         <!-- Content rendered from docs/content/search.md at build time.
              To update page content, edit the MD file — not this file. -->
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMd } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMd } from '@/lib/md-renderer.ts';
           console.log(await renderMd('./content/search.md'));
         </script>
       </main>

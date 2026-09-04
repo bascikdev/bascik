@@ -13,7 +13,8 @@ import {
   extractServerScriptsToSidecar,
 } from "./server-sidecar.ts";
 import { htmlHasServerScripts, executeServerScripts } from "./server-scripts.ts";
-import { rm, mkdir } from "node:fs/promises";
+import { BascikConfig } from "./config.ts";
+import { rm, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -65,6 +66,86 @@ describe("server-scripts sidecar", () => {
 
     const result = await executeServerScripts(extracted, baseRequest);
     expect(result).toBe("<div>part1\npart2\n</div>");
+  });
+
+  it("preserves authored page identity for inline relative imports", async () => {
+    const rawHtml = `<script data-bascik-server>
+      import { serverInlineMessage } from './test-fixtures/server-inline-helper.ts';
+      export default function() { return serverInlineMessage; }
+    </script>`;
+    const extracted = extractServerScriptsToSidecar(
+      rawHtml,
+      "pages/server-inline-page.html",
+      undefined,
+      "src/lib/server-inline-page.html",
+    );
+
+    const result = await executeServerScripts(
+      extracted,
+      baseRequest,
+      undefined,
+      "dist/server-inline-page.html",
+    );
+
+    expect(result).toBe("<p>inline import</p>");
+  });
+
+  it("roundtrips component source identity through sidecar extraction", async () => {
+    const rawHtml = `<script data-bascik-server data-bascik-source-file="src%2Flib%2Fcomponent.html">
+      import { serverInlineMessage } from './test-fixtures/server-inline-helper.ts';
+      export default function() { return serverInlineMessage; }
+    </script>`;
+    const extracted = extractServerScriptsToSidecar(
+      rawHtml,
+      "pages/consumer.html",
+      undefined,
+      "src/pages/consumer.html",
+    );
+
+    expect(Object.values(serverSidecarRegistry.getAllScripts())[0]?.sourceFile)
+      .toBe("src/lib/component.html");
+    await expect(executeServerScripts(
+      extracted,
+      baseRequest,
+      undefined,
+      "dist/consumer.html",
+    )).resolves.toBe("<p>inline import</p>");
+  });
+
+  it("attributes component-authored sidecar failures to the exact authored line", async () => {
+    const outDir = join(tmpdir(), `bascik-sidecar-lines-${Date.now()}`);
+    const previousOutDir = BascikConfig.directory.out;
+    const rawHtml = `${"<p>consumer spacing</p>\n".repeat(20)}<script data-bascik-server data-bascik-source-file="src%2Fcomponents%2Ffailing-card.html" data-bascik-source-line="8">
+throw new Error('component sidecar failure');
+</script>`;
+    const extracted = extractServerScriptsToSidecar(
+      rawHtml,
+      "pages/consumer.html",
+      undefined,
+      "src/pages/consumer.html",
+    );
+
+    expect(extracted).not.toContain("data-bascik-source-file");
+    expect(extracted).not.toContain("data-bascik-source-line");
+    try {
+      BascikConfig.directory.out = outDir;
+      const sidecarPath = await serverSidecarRegistry.writeSidecar("test");
+      serverSidecarRegistry.clear();
+      await serverSidecarRegistry.loadSidecar(sidecarPath!);
+
+      expect(serverSidecarRegistry.getScript(Object.keys(JSON.parse(
+        await readFile(sidecarPath!, "utf8"),
+      ).scripts)[0])).toMatchObject({
+        sourceFile: "src/components/failing-card.html",
+        sourceLine: 8,
+      });
+      await expect(
+        executeServerScripts(extracted, baseRequest, undefined, "dist/consumer.html"),
+      ).rejects.toThrow("src/components/failing-card.html:9");
+    } finally {
+      BascikConfig.directory.out = previousOutDir;
+      await rm(outDir, { recursive: true, force: true });
+    }
   });
 
   it("throws clear error when sidecar placeholder cannot be resolved", async () => {

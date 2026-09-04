@@ -11,6 +11,7 @@ import {
   validateConfigShape,
   validateConfigPaths,
   validateUserConfig,
+  collectConfigWarnings,
   formatConfigErrors,
   normalizeBasePath,
 } from "./config-validation.ts";
@@ -128,6 +129,64 @@ describe("scripts.timeout", () => {
 
   it("accepts a positive timeout", () => {
     expect(validateConfigShape({ scripts: { timeout: 30000 } })).toHaveLength(0);
+  });
+});
+
+describe("scripts.importRoot", () => {
+  const missingFs = {
+    existsSync: () => false,
+    isDirectory: () => false,
+    isReadableFile: () => false,
+  };
+
+  it("is a known key", () => {
+    expect(validateConfigShape({ scripts: { importRoot: "src" } })).toHaveLength(0);
+  });
+
+  it("rejects a non-string value", () => {
+    const errors = validateConfigShape({ scripts: { importRoot: 42 as any } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("scripts.importRoot");
+    expect(errors[0].value).toBe(42);
+  });
+
+  it("rejects an empty string", () => {
+    const errors = validateConfigShape({ scripts: { importRoot: "" } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("scripts.importRoot");
+  });
+
+  it("accepts an import root outside the project root (monorepo shared scripts)", () => {
+    // Pinned on purpose: unlike directory.out, the import root is read-only and
+    // legitimately points at a sibling folder in a monorepo. Never add an escape check.
+    expect(
+      validateConfigShape({ scripts: { importRoot: "../shared/scripts" } }, { cwd: "/project" }),
+    ).toHaveLength(0);
+    expect(
+      validateConfigPaths({ scripts: { importRoot: "../shared/scripts" } }, { fs: allowAllFs, cwd: "/project" }),
+    ).toHaveLength(0);
+  });
+
+  it("does not error when the import root directory is missing", () => {
+    expect(
+      validateConfigPaths({ scripts: { importRoot: "helpers" } }, { fs: missingFs, cwd: "/project" }),
+    ).toHaveLength(0);
+    expect(
+      validateUserConfig({ scripts: { importRoot: "helpers" } }, {}, { fs: missingFs, cwd: "/project", env: {} }),
+    ).toHaveLength(0);
+  });
+
+  it("warns (not errors) when the import root directory is missing", () => {
+    const warnings = collectConfigWarnings({ scripts: { importRoot: "helpers" } }, { fs: missingFs, cwd: "/project" });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].key).toBe("scripts.importRoot");
+    expect(warnings[0].value).toBe("helpers");
+    expect(warnings[0].message).toContain("does not exist");
+  });
+
+  it("does not warn when the import root exists or was not set", () => {
+    expect(collectConfigWarnings({ scripts: { importRoot: "src" } }, { fs: allowAllFs, cwd: "/project" })).toHaveLength(0);
+    expect(collectConfigWarnings({}, { fs: missingFs, cwd: "/project" })).toHaveLength(0);
   });
 });
 

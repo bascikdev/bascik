@@ -1,0 +1,11 @@
+<div class="import-root-badge" data-testid="import-root-badge">
+  <!-- @/ resolves against scripts.importRoot (default src). A leading / is
+       rejected by the compiler; only @/ and ./ are valid. -->
+  <script data-bascik-build>
+    import { importRootMarker } from '@/lib/import-root-helper.ts';
+    console.log(`<span data-testid="import-root-alias">${importRootMarker()}</span>`);
+  </script>
+
+  <!-- src= attribute honors the same alias. -->
+  <script data-bascik-build src="@/lib/import-root-src-entry.ts"></script>
+</div>

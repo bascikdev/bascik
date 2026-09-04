@@ -2,14 +2,11 @@
  * md-renderer.ts
  *
  * Renders a Markdown file to HTML for use inside a Bascik docs page.
- * Import this from a `data-bascik-build` script block in a page:
+ * Call this from a `data-bascik-build` script block in a page using a
+ * standard relative ESM import:
  *
  *   <script data-bascik-build>
- *     import { join } from 'node:path';
- *     import { pathToFileURL } from 'node:url';
- *     const { renderMd } = await import(
- *       pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
- *     );
+ *     import { renderMd } from '../../lib/md-renderer.ts';
  *     console.log(await renderMd('./content/16-performance.md'));
  *   </script>
  *

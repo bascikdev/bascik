@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Script Import Navigation Fixture</title>
+</head>
+
+<body>
+  <script data-bascik-build>
+    import { helperFn } from './lib/nav-helper.ts';
+    console.log(await helperFn());
+  </script>
+
+  <script data-bascik-server>
+    import { helperFn as serverHelper } from './lib/nav-helper.ts';
+    console.log(await serverHelper());
+  </script>
+
+  <script data-bascik-build src="./lib/nav-helper.ts"></script>
+
+  <script data-bascik-server src="./lib/nav-helper.ts"></script>
+
+  <script data-bascik-build>
+    const mod = await import('./lib/nav-helper.ts');
+    console.log(mod);
+  </script>
+
+  <script data-bascik-routes>
+    export { helperFn as routeHelper } from './lib/nav-helper.ts';
+  </script>
+
+  <script data-bascik-build src=./lib/nav-helper.ts></script>
+
+  <script data-bascik-routes src=lib/nav-helper.ts></script>
+
+  <script data-bascik-server src=../src/lib/nav-helper.ts></script>
+
+  <script data-bascik-build src="./lib/missing-helper.ts"></script>
+
+  <script data-bascik-build>
+    // import './lib/nav-helper.ts';
+    const quoted = "import('./lib/nav-helper.ts')";
+    const raw = `import('./lib/nav-helper.ts')`;
+    const matcher = /import\(['"]\.\/lib\/nav-helper\.ts['"]\)/;
+    if (ready) /import\(['"]\.\/lib\/nav-helper\.ts['"]\)/.test(source);
+    { markReady(); } /import\(['"]\.\.\/lib\/nav-helper\.ts['"]\)/.test(source);
+    obj.import('./lib/nav-helper.ts');
+  </script>
+
+  <script data-bascik-build>
+    import { readFile } from 'node:fs/promises';
+    console.log(readFile);
+  </script>
+
+  <script>
+    import { helperFn as clientHelper } from './lib/nav-helper.ts';
+    console.log(clientHelper);
+  </script>
+</body>
+
+</html>

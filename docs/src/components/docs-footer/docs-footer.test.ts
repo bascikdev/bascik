@@ -12,7 +12,7 @@ describe('docs-footer component', () => {
     expect(html).toContain('<footer class="dfooter">');
     expect(html).toContain('<docs-logo />');
     expect(html).toContain('data-bascik-build');
-    expect(html).toContain('src/lib/nav.ts');
+    expect(html).toContain("from '@/lib/nav.ts'");
   });
 
   it('uses standard breakpoint media query max-width 640px for mobile in footer CSS', async () => {

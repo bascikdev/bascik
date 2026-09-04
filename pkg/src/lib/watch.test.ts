@@ -19,6 +19,11 @@ const {
   mockDeleteDistFile,
   mockIsInlineStylesheet,
   mockEventEmit,
+  mockProcessPageBatch,
+  mockPagesDependentOnFile,
+  mockClearBuildScriptCaches,
+  mockGetImportRoot,
+  mockExistsSync,
 } = vi.hoisted(() => {
   const watchers: { on: ReturnType<typeof vi.fn> }[] = [];
   const mockPageProcessing = vi.fn().mockResolvedValue(undefined);
@@ -33,6 +38,11 @@ const {
   const mockDeleteDistFile = vi.fn().mockResolvedValue(undefined);
   const mockIsInlineStylesheet = vi.fn().mockReturnValue(false);
   const mockEventEmit = vi.fn();
+  const mockProcessPageBatch = vi.fn().mockResolvedValue([]);
+  const mockPagesDependentOnFile = vi.fn().mockReturnValue([]);
+  const mockClearBuildScriptCaches = vi.fn();
+  const mockGetImportRoot = vi.fn().mockReturnValue("/project/src");
+  const mockExistsSync = vi.fn().mockReturnValue(true);
   const makeWatcher = () => {
     const w = {
       on: vi.fn(function (
@@ -65,6 +75,13 @@ const {
     mockDeleteDistDir.mockReset().mockResolvedValue(undefined);
     mockDeleteDistFile.mockReset().mockResolvedValue(undefined);
     mockEventEmit.mockReset();
+    mockProcessPageBatch.mockReset().mockResolvedValue([]);
+    mockPagesDependentOnFile.mockReset().mockReturnValue([]);
+    mockClearBuildScriptCaches.mockReset();
+    mockGetImportRoot.mockReset().mockReturnValue("/project/src");
+    // Only the import root exists by default so the api watcher (which also
+    // probes existsSync) is not created in these tests.
+    mockExistsSync.mockReset().mockImplementation((p: string) => p === mockGetImportRoot());
   };
   return {
     mockWatch,
@@ -85,6 +102,11 @@ const {
     mockDeleteDistFile,
     mockIsInlineStylesheet,
     mockEventEmit,
+    mockProcessPageBatch,
+    mockPagesDependentOnFile,
+    mockClearBuildScriptCaches,
+    mockGetImportRoot,
+    mockExistsSync,
   };
 });
 
@@ -97,9 +119,26 @@ vi.mock("chokidar", () => ({
 vi.mock("./processing.js", () => ({
   pageProcessing: mockPageProcessing,
   processAllPages: mockProcessAllPages,
+  processPageBatch: mockProcessPageBatch,
   removePage: mockRemovePage,
   selectivelyProcessPages: mockSelectivelyProcessPages,
   selectivelyProcessPagesForWatchPath: mockSelectivelyProcessPagesForWatchPath,
+}));
+
+vi.mock("./mem.js", () => ({
+  mem: { pagesDependentOnFile: mockPagesDependentOnFile },
+}));
+
+vi.mock("./import-root.js", () => ({
+  getImportRoot: mockGetImportRoot,
+}));
+
+vi.mock("./build-scripts.js", () => ({
+  clearBuildScriptCaches: mockClearBuildScriptCaches,
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: mockExistsSync,
 }));
 
 vi.mock("./file-system.js", () => ({
@@ -142,10 +181,12 @@ import { watchFiles } from "./watch.ts";
 import {
   pageProcessing,
   processAllPages,
+  processPageBatch,
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
 } from "./processing.ts";
+import { clearBuildScriptCaches } from "./build-scripts.ts";
 import {
   copyReplicatePath,
   copyStaticAssets,
@@ -161,6 +202,7 @@ beforeEach(() => {
   resetMocks();
   clearWatchers();
   (BascikConfig as any).assets = { inlineStyles: false };
+  (BascikConfig as any).pipeline = { watchPaths: [] };
 });
 
 // ─── Helper: get a named event handler from a given watcher index ─────────────
@@ -178,10 +220,15 @@ const getHandler = (
 // Watcher setup
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Default dev-mode watcher count: pages assets, pages html, components,
+// import root. Extra watchers (watchPaths, inlineStyles, api, config) are
+// opt-in and asserted separately.
+const DEV_WATCHER_COUNT = 4;
+
 describe("watchFiles – watcher setup", () => {
-  it("calls chokidar.watch three times", async () => {
+  it("calls chokidar.watch four times in dev mode with default config", async () => {
     await watchFiles();
-    expect(mockWatch).toHaveBeenCalledTimes(3);
+    expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
   });
 
   it("configures native persistent watching in dev mode without polling", async () => {
@@ -203,6 +250,127 @@ describe("watchFiles – watcher setup", () => {
   it("watches the components directory", async () => {
     await watchFiles();
     expect(mockWatch.mock.calls[2][0]).toContain("/project/src/components");
+  });
+
+  it("watches the import root directory", async () => {
+    await watchFiles();
+    expect(mockWatch.mock.calls[3][0]).toEqual(["/project/src"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Import root watcher (watcher 3, dev-only, dependency-gated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("watchFiles – import root watcher (watcher 3)", () => {
+  beforeEach(async () => {
+    await watchFiles();
+    // The pages-html watcher's ready handler runs processAllPages during
+    // setup; clear that residue so not-called assertions target the handlers.
+    mockProcessAllPages.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    mockClearBuildScriptCaches.mockClear();
+    mockProcessPageBatch.mockClear();
+    mockEventEmit.mockClear();
+  });
+
+  const getIgnoreFn = (): ((path: string) => boolean) =>
+    (mockWatch.mock.calls[3][1] as { ignored: (path: string) => boolean }).ignored;
+
+  it("excludes directory.pages and directory.components when nested inside the import root", () => {
+    const ignored = getIgnoreFn();
+    expect(ignored("/project/src/pages/index.html")).toBe(true);
+    expect(ignored("/project/src/components/x/x.ts")).toBe(true);
+    expect(ignored("/project/src/pages")).toBe(true);
+    expect(ignored("/project/src/lib/helper.ts")).toBe(false);
+    expect(ignored("/project/src/api/route.ts")).toBe(false);
+  });
+
+  it("rebuilds dependent pages on 'change' when dependents exist", async () => {
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    const handler = getHandler(3, "change");
+    await handler?.("/project/src/lib/helper.ts");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith("/project/src/lib/helper.ts");
+    expect(processPageBatch).toHaveBeenCalledWith(["src/pages/a.html"]);
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    expect(processAllPages).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on 'change' when no pages depend on the file", async () => {
+    mockPagesDependentOnFile.mockReturnValue([]);
+    const handler = getHandler(3, "change");
+    await handler?.("/project/src/css/unrelated.css");
+    expect(processPageBatch).not.toHaveBeenCalled();
+    expect(processAllPages).not.toHaveBeenCalled();
+    expect(clearBuildScriptCaches).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds dependent pages on 'add'", async () => {
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    const handler = getHandler(3, "add");
+    await handler?.("/project/src/lib/helper.ts");
+    expect(processPageBatch).toHaveBeenCalledWith(["src/pages/a.html"]);
+  });
+
+  it("rebuilds dependent pages on 'unlink'", async () => {
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    const handler = getHandler(3, "unlink");
+    await handler?.("/project/src/lib/helper.ts");
+    expect(processPageBatch).toHaveBeenCalledWith(["src/pages/a.html"]);
+  });
+
+  it("does not emit asset-changed or watch-path-processed", async () => {
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    mockEventEmit.mockClear();
+    const handler = getHandler(3, "change");
+    await handler?.("/project/src/lib/helper.ts");
+    expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
+    expect(mockEventEmit).not.toHaveBeenCalledWith(
+      "watch-path-processed",
+      expect.anything(),
+    );
+  });
+
+  it("catches and logs errors when processPageBatch rejects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    mockProcessPageBatch.mockRejectedValueOnce(new Error("Batch error"));
+
+    const handler = getHandler(3, "change");
+    await expect(handler?.("/project/src/lib/helper.ts")).resolves.not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+
+    errorSpy.mockRestore();
+  });
+
+  it("is not created in build mode", async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    (BascikConfig as any).isBuild = true;
+    try {
+      await watchFiles();
+      expect(mockWatch).not.toHaveBeenCalled();
+    } finally {
+      (BascikConfig as any).isBuild = false;
+    }
+  });
+
+  it("is not created when the import root directory does not exist", async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    mockExistsSync.mockReturnValue(false);
+    await watchFiles();
+    expect(mockWatch).toHaveBeenCalledTimes(3);
+  });
+
+  it("watches a custom import root outside the project", async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    mockGetImportRoot.mockReturnValue("/repo/shared/scripts");
+    await watchFiles();
+    expect(mockWatch.mock.calls[3][0]).toEqual(["/repo/shared/scripts"]);
+    const ignored = getIgnoreFn();
+    expect(ignored("/repo/shared/scripts/md-renderer.ts")).toBe(false);
   });
 });
 
@@ -586,8 +754,8 @@ describe("watchFiles – extra watch paths (watcher 3)", () => {
     (BascikConfig as any).pipeline = { watchPaths: [] };
   });
 
-  it("creates a fourth watcher when watch paths are set", () => {
-    expect(mockWatch).toHaveBeenCalledTimes(4);
+  it("creates a fifth watcher when watch paths are set", () => {
+    expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT + 1);
   });
 
   it("watches BascikConfig.pipeline.watchPaths paths", () => {
@@ -632,29 +800,29 @@ describe("watchFiles – inlineStyles paths", () => {
   });
 
   it("creates an extra watcher when inlineStyles array is configured", () => {
-    expect(mockWatch).toHaveBeenCalledTimes(4);
+    expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT + 1);
   });
 
   it("watches BascikConfig.assets.inlineStyles paths", () => {
-    expect(mockWatch.mock.calls[3][0]).toEqual(["src/css/inlined.css"]);
+    expect(mockWatch.mock.calls[4][0]).toEqual(["src/css/inlined.css"]);
   });
 
   it("calls processAllPages on 'add'", async () => {
-    const handler = getHandler(3, "add");
+    const handler = getHandler(4, "add");
     mockProcessAllPages.mockClear();
     await handler?.();
     expect(processAllPages).toHaveBeenCalledTimes(1);
   });
 
   it("calls processAllPages on 'change'", async () => {
-    const handler = getHandler(3, "change");
+    const handler = getHandler(4, "change");
     mockProcessAllPages.mockClear();
     await handler?.();
     expect(processAllPages).toHaveBeenCalledTimes(1);
   });
 
   it("calls processAllPages on 'unlink'", async () => {
-    const handler = getHandler(3, "unlink");
+    const handler = getHandler(4, "unlink");
     mockProcessAllPages.mockClear();
     await handler?.();
     expect(processAllPages).toHaveBeenCalledTimes(1);

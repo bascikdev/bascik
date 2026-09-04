@@ -108,6 +108,71 @@ describe("executeServerScripts in-process execution", () => {
     expect(result).toBe("<div><span>inline dev</span></div>");
   });
 
+  it("resolves relative imports in inline scripts against the containing HTML file", async () => {
+    const html = `<script data-bascik-server>
+      import { serverInlineMessage } from './test-fixtures/server-inline-helper.ts';
+      export default function() { return serverInlineMessage; }
+    </script>`;
+
+    const result = await executeServerScripts(
+      html,
+      baseRequest,
+      30000,
+      "src/lib/server-inline-page.html",
+    );
+
+    expect(result).toBe("<p>inline import</p>");
+  });
+
+  it("resolves component-authored inline imports against their annotated source file", async () => {
+    const html = `<script data-bascik-server data-bascik-source-file="src%2Flib%2Fcomponent.html">
+      import { serverInlineMessage } from './test-fixtures/server-inline-helper.ts';
+      export default function() { return serverInlineMessage; }
+    </script>`;
+
+    const result = await executeServerScripts(
+      html,
+      baseRequest,
+      30000,
+      "src/pages/consumer.html",
+    );
+
+    expect(result).toBe("<p>inline import</p>");
+  });
+
+  it("rejects a leading-slash import with a located error that names the @/ fix", async () => {
+    const html = `<script data-bascik-server>
+      import { x } from '/lib/helper.ts';
+      export default function() { return x; }
+    </script>`;
+    await expect(
+      executeServerScripts(html, baseRequest, 30000, "src/pages/consumer.html"),
+    ).rejects.toThrow(/Leading-slash specifier '\/lib\/helper\.ts'.*@\/lib\/helper\.ts.*src\/pages\/consumer\.html/s);
+  });
+
+  it("rejects a leading-slash import even when onServerScriptError is warn", async () => {
+    (BascikConfig as any).scripts = { onServerScriptError: "warn", timeout: 30000 };
+    const html = `<script data-bascik-server>import { x } from '/lib/helper.ts';</script>`;
+    await expect(executeServerScripts(html, baseRequest, 30000, "src/pages/a.html")).rejects.toThrow(/Leading-slash specifier/);
+  });
+
+  it("rejects a leading-slash src= with a located error", async () => {
+    const html = `<script data-bascik-server src="/lib/entry.ts"></script>`;
+    await expect(
+      executeServerScripts(html, baseRequest, 30000, "src/pages/a.html"),
+    ).rejects.toThrow(/Leading-slash specifier '\/lib\/entry\.ts'.*@\/lib\/entry\.ts/s);
+  });
+
+  it("attributes component-authored inline failures to the exact authored line", async () => {
+    const html = `${"<p>consumer spacing</p>\n".repeat(20)}<script data-bascik-server data-bascik-source-file="src%2Fcomponents%2Ffailing-card.html" data-bascik-source-line="8">
+throw new Error('component inline failure');
+</script>`;
+
+    await expect(
+      executeServerScripts(html, baseRequest, 30000, "src/pages/consumer.html"),
+    ).rejects.toThrow("src/components/failing-card.html:9");
+  });
+
   // Requirement 4: Context reaches the script via req argument.
   it("passes full request context (path, method, headers, searchParams) to script handler", async () => {
     const html = `<script data-bascik-server>

@@ -36,7 +36,9 @@ On startup (and whenever a component is added), the watch system calls `processA
 
 The page phase prepares the source HTML document and orchestrates the component phase:
 
-1. **Execute build scripts.** Any `<script data-bascik-build>` blocks are run as Node.js ESM modules. Their stdout replaces the script tag. The result can contain component tags, these will be resolved in step 4. Output is cached on disk so unchanged scripts skip the child-process spawn on subsequent builds (see [Build Script Output Cache](#build-script-output-cache) below).
+For bracket-parameter pages, `<script data-bascik-routes>` runs before page build scripts. Its genuine relative and import-root ESM specifiers are rewritten (relative against the containing page or external routes script file, `@/` against `scripts.importRoot`) before the cached temporary module executes.
+
+1. **Execute build scripts.** Any `<script data-bascik-build>` blocks are run as Node.js ESM modules. A lexical scanner resolves genuine relative ESM specifiers against the source page, component, or external script directory, and `@/` import-root specifiers against `scripts.importRoot`, before temporary-module execution. A bare leading `/` specifier is rejected with a located error. Generic quoted data paths retain `process.cwd()` semantics. Deferred page-aware component scripts carry their component source identity through expansion, so their relative imports never fall back to the consuming page. Script stdout replaces the script tag. The result can contain component tags, these will be resolved in step 4. Output is cached on disk so unchanged scripts skip the child-process spawn on subsequent builds (see [Build Script Output Cache](#build-script-output-cache--batch-execution) below).
 2. **Extract body and head.** The inner content of `<body>` and `<head>` are extracted separately so component injection can happen in both zones independently.
 3. **Obtain component list.** On the multi-page startup path (`processAllPages`), the list is pre-computed once and passed in. On a single-page re-transpilation, it is loaded from `src/components/` at this point.
 4. **Run component phase.** `recursivelyTranspile` is called on both the body and head HTML strings. Each call returns a `TranspileResult` containing the resolved HTML and the list of components that were used.
@@ -63,7 +65,7 @@ Uncached `<script data-bascik-build>` blocks are executed by Node.js, which carr
 
 When a page contains multiple uncached `<script data-bascik-build>` blocks:
 1. Bascik groups all uncached tasks into a single batch.
-2. A lightweight ESM runner harness (`runner-<batchId>.mjs`) dynamically imports each script sequentially in one child process.
+2. A lightweight ESM runner harness dynamically imports each script sequentially in one child process. Each task retains its own `BASCIK_SOURCE_FILE` value and source map identity, including scripts authored by components and deferred until the page phase.
 3. During evaluation, `process.stdout.write` and `process.stderr.write` are intercepted per script block to ensure clean output separation.
 4. Outputs are mapped back to their corresponding tags, cached on disk, and spliced into the page simultaneously.
 
@@ -84,7 +86,7 @@ Each file contains `{ "v": <version>, "output": "<html>" }`. The `v` field is a 
 The key is the SHA-256 hex digest of:
 
 1. The cache version integer.
-2. The trimmed script content.
+2. The authored script content before relative import specifier rewriting.
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
 4. The source file path (`BASCIK_SOURCE_FILE`).
 5. The page file path (`BASCIK_PAGE_FILE`).
@@ -92,16 +94,16 @@ The key is the SHA-256 hex digest of:
 7. The site URL (`BASCIK_SITE_URL`), since it can influence output and changes rarely.
 8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
-10. The full content of every local file the script references, concatenated in order.
+10. The normalized path and full content of every detected local dependency. Relative ESM imports are followed recursively from each containing module, while generic quoted data paths are rooted at `process.cwd()`.
 
-File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`), which scans the script source for quoted path literals matching `content/*.md` or `scripts/*.{mjs,js,ts}` patterns:
+File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`). It lexically identifies genuine relative and import-root (`@/`) ESM specifiers and path-like string arguments used in code, so editing an alias-imported helper invalidates the cache and triggers a dev rebuild. The following paths are illustrative examples, not an exhaustive list of supported directories or extensions:
 
 ```text
 './content/foo.md'          → included in key
 'scripts/md-renderer.ts'  → included in key
 ```
 
-If the script contains no detectable references, only items 1–5 contribute to the key.
+If the script contains no detectable references, items 1 through 9 still contribute to the key.
 
 ### Invalidation
 

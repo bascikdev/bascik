@@ -4,35 +4,19 @@
 <head>
   <docs-head />
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
-    );
+    import { canonical } from '@/lib/canonical.ts';
     console.log(await canonical());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { openGraph } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
-    );
+    import { openGraph } from '@/lib/open-graph.ts';
     console.log(await openGraph());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { breadcrumbLd } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
-    );
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
     console.log(await breadcrumbLd());
   </script>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { articleSchema } = await import(
-      pathToFileURL(join(process.cwd(), 'src/lib/article-schema.ts')).href
-    );
+    import { articleSchema } from '@/lib/article-schema.ts';
     console.log(await articleSchema());
   </script>
   <meta name="description"
@@ -50,20 +34,12 @@
 
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-          );
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
           console.log(renderSectionLabel('/scoped-javascript'));
         </script>
         <!-- Intro rendered from docs/content/scoped-javascript.md. -->
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-javascript.md', { to: 'Writing Component Scripts' }));
         </script>
 
@@ -91,9 +67,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'source-usage'));
               </script>
             </code-block>
@@ -101,9 +75,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'source-html'));
               </script>
             </code-block>
@@ -111,9 +83,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'source-css'));
               </script>
             </code-block>
@@ -121,9 +91,7 @@
           <div data-bascik-slot="source-js">
             <code-block data-bascik-prop-lang="ts">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'source-js'));
               </script>
             </code-block>
@@ -131,9 +99,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'output-html'));
               </script>
             </code-block>
@@ -141,9 +107,7 @@
           <div data-bascik-slot="output-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'output-css'));
               </script>
             </code-block>
@@ -151,9 +115,7 @@
           <div data-bascik-slot="output-js">
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'output-js'));
               </script>
             </code-block>
@@ -161,20 +123,12 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-javascript.md', { from: 'Writing Component Scripts', to: 'Dynamic Runtime Classes' }));
         </script>
 
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-javascript.md', { from: 'Dynamic Runtime Classes', to: 'Supported Selectors' }, { stripDemoBlocks: true }));
         </script>
 
@@ -185,9 +139,7 @@
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-usage'));
               </script>
             </code-block>
@@ -195,9 +147,7 @@
           <div data-bascik-slot="source-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-html'));
               </script>
             </code-block>
@@ -205,9 +155,7 @@
           <div data-bascik-slot="source-css">
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-css'));
               </script>
             </code-block>
@@ -215,9 +163,7 @@
           <div data-bascik-slot="source-js">
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-js'));
               </script>
             </code-block>
@@ -225,9 +171,7 @@
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-output-html'));
               </script>
             </code-block>
@@ -235,9 +179,7 @@
           <div data-bascik-slot="output-js">
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
-                import { join } from 'node:path';
-                import { pathToFileURL } from 'node:url';
-                const { extractDemoBlock } = await import(pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href);
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 console.log(await extractDemoBlock('./content/scoped-javascript.md', 'runtime-class-output-js'));
               </script>
             </code-block>
@@ -245,11 +187,7 @@
         </component-demo>
 
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderMdRange } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-          );
+          import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/scoped-javascript.md', { from: 'Supported Selectors' }, { stripDemoBlocks: true }));
         </script>
 

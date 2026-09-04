@@ -1,5 +1,6 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolve } from "node:path";
 import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
@@ -935,6 +936,7 @@ describe("selectivelyProcessPagesForWatchPath", () => {
     expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
     expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", { relativePagePath: "pages/cli.html" });
   });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1215,6 +1217,21 @@ describe("pageProcessing – live-reload script injection", () => {
     expect(storeArgs.fileDependencies).toBeDefined();
     expect(storeArgs.fileDependencies).toContain("scripts/md-renderer.ts");
     expect(storeArgs.fileDependencies).toContain("content/cli.md");
+  });
+
+  it.each([
+    ["data-bascik-build", "src/scripts/build-entry.ts"],
+    ["data-bascik-routes", "src/scripts/routes-entry.ts"],
+  ])("stores external %s src files in fileDependencies", async (directive, dependencyPath) => {
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValueOnce([dependencyPath]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      `<html><head></head><body><script ${directive} src="./scripts/entry.ts"></script></body></html>`,
+    );
+
+    await pageProcessing(PAGE_PATH, {});
+
+    const storeArgs = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(storeArgs.fileDependencies).toContain(dependencyPath);
   });
 });
 
@@ -2777,7 +2794,7 @@ describe("transpilePage – deferred page-aware component build scripts", () => 
       "page-badge": {
         fileName: "src/components/page-badge.html",
         fileContent:
-          '<div class="badge"><script data-bascik-build="page">console.log("<span>" + process.env.BASCIK_PAGE_PATH + "</span>")</script></div>',
+          '<div class="badge"><script data-bascik-build="page">console.log("<span>" + process.env.BASCIK_PAGE_PATH + "</span>")</script><script data-bascik-server>return "server"</script></div>',
       },
     };
 
@@ -2790,5 +2807,53 @@ describe("transpilePage – deferred page-aware component build scripts", () => 
 
     expect(resultA?.distHtml).toContain("<span>/page-a</span>");
     expect(resultB?.distHtml).toContain("<span>/page-b</span>");
+    expect(collectAllScriptDeps).toHaveBeenCalledWith(
+      expect.stringContaining("data-bascik-build"),
+      resolve(process.cwd(), "src/components/page-badge.html"),
+    );
+    expect(executeBuildScripts).toHaveBeenCalledWith(
+      expect.stringMatching(/data-bascik-(?:build|server)[^>]*data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html"/),
+      "src/pages/page-a.html",
+      undefined,
+      expect.objectContaining({ pageFile: "src/pages/page-a.html" }),
+    );
+    expect(executeBuildScripts).toHaveBeenCalledWith(
+      expect.stringMatching(/data-bascik-server[^>]*data-bascik-source-file="src%2Fcomponents%2Fpage-badge.html"/),
+      "src/pages/page-a.html",
+      undefined,
+      expect.objectContaining({ pageFile: "src/pages/page-a.html" }),
+    );
+  });
+
+  it("annotates component server scripts with their authored line offset", async () => {
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(async (html: string) => html);
+    const componentList = {
+      "line-card": {
+        fileName: "src/components/line-card.html",
+        fileContent: `<article>
+  <h2>Line card</h2>
+  <p>Authored before the script.</p>
+  <script data-bascik-server>
+throw new Error("component failure");
+  </script>
+  <script data-bascik-build="page">return "";</script>
+</article>`,
+      },
+    };
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      `<!DOCTYPE html><html><head></head><body>${"<p>consumer spacing</p>\n".repeat(20)}<line-card></line-card></body></html>`,
+    );
+
+    await transpilePage("src/pages/consumer.html", componentList);
+
+    expect(executeBuildScripts).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /data-bascik-server[^>]*data-bascik-source-file="src%2Fcomponents%2Fline-card.html"[^>]*data-bascik-source-line="4"/,
+      ),
+      "src/pages/consumer.html",
+      undefined,
+      expect.objectContaining({ pageFile: "src/pages/consumer.html" }),
+    );
   });
 });

@@ -308,6 +308,7 @@ export const listComponents = async (): Promise<ComponentList> => {
         name: componentName,
         fileName,
         fileContent: minifiedContent,
+        scriptDependenciesContent: rawContent,
       };
       if (combinedCss) {
         component.cssFileContent = combinedCss;

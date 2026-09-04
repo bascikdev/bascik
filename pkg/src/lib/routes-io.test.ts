@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { executeRoutesScript } from "./routes.ts";
 
 vi.mock("node:child_process", () => ({
@@ -105,6 +107,37 @@ describe("executeRoutesScript", () => {
     expect(result.cleanedHtml).not.toContain("data-bascik-routes");
     expect(result.cleanedHtml).toContain("<body><h1>Posts</h1></body>");
     expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("rewrites relative imports against the routes script file before execution", async () => {
+    resolveWith(JSON.stringify([{ params: { slug: "post-1" } }]));
+
+    await executeRoutesScript(
+      `<script data-bascik-routes>import { routes } from '../../lib/routes-data.ts'; console.log(JSON.stringify(routes));</script>`,
+      "src/pages/blog/[slug].html",
+    );
+
+    const written = mockWriteFile.mock.calls[0][1] as string;
+    expect(written).toContain(
+      `from '${pathToFileURL(resolve(process.cwd(), "src/lib/routes-data.ts")).href}'`,
+    );
+  });
+
+  it("rewrites imports in external routes scripts against the src file", async () => {
+    resolveWith(JSON.stringify([{ params: { slug: "post-1" } }]));
+    mockReadFile.mockResolvedValueOnce(
+      "import { routes } from './routes-data.ts'; console.log(JSON.stringify(routes));",
+    );
+
+    await executeRoutesScript(
+      '<script data-bascik-routes src="../../scripts/routes.ts"></script>',
+      "src/pages/blog/[slug].html",
+    );
+
+    const written = mockWriteFile.mock.calls[0][1] as string;
+    expect(written).toContain(
+      `from '${pathToFileURL(resolve(process.cwd(), "src/scripts/routes-data.ts")).href}'`,
+    );
   });
 
   it("never reads from or writes to a script cache file", async () => {

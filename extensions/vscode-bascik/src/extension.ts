@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
 import { analyzeApiRouteSource } from './api-rules';
+import { findModuleSpecifiers } from './module-specifiers';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr'
@@ -111,6 +112,199 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
     }
 
     return new vscode.Location(vscode.Uri.file(file), new vscode.Position(0, 0));
+  }
+}
+
+const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+
+const DEFAULT_IMPORT_ROOT = 'src';
+const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
+
+/**
+ * Read `scripts.importRoot` from the workspace's bascik.config file.
+ *
+ * The extension cannot execute a TypeScript config file, so this is a
+ * best-effort regex read (`importRoot: '...'`) with a fallback to the runtime
+ * default `src`. It mirrors `pkg/src/lib/import-root.ts`: the value is relative
+ * to the project root and may point outside it (monorepo shared scripts).
+ */
+function readImportRoot(workspaceRoot: string): string {
+  for (const candidate of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(workspaceRoot, candidate);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const source = fs.readFileSync(configPath, 'utf8');
+      const match = /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source);
+      if (match?.[1]) return match[1];
+    } catch {
+      // unreadable config: fall through to the default
+    }
+    break;
+  }
+  return DEFAULT_IMPORT_ROOT;
+}
+
+/**
+ * Resolve a script specifier or `src=` value the way Bascik's runtime does
+ * (`pkg/src/lib/module-specifiers.ts`): `./` and `../` against the document's
+ * directory, `@/` against the import root, and bare `src=` paths against the
+ * document's directory. A leading `/` is a compile error in Bascik (see
+ * `leadingSlashSpecifierMessage`) and returns no definition here.
+ * Returns undefined for external specifiers (packages, `node:`, URLs).
+ */
+function resolveScriptTarget(
+  value: string,
+  documentDir: string,
+  importRootAbs: string,
+  kind: 'specifier' | 'src',
+): string | undefined {
+  if (value.startsWith('./') || value.startsWith('../')) return path.resolve(documentDir, value);
+  if (value.startsWith('@/')) return path.resolve(importRootAbs, value.slice(2));
+  if (value.startsWith('/')) return undefined;
+  if (kind === 'src') {
+    if (/^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
+    return path.resolve(documentDir, value);
+  }
+  return undefined;
+}
+
+/**
+ * Mirrors `formatLeadingSlashMessage` in `pkg/src/lib/module-specifiers.ts`
+ * so the editor and the compiler show the same wording.
+ */
+function leadingSlashSpecifierMessage(specifier: string): string {
+  const rest = specifier.replace(/^\/+/, '');
+  return (
+    `Leading-slash specifier '${specifier}' is not supported in Bascik scripts. ` +
+    `A bare '/' is ambiguous (filesystem root vs. site root). ` +
+    `Use '@/${rest}' to resolve against scripts.importRoot, ` +
+    `or './${rest}' to resolve relative to this file.`
+  );
+}
+
+/**
+ * Collect Error diagnostics for every leading-slash ESM specifier and `src=`
+ * value inside `data-bascik-build`, `data-bascik-server`, and
+ * `data-bascik-routes` script tags. Client `<script>` tags are skipped: a
+ * leading slash there is an ordinary site-root URL.
+ */
+function collectLeadingSlashDiagnostics(
+  document: vscode.TextDocument,
+  openTag: string,
+  scriptBody: string,
+  blockStart: number,
+  attrs: Map<string, string | true>,
+): vscode.Diagnostic[] {
+  if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server') && !attrs.has('data-bascik-routes')) {
+    return [];
+  }
+  const out: vscode.Diagnostic[] = [];
+  const push = (start: number, end: number, specifier: string) => {
+    const diag = new vscode.Diagnostic(
+      new vscode.Range(document.positionAt(start), document.positionAt(end)),
+      leadingSlashSpecifierMessage(specifier),
+      vscode.DiagnosticSeverity.Error,
+    );
+    diag.source = 'bascik';
+    diag.code = 'leading-slash-specifier';
+    out.push(diag);
+  };
+
+  const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(openTag);
+  if (srcMatch) {
+    const srcValue = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3] ?? '';
+    if (srcValue.startsWith('/')) {
+      const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
+      push(valueStart, valueStart + srcValue.length, srcValue);
+    }
+  }
+
+  const bodyStart = blockStart + openTag.length;
+  for (const { start, end, value } of findModuleSpecifiers(scriptBody)) {
+    if (value.startsWith('/')) push(bodyStart + start, bodyStart + end, value);
+  }
+  return out;
+}
+
+function parseScriptOpenTagAttributes(openTag: string): Map<string, string | true> {
+  const attrs = new Map<string, string | true>();
+  const insideTag = openTag
+    .replace(/^<script\b/i, '')
+    .replace(/>$/, '');
+  const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(insideTag)) !== null) {
+    const name = match[1]?.toLowerCase();
+    if (!name) continue;
+    const value = match[2] ?? match[3] ?? match[4];
+    attrs.set(name, value === undefined ? true : value);
+  }
+  return attrs;
+}
+
+class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
+  provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    _token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.Definition> {
+    if (document.languageId !== 'html') {
+      return undefined;
+    }
+
+    const text = document.getText();
+    const offset = document.offsetAt(position);
+
+    SCRIPT_BLOCK_RE.lastIndex = 0;
+    let scriptMatch: RegExpExecArray | null;
+    while ((scriptMatch = SCRIPT_BLOCK_RE.exec(text)) !== null) {
+      const openTag = scriptMatch[1];
+      const scriptBody = scriptMatch[2] ?? '';
+      const blockStart = scriptMatch.index ?? 0;
+      const openTagEnd = blockStart + openTag.length;
+      const blockEnd = blockStart + scriptMatch[0].length;
+      if (offset < blockStart || offset > blockEnd) continue;
+
+      const attrs = parseScriptOpenTagAttributes(openTag);
+      if (!attrs.has('data-bascik-build') &&
+        !attrs.has('data-bascik-server') &&
+        !attrs.has('data-bascik-routes')) {
+        return undefined;
+      }
+
+      const baseDir = path.dirname(document.uri.fsPath);
+      const workspaceRoot = getWorkspaceRoot();
+      const importRootAbs = workspaceRoot
+        ? path.resolve(workspaceRoot, readImportRoot(workspaceRoot))
+        : path.resolve(baseDir, DEFAULT_IMPORT_ROOT);
+
+      // Cursor inside the open tag: check for the src attribute value.
+      if (offset >= blockStart && offset <= openTagEnd) {
+        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(openTag);
+        if (!srcMatch) return undefined;
+        const srcValue = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3] ?? '';
+        if (!srcValue) return undefined;
+        const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
+        const valueEnd = valueStart + srcValue.length;
+        if (offset < valueStart || offset > valueEnd) return undefined;
+        const resolved = resolveScriptTarget(srcValue, baseDir, importRootAbs, 'src');
+        if (!resolved || !fs.existsSync(resolved)) return undefined;
+        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+      }
+
+      // Cursor inside the script body: inspect lexical ESM specifiers only.
+      const bodyOffset = offset - openTagEnd;
+      for (const { start, end, value: specifier } of findModuleSpecifiers(scriptBody)) {
+        if (bodyOffset < start || bodyOffset > end) continue;
+        const resolved = resolveScriptTarget(specifier, baseDir, importRootAbs, 'specifier');
+        if (!resolved || !fs.existsSync(resolved)) return undefined;
+        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+      }
+
+      return undefined;
+    }
+
+    return undefined;
   }
 }
 
@@ -241,22 +435,6 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     }
   };
 
-  const parseScriptOpenTagAttributes = (openTag: string): Map<string, string | true> => {
-    const attrs = new Map<string, string | true>();
-    const insideTag = openTag
-      .replace(/^<script\b/i, '')
-      .replace(/>$/, '');
-    const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
-    let match: RegExpExecArray | null;
-    while ((match = attrRe.exec(insideTag)) !== null) {
-      const name = match[1]?.toLowerCase();
-      if (!name) continue;
-      const value = match[2] ?? match[3] ?? match[4];
-      attrs.set(name, value === undefined ? true : value);
-    }
-    return attrs;
-  };
-
   const isJavaScriptScriptTag = (openTag: string): boolean => {
     const attrs = parseScriptOpenTagAttributes(openTag);
     const typeValue = attrs.get('type');
@@ -269,7 +447,9 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       || normalized === 'application/ecmascript';
   };
 
-  const scriptBlockRe = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+  // Fresh instance: SCRIPT_BLOCK_RE is a global (`g`) regex shared with the
+  // definition provider, and a stale lastIndex would silently skip blocks.
+  const scriptBlockRe = new RegExp(SCRIPT_BLOCK_RE.source, SCRIPT_BLOCK_RE.flags);
   const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
@@ -423,6 +603,9 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
         diag.source = 'bascik';
         diagnostics.push(diag);
       }
+      diagnostics.push(
+        ...collectLeadingSlashDiagnostics(document, openTag, scriptBody, scriptMatch.index ?? 0, attrs),
+      );
       if (isJavaScriptScriptTag(openTag)) {
         addCompatibilityDiagnostics(scriptBody, 'js', scriptBodyOffset);
       }
@@ -531,6 +714,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerDefinitionProvider(
       [{ language: 'html' }, { language: 'javascript' }, { language: 'typescript' }, { language: 'css' }],
       definitionProvider,
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      [{ language: 'html' }],
+      new ScriptImportDefinitionProvider(),
     ),
   );
 

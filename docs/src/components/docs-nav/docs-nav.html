@@ -21,9 +21,7 @@
         </ul>
         <div class="mobile-only-sections">
           <script data-bascik-build>
-            import { join } from 'node:path';
-            import { pathToFileURL } from 'node:url';
-            const { NAV } = await import(pathToFileURL(join(process.cwd(), 'src/lib/nav.ts')).href);
+            import { NAV } from '@/lib/nav.ts';
             let html = '';
             for (const section of NAV) {
               html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;

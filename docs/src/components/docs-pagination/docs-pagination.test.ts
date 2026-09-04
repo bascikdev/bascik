@@ -5,11 +5,11 @@ import { join } from 'node:path';
 describe('docs-pagination component', () => {
   const componentPath = join(process.cwd(), 'src/components/docs-pagination/docs-pagination.html');
 
-  it('renders pagination at build-time via src/lib/render-nav.ts', async () => {
+  it('renders pagination at build-time via the @/lib/render-nav.ts import-root alias', async () => {
     const html = await readFile(componentPath, 'utf8');
 
     expect(html).toContain('data-bascik-build');
-    expect(html).toContain('src/lib/render-nav.ts');
+    expect(html).toContain("from '@/lib/render-nav.ts'");
     expect(html).toContain('renderPagination()');
   });
 });

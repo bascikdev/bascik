@@ -91,11 +91,12 @@ The boot page connects to `/bascik-live-reload`. When the requested page finishe
 
 ### Watch system (`watch.ts`)
 
-Three native filesystem watchers (chokidar) handle source file updates:
+Four native filesystem watchers (chokidar) handle source file updates in development mode:
 
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in `components/`. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
+4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and `directory.components` are excluded when nested inside it.
 
 ### Live reload (`live-reload.ts`, `sse.ts`)
 
@@ -133,14 +134,14 @@ Production mode skips file watchers and live-reload injection, but it does **not
 
 Only non-HTML static assets, images, fonts, favicons, the webmanifest, and any other file copied verbatim from `src/pages/`, are read from the `dist/` filesystem per request via `createReadStream`. Component CSS and JavaScript are always inlined into the HTML at build time, so they are already in memory as part of the page buffer; there is no separate in-memory cache for them to miss.
 
-At boot time, `serve.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
+At boot time, `serve.ts` also checks for `dist/.bascik/server-scripts.json`. When present, it registers the sidecar entries into memory. Each entry retains the authored HTML source path alongside the script source and optional external module path. Page HTML templates in `dist/` contain inert placeholder script tags (`<script type="text/bascik-server" data-bascik-server-id="..."></script>`) that reference these entries. On each incoming request, `executeServerScripts` resolves each placeholder by ID, rewrites relative imports from the authored source directory and import-root (`@/`) imports from `scripts.importRoot`, runs the corresponding script with the request context in-process via `ScriptRegistry`, and injects the returned markup into the response.
 
 ### Per-request `data-bascik-server` execution (`server-scripts.ts`)
 
 Pages containing `<script data-bascik-server>` blocks are executed on every request:
 
 1. **Request context packaging:** Bascik provides explicit `{ req }` context (`path`, `method`, `headers`, `searchParams`) and `{ signal }` for timeout/cancellation to the script function.
-2. **In-process ScriptRegistry execution:** Server scripts run in-process as Node.js ESM modules via `ScriptRegistry`, avoiding the overhead and concurrency limits of child processes. Top-level `await` and `import` are fully supported.
+2. **In-process ScriptRegistry execution:** Server scripts run in-process as Node.js ESM modules via `ScriptRegistry`, avoiding the overhead and concurrency limits of child processes. Top-level `await` and `import` are fully supported. Before inline source is encoded as a data URI, genuine relative ESM specifiers are rewritten against the containing HTML file and import-root specifiers (`@/`) against `scripts.importRoot`. External `src` scripts (which accept the same aliases) resolve their imports against the external script file instead.
 3. **Markup injection:** The script's returned markup replaces the `<script data-bascik-server>` tag in the response HTML.
 4. **Source remapping:** Exceptions and stack traces are remapped back to source HTML filenames and line numbers (`stack-trace.ts`).
 

@@ -43,6 +43,8 @@ export interface BascikComponent {
   /** Set during file loading; not required for in-test component objects */
   fileName?: string;
   fileContent: string;
+  /** Preserved raw HTML before build script execution for dependency extraction */
+  scriptDependenciesContent?: string;
   cssFileContent?: string;
   /** The full matched usage tag string from the page HTML, e.g. `<my-nav class="x">...</my-nav>` */
   content?: string;
@@ -69,7 +71,12 @@ export interface TranspilePageResult {
   distHtml: string;
   usedComponentsNames: string[];
   fileDependencies?: string[];
-  serverScripts?: Record<string, { id: string; source: string }>;
+  serverScripts?: Record<string, {
+    id: string;
+    source: string;
+    modulePath?: string;
+    sourceFile?: string;
+  }>;
 }
 export interface MinifyOptions {
   /**
@@ -167,6 +174,16 @@ export interface ScriptsOptions {
   onRoutesScriptError: "warn" | "error";
   onServerScriptError: "warn" | "error";
   timeout: number;
+  /**
+   * Directory that `@/` import specifiers (and script tag `src=` values)
+   * resolve against inside build, server, and routes scripts. A bare leading
+   * `/` is not an alias and is rejected with an error.
+   * Relative to the project root; kept as written and resolved at use sites.
+   * Independent of `directory.pages` and `directory.components`; may point
+   * outside the project (for example `../shared/scripts` in a monorepo).
+   * Default `"src"`.
+   */
+  importRoot: string;
 }
 
 export interface HttpTlsOptions {
@@ -248,6 +265,7 @@ export type UserConfig = {
     onRoutesScriptError?: "error" | "warn" | "ignore";
     onServerScriptError?: "error" | "warn" | "ignore";
     timeout?: number;
+    importRoot?: string;
   };
   onMinifyError?: "warn" | "error";
   http?: {

@@ -41,6 +41,31 @@ describe("build-script-runner", () => {
     }
   });
 
+  it("sets BASCIK_SOURCE_FILE independently for each CLI batch task", async () => {
+    const file1 = join(tmpdir(), `test-runner-source-1-${Date.now()}.mjs`);
+    const file2 = join(tmpdir(), `test-runner-source-2-${Date.now()}.mjs`);
+    await writeFile(file1, "console.log(process.env.BASCIK_SOURCE_FILE);", "utf8");
+    await writeFile(file2, "console.log(process.env.BASCIK_SOURCE_FILE);", "utf8");
+
+    try {
+      const tasks = [
+        JSON.stringify({ file: file1, sourceFile: "src/pages/index.html" }),
+        JSON.stringify({ file: file2, sourceFile: "src/components/page-badge.html" }),
+      ];
+      const { stdout } = await execFileAsync(process.execPath, [runnerPath, ...tasks]);
+      const results = JSON.parse(stdout);
+      expect(results.map((result: { stdout: string }) => result.stdout)).toEqual([
+        "src/pages/index.html\n",
+        "src/components/page-badge.html\n",
+      ]);
+    } finally {
+      await Promise.all([
+        unlink(file1).catch(() => { }),
+        unlink(file2).catch(() => { }),
+      ]);
+    }
+  });
+
   it("captures errors and stderr correctly as a Node CLI runner", async () => {
     const file = join(tmpdir(), `test-runner-err-${Date.now()}.mjs`);
     await writeFile(file, "console.error('some warning'); throw new Error('fail');", "utf8");

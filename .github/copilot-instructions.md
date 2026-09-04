@@ -24,14 +24,12 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
 <!-- Content rendered from docs/content/topic.md at build time.
      To update page content, edit the MD file, not this file. -->
 <script data-bascik-build>
-  import { join } from 'node:path';
-  import { pathToFileURL } from 'node:url';
-  const { renderMd } = await import(
-    pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-  );
+  import { renderMd } from '@/lib/md-renderer.ts';
   console.log(await renderMd('./content/topic.md'));
 </script>
 ```
+
+`@/` is Bascik's import-root alias (`scripts.importRoot`, default `src`), so the same import line works from a page at any depth (`docs/src/pages/topic.html` and `docs/src/pages/how-to/topic.html` alike). Do not write depth-dependent `../lib/` or `../../lib/` paths, and do not use the older `pathToFileURL(join(process.cwd(), ...))` boilerplate.
 
 The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformations:
 - Fenced code blocks (` ``` `) → `<code-block data-bascik-prop-lang="…">` component
@@ -52,11 +50,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
       <docs-sidebar></docs-sidebar>
       <main class="docs-content">
         <script data-bascik-build>
-          import { join } from 'node:path';
-          import { pathToFileURL } from 'node:url';
-          const { renderSectionLabel } = await import(
-            pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-          );
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
           console.log(renderSectionLabel('/topic'));
         </script>
         <!-- h1, page-intro p, and all content come from MD -->
@@ -144,11 +138,7 @@ Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build
 <div data-bascik-slot="source-html">
   <code-block data-bascik-prop-lang="html">
     <script data-bascik-build>
-      import { join } from 'node:path';
-      import { pathToFileURL } from 'node:url';
-      const { extractDemoBlock } = await import(
-        pathToFileURL(join(process.cwd(), 'src/lib/md-renderer.ts')).href
-      );
+      import { extractDemoBlock } from '@/lib/md-renderer.ts';
       console.log(await extractDemoBlock('./content/03-scoped-css.md', 'source-html'));
     </script>
   </code-block>

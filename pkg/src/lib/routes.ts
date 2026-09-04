@@ -6,6 +6,8 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { runModule } from "./script-runner.ts";
+import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   ROUTES_FLAG,
@@ -340,14 +342,40 @@ export const executeRoutesScript = async (
     return { routes: null, cleanedHtml };
   }
 
+  const importRoot = getImportRoot();
+
+  // A leading-slash specifier or src= is a hard error regardless of
+  // onRoutesScriptError: it is a syntax mistake in the author's HTML, not a
+  // runtime failure of their script.
+  const locate = (): string => {
+    if (!filePath) return "";
+    const pfx = html.slice(0, index);
+    const lns = pfx.split(/\r?\n/);
+    return ` (in "${getRelativePath(filePath, "pages")}" at line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
+  };
+  const rethrowLeadingSlash = (err: unknown): never => {
+    if (err instanceof LeadingSlashSpecifierError) {
+      throw new Error(`[bascik] error: ${err.message}${locate()}`, { cause: err });
+    }
+    throw err;
+  };
+
   let trimmedScript = scriptContent.trim();
+  let moduleFilePath: string | undefined;
   if (!trimmedScript) {
     const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     if (srcMatch) {
       const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
-      const resolvedPath = filePath
-        ? resolve(dirname(filePath), srcPath)
-        : resolve(process.cwd(), srcPath);
+      const containingDir = filePath
+        ? dirname(resolve(process.cwd(), filePath))
+        : process.cwd();
+      let resolvedPath: string;
+      try {
+        resolvedPath = resolveScriptSrcPath(srcPath, containingDir, importRoot);
+      } catch (err) {
+        return rethrowLeadingSlash(err);
+      }
+      moduleFilePath = resolvedPath;
       try {
         trimmedScript = await readFile(resolvedPath, "utf8");
       } catch (err) {
@@ -391,10 +419,22 @@ export const executeRoutesScript = async (
     extraEnv.BASCIK_SITE_URL = siteUrl;
   }
 
+  const scriptBaseDir = moduleFilePath
+    ? dirname(moduleFilePath)
+    : filePath
+      ? dirname(resolve(process.cwd(), filePath))
+      : process.cwd();
+  let preparedScript: string;
+  try {
+    preparedScript = rewriteModuleSpecifiers(trimmedScript, scriptBaseDir, { importRoot });
+  } catch (err) {
+    return rethrowLeadingSlash(err);
+  }
+
   let stdout = "";
   let stderr = "";
   try {
-    await writeFile(tmpPath, trimmedScript + sourceUrlComment, "utf8");
+    await writeFile(tmpPath, preparedScript + sourceUrlComment, "utf8");
     const result = await runModule(tmpPath, extraEnv);
     stdout = result.stdout;
     stderr = result.stderr;

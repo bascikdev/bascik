@@ -9,6 +9,7 @@
 create/src/scaffold.ts
 
 # Test fixtures and docs utilities that intentionally exercise script/regex behavior.
+docs/scripts/fixtures/**
 docs/src/lib/faq-schema.test.ts
 docs/src/lib/md-renderer.ts
 docs/src/pages/libraries.html

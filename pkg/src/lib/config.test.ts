@@ -76,6 +76,25 @@ describe("defaultConfig", () => {
     expect(defaultConfig.scripts.onServerScriptError).toBe("error");
     expect(defaultConfig.onMinifyError).toBe("warn");
   });
+
+  it("defaults scripts.importRoot to 'src' and keeps it unresolved", () => {
+    expect(defaultConfig.scripts.importRoot).toBe("src");
+    const { BascikConfig: cfg } = initBascikConfig({}, {}, {}, { fs: allowAllFs });
+    expect(cfg.scripts.importRoot).toBe("src");
+  });
+
+  it("keeps a user-supplied scripts.importRoot as written, including paths outside the project", () => {
+    const { BascikConfig: cfg } = initBascikConfig(
+      { scripts: { importRoot: "../shared/scripts" } },
+      {},
+      {},
+      { fs: allowAllFs },
+    );
+    expect(cfg.scripts.importRoot).toBe("../shared/scripts");
+    // The import root is independent of the pages and components directories.
+    expect(cfg.directory.pages).toMatch(/src[/\\]pages$/);
+    expect(cfg.directory.components).toMatch(/src[/\\]components$/);
+  });
 });
 
 describe("scopable option normalizer", () => {
@@ -221,6 +240,7 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     const { BascikConfig: cfg } = initBascikConfig({ directory: { out: "custom-build" } });
     expect(cfg.directory.out).toMatch(/[/\\]custom-build$/);
   });
+
 });
 
 describe("CLI flag overrides (flag > env var > config file)", () => {

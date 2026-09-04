@@ -28,11 +28,14 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
+import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
   BUILD_FLAG,
   ROUTES_FLAG,
   SCRIPT_TAG_PREFIX,
+  getHtmlAttributeValue,
 } from "./html-patterns.ts";
 
 /** Request context passed to every `data-bascik-server` script. */
@@ -150,6 +153,8 @@ interface ScriptJob {
   output?: string;
   placeholderId?: string;
   srcPath?: string;
+  sourceFile?: string;
+  sourceLine?: number;
 }
 
 /**
@@ -173,18 +178,23 @@ export const executeServerScripts = async (
     const length = fullTag.length;
 
     let placeholderId: string | undefined;
-    const idMatch = fullTag.match(/\bdata-bascik-server-id=["']([^"']+)["']/i);
+    const placeholderValue = getHtmlAttributeValue(fullTag, "data-bascik-server-id");
     let srcPath: string | undefined;
-    const srcMatch = fullTag.match(/\bsrc=["']([^"']+)["']/i);
-    if (srcMatch) {
-      srcPath = srcMatch[1];
-    }
+    let sourceFile: string | undefined;
+    let sourceLine: number | undefined;
+    srcPath = getHtmlAttributeValue(fullTag, "src");
+    const annotatedSourceFile = getHtmlAttributeValue(fullTag, "data-bascik-source-file");
+    if (annotatedSourceFile) sourceFile = decodeURIComponent(annotatedSourceFile);
+    const annotatedSourceLine = getHtmlAttributeValue(fullTag, "data-bascik-source-line");
+    if (annotatedSourceLine) sourceLine = Number.parseInt(annotatedSourceLine, 10);
 
-    if (idMatch) {
-      placeholderId = idMatch[1];
+    if (placeholderValue) {
+      placeholderId = placeholderValue;
       const entry = serverSidecarRegistry.getScript(placeholderId);
       if (entry) {
         scriptContent = entry.source;
+        sourceFile = entry.sourceFile;
+        sourceLine = entry.sourceLine;
         if (entry.modulePath && !srcPath) {
           srcPath = entry.modulePath;
         }
@@ -228,18 +238,43 @@ export const executeServerScripts = async (
       startLine,
       placeholderId,
       srcPath,
+      sourceFile,
+      sourceLine,
     };
   });
+
+  const importRoot = getImportRoot();
 
   await Promise.all(
     scriptJobs.map(async (job) => {
       let codeToExecute = job.scriptContent.trim();
       let moduleFilePath: string | undefined;
 
+      // A leading-slash specifier or src= is a hard error regardless of
+      // onServerScriptError: it is a syntax mistake in the author's HTML, not
+      // a runtime failure of their script.
+      const rethrowLeadingSlash = (err: unknown): never => {
+        if (err instanceof LeadingSlashSpecifierError) {
+          const where = job.sourceFile ?? filePath;
+          const location = where
+            ? ` (in "${relative(process.cwd(), where).replace(/\\/g, "/")}"${job.sourceLine !== undefined ? ` at line ${job.sourceLine}` : ""})`
+            : "";
+          throw new Error(`[bascik] error: ${err.message}${location}`, { cause: err });
+        }
+        throw err;
+      };
+
       if (job.srcPath) {
-        const resolvedPath = filePath
-          ? resolve(dirname(filePath), job.srcPath)
-          : resolve(process.cwd(), job.srcPath);
+        const containingFile = job.sourceFile ?? filePath;
+        const containingDir = containingFile
+          ? dirname(resolve(process.cwd(), containingFile))
+          : process.cwd();
+        let resolvedPath: string;
+        try {
+          resolvedPath = resolveScriptSrcPath(job.srcPath, containingDir, importRoot);
+        } catch (err) {
+          return rethrowLeadingSlash(err);
+        }
         moduleFilePath = resolvedPath;
         if (!codeToExecute) {
           try {
@@ -250,7 +285,28 @@ export const executeServerScripts = async (
         }
       }
 
-      const transformedCode = transformServerScriptSource(codeToExecute);
+      const containingFile = job.sourceFile ?? filePath;
+      const scriptBaseDir = moduleFilePath
+        ? dirname(moduleFilePath)
+        : containingFile
+          ? dirname(resolve(process.cwd(), containingFile))
+          : process.cwd();
+      let rewrittenCode: string;
+      try {
+        rewrittenCode = rewriteModuleSpecifiers(codeToExecute, scriptBaseDir, { importRoot });
+      } catch (err) {
+        return rethrowLeadingSlash(err);
+      }
+      const trimmedCode = rewrittenCode.trim();
+      const transformedCode = transformServerScriptSource(rewrittenCode);
+      const transformedSourceIndex = transformedCode.indexOf(trimmedCode);
+      const generatedPrefixLines = transformedSourceIndex < 0
+        ? 0
+        : (transformedCode.slice(0, transformedSourceIndex).match(/\n/g) ?? []).length;
+      const authoredLeadingLines = (rewrittenCode.slice(0, rewrittenCode.indexOf(trimmedCode)).match(/\n/g) ?? []).length;
+      const lineOffset = job.sourceLine === undefined || moduleFilePath
+        ? job.startLine
+        : job.sourceLine + authoredLeadingLines - generatedPrefixLines;
       const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(transformedCode)}`;
       const specifier = moduleFilePath ?? dataUri;
 
@@ -258,15 +314,17 @@ export const executeServerScripts = async (
         req: request,
       };
 
-      const relPath = filePath ? relative(process.cwd(), filePath).replace(/\\/g, "/") : request.path;
+      const originalSourcePath = containingFile
+        ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
+        : request.path;
 
       const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
         specifier,
         context,
         {
           timeoutMs,
-          originalSourcePath: relPath,
-          lineOffset: job.startLine,
+          originalSourcePath,
+          lineOffset,
           exportName: "default",
         },
       );
@@ -285,7 +343,7 @@ export const executeServerScripts = async (
         }
 
         const rawTrace = err.stack || err.message;
-        const cleanedMsg = cleanStackTrace(rawTrace, specifier, relPath, job.startLine);
+        const cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset);
         const errorMsg = `[bascik] server script error at "${request.path}":\n${cleanedMsg}`;
 
         if (behavior === "error") {

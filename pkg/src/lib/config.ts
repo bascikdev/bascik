@@ -3,6 +3,7 @@ import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
 import { resolveCliAction } from "./cli.ts";
 import {
+  collectConfigWarnings,
   formatConfigErrors,
   normalizeBasePath,
   validateUserConfig,
@@ -164,6 +165,9 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
     onRoutesScriptError: "error",
     onServerScriptError: "error",
     timeout: 30000,
+    // Kept relative (not resolved here) so worker threads and the main thread
+    // resolve it identically against process.cwd() at use sites.
+    importRoot: "src",
   },
   onMinifyError: "warn",
   http: {
@@ -304,6 +308,12 @@ export const initBascikConfig = (
     } else {
       throw new Error(formatConfigErrors(validationErrors));
     }
+  }
+
+  // Non-fatal findings (e.g. a missing scripts.importRoot directory) are
+  // reported once and never abort startup.
+  for (const warning of collectConfigWarnings(safeUserConfig, { fs: deps.fs, cwd: deps.cwd })) {
+    console.warn(`[bascik] warning: ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
   }
 
   let activeOverride: UserConfig = {};

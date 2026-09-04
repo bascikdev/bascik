@@ -1,11 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { getHtmlAttributeValue } from "./html-patterns.ts";
 
 export interface ServerScriptEntry {
   id: string;
   source: string;
   modulePath?: string;
+  sourceFile?: string;
+  sourceLine?: number;
 }
 
 export interface ServerScriptsSidecar {
@@ -17,8 +20,14 @@ class ServerSidecarRegistry {
   private scripts = new Map<string, ServerScriptEntry>();
   private loadedSidecar: Record<string, ServerScriptEntry> | null = null;
 
-  recordScript(id: string, source: string, modulePath?: string): void {
-    this.scripts.set(id, { id, source, modulePath });
+  recordScript(
+    id: string,
+    source: string,
+    modulePath?: string,
+    sourceFile?: string,
+    sourceLine?: number,
+  ): void {
+    this.scripts.set(id, { id, source, modulePath, sourceFile, sourceLine });
   }
 
   recordScripts(scripts: Record<string, ServerScriptEntry>): void {
@@ -102,6 +111,7 @@ export const extractServerScriptsToSidecar = (
   html: string,
   pagePath: string = "page",
   outMap?: Record<string, ServerScriptEntry>,
+  sourceFile?: string,
 ): string => {
   let scriptOrdinal = 0;
   return html.replace(
@@ -109,14 +119,23 @@ export const extractServerScriptsToSidecar = (
     (_match, openAttrs, scriptContent) => {
       scriptOrdinal++;
       const id = `server_script_${Buffer.from(`${pagePath}::${scriptOrdinal}`).toString("hex")}`;
-      let srcPath: string | undefined;
-      const srcMatch = (openAttrs as string).match(/\bsrc=["']([^"']+)["']/i);
-      if (srcMatch) {
-        srcPath = srcMatch[1];
-      }
-      serverSidecarRegistry.recordScript(id, scriptContent, srcPath);
+      const openTag = `<script${openAttrs}>`;
+      const srcPath = getHtmlAttributeValue(openTag, "src");
+      const annotatedSourceFile = getHtmlAttributeValue(openTag, "data-bascik-source-file");
+      const scriptSourceFile = annotatedSourceFile
+        ? decodeURIComponent(annotatedSourceFile)
+        : sourceFile;
+      const annotatedSourceLine = getHtmlAttributeValue(openTag, "data-bascik-source-line");
+      const sourceLine = annotatedSourceLine ? Number.parseInt(annotatedSourceLine, 10) : undefined;
+      serverSidecarRegistry.recordScript(id, scriptContent, srcPath, scriptSourceFile, sourceLine);
       if (outMap) {
-        outMap[id] = { id, source: scriptContent, modulePath: srcPath };
+        outMap[id] = {
+          id,
+          source: scriptContent,
+          modulePath: srcPath,
+          sourceFile: scriptSourceFile,
+          sourceLine,
+        };
       }
       return `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
     },

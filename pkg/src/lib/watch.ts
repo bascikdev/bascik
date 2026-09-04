@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import chokidar from "chokidar";
 import type { Stats } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import {
   pageProcessing,
   processAllPages,
+  processPageBatch,
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
@@ -17,9 +18,12 @@ import {
 } from "./file-system.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
+import { invalidateComponentListCache } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { apiRouteRegistry } from "./server-api.ts";
+import { mem } from "./mem.ts";
+import { getImportRoot } from "./import-root.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -170,6 +174,65 @@ export const watchFiles = async () => {
       .on("unlink", async () => {
         clearBuildScriptCaches();
         processAllPages().catch(onWatchError);
+      }));
+  }
+
+  // Watch the scripts import root in dev mode so files imported by build
+  // scripts (via the @/ alias, /, or relative paths) trigger a rebuild.
+  // Every event is gated on the dependency graph: only pages that actually
+  // import or read the edited file are rebuilt. deliberately NOT using
+  // selectivelyProcessPagesForWatchPath here because its all-pages fallback
+  // is wrong for the import root, where most files are not script
+  // dependencies. processPageBatch emits "transpiled" per page, which the
+  // SSE handler already listens for, so no extra reload event is emitted.
+  const importRoot = getImportRoot();
+  if (!BascikConfig.isBuild && existsSync(importRoot)) {
+    const pagesDir = resolve(process.cwd(), BascikConfig.directory.pages);
+    const componentsDir = resolve(process.cwd(), BascikConfig.directory.components);
+    // Watchers 2 and 3 already own the pages and components trees; excluding
+    // them here avoids double-firing rebuilds. Inlined stylesheets and directory.api
+    // are not owned by pages/components watchers, but inlined stylesheets have their
+    // own dedicated watcher below so exclude them to avoid redundant processing.
+    const isOwnedByOtherWatcher = (path: string): boolean =>
+      path === pagesDir || path.startsWith(pagesDir + sep) ||
+      path === componentsDir || path.startsWith(componentsDir + sep) ||
+      isInlineStylesheet(path);
+    w(chokidar
+      .watch([importRoot], {
+        ...watchOptions,
+        ignored: (path: string): boolean => isOwnedByOtherWatcher(path),
+        ignoreInitial: true,
+        persistent: true,
+      })
+      .on("add", async (path) => {
+        try {
+          const dependents = mem.pagesDependentOnFile(path);
+          if (dependents.length === 0) return;
+          clearBuildScriptCaches(path);
+          invalidateComponentListCache();
+          await processPageBatch(dependents);
+        } catch (err) { onWatchError(err); }
+      })
+      .on("change", async (path) => {
+        try {
+          const dependents = mem.pagesDependentOnFile(path);
+          if (dependents.length === 0) return;
+          clearBuildScriptCaches(path);
+          invalidateComponentListCache();
+          await processPageBatch(dependents);
+        } catch (err) { onWatchError(err); }
+      })
+      .on("unlink", async (path) => {
+        try {
+          // Rebuilding dependents on unlink is correct: the build script
+          // import fails and the error surfaces in the overlay instead of
+          // silently serving the last good output.
+          const dependents = mem.pagesDependentOnFile(path);
+          if (dependents.length === 0) return;
+          clearBuildScriptCaches(path);
+          invalidateComponentListCache();
+          await processPageBatch(dependents);
+        } catch (err) { onWatchError(err); }
       }));
   }
 

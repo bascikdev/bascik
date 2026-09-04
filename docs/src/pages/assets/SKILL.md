@@ -736,7 +736,10 @@ Components work inside `<head>` to organize metadata and shared links:
 ```
 
 * Top-level `import` and top-level `await` are supported.
-* CWD is the project root. Relative paths resolve from there.
+* CWD is the project root. Quoted data paths (`readFile('./content/x.md')`) resolve from there.
+* **Importing shared helpers: use `@/` by default.** `import { renderMd } from '@/lib/md-renderer.ts'` resolves against `scripts.importRoot` (default `src`), so the identical import line works from any page or component at any nesting depth. Relative `./` and `../` specifiers still work and resolve against the file that contains the script; use them for helpers that live next to the page or component. Both forms also apply to `data-bascik-server`, `data-bascik-routes`, and the `src="…"` attribute on those tags.
+* **Never use a bare leading `/`.** `import x from '/lib/x.ts'` or `src="/lib/x.ts"` inside a Bascik script is a hard compile error (and a red diagnostic in the VS Code extension), regardless of `onBuildScriptError`. A bare slash is ambiguous between filesystem root and site root. The error names the two valid rewrites: `@/lib/x.ts` (import root) or `./lib/x.ts` (relative). Plain client `<script>` tags are unaffected.
+* **Alias gotchas:** only the exact `@/` prefix is an alias (`@scope/pkg` is a normal package). Aliases are rewritten only inside script blocks; a helper file importing another helper must use `./` or `../`. Editing an alias-imported helper invalidates the script cache and triggers a dev rebuild of the dependent pages; the import root is watched automatically.
 * Use `console.log()` or `process.stdout.write()` to output HTML.
 * Build scripts run before component resolution, so their output can contain component tags.
 * All build scripts on a page execute concurrently via `Promise.all` (capped by a memory semaphore), and output is assembled in document order once all scripts complete.
@@ -875,11 +878,7 @@ Use it from any page's `<head>`:
 ```html
 <head>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
-    );
+    import { canonical } from '../../scripts/canonical.ts';
     console.log(await canonical());
   </script>
 </head>
@@ -1102,6 +1101,7 @@ export default defineConfig({
     onRoutesScriptError: 'error',
     onServerScriptError: 'error',
     timeout: 30000,
+    importRoot: 'src',      // directory that @/ and / script imports resolve against
   },
   onMinifyError: 'warn',
   http: {
@@ -1153,6 +1153,7 @@ export const build = defineConfig({
 When creating or modifying `bascik.config.ts`:
 * **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `generate` toggles, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
 * **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. custom `exec` scripts or `build` minification rules).
+* **Monorepo layout:** `directory.pages`, `directory.components`, and `scripts.importRoot` are three independent directories that never need a common parent. `directory.components` and `scripts.importRoot` may point outside the project (for example `'../../shared/components'` and `'../../shared/scripts'`) so several Bascik sites in one repository share components and script helpers with no copying. `directory.components` accepts a single directory; use per-site subfolders inside the shared components directory for site-specific components. See `/how-to/monorepos`.
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
 * **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
