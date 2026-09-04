@@ -37,6 +37,30 @@ describe("Prompt 34: Transpile loop performance & operation count guard", () => 
     maskSpy.mockRestore();
   });
 
+  it("Prompt 63: component discovery examines a linear number of unchanged-prefix bytes (cursor, not offset zero)", () => {
+    const componentList: ComponentList = {
+      "item-card": {
+        fileContent: `<div class="card"><p data-bascik-prop-title></p></div>`,
+      },
+    };
+    const page = (n: number) =>
+      Array.from({ length: n }, (_, i) => `<item-card title="Item ${i}"></item-card>`).join("\n");
+
+    const examined = (n: number): number => {
+      componentsModule.__componentScanStatsForTests.reset();
+      const result = recursivelyTranspile(page(n), componentList);
+      expect(result.usedComponents).toHaveLength(n);
+      return componentsModule.__componentScanStatsForTests.prefixBytesExamined;
+    };
+
+    const atN = examined(400);
+    const at2N = examined(800);
+    // Each search that restarts at offset zero re-reads the whole resolved
+    // prefix, giving ~4x at 2N. A cursor that resumes at the replacement start
+    // reads each byte a bounded number of times, giving ~2x.
+    expect(at2N / atN).toBeLessThan(2.5);
+  });
+
   it("falsification check: re-masks properly when a component introduces raw text tags (<script>/<style>/comments)", () => {
     const componentList: ComponentList = {
       "code-viewer": {

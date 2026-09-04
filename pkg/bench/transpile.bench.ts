@@ -102,6 +102,27 @@ const PAGE_BODY_50 = Array.from(
   (_, i) => `<comp-${i}><p>slot content ${i}</p></comp-${i}>`,
 ).join("");
 
+// Component-expansion scaling inputs (prompt 63). One component repeated N
+// times on a flat page, plus a nested case where each instance introduces two
+// more components inside its template (3 substitutions per instance).
+const FLAT_LIST: ComponentList = {
+  "item-card": { fileContent: `<div class="card"><p data-bascik-prop-title></p></div>` },
+};
+const NESTED_LIST: ComponentList = {
+  "outer-box": {
+    fileContent: `<section class="o"><inner-dot></inner-dot><inner-dot></inner-dot><div data-bascik-slot></div></section>`,
+  },
+  "inner-dot": { fileContent: `<i class="d">.</i>` },
+};
+const flatPage = (n: number): string =>
+  Array.from({ length: n }, (_, i) => `<item-card title="Item ${i}"></item-card>`).join("\n");
+const nestedPage = (n: number): string =>
+  Array.from({ length: n }, (_, i) => `<outer-box>${i}</outer-box>`).join("\n");
+const FLAT_800 = flatPage(800);
+const FLAT_1600 = flatPage(1600);
+const FLAT_3200 = flatPage(3200);
+const NESTED_800 = nestedPage(800);
+
 // JS minifier scaling inputs (prompt 62). Slash-heavy exercises regex/division/
 // comment disambiguation on every `/`; slash-light is the common case. Sizes
 // double so a quadratic scan would show ~4x per step and a linear one ~2x.
@@ -173,6 +194,21 @@ describe("CSS scoping — convertCssElementSelectorsToClasses", () => {
 describe("CSS scoping — scopeCssCustomProperties", () => {
   bench("10 custom properties", () => {
     scopeCssCustomProperties(CUSTOM_PROPS_CSS, "my-comp__bench1234");
+  });
+});
+
+describe("recursivelyTranspile — flat instance scaling", () => {
+  bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_800, FLAT_LIST);
+  });
+  bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_1600, FLAT_LIST);
+  });
+  bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
+    recursivelyTranspile(FLAT_3200, FLAT_LIST);
+  });
+  bench(`800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`, () => {
+    recursivelyTranspile(NESTED_800, NESTED_LIST);
   });
 });
 

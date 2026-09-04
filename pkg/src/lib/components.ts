@@ -387,11 +387,15 @@ const findOpenTag = (
   htmlString: string,
   tagName: string,
   masked?: string,
+  searchFrom = 0,
 ): { openTag: string; start: number; end: number } | null => {
   if (!/^[a-zA-Z][\w:-]*$/.test(tagName)) return null;
   const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // A fresh `g` instance per call so `lastIndex` is invocation-local (pages
+  // may transpile concurrently); V8 caches the compiled pattern by source.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "i");
+  const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "gi");
+  openTagRegexp.lastIndex = searchFrom;
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTagMatch = openTagRegexp.exec(maskedHtml);
   if (!openTagMatch) return null;
@@ -461,10 +465,33 @@ export const replaceTag = (
 
 const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
 
+/**
+ * Test-only instrumentation: bytes of already-resolved document prefix that a
+ * component search had to skip over before reaching its match. A search from
+ * offset zero on every substitution makes this quadratic in instance count;
+ * a cursor resuming at the last replacement keeps it linear.
+ */
+export const __componentScanStatsForTests = {
+  prefixBytesExamined: 0,
+  reset(): void {
+    this.prefixBytesExamined = 0;
+  },
+};
+
+/**
+ * Find the first component tag in `htmlString` at or after `searchFrom`.
+ *
+ * `searchFrom` is the cursor from prompt 63: after a replacement at index S,
+ * no new component tag can appear before S in the unchanged prefix, so the
+ * caller resumes the search at S (never at the replacement END, which would
+ * skip components nested in the inserted template). Returned indices are
+ * always in whole-document coordinates.
+ */
 export const getFirstComponent = (
   htmlString: string,
   componentList: ComponentList,
   masked?: string,
+  searchFrom = 0,
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
 
@@ -482,23 +509,28 @@ export const getFirstComponent = (
       .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const regex = escapedComponentNames.length === 0
       ? null
-      : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "i");
+      : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "gi");
     cached = { namesKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
-  const matchComponentName = cached.regex;
-  if (!matchComponentName) return {};
+  if (!cached.regex) return {};
+  // Never exec the shared cached instance: `lastIndex` on a `g` regex is
+  // mutable state, and pages can transpile concurrently. Clone per call.
+  const matchComponentName = new RegExp(cached.regex.source, cached.regex.flags);
+  matchComponentName.lastIndex = searchFrom;
 
   // Match against the masked string so literal component-tag text inside
   // <script>/<style>/<textarea> content (e.g. JSON-LD strings) is ignored.
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
-  const match = maskedHtml.match(matchComponentName);
+  const match = matchComponentName.exec(maskedHtml);
   if (!match) {
+    __componentScanStatsForTests.prefixBytesExamined += Math.max(0, maskedHtml.length - searchFrom);
     return {};
   }
+  __componentScanStatsForTests.prefixBytesExamined += match.index - searchFrom;
   const firstComponentName = match[1].toLowerCase();
-  const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml);
+  const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml, match.index);
   const resultObj: Partial<BascikComponent> & { index?: number; startIndex?: number; endIndex?: number } = {
     name: firstComponentName,
     index: match.index,
@@ -518,6 +550,7 @@ export const getTag = (
   tagName: string,
   componentList?: ComponentList,
   masked?: string,
+  searchFrom = 0,
 ): Partial<BascikComponent> & {
   startIndex?: number;
   contentStart?: number;
@@ -531,7 +564,7 @@ export const getTag = (
   // same-name elements pair with the correct (balanced) closing tag, e.g.
   // <my-list>...<my-list></my-list>...</my-list>.
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
-  const openTag = findOpenTag(htmlString, tagName, maskedHtml);
+  const openTag = findOpenTag(htmlString, tagName, maskedHtml, searchFrom);
   if (openTag && !/\/\s*>$/.test(openTag.openTag)) {
     const closeIndex = findMatchingClose(htmlString, tagName, openTag.end, maskedHtml);
     if (closeIndex !== -1) {
@@ -602,8 +635,9 @@ export const getTag = (
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const selfClosingPattern = new RegExp(
     `<${tn}(?![\\w-])([\\s\\S]*?)\\/?>`,
-    "i",
+    "gi",
   );
+  selfClosingPattern.lastIndex = searchFrom;
   const selfClosingMatch = selfClosingPattern.exec(maskedHtml);
   if (selfClosingMatch) {
     const returnObj: Partial<BascikComponent> & {

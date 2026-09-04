@@ -427,12 +427,18 @@ export const recursivelyTranspile = (
   // copy, leading to multi-GB heap usage on pages with many component instances).
   let substitutions = 0;
   let masked = maskRawTextContent(transpiledHtmlBody);
+  // Search cursor (prompt 63). Replacement happens at the FIRST unresolved
+  // component, so the prefix before its start is fully resolved and cannot
+  // gain new tags; the next search resumes at that start (not its end, so
+  // components nested inside the inserted template are still found first).
+  // Any operation that edits text outside the known splice resets it to 0.
+  let searchFrom = 0;
   while (true) {
     if (
       substitutions >= MAX_SUBSTITUTIONS ||
       transpiledHtmlBody.length > MAX_OUTPUT_BYTES
     ) {
-      const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
+      const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
       const tag = partial.name ? `<${partial.name}>` : "(unknown)";
       throw new PageProcessingError(
         filePath ?? "unknown file",
@@ -445,7 +451,7 @@ export const recursivelyTranspile = (
         ),
       );
     }
-    const partial = getFirstComponent(transpiledHtmlBody, componentList, masked);
+    const partial = getFirstComponent(transpiledHtmlBody, componentList, masked, searchFrom);
     if (!partial.name) {
       const cleanedHtml = transpiledHtmlBody
         .replace(/<!--bascik-source-file:[\s\S]*?-->/g, "")
@@ -537,8 +543,14 @@ export const recursivelyTranspile = (
       const introducedRawTags = /<(?:script|style|textarea)\b/i.test(transpiledTag);
       if (introducedRawTags || typeof sIdx !== "number" || typeof eIdx !== "number") {
         masked = maskRawTextContent(transpiledHtmlBody);
+        // A comment or raw-text element opened inside the new content could
+        // extend a mask region across the splice boundary only forward, never
+        // into the resolved prefix, so resuming at the instance start is still
+        // safe; without known indices, be conservative.
+        searchFrom = typeof sIdx === "number" ? sIdx : 0;
       } else {
         masked = masked.slice(0, sIdx) + transpiledTag + masked.slice(eIdx);
+        searchFrom = sIdx;
       }
 
       usedComponents.push(component);
@@ -565,6 +577,9 @@ export const recursivelyTranspile = (
       if (component.content) {
         transpiledHtmlBody = replaceTag(transpiledHtmlBody, component.name, "", masked);
         masked = maskRawTextContent(transpiledHtmlBody);
+        // replaceTag without offsets re-searches from the document start and
+        // may have edited text before the cursor; reset conservatively.
+        searchFrom = 0;
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)
