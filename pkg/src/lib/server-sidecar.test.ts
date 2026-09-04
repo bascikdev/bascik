@@ -160,7 +160,7 @@ throw new Error('component sidecar failure');
   it("supports recording multiple scripts via recordScripts (worker thread IPC parity)", () => {
     serverSidecarRegistry.clear();
     serverSidecarRegistry.recordScripts({
-      script_1: { id: "script_1", source: "console.log('from_worker');" },
+      script_1: { id: "script_1", mode: "server", source: "console.log('from_worker');" },
     });
     expect(serverSidecarRegistry.getScript("script_1")?.source).toBe("console.log('from_worker');");
   });

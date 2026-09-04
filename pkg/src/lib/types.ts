@@ -73,9 +73,11 @@ export interface TranspilePageResult {
   fileDependencies?: string[];
   serverScripts?: Record<string, {
     id: string;
+    mode: "server" | "stream";
     source: string;
     modulePath?: string;
     sourceFile?: string;
+    sourceLine?: number;
   }>;
 }
 export interface MinifyOptions {

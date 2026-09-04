@@ -129,7 +129,7 @@ import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
-import { extractServerScriptsToSidecar, serverSidecarRegistry } from "./server-sidecar.ts";
+import { extractServerScriptsToSidecar, serverSidecarRegistry, type ServerScriptEntry } from "./server-sidecar.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
 import type {
   BascikComponent,
@@ -1300,7 +1300,7 @@ export const transpilePage = async (
       distHtml.slice(tag.closeIndex);
   }
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
-  const serverScripts: Record<string, { id: string; source: string; modulePath?: string; sourceFile?: string; sourceLine?: number }> = {};
+  const serverScripts: Record<string, ServerScriptEntry> = {};
   distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts, pagePath);
   cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
 

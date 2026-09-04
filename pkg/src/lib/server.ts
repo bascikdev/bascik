@@ -7,7 +7,12 @@ import { BascikConfig, shouldLog } from "./config.ts";
 import { eventEmitter, runShutdownHandlers } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
-import { executeServerScripts, DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
+import {
+  DEFAULT_SCRIPT_TIMEOUT_MS,
+  executeServerScriptPlan,
+  planServerScripts,
+  streamServerScripts,
+} from "./server-scripts.ts";
 import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
@@ -667,17 +672,60 @@ export const createRequestHandler = () => {
           if (k.startsWith(":")) continue; // skip HTTP/2 pseudo-headers
           requestHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
         }
-        const html = await executeServerScripts(page.content.toString(), {
+        const request = {
           path: pathname,
           method: req.method ?? "GET",
           headers: requestHeaders,
           searchParams,
-        }, BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS, page.absolutePagePath);
-        const htmlBuf = Buffer.from(html);
+        };
+        const timeout = BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
         responseHeaders["cache-control"] = "private, no-store";
-        responseHeaders["content-length"] = htmlBuf.byteLength;
+        // Planning throws for predictable authoring errors (conflicting
+        // directives, unresolvable sidecar id, stale mode marker) BEFORE any
+        // byte is written, so those are still ordinary 500s.
+        const plan = planServerScripts(page.content.toString(), page.absolutePagePath);
+
+        if (plan.firstStreamIndex === -1 || isHead) {
+          // No `stream` scripts (or HEAD): today's buffered path, byte for byte.
+          // HEAD keeps this path so it can report content-length with no body,
+          // matching the static-file HEAD branch.
+          const htmlBuf = await executeServerScriptPlan(plan, request, timeout, page.absolutePagePath);
+          responseHeaders["content-length"] = htmlBuf.byteLength;
+          res.respond(responseStatus, responseHeaders);
+          return res.end(isHead ? undefined : htmlBuf);
+        }
+
+        // Early flush (prompt 65): phase one resolves every `server` job (a
+        // throw here is still a 500), then headers commit with no
+        // content-length, then static bytes and `stream` outputs flow in
+        // document order. No etag, no content-encoding: the body is not a
+        // known whole.
+        const abort = new AbortController();
+        // prompt 66: replace with a drain-aware sink wired to res.on("close").
+        const sink = {
+          write: async (buf: Buffer): Promise<void> => {
+            if (res.destroyed || abort.signal.aborted) return;
+            res.write(buf);
+          },
+        };
+        const streamer = streamServerScripts(plan, request, timeout, page.absolutePagePath, sink, abort.signal);
+        await streamer.ready;
         res.respond(responseStatus, responseHeaders);
-        return res.end(isHead ? undefined : htmlBuf);
+        streamer.commit();
+        try {
+          await streamer.done;
+        } catch (streamErr) {
+          // Script failures are absorbed inside phase two; only transport
+          // errors reach here. Headers are sent, so never respond again.
+          if (!isNetworkResetError(streamErr)) {
+            console.error("[bascik] streamed response failed after commit:", streamErr);
+          }
+          abort.abort();
+          if (!res.destroyed) res.end();
+          return;
+        }
+        if (!res.destroyed) res.end();
+        return;
       }
 
       // ── ETag + conditional GET (skip for no-store pages) ─────────────────

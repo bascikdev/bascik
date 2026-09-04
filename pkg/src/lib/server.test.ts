@@ -93,10 +93,22 @@ vi.mock("./events.js", () => ({
   runShutdownHandlers: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./server-scripts.js", () => ({
-  executeServerScripts: vi.fn(async (html: string) => html),
-  DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
-}));
+// The handler plans, then executes the plan (prompt 65). The mock keeps a
+// single `executeServerScripts(html, request, timeout, filePath)` spy as the
+// observation point so request-context assertions read naturally: the mocked
+// planner records the html, and the mocked plan executor forwards to the spy.
+vi.mock("./server-scripts.js", () => {
+  const executeServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
+  return {
+    executeServerScripts,
+    planServerScripts: vi.fn((html: string) => ({ segments: [{ kind: "static", bytes: Buffer.from(html) }], firstStreamIndex: -1, __html: html })),
+    executeServerScriptPlan: vi.fn(async (plan: any, request: unknown, timeout: number, filePath: string) =>
+      Buffer.from(await executeServerScripts(plan.__html, request, timeout, filePath)),
+    ),
+    streamServerScripts: vi.fn(),
+    DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
+  };
+});
 
 vi.mock("./paths.js", () => ({
   // Faithful port of the real getHttpPath so is404Page logic is genuinely
