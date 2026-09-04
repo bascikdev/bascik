@@ -202,7 +202,7 @@ suite('Extension Integration Suite', () => {
     });
   });
 
-  suite('Script Import Definitions: import-root aliases (@/ and /)', () => {
+  suite('Script Import Definitions: import-root alias (@/)', () => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     const fixtureUri = workspaceFolder
       ? vscode.Uri.file(path.join(workspaceFolder.uri.fsPath, 'src', 'script-import-alias.html'))
@@ -235,8 +235,9 @@ suite('Extension Integration Suite', () => {
       assertNavHelper(await definitionInside("aliasHelper } from '@/lib/nav-helper.ts'"));
     });
 
-    test('resolves leading-slash import in data-bascik-server against the import root, not the filesystem root', async () => {
-      assertNavHelper(await definitionInside("slashHelper } from '/lib/nav-helper.ts'"));
+    test('returns no definition for a leading-slash import (it is a compile error, not an alias)', async () => {
+      const locations = await definitionInside("slashHelper } from '/lib/nav-helper.ts'");
+      assert.ok(!locations || locations.length === 0, 'No definition for leading-slash specifier');
     });
 
     test('resolves @/ export-from in data-bascik-routes', async () => {
@@ -251,8 +252,36 @@ suite('Extension Integration Suite', () => {
       assertNavHelper(await definitionInside('<script data-bascik-build src="@/lib/nav-helper.ts">'));
     });
 
-    test('resolves src="/…" on a server script', async () => {
-      assertNavHelper(await definitionInside('<script data-bascik-server src="/lib/nav-helper.ts">'));
+    test('returns no definition for a leading-slash src= on a server script', async () => {
+      const locations = await definitionInside('<script data-bascik-server src="/lib/nav-helper.ts">');
+      assert.ok(!locations || locations.length === 0, 'No definition for leading-slash src');
+    });
+
+    test('reports an Error diagnostic for each leading-slash specifier and src= in Bascik scripts, naming the @/ fix', async () => {
+      assert.ok(fixtureUri, 'Workspace folder should be open');
+      const doc = await vscode.workspace.openTextDocument(fixtureUri);
+      // The fixture was already opened by the definition tests above, so
+      // onDidOpenTextDocument will not fire again. Show it to trigger the
+      // active-editor refresh path and then poll briefly.
+      await vscode.window.showTextDocument(doc);
+      let diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      for (let i = 0; i < 20 && !diagnostics.some((d) => d.code === 'leading-slash-specifier'); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      }
+      const slashDiags = diagnostics.filter((d) => d.code === 'leading-slash-specifier');
+      assert.strictEqual(slashDiags.length, 2, `Expected exactly 2 leading-slash diagnostics, got ${slashDiags.length}`);
+      for (const d of slashDiags) {
+        assert.strictEqual(d.severity, vscode.DiagnosticSeverity.Error);
+        assert.ok(d.message.includes("'/lib/nav-helper.ts'"), d.message);
+        assert.ok(d.message.includes("'@/lib/nav-helper.ts'"), d.message);
+        assert.ok(d.message.includes("'./lib/nav-helper.ts'"), d.message);
+      }
+      const text = doc.getText();
+      const flagged = slashDiags.map((d) => text.slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+      assert.ok(flagged.every((f) => f === '/lib/nav-helper.ts'), `Ranges should cover the specifier, got ${JSON.stringify(flagged)}`);
+      // The client <script type="module"> with '/lib/client-root.js' must not be flagged.
+      assert.ok(!diagnostics.some((d) => d.message.includes('client-root.js')), 'Client script leading slash must not be flagged');
     });
 
     test('does not treat a scoped package as an alias', async () => {

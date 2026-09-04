@@ -175,8 +175,9 @@ export interface ScriptsOptions {
   onServerScriptError: "warn" | "error";
   timeout: number;
   /**
-   * Directory that `@/` and `/` import specifiers (and script tag `src=`
-   * values) resolve against inside build, server, and routes scripts.
+   * Directory that `@/` import specifiers (and script tag `src=` values)
+   * resolve against inside build, server, and routes scripts. A bare leading
+   * `/` is not an alias and is rejected with an error.
    * Relative to the project root; kept as written and resolved at use sites.
    * Independent of `directory.pages` and `directory.components`; may point
    * outside the project (for example `../shared/scripts` in a monorepo).

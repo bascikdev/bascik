@@ -49,6 +49,8 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
 import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
 import {
+  LeadingSlashSpecifierError,
+  classifySpecifier,
   findCallArgumentStringLiterals,
   findModuleSpecifiers,
   resolveScriptSrcPath,
@@ -92,7 +94,7 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
 export const SCRIPT_CACHE_VERSION = 8;
 
 export interface ImportRootOptions {
-  /** Absolute import root that `@/` and `/` specifiers resolve against. */
+  /** Absolute import root that `@/` specifiers resolve against. */
   importRoot?: string;
 }
 
@@ -145,7 +147,9 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
   for (const match of matches) {
     const script = match[1];
     const srcPath = getHtmlAttributeValue(match[0], "src");
-    if (srcPath) {
+    // Leading-slash src= is rejected by the executor with a located error;
+    // skip it here so dependency collection never throws.
+    if (srcPath && classifySpecifier(srcPath) !== "root-slash") {
       const absPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
       queue.push(relative(process.cwd(), absPath).replace(/\\/g, "/"));
     }
@@ -181,8 +185,8 @@ export const collectAllScriptDeps = async (html: string, sourceFile?: string): P
 
 // Extract relative paths the script depends on from quoted string literals:
 //   './content/foo.md', 'scripts/md-renderer.mjs', './data/items.json'
-// ESM specifiers additionally honor the `@/` and `/` import-root aliases so
-// the cache key and the dev watcher cover alias-imported helpers.
+// ESM specifiers additionally honor the `@/` import-root alias so the cache
+// key and the dev watcher cover alias-imported helpers.
 export const extractScriptDeps = (
   script: string,
   esmBaseDir: string = process.cwd(),
@@ -194,6 +198,10 @@ export const extractScriptDeps = (
   const moduleSpecifiers = findModuleSpecifiers(script);
   const moduleRanges = new Set(moduleSpecifiers.map(({ start, end }) => `${start}:${end}`));
   for (const { value: specifier } of moduleSpecifiers) {
+    // Leading-slash specifiers are rejected by the executor with a located
+    // error; dependency extraction just skips them so cache keys and the dev
+    // watcher stay well-defined for the rest of the script.
+    if (classifySpecifier(specifier) === "root-slash") continue;
     const absPath = resolveSpecifierPath(specifier, esmBaseDir, importRoot);
     if (absPath === undefined) continue;
     seen.add(relative(process.cwd(), absPath).replace(/\\/g, "/"));
@@ -392,14 +400,33 @@ export const executeBuildScripts = async (
         ? dirname(resolve(process.cwd(), filePath))
         : process.cwd();
 
+    // A leading-slash specifier or src= is a hard error regardless of
+    // onBuildScriptError: it is a syntax mistake in the author's HTML, not a
+    // runtime failure of their script, so it is never downgraded to a warning.
+    const annotateLeadingSlash = (err: unknown): never => {
+      if (!(err instanceof LeadingSlashSpecifierError)) throw err;
+      let errorMsg = `[bascik] error: ${err.message}`;
+      if (filePath) {
+        const prefix = html.slice(0, index);
+        const prefixLines = prefix.split(/\r?\n/);
+        errorMsg += ` (in "${getRelativePath(filePath, "pages")}" at line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`;
+      }
+      throw new Error(errorMsg, { cause: err });
+    };
+
     let trimmedScript = scriptContent.trim();
     if (!trimmedScript) {
       const srcPath = getHtmlAttributeValue(openTag, "src");
       if (srcPath) {
         // `src=` follows the same rules as ESM specifiers: relative and bare
-        // paths resolve against the containing file, `@/` and `/` against the
-        // import root. The script's own imports then re-base to that file.
-        const resolvedPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
+        // paths resolve against the containing file, `@/` against the import
+        // root. The script's own imports then re-base to that file.
+        let resolvedPath: string;
+        try {
+          resolvedPath = resolveScriptSrcPath(srcPath, scriptBaseDir, importRoot);
+        } catch (err) {
+          return annotateLeadingSlash(err);
+        }
         scriptBaseDir = dirname(resolvedPath);
         try {
           trimmedScript = await readFile(resolvedPath, "utf8");
@@ -409,7 +436,12 @@ export const executeBuildScripts = async (
       }
     }
 
-    const preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir, { importRoot });
+    let preparedScript: string;
+    try {
+      preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir, { importRoot });
+    } catch (err) {
+      return annotateLeadingSlash(err);
+    }
 
     const cacheKey = useCache
       ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath, importRoot)

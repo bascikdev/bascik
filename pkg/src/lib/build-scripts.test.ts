@@ -664,13 +664,18 @@ describe("extractScriptDeps", () => {
     expect(extractScriptDeps(source)).toEqual([]);
   });
 
-  it("resolves @/ and / import-root aliases to cwd-relative keys under the default import root", () => {
-    const script = "import { a } from '@/lib/a.ts';\nimport { b } from '/lib/b.ts';\nimport { c } from '../c.ts';";
+  it("resolves the @/ import-root alias to cwd-relative keys under the default import root", () => {
+    const script = "import { a } from '@/lib/a.ts';\nimport { c } from '../c.ts';";
     const deps = extractScriptDeps(script, resolve(process.cwd(), "src/pages/nested"));
     expect(deps).toContain("src/lib/a.ts");
-    expect(deps).toContain("src/lib/b.ts");
     expect(deps).toContain("src/pages/c.ts");
     expect(deps).not.toContain("lib/a.ts");
+  });
+
+  it("skips leading-slash specifiers instead of throwing so cache keys stay well-defined", () => {
+    const script = "import { a } from '@/lib/a.ts';\nimport { b } from '/lib/b.ts';";
+    const deps = extractScriptDeps(script, resolve(process.cwd(), "src/pages/nested"));
+    expect(deps).toEqual(["src/lib/a.ts"]);
   });
 
   it("resolves aliases against an explicit import root outside the project", () => {
@@ -689,24 +694,49 @@ describe("extractScriptDeps", () => {
 
 // ─── import-root aliases in executeBuildScripts ──────────────────────────────
 
-describe("import-root aliases (@/ and /)", () => {
-  it("rewrites @/ and / imports to the import root regardless of page depth", async () => {
+describe("import-root alias (@/)", () => {
+  it("rewrites @/ imports to the import root regardless of page depth", async () => {
     resolveWith("");
     const expected = pathToFileURL(resolve(process.cwd(), "src/lib/helper.ts")).href;
 
     for (const pageFile of ["src/pages/a.html", "src/pages/deeply/nested/b.html"]) {
       (writeFile as ReturnType<typeof vi.fn>).mockClear();
       await executeBuildScripts(
-        "<script data-bascik-build>import { a } from '@/lib/helper.ts';\nimport { b } from '/lib/helper.ts';</script>",
+        "<script data-bascik-build>import { a } from '@/lib/helper.ts';</script>",
         pageFile,
       );
       const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
       expect(written).toContain(`import { a } from '${expected}';`);
-      expect(written).toContain(`import { b } from '${expected}';`);
     }
   });
 
-  it.each(["@/lib/entry.ts", "/lib/entry.ts"])("reads src=\"%s\" from the import root and re-bases its relative imports", async (src) => {
+  it("rejects a leading-slash import with a located error that names the @/ fix", async () => {
+    await expect(
+      executeBuildScripts(
+        "<div></div>\n<script data-bascik-build>\nimport { b } from '/lib/helper.ts';\n</script>",
+        "src/pages/a.html",
+      ),
+    ).rejects.toThrow(/Leading-slash specifier '\/lib\/helper\.ts'.*@\/lib\/helper\.ts.*pages\/a\.html.*line 2/s);
+  });
+
+  it("rejects a leading-slash import even when onBuildScriptError is warn", async () => {
+    (BascikConfig as any).scripts = { ...(BascikConfig as any).scripts, onBuildScriptError: "warn" };
+    try {
+      await expect(
+        executeBuildScripts("<script data-bascik-build>import { b } from '/lib/helper.ts';</script>", "src/pages/a.html"),
+      ).rejects.toThrow(/Leading-slash specifier/);
+    } finally {
+      (BascikConfig as any).scripts = { ...(BascikConfig as any).scripts, onBuildScriptError: "error" };
+    }
+  });
+
+  it("rejects a leading-slash src= with a located error", async () => {
+    await expect(
+      executeBuildScripts('<script data-bascik-build src="/lib/entry.ts"></script>', "src/pages/a.html"),
+    ).rejects.toThrow(/Leading-slash specifier '\/lib\/entry\.ts'.*@\/lib\/entry\.ts/s);
+  });
+
+  it.each(["@/lib/entry.ts"])("reads src=\"%s\" from the import root and re-bases its relative imports", async (src) => {
     const entryPath = resolve(process.cwd(), "src/lib/entry.ts");
     mockReadFile.mockImplementation(async (path: string) => {
       if (String(path) === entryPath) return "import './sibling.ts';";
@@ -725,14 +755,20 @@ describe("import-root aliases (@/ and /)", () => {
     const html = `
       <script data-bascik-build>
         import { a } from '@/lib/alias-helper.ts';
-        import { b } from '/lib/slash-helper.ts';
       </script>
       <script data-bascik-routes src="@/lib/routes-entry.ts"></script>
     `;
     const deps = await collectAllScriptDeps(html, "src/pages/deeply/nested/page.html");
     expect(deps).toContain("src/lib/alias-helper.ts");
-    expect(deps).toContain("src/lib/slash-helper.ts");
     expect(deps).toContain("src/lib/routes-entry.ts");
+  });
+
+  it("collectAllScriptDeps skips a leading-slash src= instead of throwing", async () => {
+    const html = `
+      <script data-bascik-build src="/lib/slash-entry.ts"></script>
+      <script data-bascik-build>import { a } from '@/lib/ok.ts';</script>
+    `;
+    await expect(collectAllScriptDeps(html, "src/pages/page.html")).resolves.toEqual(["src/lib/ok.ts"]);
   });
 });
 

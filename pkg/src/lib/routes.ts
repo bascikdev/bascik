@@ -6,7 +6,7 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { runModule } from "./script-runner.ts";
-import { resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
@@ -343,6 +343,23 @@ export const executeRoutesScript = async (
   }
 
   const importRoot = getImportRoot();
+
+  // A leading-slash specifier or src= is a hard error regardless of
+  // onRoutesScriptError: it is a syntax mistake in the author's HTML, not a
+  // runtime failure of their script.
+  const locate = (): string => {
+    if (!filePath) return "";
+    const pfx = html.slice(0, index);
+    const lns = pfx.split(/\r?\n/);
+    return ` (in "${getRelativePath(filePath, "pages")}" at line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
+  };
+  const rethrowLeadingSlash = (err: unknown): never => {
+    if (err instanceof LeadingSlashSpecifierError) {
+      throw new Error(`[bascik] error: ${err.message}${locate()}`, { cause: err });
+    }
+    throw err;
+  };
+
   let trimmedScript = scriptContent.trim();
   let moduleFilePath: string | undefined;
   if (!trimmedScript) {
@@ -352,7 +369,12 @@ export const executeRoutesScript = async (
       const containingDir = filePath
         ? dirname(resolve(process.cwd(), filePath))
         : process.cwd();
-      const resolvedPath = resolveScriptSrcPath(srcPath, containingDir, importRoot);
+      let resolvedPath: string;
+      try {
+        resolvedPath = resolveScriptSrcPath(srcPath, containingDir, importRoot);
+      } catch (err) {
+        return rethrowLeadingSlash(err);
+      }
       moduleFilePath = resolvedPath;
       try {
         trimmedScript = await readFile(resolvedPath, "utf8");
@@ -397,15 +419,21 @@ export const executeRoutesScript = async (
     extraEnv.BASCIK_SITE_URL = siteUrl;
   }
 
+  const scriptBaseDir = moduleFilePath
+    ? dirname(moduleFilePath)
+    : filePath
+      ? dirname(resolve(process.cwd(), filePath))
+      : process.cwd();
+  let preparedScript: string;
+  try {
+    preparedScript = rewriteModuleSpecifiers(trimmedScript, scriptBaseDir, { importRoot });
+  } catch (err) {
+    return rethrowLeadingSlash(err);
+  }
+
   let stdout = "";
   let stderr = "";
   try {
-    const scriptBaseDir = moduleFilePath
-      ? dirname(moduleFilePath)
-      : filePath
-        ? dirname(resolve(process.cwd(), filePath))
-        : process.cwd();
-    const preparedScript = rewriteModuleSpecifiers(trimmedScript, scriptBaseDir, { importRoot });
     await writeFile(tmpPath, preparedScript + sourceUrlComment, "utf8");
     const result = await runModule(tmpPath, extraEnv);
     stdout = result.stdout;

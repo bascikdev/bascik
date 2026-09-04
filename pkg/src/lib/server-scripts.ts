@@ -28,7 +28,7 @@ import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
-import { resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
@@ -250,12 +250,31 @@ export const executeServerScripts = async (
       let codeToExecute = job.scriptContent.trim();
       let moduleFilePath: string | undefined;
 
+      // A leading-slash specifier or src= is a hard error regardless of
+      // onServerScriptError: it is a syntax mistake in the author's HTML, not
+      // a runtime failure of their script.
+      const rethrowLeadingSlash = (err: unknown): never => {
+        if (err instanceof LeadingSlashSpecifierError) {
+          const where = job.sourceFile ?? filePath;
+          const location = where
+            ? ` (in "${relative(process.cwd(), where).replace(/\\/g, "/")}"${job.sourceLine !== undefined ? ` at line ${job.sourceLine}` : ""})`
+            : "";
+          throw new Error(`[bascik] error: ${err.message}${location}`, { cause: err });
+        }
+        throw err;
+      };
+
       if (job.srcPath) {
         const containingFile = job.sourceFile ?? filePath;
         const containingDir = containingFile
           ? dirname(resolve(process.cwd(), containingFile))
           : process.cwd();
-        const resolvedPath = resolveScriptSrcPath(job.srcPath, containingDir, importRoot);
+        let resolvedPath: string;
+        try {
+          resolvedPath = resolveScriptSrcPath(job.srcPath, containingDir, importRoot);
+        } catch (err) {
+          return rethrowLeadingSlash(err);
+        }
         moduleFilePath = resolvedPath;
         if (!codeToExecute) {
           try {
@@ -272,7 +291,12 @@ export const executeServerScripts = async (
         : containingFile
           ? dirname(resolve(process.cwd(), containingFile))
           : process.cwd();
-      const rewrittenCode = rewriteModuleSpecifiers(codeToExecute, scriptBaseDir, { importRoot });
+      let rewrittenCode: string;
+      try {
+        rewrittenCode = rewriteModuleSpecifiers(codeToExecute, scriptBaseDir, { importRoot });
+      } catch (err) {
+        return rethrowLeadingSlash(err);
+      }
       const trimmedCode = rewrittenCode.trim();
       const transformedCode = transformServerScriptSource(rewrittenCode);
       const transformedSourceIndex = transformedCode.indexOf(trimmedCode);

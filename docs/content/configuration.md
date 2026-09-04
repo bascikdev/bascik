@@ -405,7 +405,7 @@ scripts: {
 
 #### `scripts.importRoot`
 
-The directory that `@/` and leading-`/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Build Scripts](/build-scripts#import-root-aliases) for the alias rules.
+The directory that `@/` import specifiers (and `src="…"` values) resolve against inside `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` scripts. A bare leading `/` is not an alias and is rejected with an error that points at `@/` or `./`. Default `'src'`, relative to the project root. With the default, `import { x } from '@/lib/x.ts'` means `src/lib/x.ts` from any page or component, so you can paste the same import into any file regardless of its nesting depth. See [Build Scripts](/build-scripts#import-root-aliases) for the alias rules.
 
 Pages, components, and the import root are **three independent directories**. Bascik never derives one from another and none of them need to share a parent, which is what makes a monorepo layout work:
 

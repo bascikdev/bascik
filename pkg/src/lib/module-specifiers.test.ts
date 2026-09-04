@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  LeadingSlashSpecifierError,
   classifySpecifier,
   findModuleSpecifiers,
   rewriteModuleSpecifiers,
   rewriteRelativeModuleSpecifiers,
   resolveScriptSrcPath,
+  resolveSpecifierPath,
 } from "./module-specifiers.ts";
 
 const baseDir = resolve(process.cwd(), "src/pages/nested");
@@ -20,8 +22,12 @@ describe("classifySpecifier", () => {
     expect(classifySpecifier(value)).toBe("relative");
   });
 
-  it.each(["@/lib/a.ts", "@/", "/lib/a.ts", "/a"])("classifies %s as root", (value) => {
+  it.each(["@/lib/a.ts", "@/"])("classifies %s as root", (value) => {
     expect(classifySpecifier(value)).toBe("root");
+  });
+
+  it.each(["/lib/a.ts", "/a", "/"])("classifies %s as root-slash (rejected, not an alias)", (value) => {
+    expect(classifySpecifier(value)).toBe("root-slash");
   });
 
   it.each([
@@ -45,8 +51,21 @@ describe("rewriteModuleSpecifiers with an import root", () => {
     expect(rewrite("import { a } from '@/lib/a.ts';")).toBe(`import { a } from '${rootUrl("lib/a.ts")}';`);
   });
 
-  it("rewrites leading-slash static imports to the same URL as @/", () => {
-    expect(rewrite("import { a } from '/lib/a.ts';")).toBe(`import { a } from '${rootUrl("lib/a.ts")}';`);
+  it("rejects a leading-slash static import with a did-you-mean pointing at @/", () => {
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow(LeadingSlashSpecifierError);
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow("'/lib/a.ts'");
+    expect(() => rewrite("import { a } from '/lib/a.ts';")).toThrow("@/lib/a.ts");
+  });
+
+  it("rejects leading-slash dynamic and export-from specifiers too", () => {
+    expect(() => rewrite("const m = await import('/lib/a.ts');")).toThrow(LeadingSlashSpecifierError);
+    expect(() => rewrite("export { a } from '/lib/a.ts';")).toThrow(LeadingSlashSpecifierError);
+  });
+
+  it("resolveSpecifierPath throws for a leading slash and the message names the fix", () => {
+    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(LeadingSlashSpecifierError);
+    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(/@\/lib\/a\.ts/);
+    expect(() => resolveSpecifierPath("/lib/a.ts", baseDir, importRoot)).toThrow(/\.\/lib\/a\.ts/);
   });
 
   it("rewrites dynamic, export-from, and bare side-effect alias imports", () => {
@@ -82,6 +101,8 @@ describe("rewriteModuleSpecifiers with an import root", () => {
   });
 
   it("leaves alias text in comments, strings, template raw text, and regex literals unchanged", () => {
+    // Leading-slash text inside comments, strings, and template raw text must
+    // not be classified either: it is never a genuine specifier.
     const source = [
       "// import '@/comment.ts'",
       "/* import '/block.ts' */",
@@ -129,9 +150,13 @@ describe("resolveScriptSrcPath", () => {
     expect(resolveScriptSrcPath("lib/x.ts", containingDir, importRoot)).toBe(resolve(containingDir, "lib/x.ts"));
   });
 
-  it("resolves @/ and / against the import root, never the filesystem root", () => {
+  it("resolves @/ against the import root", () => {
     expect(resolveScriptSrcPath("@/lib/x.ts", containingDir, importRoot)).toBe(resolve(importRoot, "lib/x.ts"));
-    expect(resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot)).toBe(resolve(importRoot, "lib/x.ts"));
+  });
+
+  it("rejects a leading-slash src with a did-you-mean pointing at @/", () => {
+    expect(() => resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot)).toThrow(LeadingSlashSpecifierError);
+    expect(() => resolveScriptSrcPath("/lib/x.ts", containingDir, importRoot)).toThrow("@/lib/x.ts");
   });
 });
 

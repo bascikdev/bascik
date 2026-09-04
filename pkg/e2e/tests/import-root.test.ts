@@ -1,11 +1,13 @@
 /**
- * E2E tests for the `@/` and `/` import-root aliases in build, server, and
- * `src=` scripts (see `scripts.importRoot`, default `src`).
+ * E2E tests for the `@/` import-root alias in build, server, and `src=`
+ * scripts (see `scripts.importRoot`, default `src`). A leading `/` is a
+ * compile-time error and is covered by unit tests, not fixtures, because a
+ * single offending script would fail the whole fixture site build.
  *
  * Fixtures:
  *   - src/lib/import-root-helper.ts        exports a marker string
  *   - src/lib/import-root-src-entry.ts     loaded via src="@/lib/…"
- *   - src/components/import-root-badge/    imports the helper via @/ and /
+ *   - src/components/import-root-badge/    imports the helper via @/
  *   - src/pages/import-root-test.html      depth 1, uses the component
  *   - src/pages/nested/import-root-test.html  depth 2, same component unchanged
  *   - src/pages/import-root-server-test.html  data-bascik-server with @/ import
@@ -41,12 +43,11 @@ const detectMode = async (request: import('@playwright/test').APIRequestContext)
   return 'prod';
 };
 
-test.describe('import-root aliases (@/ and /) in build scripts', () => {
+test.describe('import-root alias (@/) in build scripts', () => {
   for (const route of ['/import-root-test', '/nested/import-root-test']) {
-    test(`${route}: @/ and / imports resolve against the import root`, async ({ page }) => {
+    test(`${route}: @/ imports resolve against the import root`, async ({ page }) => {
       await page.goto(route);
       await expect(page.getByTestId('import-root-alias')).toHaveText(MARKER);
-      await expect(page.getByTestId('import-root-slash')).toHaveText(MARKER);
     });
 
     test(`${route}: src="@/…" loads from the import root and re-bases its relative imports`, async ({ page }) => {
@@ -87,7 +88,6 @@ test.describe('import-root aliases: dev watcher', () => {
     await writeFile(helperPath, originalHelper.replace(MARKER, updatedMarker), 'utf8');
 
     await expect(page.getByTestId('import-root-alias')).toHaveText(updatedMarker, { timeout: 15000 });
-    await expect(page.getByTestId('import-root-slash')).toHaveText(updatedMarker);
     await expect(page.getByTestId('import-root-src')).toHaveText(updatedMarker);
   });
 });

@@ -234,34 +234,75 @@ export const findCallArgumentStringLiterals = (source: string): ModuleSpecifier[
  * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
  *
  * - `relative`: `./` or `../`, resolved against the containing file's directory.
- * - `root`: `@/` or a leading `/`, resolved against the configured import root
- *   (`scripts.importRoot`, default `src`). Inside Bascik script blocks a leading
- *   slash means the import root, never the filesystem root.
+ * - `root`: `@/`, resolved against the configured import root
+ *   (`scripts.importRoot`, default `src`).
+ * - `root-slash`: a leading `/`. Rejected with a hard error. A bare slash is
+ *   ambiguous between "filesystem root" (what Node means) and "site root"
+ *   (what an HTML `src=` attribute means), so Bascik refuses to guess and
+ *   points the author at `@/` or `./` instead.
  * - `external`: everything else (bare packages such as `marked` or `@scope/pkg`,
  *   `node:` builtins, `file:`/`https:`/`data:` URLs). Left untouched for Node.
  *
  * `@scope/pkg` is deliberately NOT a root alias: only the exact `@/` prefix is.
  */
-export type SpecifierClass = "relative" | "root" | "external";
+export type SpecifierClass = "relative" | "root" | "root-slash" | "external";
 
 export const classifySpecifier = (value: string): SpecifierClass => {
   if (value.startsWith("./") || value.startsWith("../")) return "relative";
-  if (value.startsWith("@/") || value.startsWith("/")) return "root";
+  if (value.startsWith("@/")) return "root";
+  if (value.startsWith("/")) return "root-slash";
   return "external";
 };
 
-/** Strip the alias prefix so the remainder can be joined onto the import root. */
-const stripRootPrefix = (value: string): string =>
-  value.startsWith("@/") ? value.slice(2) : value.replace(/^\/+/, "");
+/**
+ * Thrown when a build, server, or routes script uses a leading-slash specifier
+ * or `src=` value. Carries the two valid rewrites so callers (the compiler
+ * error surface and the VS Code diagnostic) can show the same suggestion.
+ */
+export class LeadingSlashSpecifierError extends Error {
+  readonly specifier: string;
+  readonly aliasSuggestion: string;
+  readonly relativeSuggestion: string;
+
+  constructor(specifier: string) {
+    const rest = specifier.replace(/^\/+/, "");
+    const aliasSuggestion = `@/${rest}`;
+    const relativeSuggestion = `./${rest}`;
+    super(formatLeadingSlashMessage(specifier, aliasSuggestion, relativeSuggestion));
+    this.name = "LeadingSlashSpecifierError";
+    this.specifier = specifier;
+    this.aliasSuggestion = aliasSuggestion;
+    this.relativeSuggestion = relativeSuggestion;
+  }
+}
+
+/**
+ * Single source of truth for the leading-slash error text. The VS Code
+ * extension reproduces this wording in its diagnostic so the editor and the
+ * compiler agree.
+ */
+export const formatLeadingSlashMessage = (
+  specifier: string,
+  aliasSuggestion: string,
+  relativeSuggestion: string,
+): string =>
+  `Leading-slash specifier '${specifier}' is not supported in Bascik scripts. ` +
+  `A bare '/' is ambiguous (filesystem root vs. site root). ` +
+  `Use '${aliasSuggestion}' to resolve against scripts.importRoot, ` +
+  `or '${relativeSuggestion}' to resolve relative to this file.`;
+
+/** Strip the `@/` alias prefix so the remainder can be joined onto the import root. */
+const stripRootPrefix = (value: string): string => value.slice(2);
 
 export interface RewriteModuleSpecifierOptions {
-  /** Absolute path of the import root that `@/` and `/` resolve against. */
+  /** Absolute path of the import root that `@/` resolves against. */
   importRoot: string;
 }
 
 /**
  * Resolve a specifier to an absolute filesystem path using Bascik's rules.
  * Returns `undefined` for external specifiers, which are left to Node.
+ * Throws `LeadingSlashSpecifierError` for a leading `/`.
  */
 export const resolveSpecifierPath = (
   value: string,
@@ -273,6 +314,8 @@ export const resolveSpecifierPath = (
       return resolve(baseDir, value);
     case "root":
       return resolve(importRoot, stripRootPrefix(value));
+    case "root-slash":
+      throw new LeadingSlashSpecifierError(value);
     default:
       return undefined;
   }
@@ -281,17 +324,20 @@ export const resolveSpecifierPath = (
 /**
  * Resolve the `src="…"` attribute of a build, server, or routes script tag.
  * Relative and bare paths resolve against the containing file's directory
- * (unchanged behavior); `@/` and `/` resolve against the import root. This is
- * the single helper every script kind must use so `src=` semantics cannot drift.
+ * (unchanged behavior); `@/` resolves against the import root; a leading `/`
+ * throws. This is the single helper every script kind must use so `src=`
+ * semantics cannot drift.
  */
 export const resolveScriptSrcPath = (
   srcPath: string,
   containingDir: string,
   importRoot: string,
-): string =>
-  classifySpecifier(srcPath) === "root"
-    ? resolve(importRoot, stripRootPrefix(srcPath))
-    : resolve(containingDir, srcPath);
+): string => {
+  const kind = classifySpecifier(srcPath);
+  if (kind === "root") return resolve(importRoot, stripRootPrefix(srcPath));
+  if (kind === "root-slash") throw new LeadingSlashSpecifierError(srcPath);
+  return resolve(containingDir, srcPath);
+};
 
 /**
  * Rewrite every genuine ESM specifier (static import, bare import, export-from,

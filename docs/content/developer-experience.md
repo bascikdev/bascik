@@ -72,7 +72,7 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
 </user-card>
 ```
 
-The same gesture works for relative imports, `@/` and `/` import-root aliases, and `src="..."` attributes inside build and server scripts:
+The same gesture works for relative imports, the `@/` import-root alias, and `src="..."` attributes inside build and server scripts:
 
 ```html
 <!-- Hold Cmd/Ctrl and click the path to open src/lib/canonical.ts -->

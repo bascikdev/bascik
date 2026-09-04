@@ -251,9 +251,11 @@ Relative paths change shape with the depth of the file that contains them (`../l
 </script>
 ```
 
-`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. A leading slash is accepted as an alternative and means exactly the same thing: `/lib/md-renderer.ts` is the import root, **never the filesystem root**. Both forms also work in `<script data-bascik-server>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
+`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. The alias also works in `<script data-bascik-server>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
 
-> **Only script blocks are rewritten.** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use `./` or `../`. Quoted data paths passed to functions (`readFile('/content/x.md')`) are not module specifiers and keep their `process.cwd()` semantics. Only the exact `@/` prefix is an alias; scoped packages such as `@scope/pkg` are left for Node to resolve.
+> **Only script blocks are rewritten.** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use `./` or `../`. Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their `process.cwd()` semantics. Only the exact `@/` prefix is an alias; scoped packages such as `@scope/pkg` are left for Node to resolve.
+
+> **A bare leading `/` is a compile error.** `import x from '/lib/x.ts'` (or `src="/lib/x.ts"`) inside a Bascik script is rejected, because a leading slash is ambiguous: Node reads it as the filesystem root, HTML reads it as the site root. The error names both valid rewrites, `@/lib/x.ts` for the import root or `./lib/x.ts` for a path relative to the file. This is a hard error regardless of `scripts.onBuildScriptError`, since it is a mistake in the HTML rather than a runtime failure of your script. Plain client `<script>` tags are unaffected.
 
 Editing an alias-imported helper invalidates the script cache and, in dev mode, rebuilds the pages that depend on it automatically. Bascik watches the import root directory in dev mode and rebuilds only the dependent pages when a helper changes. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared folder.
 

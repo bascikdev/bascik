@@ -3,7 +3,7 @@
  *
  * The one place that turns `scripts.importRoot` into an absolute directory.
  *
- * `@/` and `/` specifiers inside `<script data-bascik-build>`,
+ * `@/` specifiers inside `<script data-bascik-build>`,
  * `<script data-bascik-server>`, and `<script data-bascik-routes>` blocks (and
  * the `src=` attribute on those tags) resolve against this directory. It is
  * independent of `directory.pages` and `directory.components` and may point

@@ -12,9 +12,16 @@
     console.log(await aliasHelper());
   </script>
 
+  <!-- Leading slash is a compile error: the extension must flag it and offer
+       no definition, and must NOT flag the client script below. -->
   <script data-bascik-server>
     import { helperFn as slashHelper } from '/lib/nav-helper.ts';
     console.log(await slashHelper());
+  </script>
+
+  <script type="module">
+    import { clientRootHelper } from '/lib/client-root.js';
+    console.log(clientRootHelper);
   </script>
 
   <script data-bascik-routes>
