@@ -407,10 +407,27 @@ const normalizePageError = (
     ? error
     : new PageProcessingError(pagePath, stage, error);
 
+const publishBuildError = (err: PageProcessingError): void => {
+  const position = getFilePosition(err.pagePath, err.message, undefined);
+  eventEmitter.emit("build-error", {
+    message: err.message,
+    file: getRelativePath(err.pagePath, "pages"),
+    line: position?.line,
+    column: position?.character,
+  });
+};
+
 const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
   if (pageErrors.length === 0) return;
   const aggregateError = new PageProcessingAggregateError(pageErrors);
   if (BascikConfig.isBuild) throw aggregateError;
+
+  // One owner publishes located build failures to the SSE layer. The dev
+  // browser overlay needs the source file and line; suppressing stack detail
+  // is not required in dev, but we still publish a concise located payload.
+  for (const err of pageErrors) {
+    publishBuildError(err);
+  }
   console.error(aggregateError.message);
 };
 
@@ -1076,6 +1093,9 @@ export const pageProcessing = (
       resolveAvailable(relativePaths[0]);
       return relativePaths[0];
     } catch (error) {
+      if (!BascikConfig.isBuild) {
+        publishBuildError(normalizePageError(pagePath, error));
+      }
       rejectAvailable(error);
       throw error;
     }

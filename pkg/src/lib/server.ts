@@ -581,11 +581,6 @@ export const createRequestHandler = () => {
           sseManager.send(client, `data: reload ${gen}\n\n`);
         };
 
-        const buildErrorHandler = (errPayload: any) => {
-          if (res.destroyed) return;
-          sseManager.broadcastError(errPayload);
-        };
-
         // Reload boot pages immediately when the initial scan finishes.
         const bootDoneHandler = () => {
           if (res.destroyed) return;
@@ -596,14 +591,17 @@ export const createRequestHandler = () => {
         eventEmitter.on("transpiled", eventHandler);
         eventEmitter.on("asset-changed", assetChangedHandler);
         eventEmitter.on("boot-done", bootDoneHandler);
-        eventEmitter.on("build-error", buildErrorHandler);
 
         res.on("close", () => {
           if (openPagePath) mem.untrackOpenPage(openPagePath);
+          // The SseManager owns exactly one drain/close/broadcast subscription
+          // per client and one global build-error subscription, so on close it
+          // both removes this client's listeners and keeps open-page tracking
+          // balanced. Only the reload listeners are per-connection here.
+          sseManager.removeClient(client.id);
           eventEmitter.removeListener("transpiled", eventHandler);
           eventEmitter.removeListener("asset-changed", assetChangedHandler);
           eventEmitter.removeListener("boot-done", bootDoneHandler);
-          eventEmitter.removeListener("build-error", buildErrorHandler);
         });
 
         if (isBootReloadConnection && !mem.isBooting && !res.destroyed) {

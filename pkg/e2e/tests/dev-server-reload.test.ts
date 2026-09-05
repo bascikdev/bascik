@@ -627,6 +627,61 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     expect(textB).toContain('build-script-page-env-test-b.html');
     expect(textB).not.toContain('build-script-page-env-test.html');
   });
+
+  // ── 8. Build-error overlay: error is delivered exactly once and clears on recovery ──
+
+  test('shows a located build-error overlay on a compile error and recovers on a valid edit', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Remove the body content so transpilation throws a validate-markup
+    // PageProcessingError. This is a genuine, script-independent failure not
+    // gated by the harness's on*ScriptError: 'warn' settings, so it must be
+    // published as a located build-error event (not just logged) for the
+    // overlay to appear.
+    const broken = originalPageContent.replace(
+      /<body>[\s\S]*<\/body>/,
+      '<body></body>',
+    );
+    await writeFile(pagePath, broken, 'utf8');
+
+    const overlay = page.getByTestId('bascik-build-error-overlay');
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toContainText('body');
+
+    // Restore a valid page: the overlay clears and the page reloads.
+    await writeFile(pagePath, originalPageContent, 'utf8');
+    await expect(overlay).not.toBeAttached({ timeout: 15000 });
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+  });
+
+  test('delivers a build-error to each open tab of the affected page exactly once', async ({ context }) => {
+    const tab1 = await context.newPage();
+    const tab2 = await context.newPage();
+
+    await tab1.goto('/scope-test');
+    await tab2.goto('/scope-test');
+    await expect(tab1.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+    await expect(tab2.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Per-page error isolation: only tabs on the failed page receive the
+    // overlay, and each receives exactly one instance (single-owner broadcast).
+    const broken = originalPageContent.replace(
+      /<body>[\s\S]*<\/body>/,
+      '<body></body>',
+    );
+    await writeFile(pagePath, broken, 'utf8');
+
+    const overlay1 = tab1.getByTestId('bascik-build-error-overlay');
+    const overlay2 = tab2.getByTestId('bascik-build-error-overlay');
+    await expect(overlay1).toBeVisible({ timeout: 15000 });
+    await expect(overlay2).toBeVisible({ timeout: 15000 });
+    await expect(overlay1).toHaveCount(1);
+    await expect(overlay2).toHaveCount(1);
+
+    await tab1.close();
+    await tab2.close();
+  });
 });
 
 test.describe('Dev Server HTTP Protocol & Security Headers', () => {

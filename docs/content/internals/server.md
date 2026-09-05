@@ -106,9 +106,9 @@ Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik 
 - **Monotonic Generation Counter:** Reload events include an incrementing integer generation counter (`data: reload <gen>`). The client-side script tracks `lastGeneration` and ignores stale, duplicate, or out-of-order reload messages.
 - **Reload Coordination:** Reload notifications across asset updates, watched custom paths, exec script completions, and page transpilation are coordinated through SSE generation tracking, ensuring clients reload once on complete batch cycles rather than multiple times.
 - **Periodic Heartbeats:** Sends `: ping\n\n` comments every 20 seconds, preventing proxy/VPN idle disconnection.
-- **Backpressure Handling:** Honors `res.write()` return values, draining stalled writes and terminating persistently wedged clients.
-- **Connection Cap & Cleanup:** Bounded at 200 concurrent SSE streams (`DEFAULT_MAX_SSE_CONNECTIONS`).
-- **Build Error Overlay:** Broadcasts `event: build-error` containing file, line, and stack info to display an overlay in the browser, clearing on subsequent successful builds.
+- **Bounded Backpressure:** Honors `res.write()` return values. Each connection owns exactly one drain subscription, so a burst of backpressured writes cannot accumulate listeners; writes stop until the watcher drains, and the single listener is removed on client removal or manager destroy. Persistently wedged clients are terminated after a heartbeat threshold.
+- **Connection Cap & Cleanup:** Bounded at 200 concurrent SSE streams (`DEFAULT_MAX_SSE_CONNECTIONS`). Stream close immediately removes the client from the manager and keeps open-page tracking balanced, rather than waiting for the next heartbeat.
+- **Build Error Overlay:** The `SseManager` owns exactly one `build-error` subscription on the event bus and routes a located failure (file, line, column) to every live client exactly once, so N connections never produce N broadcasts. Errors clear on subsequent successful builds. Because production has no SSE bus or browser overlay, this channel never leaks into `--build` or `--server` output.
 - **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
 - **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
 - **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth.

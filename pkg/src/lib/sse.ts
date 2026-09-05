@@ -1,5 +1,6 @@
 import type { BascikResponse } from "./server.ts";
 import { nativeClock, type FrameworkClock, type IntervalHandle } from "./clock.ts";
+import { eventEmitter } from "./events.ts";
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
 export const DEFAULT_MAX_SSE_CONNECTIONS = 200;
@@ -17,6 +18,8 @@ export interface SseClient {
   openPagePath?: string | null;
   isDraining: boolean;
   lastActive: number;
+  /** Bound to keep `isDraining` in sync with a single drain subscription. */
+  drainListener: () => void;
 }
 
 export interface SseManagerOptions {
@@ -34,11 +37,19 @@ export class SseManager {
   private generation = 0;
   private clock: FrameworkClock;
   private destroyed = false;
+  private buildErrorListener: (errPayload: SseBuildError) => void;
 
   constructor(options: SseManagerOptions = {}) {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     this.maxConnections = options.maxConnections ?? DEFAULT_MAX_SSE_CONNECTIONS;
     this.clock = options.clock ?? nativeClock;
+    // One owner for error publication. The server no longer registers a
+    // broadcast handler per connection; the manager subscribes once and routes
+    // a build-error to every live client.
+    this.buildErrorListener = (errPayload: SseBuildError) => {
+      this.broadcastError(errPayload);
+    };
+    eventEmitter.on("build-error", this.buildErrorListener);
     this.startHeartbeat();
   }
 
@@ -62,14 +73,26 @@ export class SseManager {
       return null;
     }
 
+    // Each connection owns exactly one drain subscription. It is removed by
+    // `removeClient`, so a stalled writable can never accumulate listeners
+    // across a burst of backpressured writes. Stream close is handled by the
+    // server handler, which calls `removeClient` to keep open-page tracking
+    // and the client map balanced.
     const client: SseClient = {
       id: this.nextClientId++,
       res,
       openPagePath: openPagePath ?? null,
       isDraining: false,
       lastActive: this.clock.now(),
+      drainListener: () => { },
     };
-
+    const drainListener = () => {
+      client.isDraining = false;
+    };
+    client.drainListener = drainListener;
+    try {
+      res.on("drain", drainListener);
+    } catch { }
     this.clients.set(client.id, client);
 
     // Send initial connected payload
@@ -82,6 +105,11 @@ export class SseManager {
     const client = this.clients.get(id);
     if (client) {
       this.clients.delete(id);
+      // Return the single drain subscription. Without this a burst of false
+      // writes (or many open/reconnect cycles) would leak listeners.
+      try {
+        client.res.off("drain", client.drainListener);
+      } catch { }
     }
   }
 
@@ -90,22 +118,26 @@ export class SseManager {
       this.removeClient(client.id);
       return false;
     }
+    // Stop adding frames to a stalled writable until it actually drains. The
+    // single drainListener clears the flag, after which the next write resumes.
+    if (client.isDraining) {
+      return false;
+    }
     try {
       const ok = client.res.write(data);
-      if (ok) {
+      // Node writables return `false` only when the internal buffer exceeds
+      // highWaterMark; `undefined` (test doubles) means success.
+      if (ok === false) {
+        // Backpressure: keep isDraining true until the single drain listener
+        // fires. Do not refresh lastActive, so the heartbeat reap threshold
+        // stays meaningful.
+        client.isDraining = true;
+      } else {
         // Only a successful write proves the client is actually receiving
         // data. A failed write (backpressure) must not refresh activity, or
         // the periodic heartbeat tick would perpetually reset the stall
         // clock and the drain-reap threshold below could never trip.
         client.lastActive = this.clock.now();
-      } else {
-        client.isDraining = true;
-        // Wait for drain event
-        if (client.res.writable && typeof (client.res.writable as any).once === "function") {
-          (client.res.writable as any).once("drain", () => {
-            client.isDraining = false;
-          });
-        }
       }
       return ok;
     } catch {
@@ -176,7 +208,10 @@ export class SseManager {
       this.clock.clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    eventEmitter.removeListener("build-error", this.buildErrorListener);
+    if (this.destroyed) return;
     for (const client of this.clients.values()) {
+      try { client.res.off("drain", client.drainListener); } catch { }
       try { client.res.close(); } catch { }
     }
     this.clients.clear();
