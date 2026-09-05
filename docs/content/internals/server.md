@@ -100,6 +100,8 @@ Four native filesystem watchers (chokidar) handle source file updates in develop
 3. **Component watcher:** Listens for changes in every configured `directory.components` root. This is the only watcher with `followSymlinks: true`, so a symlinked directory inside a root triggers rebuilds; chokidar reports the link path, which is what the inverted component index expects. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
 4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
 
+When a page's build fails because a helper it imports does not exist yet, Bascik records that missing dependency in a separate failed-dependency index. Creating, changing, or removing the helper later routes through that index too, so the page rebuilds automatically the moment the missing file appears, with no restart or full rebuild. The index is drained on deletion and when the page's import set changes.
+
 ### Live reload (`live-reload.ts`, `sse.ts`)
 
 Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The SSE system features:

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Missing Import Recovery Test</title>
+</head>
+
+<body>
+  <main>
+    <script data-bascik-build>
+      import { recoveryMarker } from '@/lib/failed-import-helper.ts';
+      console.log(`<p data-testid="failed-import-marker">${recoveryMarker()}</p>`);
+    </script>
+  </main>
+</body>
+
+</html>

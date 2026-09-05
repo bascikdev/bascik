@@ -80,6 +80,8 @@ vi.mock("./mem.js", () => ({
     removeByRelativePath: vi.fn(),
     pagesThisComponentIsUsedOn: vi.fn(() => []),
     pagesDependentOnFile: vi.fn(() => []),
+    recordFailedDependencies: vi.fn(),
+    clearFailedDependencies: vi.fn(),
     openPages: [] as string[],
     trackOpenPage: vi.fn(),
     untrackOpenPage: vi.fn(),
@@ -3148,5 +3150,54 @@ describe("monotonic dev publication & concurrency overlap", () => {
     await allPagesPromise;
 
     expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterDirect);
+  });
+});
+
+describe("prompt 99: failed import dependency recovery", () => {
+  const PAGE_ABS = resolve(process.cwd(), "src/pages/missing-import.html");
+
+  beforeEach(async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockReset();
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockReset();
+    (mem.recordFailedDependencies as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it("records attempted dependencies when a page build throws on a missing import", async () => {
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    const html = '<html><body><script data-bascik-build>import x from "@/lib/new-helper.ts";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValue(["src/lib/new-helper.ts"]);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Cannot find module '/abs/src/lib/new-helper.ts'"),
+    );
+
+    await expect(transpilePage(PAGE_ABS, {})).rejects.toThrow();
+    expect(mem.recordFailedDependencies).toHaveBeenCalledWith(
+      PAGE_ABS,
+      ["src/lib/new-helper.ts"],
+    );
+  });
+
+  it("records failed dependencies so the import-root watcher rebuilds the page when the helper appears", async () => {
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    const missingHtml = '<html><body><script data-bascik-build>import x from "@/lib/new-helper.ts";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(missingHtml);
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValue(["src/lib/new-helper.ts"]);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("Cannot find module '/abs/src/lib/new-helper.ts'"),
+    );
+
+    await expect(transpilePage(PAGE_ABS, {})).rejects.toThrow();
+    expect(mem.recordFailedDependencies).toHaveBeenCalled();
+
+    // Now the helper exists; the page compiles and imports it successfully,
+    // so the page's successful dependencies are recorded and its failed-deps
+    // are cleared by storePage on publication.
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(missingHtml);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockResolvedValueOnce(missingHtml);
+    const result = await transpilePage(PAGE_ABS, {});
+    expect(result).not.toBeNull();
   });
 });

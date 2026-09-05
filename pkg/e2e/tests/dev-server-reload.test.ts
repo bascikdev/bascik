@@ -37,6 +37,7 @@ const dynamicHeadMetaCompPath = join(e2eDir, 'src/components/dynamic-head-meta.h
 const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css');
 const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
 const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
+const missingHelperPath = join(e2eDir, 'src/lib/failed-import-helper.ts');
 
 /**
  * Resolve once the page has navigated to a document whose inlined <head>
@@ -160,6 +161,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalSubfolderPage: string;
   let originalInlinedGlobalCss: string;
   let originalScopeTestCss: string;
+  let originalMissingHelper: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, 'utf8');
@@ -169,6 +171,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     originalSubfolderPage = await readFile(subfolderPagePath, 'utf8');
     originalInlinedGlobalCss = await readFile(inlinedGlobalCssPath, 'utf8');
     originalScopeTestCss = await readFile(scopeTestCssPath, 'utf8');
+    originalMissingHelper = await readFile(missingHelperPath, 'utf8');
   });
 
   test.afterEach(async () => {
@@ -178,6 +181,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await restoreFileIfChanged(componentPath, originalComponentContent);
     await restoreFileIfChanged(contentDocPath, originalContentDoc);
     await restoreFileIfChanged(subfolderPagePath, originalSubfolderPage);
+    await restoreFileIfChanged(missingHelperPath, originalMissingHelper);
     // Restoring the inlined global stylesheet rebuilds every page and
     // broadcasts a reload to any open /scope-test tab. Subscribe first so the
     // event cannot be missed, then wait for it, so that reload is consumed
@@ -710,6 +714,30 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
 
     await tab1.close();
     await tab2.close();
+  });
+
+  // ── 9. Missing-import recovery: creating a previously missing helper rebuilds the page ──
+
+  test('creates a previously missing imported helper to recover the page without a page edit', async ({ page }) => {
+    await page.goto('/missing-recovery-test');
+    await expect(page.getByTestId('failed-import-marker')).toHaveText('missing-recovery-helper-v1');
+
+    // Delete the imported helper. The failed compile (or a harness-swallowed
+    // import failure) must still record the attempted dependency so the
+    // import-root watcher knows to rebuild this page when the helper reappears.
+    await rm(missingHelperPath, { force: true });
+    await page.waitForTimeout(500);
+
+    // Recreate the precise helper with new content. The import-root watcher
+    // must route the add through the failed-dependency index and rebuild this
+    // page automatically, with no further page edit or reload.
+    await writeFile(
+      missingHelperPath,
+      'export const recoveryMarker = (): string => \'missing-recovery-helper-v2\';\n',
+      'utf8',
+    );
+
+    await expect(page.getByTestId('failed-import-marker')).toHaveText('missing-recovery-helper-v2', { timeout: 15000 });
   });
 });
 

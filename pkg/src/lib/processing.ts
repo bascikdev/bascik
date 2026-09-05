@@ -54,7 +54,7 @@
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { cpus } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -415,6 +415,24 @@ const publishBuildError = (err: PageProcessingError): void => {
     line: position?.line,
     column: position?.character,
   });
+};
+
+// Records the dependencies a page tried to use but that do not exist on disk.
+// These live in a separate failed-dependency index so the import-root watcher
+// can rebuild the page the moment a previously-missing helper is created,
+// changed, or removed, without a restart or a full rebuild. Replacing the page's
+// entries wholesale on each attempt drops deps the page no longer references.
+const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promise<void> => {
+  if (BascikConfig.isBuild) return;
+  try {
+    const attempted = await collectAllScriptDeps(rawHtml, pagePath);
+    const missing = attempted.filter(
+      (dep) => !existsSync(resolve(process.cwd(), dep)),
+    );
+    mem.recordFailedDependencies(pagePath, missing);
+  } catch {
+    // dependency collection must never mask the original build error
+  }
 };
 
 const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
@@ -1239,7 +1257,17 @@ export const transpilePage = async (
       return null;
     }
   }
-  const htmlWithBuildOutput = await executeBuildScripts(rawHtml, pagePath, route);
+
+  let htmlWithBuildOutput: string;
+  try {
+    htmlWithBuildOutput = await executeBuildScripts(rawHtml, pagePath, route);
+  } catch (error) {
+    // A failed build may still have attempted to import helpers that do not
+    // exist yet. Record those attempted dependencies so the import-root
+    // watcher can rebuild this page the moment the missing helper appears.
+    await recordMissingScriptDeps(rawHtml, pagePath);
+    throw error;
+  }
 
   // Do NOT minify before component resolution. Minification runs after transpilation
   // so that whitespace-sensitive content (e.g. code inside resolved <pre> blocks
@@ -1440,6 +1468,11 @@ export const transpilePage = async (
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 
   const fileDependencies = await collectAllScriptDeps(rawHtml, pagePath);
+  // Even on a "successful" transpile the page may reference a helper that does
+  // not yet exist (e.g. the harness swallows the import failure). Track it so
+  // creating the helper rebuilds the page; replace the page's prior set so
+  // deps the page no longer references are reclaimed.
+  await recordMissingScriptDeps(rawHtml, pagePath);
   for (const comp of allUsedComponents) {
     const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
     if (compContent) {

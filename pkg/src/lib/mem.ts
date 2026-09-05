@@ -31,6 +31,10 @@ class MemoryStore {
   #files: Map<string, StoredPage>;
   #components: Map<string, Set<string>>;
   #fileDependencies: Map<string, Set<string>>;
+  /** Reverse index of dependencies a failed compilation *attempted* to read, so a
+   * later add/change of that missing helper rebuilds the page without needing a
+   * full rebuild. Keyed by dep path -> set of absolute page paths. */
+  #failedDependencies: Map<string, Set<string>>;
   /** HTTP paths of pages with an active SSE live-reload connection, with connection counts. */
   #openPages: Map<string, number>;
   #dirtyPages: Set<string>;
@@ -40,6 +44,7 @@ class MemoryStore {
     this.#files = new Map();
     this.#components = new Map();
     this.#fileDependencies = new Map();
+    this.#failedDependencies = new Map();
     this.#openPages = new Map();
     this.#dirtyPages = new Set();
     this.#pageWaiters = new Map();
@@ -256,6 +261,8 @@ class MemoryStore {
     for (const httpPath of toDelete) {
       this.#files.delete(httpPath);
     }
+    // A deleted page must no longer own any failed-dependency entries.
+    this.clearFailedDependencies(absolutePagePath);
   }
 
   removeByRelativePath(relativePagePath: string): void {
@@ -269,6 +276,7 @@ class MemoryStore {
       this.#fileDependencies.get(depPath)?.delete(page.absolutePagePath);
     });
     this.#files.delete(httpPath);
+    this.clearFailedDependencies(page.absolutePagePath);
   }
 
   pagesThisComponentIsUsedOn(componentName: string): string[] {
@@ -281,8 +289,46 @@ class MemoryStore {
     if (!changedPath) return [];
     const normalized = relative(process.cwd(), resolve(process.cwd(), changedPath)).replace(/\\/g, "/");
     const pagesSet = this.#fileDependencies.get(normalized);
-    if (pagesSet) return [...pagesSet];
-    return [];
+    const failedSet = this.#failedDependencies.get(normalized);
+    if (!pagesSet && !failedSet) return [];
+    const result = new Set<string>(pagesSet ?? []);
+    for (const page of failedSet ?? []) result.add(page);
+    return [...result];
+  }
+
+  /**
+   * Records the dependencies a page *attempted* to read even though its build
+   * failed. These are kept separate from successful dependencies: they let the
+   * import-root watcher rebuild the page when a previously missing helper is
+   * created, changed, or removed. They are reclaimed when the page later
+   * succeeds, changes imports, or is deleted.
+   */
+  recordFailedDependencies(absolutePagePath: string, attemptedDeps: string[]): void {
+    const deps = new Set(
+      attemptedDeps.map((dep) =>
+        relative(process.cwd(), resolve(process.cwd(), dep)).replace(/\\/g, "/"),
+      ),
+    );
+    // Replace this page's previous failed entries wholesale: a changed page has
+    // a new import set, so stale failed deps must not linger.
+    for (const [depPath, pages] of this.#failedDependencies) {
+      pages.delete(absolutePagePath);
+      if (pages.size === 0) this.#failedDependencies.delete(depPath);
+    }
+    for (const dep of deps) {
+      if (!this.#failedDependencies.has(dep)) {
+        this.#failedDependencies.set(dep, new Set());
+      }
+      this.#failedDependencies.get(dep)!.add(absolutePagePath);
+    }
+  }
+
+  /** Removes this page's failed-dependency entries, e.g. when it rebuilds successfully. */
+  clearFailedDependencies(absolutePagePath: string): void {
+    for (const [depPath, pages] of this.#failedDependencies) {
+      pages.delete(absolutePagePath);
+      if (pages.size === 0) this.#failedDependencies.delete(depPath);
+    }
   }
 
   trackOpenPage(httpPath: string): void {
