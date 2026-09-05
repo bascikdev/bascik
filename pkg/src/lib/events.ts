@@ -9,9 +9,40 @@ eventEmitter.setMaxListeners(0);
 
 // Cleanup functions registered by modules that hold open handles.
 // The SIGINT handler in http2.ts calls all of these before exiting.
-const _shutdownHandlers: Array<() => void | Promise<void>> = [];
+let _shutdownHandlers: Array<() => void | Promise<void>> = [];
 export const registerShutdownHandler = (fn: () => void | Promise<void>) => {
   _shutdownHandlers.push(fn);
 };
-export const runShutdownHandlers = (): Promise<void> =>
-  Promise.all(_shutdownHandlers.map(fn => fn())).then(() => void 0);
+
+export const _resetShutdownHandlersForTesting = () => {
+  _shutdownHandlers = [];
+};
+
+export const runShutdownHandlers = async (): Promise<void> => {
+  const errors: unknown[] = [];
+  const promises: Promise<void>[] = [];
+
+  for (const fn of _shutdownHandlers) {
+    try {
+      const res = fn();
+      if (res && typeof (res as Promise<void>).then === 'function') {
+        promises.push(
+          (res as Promise<void>).catch((err) => {
+            errors.push(err);
+          })
+        );
+      }
+    } catch (err) {
+      errors.push(err);
+    }
+  }
+
+  await Promise.all(promises);
+
+  if (errors.length > 0) {
+    if (errors.length === 1 && errors[0] instanceof Error) {
+      throw errors[0];
+    }
+    throw new AggregateError(errors, `Errors occurred during shutdown handlers (${errors.length} error(s))`);
+  }
+};

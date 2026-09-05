@@ -1,6 +1,31 @@
 # From Vue
 
-Vue and Bascik are both component-based. The key difference is that Bascik does all component work at build time and outputs vanilla HTML with no runtime framework. Switching is mostly mechanical: rename files, remove Vue-specific syntax, and replace reactive primitives with vanilla JS or build-time equivalents.
+Vue and Bascik are both component-driven architectures. Vue compiles Single-File Components (`.vue`) to JavaScript that executes in the browser using a reactive state system and virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS, outputting zero client runtime overhead.
+
+## When to Switch vs Keep Vue
+
+- **Switch to Bascik:** For marketing portals, blogs, documentation sites, and content-rich pages where performance, fast loading, and minimal complexity are paramount.
+- **Keep Vue:** For complex single-page applications with heavy client-side state, form wizards, or dynamic reactive workflows that depend on Vue's reactivity system (`ref`, `reactive`, Pinia).
+
+## Mental Model Comparison
+
+| Concept | Vue (SFC) | Bascik |
+| --- | --- | --- |
+| Component file | `Component.vue` (`<template>`, `<script>`, `<style>`) | `component-name.html` in `src/components/` |
+| Component usage | `<ComponentName />` (imported or registered) | `<component-name></component-name>` (auto-resolved) |
+| Scoped styles | `<style scoped>` | Paired `.css` file or inline `<style>` (auto-scoped) |
+| Slots | `<slot />` / `<slot name="…" />` | `data-bascik-slot` / `data-bascik-slot="name"` |
+| Component props | `defineProps(['title'])` | `data-bascik-prop-title` / `data-bascik-attr-*` |
+| Client interactivity | `ref()`, `computed()`, directives (`v-if`, `v-for`) | Vanilla JavaScript DOM APIs in `<script>` tags |
+
+## A Low-Risk First Step
+
+Convert a simple Vue component into Bascik:
+
+1. Extract your `<template>` markup into `src/components/user-card/user-card.html`.
+2. Extract your `<style scoped>` into `src/components/user-card/user-card.css`.
+3. Use `<user-card></user-card>` in `src/pages/index.html`.
+4. Run `yarn dev` to inspect your zero-JS output.
 
 ## File and Folder Setup
 

@@ -105,9 +105,11 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 </site-layout>
 ```
 
-## Template Variables → data-bascik-prop-*
+## Template Variables → data-bascik-prop-* and data-bascik-attr-*
 
-Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front matter at build time. Bascik uses `data-bascik-prop-*` attributes, the value is set on the component tag at the usage site, and the attribute (with no value) marks the receiver element inside the component.
+Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front matter at build time. In Bascik:
+- Use `data-bascik-prop-*` to insert text into elements.
+- Use `data-bascik-attr-{attribute}="{propName}"` to bind prop values directly to element attributes (such as `href`, `src`, or `alt`) while keeping inner text intact.
 
 ```html
 <!-- layouts/partials/post-card.html (Hugo - before) -->
@@ -123,18 +125,18 @@ Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front mat
 <div class="post-card">
   <h3 data-bascik-prop-title></h3>
   <p data-bascik-prop-description></p>
-  <a data-bascik-prop-href>Read more</a>
+  <a data-bascik-attr-href="url">Read more</a>
 </div>
 
 <!-- Usage -->
 <post-card
   data-bascik-prop-title="My Post"
   data-bascik-prop-description="A short summary."
-  data-bascik-prop-href="/posts/my-post"
+  data-bascik-prop-url="/posts/my-post"
 ></post-card>
 ```
 
-> **Text only:** Bascik props carry plain text strings. For rich HTML content, such as a post body rendered from Markdown, use a slot instead of a prop.
+> **Text and attribute values:** Bascik props carry plain text strings. For rich HTML content, such as a post body rendered from Markdown, use a slot instead of a prop.
 
 ## `{{ range }}` Loops → `<script data-bascik-build>`
 

@@ -10,17 +10,21 @@ The internal raw-text mask has a different semantic: it replaces content with th
 
 ## The Naming Scheme
 
-Every scoped name is constructed from three or four parts separated by double underscores:
+Every scoped name is constructed using double underscores as delimiters:
 
 ```text
-bascik__<componentName>__<instanceId>__<originalName>
+# Class naming (scoped to component name, shared across instances):
+bascik__<componentName>__<originalName>
+# Example:
+bascik__site-nav__toggle-btn
 
-# Examples:
-bascik__site-nav__a1b2c3d4__toggle-btn    ← class (no instanceId, see below)
-bascik__site-nav__a1b2c3d4__search-input  ← id / name
+# ID and Name naming (scoped to unique component instance):
+bascik__<componentName>__<instanceId>__<originalName>
+# Example:
+bascik__site-nav__a1b2c3d4__search-input
 ```
 
-The **instanceId** is an 8-hex-character value derived deterministically from the page path, component name, and ordinal occurrence index on that page. It guarantees that DOM identifiers (`id`, `name`) are unique even when the same component is used multiple times on a page, while ensuring identical builds produce byte-identical output across repeated runs. Under the default configuration, class names were already deterministic because class scoping omits the instanceId; this deterministic derivation guarantees full reproducibility for pages scoping `id` and `name` attributes as well.
+The **instanceId** is an 8-hex-character value derived deterministically from the page path, component name, and ordinal occurrence index on that page (`deriveInstanceId` in `pkg/src/lib/names.ts`). It guarantees that DOM identifiers (`id`, `name`) are unique even when the same component is used multiple times on a page, while ensuring identical builds produce byte-identical output across repeated runs. Under the default configuration, class names are scoped to the component name without an instance ID; this deterministic derivation guarantees full reproducibility for pages scoping `id` and `name` attributes as well.
 
 ### Class attributes intentionally omit the instanceId
 

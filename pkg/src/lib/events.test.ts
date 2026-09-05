@@ -1,8 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import EventEmitter from "node:events";
-import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.ts";
+import {
+  eventEmitter,
+  registerShutdownHandler,
+  runShutdownHandlers,
+  _resetShutdownHandlersForTesting,
+} from "./events.ts";
 
 describe("eventEmitter", () => {
+  beforeEach(() => {
+    _resetShutdownHandlersForTesting();
+  });
   it("is an EventEmitter instance", () => {
     expect(eventEmitter).toBeInstanceOf(EventEmitter);
   });
@@ -51,6 +59,32 @@ describe("eventEmitter", () => {
     registerShutdownHandler(fn1);
     registerShutdownHandler(fn2);
     await runShutdownHandlers();
+    expect(fn1).toHaveBeenCalledTimes(1);
+    expect(fn2).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes subsequent shutdown handlers even when a preceding handler throws synchronously", async () => {
+    const fn1 = vi.fn(() => {
+      throw new Error("sync failure");
+    });
+    const fn2 = vi.fn();
+    registerShutdownHandler(fn1);
+    registerShutdownHandler(fn2);
+
+    await expect(runShutdownHandlers()).rejects.toThrow("sync failure");
+    expect(fn1).toHaveBeenCalledTimes(1);
+    expect(fn2).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes subsequent shutdown handlers even when an async handler rejects", async () => {
+    const fn1 = vi.fn(async () => {
+      throw new Error("async failure");
+    });
+    const fn2 = vi.fn(async () => { });
+    registerShutdownHandler(fn1);
+    registerShutdownHandler(fn2);
+
+    await expect(runShutdownHandlers()).rejects.toThrow("async failure");
     expect(fn1).toHaveBeenCalledTimes(1);
     expect(fn2).toHaveBeenCalledTimes(1);
   });

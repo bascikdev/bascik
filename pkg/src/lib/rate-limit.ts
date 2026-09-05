@@ -68,7 +68,11 @@ export class RateLimiter {
     let entry = this.trackedIps.get(ip);
     if (!entry) {
       if (this.trackedIps.size >= this.maxTrackedIps) {
-        // Bound reached: fail closed to prevent unbounded memory growth under flood
+        // Attempt to reclaim expired entries before rejecting
+        this.sweep(now);
+      }
+      if (this.trackedIps.size >= this.maxTrackedIps) {
+        // Bound reached: fail closed when capacity is genuinely occupied by live identities
         return true;
       }
       entry = {
@@ -108,7 +112,9 @@ export class RateLimiter {
     this.sweepTimer = this.clock.setInterval(() => {
       this.sweep();
     }, this.windowMs);
-    (this.sweepTimer as unknown as NodeJS.Timeout).unref?.();
+    if (typeof (this.sweepTimer as any)?.unref === "function") {
+      (this.sweepTimer as any).unref();
+    }
   }
 
   public sweep(now: number = this.clock.now()): void {

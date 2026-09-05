@@ -165,9 +165,9 @@ describe("startHttpServer", () => {
     expect(closes).toBe(1);
   });
 
-  it("passes an onShutdown callback to startServerInstance that destroys open sockets even if socket.destroy throws", async () => {
+  it("passes an onForceClose callback to startServerInstance that destroys open sockets even if socket.destroy throws", async () => {
     let connectionCb: ((socket: any) => void) | undefined;
-    let shutdownCb: (() => void) | undefined;
+    let forceCloseCb: (() => void) | undefined;
 
     mockServer.on.mockImplementation((event: string, cb: any) => {
       if (event === "connection") connectionCb = cb;
@@ -176,8 +176,8 @@ describe("startHttpServer", () => {
 
     const { startServerInstance } = await import("./server.ts");
     (startServerInstance as any).mockImplementation(
-      async (_server: any, _protocol: string, onShutdown?: () => void) => {
-        shutdownCb = onShutdown;
+      async (_server: any, _protocol: string, _onShutdown?: () => void, onForceClose?: () => void) => {
+        forceCloseCb = onForceClose;
         return "http://localhost:8443";
       },
     );
@@ -185,7 +185,7 @@ describe("startHttpServer", () => {
     await startHttpServer();
 
     expect(connectionCb).toBeDefined();
-    expect(shutdownCb).toBeDefined();
+    expect(forceCloseCb).toBeDefined();
 
     const mockSocket = {
       destroy: vi.fn().mockImplementation(() => { throw new Error("Socket error"); }),
@@ -193,7 +193,7 @@ describe("startHttpServer", () => {
     };
 
     connectionCb!(mockSocket);
-    expect(() => shutdownCb!()).not.toThrow();
+    expect(() => forceCloseCb!()).not.toThrow();
     expect(mockSocket.destroy).toHaveBeenCalled();
   });
 });

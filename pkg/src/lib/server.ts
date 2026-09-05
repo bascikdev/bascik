@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { eventEmitter, runShutdownHandlers } from "./events.ts";
+import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
 import {
@@ -21,12 +21,14 @@ import {
   getEncodedEtag,
   resolveCacheControl,
   negotiateCompression,
+  matchesIfNoneMatch,
+  getCompressedStaticAsset,
+  clearCompressedRepresentationCache,
   isCompressibleMime,
   STATIC_CACHE_METADATA,
   COMPRESSION_MIN_BYTES,
 } from "./caching.ts";
 import { readFile } from "node:fs/promises";
-import zlib from "node:zlib";
 
 import {
   RateLimiter,
@@ -114,6 +116,11 @@ export const getActiveRateLimiter = (): RateLimiter => {
       ? rateLimitConfig.max
       : DEFAULT_RATE_LIMIT_MAX;
     activeRateLimiter = new RateLimiter({ windowMs, max });
+    activeRateLimiter.startSweep();
+    registerShutdownHandler(() => {
+      resetActiveRateLimiter();
+      clearCompressedRepresentationCache();
+    });
   }
   return activeRateLimiter;
 };
@@ -124,6 +131,7 @@ export const resetActiveRateLimiter = (): void => {
     activeRateLimiter.destroy();
     activeRateLimiter = null;
   }
+  clearCompressedRepresentationCache();
 };
 
 export const isRateLimited = (ip: string): boolean => {
@@ -402,7 +410,7 @@ export const createRequestHandler = () => {
         const effectiveEtag = negotiatedEncoding !== "identity" ? getEncodedEtag(rawEtag, negotiatedEncoding) : rawEtag;
 
         // Conditional GET (304)
-        if (BascikConfig.http.httpCache !== false && (req.headers["if-none-match"] === effectiveEtag || req.headers["if-none-match"] === rawEtag)) {
+        if (BascikConfig.http.httpCache !== false && matchesIfNoneMatch(req.headers["if-none-match"], effectiveEtag, rawEtag)) {
           responseStatus = 304;
           const headers304: Record<string, string | number> = {
             etag: effectiveEtag,
@@ -434,50 +442,46 @@ export const createRequestHandler = () => {
           return;
         }
 
-        // Check for pre-compressed sidecars (.br / .gz) or compress on the fly
-        let sidecarBuffer: Buffer | undefined = undefined;
-        let sidecarEncoding: string | undefined = undefined;
+        // Check for pre-compressed sidecars (.br / .gz) or compress asynchronously on the fly
+        let compressedBuffer: Buffer | null = null;
+        let compressedEncoding: string | undefined = undefined;
 
         if (negotiatedEncoding === "br") {
           try {
             const sidecar = await readFile(`${fullPath}.br`);
             if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
-              sidecarBuffer = sidecar;
-              sidecarEncoding = "br";
+              compressedBuffer = sidecar;
+              compressedEncoding = "br";
             }
           } catch { }
         } else if (negotiatedEncoding === "gzip") {
           try {
             const sidecar = await readFile(`${fullPath}.gz`);
             if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
-              sidecarBuffer = sidecar;
-              sidecarEncoding = "gzip";
+              compressedBuffer = sidecar;
+              compressedEncoding = "gzip";
             }
           } catch { }
         }
 
-        if (sidecarBuffer && sidecarEncoding) {
-          staticHeaders["content-encoding"] = sidecarEncoding;
-          staticHeaders["content-length"] = sidecarBuffer.byteLength;
+        if (!compressedBuffer && enableCompression && (negotiatedEncoding === "br" || negotiatedEncoding === "gzip")) {
+          compressedBuffer = await getCompressedStaticAsset(
+            fullPath,
+            fileStat.mtimeMs,
+            fileStat.size,
+            negotiatedEncoding
+          );
+          if (compressedBuffer) {
+            compressedEncoding = negotiatedEncoding;
+          }
+        }
+
+        if (compressedBuffer && compressedEncoding) {
+          staticHeaders["content-encoding"] = compressedEncoding;
+          staticHeaders["content-length"] = compressedBuffer.byteLength;
           responseStatus = 200;
           res.respond(200, staticHeaders);
-          return res.end(sidecarBuffer);
-        }
-
-        if (enableCompression && (negotiatedEncoding === "br" || negotiatedEncoding === "gzip")) {
-          try {
-            const raw = await readFile(fullPath);
-            if (raw && Buffer.isBuffer(raw) && raw.length > 0) {
-              const compressed = negotiatedEncoding === "br"
-                ? zlib.brotliCompressSync(raw)
-                : zlib.gzipSync(raw);
-              staticHeaders["content-encoding"] = negotiatedEncoding;
-              staticHeaders["content-length"] = compressed.byteLength;
-              responseStatus = 200;
-              res.respond(200, staticHeaders);
-              return res.end(compressed);
-            }
-          } catch { }
+          return res.end(compressedBuffer);
         }
 
         staticHeaders["content-length"] = fileStat.size;
@@ -721,21 +725,18 @@ export const createRequestHandler = () => {
       // Pick the best encoding the client accepts that is already computed:
       // br first, then gzip for legacy clients (or while brotli is still
       // compressing in the background), else identity.
-      const rawAcceptEncoding = req.headers["accept-encoding"] ?? "";
-      const acceptEncoding = Array.isArray(rawAcceptEncoding)
-        ? rawAcceptEncoding.join(", ")
-        : rawAcceptEncoding;
-      const acceptsBr = /\bbr\b/.test(acceptEncoding);
-      const acceptsGzip = /\bgzip\b/.test(acceptEncoding);
-      const pageEncoding: "br" | "gzip" | "identity" =
-        acceptsBr && page.compressedContent ? "br"
-          : acceptsGzip && page.gzipContent ? "gzip"
-            : "identity";
+      const availablePageEncodings: Array<"br" | "gzip"> = [];
+      if (page.compressedContent) availablePageEncodings.push("br");
+      if (page.gzipContent) availablePageEncodings.push("gzip");
+
+      const pageEncoding = BascikConfig.http.compression !== false
+        ? negotiateCompression(req.headers["accept-encoding"], availablePageEncodings)
+        : "identity";
 
       const rawEtag = page.etag ?? makeEtag(page.content);
       const effectivePageEtag = pageEncoding === "identity" ? rawEtag : getEncodedEtag(rawEtag, pageEncoding);
 
-      if (BascikConfig.http.httpCache !== false && (req.headers["if-none-match"] === effectivePageEtag || req.headers["if-none-match"] === rawEtag)) {
+      if (BascikConfig.http.httpCache !== false && matchesIfNoneMatch(req.headers["if-none-match"], effectivePageEtag, rawEtag)) {
         responseStatus = 304;
         res.respond(304, {
           etag: effectivePageEtag,
@@ -778,7 +779,8 @@ export const createRequestHandler = () => {
 export const startServerInstance = async (
   server: NetServer,
   protocol: "http" | "https",
-  onShutdown?: () => void
+  onShutdown?: () => void,
+  onForceClose?: () => void
 ): Promise<string> => {
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
@@ -831,6 +833,7 @@ export const startServerInstance = async (
     server,
     drainTimeout,
     onShutdown,
+    onForceClose,
     runShutdownHandlers,
   });
 

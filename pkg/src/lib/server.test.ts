@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
-const { mockServer, mockCreateSecureServer } = vi.hoisted(() => {
+const { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts } = vi.hoisted(() => {
   const mockServer = {
     on: vi.fn().mockReturnThis(),
     once: vi.fn().mockReturnThis(),
@@ -16,7 +16,9 @@ const { mockServer, mockCreateSecureServer } = vi.hoisted(() => {
     close: vi.fn().mockImplementation((cb?: (err?: Error) => void) => { cb?.(); }),
   };
   const mockCreateSecureServer = vi.fn(() => mockServer);
-  return { mockServer, mockCreateSecureServer };
+  const registeredShutdownFns: Array<() => void | Promise<void>> = [];
+  const mockExecuteServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
+  return { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts };
 });
 
 vi.mock("node:http", () => ({
@@ -90,7 +92,12 @@ vi.mock("./events.js", () => ({
     on: vi.fn(),
     removeListener: vi.fn(),
   },
-  runShutdownHandlers: vi.fn().mockResolvedValue(undefined),
+  registerShutdownHandler: vi.fn((fn) => { registeredShutdownFns.push(fn); }),
+  runShutdownHandlers: vi.fn(async () => {
+    for (const fn of registeredShutdownFns) {
+      await fn();
+    }
+  }),
 }));
 
 // The handler plans, then executes the plan (prompt 65). The mock keeps a
@@ -98,14 +105,13 @@ vi.mock("./events.js", () => ({
 // observation point so request-context assertions read naturally: the mocked
 // planner records the html, and the mocked plan executor forwards to the spy.
 vi.mock("./server-scripts.js", () => {
-  const executeServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
   return {
-    executeServerScripts,
+    executeServerScripts: mockExecuteServerScripts,
     // The plan is stored on the page (prompt 67); makePage builds a stub plan
     // carrying the html so the executor can forward it to the spy.
     executeServerScriptPlan: vi.fn(
       async (plan: any, request: unknown, context: unknown, timeout: number, filePath: string) =>
-        Buffer.from(await executeServerScripts(plan.__html, request, context, timeout, filePath)),
+        Buffer.from(await mockExecuteServerScripts(plan.__html, request, context, timeout, filePath)),
     ),
     streamServerScripts: vi.fn(),
     DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
@@ -133,8 +139,10 @@ vi.mock("./mime.js", () => ({
 import { startHttp2Server } from "./http2.ts";
 import { resetActiveRateLimiter, resetSseManager, startServerInstance } from "./server.ts";
 import { mem } from "./mem.ts";
+import { BascikConfig } from "./config.ts";
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, readFile, access } from "node:fs/promises";
+import { exec, execFile } from "node:child_process";
 import { eventEmitter } from "./events.ts";
 
 const mockMem = mem as unknown as {
@@ -147,13 +155,34 @@ const mockMem = mem as unknown as {
 };
 const mockCreateReadStream = createReadStream as unknown as ReturnType<typeof vi.fn>;
 const mockStat = stat as unknown as ReturnType<typeof vi.fn>;
+const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
+const mockAccess = access as unknown as ReturnType<typeof vi.fn>;
+const mockExec = exec as unknown as ReturnType<typeof vi.fn>;
+const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(async () => {
-  vi.clearAllMocks();
+  mockStat.mockClear();
+  mockReadFile.mockClear();
+  mockAccess.mockClear();
+  mockExec.mockClear();
+  mockExecFile.mockClear();
+  mockCreateReadStream.mockClear();
+  mockExecuteServerScripts.mockClear();
+  mockServer.listen.mockClear();
+  mockServer.close.mockClear();
+  mockMem.getPage.mockClear();
+  mockMem.getPageExact.mockClear();
+  mockMem.trackOpenPage.mockClear();
+  mockMem.untrackOpenPage.mockClear();
+  mockMem.setBootingDone.mockClear();
+  (eventEmitter.on as ReturnType<typeof vi.fn>).mockClear();
+  (eventEmitter.removeListener as ReturnType<typeof vi.fn>).mockClear();
+  registeredShutdownFns.length = 0;
   resetActiveRateLimiter();
   resetSseManager();
+  (BascikConfig as any).isProdServer = false;
   mockMem.isBooting = false;
   // No exact-match pages by default: http2 falls back to mem.getPage (mocked per-test).
   mockMem.getPageExact.mockReturnValue(undefined);
@@ -488,6 +517,37 @@ describe("startHttp2Server – stream handler", () => {
       const headers = stream.respond.mock.calls[0][0];
       expect(headers).not.toHaveProperty("content-encoding");
       expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("serves identity without compression when client specifies br;q=0, gzip;q=0", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "br;q=0, gzip;q=0"));
+      const headers = stream.respond.mock.calls[0][0];
+      expect(headers).not.toHaveProperty("content-encoding");
+      expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("respects quality weights when gzip has higher weight than br (br;q=0.5, gzip;q=0.9)", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "br;q=0.5, gzip;q=0.9"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ "content-encoding": "gzip" }),
+      );
+      expect(stream.end).toHaveBeenCalledWith(page.gzipContent);
     });
 
     it("answers 304 for a gzip-suffixed If-None-Match from a gzip-only client", async () => {
@@ -954,8 +1014,23 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     expect(stream2.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 304 }),
     );
-    expect(stream2.end).toHaveBeenCalledWith();
-    (BascikConfig as any).cacheHttp = false;
+
+    // Third GET with list containing matching ETag and other tags → 304
+    const stream3 = makeStream();
+    await handler(stream3, makeHeaders("/style.css", "GET", "", undefined, { "if-none-match": `"other-tag", ${etag}` }));
+    expect(stream3.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 304 }),
+    );
+
+    // Fourth GET with weak representation of matching ETag → 304
+    const stream4 = makeStream();
+    const weakEtag = `W/${etag}`;
+    await handler(stream4, makeHeaders("/style.css", "GET", "", undefined, { "if-none-match": weakEtag }));
+    expect(stream4.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 304 }),
+    );
+
+    (BascikConfig as any).http.httpCache = false;
   });
 });
 
@@ -1541,9 +1616,10 @@ describe("startHttp2Server – port auto-increment", () => {
 
 describe("startHttp2Server – graceful shutdown", () => {
   const registeredHandlers: Map<string, (() => void)[]> = new Map();
+  let processOnceSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    vi.spyOn(process, "once").mockImplementation((event: string | symbol, listener: (...args: any[]) => void) => {
+    processOnceSpy = vi.spyOn(process, "once").mockImplementation((event: string | symbol, listener: (...args: any[]) => void) => {
       const key = String(event);
       if (!registeredHandlers.has(key)) registeredHandlers.set(key, []);
       registeredHandlers.get(key)!.push(listener as () => void);
@@ -1553,7 +1629,7 @@ describe("startHttp2Server – graceful shutdown", () => {
 
   afterEach(() => {
     registeredHandlers.clear();
-    vi.restoreAllMocks();
+    processOnceSpy.mockRestore();
   });
 
   it("registers SIGTERM and SIGINT handlers after the server starts", async () => {
@@ -1607,14 +1683,13 @@ describe("startHttp2Server – graceful shutdown", () => {
     mockExit.mockRestore();
   });
 
-  it("destroys open sessions on SIGINT so long-lived SSE streams do not block shutdown", async () => {
+  it("closes open sessions on SIGINT so long-lived SSE streams do not block shutdown", async () => {
     await startHttp2Server();
 
-    const [, sessionHandler] = mockServer.on.mock.calls.find(
-      (c: any[]) => c[0] === "session",
-    ) as [string, (session: { destroy: ReturnType<typeof vi.fn>; once: ReturnType<typeof vi.fn> }) => void];
+    const sessionCalls = mockServer.on.mock.calls.filter((c: any[]) => c[0] === "session");
+    const sessionHandler = sessionCalls[sessionCalls.length - 1]?.[1] as (session: { close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; once: ReturnType<typeof vi.fn> }) => void;
 
-    const mockSession = { destroy: vi.fn(), once: vi.fn(), on: vi.fn() };
+    const mockSession = { close: vi.fn(), destroy: vi.fn(), once: vi.fn(), on: vi.fn() };
     sessionHandler(mockSession);
 
     const [, sigIntHandler] = (process.once as ReturnType<typeof vi.spyOn>).mock.calls.find(
@@ -1623,7 +1698,7 @@ describe("startHttp2Server – graceful shutdown", () => {
 
     const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
     sigIntHandler();
-    expect(mockSession.destroy).toHaveBeenCalled();
+    expect(mockSession.close).toHaveBeenCalled();
     mockExit.mockRestore();
   });
 
@@ -1635,6 +1710,7 @@ describe("startHttp2Server – graceful shutdown", () => {
 
     const mockExit = vi.spyOn(process, "exit").mockImplementation((_code?: string | number | null) => undefined as never);
     sigIntHandler();
+    await Promise.resolve();
     expect(mockExit).toHaveBeenCalledWith(0);
     mockExit.mockRestore();
   });
@@ -2526,6 +2602,7 @@ describe("startHttp2Server – onError suppresses ERR_HTTP2_INVALID_STREAM", () 
   });
 
   it("does not log or respond when ERR_HTTP2_INVALID_STREAM is caught (client disconnected mid-request)", async () => {
+    consoleSpy.mockClear();
     const page = makePage({ content: Buffer.from("<html>Hi</html>") });
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;
@@ -2595,6 +2672,7 @@ describe("startServerInstance signal handler cleanup", () => {
         return mockServerWithCloseAll;
       }),
       close: vi.fn((cb?: (err?: Error) => void) => { cb?.(); }),
+      closeIdleConnections: vi.fn(),
       closeAllConnections: vi.fn(),
       removeListener: vi.fn().mockReturnThis(),
     };
@@ -2604,7 +2682,7 @@ describe("startServerInstance signal handler cleanup", () => {
     expect(sigIntHandler).toBeDefined();
     sigIntHandler!();
 
-    expect(mockServerWithCloseAll.closeAllConnections).toHaveBeenCalled();
+    expect(mockServerWithCloseAll.closeIdleConnections).toHaveBeenCalled();
     mockExit.mockRestore();
   });
 
@@ -2687,5 +2765,44 @@ describe("startServerInstance signal handler cleanup", () => {
         delete process.env.PORT;
       }
     }
+  });
+});
+
+describe("Server-owned RateLimiter lifecycle", () => {
+  afterEach(async () => {
+    const { resetActiveRateLimiter } = await import("./server.ts");
+    resetActiveRateLimiter();
+  });
+
+  it("getActiveRateLimiter creates limiter and starts its sweep timer", async () => {
+    const { getActiveRateLimiter, resetActiveRateLimiter } = await import("./server.ts");
+    resetActiveRateLimiter();
+
+    const limiter = getActiveRateLimiter();
+    expect(limiter).toBeDefined();
+    expect(limiter.isTimerActive()).toBe(true);
+  });
+
+  it("resetActiveRateLimiter cleans up timer and resets instance", async () => {
+    const { getActiveRateLimiter, resetActiveRateLimiter } = await import("./server.ts");
+    const limiter1 = getActiveRateLimiter();
+    expect(limiter1.isTimerActive()).toBe(true);
+
+    resetActiveRateLimiter();
+    expect(limiter1.isTimerActive()).toBe(false);
+
+    const limiter2 = getActiveRateLimiter();
+    expect(limiter2).not.toBe(limiter1);
+    expect(limiter2.isTimerActive()).toBe(true);
+  });
+
+  it("shutdown handlers clean up active rate limiter", async () => {
+    const { getActiveRateLimiter } = await import("./server.ts");
+    const { runShutdownHandlers } = await import("./events.ts");
+    const limiter = getActiveRateLimiter();
+    expect(limiter.isTimerActive()).toBe(true);
+
+    await runShutdownHandlers();
+    expect(limiter.isTimerActive()).toBe(false);
   });
 });

@@ -1,9 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getContentHashEtag,
   getEncodedEtag,
   resolveCacheControl,
   negotiateCompression,
+  parseAcceptEncoding,
+  matchesIfNoneMatch,
+  getCompressedStaticAsset,
+  clearCompressedRepresentationCache,
+  getInFlightCompressionsCount,
+  getCompressedCacheEntriesCount,
   isCompressibleMime,
   STATIC_CACHE_METADATA,
 } from "./caching.ts";
@@ -83,6 +89,64 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     expect(negotiateCompression(undefined)).toBe("identity");
   });
 
+  describe("RFC 9110 representation negotiation (q-values, wildcards, case, exclusions)", () => {
+    it.each([
+      // Explicit rejection (q=0)
+      { header: "br;q=0, gzip;q=0", expected: "identity" },
+      { header: "br;q=0, gzip;q=1.0", expected: "gzip" },
+      { header: "br;q=0.5, gzip;q=0.8", expected: "gzip" },
+      { header: "br;q=0.8, gzip;q=0.5", expected: "br" },
+      { header: "br;q=1, gzip;q=1", expected: "br" },
+      // Case-insensitivity
+      { header: "GZIP, DEFLATE", expected: "gzip" },
+      { header: "BR, GZIP", expected: "br" },
+      { header: "gzip;Q=0.8, br;Q=0.9", expected: "br" },
+      // Wildcard handling
+      { header: "*;q=0.1", expected: "br" },
+      { header: "identity;q=0.8, *;q=0.5", expected: "identity" },
+      { header: "*;q=0.9, identity;q=0.1", expected: "br" },
+      // Whitespace and array inputs
+      { header: "  br ; q=0.5 ,  gzip ; q=0.9  ", expected: "gzip" },
+      { header: ["gzip", "br;q=0.5"], expected: "gzip" },
+      { header: ["br;q=0", "gzip;q=0"], expected: "identity" },
+    ])("negotiateCompression($header) -> $expected", ({ header, expected }) => {
+      expect(negotiateCompression(header)).toBe(expected);
+    });
+
+    it("parses accept-encoding into preference map", () => {
+      const map = parseAcceptEncoding("gzip, deflate;q=0.5, br;q=1.0, *;q=0.1");
+      expect(map.get("gzip")).toBe(1.0);
+      expect(map.get("deflate")).toBe(0.5);
+      expect(map.get("br")).toBe(1.0);
+      expect(map.get("*")).toBe(0.1);
+    });
+
+    it("restricts negotiation to available encodings", () => {
+      // Client accepts br with higher preference, but server only has gzip available
+      expect(negotiateCompression("br;q=1.0, gzip;q=0.8", ["gzip"])).toBe("gzip");
+      // Client accepts only br, but server only has gzip
+      expect(negotiateCompression("br, deflate", ["gzip"])).toBe("identity");
+    });
+  });
+
+  describe("matchesIfNoneMatch (RFC 9110 / RFC 9111 weak & list validator matching)", () => {
+    it.each([
+      { header: '"tag1"', etags: ['"tag1"'], expected: true },
+      { header: '"tag1"', etags: ['"tag2"'], expected: false },
+      { header: '"tag1", "tag2", "tag3"', etags: ['"tag2"'], expected: true },
+      { header: ' "other" , "abc123-br" ', etags: ['"abc123-br"'], expected: true },
+      { header: 'W/"tag1"', etags: ['"tag1"'], expected: true },
+      { header: '"tag1"', etags: ['W/"tag1"'], expected: true },
+      { header: 'W/"tag1"', etags: ['W/"tag1"'], expected: true },
+      { header: '*', etags: ['"anything"'], expected: true },
+      { header: ['"other"', '"matching"'], etags: ['"matching"'], expected: true },
+      { header: '', etags: ['"tag1"'], expected: false },
+      { header: undefined, etags: ['"tag1"'], expected: false },
+    ])("matchesIfNoneMatch($header, $etags) -> $expected", ({ header, etags, expected }) => {
+      expect(matchesIfNoneMatch(header, ...etags)).toBe(expected);
+    });
+  });
+
   it("recognizes compressible and already-compressed MIME types / extensions", () => {
     // Compressible
     expect(isCompressibleMime("text/css", ".css")).toBe(true);
@@ -98,5 +162,94 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
     expect(isCompressibleMime("font/woff2", ".woff2")).toBe(false);
     expect(isCompressibleMime("video/mp4", ".mp4")).toBe(false);
     expect(isCompressibleMime("application/zip", ".zip")).toBe(false);
+  });
+});
+
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+describe("Prompt 96 - Bounded Asynchronous Static Compression", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    clearCompressedRepresentationCache();
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-compress-"));
+  });
+
+  afterEach(async () => {
+    clearCompressedRepresentationCache();
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  it("deduplicates concurrent requests into a single in-flight compression operation", async () => {
+    const filePath = join(tempDir, "bundle.js");
+    const content = Buffer.from("console.log('hello world');".repeat(100));
+    await writeFile(filePath, content);
+
+    const mtime = 1000;
+    const size = content.length;
+
+    // Launch 5 concurrent compression requests
+    const promises = [
+      getCompressedStaticAsset(filePath, mtime, size, "br"),
+      getCompressedStaticAsset(filePath, mtime, size, "br"),
+      getCompressedStaticAsset(filePath, mtime, size, "br"),
+      getCompressedStaticAsset(filePath, mtime, size, "br"),
+      getCompressedStaticAsset(filePath, mtime, size, "br"),
+    ];
+
+    const results = await Promise.all(promises);
+
+    expect(results[0]).toBeDefined();
+    expect(Buffer.isBuffer(results[0])).toBe(true);
+    // All 5 promises must return the exact same buffer instance
+    for (let i = 1; i < 5; i++) {
+      expect(results[i]).toBe(results[0]);
+    }
+
+    expect(getInFlightCompressionsCount()).toBe(0);
+    expect(getCompressedCacheEntriesCount()).toBe(1);
+  });
+
+  it("reuses cached compressed buffer on subsequent calls without reading disk again", async () => {
+    const filePath = join(tempDir, "style.css");
+    const content = Buffer.from(".class { color: red; }".repeat(50));
+    await writeFile(filePath, content);
+
+    const mtime = 2000;
+    const size = content.length;
+
+    const res1 = await getCompressedStaticAsset(filePath, mtime, size, "gzip");
+    expect(res1).toBeDefined();
+
+    // Second call with same mtime and size uses cache
+    const res2 = await getCompressedStaticAsset(filePath, mtime, size, "gzip");
+    expect(res2).toBe(res1);
+  });
+
+  it("re-compresses if mtimeMs or size changes (invalidation)", async () => {
+    const filePath = join(tempDir, "app.js");
+    await writeFile(filePath, Buffer.from("version 1 content"));
+
+    const res1 = await getCompressedStaticAsset(filePath, 1000, 17, "br");
+
+    await writeFile(filePath, Buffer.from("version 2 content with different size"));
+    const res2 = await getCompressedStaticAsset(filePath, 2000, 38, "br");
+
+    expect(res1).toBeDefined();
+    expect(res2).toBeDefined();
+    expect(res1).not.toBe(res2);
+  });
+
+  it("returns null and clears in-flight entry if file is missing", async () => {
+    const filePath = join(tempDir, "non-existent.js");
+    const res = await getCompressedStaticAsset(filePath, 1000, 10, "br");
+
+    expect(res).toBeNull();
+    expect(getInFlightCompressionsCount()).toBe(0);
+    expect(getCompressedCacheEntriesCount()).toBe(0);
   });
 });

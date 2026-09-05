@@ -103,9 +103,9 @@ From the repo root, run:
 yarn create:test-site
 ```
 
-This automatically builds `create-bascik` (copying the latest `SKILL.md` from `docs/`), runs the scaffolding CLI to create `my-site/`, installs its dependencies, and starts the dev server.
+This builds `create-bascik` (copying the latest `SKILL.md` from `docs/`), runs the scaffolding CLI to create a test project at `my-site/`, installs its dependencies, and boots the development server.
 
-The `-y` flag skips both prompts. The npm install will print a 404 error for `@bascik/bascik` (not on npm yet), but the dev server starts anyway; the workspace `node_modules` symlink resolves the package. Command+Click the URL to open it in a browser.
+The `-y` flag skips prompts for automatic setup. Within the monorepo workspace, Yarn links `@bascik/bascik` directly from `pkg/`, allowing end-to-end testing of the scaffolded templates and dev server without publishing to npm first.
 
 ```text
 Server running at http://localhost:8080
@@ -113,13 +113,8 @@ Server running at http://localhost:8080
 
 ## Cleanup after local testing
 
-Once you are done, unlink to return to the normal published package flow.
-
-From the repo root:
+To clean up after testing:
 
 ```sh
-cd create
-npm unlink
+rm -rf my-site
 ```
-
-If you are still actively iterating on the generator, leaving it linked is fine.

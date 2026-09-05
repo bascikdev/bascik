@@ -1,6 +1,31 @@
 # From Svelte
 
-Svelte and Bascik share a surface-level resemblance: both use single-file components that combine markup, logic, and scoped styles in one place. The difference is in the output. Svelte compiles components to JavaScript that runs in the browser to manage reactive state and DOM updates. Bascik compiles components to vanilla HTML at build time and outputs nothing else. Switching is mostly mechanical: remove Svelte's script and template syntax, extract styles to a paired CSS file, and replace reactive primitives with vanilla JS.
+Svelte and Bascik share an intuitive single-file authoring feel, combining markup, logic, and scoped styles. Svelte compiles components to client-side JavaScript that manages reactive state trees in the browser. Bascik compiles components at build time to vanilla HTML and CSS, leaving zero client runtime.
+
+## When to Switch vs Keep Svelte
+
+- **Switch to Bascik:** For content sites, blogs, portfolios, marketing pages, and documentation where fast initial paint and zero client runtime matter.
+- **Keep Svelte:** For complex client applications requiring continuous fine-grained reactive state updates (such as interactive dashboards, media players, or real-time web tools).
+
+## Mental Model Comparison
+
+| Concept | Svelte (Svelte 4 / 5) | Bascik |
+| --- | --- | --- |
+| Component file | `Component.svelte` | `component-name.html` in `src/components/` |
+| Scoped styles | `<style>` block in `.svelte` | Paired `.css` file or inline `<style>` (auto-scoped) |
+| Child content | `<slot />` (Svelte 4) / `children` snippet (Svelte 5) | `<div data-bascik-slot></div>` |
+| Named content | `<slot name="…" />` (Svelte 4) / Named snippet (Svelte 5) | `data-bascik-slot="name"` |
+| Component props | `export let prop` (Svelte 4) / `$props()` (Svelte 5) | `data-bascik-prop-*` and `data-bascik-attr-*` |
+| Client interactivity | Svelte Runes (`$state`, `$derived`, `$effect`) | Standard vanilla DOM APIs in `<script>` tags |
+
+## A Low-Risk First Step
+
+Migrate a static UI component into Bascik:
+
+1. Move your component markup to `src/components/card/card.html`.
+2. Move your `<style>` content to `src/components/card/card.css`.
+3. Use `<card></card>` in `src/pages/index.html`.
+4. Run `yarn dev` to view your compiled zero-JS output.
 
 ## File and Folder Setup
 

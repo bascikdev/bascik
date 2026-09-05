@@ -169,7 +169,7 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 
 - **Sliding Sub-Windows:** Uses a ring of 10 sub-buckets per window to smooth boundary bursts and prevent double-budget attacks at window edges.
 - **Trust Proxy Support:** When `http.trustProxy: true` is configured, client IP derivation reads the rightmost entry of `X-Forwarded-For` (the address appended by the immediate trusted proxy). When `false` (default), forwarded headers are ignored to prevent spoofing.
-- **Bounded Tracking Map:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). If capacity is saturated by flood attacks, the limiter fails closed to preserve server memory. Periodic cleanup reaps stale entries.
+- **Bounded Tracking Map & Expiry Lifecycle:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). When capacity pressure occurs, the limiter automatically reclaims expired identities before admitting new clients. If capacity remains fully occupied by active identities within the window, the limiter fails closed to preserve server memory. A background sweep timer periodically cleans up stale identities during active server operation and shuts down cleanly during server exit.
 - **Configurable:** Accepts `boolean` or `{ window?: number, max?: number }` in `bascik.config.ts`.
 - **SSE Streams:** Excluded from page rate limit checks.
 - **Development Mode:** Rate limiting is inactive during development mode.
@@ -225,11 +225,11 @@ Every response includes standard security headers:
 ### Graceful shutdown sequence and health checks
 
 When receiving `SIGTERM` or `SIGINT`:
-1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable`.
-2. Idle keep-alive connections are closed with `closeIdleConnections()`.
-3. The server drains in-flight requests during `http.timeouts.drain` (default 5000 ms).
-4. Registered shutdown handlers (watchers, exec child processes) are started, and shutdown-handler failures are logged.
-5. Sockets and sessions are closed and the process terminates cleanly.
+1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable` while `/_health/live` continues returning `200 OK`.
+2. Idle keepalive connections are closed with `closeIdleConnections()`, and HTTP/2 sessions receive `session.close()` (GOAWAY) to prevent new streams without resetting active work.
+3. The server stops accepting new TCP connections and drains in-flight requests during `http.timeouts.drain` (default 5000 ms).
+4. Registered shutdown handlers (watchers, exec child processes) are executed concurrently and awaited; errors are caught and recorded.
+5. Once all in-flight requests finish and shutdown handlers settle, the process exits cleanly with code 0. If the combined barrier exceeds the drain deadline, remaining active sockets and sessions are forcibly destroyed and the process exits with code 1.
 
 ### Port conflict policy
 
@@ -243,7 +243,7 @@ Static asset requests are normalized and validated to ensure the resolved path r
 
 Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (`"hash-br"`, `"hash-gzip"`), so a `304` is only returned when the client's cached representation matches the encoding it would receive now.
 
-Compression negotiation supports Brotli (`br`) with Gzip (`gzip`) as the fallback for legacy clients, for both in-memory pages and static assets. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
+Compression negotiation follows RFC 9110 Section 12.5.3, parsing quality weights (`q`), wildcards (`*`), and explicit exclusions (`q=0`) to select between Brotli (`br`), Gzip (`gzip`), and uncompressed (`identity`) representations. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). On-demand static compression uses single-flight deduplication and bounded in-memory representation caching. Concurrent requests for the same un-precompressed asset share a single asynchronous compression task without blocking the event loop or performing redundant compression work. In-memory representations are subject to per-item and cache-size limits, and are invalidated immediately when underlying file metadata changes. Conditional requests (`If-None-Match`) support comma-separated validator lists and weak comparison according to RFC 9110 Section 13.1.2 and RFC 9111. 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
 
 ### Crash Net & Stream Error Handling
 
@@ -281,7 +281,7 @@ For the full cross-subsystem time model, ownership boundaries, and deterministic
 
 ### Graceful shutdown
 
-The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it marks readiness as draining, stops accepting new connections, starts registered cleanup handlers for resources such as watchers and exec children, and closes active protocol resources. If the server has not closed within the configured `http.timeouts.drain` window (default 5000 ms), Bascik force-exits with a nonzero status.
+The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving a signal, it marks readiness as draining, stops accepting new connections, closes idle keepalive sockets, initiates graceful close on HTTP/2 sessions, and awaits registered cleanup handlers for resources such as watchers and exec children. If all requests drain and cleanup succeeds before `http.timeouts.drain` (default 5000 ms), the process exits with code 0. If the deadline expires, Bascik force-destroys remaining sockets and sessions and exits with code 1.
 
 ## E2E Server Testing
 

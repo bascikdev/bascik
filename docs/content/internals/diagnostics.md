@@ -117,7 +117,7 @@ To add a new validation check:
 | --- | --- | --- | --- | --- |
 | Unknown Component Tag | `unmatched-tag` | Warning | 0 | A hyphenated tag was used in HTML, but no matching file exists in `src/components/`. Ships unchanged. |
 | Unused Component File | `unused-component` | Warning | 0 | A component file exists in `src/components/`, but is never referenced in any page, component, or build script literal. |
-| Config Validation | `config-validation` | Error/Warning | Depends | Prompt 05 validation results projected into findings with key-based severity mapping. |
+| Config Validation | `config-validation` | Error/Warning | Depends | Configuration validation results projected into findings with key-based severity mapping. |
 | Missing Site URL | `missing-site-url` | Error | 1 | `generate.sitemap` and/or `generate.robots` is enabled but no site URL is available. |
 | Pages Directory Issue | `pages-directory` | Error | 1 | Configured pages directory cannot be read or contains no page HTML files. |
 | Duplicate Component Name | `duplicate-component-name` | Error | 1 | Multiple component files define the same custom tag name. |
@@ -152,7 +152,7 @@ Build failed with 2 page errors:
 
 Stages include `validate markup`, `component expansion`, `create output directory`, `write output`, `transpile page`, and `worker transpile`. Missing or unreadable configured source directories fail before page processing begins. A subdirectory that disappears during recursive traversal is treated as a file-watch race: Bascik warns and continues scanning the remaining tree.
 
-In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unresolved component tags are warning-only during transpilation; static analysis reports them as errors.
+In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unmatched custom component tags emit a warning by default (and exit with code 1 when `--strict` is passed).
 
 ## Source Map & Stack Trace Remapping (`stack-trace.ts`)
 

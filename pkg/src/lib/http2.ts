@@ -85,6 +85,12 @@ export const startHttp2Server = async (): Promise<string> => {
     });
   });
 
+  const openSockets = new Set<any>();
+  server.on("connection", (socket) => {
+    openSockets.add(socket);
+    socket.once("close", () => openSockets.delete(socket));
+  });
+
   const handleRequest = createRequestHandler();
 
   server.on(
@@ -128,12 +134,32 @@ export const startHttp2Server = async (): Promise<string> => {
     server,
     "https",
     () => {
+      if (typeof (server as any).closeIdleConnections === "function") {
+        try {
+          (server as any).closeIdleConnections();
+        } catch { }
+      }
+      for (const session of openSessions) {
+        try {
+          if (!session.closed && !session.destroyed) {
+            session.close();
+          }
+        } catch { }
+      }
+    },
+    () => {
       for (const session of openSessions) {
         try {
           session.destroy();
         } catch { }
       }
       openSessions.clear();
+      for (const socket of openSockets) {
+        try {
+          socket.destroy();
+        } catch { }
+      }
+      openSockets.clear();
     }
   );
 };
