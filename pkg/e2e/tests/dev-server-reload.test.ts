@@ -375,6 +375,35 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(page.locator('h1')).toHaveText(finalMarker, { timeout: 15000 });
   });
 
+  test('a broader component rebuild never overwrites a newer direct page edit with stale content', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Stage two overlapping invalidations: a broad component change (rebuilt
+    // through the shared-component path) and a newer direct page edit. The
+    // page edit carries the newest content; regardless of which compiler path
+    // finishes last, the browser must settle on the newest page content and
+    // never regress to a stale component-driven rebuild of this page.
+    const componentMarker = `component stage ${Date.now()}`;
+    const pageMarker = `page final ${Date.now()}`;
+
+    await writeFile(componentPath, originalComponentContent + `\n<span data-testid="overlap-comp-marker">${componentMarker}</span>`, 'utf8');
+
+    const newest = originalPageContent.replace(
+      '<h1>JS Scope Rewriting — Live Test</h1>',
+      `<h1>${pageMarker}</h1>`,
+    );
+    await writeFile(pagePath, newest, 'utf8');
+
+    // The final document must carry the newest page heading. Poll via
+    // toHaveText (Playwright retries across reloads); a stale overwrite would
+    // briefly show an old heading but must settle on `pageMarker`.
+    await expect(page.locator('h1')).toHaveText(pageMarker, { timeout: 15000 });
+    // After settling, the newest heading must persist (no late stale reload).
+    await page.waitForTimeout(500);
+    await expect(page.locator('h1')).toHaveText(pageMarker);
+  });
+
   // ── 7. Watched Dependencies & Subfolder Routes ─────────────────────────────
 
   test('open page updates live when a watched external content file changes', async ({ page }) => {

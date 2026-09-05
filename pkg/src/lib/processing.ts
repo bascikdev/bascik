@@ -734,6 +734,38 @@ export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string |
 
 const pageProcessingQueues = new Map<string, Promise<unknown>>();
 
+// ─── Generation ownership ─────────────────────────────────────────────────────
+// Every compilation/publication entrypoint for a page claims a monotonically
+// increasing generation at enqueue/invalidation time. Side effects (memory
+// store, disk write, sidecar record, transpiled reload event) are applied only
+// if the job's generation is still the latest for that page. This guarantees a
+// stale completion cannot overwrite a newer one, regardless of whether the two
+// jobs ran through a batch, the direct page update path, or a worker.
+const pageGenerations = new Map<string, number>();
+
+// Canonical ownership key: relative and absolute aliases of the same page must
+// share one generation so a stale completion using either form cannot slip past
+// a newer one using the other.
+const pageGenKey = (absolutePagePath: string): string =>
+  resolve(process.cwd(), absolutePagePath);
+
+const nextPageGeneration = (absolutePagePath: string): number => {
+  const key = pageGenKey(absolutePagePath);
+  const next = (pageGenerations.get(key) ?? 0) + 1;
+  pageGenerations.set(key, next);
+  return next;
+};
+
+const isCurrentGeneration = (absolutePagePath: string, generation: number): boolean =>
+  (pageGenerations.get(pageGenKey(absolutePagePath)) ?? 0) === generation;
+
+// Marks a page deleted so any late in-flight work cannot resurrect it. The next
+// enqueue claims a fresh generation above the deleted one.
+const bumpPageGeneration = (absolutePagePath: string): void => {
+  const key = pageGenKey(absolutePagePath);
+  pageGenerations.set(key, (pageGenerations.get(key) ?? 0) + 1);
+};
+
 /**
  * The subset of a page result the disk writer needs. `distHtml` may already be
  * UTF-8 bytes (a buffer transferred from a worker, prompt 86); `writeFile` and
@@ -741,6 +773,8 @@ const pageProcessingQueues = new Map<string, Promise<unknown>>();
  */
 type PageWriteInput = Pick<TranspilePageResult, "relativePagePath" | "absolutePagePath"> & {
   distHtml: string | Buffer;
+  /** Generational guard for dev writes: the write is dropped when superseded. */
+  generation?: number;
 };
 
 const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
@@ -764,7 +798,15 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   const queued = current
     .catch(() => { })
-    .then(() => writeTranspiledPage(result))
+    .then(async () => {
+      // Never publish a stale generation to disk: a newer edit may already be
+      // in flight, and its content must win regardless of completion order.
+      // (The queue is dev-only, so a generation is always present here.)
+      if (result.generation === undefined || !isCurrentGeneration(pagePath, result.generation)) {
+        return;
+      }
+      await writeTranspiledPage(result);
+    })
     .catch((error) => {
       console.error(`[bascik] Failed to write dev page "${pagePath}":`, error);
     })
@@ -788,6 +830,30 @@ export const processPageBatch = async (
     reportPageErrors(pageErrors);
     return [];
   }
+
+  // Claim generations eagerly at enqueue time, before any file read. A newer
+  // concurrent request for the same page claims a higher generation and
+  // supersedes this batch's completions, so an older batch can never overwrite
+  // a newer edit that already became visible. Claiming at dispatch time (in
+  // runJob) would let a deletion or newer request that runs first take a LOWER
+  // number and reverse the ordering.
+  const pagesClaimed = new Map<string, number>();
+  const claimPage = (pagePath: string): number => {
+    let gen = pagesClaimed.get(pagePath);
+    if (gen === undefined) {
+      gen = nextPageGeneration(pagePath);
+      pagesClaimed.set(pagePath, gen);
+    }
+    return gen;
+  };
+  for (const input of pageInputs) {
+    if (typeof input === "string") {
+      claimPage(input);
+    } else {
+      claimPage(input.pagePath);
+    }
+  }
+
   if (!componentList) componentList = await listComponents();
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
@@ -839,14 +905,15 @@ export const processPageBatch = async (
   const results: (TranspilePageResult | null)[] = [];
 
   const runJob = async (job: PageJob) => {
+    const generation = pagesClaimed.get(job.pagePath)!;
     const result = await transpilePage(
       job.pagePath,
-      componentList,
-      globalStylesHtml,
+      componentList!,
+      globalStylesHtml!,
       job.route,
       job.preCleanedHtml,
     );
-    if (result) {
+    if (result && isCurrentGeneration(job.pagePath, generation)) {
       if (!BascikConfig.isBuild) {
         await mem.storePage({
           relativePagePath: result.relativePagePath,
@@ -855,7 +922,12 @@ export const processPageBatch = async (
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
         });
-        void queueTranspiledPageWrite(result);
+        void queueTranspiledPageWrite({
+          relativePagePath: result.relativePagePath,
+          absolutePagePath: result.absolutePagePath,
+          distHtml: result.distHtml,
+          generation,
+        });
       }
       eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
     }
@@ -965,6 +1037,17 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: PageWorkerResult[] = [];
     const pageErrors: PageProcessingError[] = [...expansionErrors];
+    // A broad worker rebuild captures each page's current generation WITHOUT
+    // bumping it, so a concurrent specific page edit (pageProcessing) or a
+    // newer batch that bumps a higher generation always supersedes this broad
+    // pass. The worker publishes only if its captured generation is still the
+    // latest when the result finally lands.
+    const pagesClaimed = new Map<string, number>();
+    for (const job of allJobs) {
+      if (!pagesClaimed.has(job.pagePath)) {
+        pagesClaimed.set(job.pagePath, pageGenerations.get(pageGenKey(job.pagePath)) ?? 0);
+      }
+    }
 
     // Apply main-thread side effects for one worker result. The page bytes
     // arrived as a transferred ArrayBuffer (prompt 86); wrap them in a Buffer
@@ -972,8 +1055,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     // Nothing on this path needs the HTML as a string.
     const runWorkerJob = async (job: PageJob): Promise<PageWorkerResult | null> => {
       try {
+        const generation = pagesClaimed.get(job.pagePath)!;
         const result = await pool.run(job);
-        if (result) {
+        if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
           }
@@ -991,6 +1075,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               relativePagePath: result.relativePagePath,
               absolutePagePath: result.absolutePagePath,
               distHtml: pageBytes,
+              generation,
             });
           }
           eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
@@ -1066,22 +1151,34 @@ export const pageProcessing = (
           resolveAvailable(undefined);
           return undefined;
         }
-        const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
-        if (!BascikConfig.isBuild) {
-          await mem.storePage({
-            relativePagePath,
-            absolutePagePath,
-            pageContent: distHtml,
-            usedComponentsNames,
-            fileDependencies,
-          });
+        // Claim when this page is about to publish, not when the request was
+        // made. A broad worker rebuild that started earlier captured an older
+        // snapshot; this specific newer edit bumps past it so it supersedes.
+        const generation = nextPageGeneration(pagePath);
+        if (isCurrentGeneration(pagePath, generation)) {
+          const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
+          if (!BascikConfig.isBuild) {
+            await mem.storePage({
+              relativePagePath,
+              absolutePagePath,
+              pageContent: distHtml,
+              usedComponentsNames,
+              fileDependencies,
+            });
+            void queueTranspiledPageWrite({
+              relativePagePath,
+              absolutePagePath,
+              distHtml,
+              generation,
+            });
+          }
+          eventEmitter.emit("transpiled", { relativePagePath });
+          resolveAvailable(relativePagePath);
+          return relativePagePath;
         }
-        eventEmitter.emit("transpiled", { relativePagePath });
-        resolveAvailable(relativePagePath);
-        if (!BascikConfig.isBuild) {
-          await writeTranspiledPage(result);
-        }
-        return relativePagePath;
+        // Superseded by a newer generation: do not publish stale state.
+        resolveAvailable(undefined);
+        return undefined;
       }
 
       const jobs = await expandPageToJobs(pagePath);
@@ -1386,6 +1483,11 @@ export const transpilePage = async (
 
 export const removePage = async (absolutePagePath: string): Promise<void> => {
   const relativePagePath = getRelativePath(absolutePagePath, "pages");
+
+  // A deletion is a new generation so any in-flight build for this page can
+  // no longer publish: a completed-but-superseded job must not resurrect the
+  // deleted page in memory, disk, or the reload stream.
+  bumpPageGeneration(absolutePagePath);
 
   // Memory
   if (!BascikConfig.isBuild) {
