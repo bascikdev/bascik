@@ -1,10 +1,20 @@
 # From Next.js
 
-Next.js and Bascik share file-based routing, but Next.js is a full-stack React framework while Bascik is a build-time HTML assembler. Switching is largely about removing framework abstractions: replace JSX pages with HTML files, replace data-fetching functions with build scripts, and replace special Next.js components with their standard HTML equivalents.
+Next.js and Bascik share intuitive file-based routing, but they serve different architectural goals. Next.js is a full-stack React framework offering server-side rendering, React Server Components (RSC), client-side hydration, and virtual DOM reconciliation. Bascik is a build-time HTML assembler and server that outputs standard vanilla HTML, CSS, and JavaScript with zero client runtime.
 
-## Pages Router → src/pages/
+Switching to Bascik replaces framework abstractions with standard web platform primitives: JSX components become vanilla HTML files, data-fetching functions become build scripts or server scripts, and specialized Next.js components become standard HTML tags.
 
-The Pages Router maps directly to Bascik's `src/pages/` directory. Each `.js` / `.tsx` page file becomes a plain `.html` file at the same relative path.
+## A Low-Risk First Step
+
+To evaluate Bascik on an existing Next.js codebase, migrate a single static marketing page (like an `/about` page) and a shared header component before touching complex application routes:
+
+1. Create `src/components/site-nav/site-nav.html` from your Next.js navigation component.
+2. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
+3. Run `yarn dev` to view your rendered zero-JS page.
+
+## Pages Router vs Bascik Routing
+
+The Next.js Pages Router maps cleanly to Bascik's `src/pages/` directory. Each `.js` / `.tsx` page file becomes a plain `.html` file at the same relative path:
 
 ```text
 Before (Next.js Pages Router)    After (Bascik)
@@ -13,15 +23,36 @@ pages/                           src/pages/
   about.js                         about.html
   blog/                            blog/
     index.js                         index.html
-    [slug].js                        my-first-post.html
-                                     another-post.html
+    [slug].js                        [slug].html
 ```
 
-> **No dynamic segments:** Bascik has no equivalent of `[slug].js`. Each URL needs its own `.html` file. For many programmatically generated pages, write a Node.js script that creates the files before running `bascik --build`.
+### Dynamic Routes: [slug].html Templates
+
+In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-build>` block that returns the list of slugs to generate at build time (see [Dynamic Routes](/dynamic-routes)).
+
+```html
+<!-- src/pages/blog/[slug].html -->
+<script data-bascik-build>
+  import { readdir } from 'node:fs/promises';
+  const files = await readdir('./content/posts');
+  const slugs = files.filter(f => f.endsWith('.md')).map(f => f.replace('.md', ''));
+  // Returns array of route params for static page generation
+  return slugs.map(slug => ({ slug }));
+</script>
+
+<article>
+  <script data-bascik-build>
+    import { readFile } from 'node:fs/promises';
+    import { marked } from 'marked';
+    const md = await readFile(`./content/posts/${context.params.slug}.md`, 'utf8');
+    console.log(marked(md));
+  </script>
+</article>
+```
 
 ## App Router Layouts → Shared Layout Components
 
-Next.js App Router uses `layout.tsx` files to wrap pages in shared UI. In Bascik, the `<html>`, `<head>`, and `<body>` tags live in each page file. Repeated structure goes into components.
+Next.js App Router uses `layout.tsx` files to wrap nested pages in shared UI. In Bascik, the `<html>`, `<head>`, and `<body>` tags live in each page file, and repeated layout structure lives in components with slots.
 
 ```jsx
 // app/layout.tsx (Next.js - before)
@@ -57,7 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 </html>
 ```
 
-If many pages share the same outer shell, extract it into a layout component that accepts a default slot for the page-specific content:
+If many pages share the same outer wrapper, extract it into a layout component that accepts a default slot for the page content:
 
 ```html
 <!-- src/components/site-layout/site-layout.html -->
@@ -85,11 +116,9 @@ If many pages share the same outer shell, extract it into a layout component tha
 </html>
 ```
 
-> **Head components:** Components work inside `<head>` too. Create a `<site-meta>` component for shared meta tags and viewport declarations, then include it on every page.
+## getStaticProps → Build Scripts
 
-## getStaticProps → Build Scripts or Inline HTML
-
-`getStaticProps` fetches or reads data at build time and injects it as props. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are supported.
+`getStaticProps` fetches data at build time and passes it as props. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are natively supported.
 
 ```jsx
 // pages/products.js (Next.js - before)
@@ -124,47 +153,9 @@ export default function Products({ products }) {
 </ul>
 ```
 
-## getStaticPaths → One File Per Route
-
-`getStaticPaths` tells Next.js which dynamic URLs to pre-render. In Bascik there are no dynamic segments, each URL is a separate `.html` file. Generate them in a script that runs before `bascik --build`.
-
-```json
-{
-  "scripts": {
-    "generate": "node scripts/generate-pages.js",
-    "build": "npm run generate && bascik --build"
-  }
-}
-```
-
-```js
-// scripts/generate-pages.js
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { marked } from 'marked';
-
-const posts = await readdir('./content/posts');
-await mkdir('./src/pages/blog', { recursive: true });
-
-// Read the HTML template
-const template = await readFile('./scripts/blog-template.html', 'utf8');
-
-for (const file of posts.filter(f => f.endsWith('.md'))) {
-  const slug = file.replace('.md', '');
-  const md = await readFile(`./content/posts/${file}`, 'utf8');
-  const body = marked(md);
-  
-  // Replace placeholders in the template
-  const html = template
-    .replaceAll('{{title}}', `${slug} - Blog`)
-    .replaceAll('{{body}}', body);
-
-  await writeFile(`./src/pages/blog/${slug}.html`, html);
-}
-```
-
 ## next/image → Standard img
 
-Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `height`, and `loading="lazy"` manually where you want lazy loading. Images in `src/pages/img/` are copied to `dist/` automatically.
+Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `height`, and `loading="lazy"` attributes where appropriate. Static assets in `src/pages/img/` or `src/public/` are copied to `dist/` automatically.
 
 ```jsx
 // Before (Next.js)
@@ -178,11 +169,11 @@ Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `h
 
 ## next/link → Standard a
 
-Replace `<Link href="...">` with a standard `<a href="...">`. There is no client-side navigation in Bascik, every link triggers a full page load, which is standard browser behavior for static sites.
+Replace `<Link href="...">` with a standard `<a href="...">`. Because Bascik sites do not require a heavy client router, navigation uses standard browser page requests.
 
 ## next/head → Inline head Tags
 
-Replace the `<Head>` component from `next/head` with regular `<title>` and `<meta>` tags in each page's `<head>` element.
+Replace the `<Head>` component from `next/head` with regular `<title>` and `<meta>` tags in each page's `<head>` element:
 
 ```jsx
 // pages/about.js (Next.js - before)
@@ -238,12 +229,13 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For purely static hosting deployments, handlers can also be lifted directly to Cloudflare Workers, Fastly Compute, Netlify Edge Functions, or AWS Lambda without rewriting because they use standard web APIs.
+Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For serverless edge deployments, handlers use standard web fetch interfaces.
 
-## CSS Modules → Paired .css Files
+## CSS Modules & Tailwind CSS
 
-Delete the `.module.css` file and create a plain `.css` file alongside the component HTML. Change `className={styles.foo}` to `class="foo"`. Bascik scopes class names at build time, no Webpack or PostCSS configuration required.
+- **CSS Modules:** Create a plain `.css` file alongside the component HTML (e.g. `src/components/card/card.css`). Replace `className={styles.foo}` with `class="foo"`. Bascik scopes class names at build time without requiring PostCSS or Webpack configuration.
+- **Tailwind CSS:** If your Next.js project uses Tailwind, you can keep your Tailwind classes and run Tailwind via PostCSS as documented in [Libraries](/libraries#tailwind-css).
 
-## TypeScript → Not Needed
+## TypeScript in Bascik
 
-Bascik component files are vanilla HTML. Type annotations are not applicable. If you have TypeScript utility scripts or content-generation scripts you want to keep, continue using TypeScript there, just not in Bascik component or page HTML files.
+Bascik component files are vanilla HTML. If you have TypeScript helper functions, data fetchers, or API routes, you can keep them in `.ts` files and import them directly into build scripts, server scripts, or API routes.

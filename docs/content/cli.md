@@ -324,7 +324,7 @@ Unused components (1)
 
 | Check | Category | Severity |
 | --- | --- | --- |
-| Config key and value validation (prompt 05 model) | `config-validation` | Error or warning by key |
+| Configuration key and value validation | `config-validation` | Error or warning by key |
 | Missing `BASCIK_SITE_URL` when `generate.sitemap` or `generate.robots` is enabled | `missing-site-url` | Error |
 | Pages directory unreadable or empty | `pages-directory` | Error |
 | Duplicate component tag names | `duplicate-component-name` | Error |
@@ -341,7 +341,7 @@ Unused components (1)
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
 
-Key severity mapping details from prompt 05 validation data:
+Key severity mapping details for configuration validation:
 
 - `pipeline.exec[].script` missing path: Error
 - `http.tls.keyFile`/`http.tls.certFile` unreadable: Error

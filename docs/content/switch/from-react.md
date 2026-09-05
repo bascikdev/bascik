@@ -1,24 +1,32 @@
 # From React
 
-React and Bascik both build UIs from reusable components. The core difference is that Bascik does all component work at build time and outputs vanilla HTML, there is no virtual DOM, no framework runtime, and no JSX. Switching is mostly mechanical: rename files, swap JSX syntax for HTML, and replace framework abstractions with their build-time or vanilla-JS equivalents.
+React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript.
 
-## File and Folder Setup
+## When to Switch vs Keep React
 
-Move your component source files into `src/components/`. The file name becomes the HTML tag name, so names must be hyphenated. Pair each component HTML file with a `.css` file in the same directory to replace CSS Modules.
+- **Switch to Bascik:** For landing pages, marketing sites, documentation, company portals, blogs, and content-first web applications where instant initial page loads, simple maintenance, and zero client runtime matter.
+- **Keep React:** For applications centered around complex, highly interactive client-side state trees (such as design tools, rich document editors, or real-time collaborative spreadsheets).
 
-```text
-Before (React)               After (Bascik)
-src/components/              src/components/
-  SiteNav.jsx                  site-nav/
-  SiteNav.module.css             site-nav.html
-  Card.jsx                       site-nav.css
-  Card.module.css              card/
-  AlertBox.jsx                   card.html
-  AlertBox.module.css            card.css
-                               alert-box/
-                                 alert-box.html
-                                 alert-box.css
-```
+## Mental Model Comparison
+
+| Concept | React | Bascik |
+| --- | --- | --- |
+| Component definition | JSX function returning React elements | Plain `.html` file in `src/components/` |
+| Component invocation | `<SiteNav prop="val" />` (requires import) | `<site-nav data-bascik-prop-*="val"></site-nav>` (auto-resolved) |
+| Child content | `props.children` | `<div data-bascik-slot></div>` |
+| Named content areas | Render props / Compound components | Named slots (`data-bascik-slot="name"`) |
+| Scoped styles | CSS Modules (`styles.foo`) / CSS-in-JS | Paired `.css` files or inline `<style>` (auto-scoped) |
+| Client interactivity | `useState`, `useEffect`, SyntheticEvents | Standard vanilla DOM APIs in `<script>` tags |
+| Build output | JS bundles + Client hydration runtime | Vanilla HTML, CSS, and optional scoped JS |
+
+## A Low-Risk First Step
+
+Migrate a simple static component (such as a card or navigation bar) to get familiar with Bascik's HTML component format:
+
+1. Extract your JSX markup into a standard HTML file in `src/components/site-nav/site-nav.html`.
+2. Move your CSS Module rules into `src/components/site-nav/site-nav.css`.
+3. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.
+4. Run `yarn dev` to inspect the scoped output.
 
 ## Component Syntax
 

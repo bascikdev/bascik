@@ -75,12 +75,23 @@ export const startHttpServer = async (): Promise<string> => {
     });
   });
 
-  return startServerInstance(server, "http", () => {
-    for (const socket of openSockets) {
-      try {
-        socket.destroy();
-      } catch { }
+  return startServerInstance(
+    server,
+    "http",
+    () => {
+      if (typeof server.closeIdleConnections === "function") {
+        try {
+          server.closeIdleConnections();
+        } catch { }
+      }
+    },
+    () => {
+      for (const socket of openSockets) {
+        try {
+          socket.destroy();
+        } catch { }
+      }
+      openSockets.clear();
     }
-    openSockets.clear();
-  });
+  );
 };

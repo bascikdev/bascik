@@ -121,9 +121,9 @@ On boot, `bascik --server` reads all compiled HTML documents from `dist/` into a
 
 ## Graceful Shutdown & Health Checks
 
-The production server responds to `SIGTERM` and `SIGINT` process signals by stopping acceptance of new TCP connections, finishing in-flight request streams, and exiting cleanly:
+The production server responds to `SIGTERM` and `SIGINT` process signals by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
 
-- **Built-in Health Checks:** Deploy `src/api/health.ts` for orchestrator liveness and readiness probes.
-- **Connection Draining:** In-flight streaming scripts and file uploads are given time to complete before the socket closes.
+- **Built-in Health Checks:** Deploy `src/api/health.ts` or query `/_health` for orchestrator liveness and readiness probes. Readiness transitions to 503 during draining while liveness remains 200.
+- **Connection Draining:** In-flight streaming scripts and requests complete within `http.timeouts.drain` before connections close. Forced socket termination only occurs if the deadline expires.
 
 > **Next:** See [Deploying](/deploying) for deployment guides on Node servers, Docker, PM2, and systemd.

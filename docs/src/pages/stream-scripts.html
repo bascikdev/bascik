@@ -47,10 +47,26 @@
 
         <component-demo data-bascik-prop-file="src/pages/stream-scripts.html">
           <div data-bascik-slot="example">
-            <aside class="alert-box">
-              <strong class="alert-box-title">System Online</strong>
-              <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
-            </aside>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+              <div>
+                <p
+                  style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #6b7280); margin-bottom: 0.35rem;">
+                  Stage 1: Initial Paint (Shell &amp; Pending Placeholder)</p>
+                <aside class="alert-box" style="opacity: 0.85;">
+                  <strong class="alert-box-title">System Status</strong>
+                  <p class="alert-box-message">Loading live metrics…</p>
+                </aside>
+              </div>
+              <div>
+                <p
+                  style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #6b7280); margin-bottom: 0.35rem;">
+                  Stage 2: Stream Chunk Arrives</p>
+                <aside class="alert-box">
+                  <strong class="alert-box-title">System Online</strong>
+                  <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
+                </aside>
+              </div>
+            </div>
           </div>
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">

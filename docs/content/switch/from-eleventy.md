@@ -1,6 +1,25 @@
 # From Eleventy
 
-Eleventy is a static site generator; Bascik is a build tool for HTML components. Both produce vanilla HTML with no client-side framework runtime. The main conceptual shift is that Bascik uses its own component format, vanilla HTML files resolved by tag name, instead of Nunjucks, Liquid, or Handlebars templates. Front matter and template inheritance map to build scripts and slot-based layout components.
+Eleventy is a static site generator centered on template languages and Markdown rendering; Bascik is a build tool for HTML components. Both produce vanilla HTML with zero client-side runtime. The main conceptual shift is that Bascik uses standard HTML component files resolved by tag name, rather than template languages like Nunjucks, Liquid, or Handlebars.
+
+## Mental Model Comparison
+
+| Concept | Eleventy | Bascik |
+| --- | --- | --- |
+| Component partial | `_includes/nav.njk` (`{% include %}`) | `src/components/site-nav/site-nav.html` (`<site-nav>`) |
+| Layout inheritance | `{% extends "base.njk" %}` | `<site-layout>` with `data-bascik-slot` |
+| Front matter / Global data | Front matter + `_data/` directory | `<script data-bascik-build>` with Node.js `fs` |
+| Scoped styles | Global CSS or build tools | Paired `.css` files (auto-scoped and deduplicated) |
+| Client interactivity | Static JS files in output | `<script>` tags in components (auto-scoped instances) |
+
+## A Low-Risk First Step
+
+Migrate a simple partial (like a header or footer) into a Bascik component:
+
+1. Create `src/components/site-footer/site-footer.html`.
+2. Add your footer HTML markup inside it.
+3. Use `<site-footer></site-footer>` inside `src/pages/index.html`.
+4. Run `yarn dev` to inspect the generated HTML.
 
 ## Template Languages → HTML Component Files
 

@@ -1,6 +1,26 @@
 # From Astro
 
-Astro and Bascik are both build-time component systems that output zero-JS HTML by default. The concepts translate closely: `.astro` files become `.html` component files, frontmatter code blocks become `<script data-bascik-build>` tags, `Astro.props` becomes `data-bascik-prop-*` attributes, and Astro's `<slot />` becomes Bascik's `data-bascik-slot` attribute.
+Astro and Bascik both compile component-based markup into zero-runtime HTML by default. The key conceptual difference lies in authoring: Astro uses custom `.astro` templates with JS frontmatter and an islands architecture for client hydration, whereas Bascik uses standard vanilla HTML files resolved by custom tag name, running build scripts in Node.js and scoping vanilla JavaScript and CSS automatically.
+
+## Mental Model Comparison
+
+| Concept | Astro | Bascik |
+| --- | --- | --- |
+| Component format | `.astro` file with frontmatter (`---`) | Vanilla `.html` file in `src/components/` |
+| Style scoping | `<style>` block in `.astro` | Paired `.css` file or inline `<style>` |
+| Build-time logic | Component frontmatter | `<script data-bascik-build>` block |
+| Content passing | `<slot />` / `<slot name="…" />` | `data-bascik-slot` / `data-bascik-slot="name"` |
+| Component props | `Astro.props` | `data-bascik-prop-*` and `data-bascik-attr-*` |
+| Client interactivity | `client:*` directives + UI framework island | Vanilla JS in `<script>` tags (auto-scoped) |
+
+## A Low-Risk First Step
+
+Convert a single UI component, such as a card or navigation bar, to Bascik's HTML format:
+
+1. Create `src/components/site-nav/site-nav.html` with your navigation markup.
+2. Move any scoped styles into `src/components/site-nav/site-nav.css`.
+3. Include `<site-nav></site-nav>` inside `src/pages/index.html`.
+4. Run `yarn dev` to view the rendered page.
 
 ## .astro Files → .html Component Files
 

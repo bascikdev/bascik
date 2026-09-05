@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
-import { eventEmitter, runShutdownHandlers } from "./events.ts";
+import { eventEmitter, registerShutdownHandler, runShutdownHandlers } from "./events.ts";
 import { getHttpPath } from "./paths.ts";
 import { MIME_MAP } from "./mime.ts";
 import {
@@ -114,6 +114,10 @@ export const getActiveRateLimiter = (): RateLimiter => {
       ? rateLimitConfig.max
       : DEFAULT_RATE_LIMIT_MAX;
     activeRateLimiter = new RateLimiter({ windowMs, max });
+    activeRateLimiter.startSweep();
+    registerShutdownHandler(() => {
+      resetActiveRateLimiter();
+    });
   }
   return activeRateLimiter;
 };
@@ -778,7 +782,8 @@ export const createRequestHandler = () => {
 export const startServerInstance = async (
   server: NetServer,
   protocol: "http" | "https",
-  onShutdown?: () => void
+  onShutdown?: () => void,
+  onForceClose?: () => void
 ): Promise<string> => {
   const hostname = BascikConfig.http.hostname ?? "localhost";
   const defaultPort = protocol === "https" ? 8443 : 8080;
@@ -831,6 +836,7 @@ export const startServerInstance = async (
     server,
     drainTimeout,
     onShutdown,
+    onForceClose,
     runShutdownHandlers,
   });
 

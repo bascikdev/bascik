@@ -137,7 +137,7 @@ For each component tag found:
 
 ### Step 1: Scoping pipeline
 
-A fresh `instanceId` (a random 8-byte hex string) is generated for this occurrence of the component. An ordered list of transform functions is assembled and applied in a pipeline (each step receives the output of the previous):
+A deterministic `instanceId` (an 8-character hex hash derived from page path, component name, and occurrence ordinal via `deriveInstanceId` in `names.ts`) is generated for this occurrence of the component. An ordered list of transform functions is assembled and applied in a pipeline (each step receives the output of the previous):
 
 1. `prefixElementAttribute(c, "id", instanceId)`: scopes `id` attributes and all corresponding JS DOM selector references.
 2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls.

@@ -15,7 +15,8 @@ export interface GracefulShutdownOptions {
     closeAllConnections?: () => void;
   };
   drainTimeout?: number;
-  onShutdown?: () => void;
+  onShutdown?: () => void | Promise<void>;
+  onForceClose?: () => void;
   runShutdownHandlers?: () => Promise<void>;
   exit?: (code: number) => void;
   clock?: FrameworkClock;
@@ -46,45 +47,88 @@ export const createGracefulShutdownHandler = (options: GracefulShutdownOptions):
     setServerHealthState("draining");
     console.log(`\nReceived ${signal}, shutting down gracefully…`);
 
-    // 1. Stop accepting new connections
+    // 1. Arm deadline timer first before any asynchronous or synchronous settlement
+    forceExitTimer = clock.setTimeout(() => {
+      console.error("Graceful shutdown timeout: forcing exit");
+      try {
+        if (typeof options.server.closeAllConnections === "function") {
+          options.server.closeAllConnections();
+        }
+      } catch { }
+      try {
+        if (typeof options.onForceClose === "function") {
+          options.onForceClose();
+        }
+      } catch { }
+      performExit(1);
+    }, drainTimeout);
+
+    if (typeof (forceExitTimer as any)?.unref === "function") {
+      (forceExitTimer as any).unref();
+    }
+
+    // 2. Stop accepting new connections and close idle keepalive connections
     if (typeof options.server.closeIdleConnections === "function") {
       try {
         options.server.closeIdleConnections();
       } catch { }
     }
 
-    // 2. Custom protocol cleanup callback (sockets/sessions)
+    // 3. Graceful protocol notification (e.g. HTTP/2 session.close() / GOAWAY)
     if (options.onShutdown) {
       try {
         options.onShutdown();
-      } catch { }
+      } catch (err) {
+        console.error("[bascik] Error in onShutdown handler:", err);
+      }
     }
 
-    if (typeof options.server.closeAllConnections === "function") {
-      try {
-        options.server.closeAllConnections();
-      } catch { }
+    // 4. Combined barrier: await BOTH server.close() and shutdownHandlersRunner()
+    let serverClosed = false;
+    let serverCloseError: Error | null = null;
+    let handlersFinished = false;
+    let handlersError: unknown = null;
+
+    const checkCompletion = () => {
+      if (serverClosed && handlersFinished) {
+        const hasError = !!serverCloseError || !!handlersError;
+        performExit(hasError ? 1 : 0);
+      }
+    };
+
+    try {
+      options.server.close((err) => {
+        serverClosed = true;
+        if (err) {
+          serverCloseError = err;
+          console.error("Error closing server:", err);
+        }
+        checkCompletion();
+      });
+    } catch (err) {
+      serverClosed = true;
+      serverCloseError = err as Error;
+      checkCompletion();
     }
 
-    // 3. Await registered shutdown handlers (watchers, exec children)
-    shutdownHandlersRunner().catch((err) => {
-      console.error("[bascik] Error running shutdown handlers:", err);
-    });
-
-    options.server.close((err) => {
-      if (err) console.error("Error closing server:", err);
-      performExit(0);
-    });
-
-    // Force exit if server close hangs past configured drain timeout
-    forceExitTimer = clock.setTimeout(() => {
-      console.error("Graceful shutdown timeout: forcing exit");
-      performExit(1);
-    }, drainTimeout);
-
-    if (typeof (forceExitTimer as any)?.unref === 'function') {
-      (forceExitTimer as any).unref();
+    let handlersPromise: Promise<void>;
+    try {
+      handlersPromise = Promise.resolve(shutdownHandlersRunner());
+    } catch (err) {
+      handlersPromise = Promise.reject(err);
     }
+
+    handlersPromise
+      .then(() => {
+        handlersFinished = true;
+        checkCompletion();
+      })
+      .catch((err) => {
+        handlersFinished = true;
+        handlersError = err;
+        console.error("[bascik] Error running shutdown handlers:", err);
+        checkCompletion();
+      });
   };
 };
 

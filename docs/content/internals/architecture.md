@@ -65,16 +65,21 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `manifest.ts` | Collects written file metadata (forward-slash path, SHA-256 hash, byte size) as writes occur and writes `dist/.bascik/manifest.json` when `generate.manifest` is enabled. |
 | `mem.ts` | In-memory page store. Stores brotli-compressed page buffers keyed by HTTP path, and maintains a reverse index mapping each component name to the set of pages that use it. |
 | `mime.ts` | A static MIME type map used by the HTTP/2 server and the watch system's file-type filter. |
-| `names.ts` | Generates unique instance IDs (`getUniqueId`) and hashes long scoped names to short alphanumeric strings (`minifyAttributeName` via SHA-256 with Base62 encoding) when identifier minification is enabled. |
+| `names.ts` | Generates unique instance IDs (`deriveInstanceId`) and hashes long scoped names to short alphanumeric strings (`minifyAttributeName` via SHA-256 with Base62 encoding) when identifier minification is enabled. |
 | `page-worker.ts` | Worker thread entry point. Receives a page job, calls `transpilePage()`, encodes the rendered HTML to UTF-8 bytes, and posts the result back with that `ArrayBuffer` in the `postMessage` transfer list so the page crosses the thread boundary with no structured clone copy. |
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
+| `rate-limit.ts` | In-memory sliding-window rate limiter for server request protection. |
+| `script-registry.ts` | Manages compiled script registries and handler maps for request-time execution. |
 | `server-dev.ts` | Dev server additions (`bascik`). Binds the shared `server.ts` immediately, starts dev `exec` scripts alongside it, and flips the boot flag (`boot-done`) once the initial transpile lands. |
 | `server-prod.ts` | Production server additions (`bascik --server`). Pre-loads pre-rendered `dist/` HTML and the server-script sidecar into `mem.ts`, then boots the shared `server.ts`. |
-| `server-scripts.ts` | Loads and executes `<script data-bascik-server>` blocks at request time, remapping stack traces to the authored file and line before injecting the returned markup into the page. |
+| `server-scripts.ts` | Loads and executes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks at request time, remapping stack traces to the authored file and line before emitting markup into the page stream. |
+| `server-sidecar.ts` | Production sidecar manager for server script registry serialization and startup loading. |
 | `server.ts` | Shared server core used by both dev and production. Dispatches to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs the request handler, and manages server instances. |
+| `shielding.ts` | Central string shielding utility protecting raw-text elements, comments, and preserved blocks from scoping regex transforms. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
+| `sse.ts` | Server-Sent Events (SSE) connection manager powering live reload and dev server notifications. |
 | `stack-trace.ts` | Cleans and remaps stack traces from temporary script files back to original source template files and line offsets. |
 | `styles.ts` | All CSS transformations: element selector conversion, class prefixing, `@keyframes` / `@layer` / container scoping, custom property prefixing, CSS deduplication. |
 | `types.ts` | Central TypeScript type definitions: `BascikComponent`, `ComponentList`, `TranspileResult`, `TranspilePageResult`, `BascikConfigOptions`, `StoredPage`. |

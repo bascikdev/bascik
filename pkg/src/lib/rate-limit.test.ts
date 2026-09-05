@@ -101,13 +101,44 @@ describe("RateLimiter sliding window", () => {
 
   it("tracking structure is bounded and fails closed (rejects) when capacity is reached", () => {
     const smallLimiter = new RateLimiter({ windowMs: 10_000, max: 5, maxTrackedIps: 3 });
-    // Add 3 distinct IPs
+    // Add 3 distinct IPs at t = 1000
     smallLimiter.isRateLimited("10.0.0.1", 1000);
     smallLimiter.isRateLimited("10.0.0.2", 1000);
     smallLimiter.isRateLimited("10.0.0.3", 1000);
 
-    // 4th IP exceeds bound -> fails closed (true = rate limited / blocked)
+    // 4th IP exceeds bound while all 3 are active -> fails closed (true = rate limited / blocked)
     expect(smallLimiter.isRateLimited("10.0.0.4", 1000)).toBe(true);
+    smallLimiter.destroy();
+  });
+
+  it("reclaims expired entries under capacity pressure without requiring manual sweep", () => {
+    const smallLimiter = new RateLimiter({ windowMs: 100, max: 5, maxTrackedIps: 2 });
+    expect(smallLimiter.isRateLimited("a", 0)).toBe(false);
+    expect(smallLimiter.isRateLimited("b", 0)).toBe(false);
+
+    // At t = 10000 (well past 100ms windowMs), previous entries are expired.
+    // A new identity 'c' arrives: capacity pressure triggers automatic expiry reclamation.
+    expect(smallLimiter.isRateLimited("c", 10000)).toBe(false);
+    expect(smallLimiter.isRateLimited("d", 10000)).toBe(false);
+    // Now 'c' and 'd' are active; 3rd identity 'e' at t = 10000 should fail closed.
+    expect(smallLimiter.isRateLimited("e", 10000)).toBe(true);
+    smallLimiter.destroy();
+  });
+
+  it("does not discard active entries prematurely during capacity pressure", () => {
+    const smallLimiter = new RateLimiter({ windowMs: 1000, max: 5, maxTrackedIps: 2 });
+    smallLimiter.isRateLimited("a", 100);
+    smallLimiter.isRateLimited("b", 500);
+
+    // At t = 600, 'a' (age 500) and 'b' (age 100) are both active (< 1000ms).
+    // Capacity is full of live entries -> new identity 'c' fails closed.
+    expect(smallLimiter.isRateLimited("c", 600)).toBe(true);
+
+    // At t = 1200, 'a' (started at 100, age 1100) has expired (> 1000ms), but 'b' (started at 500, age 700) is still active.
+    // 'c' should be admitted by reclaiming 'a'.
+    expect(smallLimiter.isRateLimited("c", 1200)).toBe(false);
+    // 'b' is still tracked and active
+    expect(smallLimiter.isRateLimited("b", 1200)).toBe(false);
     smallLimiter.destroy();
   });
 
