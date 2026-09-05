@@ -38,7 +38,7 @@ Concurrent invalidation entrypoints (`processPageBatch`, `pageProcessing`, and t
 
 Bascik assigns every page a monotonically increasing **generation** at publication time. A job carries the generation it was claimed under and, when it completes, applies its side effects (memory store, disk write, sidecar record, `transpiled` event) only if that generation is still the latest for the page:
 
-- `processPageBatch` and `pageProcessing` claim a **fresh** generation when publishing, so a newer edit always supersedes an older one regardless of completion order.
+- `processPageBatch` claims a **fresh** generation at enqueue time, and `pageProcessing` claims one when it is about to publish, so a newer edit always supersedes an older one regardless of completion order.
 - The worker path in `processAllPages` captures the page's **current** generation without bumping, so a broad worker rebuild can never become "newer" than a concurrent specific page edit. It publishes only if that captured generation is still current when the worker result lands.
 - `removePage` bumps the generation, so in-flight work for a deleted page cannot resurrect it.
 - Dynamic route templates claim one generation shared by their generated route set, so a route is never dropped by a stale half of a template rebuild.
