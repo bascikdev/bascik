@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
-const { mockServer, mockCreateSecureServer, registeredShutdownFns } = vi.hoisted(() => {
+const { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts } = vi.hoisted(() => {
   const mockServer = {
     on: vi.fn().mockReturnThis(),
     once: vi.fn().mockReturnThis(),
@@ -17,7 +17,8 @@ const { mockServer, mockCreateSecureServer, registeredShutdownFns } = vi.hoisted
   };
   const mockCreateSecureServer = vi.fn(() => mockServer);
   const registeredShutdownFns: Array<() => void | Promise<void>> = [];
-  return { mockServer, mockCreateSecureServer, registeredShutdownFns };
+  const mockExecuteServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
+  return { mockServer, mockCreateSecureServer, registeredShutdownFns, mockExecuteServerScripts };
 });
 
 vi.mock("node:http", () => ({
@@ -104,14 +105,13 @@ vi.mock("./events.js", () => ({
 // observation point so request-context assertions read naturally: the mocked
 // planner records the html, and the mocked plan executor forwards to the spy.
 vi.mock("./server-scripts.js", () => {
-  const executeServerScripts = vi.fn(async (html: string, ..._rest: unknown[]) => html);
   return {
-    executeServerScripts,
+    executeServerScripts: mockExecuteServerScripts,
     // The plan is stored on the page (prompt 67); makePage builds a stub plan
     // carrying the html so the executor can forward it to the spy.
     executeServerScriptPlan: vi.fn(
       async (plan: any, request: unknown, context: unknown, timeout: number, filePath: string) =>
-        Buffer.from(await executeServerScripts(plan.__html, request, context, timeout, filePath)),
+        Buffer.from(await mockExecuteServerScripts(plan.__html, request, context, timeout, filePath)),
     ),
     streamServerScripts: vi.fn(),
     DEFAULT_SCRIPT_TIMEOUT_MS: 5000,
@@ -169,6 +169,7 @@ beforeEach(async () => {
   mockExec.mockClear();
   mockExecFile.mockClear();
   mockCreateReadStream.mockClear();
+  mockExecuteServerScripts.mockClear();
   mockServer.listen.mockClear();
   mockServer.close.mockClear();
   mockMem.getPage.mockClear();
@@ -516,6 +517,37 @@ describe("startHttp2Server – stream handler", () => {
       const headers = stream.respond.mock.calls[0][0];
       expect(headers).not.toHaveProperty("content-encoding");
       expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("serves identity without compression when client specifies br;q=0, gzip;q=0", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "br;q=0, gzip;q=0"));
+      const headers = stream.respond.mock.calls[0][0];
+      expect(headers).not.toHaveProperty("content-encoding");
+      expect(stream.end).toHaveBeenCalledWith(page.content);
+    });
+
+    it("respects quality weights when gzip has higher weight than br (br;q=0.5, gzip;q=0.9)", async () => {
+      const page = makePage({
+        content: Buffer.from("<html>Home</html>"),
+        compressedContent: Buffer.from("br-compressed"),
+        gzipContent: Buffer.from("gzip-compressed"),
+      });
+      mockMem.getPage.mockReturnValue(page);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      await handler(stream, makeHeaders("/", "GET", "br;q=0.5, gzip;q=0.9"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ "content-encoding": "gzip" }),
+      );
+      expect(stream.end).toHaveBeenCalledWith(page.gzipContent);
     });
 
     it("answers 304 for a gzip-suffixed If-None-Match from a gzip-only client", async () => {
@@ -982,8 +1014,23 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     expect(stream2.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 304 }),
     );
-    expect(stream2.end).toHaveBeenCalledWith();
-    (BascikConfig as any).cacheHttp = false;
+
+    // Third GET with list containing matching ETag and other tags → 304
+    const stream3 = makeStream();
+    await handler(stream3, makeHeaders("/style.css", "GET", "", undefined, { "if-none-match": `"other-tag", ${etag}` }));
+    expect(stream3.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 304 }),
+    );
+
+    // Fourth GET with weak representation of matching ETag → 304
+    const stream4 = makeStream();
+    const weakEtag = `W/${etag}`;
+    await handler(stream4, makeHeaders("/style.css", "GET", "", undefined, { "if-none-match": weakEtag }));
+    expect(stream4.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 304 }),
+    );
+
+    (BascikConfig as any).http.httpCache = false;
   });
 });
 
@@ -1639,9 +1686,8 @@ describe("startHttp2Server – graceful shutdown", () => {
   it("closes open sessions on SIGINT so long-lived SSE streams do not block shutdown", async () => {
     await startHttp2Server();
 
-    const [, sessionHandler] = mockServer.on.mock.calls.find(
-      (c: any[]) => c[0] === "session",
-    ) as [string, (session: { close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; once: ReturnType<typeof vi.fn> }) => void];
+    const sessionCalls = mockServer.on.mock.calls.filter((c: any[]) => c[0] === "session");
+    const sessionHandler = sessionCalls[sessionCalls.length - 1]?.[1] as (session: { close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; once: ReturnType<typeof vi.fn> }) => void;
 
     const mockSession = { close: vi.fn(), destroy: vi.fn(), once: vi.fn(), on: vi.fn() };
     sessionHandler(mockSession);
@@ -2556,6 +2602,7 @@ describe("startHttp2Server – onError suppresses ERR_HTTP2_INVALID_STREAM", () 
   });
 
   it("does not log or respond when ERR_HTTP2_INVALID_STREAM is caught (client disconnected mid-request)", async () => {
+    consoleSpy.mockClear();
     const page = makePage({ content: Buffer.from("<html>Hi</html>") });
     mockMem.getPage.mockReturnValue(page);
     const handler = getStreamHandler()!;

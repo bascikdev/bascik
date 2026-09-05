@@ -169,7 +169,7 @@ Production mode enforces a sliding-window rate limit per IP address (by default 
 
 - **Sliding Sub-Windows:** Uses a ring of 10 sub-buckets per window to smooth boundary bursts and prevent double-budget attacks at window edges.
 - **Trust Proxy Support:** When `http.trustProxy: true` is configured, client IP derivation reads the rightmost entry of `X-Forwarded-For` (the address appended by the immediate trusted proxy). When `false` (default), forwarded headers are ignored to prevent spoofing.
-- **Bounded Tracking Map:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). If capacity is saturated by flood attacks, the limiter fails closed to preserve server memory. Periodic cleanup reaps stale entries.
+- **Bounded Tracking Map & Expiry Lifecycle:** The internal IP tracking Map is capped (`MAX_TRACKED_IPS = 10_000`). When capacity pressure occurs, the limiter automatically reclaims expired identities before admitting new clients. If capacity remains fully occupied by active identities within the window, the limiter fails closed to preserve server memory. A background sweep timer periodically cleans up stale identities during active server operation and shuts down cleanly during server exit.
 - **Configurable:** Accepts `boolean` or `{ window?: number, max?: number }` in `bascik.config.ts`.
 - **SSE Streams:** Excluded from page rate limit checks.
 - **Development Mode:** Rate limiting is inactive during development mode.
@@ -243,7 +243,7 @@ Static asset requests are normalized and validated to ensure the resolved path r
 
 Static assets and dynamic pages use deterministic SHA-256 content hashes for ETags (computed once and cached in memory per file path), rather than fragile timestamp-based or mtime-based ETags. This prevents cache thrashing across multi-instance load balancers and deploys. Distinct ETags are emitted for compressed representations (`"hash-br"`, `"hash-gzip"`), so a `304` is only returned when the client's cached representation matches the encoding it would receive now.
 
-Compression negotiation supports Brotli (`br`) with Gzip (`gzip`) as the fallback for legacy clients, for both in-memory pages and static assets. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
+Compression negotiation follows RFC 9110 Section 12.5.3, parsing quality weights (`q`), wildcards (`*`), and explicit exclusions (`q=0`) to select between Brotli (`br`), Gzip (`gzip`), and uncompressed (`identity`) representations. Static assets respect a size threshold and skip already-compressed formats (images, videos, WOFF2). On-demand static compression uses single-flight deduplication and bounded in-memory representation caching. Concurrent requests for the same un-precompressed asset share a single asynchronous compression task without blocking the event loop or performing redundant compression work. In-memory representations are subject to per-item and cache-size limits, and are invalidated immediately when underlying file metadata changes. Conditional requests (`If-None-Match`) support comma-separated validator lists and weak comparison according to RFC 9110 Section 13.1.2 and RFC 9111. 304 Not Modified responses preserve `Vary` and `Cache-Control` headers for downstream proxy compliance.
 
 ### Crash Net & Stream Error Handling
 
