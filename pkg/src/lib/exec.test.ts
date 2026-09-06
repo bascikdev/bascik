@@ -162,10 +162,12 @@ describe("startExecDev", () => {
     expect(mockWatch).not.toHaveBeenCalled();
   });
 
-  it("lazy-loads chokidar and starts watched scripts", async () => {
+  it("lazy-loads chokidar and registers watchers without re-running completed pre work", async () => {
     cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     await startExecDev();
-    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    // Startup execution is owned by the phase runner; registration must not
+    // rerun already-completed pre/parallel/post work (prompt 109).
+    expect(mockSpawn).toHaveBeenCalledTimes(0);
     expect(mockWatch).toHaveBeenCalledTimes(1);
   });
 
@@ -177,10 +179,13 @@ describe("startExecDev", () => {
     watcher.handlers.all("change", "content/doc.md");
     await new Promise((r) => setTimeout(r, 70));
 
-    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
     expect(mockEventEmit).toHaveBeenCalledWith(
       "exec-completed",
-      expect.objectContaining({ path: "content/doc.md" }),
+      expect.objectContaining({
+        entry: { script: "scripts/gen.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
     );
   });
 
@@ -236,7 +241,8 @@ describe("startExecDev", () => {
     watcher.handlers.all();
     await new Promise((r) => setTimeout(r, 70));
 
-    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    // No startup run; the three rapid triggers coalesce into a single run.
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
   it("coordinates watched exec triggers with dependent page transpile before emitting reload", async () => {
@@ -252,8 +258,45 @@ describe("startExecDev", () => {
     // Must emit coordinated event or coordinate with processing pipeline
     expect(mockEventEmit).toHaveBeenCalledWith(
       "exec-completed",
-      expect.objectContaining({ path: "content/doc.md" }),
+      expect.objectContaining({
+        entry: { script: "scripts/gen.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
     );
+  });
+
+  it("emits exec-failed with a located error when a watched producer exits non-zero", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", watch: ["content/"] }];
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await startExecDev();
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "content/doc.md");
+    await new Promise((r) => setTimeout(r, 70));
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-failed",
+      expect.objectContaining({
+        entry: { script: "scripts/fail.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
+    );
+    expect(errorSpy).toHaveBeenCalledWith('[bascik] exec error:', expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
+  it("ignores its own script path so a producer does not self-trigger (cyclic self-watch)", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["scripts/"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "scripts/gen.ts");
+    await new Promise((r) => setTimeout(r, 70));
+
+    // The producer's own path is filtered out before the debounced run.
+    expect(mockSpawn).toHaveBeenCalledTimes(0);
+    expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
   });
 });
 

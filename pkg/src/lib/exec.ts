@@ -249,10 +249,21 @@ export const startExecParallel = async (options?: ExecOptions): Promise<void> =>
   );
 };
 
+/** Normalized watch glob list for an exec entry. */
+const watcherPatterns = (entry: ExecEntry): string[] =>
+  Array.isArray(entry.watch) ? entry.watch : [entry.watch as string];
+
 /**
- * Fire watch-enabled exec entries async on dev startup and set up chokidar
- * re-run watchers with debounce. Build-only entries (no `watch`) are skipped.
- * Returns a Promise that resolves when initial watched exec tasks finish.
+ * Fire watch-enabled exec entries in dev mode and set up chokidar re-run
+ * watchers with debounce.
+ *
+ * Startup execution is OWNED by the phase runner (`runExecPhase("pre")`,
+ * `startExecParallel`, `runExecPhase("post")`), which has already executed a
+ * watched entry before this function is called. Registering watch behavior
+ * therefore must NOT rerun that already-completed pre/parallel/post work:
+ * this function only registers event-driven watchers. Each started producer
+ * task is observed, and its outcome reaches the exec publication coordinator
+ * (a listener installed by the dev lifecycle owner), never silently dropped.
  */
 export const startExecDev = (options?: ExecOptions): Promise<void> => {
   const clock = options?.clock ?? nativeClock;
@@ -262,13 +273,14 @@ export const startExecDev = (options?: ExecOptions): Promise<void> => {
   if (watchedEntries.length === 0) return Promise.resolve();
 
   return import('chokidar').then(({ default: chokidar }) => {
-    const initialRuns: Promise<unknown>[] = [];
-
     for (const entry of watchedEntries) {
       if (!entry.watch) continue;
       let running = false;
       let pending = false;
-      const lastChangedPath = { current: undefined as string | undefined };
+      // Retain every changed path in a pending batch, not just the last
+      // filename, so the coordinator can route all of a generation's source
+      // and output edits to the affected consumers exactly once.
+      const pendingPaths: string[] = [];
 
       const debouncedAction = debounce(
         () => {
@@ -277,12 +289,19 @@ export const startExecDev = (options?: ExecOptions): Promise<void> => {
             return;
           }
           running = true;
-          const targetPath = lastChangedPath.current;
+          const batch = [...pendingPaths];
+          pendingPaths.length = 0;
           runScript(entry, options)
             .then(() => {
-              eventEmitter.emit('exec-completed', { path: targetPath });
+              // The producer lifecycle coordinator flushes consumers after
+              // this completion. All started tasks are observed; a genuine
+              // failure publishes an honest build-error below.
+              eventEmitter.emit('exec-completed', { entry, paths: batch });
             })
-            .catch((err) => console.error('[bascik] exec error:', err))
+            .catch((err) => {
+              console.error('[bascik] exec error:', err);
+              eventEmitter.emit('exec-failed', { entry, paths: batch, error: err });
+            })
             .finally(() => {
               running = false;
               if (pending) {
@@ -295,36 +314,64 @@ export const startExecDev = (options?: ExecOptions): Promise<void> => {
         { clock },
       );
 
-      const triggerRun = (changedPath?: string) => {
-        if (changedPath) lastChangedPath.current = changedPath;
-        debouncedAction();
-      };
-
-      // Non-blocking startup run: no reload needed on first run
-      running = true;
-      const initialRun = runScript(entry, options)
-        .catch((err) => console.error('[bascik] exec error:', err))
-        .finally(() => {
-          running = false;
-          if (pending) {
-            pending = false;
-            triggerRun();
-          }
-        });
-      initialRuns.push(initialRun);
-
-      const patterns = Array.isArray(entry.watch) ? entry.watch : [entry.watch];
+      const patterns = watcherPatterns(entry);
       const watcher = chokidar
-        .watch(patterns, { ignoreInitial: true })
+        .watch(patterns, { ignoreInitial: true, persistent: true })
         .on('all', (_event, changedPath) => {
-          triggerRun(typeof changedPath === 'string' ? changedPath : undefined);
+          // Avoid cyclic self-watch: a producer writing its own script or a
+          // path it alone owns must not re-trigger itself.
+          if (typeof changedPath === 'string') {
+            if (!execWatchCoversPath(patterns, changedPath, entry.script)) return;
+            pendingPaths.push(changedPath);
+          }
+          debouncedAction();
         });
       registerShutdownHandler(() => {
         debouncedAction.cancel();
         return watcher.close();
       });
     }
+    return Promise.resolve();
+  });
+};
 
-    return Promise.all(initialRuns).then(() => { });
+/**
+ * True when `changedPath` (relative or absolute) is covered by an exec watch
+ * glob, ignoring the producer's own script so a generator does not re-trigger
+ * itself (cyclic self-watch). Conservative overlap only over-watches a
+ * generation; it never drops a required edit.
+ */
+export const execWatchCoversPath = (
+  patterns: string[],
+  changedPath: string,
+  script?: string,
+): boolean => {
+  const cwdPrefix = `${process.cwd()}/`.replace(/\\/g, "/");
+  const normalized = changedPath.replace(/\\/g, "/");
+  const rel = normalized.startsWith(cwdPrefix)
+    ? normalized.slice(cwdPrefix.length)
+    : normalized;
+
+  if (script) {
+    const resolvedScript = resolve(process.cwd(), script).replace(/\\/g, "/");
+    const relScript = resolvedScript.startsWith(cwdPrefix)
+      ? resolvedScript.slice(cwdPrefix.length)
+      : resolvedScript;
+    if (rel === relScript || rel.startsWith(`${relScript}/`)) return false;
+  }
+
+  return patterns.some((pattern) => {
+    const pat = pattern.replace(/\\/g, "/");
+    if (pat.endsWith("/")) {
+      return rel === pat.slice(0, -1) || rel.startsWith(pat);
+    }
+    if (!/[?*[\]{}()!+@]/.test(pat)) {
+      // A literal path pattern serves as a directory base: it matches the path
+      // or any descendant, so `watch: ['src/content/docs']` overlaps edits
+      // inside that directory exactly as `'src/content/docs/'` would.
+      return pat === rel || rel.startsWith(`${pat}/`);
+    }
+    const base = pat.replace(/[?*[\]{}()!+@]/g, "").replace(/\/\*+/g, "/");
+    return rel.startsWith(base) || pat === rel;
   });
 };

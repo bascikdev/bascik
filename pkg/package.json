@@ -67,6 +67,7 @@
     "test:coverage": "vitest run --coverage.enabled",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts --reporter=line",
+    "e2e:dev:exec": "playwright test --config e2e/playwright.dev-exec.config.ts --reporter=line && playwright test --config e2e/playwright.dev-exec-gated.config.ts --reporter=line",
     "e2e:prod": "yarn e2e:prod:http1 && yarn e2e:prod:http2",
     "e2e:prod:http1": "playwright test --config e2e/playwright.server.config.ts --reporter=line",
     "e2e:prod:http2": "playwright test --config e2e/playwright.server-http2.config.ts --reporter=line",

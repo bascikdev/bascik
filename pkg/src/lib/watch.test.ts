@@ -895,24 +895,45 @@ describe("watchFiles – error resiliency", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", () => {
-  it("coordinates reload notifications when a path is present in both pipeline.watchPaths and exec.watch", async () => {
+  it("defers an overlapped watch-path edit to the exec producer instead of recompiling directly", async () => {
     (BascikConfig as any).pipeline = {
       watchPaths: ["src/content/docs"],
       exec: [{ script: "scripts/gen-docs.ts", watch: ["src/content/docs"] }],
     };
     await watchFiles();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
 
-    // Trigger change in the overlapping watch path
+    // Trigger change in the overlapping watch path: the producer covers it, so
+    // the watch-path handler must NOT compile against a not-yet-produced output.
     const handler = getHandler(3, "change");
     mockEventEmit.mockClear();
     await handler?.("src/content/docs/intro.md");
 
-    // It should invoke selective page processing for the watch path
-    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("src/content/docs/intro.md");
-    // Ensure conflicting uncoordinated reload events are not emitted directly from watch handler
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    expect(mockEventEmit).not.toHaveBeenCalledWith(
+      "watch-path-processed",
+      expect.anything(),
+    );
     expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
-    // Should have coordinated execution flag or handled synchronously
-    expect(mockEventEmit).toHaveBeenCalledWith("watch-path-processed", expect.objectContaining({ path: "src/content/docs/intro.md" }));
+  });
+
+  it("recompiles directly for a watch-path edit no exec producer covers", async () => {
+    (BascikConfig as any).pipeline = {
+      watchPaths: ["src/content/docs"],
+      exec: [{ script: "scripts/gen-docs.ts", watch: ["src/content/other"] }],
+    };
+    await watchFiles();
+
+    const handler = getHandler(3, "change");
+    mockEventEmit.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    await handler?.("src/content/docs/intro.md");
+
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("src/content/docs/intro.md");
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "watch-path-processed",
+      expect.objectContaining({ path: "src/content/docs/intro.md" }),
+    );
   });
 });
 

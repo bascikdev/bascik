@@ -22,6 +22,8 @@ const prodServerTestIgnore = [
   // serving a copied component is identical to serving any other component.
   '**/bascik-add.test.ts',
   '**/bascik-add-dev.test.ts',
+  // Dev-exec lifecycle runs against its own exec-fixture config.
+  '**/dev-exec-lifecycle.test.ts',
 ];
 
 export default defineConfig({

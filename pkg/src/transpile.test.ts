@@ -63,14 +63,16 @@ vi.mock("./lib/mem.js", () => ({
   mem: { setBootingDone: vi.fn() },
 }));
 
-vi.mock("./lib/events.js", () => ({
-  eventEmitter: { emit: vi.fn() },
-}));
+vi.mock("./lib/events.js", async () => {
+  const { EventEmitter } = await import("node:events");
+  return { eventEmitter: new EventEmitter() };
+});
 
 vi.mock("./lib/config.js", () => ({
   BascikConfig: {
     isBuild: false,
     directory: { out: "dist" },
+    pipeline: { exec: undefined },
   },
 }));
 
@@ -112,6 +114,7 @@ describe("runTranspile", () => {
 
   it("runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const emitSpy = vi.spyOn(eventEmitter, "emit");
     (BascikConfig as any).isBuild = false;
     await runTranspile();
 
@@ -122,7 +125,8 @@ describe("runTranspile", () => {
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
     expect(mem.setBootingDone).toHaveBeenCalledOnce();
-    expect(eventEmitter.emit).toHaveBeenCalledWith("boot-done");
+    expect(emitSpy).toHaveBeenCalledWith("boot-done");
+    emitSpy.mockRestore();
 
     // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
     const preIndex = _callOrder.indexOf("runExecPhase:pre");

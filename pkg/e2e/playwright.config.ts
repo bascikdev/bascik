@@ -23,6 +23,8 @@ const staticTestIgnore = [
   '**/caching-layer.test.ts',
   // bascik-add-dev exercises dynamic component addition during live dev watching
   '**/bascik-add-dev.test.ts',
+  // Dev-exec lifecycle runs against its own exec-fixture config
+  '**/dev-exec-lifecycle.test.ts',
 ];
 
 export default defineConfig({

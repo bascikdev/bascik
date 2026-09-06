@@ -22,7 +22,10 @@
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
 import { startExecDev } from "./exec.ts";
+import { installExecPublication, setExecProducerWatchGlobs } from "./exec-publication.ts";
 import { startServer } from "./server.ts";
+import { BascikConfig } from "./config.ts";
+import type { ExecEntry } from "./types.ts";
 
 export interface DevServerHandle {
   /** Resolves with the listening URL once the port is bound; rejects if binding fails. */
@@ -51,7 +54,20 @@ export const startDevServer = (options: { exitOnError?: boolean } = {}): DevServ
     }
     throw err;
   });
-  const execReady = startExecDev();
+  const execReady = startExecDev().then(() => {
+    // Install the exec producer/consumer coordinator once watched exec entries
+    // are registered. Producer globs feed overlap detection so watch.ts can
+    // defer a watch-path edit until the matching producer completes.
+    const watchedEntries = (BascikConfig.pipeline?.exec ?? []).filter(
+      (entry) => !!entry.watch,
+    ) as ExecEntry[];
+    setExecProducerWatchGlobs(
+      watchedEntries.map((entry) =>
+        Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
+      ),
+    );
+    installExecPublication(eventEmitter);
+  });
 
   const finishBoot = async (): Promise<void> => {
     await execReady;

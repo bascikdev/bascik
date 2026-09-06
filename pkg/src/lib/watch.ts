@@ -24,6 +24,13 @@ import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { mem } from "./mem.ts";
 import { getImportRoot } from "./import-root.ts";
+import {
+  registerExecConsumerFlush,
+  setExecProducerWatchGlobs,
+  execProducerCovers,
+} from "./exec-publication.ts";
+import { execWatchCoversPath } from "./exec.ts";
+import type { ExecEntry } from "./types.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -148,9 +155,45 @@ export const watchFiles = async () => {
       selectivelyProcessPages(path).catch(onWatchError);
     }));
 
-  // Re-transpile all pages when user-specified extra paths change (dev only)
+  // Re-transpile all pages when user-specified extra paths change (dev only).
+  // A path covered by both `pipeline.watchPaths` and an `exec[].watch` glob is
+  // an overlap contract: the exec producer must finish BEFORE the consumer
+  // pages re-transpile, otherwise the page compiles against a previous
+  // generation. watch.ts registers the consumer flush with the exec
+  // publication coordinator and defers overlapped edits to it, so the producer
+  // completes first and the coordinator recompiles exactly once.
   const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
   if (!BascikConfig.isBuild && watchPaths.length) {
+    const producerWatchEntries = ((BascikConfig.pipeline?.exec ?? []) as ExecEntry[]).filter(
+      (entry) => !!entry.watch,
+    );
+    setExecProducerWatchGlobs(
+      producerWatchEntries.map((entry) =>
+        Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
+      ),
+    );
+
+    // Consumer recompile for a producer completion: hand every changed path to
+    // selectivelyProcessPagesForWatchPath, which re-transpiles only the pages
+    // that depend on the produced output (all pages when none tie to it).
+    // A producer may have rewritten consumed outputs that the cache key reads
+    // via its dependency graph (e.g. `dist/generated.json`); clearing the
+    // build-script cache ensures the re-transpiled page re-runs its build
+    // script against the freshly produced bytes instead of a stale output.
+    // This invalidates a changed input; it does not disable caching.
+    registerExecConsumerFlush(async (paths: string[]) => {
+      for (const path of paths) {
+        clearBuildScriptCaches(path);
+      }
+      // Produce outputs are not statically known, so invalidate any consumed
+      // script cache entry the producer may have rewritten before recompiling.
+      clearBuildScriptCaches();
+      for (const path of paths) {
+        await selectivelyProcessPagesForWatchPath(path);
+        eventEmitter.emit("watch-path-processed", { path });
+      }
+    });
+
     w(chokidar
       .watch(watchPaths, {
         ...watchOptions,
@@ -159,6 +202,12 @@ export const watchFiles = async () => {
       })
       .on("add", async (path) => {
         try {
+          // If a producer covers this path, it owns the recompile: wait for
+          // its completion (exec-completed) so the consumer never reads a
+          // not-yet-produced generation. Otherwise recompile directly.
+          if (execProducerCovers((patterns) => execWatchCoversPath(patterns, path, undefined))) {
+            return;
+          }
           clearBuildScriptCaches(path);
           await selectivelyProcessPagesForWatchPath(path);
           eventEmitter.emit("watch-path-processed", { path });
@@ -168,6 +217,9 @@ export const watchFiles = async () => {
       })
       .on("change", async (path) => {
         try {
+          if (execProducerCovers((patterns) => execWatchCoversPath(patterns, path, undefined))) {
+            return;
+          }
           clearBuildScriptCaches(path);
           await selectivelyProcessPagesForWatchPath(path);
           eventEmitter.emit("watch-path-processed", { path });

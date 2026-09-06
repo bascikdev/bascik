@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Consumes generated output</title>
+</head>
+<body>
+  <h1>Exec producer/consumer</h1>
+  <p data-testid="generated-value"><script data-bascik-build>import { readFileSync } from 'node:fs';try { console.log(JSON.parse(readFileSync('dist/generated.json','utf8')).value); } catch (e) { console.log('missing'); }</script></p>
+</body>
+</html>

@@ -67,7 +67,11 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
     await runExecPhase("pre");
-    startExecParallel();
+    // Parallel entries are started concurrently and joined before page
+    // transpilation in dev as in build, so every started task's rejection is
+    // observed rather than fire-and-forget. A failed required producer aborts
+    // startup before any consumer page compiles against stale output.
+    await startExecParallel();
     // Dev mode is the shared server (server.ts) plus the additions in
     // server-dev.ts; the production counterpart is server-prod.ts.
     const { startDevServer } = await import("./lib/server-dev.ts");
