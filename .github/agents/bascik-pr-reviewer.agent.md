@@ -1,7 +1,7 @@
 ---
 name: Bascik PR Reviewer
 description: "Pull request review specialist for Bascik. Use for deep code review, architectural adherence, edge case checks, TDD probe generation, and web standards verification on branches or PR diffs."
-model: ['Google: Gemini 3.8 Flash (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
+model: ['Anthropic: Claude Sonnet 5 (openrouter)','OpenAI: GPT-5.6 Sol (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)',  'Google: Gemini 3.8 Flash (openrouter)']
 user-invocable: true
 argument-hint: "Specify the PR number, branch name, or diff range to review..."
 ---
