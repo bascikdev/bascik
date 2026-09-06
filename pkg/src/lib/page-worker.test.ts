@@ -22,7 +22,7 @@ describe("handlePageWorkerMessage", () => {
     const port = { postMessage: vi.fn() };
     await handlePageWorkerMessage(port, { componentList: {}, globalStylesHtml: "" }, "src/index.html");
 
-    expect(_mockTranspilePage).toHaveBeenCalledWith("src/index.html", {}, "", null, undefined);
+    expect(_mockTranspilePage).toHaveBeenCalledWith("src/index.html", {}, "", null, undefined, { deferDiskWrite: true });
     const msg = firstMessage(port);
     expect(msg.ok).toBe(true);
     if (!msg.ok) throw new Error("unreachable");
@@ -49,6 +49,7 @@ describe("handlePageWorkerMessage", () => {
       "",
       job.route,
       job.preCleanedHtml,
+      { deferDiskWrite: true },
     );
     const msg = firstMessage(port);
     expect(msg.ok).toBe(true);

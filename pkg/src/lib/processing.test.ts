@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
+import { manifestCollector } from "./manifest.ts";
+import { cspHashCollector } from "./csp-hashes.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
@@ -1485,6 +1487,23 @@ describe("transpilePage – build mode file system error handling", () => {
       stage: "write output",
       cause: error,
     });
+  });
+
+  it("does not record a failed write as emitted (failure honesty)", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const error = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(error);
+    manifestCollector.clear();
+    cspHashCollector.clear();
+
+    await expect(transpilePage(PAGE_PATH, {})).rejects.toMatchObject({ stage: "write output" });
+
+    // A failed write must never be accounted as emitted: no manifest entry and
+    // no CSP entry for this page (recording happens only after a successful
+    // writeFile in the single-owner writer).
+    const recordedFiles = Object.keys(manifestCollector.getFiles());
+    expect(recordedFiles.some((k) => k.includes("index.html"))).toBe(false);
+    expect(cspHashCollector.getManifest()).toEqual({});
   });
 });
 

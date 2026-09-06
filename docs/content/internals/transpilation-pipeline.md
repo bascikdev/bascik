@@ -22,6 +22,17 @@ Bascik guarantees strict, deterministic execution ordering across all compilatio
 
 This guarantee ensures that `pre` scripts can reliably generate source files or data dependencies needed by build scripts and components, while `post` scripts can safely inspect or transform final compiled assets in `dist/`.
 
+## Artifact Accounting Ownership
+
+Artifact accounting has a **single owner**: the main-thread disk writer. Collector state is process-local, so worker-local collectors can never reach the main thread. Every emitted artifact funnels through one owner so serial and worker builds record identical manifest and CSP metadata.
+
+- `transpilePage` computes each page's inline script/style CSP hashes from its **final emitted HTML** (`computePageCspHashes`) before the bytes are transferred. It never records to a global collector itself, because the compiling agent (a worker or the main thread) is not the accounting owner.
+- The single owner is `writeTranspiledPage` (in `processing.ts`). It writes the file and, **only after a successful write**, records the page's manifest entry and CSP hashes. A failed write throws before recording, so a failed write is never accounted as emitted.
+- In the worker path (`processAllPages` with `useWorkers: true`), `page-worker.ts` passes `deferDiskWrite: true` to `transpilePage`, so the worker computes and transfers the bytes but never writes or records. The main thread writes the transferred bytes (a `Buffer` view over the transferred `ArrayBuffer`, no decode) and records manifest and CSP from them.
+- Serial builds go through the same `writeTranspiledPage` owner, so both modes produce byte-identical artifact metadata.
+- Raw-copied assets (`copyReplicatePath`) are recorded at the **destination** in `dist/` after a successful copy, including hash-equal no-op copies. Recording the source path was the raw-asset defect: the manifest collector rejects paths outside `dist/`, so those assets silently vanished from the manifest. A failed copy throws before recording.
+- The manifest, `csp-hashes.json`, and `server-scripts.json` remain explicitly excluded from being served and are regenerated each build, so no stale entries survive between builds.
+
 ## Multi-Page Startup: `processAllPages`
 
 On startup (and whenever a component is added), the watch system calls `processAllPages()` instead of invoking `pageProcessing()` once per file. This avoids redundant I/O:
@@ -31,6 +42,7 @@ On startup (and whenever a component is added), the watch system calls `processA
 3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. If `useWorkers: true` is set in `bascik.config.ts`, a `WorkerPool` is created instead with `Math.min(os.cpus().length, pageCount)` workers, and each worker is initialized with the shared `componentList` and `globalStylesHtml` via `workerData`. The worker pool also processes the prioritized open pages first before dispatching remaining background pages. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so this only pays off for larger sites or CPU-heavy per-page work, see the [`useWorkers`](/configuration#useworkers) config option.
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
 5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
+6. **Publish artifacts from the single owner.** In build mode, the main thread is the single owner of disk publication and artifact accounting. A worker transfers the page bytes (UTF-8 `ArrayBuffer`, no structured-clone copy) and the main thread writes them and records the manifest and CSP. See [Artifact Accounting Ownership](#artifact-accounting-ownership).
 
 ## Generation Ownership: Monotonic Dev Publication
 

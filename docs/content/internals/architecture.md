@@ -62,11 +62,11 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `javascript.ts` | The scoping transforms: `prefixElementAttribute` (rewrites HTML attributes, JS DOM selectors, and CSS) and `namespaceScriptTags` (wraps scripts in IIFEs with `sourceURL` annotations and line positioning). |
 | `js-minifier.ts` | Lightweight, built-in JavaScript minifier that strips comments and collapses safe whitespace without breaking statement boundaries (ASI). |
 | `live-reload.ts` | Injected client-side script that establishes an EventSource connection to the dev server to reload pages when they are updated. |
-| `manifest.ts` | Collects written file metadata (forward-slash path, SHA-256 hash, byte size) as writes occur and writes `dist/.bascik/manifest.json` when `generate.manifest` is enabled. |
+| `manifest.ts` | Collects written file metadata (forward-slash path, SHA-256 hash, byte size) as writes occur and writes `dist/.bascik/manifest.json` when `generate.manifest` is enabled. Populated only on the main thread (see Artifact Accounting Ownership); workers never record. |
 | `mem.ts` | In-memory page store. Stores brotli-compressed page buffers keyed by HTTP path, and maintains a reverse index mapping each component name to the set of pages that use it. |
 | `mime.ts` | A static MIME type map used by the HTTP/2 server and the watch system's file-type filter. |
 | `names.ts` | Generates unique instance IDs (`deriveInstanceId`) and hashes long scoped names to short alphanumeric strings (`minifyAttributeName` via SHA-256 with Base62 encoding) when identifier minification is enabled. |
-| `page-worker.ts` | Worker thread entry point. Receives a page job, calls `transpilePage()`, encodes the rendered HTML to UTF-8 bytes, and posts the result back with that `ArrayBuffer` in the `postMessage` transfer list so the page crosses the thread boundary with no structured clone copy. |
+| `page-worker.ts` | Worker thread entry point. Receives a page job, calls `transpilePage()` with disk publication deferred (workers never write or record manifest/CSP), encodes the rendered HTML to UTF-8 bytes, and posts the result back with that `ArrayBuffer` in the `postMessage` transfer list so the page crosses the thread boundary with no structured clone copy. |
 | `paths.ts` | Converts file-system paths to HTTP paths (stripping the `src/pages` prefix, removing `.html` extensions). |
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
