@@ -32,9 +32,30 @@ export interface ServerScriptsSidecar {
 
 export const SIDECAR_SCHEMA_VERSION = 2;
 
+export interface SidecarLoadResult {
+  /** Whether a sidecar file was present at the resolved path. */
+  present: boolean;
+  /** Every script entry registered from the sidecar (empty when present but script-less, or when absent). */
+  scripts: Record<string, ServerScriptEntry>;
+}
+
 class ServerSidecarRegistry {
   private scripts = new Map<string, ServerScriptEntry>();
   private loadedSidecar: Record<string, ServerScriptEntry> | null = null;
+  /**
+   * Distinguishes "no sidecar file" (a genuinely static release, always
+   * consistent) from "sidecar present and validated" (whose required entries
+   * the production boot boundary checks against placeholder references).
+   */
+  private sidecarPresent = false;
+
+  /**
+   * `true` once a sidecar file was parsed and validated. `false` when no sidecar
+   * has been loaded (a static release without server scripts) or after `clear()`.
+   */
+  isSidecarPresent(): boolean {
+    return this.sidecarPresent;
+  }
 
   recordScript(
     id: string,
@@ -71,9 +92,10 @@ class ServerSidecarRegistry {
   clear(): void {
     this.scripts.clear();
     this.loadedSidecar = null;
+    this.sidecarPresent = false;
   }
 
-  async loadSidecar(sidecarPath?: string): Promise<void> {
+  async loadSidecar(sidecarPath?: string): Promise<SidecarLoadResult> {
     const outDir = resolve(process.cwd(), BascikConfig.directory.out);
     const targetPath = sidecarPath ?? join(outDir, ".bascik", "server-scripts.json");
     let parsed: ServerScriptsSidecar;
@@ -82,22 +104,59 @@ class ServerSidecarRegistry {
       parsed = JSON.parse(content) as ServerScriptsSidecar;
     } catch (err) {
       this.loadedSidecar = null;
+      this.sidecarPresent = false;
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        // Optional sidecar: a static release with no server scripts is valid.
+        return { present: false, scripts: {} };
+      }
       throw new Error(
         `[bascik] --server: Failed to load server scripts sidecar from ${targetPath}: ${(err as Error).message}`,
       );
     }
-    const scripts = parsed.scripts ?? {};
-    // Every entry must carry its mode; a sidecar written before `mode`
-    // existed cannot tell a buffered script from a streamed one.
-    const missingMode = Object.values(scripts).find((entry) => entry.mode !== "server" && entry.mode !== "stream");
-    if (missingMode) {
+    const scriptsRaw = parsed.scripts ?? {};
+    if (typeof scriptsRaw !== "object" || scriptsRaw === null || Array.isArray(scriptsRaw)) {
       this.loadedSidecar = null;
+      this.sidecarPresent = false;
       throw new Error(
-        `[bascik] --server: server scripts sidecar at ${targetPath} is stale (entry "${missingMode.id}" has no mode). ` +
+        `[bascik] --server: server scripts sidecar at ${targetPath} has a malformed "scripts" member. ` +
         `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
       );
     }
+    // Schema incompatibility: an unknown version means the runtime and the
+    // sidecar disagree about the entry contract.
+    if (parsed.schema !== undefined && parsed.schema !== SIDECAR_SCHEMA_VERSION) {
+      this.loadedSidecar = null;
+      this.sidecarPresent = false;
+      throw new Error(
+        `[bascik] --server: server scripts sidecar at ${targetPath} uses schema ${parsed.schema}, ` +
+        `but this runtime understands schema ${SIDECAR_SCHEMA_VERSION}. ` +
+        `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+      );
+    }
+    const scripts = scriptsRaw as Record<string, ServerScriptEntry>;
+    // Every entry must carry its mode; a sidecar written before `mode`
+    // existed cannot tell a buffered script from a streamed one.
+    for (const [id, entry] of Object.entries(scripts)) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        this.loadedSidecar = null;
+        this.sidecarPresent = false;
+        throw new Error(
+          `[bascik] --server: server scripts sidecar at ${targetPath} has a null or malformed entry "${id}". ` +
+          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+        );
+      }
+      if (entry.mode !== "server" && entry.mode !== "stream") {
+        this.loadedSidecar = null;
+        this.sidecarPresent = false;
+        throw new Error(
+          `[bascik] --server: server scripts sidecar at ${targetPath} is stale (entry "${id}" has no mode). ` +
+          `Run \`bascik --build\` to regenerate dist/.bascik/server-scripts.json.`,
+        );
+      }
+    }
     this.loadedSidecar = scripts;
+    this.sidecarPresent = true;
+    return { present: true, scripts };
   }
 
   async writeSidecar(version: string = "unknown"): Promise<string | null> {
