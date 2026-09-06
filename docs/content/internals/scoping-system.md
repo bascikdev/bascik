@@ -291,7 +291,7 @@ background: #abc url('./img.png')         /* ← space triggered the match */
 color: #abc\n                             /* ← newline triggered the match */
 ```
 
-**Current implementation:** A context-aware lookahead `/#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g` that uses the position of the next `{` relative to `;` and `}` to determine selector vs. value context:
+**Current implementation:** `convertCssIdSelectorsToClasses` first masks every literal region of the CSS (quoted string literals, comments, and the interior of bracketed attribute selectors) via the shared `maskCssSyntax` helper (`css-tokenizer.ts`), then applies a context-aware lookahead `/#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g` on the masked copy and splices the originals back:
 
 - In **selector position**, the next `{` always appears before any `;` or `}`.
 - In **value position** (property declarations, gradient arguments, etc.), a `;` or `}` always appears before the next `{`.
@@ -301,9 +301,24 @@ color: #abc\n                             /* ← newline triggered the match */
 .parent #btn { }                → matches  (compound selector)
 color: #abc;                    → skipped  (value: ; before {)
 linear-gradient(#abc, #def)     → skipped  (value: } closes rule before next {)
+a[href="#tab"] { }              → skipped  (attribute value is masked first)
+.icon::before { content: "url(#local)"; }  → skipped (string literal is masked)
 ```
 
+The masking is what keeps literal data intact: a hash in an attribute-selector value or a url-like string inside `content:` can never be confused with a selector. Quoted `url("...")` arguments are also masked for this pass so a real URL reference is not mistaken for an ID selector.
+
 Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` selector is converted to a scoped class selector (`.bascik__comp__id__id {}`) and the generated class is injected onto the matching HTML element. Specificity drops from `(0,1,0,0)` to `(0,0,1,0)`, consistent with how element selectors are handled.
+
+### CSS `url(#id)` fragment rewriting boundaries
+
+`rewriteIdReferencesInCss` (`id-references.ts`) uses the same `maskCssSyntax` helper but keeps genuine `url("...")` arguments live so real fragment references still scope. This gives precise ownership:
+
+```css
+.icon::before { content: "url(#local)"; }   /* literal: never rewritten */
+.icon { fill: url(#local); }                /* real fragment: rewritten */
+.icon { fill: url("#local"); }              /* quoted fragment: rewritten */
+.icon { background: url("sprite.svg#icon"); } /* cross-document: untouched */
+```
 
 ### CSS comma-separated element selectors
 

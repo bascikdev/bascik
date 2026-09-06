@@ -1,3 +1,4 @@
+import { maskCssSyntax } from "./css-tokenizer.ts";
 import {
   createContentShield,
   maskElementContents,
@@ -204,10 +205,10 @@ export const rewriteIdReferencesInCss = (
   css: string,
   resolve: (originalId: string) => string | null,
 ): string => {
-  const shield = createContentShield(css);
-  const shieldedCss = css.replace(
-    /\/\*[\s\S]*?(?:\*\/|$)/g,
-    (comment) => shield.hide(comment),
-  );
-  return shield.restore(rewriteUrlFragments(shieldedCss, resolve));
+  // Mask comments and ordinary string literals so `content: "url(#local)"`
+  // is preserved, while keeping genuine url("...") fragment references live
+  // so `fill: url("#grad")` still scopes. Attribute-selector values are also
+  // masked (their hashes are literal, not URL fragments).
+  const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: true });
+  return restore(rewriteUrlFragments(masked, resolve));
 };

@@ -997,6 +997,50 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
     expect(result.cssFileContent).toContain(".bascik__my-comp__id__panel");
     expect(result.fileContent).toContain("bascik__my-comp__id__panel");
   });
+
+  // ── Literal preservation (prompt 105) ────────────────────────────────
+
+  it("preserves literal hashes in attribute-selector values through the component pipeline", () => {
+    const c = makeComponent(
+      '<a data-key="#tab" href="#tab">Link</a>',
+      'a[data-key="#tab"] { color: red; }',
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.cssFileContent).toContain('a[data-key="#tab"]');
+    expect(result.cssFileContent).not.toContain('a[data-key=".bascik__');
+  });
+
+  it("preserves url-like text inside content strings while scoping real url() fragments", () => {
+    const c = makeComponent(
+      '<div class="icon"></div>',
+      '.icon::before { content: "url(#local)"; } .icon { fill: url(#local); }',
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.cssFileContent).toContain('content: "url(#local)"');
+    // The real url(#local) fragment still scopes in the generated (request)
+    // CSS via id-references. Verify the string literal was not corrupted.
+    expect(result.cssFileContent).not.toContain('content: "url(#bascik__');
+  });
+
+  it("preserves literals identically when identifiers are minified", () => {
+    const identifiers = BascikConfig.minify?.identifiers;
+    BascikConfig.minify!.identifiers = true;
+    try {
+      const c = makeComponent(
+        '<div class="icon"><a data-key="#tab" href="#tab">Link</a></div>',
+        '.icon::before { content: "url(#local)"; } a[data-key="#tab"] { color: red; }',
+      );
+      const result = prefixElementAttribute(c, "class", "test1234");
+      // The attribute-selector value and content string stay literal even under
+      // identifier minification.
+      expect(result.cssFileContent).toContain('[data-key="#tab"]');
+      expect(result.cssFileContent).toContain('content: "url(#local)"');
+      // Genuine classes still minify to hashed identifiers.
+      expect(result.cssFileContent).not.toContain(".bascik__my-comp__icon");
+    } finally {
+      BascikConfig.minify!.identifiers = Boolean(identifiers);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

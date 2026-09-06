@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
+import { maskCssSyntax } from "./css-tokenizer.ts";
 import { shieldElementContents } from "./shielding.ts";
 import type { BascikComponent } from "./types.ts";
 
@@ -280,7 +281,14 @@ export const convertCssIdSelectorsToClasses = (
 ): { css: string; idsConverted: { idName: string; className: string }[] } => {
   const seen = new Map<string, string>();
   const idsConverted: { idName: string; className: string }[] = [];
-  const cssStr = css.replace(
+  // Mask literals first so a hash inside a string literal, a comment, or an
+  // attribute-selector value is never mistaken for an ID selector. url()
+  // arguments are ALSO masked here (unlike the URL-fragment pass): a quoted
+  // url("#id") argument is a URL reference, not an ID selector, so only the
+  // selector pass rewrites it, never this one. This keeps genuine #id
+  // selectors scoping while leaving `content: "url(#local)"` byte-identical.
+  const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: false });
+  const cssStr = masked.replace(
     /#([a-zA-Z][a-zA-Z0-9-_]*)(?=[^{};]*\{)/g,
     (_: string, idName: string) => {
       if (!seen.has(idName)) {
@@ -293,7 +301,7 @@ export const convertCssIdSelectorsToClasses = (
       return `.${seen.get(idName)!}`;
     },
   );
-  return { css: cssStr, idsConverted };
+  return { css: restore(cssStr), idsConverted };
 };
 
 /**

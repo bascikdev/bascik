@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import {
   collectDeclaredIds,
   rewriteIdReferencesInHtml,
@@ -265,6 +266,86 @@ describe("rewriteIdReferencesInCss", () => {
   it("preserves replacement tokens in resolved IDs", () => {
     expect(rewriteCss("a { fill: url(#$&); }")).toBe(
       "a { fill: url(#scoped-$&); }",
+    );
+  });
+
+  // ── Literal string preservation (prompt 105) ─────────────────────────
+
+  it("does NOT rewrite url text inside a content string literal", () => {
+    expect(rewriteCss('.icon::before { content: "url(#local)"; }')).toBe(
+      '.icon::before { content: "url(#local)"; }',
+    );
+  });
+
+  it("rewrites a real url() but not url text inside a sibling string literal", () => {
+    expect(
+      rewriteCss(
+        '.icon::before { content: "url(#local)"; fill: url(#local); }',
+      ),
+    ).toBe(
+      '.icon::before { content: "url(#local)"; fill: url(#scoped-local); }',
+    );
+  });
+
+  it("does NOT rewrite a hash inside an attribute-selector value", () => {
+    expect(rewriteCss('a[href="#tab"] { color: red; }')).toBe(
+      'a[href="#tab"] { color: red; }',
+    );
+  });
+
+  it("does NOT rewrite url text inside a comment", () => {
+    expect(
+      rewriteCss("/* fill: url(#local) */ .icon { fill: url(#local); }"),
+    ).toBe(
+      "/* fill: url(#local) */ .icon { fill: url(#scoped-local); }",
+    );
+  });
+
+  it("still rewrites a genuine quoted url() fragment reference", () => {
+    expect(rewriteCss('.icon { fill: url("#local"); }')).toBe(
+      '.icon { fill: url("#scoped-local"); }',
+    );
+  });
+
+  it("preserves an escaped-quote string literal while scoping a real url()", () => {
+    expect(
+      rewriteCss('.icon::before { content: "a \\" #local"; fill: url(#local); }'),
+    ).toBe(
+      '.icon::before { content: "a \\" #local"; fill: url(#scoped-local); }',
+    );
+  });
+
+  it("preserves a span containing a non-fragment URL while scoping a real fragment", () => {
+    expect(
+      rewriteCss('.icon { background: url("sprite.svg#icon"); filter: url(#local); }'),
+    ).toBe(
+      '.icon { background: url("sprite.svg#icon"); filter: url(#scoped-local); }',
+    );
+  });
+
+  it("preserves arbitrary string-literal content beside real url() fragment references", () => {
+    const tokenArb = fc.constantFrom(
+      "#local",
+      "#x",
+      "url(#y)",
+      "url(\"#z\")",
+      "#hidden",
+      "é",
+      "ま",
+    );
+    const contentTokenArb = fc.array(tokenArb, { minLength: 0, maxLength: 4 });
+
+    fc.assert(
+      fc.property(contentTokenArb, (tokens) => {
+        const inner = tokens.join(" ");
+        const escaped = inner.replace(/"/g, '\\"');
+        const css = `.x::before { content: "${escaped}"; filter: url(#local); }`;
+        const result = rewriteCss(css);
+        // Only the real url(#local) reference changes.
+        expect(result).toContain(`content: "${escaped}"`);
+        expect(result).toContain("filter: url(#scoped-local)");
+      }),
+      { numRuns: 200 },
     );
   });
 });

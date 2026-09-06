@@ -1,0 +1,14 @@
+/* Bug 105 regression: the hash inside an attribute-selector value and the
+   url-like text inside a string literal must survive scoping untouched,
+   while a genuine url(#local) reference still scopes. */
+a[data-key="#tab"] {
+  color: rgb(0, 128, 0);
+}
+
+.id-literal-generated::before {
+  content: "url(#local)";
+}
+
+.id-literal-shape {
+  fill: url(#local);
+}
