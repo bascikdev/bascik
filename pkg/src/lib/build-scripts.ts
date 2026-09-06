@@ -56,6 +56,7 @@ import {
   scanScript,
 } from "./module-specifiers.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
+import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
@@ -89,7 +90,7 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 8;
+export const SCRIPT_CACHE_VERSION = 9;
 
 export interface ImportRootOptions {
   /** Absolute import root that `@/` specifiers resolve against. */
@@ -274,6 +275,16 @@ const computeScriptCacheKey = async (
     }
   }
 
+  // Resolved package inputs: the same way the child resolves these, folded in
+  // deterministically and bounded (prompt 104). This is distinct from the local
+  // file deps above, and covers bare/scoped/subpath/user-linked packages.
+  const pkgSpecifiers = collectPackageSpecifiers(script);
+  if (pkgSpecifiers.length > 0) {
+    hash.update("PKG"); // explicit marker so package-less keys never collide with package keys
+    const pkgIdentity = await computePackageIdentity(pkgSpecifiers);
+    hash.update(pkgIdentity);
+  }
+
   return hash.digest("hex");
 };
 
@@ -442,9 +453,20 @@ export const executeBuildScripts = async (
       return annotateLeadingSlash(err);
     }
 
-    const cacheKey = useCache
-      ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath, importRoot)
-      : null;
+    // A script whose effective dependency graph static analysis cannot know
+    // (a dynamic import of a non-literal, computed at runtime) is classified
+    // NON-cacheable rather than mis-keyed: we re-run it always and never write
+    // a cache entry (prompt 104). This is the explicit declared-input contract:
+    // env vars and Bascik-provided context are part of the key; remote data /
+    // native modules / external side effects are NOT fingerprinted automatically,
+    // so an author whose script reads them must disable caching for the page
+    // (scripts.cache.exclude) or treat it as non-repeatable.
+    const scriptIsNonCacheable = hasDynamicImport(trimmedScript) && useCache;
+    const computeKey =
+      useCache && !scriptIsNonCacheable
+        ? await computeScriptCacheKey(trimmedScript, scriptBaseDir, BascikConfig.isBuild ?? false, sourceFile, siteUrl, BascikConfig.base ?? "/", routeStr, pageFile, pagePath, importRoot)
+        : null;
+    const cacheKey = scriptIsNonCacheable ? null : computeKey;
 
     const prefix = html.slice(0, index);
     const lines = prefix.split(/\r?\n/);

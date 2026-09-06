@@ -197,6 +197,7 @@ The key is the SHA-256 hex digest of:
 8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
 10. The normalized path and full content of every detected local dependency. Relative ESM imports are followed recursively from each containing module, while generic quoted data paths are rooted at `process.cwd()`.
+11. The resolved package identity for every external (bare, scoped, subpath) package the script imports: resolved entry content and manifest, plus the bounded transitive package graph (`package-identity.ts`). A script with no package imports contributes nothing for this item.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`). It lexically identifies genuine relative and import-root (`@/`) ESM specifiers and path-like string arguments used in code, so editing an alias-imported helper invalidates the cache and triggers a dev rebuild. The following paths are illustrative examples, not an exhaustive list of supported directories or extensions:
 
@@ -211,7 +212,7 @@ If the script contains no detectable references, items 1 through 9 still contrib
 
 Because the content of every referenced file is hashed into the key, editing a content file produces a new key for any script that references it, giving a cache miss. Scripts on other pages that do not reference that file keep their old keys and continue to hit the cache.
 
-To bust the entire cache manually, for example after upgrading `marked` or another build-time dependency that `scripts/*.{mjs,js,ts}` files import, delete the cache directory:
+The resolved package graph is also part of the key. Upgrading an npm package, editing a workspace/`file:`-linked package in place, or changing a transitive package a build script imports all produce a new key without any script edit or manual cache clear (see `package-identity.ts`). To bust the entire cache manually, for example after an unexpected external change, delete the cache directory:
 
 ```sh
 rm -rf node_modules/.cache/bascik/script-cache

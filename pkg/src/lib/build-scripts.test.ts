@@ -34,9 +34,28 @@ vi.mock("./config.js", () => ({
   },
 }));
 
+// Real package resolution (resolver stub under node_modules/.cache, real fs) is
+// tested in package-identity.test.ts and the integration fixture. In this mocked
+// unit file we stub the identity contribution so cache-key tests are hermetic.
+vi.mock("./package-identity.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./package-identity.ts")>();
+  return {
+    ...actual,
+    computePackageIdentity: vi.fn(async () => "pkgid:mock"),
+    // Use the real classifier-free detection so dynamic-import classification
+    // is still exercised here.
+    isExternalPackageSpecifier: actual.isExternalPackageSpecifier,
+    collectPackageSpecifiers: actual.collectPackageSpecifiers,
+    hasDynamicImport: actual.hasDynamicImport,
+  };
+});
+
 import { execFile } from "node:child_process";
 import { writeFile, unlink, readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
+import { computePackageIdentity } from "./package-identity.ts";
+
+const mockPackageIdentity = computePackageIdentity as unknown as ReturnType<typeof vi.fn>;
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
@@ -88,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   clearBuildScriptCaches();
   (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
+  mockPackageIdentity.mockResolvedValue("pkgid:mock");
 });
 
 describe("executeBuildScripts", () => {
@@ -1087,6 +1107,60 @@ describe("build-script output cache", () => {
     expect(secondKey).toBeDefined();
     expect(dependencyReads).toBe(2);
     expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("folds resolved package identity into the cache key for bare-package scripts (prompt 104)", async () => {
+    mockReadFile.mockReset();
+    mockWriteFile.mockReset();
+    clearBuildScriptCaches();
+    // Cache-file reads always miss so we can observe the .json write key.
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>from-pkg</p>");
+
+    await executeBuildScripts(
+      "<script data-bascik-build>import { marked } from 'marked'; console.log(marked('x'));</script>",
+      "src/pages/test.html",
+    );
+
+    // The mocked computePackageIdentity must have been called with the specifier.
+    expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
+    const key = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"))?.[0];
+    expect(key).toBeDefined();
+  });
+
+  it("does not consult package identity for a script with no package imports", async () => {
+    mockPackageIdentity.mockClear();
+    resolveWith("<p>local</p>");
+    await executeBuildScripts("<script data-bascik-build>import './local.ts'; console.log('x');</script>");
+    expect(mockPackageIdentity).not.toHaveBeenCalled();
+  });
+
+  it("classifies a dynamic non-literal import as non-cacheable (runs every build, no write)", async () => {
+    mockWriteFile.mockClear();
+    mockReadFile.mockClear();
+    resolveWith("<p>dynamic</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>const m = await import(name); console.log(m);</script>",
+    );
+    // It ran (execFile called) but never wrote a cache entry.
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrites.length).toBe(0);
+  });
+
+  it("keeps static string dynamic imports cacheable", async () => {
+    mockReadFile.mockReset();
+    mockWriteFile.mockReset();
+    clearBuildScriptCaches();
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>from-pkg</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>const m = await import('marked'); console.log(m);</script>",
+      "src/pages/test.html",
+    );
+    // Static `import('marked')` is fully cacheable: a .json entry is written.
+    expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
+    expect(mockWriteFile.mock.calls.some(([p]) => String(p).endsWith(".json"))).toBe(true);
   });
 
   it("skips cache reads and writes entirely when scripts.cache.enabled is false", async () => {

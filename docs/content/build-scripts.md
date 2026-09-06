@@ -299,18 +299,26 @@ Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`.
 - The authored script body before temporary-module import rewriting
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
+- **Resolved package identity** for every bare, scoped, and subpath package the script imports: the resolved entry file contents plus the package manifest, resolved with Node ESM semantics and walked as a bounded graph with cycle detection, so a package upgrade or an in-place edit to a workspace/`file:`-linked package invalidates cached output even when the script text is unchanged
+
+Package identity is computed per imported package (not per page) and cached, so unrelated installed packages are never hashed on every page. Node core modules (`node:fs`, `fs`) contribute only their runtime name, never a filesystem hash.
+
+### Package resolution parity
+
+Bascik resolves bare packages the same way the executed child does (from `node_modules/.cache/bascik/`, honoring the project's hoisted `node_modules`, `import` export conditions, and subpath exports), so the cache identity matches the exact module the child loads. A shared resolver stub in the temp directory reproduces that resolution deterministically across fresh processes, worker/serial modes, and package managers.
 
 ### Invalidation Limits & Cache Exclusions
 
-Bascik statically scans genuine relative ESM specifiers and quoted local data paths. It **cannot** detect runtime dependencies such as:
+Bascik statically scans genuine relative ESM specifiers, quoted local data paths, and package imports. It **cannot** detect runtime dependencies such as:
 
 - Network API calls and database queries
 - Directory reads (`readdir`)
 - Computed or dynamic file paths (e.g. `join(dir, name)` or template strings)
-- Transitive dependencies inside external npm packages
-- Process environment variables not explicitly tracked in the key
+- Native modules, environment variables not tracked in the key, or other external side effects
 
-If your script reads from any of these sources, configure `scripts.cache.exclude` in `bascik.config.ts`:
+A script whose dependency graph cannot be statically known (a dynamic `import()` of a non-literal specifier, such as `import(name)` or a template string) is automatically classified **non-cacheable**: it re-runs on every build and never writes a cache entry. This is an explicit contract, not a blanket cache disable.
+
+If your script reads from any of the undetectable sources above, configure `scripts.cache.exclude` in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
