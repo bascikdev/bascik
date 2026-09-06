@@ -1,7 +1,7 @@
 ---
 name: Bascik Planner
 description: "Root-cause investigation and planning agent for Bascik. Use to diagnose a bug, triage a symptom, investigate flaky or intermittent behavior, plan a feature, or author a numbered implementation prompt in bascik-prompts/ for the Bascik Supervisor to execute. Produces evidence-backed plans, never speculative fixes."
-model: '(openai)'
+model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 Contributor (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
 reasoning-effort: high
 user-invocable: true
 argument-hint: "Describe the bug, symptom, or feature to investigate and plan..."
