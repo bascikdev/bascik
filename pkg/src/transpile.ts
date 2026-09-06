@@ -67,15 +67,20 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
     await runExecPhase("pre");
-    // Parallel entries are started concurrently and joined before page
-    // transpilation in dev as in build, so every started task's rejection is
-    // observed rather than fire-and-forget. A failed required producer aborts
-    // startup before any consumer page compiles against stale output.
-    await startExecParallel();
+    // Parallel entries run alongside the dev server and page compilation:
+    // the handle is started here but NOT awaited, so the server binds and
+    // pages compile while the entries work. The handle is retained and handed
+    // to the dev lifecycle owner, which publishes each task's completion or
+    // failure through the exec publication coordinator (exec-completed /
+    // exec-failed) the moment it settles. A parallel failure therefore
+    // surfaces as an honest build-error and never a success reload, without
+    // blocking boot. Only the build branch above joins parallel, because a
+    // one-shot build must be complete before dist/ is finalized.
+    const parallel = startExecParallel();
     // Dev mode is the shared server (server.ts) plus the additions in
     // server-dev.ts; the production counterpart is server-prod.ts.
     const { startDevServer } = await import("./lib/server-dev.ts");
-    const dev = startDevServer(options);
+    const dev = startDevServer({ ...options, parallel });
     const url = await dev.url;
 
     await watchFiles();

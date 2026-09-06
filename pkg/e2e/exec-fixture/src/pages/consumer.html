@@ -12,6 +12,10 @@
     <script
       data-bascik-build>import { readFileSync } from 'node:fs'; try { console.log(JSON.parse(readFileSync('dist/generated.json', 'utf8')).value); } catch (e) { console.log('missing'); }</script>
   </p>
+  <p data-testid="parallel-value">
+    <script
+      data-bascik-build>import { readFileSync } from 'node:fs'; try { console.log(JSON.parse(readFileSync('dist/parallel.json', 'utf8')).value); } catch (e) { console.log('missing'); }</script>
+  </p>
 </body>
 
 </html>

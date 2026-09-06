@@ -934,6 +934,42 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
   });
 
+  it("registers the consumer flush for a dev parallel entry even without pipeline.watchPaths (prompt 137)", async () => {
+    // A dev `phase: 'parallel'` completion publishes through the coordinator's
+    // consumer flush. That flush must exist whenever exec entries exist, not
+    // only when the user also configured pipeline.watchPaths.
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: [],
+      exec: [{ script: "scripts/search-index.mjs", phase: "parallel" }],
+    };
+    await watchFiles();
+    // No watch-path watcher was created: only the default fleet.
+    expect(mockWatch).toHaveBeenCalledTimes(DEV_WATCHER_COUNT);
+
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    mockEventEmit.mockClear();
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/search-index.mjs", phase: "parallel" },
+      paths: ["scripts/search-index.mjs"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("scripts/search-index.mjs");
+    expect(clearBuildScriptCaches).toHaveBeenCalled();
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "watch-path-processed",
+      expect.objectContaining({ path: "scripts/search-index.mjs" }),
+    );
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    _execPublicationTestHooks.reset();
+  });
+
   it("recompiles directly for a watch-path edit no exec producer covers", async () => {
     (BascikConfig as any).pipeline = {
       watchPaths: ["src/content/docs"],

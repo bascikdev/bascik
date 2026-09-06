@@ -90,6 +90,28 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
     errorSpy.mockRestore();
   });
 
+  it("forwards the retained parallel handle to startExecDev and installs the coordinator before it can settle", async () => {
+    // A parallel entry that finishes fast must find the exec-completed
+    // listener already installed; otherwise the completion is dropped. The
+    // handle is therefore released only after startExecDev has been reached.
+    let release: () => void = () => { };
+    const joined = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const parallel = Object.assign(joined, { tasks: [] });
+    _mockStartExecDev.mockImplementationOnce(async (opts?: { parallel?: unknown }) => {
+      _callOrder.push("startExecDev");
+      expect(opts?.parallel).toBe(parallel);
+      expect(eventEmitter.listenerCount("exec-completed")).toBeGreaterThan(0);
+      expect(eventEmitter.listenerCount("exec-failed")).toBeGreaterThan(0);
+    });
+
+    const dev = startDevServer({ exitOnError: false, parallel });
+    release();
+    await dev.execReady;
+    expect(_mockStartExecDev).toHaveBeenCalledWith(expect.objectContaining({ parallel }));
+  });
+
   it("installs the single exec publication coordinator after dev exec registration", async () => {
     const dev = startDevServer({ exitOnError: false });
     await dev.execReady;

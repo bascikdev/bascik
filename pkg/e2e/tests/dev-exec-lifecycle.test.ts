@@ -9,6 +9,12 @@
  * The generator writes `dist/generated.json` (out of src/). The consumer page
  * build script reads that literal path via readFileSync and prints its value.
  *
+ * A second `phase: 'parallel'` producer (`scripts/parallel-generator.mjs`,
+ * prompt 137) writes `dist/parallel.json`. Under BASCIK_PARALLEL_GATE=1 it
+ * holds behind an HTTP gate on 127.0.0.1:9778 so the suite can prove the dev
+ * server serves pages while the parallel entry is still running, and that the
+ * generated value is published once through the coordinator on release.
+ *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec.config.ts
  */
@@ -24,6 +30,8 @@ const markerPath = join(fixtureDir, 'scripts/.generation');
 const armedGatePath = join(fixtureDir, 'scripts/.armed-gate');
 
 const RELEASE_URL = 'http://127.0.0.1:9777/release';
+const PARALLEL_STATUS_URL = 'http://127.0.0.1:9778/status';
+const PARALLEL_RELEASE_URL = 'http://127.0.0.1:9778/release';
 
 const readGeneration = async (): Promise<number> => {
   const marker = await readFile(markerPath, 'utf8').catch(() => '0');
@@ -42,6 +50,39 @@ test.describe('exec producer/consumer lifecycle ownership', () => {
     if (current !== originalDoc) {
       await writeFile(docPath, originalDoc, 'utf8');
     }
+  });
+
+  test('a parallel entry runs alongside the live dev server and publishes its value once on completion', async ({ page }) => {
+    // The parallel producer is still held behind its gate: it has not written
+    // dist/parallel.json yet. The dev server must already be serving the
+    // consumer page (boot did not wait for the parallel phase), with the pre
+    // producer's value present and the parallel value honestly missing.
+    const status = await fetch(PARALLEL_STATUS_URL).then((r) => r.json() as Promise<{ running: boolean }>);
+    expect(status.running).toBe(true);
+
+    await page.goto('/consumer');
+    await expect(page.getByTestId('generated-value')).toHaveText(/generation-\d+\s*/);
+    await expect(page.getByTestId('parallel-value')).toHaveText(/missing\s*/);
+
+    // Arm reload observation BEFORE releasing the gate so the coordinated
+    // reload for the parallel completion is captured deterministically.
+    const reloaded = page.waitForEvent('framenavigated', { timeout: 20000 });
+    await fetch(PARALLEL_RELEASE_URL);
+    await reloaded;
+
+    // The parallel completion reached the coordinator, the consumer page
+    // re-transpiled against the produced bytes, and the browser reloaded once
+    // with the generated value.
+    await expect(page.getByTestId('parallel-value')).toHaveText(/parallel-\d+\s*/, { timeout: 15000 });
+    const published = (await page.getByTestId('parallel-value').textContent())?.trim();
+    expect(published).toMatch(/^parallel-\d+$/);
+
+    // A fresh navigation serves the same published generation: the value was
+    // published exactly once and is stable, not re-run or reverted.
+    await page.goto('/consumer');
+    await expect(page.getByTestId('parallel-value')).toHaveText(new RegExp(`${published}\\s*`));
+    // The gate server closed after release: the parallel child exited.
+    await expect(fetch(PARALLEL_STATUS_URL)).rejects.toThrow();
   });
 
   test('startup runs the pre producer exactly once and the consumer sees the finished output', async ({ page }) => {

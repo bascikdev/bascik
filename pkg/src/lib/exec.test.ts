@@ -152,6 +152,101 @@ describe("startExecParallel", () => {
     startExecParallel();
     expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
+
+  it("exposes one task per parallel entry so dev can observe each outcome individually", async () => {
+    cfg.pipeline.exec = [
+      { script: "scripts/par1.ts", phase: "parallel" },
+      { script: "scripts/pre.ts", phase: "pre" },
+      { script: "scripts/par2.ts", phase: "parallel" },
+    ];
+
+    const handle = startExecParallel();
+    expect(handle.tasks.map((task) => task.entry.script)).toEqual(["scripts/par1.ts", "scripts/par2.ts"]);
+    // The joined promise still resolves for the build branch's awaited join.
+    await expect(handle).resolves.toBeUndefined();
+    await expect(Promise.all(handle.tasks.map((task) => task.promise))).resolves.toHaveLength(2);
+  });
+
+  it("returns an empty task list and a resolved join when no parallel entries exist", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/pre.ts", phase: "pre" }];
+    const handle = startExecParallel();
+    expect(handle.tasks).toEqual([]);
+    await expect(handle).resolves.toBeUndefined();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
+  it("emits exec-completed for each settled parallel task without awaiting the join first", async () => {
+    cfg.pipeline.exec = [
+      { script: "scripts/par1.ts", phase: "parallel" },
+      { script: "scripts/par2.ts", phase: "parallel" },
+    ];
+    const handle = startExecParallel();
+    // Both children were spawned before either settled: unrelated parallel
+    // entries stay concurrent.
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+    await startExecDev({ parallel: handle });
+    await handle;
+    await Promise.resolve();
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({
+        entry: { script: "scripts/par1.ts", phase: "parallel" },
+        paths: ["scripts/par1.ts"],
+      }),
+    );
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({
+        entry: { script: "scripts/par2.ts", phase: "parallel" },
+        paths: ["scripts/par2.ts"],
+      }),
+    );
+    const completed = mockEventEmit.mock.calls.filter(([name]) => name === "exec-completed");
+    expect(completed).toHaveLength(2);
+    // Registration does not rerun the already-started parallel work.
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("emits exec-failed (and never exec-completed) when a parallel task rejects, without throwing", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    const handle = startExecParallel();
+    await expect(startExecDev({ parallel: handle })).resolves.toBeUndefined();
+    await handle.catch(() => { });
+    await Promise.resolve();
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-failed",
+      expect.objectContaining({
+        entry: { script: "scripts/fail.ts", phase: "parallel" },
+        paths: ["scripts/fail.ts"],
+        error: expect.any(Error),
+      }),
+    );
+    expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] exec error:", expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
+  it("publishes parallel outcomes even when no watched entries exist", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/par1.ts", phase: "parallel" }];
+    const handle = startExecParallel();
+    await startExecDev({ parallel: handle });
+    await handle;
+    await Promise.resolve();
+
+    expect(mockWatch).not.toHaveBeenCalled();
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ paths: ["scripts/par1.ts"] }),
+    );
+  });
 });
 
 describe("startExecDev", () => {

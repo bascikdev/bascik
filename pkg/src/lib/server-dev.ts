@@ -21,11 +21,21 @@
 
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
-import { startExecDev } from "./exec.ts";
+import { startExecDev, type ParallelExecHandle } from "./exec.ts";
 import { installExecPublication, setExecProducerWatchGlobs } from "./exec-publication.ts";
 import { startServer } from "./server.ts";
 import { BascikConfig } from "./config.ts";
 import type { ExecEntry } from "./types.ts";
+
+export interface DevServerOptions {
+  exitOnError?: boolean;
+  /**
+   * The parallel exec handle the dev branch of `transpile.ts` started but did
+   * not await. The dev lifecycle owner registers each task's outcome with the
+   * exec publication coordinator so it is published when it lands.
+   */
+  parallel?: ParallelExecHandle;
+}
 
 export interface DevServerHandle {
   /** Resolves with the listening URL once the port is bound; rejects if binding fails. */
@@ -46,7 +56,7 @@ export interface DevServerHandle {
  * The caller (`transpile.ts`) runs the transpile/watch pipeline in between
  * and then calls `finishBoot()`.
  */
-export const startDevServer = (options: { exitOnError?: boolean } = {}): DevServerHandle => {
+export const startDevServer = (options: DevServerOptions = {}): DevServerHandle => {
   const url = startServer().catch((err) => {
     console.error("Server startup failed:", err);
     if (options.exitOnError !== false) {
@@ -54,10 +64,15 @@ export const startDevServer = (options: { exitOnError?: boolean } = {}): DevServ
     }
     throw err;
   });
-  const execReady = startExecDev().then(() => {
-    // Install the exec producer/consumer coordinator once watched exec entries
-    // are registered. Producer globs feed overlap detection so watch.ts can
-    // defer a watch-path edit until the matching producer completes.
+  // Install the exec producer/consumer coordinator BEFORE any exec outcome can
+  // be emitted. Watched producers only fire on later edits, but a parallel
+  // entry started by transpile.ts may settle at any moment, including before
+  // startExecDev's lazy chokidar import resolves. Installing first guarantees
+  // the exec-completed / exec-failed listener exists for every outcome.
+  installExecPublication(eventEmitter);
+  const execReady = startExecDev({ parallel: options.parallel }).then(() => {
+    // Producer globs feed overlap detection so watch.ts can defer a
+    // watch-path edit until the matching producer completes.
     const watchedEntries = (BascikConfig.pipeline?.exec ?? []).filter(
       (entry) => !!entry.watch,
     ) as ExecEntry[];
@@ -66,7 +81,6 @@ export const startDevServer = (options: { exitOnError?: boolean } = {}): DevServ
         Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
       ),
     );
-    installExecPublication(eventEmitter);
   });
 
   const finishBoot = async (): Promise<void> => {

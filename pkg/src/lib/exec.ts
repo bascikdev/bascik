@@ -235,19 +235,78 @@ export const runExecPhase = async (phase: ExecPhase, options?: ExecOptions): Pro
   return { count: matching.length, totalElapsed };
 };
 
-/** Run parallel exec entries concurrently and await their completion before continuing. */
-export const startExecParallel = async (options?: ExecOptions): Promise<void> => {
-  const entries = BascikConfig.pipeline?.exec;
-  if (!entries?.length) return;
-  const matching = entries.filter((e) => e.phase === 'parallel');
-  if (!matching.length) return;
+/** One started parallel entry and the promise that settles when its child exits. */
+export interface ParallelExecTask {
+  entry: ExecEntry;
+  promise: Promise<number>;
+}
 
-  await Promise.all(
-    matching.map(async (entry) => {
-      await runScript(entry, options);
-    }),
-  );
+/**
+ * The parallel phase as a whole: a promise that joins every parallel entry
+ * (build awaits it before writing `dist/`) plus the individual tasks so the
+ * dev lifecycle owner can publish each outcome as it arrives instead of
+ * waiting for the join.
+ */
+export type ParallelExecHandle = Promise<void> & { tasks: ParallelExecTask[] };
+
+/**
+ * Start every `phase: 'parallel'` entry concurrently.
+ *
+ * The returned handle is the joined promise (it adopts the first rejection,
+ * so a build that awaits it fails honestly) and also carries `tasks`, one per
+ * entry. Build awaits the join before `dist/` finalization. Dev does not
+ * await it: the server binds and pages compile while the entries run, and
+ * `startExecDev` hands each task's settlement to the exec publication
+ * coordinator so a completion or failure is observed the moment it lands.
+ */
+export const startExecParallel = (options?: ExecOptions): ParallelExecHandle => {
+  const entries = BascikConfig.pipeline?.exec;
+  const matching = entries?.length ? entries.filter((e) => e.phase === 'parallel') : [];
+  const tasks: ParallelExecTask[] = matching.map((entry) => ({
+    entry,
+    promise: runScript(entry, options),
+  }));
+  const joined = Promise.all(tasks.map((task) => task.promise)).then(() => undefined);
+  return Object.assign(joined, { tasks });
 };
+
+/**
+ * Publish each parallel task's outcome through the same events the watched
+ * producer path uses, so the exec publication coordinator (installed by the
+ * dev lifecycle owner) flushes consumers on success and surfaces an honest
+ * build-error on failure. Unrelated tasks are never serialized: every task is
+ * observed independently as it settles. `paths` carries the entry's script so
+ * the consumer flush has a stable, per-entry key for the produced generation.
+ *
+ * The joined handle is marked observed here because each rejection it adopts
+ * is published individually below; nothing is swallowed.
+ */
+const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
+  handle.then(
+    () => undefined,
+    () => undefined,
+  );
+  for (const { entry, promise } of handle.tasks) {
+    const paths = [entry.script];
+    promise
+      .then(() => {
+        eventEmitter.emit('exec-completed', { entry, paths });
+      })
+      .catch((err) => {
+        console.error('[bascik] exec error:', err);
+        eventEmitter.emit('exec-failed', { entry, paths, error: err });
+      });
+  }
+};
+
+export interface ExecDevOptions extends ExecOptions {
+  /**
+   * The parallel phase handle returned by `startExecParallel`, retained (not
+   * awaited) by the dev branch of `transpile.ts`. Its outcomes are registered
+   * synchronously before any watcher work so no settlement can be missed.
+   */
+  parallel?: ParallelExecHandle;
+}
 
 /** Normalized watch glob list for an exec entry. */
 const watcherPatterns = (entry: ExecEntry): string[] =>
@@ -264,9 +323,15 @@ const watcherPatterns = (entry: ExecEntry): string[] =>
  * this function only registers event-driven watchers. Each started producer
  * task is observed, and its outcome reaches the exec publication coordinator
  * (a listener installed by the dev lifecycle owner), never silently dropped.
+ *
+ * When the dev branch passes the retained parallel handle, each parallel
+ * task's settlement is registered here synchronously, before the lazy chokidar
+ * import, so a parallel entry that finishes while the server is still booting
+ * is published rather than lost.
  */
-export const startExecDev = (options?: ExecOptions): Promise<void> => {
+export const startExecDev = (options?: ExecDevOptions): Promise<void> => {
   const clock = options?.clock ?? nativeClock;
+  if (options?.parallel) publishParallelOutcomes(options.parallel);
   const entries = BascikConfig.pipeline?.exec;
   if (!entries?.length) return Promise.resolve();
   const watchedEntries = entries.filter((entry) => !!entry.watch);

@@ -28,10 +28,19 @@ import type { EventEmitter } from 'node:events';
  * Unrelated exec entries remain fully concurrent: only paths that a matching
  * producer covers are serialized in front of the consumer compile.
  *
+ * The dev parallel phase (prompt 137) publishes through this same owner. In
+ * dev `startExecParallel()` is not awaited, so the server binds and pages
+ * compile while parallel entries run; `startExecDev` emits `exec-completed` /
+ * `exec-failed` per task as it settles, and this coordinator flushes the
+ * consumers (or surfaces a build-error) exactly once per generation.
+ *
  * Consumer compilation is late-bound: the event listeners are installed by the
- * dev lifecycle owner right after `startExecDev`, but the actual recompile
+ * dev lifecycle owner before `startExecDev`, but the actual recompile
  * function is registered by `watch.ts` during `watchFiles()` because the two
- * watcher fleets register in that order.
+ * watcher fleets register in that order. A completion that lands in between
+ * (a fast parallel entry) is retained in the pending generation and flushed
+ * when the consumer registers, so it is never dropped and never consumes a
+ * generation with nobody to publish to.
  */
 
 export type ConsumerFlush = (paths: string[]) => Promise<void> | void;
@@ -57,6 +66,9 @@ let coordinating = false;
  */
 export const registerExecConsumerFlush = (flush: ConsumerFlush): void => {
   consumerFlush = flush;
+  // Publish any completion retained while no consumer existed (startup race
+  // between a fast parallel entry and watch.ts registration).
+  if (pending.size > 0) void flushPending();
 };
 
 /**
@@ -78,14 +90,15 @@ export const execProducerCovers = (
 
 const flushPending = async (): Promise<void> => {
   if (coordinating) return;
+  // No consumer yet: hold the generation open. registerExecConsumerFlush
+  // drains it the moment a consumer exists.
+  if (!consumerFlush) return;
   coordinating = true;
   generation += 1;
   const snapshot = [...pending];
   pending.clear();
   try {
-    if (consumerFlush) {
-      await consumerFlush(snapshot);
-    }
+    await consumerFlush(snapshot);
   } catch (err) {
     // Consumer failure was already surfaced by reportPageErrors / processing
     // (prompt 97). Never let it escape unobserved.

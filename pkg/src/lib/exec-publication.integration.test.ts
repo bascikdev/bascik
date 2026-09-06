@@ -122,6 +122,86 @@ describe("exec publication coordinator: producer/consumer overlap", () => {
     expect(_execPublicationTestHooks.generationValue).toBe(0);
   });
 
+  // ── Dev parallel phase (prompt 137) ────────────────────────────────────────
+  // In dev the parallel phase is not awaited before the server binds. Each
+  // parallel outcome is handed to this coordinator exactly like a watched
+  // producer completion, so it is observed and published, never dropped.
+
+  it("a parallel completion flushes consumers exactly once as its own monotonic generation", async () => {
+    const parallel = entry({ script: "scripts/search-index.mjs", phase: "parallel" });
+    emitter.emit("exec-completed", { entry: parallel, paths: [parallel.script] });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushCalls).toEqual([["scripts/search-index.mjs"]]);
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    expect(_execPublicationTestHooks.pendingPaths).toEqual([]);
+  });
+
+  it("two unrelated parallel completions publish as two monotonic generations without serializing each other", async () => {
+    const first = entry({ script: "scripts/a.mjs", phase: "parallel" });
+    const second = entry({ script: "scripts/b.mjs", phase: "parallel" });
+    emitter.emit("exec-completed", { entry: first, paths: [first.script] });
+    emitter.emit("exec-completed", { entry: second, paths: [second.script] });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushCalls.flat()).toEqual(["scripts/a.mjs", "scripts/b.mjs"]);
+    expect(flushCalls.length).toBe(2);
+    expect(_execPublicationTestHooks.generationValue).toBe(2);
+  });
+
+  it("retains a parallel completion that lands before the consumer flush is registered and publishes it once on registration", async () => {
+    // Startup race: a fast parallel entry can finish before watch.ts has
+    // registered the consumer recompile. The completion must not be dropped
+    // and must not burn a generation with nobody to publish to.
+    _execPublicationTestHooks.reset();
+    emitter = new EventEmitter();
+    installExecPublication(emitter);
+    const parallel = entry({ script: "scripts/early.mjs", phase: "parallel" });
+    emitter.emit("exec-completed", { entry: parallel, paths: [parallel.script] });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(_execPublicationTestHooks.generationValue).toBe(0);
+    expect(_execPublicationTestHooks.pendingPaths).toEqual(["scripts/early.mjs"]);
+
+    registerExecConsumerFlush(async (paths) => {
+      flushCalls.push(paths);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushCalls).toEqual([["scripts/early.mjs"]]);
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    expect(_execPublicationTestHooks.pendingPaths).toEqual([]);
+  });
+
+  it("a failed parallel entry surfaces a build-error and never a consumer flush or a success reload", async () => {
+    const errors: Array<{ message: string; file: string }> = [];
+    const reloads: string[] = [];
+    emitter.on("build-error", (p: { message: string; file: string }) => errors.push(p));
+    emitter.on("transpiled", () => reloads.push("transpiled"));
+    emitter.on("asset-changed", () => reloads.push("asset-changed"));
+    emitter.on("watch-path-processed", () => reloads.push("watch-path-processed"));
+
+    const parallel = entry({ script: "scripts/og-images.mjs", phase: "parallel" });
+    emitter.emit("exec-failed", {
+      entry: parallel,
+      paths: [parallel.script],
+      error: new Error('[bascik] exec "scripts/og-images.mjs" exited with code 1'),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(flushCalls).toEqual([]);
+    expect(reloads).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].file).toBe("scripts/og-images.mjs");
+    expect(errors[0].message).toContain("exited with code 1");
+    expect(_execPublicationTestHooks.generationValue).toBe(0);
+  });
+
   it("recovers through the next valid generation after a failure", async () => {
     setExecProducerWatchGlobs([["content/"]]);
     const errors: Array<{ message: string; file: string }> = [];

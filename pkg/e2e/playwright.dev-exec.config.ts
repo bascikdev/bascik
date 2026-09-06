@@ -7,6 +7,11 @@
  * `bascik.config.ts` that wires a watched pre-phase generator to a page whose
  * build script consumes the generated literal `dist/generated.json` path.
  *
+ * BASCIK_PARALLEL_GATE=1 holds the fixture's `phase: 'parallel'` producer
+ * behind an HTTP gate (prompt 137) so the suite can prove the dev server is
+ * live and serving before the parallel entry finishes, and that its output is
+ * published once on release.
+ *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec.config.ts
  */
@@ -30,7 +35,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: [{
-    command: `BASCIK_SERVER_PORT=9661 node ${pkgDir}/dist/index.js`,
+    command: `BASCIK_SERVER_PORT=9661 BASCIK_PARALLEL_GATE=1 node ${pkgDir}/dist/index.js`,
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,

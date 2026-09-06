@@ -16,7 +16,9 @@ export interface ExecEntry {
    * When this script runs relative to page transpilation.
    * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
    * - 'post': runs after all pages are transpiled and written to dist.
-   * - 'parallel': started before transpilation and joined before transpilation begins in build mode.
+   * - 'parallel': started before transpilation and run concurrently with it. Build joins it before
+   *   dist/ is finalized; dev does not await it and publishes each outcome through the exec
+   *   publication coordinator when it settles.
    */
   phase?: ExecPhase;
   /** Working directory for the script execution. Defaults to process.cwd(). */

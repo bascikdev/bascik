@@ -180,10 +180,9 @@ export const watchFiles = async () => {
   // publication coordinator and defers overlapped edits to it, so the producer
   // completes first and the coordinator recompiles exactly once.
   const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
-  if (!BascikConfig.isBuild && watchPaths.length) {
-    const producerWatchEntries = ((BascikConfig.pipeline?.exec ?? []) as ExecEntry[]).filter(
-      (entry) => !!entry.watch,
-    );
+  const execEntries = (BascikConfig.pipeline?.exec ?? []) as ExecEntry[];
+  if (!BascikConfig.isBuild && (watchPaths.length || execEntries.length)) {
+    const producerWatchEntries = execEntries.filter((entry) => !!entry.watch);
     setExecProducerWatchGlobs(
       producerWatchEntries.map((entry) =>
         Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
@@ -198,6 +197,9 @@ export const watchFiles = async () => {
     // build-script cache ensures the re-transpiled page re-runs its build
     // script against the freshly produced bytes instead of a stale output.
     // This invalidates a changed input; it does not disable caching.
+    // The same flush publishes a dev `phase: 'parallel'` completion (prompt
+    // 137), which is why it is registered whenever exec entries exist, not
+    // only when `pipeline.watchPaths` is set.
     registerExecConsumerFlush(async (paths: string[]) => {
       for (const path of paths) {
         clearBuildScriptCaches(path);
@@ -210,7 +212,8 @@ export const watchFiles = async () => {
         eventEmitter.emit("watch-path-processed", { path });
       }
     });
-
+  }
+  if (!BascikConfig.isBuild && watchPaths.length) {
     w(chokidar
       .watch(watchPaths, {
         ...watchOptions,
