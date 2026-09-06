@@ -37,6 +37,7 @@ const dynamicHeadMetaCompPath = join(e2eDir, 'src/components/dynamic-head-meta.h
 const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css');
 const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
 const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
+const missingHelperPath = join(e2eDir, 'src/lib/failed-import-helper.ts');
 
 /**
  * Resolve once the page has navigated to a document whose inlined <head>
@@ -160,6 +161,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalSubfolderPage: string;
   let originalInlinedGlobalCss: string;
   let originalScopeTestCss: string;
+  let originalMissingHelper: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, 'utf8');
@@ -169,6 +171,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     originalSubfolderPage = await readFile(subfolderPagePath, 'utf8');
     originalInlinedGlobalCss = await readFile(inlinedGlobalCssPath, 'utf8');
     originalScopeTestCss = await readFile(scopeTestCssPath, 'utf8');
+    originalMissingHelper = await readFile(missingHelperPath, 'utf8');
   });
 
   test.afterEach(async () => {
@@ -178,6 +181,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await restoreFileIfChanged(componentPath, originalComponentContent);
     await restoreFileIfChanged(contentDocPath, originalContentDoc);
     await restoreFileIfChanged(subfolderPagePath, originalSubfolderPage);
+    await restoreFileIfChanged(missingHelperPath, originalMissingHelper);
     // Restoring the inlined global stylesheet rebuilds every page and
     // broadcasts a reload to any open /scope-test tab. Subscribe first so the
     // event cannot be missed, then wait for it, so that reload is consumed
@@ -373,6 +377,35 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
 
     // Server should recover and render the final state on the open browser page
     await expect(page.locator('h1')).toHaveText(finalMarker, { timeout: 15000 });
+  });
+
+  test('a broader component rebuild never overwrites a newer direct page edit with stale content', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Stage two overlapping invalidations: a broad component change (rebuilt
+    // through the shared-component path) and a newer direct page edit. The
+    // page edit carries the newest content; regardless of which compiler path
+    // finishes last, the browser must settle on the newest page content and
+    // never regress to a stale component-driven rebuild of this page.
+    const componentMarker = `component stage ${Date.now()}`;
+    const pageMarker = `page final ${Date.now()}`;
+
+    await writeFile(componentPath, originalComponentContent + `\n<span data-testid="overlap-comp-marker">${componentMarker}</span>`, 'utf8');
+
+    const newest = originalPageContent.replace(
+      '<h1>JS Scope Rewriting — Live Test</h1>',
+      `<h1>${pageMarker}</h1>`,
+    );
+    await writeFile(pagePath, newest, 'utf8');
+
+    // The final document must carry the newest page heading. Poll via
+    // toHaveText (Playwright retries across reloads); a stale overwrite would
+    // briefly show an old heading but must settle on `pageMarker`.
+    await expect(page.locator('h1')).toHaveText(pageMarker, { timeout: 15000 });
+    // After settling, the newest heading must persist (no late stale reload).
+    await page.waitForTimeout(500);
+    await expect(page.locator('h1')).toHaveText(pageMarker);
   });
 
   // ── 7. Watched Dependencies & Subfolder Routes ─────────────────────────────
@@ -626,6 +659,85 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     const textB = await page.locator('#page-file').textContent();
     expect(textB).toContain('build-script-page-env-test-b.html');
     expect(textB).not.toContain('build-script-page-env-test.html');
+  });
+
+  // ── 8. Build-error overlay: error is delivered exactly once and clears on recovery ──
+
+  test('shows a located build-error overlay on a compile error and recovers on a valid edit', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Remove the body content so transpilation throws a validate-markup
+    // PageProcessingError. This is a genuine, script-independent failure not
+    // gated by the harness's on*ScriptError: 'warn' settings, so it must be
+    // published as a located build-error event (not just logged) for the
+    // overlay to appear.
+    const broken = originalPageContent.replace(
+      /<body>[\s\S]*<\/body>/,
+      '<body></body>',
+    );
+    await writeFile(pagePath, broken, 'utf8');
+
+    const overlay = page.getByTestId('bascik-build-error-overlay');
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toContainText('body');
+
+    // Restore a valid page: the overlay clears and the page reloads.
+    await writeFile(pagePath, originalPageContent, 'utf8');
+    await expect(overlay).not.toBeAttached({ timeout: 15000 });
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+  });
+
+  test('delivers a build-error to each open tab of the affected page exactly once', async ({ context }) => {
+    const tab1 = await context.newPage();
+    const tab2 = await context.newPage();
+
+    await tab1.goto('/scope-test');
+    await tab2.goto('/scope-test');
+    await expect(tab1.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+    await expect(tab2.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // Per-page error isolation: only tabs on the failed page receive the
+    // overlay, and each receives exactly one instance (single-owner broadcast).
+    const broken = originalPageContent.replace(
+      /<body>[\s\S]*<\/body>/,
+      '<body></body>',
+    );
+    await writeFile(pagePath, broken, 'utf8');
+
+    const overlay1 = tab1.getByTestId('bascik-build-error-overlay');
+    const overlay2 = tab2.getByTestId('bascik-build-error-overlay');
+    await expect(overlay1).toBeVisible({ timeout: 15000 });
+    await expect(overlay2).toBeVisible({ timeout: 15000 });
+    await expect(overlay1).toHaveCount(1);
+    await expect(overlay2).toHaveCount(1);
+
+    await tab1.close();
+    await tab2.close();
+  });
+
+  // ── 9. Missing-import recovery: creating a previously missing helper rebuilds the page ──
+
+  test('creates a previously missing imported helper to recover the page without a page edit', async ({ page }) => {
+    await page.goto('/missing-recovery-test');
+    await expect(page.getByTestId('failed-import-marker')).toHaveText('missing-recovery-helper-v1');
+
+    // Delete the imported helper. The failed compile (or a harness-swallowed
+    // import failure) must still record the attempted dependency so the
+    // import-root watcher knows to rebuild this page when the helper reappears.
+    await rm(missingHelperPath, { force: true });
+    await page.waitForTimeout(500);
+
+    // Recreate the precise helper with new content. The import-root watcher
+    // must route the add through the failed-dependency index and rebuild this
+    // page automatically, with no further page edit or reload.
+    await writeFile(
+      missingHelperPath,
+      'export const recoveryMarker = (): string => \'missing-recovery-helper-v2\';\n',
+      'utf8',
+    );
+
+    await expect(page.getByTestId('failed-import-marker')).toHaveText('missing-recovery-helper-v2', { timeout: 15000 });
   });
 });
 

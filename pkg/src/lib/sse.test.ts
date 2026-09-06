@@ -3,9 +3,11 @@ import {
   SseManager,
 } from "./sse.ts";
 import { nativeClock } from "./clock.ts";
+import { eventEmitter } from "./events.ts";
 
 const makeMockRes = () => {
   const writes: string[] = [];
+  const listeners: Record<string, Array<() => void>> = {};
   const mockRes: any = {
     destroyed: false,
     write: vi.fn((data: string) => {
@@ -14,10 +16,15 @@ const makeMockRes = () => {
     }),
     end: vi.fn(),
     close: vi.fn(),
-    on: vi.fn(),
+    on: vi.fn((event: string, cb: () => void) => {
+      (listeners[event] ??= []).push(cb);
+    }),
+    off: vi.fn((event: string, cb: () => void) => {
+      listeners[event] = (listeners[event] ?? []).filter((l) => l !== cb);
+    }),
     writable: { once: vi.fn() },
   };
-  return { mockRes, writes };
+  return { mockRes, writes, listeners };
 };
 
 describe("SseManager", () => {
@@ -168,6 +175,27 @@ describe("SseManager", () => {
     expect(errorEvent).toBeDefined();
   });
 
+  it("routes a global build-error event to every client exactly once", () => {
+    // The SseManager owns the single build-error subscription, so a one-shot
+    // emit on the event emitter reaches each live client exactly one frame.
+    const c1 = makeMockRes();
+    const c2 = makeMockRes();
+    sseManager.addClient(c1.mockRes);
+    sseManager.addClient(c2.mockRes);
+    c1.writes.length = 0;
+    c2.writes.length = 0;
+
+    eventEmitter.emit("build-error", { message: "boom", file: "pages/a.html", line: 1 });
+
+    const frames1 = c1.writes.filter((w) => w.startsWith("event: build-error"));
+    const frames2 = c2.writes.filter((w) => w.startsWith("event: build-error"));
+    expect(frames1).toHaveLength(1);
+    expect(frames2).toHaveLength(1);
+    // Matches the single-owner contract: one manager subscription, not one
+    // subscription per connection.
+    expect(frames1[0]).toContain('"file":"pages/a.html"');
+  });
+
   it("closes client if write fails or client is unresponsive", () => {
     const mockRes: any = {
       destroyed: false,
@@ -293,5 +321,111 @@ describe("SseManager - deterministic clock-driven heartbeat and drain reaping", 
     manager.destroy();
     expect(() => manager.destroy()).not.toThrow();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt 97: each SSE connection owns at most ONE drain subscription. A burst
+// of backpressured writes must not accumulate drain listeners, and removal /
+// destruction must return them to baseline.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("SseManager - prompt 97 bounded drain subscriptions", () => {
+  let manager: SseManager;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    manager.destroy();
+    vi.useRealTimers();
+  });
+
+  it("does not count a backpressured write as activity and registers exactly one drain listener per client", () => {
+    manager = new SseManager({ heartbeatIntervalMs: 100, clock: nativeClock });
+    const { mockRes, listeners } = makeMockRes();
+    // Every write reports backpressure.
+    let writeCount = 0;
+    mockRes.write = vi.fn(() => {
+      writeCount++;
+      return false;
+    });
+    const client = manager.addClient(mockRes)!;
+
+    // Burst of backpressured writes. Each previous implementation registered a
+    // fresh drain listener, growing the count with the writes.
+    for (let i = 0; i < 9; i++) {
+      if (manager.send(client, `data: frame ${i}\n\n`)) break;
+    }
+
+    expect(listeners.drain).toHaveLength(1);
+    // Writes stop once draining; the writable is stalled until a drain event.
+    expect(writeCount).toBe(1);
+  });
+
+  it("resumes writing after the single drain event clears the drain flag", () => {
+    manager = new SseManager({ heartbeatIntervalMs: 100, clock: nativeClock });
+    const { mockRes, listeners, writes } = makeMockRes();
+    let fail = true;
+    mockRes.write = vi.fn(() => {
+      if (fail) return false;
+      writes.push("data: resumed\n\n");
+      return true;
+    });
+    const client = manager.addClient(mockRes)!;
+
+    // First write stalls.
+    manager.send(client, "data: reload 1\n\n");
+    expect(client.isDraining).toBe(true);
+
+    // Drain fires: the single subscription clears the flag.
+    fail = false;
+    listeners.drain.forEach((cb) => cb());
+    expect(client.isDraining).toBe(false);
+
+    // Next write succeeds.
+    expect(manager.send(client, "data: reload 2\n\n")).toBe(true);
+    expect(writes).toContain("data: resumed\n\n");
+  });
+
+  it("removes the drain listener on removeClient", () => {
+    manager = new SseManager({ heartbeatIntervalMs: 100, clock: nativeClock });
+    const { mockRes, listeners } = makeMockRes();
+    mockRes.write = vi.fn(() => false);
+    const client = manager.addClient(mockRes)!;
+    expect(listeners.drain).toHaveLength(1);
+
+    manager.removeClient(client.id);
+    expect(manager.activeClientCount).toBe(0);
+    expect(listeners.drain).toHaveLength(0);
+  });
+
+  it("removes all drain listeners on manager destroy", () => {
+    const res1 = makeMockRes();
+    const res2 = makeMockRes();
+    res1.mockRes.write = vi.fn(() => false);
+    res2.mockRes.write = vi.fn(() => false);
+    manager = new SseManager({ heartbeatIntervalMs: 100, clock: nativeClock });
+    manager.addClient(res1.mockRes);
+    manager.addClient(res2.mockRes);
+
+    manager.destroy();
+    expect(res1.listeners.drain).toHaveLength(0);
+    expect(res2.listeners.drain).toHaveLength(0);
+    expect(manager.activeClientCount).toBe(0);
+  });
+
+  it("rejects connections beyond maxConnections and ends the stream before headers are committed", () => {
+    manager = new SseManager({ heartbeatIntervalMs: 100, maxConnections: 2, clock: nativeClock });
+    manager.addClient(makeMockRes().mockRes);
+    manager.addClient(makeMockRes().mockRes);
+
+    const overflow = makeMockRes();
+    overflow.mockRes.respond = vi.fn();
+    const rejected = manager.addClient(overflow.mockRes);
+    expect(rejected).toBeNull();
+    expect(overflow.mockRes.respond).toHaveBeenCalled();
+    expect(overflow.mockRes.end).toHaveBeenCalled();
   });
 });

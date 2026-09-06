@@ -1,0 +1,1 @@
+export const recoveryMarker = (): string => 'missing-recovery-helper-v1';

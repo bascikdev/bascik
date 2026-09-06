@@ -280,6 +280,46 @@ describe("fileDependencies and pagesDependentOnFile", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Failed-dependency index (prompt 99)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("failed dependencies so a missing helper is tracked", () => {
+  const PAGE = "pages/missing-import.html";
+
+  it("pagesDependentOnFile returns a page with recorded failed dependencies", () => {
+    mem.recordFailedDependencies(PAGE, ["src/lib/new-helper.ts"]);
+    expect(mem.pagesDependentOnFile("src/lib/new-helper.ts")).toContain(PAGE);
+  });
+
+  it("replacing failed dependencies removes obsolete entries", () => {
+    mem.recordFailedDependencies(PAGE, ["src/lib/old-helper.ts"]);
+    mem.recordFailedDependencies(PAGE, ["src/lib/new-helper.ts"]);
+    expect(mem.pagesDependentOnFile("src/lib/old-helper.ts")).toEqual([]);
+    expect(mem.pagesDependentOnFile("src/lib/new-helper.ts")).toContain(PAGE);
+  });
+
+  it("re-recording with no missing deps clears the page's failed dependencies", () => {
+    mem.recordFailedDependencies(PAGE, ["src/lib/missing-helper.ts"]);
+    mem.recordFailedDependencies(PAGE, []);
+    expect(mem.pagesDependentOnFile("src/lib/missing-helper.ts")).toEqual([]);
+  });
+
+  it("removing a page clears its failed dependencies", async () => {
+    mem.recordFailedDependencies(PAGE, ["src/lib/ghost-helper.ts"]);
+    mem.removePage(PAGE);
+    expect(mem.pagesDependentOnFile("src/lib/ghost-helper.ts")).toEqual([]);
+  });
+
+  it("does not let a page's failed deps leak to another page on removal", async () => {
+    const other = "pages/other.html";
+    mem.recordFailedDependencies(PAGE, ["src/lib/shared-helper.ts"]);
+    mem.recordFailedDependencies(other, ["src/lib/shared-helper.ts"]);
+    mem.removePage(PAGE);
+    expect(mem.pagesDependentOnFile("src/lib/shared-helper.ts")).toEqual([other]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // In-flight rebuilds & dirty page tracking
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -80,6 +80,8 @@ vi.mock("./mem.js", () => ({
     removeByRelativePath: vi.fn(),
     pagesThisComponentIsUsedOn: vi.fn(() => []),
     pagesDependentOnFile: vi.fn(() => []),
+    recordFailedDependencies: vi.fn(),
+    clearFailedDependencies: vi.fn(),
     openPages: [] as string[],
     trackOpenPage: vi.fn(),
     untrackOpenPage: vi.fn(),
@@ -2925,5 +2927,277 @@ throw new Error("component failure");
       undefined,
       expect.objectContaining({ pageFile: "src/pages/consumer.html" }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Monotonic dev publication & concurrency overlap (Prompt 98)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("monotonic dev publication & concurrency overlap", () => {
+  const PAGE_ABS = resolve(process.cwd(), "src/pages/index.html");
+  const PAGE_REL = "src/pages/index.html";
+
+  beforeEach(async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    (mem.storePage as ReturnType<typeof vi.fn>).mockClear();
+    (mem.removePage as ReturnType<typeof vi.fn>).mockClear();
+    (mem.removeByRelativePath as ReturnType<typeof vi.fn>).mockClear();
+    const eventsModule = await import("./events.ts");
+    (eventsModule.eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it("drops a stale batch completion when a newer direct pageProcessing has already published", async () => {
+    const eventsModule = await import("./events.ts");
+    let releaseBatchRead!: () => void;
+    const batchReadGate = new Promise<void>((res) => {
+      releaseBatchRead = res;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD BATCH</h1></body></html>";
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW DIRECT</h1></body></html>";
+
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async (filePath: string) => {
+      if (filePath.includes("index.html")) {
+        // If gate not released, this is the batch read
+        await batchReadGate;
+        return OLD_HTML;
+      }
+      return "<!DOCTYPE html><html><head></head><body>default</body></html>";
+    });
+
+    // 1. Start batch processing with older content deferred
+    const batchPromise = processPageBatch([PAGE_ABS], {});
+
+    // 2. Direct pageProcessing arrives with newer content
+    // We override readFile temporarily for the direct transpile
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(NEW_HTML);
+    const directPromise = pageProcessing(PAGE_ABS, {});
+
+    await directPromise;
+
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageContent: expect.stringContaining("NEW DIRECT"),
+      }),
+    );
+    const storeCountAfterDirect = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.length;
+    const emitCountAfterDirect = (eventsModule.eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === "transpiled",
+    ).length;
+
+    // 3. Release older batch read and await its completion
+    releaseBatchRead();
+    await batchPromise;
+
+    // Stale batch must NOT overwrite memory store or re-emit transpiled reload event
+    expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterDirect);
+    const emitCountAfterBatch = (eventsModule.eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === "transpiled",
+    ).length;
+    expect(emitCountAfterBatch).toBe(emitCountAfterDirect);
+  });
+
+  it("drops a stale batch completion when a newer batch for the same page has published", async () => {
+    let releaseBatch1Read!: () => void;
+    const batch1ReadGate = new Promise<void>((res) => {
+      releaseBatch1Read = res;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD BATCH 1</h1></body></html>";
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW BATCH 2</h1></body></html>";
+
+    let readCallCount = 0;
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      readCallCount++;
+      if (readCallCount === 1) {
+        await batch1ReadGate;
+        return OLD_HTML;
+      }
+      return NEW_HTML;
+    });
+
+    const batch1Promise = processPageBatch([PAGE_ABS], {});
+
+    // Batch 2 starts after Batch 1 and finishes first
+    const batch2Promise = processPageBatch([PAGE_ABS], {});
+
+    await batch2Promise;
+
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageContent: expect.stringContaining("NEW BATCH 2"),
+      }),
+    );
+    const storeCountAfterBatch2 = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    releaseBatch1Read();
+    await batch1Promise;
+
+    expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterBatch2);
+  });
+
+  it("handles relative and absolute path aliases under the same canonical generation ownership", async () => {
+    let releaseBatchRead!: () => void;
+    const batchReadGate = new Promise<void>((res) => {
+      releaseBatchRead = res;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD BATCH</h1></body></html>";
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW DIRECT REL</h1></body></html>";
+
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      await batchReadGate;
+      return OLD_HTML;
+    });
+
+    // Start batch with absolute path
+    const batchPromise = processPageBatch([PAGE_ABS], {});
+
+    // Direct pageProcessing with relative path
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(NEW_HTML);
+    const directPromise = pageProcessing(PAGE_REL, {});
+
+    await directPromise;
+
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageContent: expect.stringContaining("NEW DIRECT REL"),
+      }),
+    );
+    const storeCountAfterDirect = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    releaseBatchRead();
+    await batchPromise;
+
+    expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterDirect);
+  });
+
+  it("does not resurrect a deleted page if an older compilation finishes after deletion", async () => {
+    let releaseBatchRead!: () => void;
+    const batchReadGate = new Promise<void>((res) => {
+      releaseBatchRead = res;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD REMOVED</h1></body></html>";
+
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      await batchReadGate;
+      return OLD_HTML;
+    });
+
+    const batchPromise = processPageBatch([PAGE_ABS], {});
+
+    // Page is deleted while compilation is in-flight
+    await removePage(PAGE_ABS);
+    expect(mem.removePage).toHaveBeenCalledWith(PAGE_ABS);
+
+    const storeCountAfterDelete = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    releaseBatchRead();
+    await batchPromise;
+
+    // Must NOT store or resurrect the removed page
+    expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterDelete);
+  });
+
+  it("drops stale worker completion if newer direct transpile finished first", async () => {
+    const { WorkerPool } = await import("./worker-pool.ts");
+    const { listPages } = await import("./file-system.ts");
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValueOnce([PAGE_ABS]);
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
+
+    let releaseWorkerRun!: () => void;
+    const workerRunGate = new Promise<void>((res) => {
+      releaseWorkerRun = res;
+    });
+
+    (WorkerPool as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+      this.run = vi.fn(async () => {
+        await workerRunGate;
+        return {
+          relativePagePath: "pages/index.html",
+          absolutePagePath: PAGE_ABS,
+          distHtmlBytes: new TextEncoder().encode("<html><body>WORKER OLD</body></html>"),
+          usedComponentsNames: [],
+          fileDependencies: [],
+        };
+      });
+      this.terminate = vi.fn(async () => { });
+    });
+
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>test</body></html>");
+
+    // Start processAllPages with worker mode
+    const allPagesPromise = processAllPages({ useWorkers: true });
+
+    // While worker is paused, direct pageProcessing runs with newer HTML
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW DIRECT OVER WORKER</h1></body></html>";
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(NEW_HTML);
+    const directPromise = pageProcessing(PAGE_ABS, {});
+
+    await directPromise;
+
+    expect(mem.storePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageContent: expect.stringContaining("NEW DIRECT OVER WORKER"),
+      }),
+    );
+    const storeCountAfterDirect = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    releaseWorkerRun();
+    await allPagesPromise;
+
+    expect(mem.storePage).toHaveBeenCalledTimes(storeCountAfterDirect);
+  });
+});
+
+describe("prompt 99: failed import dependency recovery", () => {
+  const PAGE_ABS = resolve(process.cwd(), "src/pages/missing-import.html");
+
+  beforeEach(async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockReset();
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockReset();
+    (mem.recordFailedDependencies as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it("records attempted dependencies when a page build throws on a missing import", async () => {
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    const html = '<html><body><script data-bascik-build>import x from "@/lib/new-helper.ts";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValue(["src/lib/new-helper.ts"]);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Cannot find module '/abs/src/lib/new-helper.ts'"),
+    );
+
+    await expect(transpilePage(PAGE_ABS, {})).rejects.toThrow();
+    expect(mem.recordFailedDependencies).toHaveBeenCalledWith(
+      PAGE_ABS,
+      ["src/lib/new-helper.ts"],
+    );
+  });
+
+  it("records failed dependencies so the import-root watcher rebuilds the page when the helper appears", async () => {
+    const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
+    const missingHtml = '<html><body><script data-bascik-build>import x from "@/lib/new-helper.ts";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(missingHtml);
+    (collectAllScriptDeps as ReturnType<typeof vi.fn>).mockResolvedValue(["src/lib/new-helper.ts"]);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("Cannot find module '/abs/src/lib/new-helper.ts'"),
+    );
+
+    await expect(transpilePage(PAGE_ABS, {})).rejects.toThrow();
+    expect(mem.recordFailedDependencies).toHaveBeenCalled();
+
+    // Now the helper exists; the page compiles and imports it successfully,
+    // so the page's successful dependencies are recorded and its failed-deps
+    // are cleared by storePage on publication.
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(missingHtml);
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockResolvedValueOnce(missingHtml);
+    const result = await transpilePage(PAGE_ABS, {});
+    expect(result).not.toBeNull();
   });
 });

@@ -32,6 +32,19 @@ On startup (and whenever a component is added), the watch system calls `processA
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
 5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
 
+## Generation Ownership: Monotonic Dev Publication
+
+Concurrent invalidation entrypoints (`processPageBatch`, `pageProcessing`, and the worker path in `processAllPages`) can race for the same page. Without coordination, an older, slower batch could finish *after* a newer direct edit and overwrite the newer state in memory, on disk, in the dependency indexes, or in the reload stream.
+
+Bascik assigns every page a monotonically increasing **generation** at publication time. A job carries the generation it was claimed under and, when it completes, applies its side effects (memory store, disk write, sidecar record, `transpiled` event) only if that generation is still the latest for the page:
+
+- `processPageBatch` claims a **fresh** generation at enqueue time, and `pageProcessing` claims one when it is about to publish, so a newer edit always supersedes an older one regardless of completion order.
+- The worker path in `processAllPages` captures the page's **current** generation without bumping, so a broad worker rebuild can never become "newer" than a concurrent specific page edit. It publishes only if that captured generation is still current when the worker result lands.
+- `removePage` bumps the generation, so in-flight work for a deleted page cannot resurrect it.
+- Dynamic route templates claim one generation shared by their generated route set, so a route is never dropped by a stale half of a template rebuild.
+
+The disk-write queue is versioned: a queued write carries its page's generation and is skipped if that generation is superseded. This guarantees the displayed, on-disk, and reloaded content all describe the same newest generation.
+
 ## Phase 1: Page Phase (`pageProcessing`)
 
 The page phase prepares the source HTML document and orchestrates the component phase:

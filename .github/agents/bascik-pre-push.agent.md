@@ -1,7 +1,7 @@
 ---
 name: Bascik Pre-push Auditor
 description: "Pre-push verification specialist for Bascik. Use to run and report on pre-push checklists: spelling, webhint standards, typechecks, token-efficient granular test execution, coverage syncing, and SKILL.md propagation."
-model: 'Google: Gemini 3.7 Flash (openrouter)'
+model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 Contributor (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
 user-invocable: true
 argument-hint: "Run pre-push verification audit for this branch..."
 ---
