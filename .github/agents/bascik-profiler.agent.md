@@ -1,7 +1,7 @@
 ---
 name: Bascik Performance & Profiling
 description: "Performance engineering and profiling agent for Bascik. Use to analyze compiler transpile times, AST parse bottlenecks, event loop lag, and memory allocations using 0x, clinic, and Node perf tools."
-model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
+model: ['Google: Gemini 3.8 Flash (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
 user-invocable: true
 argument-hint: "Profile compiler transpile times, server throughput, or inspect flamegraphs..."
 ---
