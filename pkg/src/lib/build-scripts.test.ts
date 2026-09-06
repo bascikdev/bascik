@@ -34,9 +34,28 @@ vi.mock("./config.js", () => ({
   },
 }));
 
+// Real package resolution (resolver stub under node_modules/.cache, real fs) is
+// tested in package-identity.test.ts and the integration fixture. In this mocked
+// unit file we stub the identity contribution so cache-key tests are hermetic.
+vi.mock("./package-identity.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./package-identity.ts")>();
+  return {
+    ...actual,
+    computePackageIdentity: vi.fn(async () => "pkgid:mock"),
+    // Use the real classifier-free detection so dynamic-import classification
+    // is still exercised here.
+    isExternalPackageSpecifier: actual.isExternalPackageSpecifier,
+    collectPackageSpecifiers: actual.collectPackageSpecifiers,
+    hasDynamicImport: actual.hasDynamicImport,
+  };
+});
+
 import { execFile } from "node:child_process";
 import { writeFile, unlink, readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
+import { computePackageIdentity } from "./package-identity.ts";
+
+const mockPackageIdentity = computePackageIdentity as unknown as ReturnType<typeof vi.fn>;
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
@@ -66,12 +85,29 @@ const rejectWith = (message: string) =>
     },
   );
 
+// With per-script isolation (prompt 103), each uncached script maps to its own
+// execFile call. `resolveSequence` registers one successful execFile response
+// per script, in order.
+const resolveSequence = (outputs: Array<{ stdout: string; stderr?: string }>) =>
+  mockExecFile.mockImplementation(
+    (
+      _cmd: unknown,
+      _args: unknown,
+      _opts: unknown,
+      cb: (err: null, stdout: string, stderr: string) => void,
+    ) => {
+      const next = outputs.shift() ?? { stdout: "" };
+      cb(null, next.stdout, next.stderr ?? "");
+    },
+  );
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.clearAllMocks();
   clearBuildScriptCaches();
   (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
+  mockPackageIdentity.mockResolvedValue("pkgid:mock");
 });
 
 describe("executeBuildScripts", () => {
@@ -151,11 +187,8 @@ describe("executeBuildScripts", () => {
     );
   });
 
-  it("preserves distinct page and deferred component identities in a batch", async () => {
-    resolveWith(JSON.stringify([
-      { id: 0, ok: true, stdout: "page" },
-      { id: 1, ok: true, stdout: "component" },
-    ]));
+  it("preserves distinct page and deferred component identities across isolated scripts", async () => {
+    resolveSequence([{ stdout: "page" }, { stdout: "component" }]);
 
     await executeBuildScripts(
       `<script data-bascik-build>console.log(process.env.BASCIK_SOURCE_FILE)</script>
@@ -170,11 +203,13 @@ describe("executeBuildScripts", () => {
     expect(tempWrites).toHaveLength(2);
     expect(tempWrites[0][1]).toContain("//# sourceURL=src/pages/index.html");
     expect(tempWrites[1][1]).toContain("//# sourceURL=src/components/page-badge.html");
-    const batchArgs = mockExecFile.mock.calls[0][1] as string[];
-    expect(batchArgs).toEqual(expect.arrayContaining([
-      expect.stringContaining('"sourceFile":"src/pages/index.html"'),
-      expect.stringContaining('"sourceFile":"src/components/page-badge.html"'),
-    ]));
+    // Each uncached script runs in its own child process (prompt 103), so there
+    // are two execFile calls, each with its own source file env.
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    const firstEnv = mockExecFile.mock.calls[0][2] as { env?: Record<string, string> };
+    const secondEnv = mockExecFile.mock.calls[1][2] as { env?: Record<string, string> };
+    expect(firstEnv.env?.BASCIK_SOURCE_FILE).toBe("src/pages/index.html");
+    expect(secondEnv.env?.BASCIK_SOURCE_FILE).toBe("src/components/page-badge.html");
   });
 
   it("rewrites dynamic relative imports and leaves bare and absolute URL specifiers untouched", async () => {
@@ -259,18 +294,16 @@ describe("executeBuildScripts", () => {
   });
 
   it("processes multiple build scripts in order", async () => {
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<p>first</p>" },
-        { id: 1, ok: true, stdout: "<p>second</p>" },
-      ]),
-    );
+    // Per-script isolation: each script runs in its own child process, output is
+    // attributed by index, in document order.
+    resolveSequence([{ stdout: "<p>first</p>" }, { stdout: "<p>second</p>" }]);
 
     const html =
       "<script data-bascik-build>a</script><script data-bascik-build>b</script>";
     const result = await executeBuildScripts(html);
     expect(result).toContain("<p>first</p>");
     expect(result).toContain("<p>second</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
   it("substitutes script output in place within a container element", async () => {
@@ -411,17 +444,14 @@ describe("executeBuildScripts", () => {
     expect(result).toBe(html);
   });
 
-  it("replaces two identical build-script blocks each with their own output", async () => {
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<p>first</p>" },
-        { id: 1, ok: true, stdout: "<p>second</p>" },
-      ]),
-    );
+  it("replaces two identical build-script blocks each with their own isolated output", async () => {
+    // Per-script isolation: each identical script runs in its own child process.
+    resolveSequence([{ stdout: "<p>first</p>" }, { stdout: "<p>second</p>" }]);
 
     const tag = "<script data-bascik-build>same()</script>";
     const result = await executeBuildScripts(`<div>${tag}</div><div>${tag}</div>`);
     expect(result).toBe("<div><p>first</p></div><div><p>second</p></div>");
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
   it("handles `$` patterns in output safely with index splicing", async () => {
@@ -1079,6 +1109,84 @@ describe("build-script output cache", () => {
     expect(secondKey).not.toBe(firstKey);
   });
 
+  it("folds resolved package identity into the cache key for bare-package scripts (prompt 104)", async () => {
+    mockReadFile.mockReset();
+    mockWriteFile.mockReset();
+    clearBuildScriptCaches();
+    // Cache-file reads always miss so we can observe the .json write key.
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>from-pkg</p>");
+
+    await executeBuildScripts(
+      "<script data-bascik-build>import { marked } from 'marked'; console.log(marked('x'));</script>",
+      "src/pages/test.html",
+    );
+
+    // The mocked computePackageIdentity must have been called with the specifier.
+    expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
+    const key = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"))?.[0];
+    expect(key).toBeDefined();
+  });
+
+  it("does not consult package identity for a script with no package imports", async () => {
+    mockPackageIdentity.mockClear();
+    resolveWith("<p>local</p>");
+    await executeBuildScripts("<script data-bascik-build>import './local.ts'; console.log('x');</script>");
+    expect(mockPackageIdentity).not.toHaveBeenCalled();
+  });
+
+  it("classifies a dynamic non-literal import as non-cacheable (runs every build, no write)", async () => {
+    mockWriteFile.mockClear();
+    mockReadFile.mockClear();
+    resolveWith("<p>dynamic</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>const m = await import(name); console.log(m);</script>",
+    );
+    // It ran (execFile called) but never wrote a cache entry.
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrites.length).toBe(0);
+  });
+
+  it("classifies a member-expression dynamic import as non-cacheable (runs every build, no write)", async () => {
+    // `import(foo.bar)`, `import(pkg.method())`, and `import(x[0])` are
+    // identifier-prefixed member expressions whose argument is computed at
+    // runtime, so the script's dependency graph is unknowable. It must never
+    // write a cache entry and must re-run every build rather than be mis-keyed.
+    for (const importExpr of [
+      "import(foo.bar)",
+      "import(pkg.method())",
+      "import(x[0])",
+    ]) {
+      mockExecFile.mockClear();
+      mockWriteFile.mockClear();
+      mockReadFile.mockClear();
+      resolveWith("<p>member-dynamic</p>");
+      await executeBuildScripts(
+        `<script data-bascik-build>const m = await ${importExpr}; console.log(m);</script>`,
+        "src/pages/test.html",
+      );
+      expect(mockExecFile, `expected ${importExpr} to run`).toHaveBeenCalledTimes(1);
+      const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+      expect(jsonWrites.length, `expected no cache write for ${importExpr}`).toBe(0);
+    }
+  });
+
+  it("keeps static string dynamic imports cacheable", async () => {
+    mockReadFile.mockReset();
+    mockWriteFile.mockReset();
+    clearBuildScriptCaches();
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>from-pkg</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>const m = await import('marked'); console.log(m);</script>",
+      "src/pages/test.html",
+    );
+    // Static `import('marked')` is fully cacheable: a .json entry is written.
+    expect(mockPackageIdentity).toHaveBeenCalledWith(["marked"]);
+    expect(mockWriteFile.mock.calls.some(([p]) => String(p).endsWith(".json"))).toBe(true);
+  });
+
   it("skips cache reads and writes entirely when scripts.cache.enabled is false", async () => {
     (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: false } };
     resolveWith("<p>no-cache</p>");
@@ -1092,15 +1200,22 @@ describe("build-script output cache", () => {
     (BascikConfig as any).scripts = { ...BascikConfig.scripts, cache: { enabled: true } };
   });
 
-  it("handles batch execution when one script fails and onBuildScriptError is 'warn'", async () => {
+  it("handles one script failing while a sibling succeeds and onBuildScriptError is 'warn'", async () => {
     (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "warn" };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<span>Success</span>" },
-        { id: 1, ok: false, error: "ReferenceError: foo is not defined" },
-      ]),
+    // Isolated per-script runs: the first script succeeds, the second rejects.
+    let call = 0;
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
+        call++;
+        if (call === 1) {
+          cb(null, "<span>Success</span>", "");
+        } else {
+          cb(new Error("ReferenceError: foo is not defined"));
+        }
+      },
     );
 
     const html =
@@ -1112,12 +1227,18 @@ describe("build-script output cache", () => {
     warnSpy.mockRestore();
   });
 
-  it("throws and identifies the failed script in a batch when onBuildScriptError is 'error'", async () => {
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<span>Success</span>" },
-        { id: 1, ok: false, error: "SyntaxError: Unexpected token" },
-      ]),
+  it("throws and identifies the failed script when onBuildScriptError is 'error'", async () => {
+    let call = 0;
+    mockExecFile.mockImplementation(
+      (_cmd: unknown, _args: unknown, _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
+        call++;
+        if (call === 1) {
+          cb(null, "<span>Success</span>", "");
+        } else {
+          cb(new Error("SyntaxError: Unexpected token"));
+        }
+      },
     );
 
     const html =
@@ -1125,14 +1246,12 @@ describe("build-script output cache", () => {
     await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
   });
 
-  it("forwards stderr per script in a batch execution", async () => {
+  it("forwards stderr for each isolated script run", async () => {
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<p>ok</p>", stderr: "warning from script 0\n" },
-        { id: 1, ok: true, stdout: "<p>ok2</p>", stderr: "warning from script 1\n" },
-      ]),
-    );
+    resolveSequence([
+      { stdout: "<p>ok</p>", stderr: "warning from script 0\n" },
+      { stdout: "<p>ok2</p>", stderr: "warning from script 1\n" },
+    ]);
 
     const html =
       "<script data-bascik-build>a()</script><script data-bascik-build>b()</script>";
@@ -1154,19 +1273,16 @@ describe("build-script output cache", () => {
       throw new Error("ENOENT");
     });
 
-    resolveWith(
-      JSON.stringify([
-        { id: 0, ok: true, stdout: "<p>batch-2</p>" },
-        { id: 1, ok: true, stdout: "<p>batch-3</p>" },
-      ]),
-    );
+    // One uncached script runs alone in its own child process; the other is
+    // served from cache, so execFile is called exactly once.
+    resolveSequence([{ stdout: "<p>batch-2</p>" }, { stdout: "<p>batch-3</p>" }]);
 
     const html =
       "<script data-bascik-build>c1()</script><script data-bascik-build>u2()</script><script data-bascik-build>u3()</script>";
     const result = await executeBuildScripts(html);
     expect(result).toBe("<p>cached-1</p><p>batch-2</p><p>batch-3</p>");
-    // Only 1 batch call for the 2 uncached scripts
-    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    // One child process per uncached script (u2 and u3 run isolated).
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
   });
 
   it("different route params produce a different cache key so generated pages are not reused", async () => {

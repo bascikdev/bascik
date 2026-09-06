@@ -136,12 +136,16 @@ export async function copyReplicatePath(
   const writeIfChanged = async (content: string, isMinified = false): Promise<void> => {
     const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
     const contentHash = createHash("sha256").update(content).digest("hex");
-    manifestCollector.recordFile(destPath, content);
-    if (contentHash === destHash) return;
-    await writeFile(destPath, content);
-    if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-      console.log(isMinified ? "copied (minified):" : "copied:", displayRelativePath(src));
+    if (contentHash !== destHash) {
+      await writeFile(destPath, content);
+      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+        console.log(isMinified ? "copied (minified):" : "copied:", displayRelativePath(src));
+      }
     }
+    // Record the DESTINATION after a successful write (or a hash-equal no-op),
+    // never a source path the manifest collector would reject (prompt 100).
+    // A failed write throws above and is not recorded as emitted.
+    await manifestCollector.recordFileFromDisk(destPath);
   };
 
   // Only copy if file hashes differ
@@ -198,12 +202,17 @@ export async function copyReplicatePath(
       // The dest file might not exist, so return null
       calculateFileHash(destPath).catch(() => null),
     ]);
-    await manifestCollector.recordFileFromDisk(src);
-    if (srcHash === destHash) return;
-    await copyFile(src, destPath);
-    if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-      console.log("copied:", displayRelativePath(src));
+    if (srcHash !== destHash) {
+      await copyFile(src, destPath);
+      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+        console.log("copied:", displayRelativePath(src));
+      }
     }
+    // Record at the DESTINATION after a successful copy (or a hash-equal
+    // no-op). Recording the source path was the prompt 100 raw-asset defect:
+    // the collector rejects paths outside dist/, so the asset silently
+    // vanished from the manifest.
+    await manifestCollector.recordFileFromDisk(destPath);
   } catch (err) {
     console.error("Failed to copy file:", src, err);
     throw err;

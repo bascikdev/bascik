@@ -5,6 +5,7 @@ import {
   LeadingSlashSpecifierError,
   classifySpecifier,
   findModuleSpecifiers,
+  hasDynamicImportExpression,
   rewriteModuleSpecifiers,
   resolveScriptSrcPath,
   resolveSpecifierPath,
@@ -42,6 +43,35 @@ describe("classifySpecifier", () => {
     ".hidden",
   ])("classifies %s as external", (value) => {
     expect(classifySpecifier(value)).toBe("external");
+  });
+});
+
+describe("hasDynamicImportExpression", () => {
+  it("is false for static and string-literal dynamic imports", () => {
+    expect(hasDynamicImportExpression(`import { x } from 'pkg';`)).toBe(false);
+    expect(hasDynamicImportExpression(`import * as ns from 'pkg';`)).toBe(false);
+    expect(hasDynamicImportExpression(`import def, { a } from 'pkg';`)).toBe(false);
+    expect(hasDynamicImportExpression(`const y = await import('pkg');`)).toBe(false);
+    expect(hasDynamicImportExpression(`import 'side-effect';`)).toBe(false);
+    expect(hasDynamicImportExpression("import.meta.url")).toBe(false);
+  });
+
+  it("is true for dynamic non-literal import specifiers", () => {
+    expect(hasDynamicImportExpression("const m = await import(name);")).toBe(true);
+    expect(hasDynamicImportExpression("const m = await import(`./${part}.mjs`);")).toBe(true);
+    expect(hasDynamicImportExpression("const m = await import(foo + '.mjs');")).toBe(true);
+    expect(hasDynamicImportExpression("for (const p of pkgs) await import(p);")).toBe(true);
+    // Member-expression arguments are identifier-prefixed tokens (`(` does not
+    // directly follow `import`), so they were never intended to be treated as
+    // static literals. They are genuinely dynamic and must classify non-cacheable.
+    expect(hasDynamicImportExpression("import(foo.bar)")).toBe(true);
+    expect(hasDynamicImportExpression("import(pkg.method())")).toBe(true);
+    expect(hasDynamicImportExpression("import(x[0])")).toBe(true);
+  });
+
+  it("ignores member-call obj.import(...) and non-import identifiers", () => {
+    expect(hasDynamicImportExpression(`obj.import(name);`)).toBe(false);
+    expect(hasDynamicImportExpression(`imported(name);`)).toBe(false);
   });
 });
 

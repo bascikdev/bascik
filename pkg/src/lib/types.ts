@@ -65,6 +65,12 @@ export interface TranspileResult {
   usedComponents: BascikComponent[];
 }
 
+/** Inline script/style SHA-256 hashes for one page's emitted HTML. */
+export interface PageCspHashes {
+  scripts: string[];
+  styles: string[];
+}
+
 export interface TranspilePageResult {
   relativePagePath: string;
   absolutePagePath: string;
@@ -79,6 +85,14 @@ export interface TranspilePageResult {
     sourceFile?: string;
     sourceLine?: number;
   }>;
+  /**
+   * Inline script/style CSP hashes for this page's final emitted HTML,
+   * computed at the defined publishing point (see `computePageCspHashes`).
+   * Both the serial and worker paths compute this before the HTML bytes leave
+   * the compiling agent, so the manifest writer never decodes large HTML
+   * solely for CSP bookkeeping.
+   */
+  cspHashes?: PageCspHashes;
 }
 export interface MinifyOptions {
   /**

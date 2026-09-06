@@ -53,6 +53,10 @@ export const handlePageWorkerMessage = async (
       globalStylesHtml,
       route,
       preCleanedHtml,
+      // Disk publication is owned by the main thread (prompt 100). The worker
+      // computes and transfers the bytes; it never writes or records artifacts
+      // into its own process-local collectors.
+      { deferDiskWrite: true },
     );
     if (!result) {
       port?.postMessage({ ok: true, result: null });

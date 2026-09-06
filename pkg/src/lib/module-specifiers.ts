@@ -301,6 +301,42 @@ export const scanScript = (source: string): ScriptScan => {
 };
 
 /**
+ * True when `source` contains a dynamic import whose argument is not a static
+ * string literal that static analysis can resolve, such as
+ * `import(moduleName)`, `` import(`./${x}`) ``, or `import(name + '.mjs')`.
+ * The tokenizer only emits a module-specifier token for `import(<string>)`;
+ * a dynamic `import(` whose argument is an identifier, template, member
+ * expression (`import(foo.bar)`, `import(pkg.method())`, `import(x[0])`), or
+ * any other expression leaves no string token, so we detect it from the token
+ * stream directly. Member-expression arguments are identifier-prefixed tokens
+ * (a `.` or `[` follows the base identifier rather than `(`), but the generic
+ * `import(` catch-all still classifies them dynamic: their resolved package is
+ * computed at runtime and cannot be fingerprinted, so the script is
+ * non-cacheable. Static `import()` of a fixed string literal is
+ * Bascik-rewritten to an absolute URL and does NOT count.
+ */
+export const hasDynamicImportExpression = (source: string): boolean => {
+  const tokens = tokenizeJavaScript(source);
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.type !== "identifier" || t.value !== "import") continue;
+    // Skip static forms: `import "x"`, `import x from "x"`, `import {} from "x"`,
+    // `import("x")` (dynamic import of a fixed literal).
+    if (tokens[i + 1]?.type === "string") continue;
+    if (tokens[i + 1]?.type === "identifier" && tokens[i + 2]?.value === "from") continue;
+    if (tokens[i + 1]?.type === "punctuation" && tokens[i + 1]?.value === "{") continue;
+    if (tokens[i + 1]?.type === "identifier" && tokens[i + 2]?.type === "string") continue;
+    if (tokens[i + 1]?.value === "(" && tokens[i + 2]?.type === "string") continue;
+    // `import.meta` and member `.import(...)` are not dynamic imports.
+    if (tokens[i + 1]?.value === ".") continue;
+    if (tokens[i - 1]?.value === ".") continue;
+    // Remaining `import(` with a non-string argument is a dynamic expression.
+    if (tokens[i + 1]?.value === "(") return true;
+  }
+  return false;
+};
+
+/**
  * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
  *
  * - `relative`: `./` or `../`, resolved against the containing file's directory.

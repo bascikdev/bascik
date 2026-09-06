@@ -22,6 +22,94 @@ Bascik guarantees strict, deterministic execution ordering across all compilatio
 
 This guarantee ensures that `pre` scripts can reliably generate source files or data dependencies needed by build scripts and components, while `post` scripts can safely inspect or transform final compiled assets in `dist/`.
 
+## Artifact Accounting Ownership
+
+Artifact accounting has a **single owner**: the main-thread disk writer. Collector state is process-local, so worker-local collectors can never reach the main thread. Every emitted artifact funnels through one owner so serial and worker builds record identical manifest and CSP metadata.
+
+- `transpilePage` computes each page's inline script/style CSP hashes from its **final emitted HTML** (`computePageCspHashes`) before the bytes are transferred. It never records to a global collector itself, because the compiling agent (a worker or the main thread) is not the accounting owner.
+- The single owner is `writeTranspiledPage` (in `processing.ts`). It writes the file and, **only after a successful write**, records the page's manifest entry and CSP hashes. A failed write throws before recording, so a failed write is never accounted as emitted.
+- In the worker path (`processAllPages` with `useWorkers: true`), `page-worker.ts` passes `deferDiskWrite: true` to `transpilePage`, so the worker computes and transfers the bytes but never writes or records. The main thread writes the transferred bytes (a `Buffer` view over the transferred `ArrayBuffer`, no decode) and records manifest and CSP from them.
+- Serial builds go through the same `writeTranspiledPage` owner, so both modes produce byte-identical artifact metadata.
+- Raw-copied assets (`copyReplicatePath`) are recorded at the **destination** in `dist/` after a successful copy, including hash-equal no-op copies. Recording the source path was the raw-asset defect: the manifest collector rejects paths outside `dist/`, so those assets silently vanished from the manifest. A failed copy throws before recording.
+- The manifest, `csp-hashes.json`, `server-scripts.json`, and `ownership.json` remain explicitly excluded from being served and are regenerated each build, so no stale entries survive between builds.
+
+## Targeted Build Owned Artifact Transactions
+
+A `bascik --build --only …` (targeted) build runs in a **fresh CLI process**. Its
+process-local collectors and in-memory route caches are empty, so without a
+durable source-to-output ownership inventory a targeted build used to silently:
+
+- drop untouched B's server-sidecar entry (the sidecar writer serialized only the
+  current process's registry), and
+- leave a route removed from a dynamic template behind (the removed-route
+  knowledge lived only in the in-memory `templateToGeneratedRelativePaths` map).
+
+Bascik persists a **versioned source-to-output ownership inventory** at
+`dist/.bascik/ownership.json` (see `lib/ownership.ts`). Every output file and
+server-sidecar script is owned by exactly one source page. The inventory is the
+single source of ownership truth; it is never inferred from filename prefixes or
+mutable traversal order.
+
+- Rebuilding a page **exactly replaces** that owner's recorded outputs and
+  scripts with what the current build produced.
+- A source page not in the targeted set is an **untouched owner**: its prior
+  outputs and scripts are **retained**. This is what keeps untouched B's server
+  script resolvable after A is rebuilt.
+- A dynamic template that is rebuilt and now emits fewer routes (down to zero)
+  is a rebuilt owner whose shrunken output set prunes the removed routes. A
+  template that emits zero routes is recorded as a rebuilt owner with an empty
+  set so its prior outputs are pruned too.
+- Removed outputs are computed **only for rebuilt owners** from the difference
+  between their prior and current output sets, so an obsolete output is never
+  deleted based on a filename guess.
+
+### One transaction for HTML, sidecar, manifest, and CSP
+
+`finalizeOwnedArtifacts` (in `lib/ownership.ts`) reconciles the sidecar,
+`manifest.json`, and `csp-hashes.json` from the **same** merged ownership
+inventory as the HTML prune. Individual collectors no longer implement their own
+merge rules; the coordinator is the single merge owner. Non-page files (raw
+assets, sitemap, robots) are retained across targeted builds because they are
+not owned by a page.
+
+- Manifest and CSP entries for a still-owned page output come from the current
+  build or the retained prior entry; entries for a pruned output are removed.
+- The sidecar survives only for owned script ids: a rebuilt owner's scripts come
+  from this build, an untouched owner's scripts are carried over from the prior
+  sidecar.
+- A full build cleans `dist/` at startup, so the coordinator publishes the
+  current process's state fresh with no merge.
+
+### Staging, validation, and rollback
+
+Metadata commits are **staged and atomic**: the entire reconciled artifact set
+(ownership, manifest, CSP, sidecar) is first written to temp siblings and
+validated (each staged file must parse back to the intended JSON object), and
+only after every artifact staged successfully are the temps renamed over their
+targets. Obsolete outputs are deleted **only after** those commits succeed.
+
+- A failure while writing or validating any staged artifact aborts **before any
+  rename**, so the previous valid artifact set is left completely untouched.
+- A rename failure surfaces and aborts **before** deleting any obsolete output,
+  so a failed targeted update never deletes a file the committed metadata still
+  references.
+- Corrupt or schema-incompatible `ownership.json` (or a missing one) is treated
+  as **no reliable ownership**: the targeted build degrades to the safe additive
+  merge, logs a warning, and writes a fresh inventory so future builds are
+  correct. This is the explicit safe first-targeted-build behavior.
+- Full removal of a source page is only pruned when that page is rebuilt. A page
+  deleted without being in a later targeted build is retained until a full build
+  because a targeted build cannot know whether a source was deleted versus merely
+  not rebuilt.
+
+### Contract: why global artifacts still need a full build
+
+Whole-site artifacts (`sitemap.xml` and `robots.txt`) are not owned by a single
+page, so a targeted build keeps the documented behavior: it **warns and skips**
+regenerating them rather than publishing a partial site map. Regenerate them with
+a full `bascik --build`. This is a deliberate contract of targeted builds, not a
+bug workaround.
+
 ## Multi-Page Startup: `processAllPages`
 
 On startup (and whenever a component is added), the watch system calls `processAllPages()` instead of invoking `pageProcessing()` once per file. This avoids redundant I/O:
@@ -31,6 +119,7 @@ On startup (and whenever a component is added), the watch system calls `processA
 3. **Transpile each page.** By default, pages are transpiled on the main thread via `processPageBatch()`. If `useWorkers: true` is set in `bascik.config.ts`, a `WorkerPool` is created instead with `Math.min(os.cpus().length, pageCount)` workers, and each worker is initialized with the shared `componentList` and `globalStylesHtml` via `workerData`. The worker pool also processes the prioritized open pages first before dispatching remaining background pages. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so this only pays off for larger sites or CPU-heavy per-page work, see the [`useWorkers`](/configuration#useworkers) config option.
 4. **Apply side effects on the main thread.** As each page finishes transpilation, the main thread runs `mem.storePage()` and emits the `"transpiled"` event. Brotli compression inside `storePage()` runs in the background and does not block the page from being marked ready or served.
 5. **Write HTML without delaying dev serving.** Build mode awaits each write to `dist/`. In dev mode, Bascik first commits the page to `MemoryStore`, then starts the `dist/` write asynchronously. The server can return the updated page while that disk write is still pending.
+6. **Publish artifacts from the single owner.** In build mode, the main thread is the single owner of disk publication and artifact accounting. A worker transfers the page bytes (UTF-8 `ArrayBuffer`, no structured-clone copy) and the main thread writes them and records the manifest and CSP. See [Artifact Accounting Ownership](#artifact-accounting-ownership).
 
 ## Generation Ownership: Monotonic Dev Publication
 
@@ -108,6 +197,7 @@ The key is the SHA-256 hex digest of:
 8. The normalized deployment base (`BASCIK_BASE`), since scripts can emit base-aware output.
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
 10. The normalized path and full content of every detected local dependency. Relative ESM imports are followed recursively from each containing module, while generic quoted data paths are rooted at `process.cwd()`.
+11. The resolved package identity for every external (bare, scoped, subpath) package the script imports: resolved entry content and manifest, plus the bounded transitive package graph (`package-identity.ts`). A script with no package imports contributes nothing for this item.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`). It lexically identifies genuine relative and import-root (`@/`) ESM specifiers and path-like string arguments used in code, so editing an alias-imported helper invalidates the cache and triggers a dev rebuild. The following paths are illustrative examples, not an exhaustive list of supported directories or extensions:
 
@@ -122,7 +212,7 @@ If the script contains no detectable references, items 1 through 9 still contrib
 
 Because the content of every referenced file is hashed into the key, editing a content file produces a new key for any script that references it, giving a cache miss. Scripts on other pages that do not reference that file keep their old keys and continue to hit the cache.
 
-To bust the entire cache manually, for example after upgrading `marked` or another build-time dependency that `scripts/*.{mjs,js,ts}` files import, delete the cache directory:
+The resolved package graph is also part of the key. Upgrading an npm package, editing a workspace/`file:`-linked package in place, or changing a transitive package a build script imports all produce a new key without any script edit or manual cache clear (see `package-identity.ts`). To bust the entire cache manually, for example after an unexpected external change, delete the cache directory:
 
 ```sh
 rm -rf node_modules/.cache/bascik/script-cache

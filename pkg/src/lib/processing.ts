@@ -130,14 +130,16 @@ import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
+import { ownershipTracker, toOutputFileKey } from "./ownership.ts";
 import { extractServerScriptsToSidecar, serverSidecarRegistry, type ServerScriptEntry } from "./server-sidecar.ts";
-import { cspHashCollector } from "./csp-hashes.ts";
+import { cspHashCollector, computePageCspHashes } from "./csp-hashes.ts";
 import type {
   BascikComponent,
   ComponentList,
   TranspileResult,
   TranspilePageResult,
   RouteEntry,
+  PageCspHashes,
 } from "./types.ts";
 
 export const getFilePosition = (
@@ -702,6 +704,12 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
       }
       templateToGeneratedRelativePaths.delete(pagePath);
     }
+    // Prompt 101: a template that now emits zero routes is an authoritative
+    // rebuild of that owner with an empty output set, so a fresh targeted build
+    // prunes its prior outputs. Only in build mode where ownership applies.
+    if (BascikConfig.isBuild) {
+      ownershipTracker.recordOwner(pagePath, getRelativePath(pagePath, "pages"));
+    }
     return [];
   }
 
@@ -791,10 +799,23 @@ const bumpPageGeneration = (absolutePagePath: string): void => {
  */
 type PageWriteInput = Pick<TranspilePageResult, "relativePagePath" | "absolutePagePath"> & {
   distHtml: string | Buffer;
+  /** Inline CSP hashes computed from the emitted representation (prompt 100). */
+  cspHashes?: PageCspHashes;
   /** Generational guard for dev writes: the write is dropped when superseded. */
   generation?: number;
 };
 
+/**
+ * SINGLE OWNER of page artifact accounting. Every page artifact that lands on
+ * disk funnels through this function, so serial and worker builds record the
+ * manifest and CSP identically regardless of where the page was compiled.
+ *
+ * Recording happens only AFTER a successful write: a failed `writeFile` throws
+ * before `recordFile` runs, so a failed write is never accounted as emitted.
+ * The page's inline CSP hashes were computed from the final emitted HTML in
+ * `transpilePage`; they are recorded here, at the same defined point, without
+ * decoding large HTML solely for bookkeeping.
+ */
 const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
   const directoryPath = getDirectoryPath(result.relativePagePath);
   try {
@@ -803,12 +824,25 @@ const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
     throw new PageProcessingError(result.absolutePagePath, "create output directory", error);
   }
   const distPagePath = getDistPagePath(result.relativePagePath);
-  manifestCollector.recordFile(distPagePath, result.distHtml);
   try {
     await writeFile(distPagePath, result.distHtml);
   } catch (error) {
     throw new PageProcessingError(result.absolutePagePath, "write output", error);
   }
+  manifestCollector.recordFile(distPagePath, result.distHtml);
+  cspHashCollector.recordComputed(getHttpPath(result.relativePagePath), result.cspHashes ?? {
+    scripts: [],
+    styles: [],
+  });
+  // Prompt 101: record this page's output into the durable ownership tracker.
+  // The dist-relative output key and its HTTP route let the ownership
+  // transaction reconcile manifest, CSP, and obsolete-output pruning.
+  ownershipTracker.recordOutput(
+    result.absolutePagePath,
+    getRelativePath(result.absolutePagePath, "pages"),
+    toOutputFileKey(distPagePath),
+    getHttpPath(result.relativePagePath),
+  );
 };
 
 const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
@@ -932,6 +966,13 @@ export const processPageBatch = async (
       job.preCleanedHtml,
     );
     if (result && isCurrentGeneration(job.pagePath, generation)) {
+      if (result.serverScripts) {
+        serverSidecarRegistry.recordScripts(result.serverScripts);
+        const relSource = getRelativePath(job.pagePath, "pages");
+        for (const id of Object.keys(result.serverScripts)) {
+          ownershipTracker.recordScript(job.pagePath, relSource, id);
+        }
+      }
       if (!BascikConfig.isBuild) {
         await mem.storePage({
           relativePagePath: result.relativePagePath,
@@ -944,6 +985,7 @@ export const processPageBatch = async (
           relativePagePath: result.relativePagePath,
           absolutePagePath: result.absolutePagePath,
           distHtml: result.distHtml,
+          cspHashes: result.cspHashes,
           generation,
         });
       }
@@ -1078,10 +1120,27 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
+            // Prompt 101: attribute each transferred server/stream script to its
+            // owning source page so the ownership transaction can prune scripts
+            // removed from a rebuilt owner while retaining untouched owners'.
+            const relSource = getRelativePath(job.pagePath, "pages");
+            for (const id of Object.keys(result.serverScripts)) {
+              ownershipTracker.recordScript(job.pagePath, relSource, id);
+            }
           }
-          if (!BascikConfig.isBuild) {
-            const { distHtmlBytes } = result;
-            const pageBytes = Buffer.from(distHtmlBytes.buffer, distHtmlBytes.byteOffset, distHtmlBytes.byteLength);
+          const { distHtmlBytes } = result;
+          const pageBytes = Buffer.from(distHtmlBytes.buffer, distHtmlBytes.byteOffset, distHtmlBytes.byteLength);
+          if (BascikConfig.isBuild) {
+            // The worker deferred the disk write; the main thread is the single
+            // owner of artifact publication (prompt 100). Writing here records
+            // the manifest and CSP from the exact transferred bytes.
+            await writeTranspiledPage({
+              relativePagePath: result.relativePagePath,
+              absolutePagePath: result.absolutePagePath,
+              distHtml: pageBytes,
+              cspHashes: result.cspHashes,
+            });
+          } else {
             await mem.storePage({
               relativePagePath: result.relativePagePath,
               absolutePagePath: result.absolutePagePath,
@@ -1093,6 +1152,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               relativePagePath: result.relativePagePath,
               absolutePagePath: result.absolutePagePath,
               distHtml: pageBytes,
+              cspHashes: result.cspHashes,
               generation,
             });
           }
@@ -1174,7 +1234,7 @@ export const pageProcessing = (
         // snapshot; this specific newer edit bumps past it so it supersedes.
         const generation = nextPageGeneration(pagePath);
         if (isCurrentGeneration(pagePath, generation)) {
-          const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies } = result;
+          const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies, cspHashes } = result;
           if (!BascikConfig.isBuild) {
             await mem.storePage({
               relativePagePath,
@@ -1187,6 +1247,7 @@ export const pageProcessing = (
               relativePagePath,
               absolutePagePath,
               distHtml,
+              cspHashes,
               generation,
             });
           }
@@ -1230,6 +1291,7 @@ export const transpilePage = async (
   globalStylesHtml?: string,
   route?: RouteEntry | null,
   preCleanedHtml?: string,
+  options?: { deferDiskWrite?: boolean },
 ): Promise<TranspilePageResult | null> => {
   const start = performance.now();
   const relativePagePath = route
@@ -1463,7 +1525,11 @@ export const transpilePage = async (
   distHtml = rewriteHtmlBasePaths(distHtml, BascikConfig.base);
   const serverScripts: Record<string, ServerScriptEntry> = {};
   distHtml = extractServerScriptsToSidecar(distHtml, relativePagePath, serverScripts, pagePath);
-  cspHashCollector.recordPage(getHttpPath(relativePagePath), distHtml);
+  // Compute the page's inline CSP hashes here, at the single defined point
+  // where `distHtml` holds the page's final emitted representation. Both the
+  // serial and worker paths carry these hashes onward; the main thread records
+  // them (in `writeTranspiledPage`) without re-decoding the page.
+  const cspHashes = computePageCspHashes(distHtml);
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 
@@ -1488,11 +1554,12 @@ export const transpilePage = async (
     }
   }
 
-  if (BascikConfig.isBuild) {
+  if (BascikConfig.isBuild && !options?.deferDiskWrite) {
     await writeTranspiledPage({
       relativePagePath,
       absolutePagePath: pagePath,
       distHtml,
+      cspHashes,
     });
   }
 
@@ -1511,6 +1578,7 @@ export const transpilePage = async (
     usedComponentsNames: allUsedComponents.map(({ name }) => name),
     fileDependencies,
     serverScripts,
+    cspHashes,
   };
 };
 
