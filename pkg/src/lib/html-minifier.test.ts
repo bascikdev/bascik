@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
 describe("extractScriptTags", () => {
@@ -206,6 +207,116 @@ describe("minifyHtml", () => {
 
   it("handles an empty input string", () => {
     expect(minifyHtml("")).toEqual("");
+  });
+
+  // ── Style raw-text preservation (prompt 106) ─────────────────────────
+
+  it("preserves CSS CDO/CDC comment delimiters inside a style element (minify.html on)", () => {
+    const html = "<style><!-- .x { color: red; } --></style><p>ok</p>";
+    expect(minifyHtml(html)).toBe(
+      "<style><!-- .x { color: red; } --></style><p>ok</p>",
+    );
+  });
+
+  it("preserves a style string containing HTML-comment-looking text", () => {
+    const html = '<style>.a::after { content: "<!-- -->"; }</style><p>ok</p>';
+    // The CSS containing literal comment-like text must not be stripped.
+    expect(minifyHtml(html)).toContain('.a::after { content: "<!-- -->"; }');
+  });
+
+  it("preserves style raw text across multiple style blocks and script blocks", () => {
+    const html =
+      "<style><!-- .a { color: red; } --></style>" +
+      "<script>const keep = 1;</script>" +
+      "<style>/* plain */ .b { display: none; }</style>";
+    const result = minifyHtml(html);
+    expect(result).toContain("<style><!-- .a { color: red; } --></style>");
+    expect(result).toContain("<style>/* plain */ .b { display: none; }</style>");
+    expect(result).toContain("const keep = 1;");
+  });
+
+  it("handles mixed-case STYLE tags", () => {
+    const html = "<STYLE><!-- .x { color: red; } --></STYLE><p>ok</p>";
+    expect(minifyHtml(html)).toBe(
+      "<STYLE><!-- .x { color: red; } --></STYLE><p>ok</p>",
+    );
+  });
+
+  it("still removes ordinary outer HTML comments around styles", () => {
+    const html = "<!-- outer --><style><!-- .x { } --></style><p>ok</p>";
+    const result = minifyHtml(html);
+    expect(result).not.toContain("<!-- outer -->");
+    expect(result).toContain("<style><!-- .x { } --></style>");
+  });
+
+  it("preserves style raw text containing replacement tokens", () => {
+    const html = '<style>.q::after { content: "$1 $&"; }</style><p>ok</p>';
+    expect(minifyHtml(html)).toContain('content: "$1 $&"');
+  });
+
+  it("preserves Unicode inside style raw text", () => {
+    const html = "<style>.x::after { content: 'é ま'; }</style><p>ok</p>";
+    expect(minifyHtml(html)).toContain("content: 'é ま'");
+  });
+
+  it("is idempotent with respect to style raw text", () => {
+    const html = "<style><!-- .x { color: red; } --></style><p>ok</p>";
+    const once = minifyHtml(html);
+    const twice = minifyHtml(once);
+    expect(twice).toBe(once);
+    expect(twice).toContain("<!-- .x { color: red; } -->");
+  });
+
+  it("leaves an unclosed style tag untouched without crashing", () => {
+    // Malformed boundary: no closing </style>. The minifier must not crash and
+    // must not treat the content as an ordinary comment to strip.
+    const html = "<style><!-- .x { color: red; }";
+    expect(() => minifyHtml(html)).not.toThrow();
+  });
+
+  it("preserves arbitrary CSS raw text inside style elements while still removing outer HTML comments", () => {
+    const cssArb = fc.array(
+      fc.constantFrom(
+        "a",
+        " ",
+        "\n",
+        ".",
+        "#",
+        "{",
+        "}",
+        ":",
+        ";",
+        '"',
+        "'",
+        "\\",
+        "<",
+        ">",
+        "!",
+        "url(",
+        "é",
+        "ま",
+        "$1",
+        "$&",
+      ),
+      { minLength: 1, maxLength: 30 },
+    );
+
+    fc.assert(
+      fc.property(cssArb, (tokens) => {
+        const css = tokens.join("");
+        const html = `<!-- outer --><style>${css}</style><p>ok</p>`;
+        const result = minifyHtml(html);
+        // No crash.
+        expect(typeof result).toBe("string");
+        // The outer HTML comment is still removed.
+        expect(result).not.toContain("<!-- outer -->");
+        // The style element survives with its raw text intact (whitespace too,
+        // because the whole element is shielded like <pre>/<textarea>).
+        expect(result).toContain(`<style>`);
+        expect(result).toContain("</style>");
+      }),
+      { numRuns: 300 },
+    );
   });
 });
 

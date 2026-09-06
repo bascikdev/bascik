@@ -16,7 +16,7 @@ Minification reduces payload sizes without introducing heavy external bundlers o
 
 Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to minify code safely. Bascik achieves equivalent safety and higher throughput using zero-dependency lexical context preservation:
 
-1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>` and `<textarea>`) and script bodies are replaced with namespaced null-byte placeholders before comments are stripped or whitespace is collapsed. This prevents code blocks, formatted text, and comment-like strings inside scripts from being parsed as document structure.
+1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>`, `<textarea>`, and `<style>`) and script bodies are replaced with namespaced null-byte placeholders before comments are stripped or whitespace is collapsed. This prevents code blocks, formatted text, CSS CDO/CDC tokens, and comment-like strings inside scripts from being parsed as document structure.
 2. **CSS String and Resource Shielding:** Quoted string literals and `url(...)` declarations in CSS can contain colons, semicolons, or multiple spaces (such as data URIs or content strings). `shieldCssStrings` extracts these values into temporary tokens before structural whitespace stripping, restoring them unchanged afterward.
 3. **JS Lexical Context and Regex Disambiguation:** JavaScript code is segmented into literal regions (quoted strings, template literals, regexes) and minifiable code regions. To disambiguate the forward slash `/` character (which can represent either a division operator or a regex literal), `js-minifier.ts` tracks preceding keyword context (such as `return`, `case`, `typeof`, `yield`, `await`). Forward slashes following expression keywords are preserved as regex literals.
 
@@ -26,7 +26,7 @@ Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to mini
 
 The order is deliberate:
 
-1. Shield complete `<pre>` and `<textarea>` elements plus script bodies.
+1. Shield complete `<pre>`, `<textarea>`, and `<style>` elements plus script bodies.
 2. Strip ordinary HTML comments from the remaining document structure.
 3. Extract eligible client scripts while leaving scripts inside shielded containers in place.
 4. Collapse structural whitespace.
@@ -34,8 +34,8 @@ The order is deliberate:
 
 ### Key HTML Minification Behaviors
 
-1. **Comment Stripping**: Ordinary HTML comments (`<!-- ... -->`) are removed after raw-text regions are shielded. Comment text inside `<pre>`, `<textarea>`, and scripts survives unchanged.
-2. **Whitespace-Sensitive Shielding**: Complete `<pre>` and `<textarea>` elements are stored before structural processing. Scripts nested inside those containers remain in their original location.
+1. **Comment Stripping**: Ordinary HTML comments (`<!-- ... -->`) are removed after raw-text regions are shielded. Comment text inside `<pre>`, `<textarea>`, `<style>`, and scripts survives unchanged. In particular, CSS CDO/CDC tokens (`<!--` and `-->`) inside a `<style>` element are not outer HTML comments and are left in place so the authored stylesheet is preserved at the HTML stage.
+2. **Whitespace-Sensitive Shielding**: Complete `<pre>`, `<textarea>`, and `<style>` elements are stored before structural processing. Scripts nested inside those containers remain in their original location. Storing `<style>` as a whole element means structural whitespace inside it is preserved; CSS minimization is owned by the CSS minifier, never by HTML comment removal.
 3. **Smart Inline Tag Spacing & `O(1)` Tag-Boundary Scanning**: Whitespace between block-level tags (`</div> <div>`) is collapsed completely (`"></div><div>"`). For inline tags (`a`, `span`, `b`, `strong`, `code`), a single space is preserved between adjacent elements (`"> <"`). Tag boundary matching uses `O(1)` backwards scanning (`lastIndexOf('<', offset)`) and bounded slices rather than full-string `slice(0, offset)` allocations, avoiding `O(N^2)` memory churn and V8 garbage collection overhead on large HTML pages.
 4. **Script Consolidation**: Eligible classic and module client scripts may be extracted and re-appended at the end of the document. Build, routes, server, data, and scripts nested inside shielded containers remain in place.
 
