@@ -279,15 +279,16 @@ export async function renderMd(filePath: string): Promise<string> {
 }
 ```
 
-## Performance: Batching & Output Caching
+## Performance: Output Caching
 
-### Batched Execution
+### Isolated per-script execution
 
-Uncached build scripts on a page are written to separate temporary modules and evaluated sequentially by one child-process runner. Their outputs are mapped back to original tags and inserted in document order:
+Every uncached build script on a page is written to its own temporary module and executed in its OWN fresh Node.js child process, independent of how many sibling scripts are cache misses. Each script gets its own ESM module registry, its own stdout/stderr, and its own environment, so output ownership is deterministic regardless of cache temperature or neighboring misses:
 
-- Avoid calling `process.exit()` inside build scripts, as it terminates the batch runner and fails sibling scripts.
-- Avoid mutating global process state (`process.chdir()`, patching globals) between scripts on the same page.
-- If a build script emits nothing, Bascik replaces the tag with an empty string. Standard stdout is buffered up to 10 MB per script run.
+- Shared helper modules are loaded fresh per script, so a helper's process-local state (counters, singletons) is never shared between siblings.
+- Detached async output (`setImmediate`, `Promise.resolve().then`, timers) is attributed to the script that scheduled it and never captured by a sibling's transport.
+- Output is attributed by tag index in document order. Standard stdout is buffered up to 10 MB per script run.
+- Avoid calling `process.exit()` inside build scripts, as it terminates the subprocess for that single script.
 
 ### SHA-256 Script Caching
 

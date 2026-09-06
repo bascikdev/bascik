@@ -41,7 +41,6 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { getRelativePath } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
@@ -500,8 +499,22 @@ export const executeBuildScripts = async (
       extraEnv.BASCIK_ROUTE = JSON.stringify(route);
     }
 
-    if (uncachedTasks.length === 1) {
-      const task = uncachedTasks[0];
+    // ─── Isolated per-script execution ───────────────────────────────────────
+    // Every uncached script runs in its OWN fresh child process (via runModule),
+    // independently of how many of its siblings were cache misses. This is the
+    // single, cache-temperature-independent isolation contract (prompt 103):
+    // each script gets its own ESM module registry, its own stdout/stderr, and
+    // its own environment, so two scripts sharing a stateful helper each see
+    // their own module instance and async (detached) output never crosses task
+    // boundaries. Variants are run sequentially against the shared bounded
+    // child-process semaphore: cache misses never create a shared-process batch
+    // whose state could bleed across independently cached tasks.
+    //
+    // A script that fails is reported according to onBuildScriptError and never
+    // re-executed: partial execution may have side effects that are unsafe to
+    // duplicate, so there is no blind fallback retry. Siblings keep their own
+    // output; a failed script contributes an empty replacement.
+    for (const task of uncachedTasks) {
       const taskActiveFile = task.sourceFile || filePath;
       const taskRelPath = taskActiveFile
         ? relative(process.cwd(), taskActiveFile).replace(/\\/g, "/")
@@ -537,103 +550,6 @@ export const executeBuildScripts = async (
         task.output = "";
       } finally {
         await unlink(task.tmpPath).catch(() => { });
-      }
-    } else {
-      // Batch execution of multiple uncached scripts in a single child process
-      const runnerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-      const runnerUrl = new URL(`./build-script-runner${runnerExt}`, import.meta.url);
-      const runnerPath = fileURLToPath(runnerUrl);
-
-      try {
-        await Promise.all(
-          uncachedTasks.map((task) => {
-            const taskActiveFile = task.sourceFile || filePath;
-            const taskRelPath = taskActiveFile
-              ? relative(process.cwd(), taskActiveFile).replace(/\\/g, "/")
-              : "unknown";
-            const taskSourceUrlComment = taskActiveFile ? `\n//# sourceURL=${taskRelPath}` : "";
-            return writeFile(
-              task.tmpPath,
-              task.preparedScript + taskSourceUrlComment,
-              "utf8",
-            );
-          }),
-        );
-
-        const { stdout, stderr } = await runModule(
-          runnerPath,
-          extraEnv,
-          uncachedTasks.map((task) => JSON.stringify({
-            file: task.tmpPath,
-            sourceFile: task.sourceFile,
-          })),
-        );
-        if (stderr) process.stderr.write(stderr);
-
-        let parsedResults: Array<{ id: number; ok: boolean; stdout?: string; stderr?: string; error?: string }> | null = null;
-        try {
-          const trimmed = stdout.trim();
-          if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-            parsedResults = JSON.parse(trimmed);
-          }
-        } catch {
-          parsedResults = null;
-        }
-
-        if (Array.isArray(parsedResults)) {
-          for (const res of parsedResults) {
-            const task = uncachedTasks[res.id];
-            if (!task) continue;
-            if (res.stderr) process.stderr.write(res.stderr);
-            if (res.ok) {
-              const output = stripAnsiEscapeCodes(res.stdout ?? "");
-              if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
-              task.output = output;
-            } else {
-              const msg = res.error ?? "unknown error";
-              let errorMsg = `[bascik] build script error`;
-              const taskActiveFile = task.sourceFile || filePath;
-              const taskRelPath = taskActiveFile
-                ? relative(process.cwd(), taskActiveFile).replace(/\\/g, "/")
-                : "unknown";
-              const cleanedMsg = cleanStackTrace(msg, task.tmpPath, taskRelPath, task.startLine);
-              if (filePath) {
-                const prefix = html.slice(0, task.index);
-                const lines = prefix.split(/\r?\n/);
-                errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
-              }
-              const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-              if (behavior === "error") {
-                console.error(`${errorMsg}:\n${cleanedMsg}`);
-                throw new Error(`${errorMsg}:\n${cleanedMsg}`);
-              } else {
-                console.warn(`${errorMsg}:\n${cleanedMsg}`);
-              }
-              task.output = "";
-            }
-          }
-        } else {
-          // If the runner process failed or output envelope was corrupted, fail loudly without re-executing
-          const errorMsg = `[bascik] build script runner failed to return valid JSON results.\nStdout: ${stdout}\nStderr: ${stderr}`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
-        }
-      } catch (err) {
-        // Runner failure handling: report error per failing script without double wrapping
-        const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
-        if (behavior === "error") {
-          throw err;
-        } else {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.warn(msg);
-          for (const task of uncachedTasks) {
-            if (task.output === undefined) task.output = "";
-          }
-        }
-      } finally {
-        await Promise.all(
-          uncachedTasks.map((t) => unlink(t.tmpPath).catch(() => { })),
-        );
       }
     }
   }
