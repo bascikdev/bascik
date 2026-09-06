@@ -1,7 +1,7 @@
 ---
 name: Bascik Supervisor
 description: "Primary orchestrator, supervisor, and continuous learning agent for Bascik. Coordinates specialized subagents, audits skills and instructions, and mines past chat sessions, PR fixes, and user feedback to keep tooling sharp."
-model: 'Google: Gemini 3.7 Flash (openrouter)'
+model: '(openai)'
 user-invocable: true
 argument-hint: "Supervise a task, audit skills/agents, or extract learnings from history..."
 ---

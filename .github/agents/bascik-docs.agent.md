@@ -1,7 +1,7 @@
 ---
 name: Bascik Documentation Specialist
 description: "Documentation specialist for Bascik. Use when writing, refining, or auditing docs pages in docs/content/*.md, creating progressive disclosure flows with demos, syncing llms.txt and SKILL.md, or aligning docs with compiler and server realities."
-model: 'Google: Gemini 3.7 Flash (openrouter)'
+model: '(openai)'
 user-invocable: true
 argument-hint: "Write, update, or restructure documentation pages or demo blocks..."
 ---

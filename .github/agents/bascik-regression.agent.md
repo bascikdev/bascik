@@ -1,7 +1,7 @@
 ---
 name: Bascik Regression Guardian
 description: "Regression detection agent for Bascik. Use to verify that live docs sites, dev servers, production HTTP/1.1 and HTTP/2 servers, asset pipelines, and client scripts continue functioning without regressions."
-model: 'Google: Gemini 3.7 Flash (openrouter)'
+model: '(openai)'
 user-invocable: true
 argument-hint: "Check for regressions in docs site, servers, or build output..."
 ---
