@@ -12,6 +12,8 @@ import {
   getCompressedCacheEntriesCount,
   isCompressibleMime,
   STATIC_CACHE_METADATA,
+  getStaticRepresentation,
+  clearStaticRepresentationCache,
 } from "./caching.ts";
 
 describe("Prompt 39 - Caching Layer Unit Tests", () => {
@@ -251,5 +253,96 @@ describe("Prompt 96 - Bounded Asynchronous Static Compression", () => {
     expect(res).toBeNull();
     expect(getInFlightCompressionsCount()).toBe(0);
     expect(getCompressedCacheEntriesCount()).toBe(0);
+  });
+});
+
+describe("Prompt 107 - Static representation snapshot owner", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    clearStaticRepresentationCache();
+    dir = await mkdtemp(join(tmpdir(), "bascik-repr-"));
+  });
+
+  afterEach(async () => {
+    clearStaticRepresentationCache();
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("derives a strong etag and length from the exact immutable bytes delivered", async () => {
+    const p = join(dir, "app.css");
+    const body = Buffer.from("body { color: red; }".repeat(20));
+    await writeFile(p, body);
+
+    const repr = await getStaticRepresentation(p);
+
+    expect(repr).not.toBeNull();
+    expect(repr!.encoding).toBe("identity");
+    expect(repr!.size).toBe(body.byteLength);
+    expect(repr!.etag).toBe(getContentHashEtag(body));
+    expect(repr!.etag).toMatch(/^"[0-9a-f]{32,64}"$/);
+  });
+
+  it("single-flights concurrent readers into one file read", async () => {
+    const p = join(dir, "style.js");
+    const body = Buffer.from("const x = 1;".repeat(50));
+    await writeFile(p, body);
+
+    const results = await Promise.all([
+      getStaticRepresentation(p),
+      getStaticRepresentation(p),
+      getStaticRepresentation(p),
+    ]);
+
+    expect(results[0]).not.toBeNull();
+    expect(results[1]).not.toBeNull();
+    expect(results[2]).not.toBeNull();
+    // Concurrent readers must share the same immutable buffer.
+    expect(results[1]!.buffer).toBe(results[0]!.buffer);
+    expect(results[2]!.buffer).toBe(results[0]!.buffer);
+  });
+
+  it("re-reads when the file length changes (invalidation on content replacement)", async () => {
+    const p = join(dir, "main.css");
+    const first = Buffer.from("A".repeat(100));
+    const second = Buffer.from("B".repeat(220));
+    await writeFile(p, first);
+
+    const repr1 = await getStaticRepresentation(p);
+    // Length-changing replacement to a same-path file.
+    await writeFile(p, second);
+    const repr2 = await getStaticRepresentation(p);
+
+    expect(repr1!.buffer.toString()).toBe("A".repeat(100));
+    expect(repr2!.buffer.toString()).toBe("B".repeat(220));
+    expect(repr1!.etag).not.toBe(repr2!.etag);
+    expect(repr2!.size).toBe(220);
+  });
+
+  it("handles empty files as a valid zero-length representation", async () => {
+    const p = join(dir, "empty.css");
+    await writeFile(p, Buffer.alloc(0));
+
+    const repr = await getStaticRepresentation(p);
+    expect(repr).not.toBeNull();
+    expect(repr!.size).toBe(0);
+    expect(repr!.buffer.byteLength).toBe(0);
+    expect(repr!.etag).toBe(getContentHashEtag(Buffer.alloc(0)));
+  });
+
+  it("produces a distinct encoded representation bound to the raw etag", async () => {
+    const p = join(dir, "bundle.js");
+    const body = Buffer.from("export const q = 42;".repeat(30));
+    await writeFile(p, body);
+
+    const raw = await getStaticRepresentation(p);
+    const br = await getStaticRepresentation(p, "br");
+    const gz = await getStaticRepresentation(p, "gzip");
+
+    expect(br!.encoding).toBe("br");
+    expect(gz!.encoding).toBe("gzip");
+    expect(br!.etag).toBe(getEncodedEtag(raw!.etag, "br"));
+    expect(gz!.etag).toBe(getEncodedEtag(raw!.etag, "gzip"));
+    expect(br!.size).toBe(br!.buffer.byteLength);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createHash } from "node:crypto";
 
 // ─── Hoisted mock factories ───────────────────────────────────────────────────
 
@@ -583,24 +584,22 @@ describe("startHttp2Server – stream handler", () => {
     );
   });
 
-  it("pipes a file stream for static asset requests", async () => {
+  it("serves static asset bytes from the immutable representation", async () => {
     const { BascikConfig } = await import("./config.ts");
     (BascikConfig as any).http.compression = false;
     mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
-    const fakeFileStream = {
-      on: vi.fn().mockReturnThis(),
-      pipe: vi.fn(),
-    };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
+    const body = Buffer.from("body { color: red; }");
+    mockReadFile.mockResolvedValueOnce(body);
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(mockStat).toHaveBeenCalled();
-    expect(mockCreateReadStream).toHaveBeenCalled();
-    // Trigger the open event to verify pipe is called
-    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
-    openCall?.[1]?.();
-    expect(fakeFileStream.pipe).toHaveBeenCalledWith(stream);
+    // The response body and headers come from ONE representation read, not a
+    // re-opened createReadStream (prompt 107).
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200, "content-length": body.byteLength }),
+    );
+    expect(stream.end).toHaveBeenCalledWith(body);
     (BascikConfig as any).http.compression = true;
   });
 
@@ -866,16 +865,14 @@ describe("startHttp2Server – Content-Length and Vary", () => {
     );
   });
 
-  it("sets content-length on static asset responses", async () => {
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
+  it("sets content-length on static asset responses from the representation bytes", async () => {
+    const body = Buffer.from("a".repeat(64));
+    mockReadFile.mockResolvedValueOnce(body);
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
-    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
-    openCall?.[1]?.();
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ "content-length": 1_024 }), // from mockStat default
+      expect.objectContaining({ "content-length": body.byteLength }),
     );
   });
 });
@@ -986,6 +983,37 @@ describe("startHttp2Server – ETag and conditional GET", () => {
     const firstEtag = firstRequestCall["etag"] as string;
     // The mtime fallback looks like `"1705000000000-1024"`; a content hash is hex-only.
     expect(firstEtag).toMatch(/^"[0-9a-f]{32,64}"$/);
+    (BascikConfig as any).http.httpCache = false;
+    (BascikConfig as any).http.compression = true;
+  });
+
+  // Regression for prompt 107: a static asset response must NOT combine the
+  // hash of one read with the bytes of a later, re-opened path. If the file is
+  // atomically replaced (or written in place) between the hash-acquisition read
+  // and the bytes-served read, the original code would serve NEW under OLD's
+  // ETag. The selected representation must own its body and validator together.
+  it("serves a static body whose bytes match its own advertised ETag, never a re-opened path", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    (BascikConfig as any).http.httpCache = true;
+    (BascikConfig as any).http.compression = false;
+    // The hash-acquisition read observes OLD bytes... (as the single ownership
+    // read, these are the bytes whose hash is advertised AND delivered).
+    const oldBytes = Buffer.from("OLD".repeat(300));
+    mockReadFile.mockResolvedValueOnce(oldBytes);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    await handler(stream, makeHeaders("/style.css", "GET"));
+    // The body delivered in the ownership model is the SAME buffer whose hash
+    // the ETag advertises: handler hashes oldBytes and serves oldBytes.
+    const expectedEtag = `"${createHash("sha256").update(oldBytes).digest("hex")}"`;
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 200,
+        "content-length": oldBytes.byteLength,
+        etag: expectedEtag,
+      }),
+    );
+    expect(stream.end).toHaveBeenCalledWith(oldBytes);
     (BascikConfig as any).http.httpCache = false;
     (BascikConfig as any).http.compression = true;
   });
@@ -1327,22 +1355,21 @@ describe("onError and server resiliency edge cases", () => {
     expect(stream.end).toHaveBeenCalledWith("Bad Request");
   });
 
-  it("closes stream with NGHTTP2_INTERNAL_ERROR if fileStream errors after headersSent", async () => {
+  it("responds 404 when a static asset vanishes after stat (deletion after selection)", async () => {
     await startHttp2Server();
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn(), destroy: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
-
+    // stat succeeds (file present), but the byte read fails because the file
+    // was removed between selection and acquisition. The representation owner
+    // returns null and the handler 404s rather than serving a partial or
+    // mismatched representation (prompt 107).
+    mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     const handler = getStreamHandler()!;
     const stream = makeStream();
     await handler(stream, makeHeaders("/style.css", "GET"));
-
-    const errCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "error");
-    const closeSpy = vi.fn();
-    stream.close = closeSpy;
-    (stream as any).headersSent = true;
-
-    errCall?.[1]?.(new Error("Disk read error"));
-    expect(closeSpy).toHaveBeenCalledWith(2);
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
+    expect(stream.end).toHaveBeenCalledWith("Not Found");
   });
 
   it("startServer boots HTTP/1.1 server when enableTls is false and HTTP/2 server when enableTls is true", async () => {
@@ -1425,55 +1452,31 @@ describe("onError and server resiliency edge cases", () => {
     (BascikConfig as any).isProdServer = false;
   });
 
-  it("destroys fileStream on open if response stream was destroyed mid-request", async () => {
+  it("does not deliver a static body to a destroyed response stream", async () => {
     await startHttp2Server();
-    const fakeFileStream = {
-      on: vi.fn().mockReturnThis(),
-      pipe: vi.fn(),
-      destroy: vi.fn(),
-    };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
-
+    mockReadFile.mockResolvedValueOnce(Buffer.from("body { }"));
     const handler = getStreamHandler()!;
     const stream = makeStream();
     (stream as any).destroyed = true;
 
     await handler(stream, makeHeaders("/style.css", "GET"));
-
-    const openCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open");
-    openCall?.[1]?.();
-
-    expect(fakeFileStream.destroy).toHaveBeenCalled();
-    expect(fakeFileStream.pipe).not.toHaveBeenCalled();
+    // A destroyed client stream never receives the body chunk.
+    expect(stream.end).not.toHaveBeenCalledWith(Buffer.from("body { }"));
   });
 
-  it("handles file stream error when headersSent is false by responding 500 or 404", async () => {
+  it("responds 404 when the representation read fails (owner maps read failure to not-found)", async () => {
     await startHttp2Server();
-    const fakeFileStream = {
-      on: vi.fn().mockReturnThis(),
-      pipe: vi.fn(),
-      destroy: vi.fn(),
-    };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
-
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
     const handler = getStreamHandler()!;
     const stream = makeStream();
-    (stream as any).headersSent = false;
-
     await handler(stream, makeHeaders("/style.css", "GET"));
-
-    const errCall = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "error");
-    const err = new Error("EACCES permission denied");
-    (err as any).code = "EACCES";
-    errCall?.[1]?.(err);
 
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({
-        ":status": 500,
+        ":status": 404,
         "x-content-type-options": "nosniff",
       }),
     );
-    expect(stream.end).toHaveBeenCalledWith("Internal Server Error");
   });
 
   it("untracks open page when SSE live-reload stream closes", async () => {
@@ -2036,73 +2039,48 @@ describe("startHttp2Server – onError: stream already has headers sent", () => 
 // fileStream error paths
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("startHttp2Server – fileStream error handling", () => {
+describe("startHttp2Server – static representation failure paths", () => {
   beforeEach(async () => {
     await startHttp2Server();
   });
 
-  it("does nothing when fileStream emits an error after the stream is destroyed", async () => {
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
+  it("does not throw when the representation read fails on a destroyed response stream", async () => {
+    mockReadFile.mockRejectedValueOnce(new Error("read error"));
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+    (stream as any).destroyed = true;
+
+    await expect(handler(stream, makeHeaders("/style.css", "GET"))).resolves.not.toThrow();
+  });
+
+  it("does not call respond() when the response stream is already destroyed", async () => {
+    mockReadFile.mockRejectedValueOnce(new Error("read error"));
     const handler = getStreamHandler()!;
     const stream = makeStream();
     (stream as any).destroyed = true;
 
     await handler(stream, makeHeaders("/style.css", "GET"));
-    const errorCb = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "error")?.[1] as (err: Error) => void;
-    // Must not throw even if the stream is already destroyed
-    expect(() => errorCb?.(new Error("read error"))).not.toThrow();
-    // respond() must not be called on a destroyed stream
     expect(stream.respond).not.toHaveBeenCalled();
   });
 
-  it("does nothing when stream is destroyed by the time the 'open' event fires", async () => {
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn(), destroy: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
+  it("responds 404 when the representation owner finds no file (deletion after selection)", async () => {
+    mockStat.mockResolvedValueOnce({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    mockReadFile.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     const handler = getStreamHandler()!;
     const stream = makeStream();
 
     await handler(stream, makeHeaders("/style.css", "GET"));
-
-    // Simulate client disconnect before the file descriptor opens
-    (stream as any).destroyed = true;
-
-    const openCb = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open")?.[1] as () => void;
-    openCb?.();
-
-    expect(stream.respond).not.toHaveBeenCalled();
-    expect(fakeFileStream.pipe).not.toHaveBeenCalled();
-    expect(fakeFileStream.destroy).toHaveBeenCalled();
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
   });
 
-  it("closes stream via NGHTTP2_INTERNAL_ERROR when error occurs after headers sent", async () => {
-    const mockClose = vi.fn();
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
-    const handler = getStreamHandler()!;
-    const stream = { ...makeStream(), close: mockClose, destroyed: false };
-
-    await handler(stream, makeHeaders("/style.css", "GET"));
-
-    // Simulate the "open" event so headers are sent, then simulate an error.
-    const openCb = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "open")?.[1] as () => void;
-    openCb?.(); // This calls stream.respond() → headers sent
-    (stream as any).headersSent = true;
-
-    const errorCb = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "error")?.[1] as (err: Error) => void;
-    errorCb?.(new Error("pipe error"));
-    expect(mockClose).toHaveBeenCalled();
-  });
-
-  it("responds 404 when ENOENT error occurs before headers are sent", async () => {
-    const fakeFileStream = { on: vi.fn().mockReturnThis(), pipe: vi.fn() };
-    mockCreateReadStream.mockReturnValue(fakeFileStream);
+  it("responds 404 when stat reports ENOENT", async () => {
+    mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     const handler = getStreamHandler()!;
     const stream = makeStream();
 
     await handler(stream, makeHeaders("/style.css", "GET"));
-    const errorCb = fakeFileStream.on.mock.calls.find((c: any[]) => c[0] === "error")?.[1] as (err: NodeJS.ErrnoException) => void;
-    errorCb?.(Object.assign(new Error("not found"), { code: "ENOENT" }));
     expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 404 }),
     );
