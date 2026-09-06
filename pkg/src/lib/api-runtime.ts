@@ -310,6 +310,13 @@ export const executeApiRoute = async (
       return new Response("Client Closed Request", { status: 499 });
     }
 
+    // Upstream (transport) cancellation is not a handler defect: the client
+    // went away, so the result is a quiet 499 that dispatch never delivers.
+    // Only a deadline is reported as a timeout below.
+    if (!didTimeout && userSignal?.aborted) {
+      return new Response("Client Closed Request", { status: 499 });
+    }
+
     if (didTimeout || (err as Error)?.message?.includes("timed out after")) {
       console.error("[bascik] API route handler timed out in %s (%s) after %dms", filePath, method, effectiveTimeout);
       return new Response("Gateway Timeout", { status: 504 });

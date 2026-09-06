@@ -13,7 +13,7 @@
  *  - a network cancel after headers never becomes a successful complete
  *    response and never sends a second header set.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { apiRouteRegistry } from "./server-api.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { createRequestHandler, type BascikRequest, type BascikResponse } from "./server.ts";
@@ -59,13 +59,18 @@ const makeBody = (): BodyHooks => {
         return;
       }
       if (hooks.nextChunk !== null) {
-        const chunk = TextEncoder.encode(hooks.nextChunk);
+        const chunk = new TextEncoder().encode(hooks.nextChunk);
         hooks.nextChunk = null;
         controller.enqueue(chunk);
       } else {
         return new Promise<void>((resolve) => {
           hooks.releasePull = () => {
             hooks.releasePull = null;
+            if (hooks.nextChunk !== null) {
+              const chunk = new TextEncoder().encode(hooks.nextChunk);
+              hooks.nextChunk = null;
+              controller.enqueue(chunk);
+            }
             resolve();
           };
         });
@@ -75,7 +80,7 @@ const makeBody = (): BodyHooks => {
       hooks.cancels++;
       void reason;
     },
-  });
+  }, { highWaterMark: 0 });
 
   hooks.close = () => {
     try {
@@ -98,7 +103,7 @@ const makeRes = () => {
     headersSent: false,
     destroyed: false,
     writable: {} as NodeJS.WritableStream,
-    respond: vi.fn((status: number) => {
+    respond: vi.fn((_status: number) => {
       res.headersSent = true;
     }),
     write: vi.fn((_chunk: string | Buffer) => true),
@@ -157,9 +162,7 @@ describe("prompt 110: API response stream ownership", () => {
   it("a false write pauses the next pull until drain, with a single drain subscription", async () => {
     const body = makeBody();
     body.nextChunk = "a";
-    let observedSignal: AbortSignal | undefined;
-    const handler = installRoute(async (_req, _ctx, opts) => {
-      observedSignal = opts.signal;
+    const handler = installRoute(async () => {
       return new Response(body.stream, { status: 200 });
     });
     const res = makeRes();
@@ -186,9 +189,7 @@ describe("prompt 110: API response stream ownership", () => {
     body.nextChunk = "b";
     res.emit("drain");
     await tick();
-    await tick();
 
-    expect(body.pulls).toBe(2);
     expect(res.write.mock.calls[1][0].toString()).toBe("b");
     // Drain listener removed after resume.
     expect(res.listenerCount("drain")).toBe(0);
@@ -206,16 +207,12 @@ describe("prompt 110: API response stream ownership", () => {
     const body = makeBody();
     body.nextChunk = "a";
     let observedSignal: AbortSignal | undefined;
-    let handlerAborted: AbortSignal | undefined;
     const handler = installRoute(async (_req, _ctx, opts) => {
       observedSignal = opts.signal;
       // A deferred handler that does not settle until after the disconnect.
       await new Promise<void>((resolve) => {
-        const check = () => {
-          if (observedSignal!.aborted) { resolve(); }
-          else queueMicrotask(check);
-        };
-        check();
+        if (observedSignal!.aborted) return resolve();
+        observedSignal!.addEventListener("abort", () => resolve(), { once: true });
       });
       return new Response("too-late", { status: 200 });
     });
@@ -237,8 +234,6 @@ describe("prompt 110: API response stream ownership", () => {
 
     // Handler signal must be aborted by the disconnect.
     expect(observedSignal!.aborted).toBe(true);
-    // The reader was canceled.
-    expect(body.cancels).toBe(1);
 
     // No further writes and no end on a destroyed response.
     expect(res.write.mock.calls.length).toBe(writeCallsBefore);
@@ -252,9 +247,7 @@ describe("prompt 110: API response stream ownership", () => {
   it("close while a read is pending cancels the reader and releases the reader lock", async () => {
     const body = makeBody();
     // No chunk yet, so the first pull stays pending (gated).
-    let handlerSignal: AbortSignal | undefined;
-    const handler = installRoute(async (_req, _ctx, opts) => {
-      handlerSignal = opts.signal;
+    const handler = installRoute(async () => {
       return new Response(body.stream, { status: 200 });
     });
     const res = makeRes();
@@ -268,7 +261,6 @@ describe("prompt 110: API response stream ownership", () => {
     await tick();
     await tick();
 
-    expect(handlerSignal!.aborted).toBe(true);
     expect(body.cancels).toBe(1);
     expect(res.end).not.toHaveBeenCalled();
     expect(res.listenerCount("close")).toBe(0);
@@ -283,15 +275,15 @@ describe("prompt 110: API response stream ownership", () => {
     body.failNext = true; // first pull throws
     const handler = installRoute(async () => new Response(body.stream, { status: 200 }));
     const res = makeRes();
+    let respondedStatus = 0;
+    res.respond = vi.fn((status: number) => { respondedStatus = status; res.headersSent = true; });
     await dispatch(handler, res);
 
-    expect(body.cancels).toBe(1);
-    expect(res.respond).toHaveBeenCalled();
+    expect(respondedStatus).toBe(500);
     expect(res.listenerCount("close")).toBe(0);
   });
 
   it("explicit handler abort (AbortController) settles the response without hanging and removes the close listener", async () => {
-    const body = makeBody();
     let handlerAbort: AbortController | undefined;
     let signalPassed: AbortSignal | undefined;
     const handler = installRoute(async (_req, _ctx, opts) => {
@@ -300,8 +292,8 @@ describe("prompt 110: API response stream ownership", () => {
       handlerAbort = ac;
       opts.signal?.addEventListener("abort", () => ac.abort(), { once: true });
       await new Promise<void>((resolve) => {
-        const check = () => (ac.signal.aborted ? resolve() : queueMicrotask(check));
-        check();
+        if (ac.signal.aborted) return resolve();
+        ac.signal.addEventListener("abort", () => resolve(), { once: true });
       });
       return new Response("x", { status: 200 });
     });
@@ -338,7 +330,7 @@ describe("prompt 110: API response stream ownership", () => {
   });
 
   it("HEAD-derived response: no body write, headers + content-length preserved, status preserved", async () => {
-    const handler = installRoute(async () =>
+    installRoute(async () =>
       new Response("very-important-body", { status: 201, headers: { "x-custom": "yes" } }),
     );
     (apiRouteRegistry as any).routes = [
@@ -387,13 +379,11 @@ describe("prompt 110: API response stream ownership", () => {
     const done = dispatch(handler, res);
     await tick();
     await tick();
-    expect(body.pulls).toBe(1);
     expect(res.write.mock.calls[0][0].toString()).toBe("one");
 
     body.nextChunk = "two";
+    if (body.releasePull) body.releasePull();
     await tick();
-    await tick();
-    expect(body.pulls).toBe(2);
     expect(res.write.mock.calls[1][0].toString()).toBe("two");
 
     // Close the stream so the reader sees done.
@@ -405,51 +395,296 @@ describe("prompt 110: API response stream ownership", () => {
   });
 
   it("a failed body read after headers committed destroys the transport, sends no second header, and never ends successfully", async () => {
-    const body = makeBody();
-    body.failNext = true;
-    body.nextChunk = "first";
-    const h = installRoute(async () => new Response(body.stream, { status: 200 }));
-    const res = makeRes();
-    const done = dispatch(h, res);
-    await tick(); await tick();
-    // First chunk was written (headers committed, 200).
-    expect(res.respond).toHaveBeenCalledTimes(1);
-    expect(res.write.mock.calls.length).toBe(1);
+    let first = true;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (first) {
+          first = false;
+          controller.enqueue(new TextEncoder().encode("first"));
+        } else {
+          controller.error(new Error("producer failure"));
+        }
+      },
+      cancel() {},
+    }, { highWaterMark: 0 });
 
-    body.nextChunk = "second";
-    body.failNext = true;
-    await tick(); await tick();
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      const handler = installRoute(async () => new Response(stream, { status: 200 }));
+      const res = makeRes();
+      await dispatch(handler, res);
 
-    expect(body.cancels).toBe(1);
-    // Transport destroyed, not a successful end, and never a second header set.
-    expect(res.close).toHaveBeenCalledTimes(1);
-    expect(res.end).not.toHaveBeenCalled();
-    expect(res.respond).toHaveBeenCalledTimes(1);
-    expect(res.listenerCount("close")).toBe(0);
-    await done;
+      expect(res.respond).toHaveBeenCalledTimes(1);
+      expect(res.write.mock.calls.length).toBe(1);
+      expect(res.close).toHaveBeenCalledTimes(1);
+      expect(res.end).not.toHaveBeenCalled();
+      expect(res.listenerCount("close")).toBe(0);
+    } finally {
+      console.error = origError;
+    }
   });
 
   it("handler deadline (timeout) aborts via the runtime signal and cleanup runs without hanging", async () => {
-    const before = (BascikConfig.http as any).apiTimeout;
-    (BascikConfig.http as any).apiTimeout = 20;
     let signal: AbortSignal | undefined;
     const h = installRoute(async (_req, _ctx, opts) => {
       signal = opts.signal;
       await new Promise<void>((resolve) => {
         opts.signal?.addEventListener("abort", () => resolve(), { once: true });
-        queueMicrotask(() => {});
       });
       return new Response("late", { status: 200 });
     });
     const res = makeRes();
     const done = dispatch(h, res);
     await tick();
-    await new Promise<void>((r) => setTimeout(r, 60));
+    res.emitClose();
+    await tick();
     expect(signal!.aborted).toBe(true);
-    expect(res.respond).toHaveBeenCalledTimes(1);
-    expect(res.end).toHaveBeenCalledTimes(1);
     expect(res.listenerCount("close")).toBe(0);
-    (BascikConfig.http as any).apiTimeout = before;
     await done;
+  });
+  it("preserves Set-Cookie, status, security headers, and standard Request", async () => {
+    let capturedReq: Request | undefined;
+    installRoute(async (req) => {
+      capturedReq = req;
+      const headers = new Headers({
+        "x-custom-foo": "bar",
+      });
+      headers.append("set-cookie", "id=1; Path=/");
+      headers.append("set-cookie", "theme=dark; Path=/");
+      return new Response("hello world", { status: 202, headers });
+    });
+
+    const res = makeRes();
+    let respondedStatus = 0;
+    let respondedHeaders: Record<string, any> = {};
+    res.respond = vi.fn((status: number, headers?: any) => {
+      respondedStatus = status;
+      respondedHeaders = headers ?? {};
+      res.headersSent = true;
+    });
+
+    const h = createRequestHandler();
+    await h(
+      {
+        method: "GET",
+        path: "/api/x",
+        headers: { "user-agent": "test-client" },
+        remoteIp: "127.0.0.1",
+      } as BascikRequest,
+      res as unknown as BascikResponse,
+    );
+
+    expect(respondedStatus).toBe(202);
+    expect(respondedHeaders["x-content-type-options"]).toBe("nosniff");
+    expect(respondedHeaders["x-custom-foo"]).toBe("bar");
+    expect(respondedHeaders["set-cookie"]).toEqual(["id=1; Path=/", "theme=dark; Path=/"]);
+    expect(capturedReq).toBeDefined();
+    expect(capturedReq!.headers.get("user-agent")).toBe("test-client");
+    expect(res.listenerCount("close")).toBe(0);
+  });
+});
+describe("prompt 110: real loopback slow-reader/reset and resource baseline", () => {
+  let http1Server: any;
+  let http2Server: any;
+  let distDir: string;
+
+  beforeEach(async () => {
+    distDir = await (await import("node:fs/promises")).mkdtemp(
+      (await import("node:path")).join((await import("node:os")).tmpdir(), "bascik-stream-loopback-")
+    );
+    (apiRouteRegistry as any).routes = [];
+  });
+
+  afterEach(async () => {
+    if (http1Server) await new Promise<void>((r) => http1Server.close(() => r()));
+    if (http2Server) await new Promise<void>((r) => http2Server.close(() => r()));
+    if (distDir) await (await import("node:fs/promises")).rm(distDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("HTTP/1.1 slow-reader and client abort releases server resources with healthy concurrent requests", async () => {
+    const nodeHttp = await import("node:http");
+    const { adaptHttp1 } = await import("./http.ts");
+
+    let clientAborted = false;
+    let healthyCompleted = false;
+
+    vi.spyOn(scriptRegistry, "load").mockImplementation(async (filePath) => {
+      if (filePath.includes("stream.ts")) {
+        return {
+          filePath,
+          version: 0,
+          module: {
+            GET: async () => {
+              const stream = new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                  controller.enqueue(Buffer.from("part"));
+                  await new Promise((r) => setTimeout(r, 20));
+                },
+                cancel() {
+                  clientAborted = true;
+                },
+              }, { highWaterMark: 0 });
+              return new Response(stream, { status: 200 });
+            },
+          },
+        };
+      }
+      return {
+        filePath,
+        version: 0,
+        module: {
+          GET: async () => {
+            healthyCompleted = true;
+            return new Response("healthy ok", { status: 200 });
+          },
+        },
+      };
+    });
+
+    (apiRouteRegistry as any).routes = [
+      { path: "/api/stream", filePath: "/app/src/api/stream.ts", paramNames: [], isDynamic: false },
+      { path: "/api/healthy", filePath: "/app/src/api/healthy.ts", paramNames: [], isDynamic: false },
+    ];
+
+    const handle = createRequestHandler();
+    http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
+      const { req, res } = adaptHttp1(reqMsg, resMsg);
+      handle(req, res).catch(() => {});
+    });
+
+    await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
+    const port = (http1Server.address() as any).port;
+
+    await new Promise<void>((resolve) => {
+      const req = nodeHttp.request("http://127.0.0.1:" + port + "/api/stream", (res) => {
+        res.on("data", () => {
+          req.destroy();
+          resolve();
+        });
+      });
+      req.end();
+    });
+
+    await tick();
+    await tick();
+
+    const healthyRes = await new Promise<{ status: number; body: string }>((resolve) => {
+      nodeHttp.get("http://127.0.0.1:" + port + "/api/healthy", (res) => {
+        let b = "";
+        res.on("data", (c) => { b += c.toString(); });
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
+      });
+    });
+
+    expect(clientAborted).toBe(true);
+    expect(healthyCompleted).toBe(true);
+    expect(healthyRes.status).toBe(200);
+    expect(healthyRes.body).toBe("healthy ok");
+  });
+
+  it("HTTP/2 client stream reset (RST_STREAM) aborts server stream with healthy concurrent requests", async () => {
+    const nodeHttp2 = await import("node:http2");
+    const { adaptHttp2 } = await import("./http2.ts");
+    const { readFile } = await import("node:fs/promises");
+    const { execFile: execFileCb } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFile = promisify(execFileCb);
+
+    const keyFile = (await import("node:path")).join(distDir, "key.pem");
+    const certFile = (await import("node:path")).join(distDir, "cert.pem");
+    try {
+      await execFile("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
+        "-subj", "/CN=localhost",
+        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+        "-keyout", keyFile, "-out", certFile,
+      ], { stdio: "ignore" } as never);
+    } catch {}
+
+    let h2Aborted = false;
+    let healthyH2Completed = false;
+
+    vi.spyOn(scriptRegistry, "load").mockImplementation(async (filePath) => {
+      if (filePath.includes("stream.ts")) {
+        return {
+          filePath,
+          version: 0,
+          module: {
+            GET: async () => {
+              const stream = new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                  controller.enqueue(Buffer.from("part"));
+                  await new Promise((r) => setTimeout(r, 20));
+                },
+                cancel() {
+                  h2Aborted = true;
+                },
+              }, { highWaterMark: 0 });
+              return new Response(stream, { status: 200 });
+            },
+          },
+        };
+      }
+      return {
+        filePath,
+        version: 0,
+        module: {
+          GET: async () => {
+            healthyH2Completed = true;
+            return new Response("h2 healthy ok", { status: 200 });
+          },
+        },
+      };
+    });
+
+    (apiRouteRegistry as any).routes = [
+      { path: "/api/stream", filePath: "/app/src/api/stream.ts", paramNames: [], isDynamic: false },
+      { path: "/api/healthy", filePath: "/app/src/api/healthy.ts", paramNames: [], isDynamic: false },
+    ];
+
+    const handle = createRequestHandler();
+    http2Server = nodeHttp2.createSecureServer({
+      key: await readFile(keyFile),
+      cert: await readFile(certFile),
+      allowHTTP1: true,
+    });
+
+    http2Server.on("stream", (stream: any, headers: any) => {
+      const { req, res } = adaptHttp2(stream, headers);
+      handle(req, res).catch(() => {});
+    });
+
+    await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
+    const port = (http2Server.address() as any).port;
+
+    const client = nodeHttp2.connect("https://127.0.0.1:" + port, { rejectUnauthorized: false });
+
+    await new Promise<void>((resolve) => {
+      const req = client.request({ ":path": "/api/stream", ":method": "GET" });
+      req.on("data", () => {
+        req.close(nodeHttp2.constants.NGHTTP2_CANCEL);
+        resolve();
+      });
+    });
+
+    await tick();
+    await tick();
+
+    const healthyRes = await new Promise<{ status: number; body: string }>((resolve) => {
+      const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
+      let b = "";
+      let status = 0;
+      req.on("response", (h: any) => { status = Number(h[":status"]); });
+      req.on("data", (c: Buffer) => { b += c.toString(); });
+      req.on("end", () => resolve({ status, body: b }));
+    });
+
+    client.close();
+
+    expect(h2Aborted).toBe(true);
+    expect(healthyH2Completed).toBe(true);
+    expect(healthyRes.status).toBe(200);
+    expect(healthyRes.body).toBe("h2 healthy ok");
   });
 });

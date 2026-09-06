@@ -265,6 +265,15 @@ Both HTTP/1.1 and HTTP/2 adapters register stream error handlers that identify c
 
 Process-level handlers for `unhandledRejection` and `uncaughtException` log full error context and exit with a non-zero code (`1`) to allow external process supervisors (systemd, Docker container restart policies) to restart the process cleanly.
 
+### API response stream and disconnect ownership
+
+API route execution (`server-api.ts`) enforces strict backpressure and lifecycle ownership across WHATWG `Response` streams and underlying network sockets:
+
+- **Socket capacity gates consumption:** Streamed response bodies are consumed chunk-by-chunk using a response sink. When `res.write()` returns `false`, reading from the stream pauses until the underlying transport emits `drain`. Socket backpressure governs chunk consumption rather than buffering unbounded chunks in memory.
+- **Request-lifetime abort ownership:** Each dispatch creates a request-lifetime `AbortController` connected to transport close events (`close`). If a client disconnects while a handler or stream read is pending, the controller immediately aborts. Disconnect propagates into the handler's `signal` option and cancels active WHATWG body readers.
+- **Independent settlement and resource cleanup:** Reader cancellation and handler settlement resolve independently so cleanup never hangs on noncooperative user code. On clean completion, stream error, or client disconnect, reader locks and drain/close listeners are released exactly once.
+- **Distinct producer failure vs. network cancellation:** If a producer stream fails before headers are committed, the server sends a 500 error response. If a producer stream fails after headers have already been committed, the transport is destroyed immediately as truncated rather than ended as a successful complete response, preventing silent corruption and never emitting duplicate headers.
+
 ### In-Process Script Module Registry
 
 Dynamic server-side execution (`data-bascik-server` scripts and API routes) uses an in-process module registry (`pkg/src/lib/script-registry.ts`) powered by native dynamic `import()`.

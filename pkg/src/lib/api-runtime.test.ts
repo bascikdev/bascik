@@ -652,7 +652,9 @@ describe("API runtime execution", () => {
         controller.abort();
 
         const res = await executePromise;
-        expect(res.status).toBe(500);
+        // Upstream (client) cancellation is network cancellation, not a handler
+        // defect: it maps to 499 Client Closed Request, never a 500 (prompt 110).
+        expect(res.status).toBe(499);
         expect(aborted).toBe(true);
         expect(vi.getTimerCount()).toBe(0);
       } finally {
