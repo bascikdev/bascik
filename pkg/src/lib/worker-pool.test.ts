@@ -151,6 +151,96 @@ describe("WorkerPool", () => {
       await terminatePromise;
       expect(WorkerMock).toHaveBeenCalledTimes(1);
     });
+
+    it("rejects the active task on a clean exit(0)", async () => {
+      const pool = makePool(1);
+      const promise = pool.run("task-a");
+      workers[0].emit("exit", 0);
+      await expect(promise).rejects.toThrow("Worker exited with code 0");
+      await pool.terminate();
+    });
+
+    it("retires an idle clean exit(0) and restores capacity for a later run", async () => {
+      const pool = makePool(1);
+      workers[0].emit("exit", 0);
+      // A replacement is spawned for the retired (never-completed) worker.
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+      const promise = pool.run("task-b");
+      expect(workers[1].postMessage).toHaveBeenCalledWith("task-b");
+      completeWith(workers[1], "done");
+      await expect(promise).resolves.toBe("done");
+      await pool.terminate();
+    });
+
+    it("does not spawn a replacement for a worker exiting after terminate()", async () => {
+      const pool = makePool(1);
+      const terminatePromise = pool.terminate();
+      workers[0].emit("exit", 0);
+      await terminatePromise;
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not dispatch after shutdown even when a retire loop would want a replacement", async () => {
+      const pool = makePool(2);
+      await pool.terminate();
+      // Any post-terminate exit/error must neither spawn nor dispatch.
+      workers[0].emit("exit", 0);
+      workers[1].emit("error", new Error("late"));
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+      for (const worker of workers) {
+        expect(worker.postMessage).not.toHaveBeenCalled();
+      }
+    });
+
+    it("re-dispatch throws by requeueing the untouched task to the replacement worker", async () => {
+      const pool = makePool(1);
+      // First dispatch attempt fails before delivery; the task must not be
+      // stranded and must not have any side effects on the dead worker.
+      workers[0].postMessage.mockImplementationOnce(() => {
+        throw new Error("cannot post");
+      });
+      const promise = pool.run("task-a");
+      // The unusable worker is retired and a replacement is spawned.
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+      // The alternative is paid back to the replacement, which completes it.
+      expect(workers[1].postMessage).toHaveBeenCalledWith("task-a");
+      completeWith(workers[1], "delivered-via-replacement");
+      await expect(promise).resolves.toBe("delivered-via-replacement");
+      await pool.terminate();
+    });
+
+    it("bounded startup respawn: repeated dead-before-completion workers exhaust capacity and reject callers", async () => {
+      const pool = makePool(1);
+      // Drive every startup attempt to death before it completes a task.
+      // MAX_STARTUP_ATTEMPTS (4) workers are spawned and each dies idle.
+      for (const worker of workers) {
+        worker.emit("exit", 1);
+      }
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      // No further respawn: capacity is exhausted.
+      workers[0].emit("exit", 1);
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      // New callers settle promptly with a useful error instead of hanging.
+      await expect(pool.run("forever")).rejects.toThrow(/no viable workers/);
+      await pool.terminate();
+    });
+
+    it("does not duplicate idle entries for a worker that reports message then exit", async () => {
+      const pool = makePool(1);
+      const first = pool.run("task-1");
+      completeWith(workers[0], "r1");
+      await expect(first).resolves.toBe("r1");
+      // The completed worker is once again idle; a queued follow-up is served
+      // by the same worker, so no separate replacement is spawned.
+      const second = pool.run("task-2");
+      expect(WorkerMock).toHaveBeenCalledTimes(1);
+      expect(workers[0].postMessage).toHaveBeenLastCalledWith("task-2");
+      completeWith(workers[0], "r2");
+      await expect(second).resolves.toBe("r2");
+      // A late exit for the (already completed) worker retires it cleanly.
+      workers[0].emit("exit", 0);
+      await pool.terminate();
+    });
   });
 
   describe("terminate", () => {
