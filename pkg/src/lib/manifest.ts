@@ -69,29 +69,18 @@ class ManifestCollector {
     const manifestPath = join(outDir, ".bascik", "manifest.json");
     await mkdir(dirname(manifestPath), { recursive: true });
 
-    let mergedFiles: Record<string, ManifestEntry> = {};
-    const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
-    if (isTargetedBuild) {
-      try {
-        const rawExisting = await readFile(manifestPath, "utf8");
-        const parsed = JSON.parse(rawExisting) as BuildManifest;
-        if (parsed && typeof parsed.files === "object") {
-          mergedFiles = { ...parsed.files };
-        }
-      } catch {
-        // No existing manifest to merge
-      }
-    }
-
+    // Prompt 101: the collector writes exactly what THIS process recorded. The
+    // ownership reconciliation (requirements: preserve-and-prune owned outputs
+    // in fresh targeted builds) lives in `lib/ownership.ts` and is the single
+    // merge owner; individual writers no longer merge existing on-disk state.
     const currentFiles = this.getFiles();
-    mergedFiles = { ...mergedFiles, ...currentFiles };
 
-    const sortedKeys = Object.keys(mergedFiles).sort((a, b) =>
+    const sortedKeys = Object.keys(currentFiles).sort((a, b) =>
       a < b ? -1 : a > b ? 1 : 0,
     );
     const finalFiles: Record<string, ManifestEntry> = {};
     for (const key of sortedKeys) {
-      finalFiles[key] = mergedFiles[key];
+      finalFiles[key] = currentFiles[key];
     }
 
     const manifest: BuildManifest = {

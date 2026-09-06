@@ -130,6 +130,7 @@ import { formatDuration } from "./format.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
+import { ownershipTracker, toOutputFileKey } from "./ownership.ts";
 import { extractServerScriptsToSidecar, serverSidecarRegistry, type ServerScriptEntry } from "./server-sidecar.ts";
 import { cspHashCollector, computePageCspHashes } from "./csp-hashes.ts";
 import type {
@@ -703,6 +704,12 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
       }
       templateToGeneratedRelativePaths.delete(pagePath);
     }
+    // Prompt 101: a template that now emits zero routes is an authoritative
+    // rebuild of that owner with an empty output set, so a fresh targeted build
+    // prunes its prior outputs. Only in build mode where ownership applies.
+    if (BascikConfig.isBuild) {
+      ownershipTracker.recordOwner(pagePath, getRelativePath(pagePath, "pages"));
+    }
     return [];
   }
 
@@ -827,6 +834,15 @@ const writeTranspiledPage = async (result: PageWriteInput): Promise<void> => {
     scripts: [],
     styles: [],
   });
+  // Prompt 101: record this page's output into the durable ownership tracker.
+  // The dist-relative output key and its HTTP route let the ownership
+  // transaction reconcile manifest, CSP, and obsolete-output pruning.
+  ownershipTracker.recordOutput(
+    result.absolutePagePath,
+    getRelativePath(result.absolutePagePath, "pages"),
+    toOutputFileKey(distPagePath),
+    getHttpPath(result.relativePagePath),
+  );
 };
 
 const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
@@ -950,6 +966,13 @@ export const processPageBatch = async (
       job.preCleanedHtml,
     );
     if (result && isCurrentGeneration(job.pagePath, generation)) {
+      if (result.serverScripts) {
+        serverSidecarRegistry.recordScripts(result.serverScripts);
+        const relSource = getRelativePath(job.pagePath, "pages");
+        for (const id of Object.keys(result.serverScripts)) {
+          ownershipTracker.recordScript(job.pagePath, relSource, id);
+        }
+      }
       if (!BascikConfig.isBuild) {
         await mem.storePage({
           relativePagePath: result.relativePagePath,
@@ -1097,6 +1120,13 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
         if (result && isCurrentGeneration(job.pagePath, generation)) {
           if (result.serverScripts) {
             serverSidecarRegistry.recordScripts(result.serverScripts);
+            // Prompt 101: attribute each transferred server/stream script to its
+            // owning source page so the ownership transaction can prune scripts
+            // removed from a rebuilt owner while retaining untouched owners'.
+            const relSource = getRelativePath(job.pagePath, "pages");
+            for (const id of Object.keys(result.serverScripts)) {
+              ownershipTracker.recordScript(job.pagePath, relSource, id);
+            }
           }
           const { distHtmlBytes } = result;
           const pageBytes = Buffer.from(distHtmlBytes.buffer, distHtmlBytes.byteOffset, distHtmlBytes.byteLength);

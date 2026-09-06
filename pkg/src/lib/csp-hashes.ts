@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import type { PageCspHashes } from "./types.ts";
@@ -103,32 +103,12 @@ class CspHashCollector {
     const cspPath = join(outDir, ".bascik", "csp-hashes.json");
     await mkdir(dirname(cspPath), { recursive: true });
 
-    let mergedManifest: CspHashesManifest = {};
-    const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
-    if (isTargetedBuild) {
-      try {
-        const rawExisting = await readFile(cspPath, "utf8");
-        const parsed = JSON.parse(rawExisting) as CspHashesManifest;
-        if (parsed && typeof parsed === "object") {
-          mergedManifest = { ...parsed };
-        }
-      } catch {
-        // No existing file to merge
-      }
-    }
-
+    // Prompt 101: the collector writes exactly what THIS process recorded. The
+    // ownership reconciliation (preserve-and-prune in fresh targeted builds)
+    // lives in `lib/ownership.ts` and is the single merge owner.
     const currentManifest = this.getManifest();
-    mergedManifest = { ...mergedManifest, ...currentManifest };
 
-    const sortedKeys = Object.keys(mergedManifest).sort((a, b) =>
-      a < b ? -1 : a > b ? 1 : 0,
-    );
-    const finalManifest: CspHashesManifest = {};
-    for (const key of sortedKeys) {
-      finalManifest[key] = mergedManifest[key];
-    }
-
-    const content = JSON.stringify(finalManifest, null, 2);
+    const content = JSON.stringify(currentManifest, null, 2);
     await writeFile(cspPath, content, "utf8");
     return cspPath;
   }

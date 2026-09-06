@@ -20,9 +20,10 @@ import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector, type BuildManifest } from "./manifest.ts";
 import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
+import { ownershipTracker, finalizeOwnedArtifacts, writeOwnershipInventory } from "./ownership.ts";
 import { BascikConfig } from "./config.ts";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 describe("targeted build CLI parsing & glob matching", () => {
@@ -107,6 +108,7 @@ describe("targeted build artifact merging and warnings", () => {
     await mkdir(tempDir, { recursive: true });
     manifestCollector.clear();
     cspHashCollector.clear();
+    ownershipTracker.clear();
     (BascikConfig as any).directory.out = tempDir;
     (BascikConfig as any).isBuild = true;
     (BascikConfig as any).generate.manifest = true;
@@ -116,47 +118,86 @@ describe("targeted build artifact merging and warnings", () => {
     (BascikConfig as any).only = ["blog/**"];
   });
 
-  it("merges manifest entries on targeted build instead of overwriting", async () => {
+  it("reconciles manifest entries on targeted build, pruning a rebuilt owner's removed output", async () => {
     const manifestDir = join(tempDir, ".bascik");
     await mkdir(manifestDir, { recursive: true });
+    // Prior build: index owned both index.html and a route that will be removed.
     const initialManifest: BuildManifest = {
       version: "1.0.0",
       files: {
         "index.html": { hash: "old-index-hash", size: 100 },
-        "about/index.html": { hash: "about-hash", size: 200 },
+        "gone.html": { hash: "old-gone-hash", size: 50 },
       },
     };
     await writeFile(join(manifestDir, "manifest.json"), JSON.stringify(initialManifest, null, 2), "utf8");
+    // Prior ownership: index owned both outputs. This build re-produces index
+    // with only index.html, so gone.html is obsolete for the rebuilt owner.
+    const sourceIndex = resolve(tempDir, "src/pages/index.html");
+    await writeOwnershipInventory({
+      version: "1",
+      schema: 1,
+      owners: {
+        [sourceIndex]: {
+          source: sourceIndex,
+          relSource: "pages/index.html",
+          outputs: [
+            { file: "index.html", route: "/" },
+            { file: "gone.html", route: "/gone" },
+          ],
+          scripts: [],
+        },
+      },
+    });
+    ownershipTracker.recordOutput(sourceIndex, "pages/index.html", "index.html", "/");
+    manifestCollector.recordFile(join(tempDir, "index.html"), "<h1>Index</h1>");
 
-    manifestCollector.recordFile(join(tempDir, "blog/post-1/index.html"), "<h1>Post 1</h1>");
-    await manifestCollector.writeManifest("1.0.0");
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
     const mergedContent = await readFile(join(manifestDir, "manifest.json"), "utf8");
     const merged = JSON.parse(mergedContent) as BuildManifest;
 
     expect(merged.files["index.html"]).toBeDefined();
-    expect(merged.files["about/index.html"]).toBeDefined();
-    expect(merged.files["blog/post-1/index.html"]).toBeDefined();
+    // gone.html was owned by the rebuilt (index) owner and is no longer
+    // produced, so it is pruned.
+    expect(merged.files["gone.html"]).toBeUndefined();
   });
 
-  it("merges csp-hashes entries on targeted build instead of overwriting", async () => {
+  it("reconciles csp-hashes entries on targeted build, pruning a rebuilt owner's removed route", async () => {
     const cspDir = join(tempDir, ".bascik");
     await mkdir(cspDir, { recursive: true });
     const initialCsp: CspHashesManifest = {
       "/": { scripts: ["sha256-abc"], styles: [] },
-      "/about": { scripts: [], styles: ["sha256-def"] },
+      "/gone": { scripts: [], styles: ["sha256-def"] },
     };
     await writeFile(join(cspDir, "csp-hashes.json"), JSON.stringify(initialCsp, null, 2), "utf8");
+    // Prior ownership: index owned both routes; this build owns only `/`.
+    const sourceIndex = resolve(tempDir, "src/pages/index.html");
+    await writeOwnershipInventory({
+      version: "1",
+      schema: 1,
+      owners: {
+        [sourceIndex]: {
+          source: sourceIndex,
+          relSource: "pages/index.html",
+          outputs: [
+            { file: "index.html", route: "/" },
+            { file: "gone.html", route: "/gone" },
+          ],
+          scripts: [],
+        },
+      },
+    });
+    ownershipTracker.recordOutput(sourceIndex, "pages/index.html", "index.html", "/");
+    cspHashCollector.recordPage("/", "<script>console.log(1)</script>");
 
-    cspHashCollector.recordPage("/blog/post-1", "<script>console.log(1)</script>");
-    await cspHashCollector.writeCspHashes();
+    await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
 
     const mergedContent = await readFile(join(cspDir, "csp-hashes.json"), "utf8");
     const merged = JSON.parse(mergedContent) as CspHashesManifest;
 
     expect(merged["/"]).toBeDefined();
-    expect(merged["/about"]).toBeDefined();
-    expect(merged["/blog/post-1"]).toBeDefined();
+    // The rebuilt owner dropped the `/gone` route, so it is pruned from CSP.
+    expect(merged["/gone"]).toBeUndefined();
   });
 
   it("warns and skips sitemap generation on targeted build", async () => {

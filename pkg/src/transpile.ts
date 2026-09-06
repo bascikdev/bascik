@@ -9,6 +9,7 @@ import { manifestCollector } from "./lib/manifest.ts";
 import { readVersion } from "./lib/version.ts";
 import { serverSidecarRegistry } from "./lib/server-sidecar.ts";
 import { cspHashCollector } from "./lib/csp-hashes.ts";
+import { finalizeOwnedArtifacts } from "./lib/ownership.ts";
 import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./lib/api-routes.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
@@ -39,15 +40,14 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await watchFiles();
     await runExecPhase("post");
     const version = await readVersion();
-    const sidecarPath = await serverSidecarRegistry.writeSidecar(version);
-    if (sidecarPath) {
-      await manifestCollector.recordFileFromDisk(sidecarPath);
-    }
-    const cspPath = await cspHashCollector.writeCspHashes();
-    if (cspPath) {
-      await manifestCollector.recordFileFromDisk(cspPath);
-    }
-    await manifestCollector.writeManifest(version);
+    // Prompt 101: all metadata (sidecar, CSP, manifest) and the durable
+    // ownership inventory land in ONE ownership transaction. For a targeted
+    // build the coordinator reconciles rebuilt/untouched owners and prunes
+    // obsolete outputs; for a full build dist/ was cleaned, so it publishes
+    // the current process's state fresh with no merge.
+    await finalizeOwnedArtifacts(version, {
+      forTargetedBuild: Boolean(BascikConfig.only && BascikConfig.only.length > 0),
+    });
 
     // Prompt 48: Warn when API routes are found in src/api/ during static builds
     const apiDir = BascikConfig.directory?.api ?? "src/api";

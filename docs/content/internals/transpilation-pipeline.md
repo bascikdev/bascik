@@ -31,7 +31,84 @@ Artifact accounting has a **single owner**: the main-thread disk writer. Collect
 - In the worker path (`processAllPages` with `useWorkers: true`), `page-worker.ts` passes `deferDiskWrite: true` to `transpilePage`, so the worker computes and transfers the bytes but never writes or records. The main thread writes the transferred bytes (a `Buffer` view over the transferred `ArrayBuffer`, no decode) and records manifest and CSP from them.
 - Serial builds go through the same `writeTranspiledPage` owner, so both modes produce byte-identical artifact metadata.
 - Raw-copied assets (`copyReplicatePath`) are recorded at the **destination** in `dist/` after a successful copy, including hash-equal no-op copies. Recording the source path was the raw-asset defect: the manifest collector rejects paths outside `dist/`, so those assets silently vanished from the manifest. A failed copy throws before recording.
-- The manifest, `csp-hashes.json`, and `server-scripts.json` remain explicitly excluded from being served and are regenerated each build, so no stale entries survive between builds.
+- The manifest, `csp-hashes.json`, `server-scripts.json`, and `ownership.json` remain explicitly excluded from being served and are regenerated each build, so no stale entries survive between builds.
+
+## Targeted Build Owned Artifact Transactions
+
+A `bascik --build --only …` (targeted) build runs in a **fresh CLI process**. Its
+process-local collectors and in-memory route caches are empty, so without a
+durable source-to-output ownership inventory a targeted build used to silently:
+
+- drop untouched B's server-sidecar entry (the sidecar writer serialized only the
+  current process's registry), and
+- leave a route removed from a dynamic template behind (the removed-route
+  knowledge lived only in the in-memory `templateToGeneratedRelativePaths` map).
+
+Bascik persists a **versioned source-to-output ownership inventory** at
+`dist/.bascik/ownership.json` (see `lib/ownership.ts`). Every output file and
+server-sidecar script is owned by exactly one source page. The inventory is the
+single source of ownership truth; it is never inferred from filename prefixes or
+mutable traversal order.
+
+- Rebuilding a page **exactly replaces** that owner's recorded outputs and
+  scripts with what the current build produced.
+- A source page not in the targeted set is an **untouched owner**: its prior
+  outputs and scripts are **retained**. This is what keeps untouched B's server
+  script resolvable after A is rebuilt.
+- A dynamic template that is rebuilt and now emits fewer routes (down to zero)
+  is a rebuilt owner whose shrunken output set prunes the removed routes. A
+  template that emits zero routes is recorded as a rebuilt owner with an empty
+  set so its prior outputs are pruned too.
+- Removed outputs are computed **only for rebuilt owners** from the difference
+  between their prior and current output sets, so an obsolete output is never
+  deleted based on a filename guess.
+
+### One transaction for HTML, sidecar, manifest, and CSP
+
+`finalizeOwnedArtifacts` (in `lib/ownership.ts`) reconciles the sidecar,
+`manifest.json`, and `csp-hashes.json` from the **same** merged ownership
+inventory as the HTML prune. Individual collectors no longer implement their own
+merge rules; the coordinator is the single merge owner. Non-page files (raw
+assets, sitemap, robots) are retained across targeted builds because they are
+not owned by a page.
+
+- Manifest and CSP entries for a still-owned page output come from the current
+  build or the retained prior entry; entries for a pruned output are removed.
+- The sidecar survives only for owned script ids: a rebuilt owner's scripts come
+  from this build, an untouched owner's scripts are carried over from the prior
+  sidecar.
+- A full build cleans `dist/` at startup, so the coordinator publishes the
+  current process's state fresh with no merge.
+
+### Staging, validation, and rollback
+
+Metadata commits are **staged and atomic**: the entire reconciled artifact set
+(ownership, manifest, CSP, sidecar) is first written to temp siblings and
+validated (each staged file must parse back to the intended JSON object), and
+only after every artifact staged successfully are the temps renamed over their
+targets. Obsolete outputs are deleted **only after** those commits succeed.
+
+- A failure while writing or validating any staged artifact aborts **before any
+  rename**, so the previous valid artifact set is left completely untouched.
+- A rename failure surfaces and aborts **before** deleting any obsolete output,
+  so a failed targeted update never deletes a file the committed metadata still
+  references.
+- Corrupt or schema-incompatible `ownership.json` (or a missing one) is treated
+  as **no reliable ownership**: the targeted build degrades to the safe additive
+  merge, logs a warning, and writes a fresh inventory so future builds are
+  correct. This is the explicit safe first-targeted-build behavior.
+- Full removal of a source page is only pruned when that page is rebuilt. A page
+  deleted without being in a later targeted build is retained until a full build
+  because a targeted build cannot know whether a source was deleted versus merely
+  not rebuilt.
+
+### Contract: why global artifacts still need a full build
+
+Whole-site artifacts (`sitemap.xml` and `robots.txt`) are not owned by a single
+page, so a targeted build keeps the documented behavior: it **warns and skips**
+regenerating them rather than publishing a partial site map. Regenerate them with
+a full `bascik --build`. This is a deliberate contract of targeted builds, not a
+bug workaround.
 
 ## Multi-Page Startup: `processAllPages`
 
