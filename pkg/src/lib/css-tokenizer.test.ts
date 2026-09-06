@@ -53,4 +53,17 @@ describe("maskCssSyntax – perfect round-trip", () => {
     const { masked } = maskCssSyntax(css, { keepUrlArguments: false });
     expect(masked).not.toContain('url("#grad")');
   });
+
+  it("round-trips a bracket-heavy data-URI inside a live url() argument", () => {
+    // A real quoted url() is kept live (so its fragment can scope). A data URI
+    // containing brackets must still round-trip byte-identically, and any `[`
+    // is consumed within the url-string rather than opening an attribute
+    // region that masks the rest of the stylesheet.
+    const css =
+      '.a { background: url("data:image/svg+xml,%5Bx%5D#anch"); } svg[data-x="y"] { fill: red; }';
+    const { masked, restore } = maskCssSyntax(css, { keepUrlArguments: true });
+    expect(restore(masked)).toBe(css);
+    // The real attribute selector after the url() must stay live.
+    expect(masked).toContain('svg');
+  });
 });
