@@ -742,7 +742,7 @@ Components work inside `<head>` to organize metadata and shared links:
 * **Alias gotchas:** only the exact `@/` prefix is an alias (`@scope/pkg` is a normal package). Aliases are rewritten only inside script blocks; a helper file importing another helper must use `./` or `../`. Editing an alias-imported helper invalidates the script cache and triggers a dev rebuild of the dependent pages; the import root is watched automatically.
 * Use `console.log()` or `process.stdout.write()` to output HTML.
 * Build scripts run before component resolution, so their output can contain component tags.
-* All build scripts on a page execute concurrently via `Promise.all` (capped by a memory semaphore), and output is assembled in document order once all scripts complete.
+* Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Output is assembled in document order once all scripts complete. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor.
 * On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'`, `'error'`, or `'ignore'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`. For `data-bascik-stream` scripts, an error cannot produce an HTTP 500 because headers are already committed; the slot is emitted empty, the failure is logged at the configured severity, and the document completes.
 * **Stack Trace Remapping:** For `<script data-bascik-build>`, `<script data-bascik-server>`, and `<script data-bascik-stream>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
 * **Hard error:** combining any of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` on the same tag throws and aborts the build. Directives are mutually exclusive.
@@ -768,7 +768,7 @@ These are critical for scripts that generate per-page output. A script using `BA
 
 When a data-driven page needs the same data in several places, read or fetch it **once at page level** in a single `data-bascik-build` script, then apply it everywhere on the page. Not once per component instance. The same data object can feed a second script, a JSON payload for client JavaScript, or a component prop, without a second network round trip or file read.
 
-**Cache exclusion gotcha:** the build script cache keys on script content and statically scanned local dependencies. It **cannot see network fetches**, `readdir` directory reads, or computed file paths. A script whose output depends on a remote API will be served from cache with stale data across builds, and nothing will tell you. Exclude such scripts via `scripts.cache.exclude` (see below), or disable the cache for them.
+**Cache exclusion gotcha:** the build script cache keys on script content, statically scanned local dependencies, and resolved installed-package identity. It **cannot see network fetches**, `readdir` directory reads, computed file paths, or dynamic computed imports. A script whose output depends on a remote API will be served from cache with stale data across builds, and nothing will tell you. A script containing a dynamic non-literal import (`import(someName)` or `` import(`../${x}`) ``) is treated as non-cacheable and re-runs every build. Exclude scripts that read external data via `scripts.cache.exclude` (see below), or disable the cache for them.
 
 ### Build Script Output Cache
 
@@ -776,7 +776,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script + the resolved identity of every installed package the script (or its local dependencies) imports. Package identity covers the package manifest and the resolved entry, plus a bounded transitive hash of the packages those imports themselves pull in, so upgrading a build-time npm dependency invalidates affected entries automatically regardless of cache temperature.
 
 **Excluding scripts from cache:** Statically scanned cache keys cannot detect runtime network calls, `readdir` directory reads, or dynamic computed file paths. For scripts reading from external APIs or computed paths, exclude them via `scripts.cache.exclude`:
 
@@ -792,7 +792,7 @@ export default defineConfig({
 });
 ```
 
-**To bust the entire cache** (e.g. after upgrading a build-time npm dependency):
+**To bust the entire cache** (waive cache correctness, e.g. after an unusual external change the identity walk cannot see):
 
 ```sh
 rm -rf node_modules/.cache/bascik/script-cache
