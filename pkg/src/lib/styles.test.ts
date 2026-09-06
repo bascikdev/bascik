@@ -1278,6 +1278,147 @@ describe("convertCssIdSelectorsToClasses – selector vs value context", () => {
     expect(result).toBe(css);
     expect(idsConverted).toHaveLength(0);
   });
+
+  // ── Literal preservation (prompt 105) ─────────────────────────────────
+
+  it("does NOT rewrite a hash inside an attribute-selector value", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      'a[href="#tab"] { color: red; }',
+      "my-comp",
+    );
+    expect(css).toBe('a[href="#tab"] { color: red; }');
+    expect(idsConverted).toHaveLength(0);
+  });
+
+  it("does NOT rewrite a hash inside an unquoted attribute-selector value", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      "a[data-x=#tab] { color: red; }",
+      "my-comp",
+    );
+    expect(css).toBe("a[data-x=#tab] { color: red; }");
+    expect(idsConverted).toHaveLength(0);
+  });
+
+  it("does NOT rewrite url text inside a string literal", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      '.icon::before { content: "url(#local)"; }',
+      "my-comp",
+    );
+    expect(css).toBe('.icon::before { content: "url(#local)"; }');
+    expect(idsConverted).toHaveLength(0);
+  });
+
+  it("does NOT convert a quoted url() argument as if it were an ID selector", () => {
+    // A quoted url("#id") is a URL reference, not an ID selector. Only the
+    // URL-fragment pass handles it; the ID-selector pass must leave it alone.
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      '.icon { fill: url("#grad"); }',
+      "my-comp",
+    );
+    expect(css).toBe('.icon { fill: url("#grad"); }');
+    expect(idsConverted).toHaveLength(0);
+  });
+
+  it("does NOT rewrite hashes inside CSS comments", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      "/* #btn { display: none; } */ .icon { fill: url(#local); }",
+      "my-comp",
+    );
+    expect(css).toContain("/* #btn { display: none; } */");
+    expect(idsConverted).toHaveLength(0);
+  });
+
+  it("rewrites a genuine adjacent #id selector while preserving a sibling literal", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      '.icon::before { content: "#tab"; } #tab { color: red; }',
+      "my-comp",
+    );
+    expect(css).toBe(
+      '.icon::before { content: "#tab"; } .bascik__my-comp__id__tab { color: red; }',
+    );
+    expect(idsConverted).toEqual([
+      { idName: "tab", className: "bascik__my-comp__id__tab" },
+    ]);
+  });
+
+  it("preserves escaped quotes and Unicode inside preserved strings", () => {
+    const { css } = convertCssIdSelectorsToClasses(
+      '.icon::before { content: "a \\" #tab"; background: url(é.png); } #real { }',
+      "my-comp",
+    );
+    expect(css).toContain('content: "a \\" #tab"');
+    expect(css).toContain("url(é.png)");
+    expect(css).toContain(".bascik__my-comp__id__real");
+  });
+
+  it("preserves a CSS custom property value containing a hash", () => {
+    const { css, idsConverted } = convertCssIdSelectorsToClasses(
+      ":root { --ref: #abc; } #panel { color: var(--ref); }",
+      "my-comp",
+    );
+    expect(css).toContain("--ref: #abc;");
+    expect(css).toContain(".bascik__my-comp__id__panel");
+    expect(idsConverted).toEqual([
+      { idName: "panel", className: "bascik__my-comp__id__panel" },
+    ]);
+  });
+});
+
+describe("convertCssIdSelectorsToClasses – literal vs real-target property test", () => {
+  it("preserves arbitrary quoted literal text embedded beside genuine #id selectors", () => {
+    const tokenArb = fc.constantFrom(
+      "#tab",
+      "#hero",
+      "url(#x)",
+      "url(\"#y\")",
+      "[href=\"#tab\"]",
+      "--brand: #abc",
+      "é",
+      "ま",
+    );
+    const contentTokenArb = fc.array(tokenArb, { minLength: 0, maxLength: 4 });
+
+    fc.assert(
+      fc.property(contentTokenArb, (tokens) => {
+        const inner = tokens.join(" ");
+        const escaped = inner.replace(/"/g, '\\"');
+        const css = `.x::before { content: "${escaped}"; }
+          #anchor { color: blue; }`;
+        const { css: result, idsConverted } =
+          convertCssIdSelectorsToClasses(css, "fuzz");
+        // The quoted string content must survive untouched.
+        expect(result).toContain(`content: "${escaped}"`);
+        // The genuine #anchor selector must convert.
+        expect(result).toContain(".bascik__fuzz__id__anchor");
+        expect(idsConverted.some((e) => e.idName === "anchor")).toBe(true);
+      }),
+      { numRuns: 200 },
+    );
+  });
+
+  it("preserves arbitrary attribute-selector values while scoping genuine selectors", () => {
+    const tokenArb = fc.constantFrom(
+      "#tab",
+      "url(#x)",
+      "$1",
+      "$&",
+      "unicode-é",
+    );
+    const attrTokenArb = fc.array(tokenArb, { minLength: 0, maxLength: 4 });
+
+    fc.assert(
+      fc.property(attrTokenArb, (tokens) => {
+        const inner = tokens.join(" ");
+        const css = `a[href="${inner}"] { color: red; } #target { color: green; }`;
+        const { css: result, idsConverted } =
+          convertCssIdSelectorsToClasses(css, "fuzz");
+        expect(result).toContain(`a[href="${inner}"]`);
+        expect(result).toContain(".bascik__fuzz__id__target");
+        expect(idsConverted.some((e) => e.idName === "target")).toBe(true);
+      }),
+      { numRuns: 200 },
+    );
+  });
 });
 
 // ─── addIdClassesInHtml ───────────────────────────────────────────────────────
@@ -1348,6 +1489,18 @@ describe("scopeInlineStyleTags – #id in inline styles", () => {
     const html = "<style>.el { color: #abc; }</style>";
     const { idsConverted } = scopeInlineStyleTags(html, "my-comp");
     expect(idsConverted).toHaveLength(0);
+  });
+
+  it("preserves literal attribute-selector values and content strings in inline <style>", () => {
+    const html =
+      '<style>a[href="#tab"] { color: red; } .icon::before { content: "url(#local)"; } #real { color: blue; }</style>';
+    const { html: result, idsConverted } = scopeInlineStyleTags(html, "my-comp");
+    expect(result).toContain('a[href="#tab"] { color: red; }');
+    expect(result).toContain('content: "url(#local)"');
+    expect(result).toContain(".bascik__my-comp__id__real");
+    expect(idsConverted).toEqual([
+      { idName: "real", className: "bascik__my-comp__id__real" },
+    ]);
   });
 });
 

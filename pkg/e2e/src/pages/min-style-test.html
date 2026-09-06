@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Raw Text Minification Test</title>
+</head>
+
+<body>
+  <style>
+    <!--
+    .min-page-cdo {
+      color: rgb(200, 30, 60);
+    }
+    -->
+  </style>
+  <p class="min-page-cdo" data-testid="min-style-cdo">styled via CDO/CDC</p>
+
+  <style>
+    .min-page-plain {
+      font-weight: 700;
+    }
+  </style>
+  <p class="min-page-plain" data-testid="min-style-plain">plain</p>
+
+  <style>
+    .min-page-string::after {
+      content: "<!-- not a comment -->";
+    }
+  </style>
+  <p class="min-page-string" data-testid="min-style-string">string</p>
+</body>
+
+</html>

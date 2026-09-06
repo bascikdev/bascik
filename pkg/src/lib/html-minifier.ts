@@ -19,7 +19,7 @@ const shieldSensitiveContent = (htmlString: string): {
 } => {
   const shield = createContentShield(htmlString);
   let html = htmlString.replace(
-    /<(pre|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
+    /<(pre|textarea|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
     (match) => shield.hide(match),
   );
   html = html.replace(
