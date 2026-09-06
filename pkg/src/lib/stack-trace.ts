@@ -22,7 +22,10 @@ export const cleanStackTrace = (
   } catch { }
   const escapedFileUri = fileUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath}):(\\d+)`, "g");
+  // In development the registry imports each generation under
+  // `?bascik-gen=N`, and V8 reports that full URL in stack frames. The query
+  // is optional here so every generation remaps to the same authored source.
+  const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath})(?:\\?bascik-gen=\\d+)?:(\\d+)`, "g");
 
   const mappedTrace = rawTrace.replace(regex, (_match, lineStr) => {
     const lineNum = parseInt(lineStr, 10);

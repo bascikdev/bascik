@@ -24,8 +24,12 @@ const {
   mockClearBuildScriptCaches,
   mockGetImportRoot,
   mockExistsSync,
+  mockScriptRegistryInvalidate,
+  mockApiInvalidateFile,
 } = vi.hoisted(() => {
   const watchers: { on: ReturnType<typeof vi.fn> }[] = [];
+  const mockScriptRegistryInvalidate = vi.fn();
+  const mockApiInvalidateFile = vi.fn().mockResolvedValue(undefined);
   const mockPageProcessing = vi.fn().mockResolvedValue(undefined);
   const mockProcessAllPages = vi.fn().mockResolvedValue(undefined);
   const mockRemovePage = vi.fn().mockResolvedValue(undefined);
@@ -82,6 +86,8 @@ const {
     // Only the import root exists by default so the api watcher (which also
     // probes existsSync) is not created in these tests.
     mockExistsSync.mockReset().mockImplementation((p: string) => p === mockGetImportRoot());
+    mockScriptRegistryInvalidate.mockReset();
+    mockApiInvalidateFile.mockReset().mockResolvedValue(undefined);
   };
   return {
     mockWatch,
@@ -107,6 +113,8 @@ const {
     mockClearBuildScriptCaches,
     mockGetImportRoot,
     mockExistsSync,
+    mockScriptRegistryInvalidate,
+    mockApiInvalidateFile,
   };
 });
 
@@ -154,6 +162,7 @@ vi.mock("./asset-filter.js", () => ({
 }));
 
 vi.mock("./config.js", () => ({
+  shouldLog: () => false,
   BascikConfig: {
     directory: {
       pages: "/project/src/pages",
@@ -173,6 +182,14 @@ vi.mock("./config.js", () => ({
 vi.mock("./events.js", () => ({
   eventEmitter: { emit: mockEventEmit },
   registerShutdownHandler: vi.fn(),
+}));
+
+vi.mock("./script-registry.js", () => ({
+  scriptRegistry: { invalidate: mockScriptRegistryInvalidate },
+}));
+
+vi.mock("./server-api.js", () => ({
+  apiRouteRegistry: { invalidateFile: mockApiInvalidateFile },
 }));
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
@@ -934,6 +951,86 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
       "watch-path-processed",
       expect.objectContaining({ path: "src/content/docs/intro.md" }),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Runtime module invalidation ownership (prompt 112)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("watchFiles – runtime module invalidation (prompt 112)", () => {
+  beforeEach(async () => {
+    await watchFiles();
+    mockScriptRegistryInvalidate.mockClear();
+    mockProcessPageBatch.mockClear();
+  });
+
+  it.each(["add", "change", "unlink"])(
+    "import-root '%s' invalidates the runtime module identity even when no page depends on it",
+    async (event) => {
+      // A `src=` server script module (or a helper it imports) is a request-time
+      // dependency, not a build-time one, so mem.pagesDependentOnFile knows
+      // nothing about it. The watcher must still invalidate the runtime registry.
+      mockPagesDependentOnFile.mockReturnValue([]);
+      const handler = getHandler(3, event);
+      await handler?.("/project/src/lib/src-script.ts");
+      expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith("/project/src/lib/src-script.ts");
+      expect(processPageBatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("import-root 'change' invalidates the runtime module before rebuilding dependents", async () => {
+    mockPagesDependentOnFile.mockReturnValue(["src/pages/a.html"]);
+    const order: string[] = [];
+    mockScriptRegistryInvalidate.mockImplementation(() => order.push("invalidate"));
+    mockProcessPageBatch.mockImplementation(async () => {
+      order.push("rebuild");
+      return [];
+    });
+    const handler = getHandler(3, "change");
+    await handler?.("/project/src/lib/helper.ts");
+    expect(order).toEqual(["invalidate", "rebuild"]);
+  });
+
+  it("component watcher 'change' invalidates a companion script module identity", async () => {
+    const handler = getHandler(2, "change");
+    await handler?.("/project/src/components/card/card.server.ts");
+    expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith("/project/src/components/card/card.server.ts");
+  });
+});
+
+describe("watchFiles – api route watcher (prompt 112)", () => {
+  beforeEach(async () => {
+    clearWatchers();
+    mockWatch.mockClear();
+    // Both the import root and the api directory exist for this suite.
+    mockExistsSync.mockImplementation(() => true);
+    await watchFiles();
+    mockApiInvalidateFile.mockClear();
+    mockEventEmit.mockClear();
+  });
+
+  const apiWatcherIndex = (): number => mockWatch.mock.calls.findIndex((c) => Array.isArray(c[0]) && c[0].includes("src/api"));
+
+  it.each(["add", "change", "unlink"])("'%s' invalidates the route file then emits api-route-changed", async (event) => {
+    const order: string[] = [];
+    mockApiInvalidateFile.mockImplementation(async () => { order.push("invalidate"); });
+    mockEventEmit.mockImplementation((name: string) => { if (name === "api-route-changed") order.push("emit"); });
+    const handler = getHandler(apiWatcherIndex(), event);
+    await handler?.("/project/src/api/value.ts");
+    expect(mockApiInvalidateFile).toHaveBeenCalledWith("/project/src/api/value.ts");
+    expect(mockEventEmit).toHaveBeenCalledWith("api-route-changed", { path: "/project/src/api/value.ts", type: event });
+    expect(order).toEqual(["invalidate", "emit"]);
+  });
+
+  it("does not emit api-route-changed when invalidation throws, and stays alive", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    mockApiInvalidateFile.mockRejectedValueOnce(new Error("scan failed"));
+    const handler = getHandler(apiWatcherIndex(), "change");
+    await expect(handler?.("/project/src/api/value.ts")).resolves.not.toThrow();
+    expect(mockEventEmit).not.toHaveBeenCalledWith("api-route-changed", expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", expect.any(Error));
+    errorSpy.mockRestore();
   });
 });
 

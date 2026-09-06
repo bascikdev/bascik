@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import chokidar from "chokidar";
 import type { Stats } from "node:fs";
-import { resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import {
   pageProcessing,
   processAllPages,
@@ -19,9 +19,10 @@ import {
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { invalidateComponentListCache } from "./components.ts";
-import { BascikConfig } from "./config.ts";
+import { BascikConfig, shouldLog } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { apiRouteRegistry } from "./server-api.ts";
+import { scriptRegistry } from "./script-registry.ts";
 import { mem } from "./mem.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
@@ -39,6 +40,19 @@ export const watchFiles = async () => {
   }
 
   const onWatchError = (err: unknown) => console.error("[bascik] watch error:", err);
+  const logInfo = (message: string): void => {
+    if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
+  };
+  // Request-time modules (`src=` server scripts, their helpers, API routes)
+  // are imported by the runtime registry, not by the build, so the page
+  // dependency graph knows nothing about them. Any file event under a watched
+  // source root therefore advances the runtime identity first; the registry
+  // ignores identities it never loaded, so this costs nothing for other files.
+  const invalidateRuntimeModule = (path: string): void => {
+    if (scriptRegistry.invalidate(path)) {
+      logInfo(`[bascik] module invalidated: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
+    }
+  };
   const watchers: ReturnType<typeof chokidar.watch>[] = [];
   const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };
   registerShutdownHandler(() => Promise.all(watchers.map(watcher => watcher.close())).then(() => { }));
@@ -142,15 +156,18 @@ export const watchFiles = async () => {
     })
     // If you add a component, how will we know what pages to update unless we go and look
     .on("add", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       processAllPages().catch(onWatchError);
     })
     // For changes and deletion of components we can be selective
     .on("change", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       selectivelyProcessPages(path).catch(onWatchError);
     })
     .on("unlink", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       selectivelyProcessPages(path).catch(onWatchError);
     }));
@@ -262,6 +279,7 @@ export const watchFiles = async () => {
       })
       .on("add", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           const dependents = mem.pagesDependentOnFile(path);
           if (dependents.length === 0) return;
           clearBuildScriptCaches(path);
@@ -271,6 +289,7 @@ export const watchFiles = async () => {
       })
       .on("change", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           const dependents = mem.pagesDependentOnFile(path);
           if (dependents.length === 0) return;
           clearBuildScriptCaches(path);
@@ -280,6 +299,7 @@ export const watchFiles = async () => {
       })
       .on("unlink", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           // Rebuilding dependents on unlink is correct: the build script
           // import fails and the error surfaces in the overlay instead of
           // silently serving the last good output.
@@ -318,6 +338,7 @@ export const watchFiles = async () => {
       .on("add", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route add: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "add" });
         } catch (err) {
           onWatchError(err);
@@ -326,6 +347,7 @@ export const watchFiles = async () => {
       .on("change", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route change: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "change" });
         } catch (err) {
           onWatchError(err);
@@ -334,6 +356,7 @@ export const watchFiles = async () => {
       .on("unlink", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route unlink: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "unlink" });
         } catch (err) {
           onWatchError(err);

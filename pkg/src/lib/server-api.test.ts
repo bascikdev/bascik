@@ -196,6 +196,70 @@ describe("server-api integration", () => {
     expect(respondedHeaders["x-content-type-options"]).toBe("nosniff");
   });
 
+  describe("route invalidation ownership (prompt 112)", () => {
+    it("invalidateFile invalidates the runtime module identity and rescans routes from disk", async () => {
+      const invalidateSpy = vi.spyOn(scriptRegistry, "invalidate");
+      const reloadSpy = vi.spyOn(apiRouteRegistry, "reload").mockResolvedValue(undefined);
+      const order: string[] = [];
+      invalidateSpy.mockImplementation(() => { order.push("invalidate"); return true; });
+      reloadSpy.mockImplementation(async () => { order.push("reload"); });
+
+      await apiRouteRegistry.invalidateFile("/app/src/api/value.ts");
+
+      expect(invalidateSpy).toHaveBeenCalledWith("/app/src/api/value.ts");
+      expect(order).toEqual(["invalidate", "reload"]);
+    });
+
+    it("dispatch loads the route by the file path the scanner recorded, so identity is shared with invalidation", async () => {
+      // Real registry, real module identity: write a module, dispatch, edit +
+      // invalidate through the API registry, dispatch again.
+      const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const { tmpdir } = await import("node:os");
+      const dir = await mkdtemp(join(tmpdir(), "bascik-112-api-"));
+      try {
+        const routeFile = join(dir, "value.mjs");
+        await writeFile(routeFile, `export const GET = async () => Response.json({ value: "OLD" });`);
+        (apiRouteRegistry as any).routes = [
+          { path: "/api/value", filePath: routeFile, paramNames: [], isDynamic: false },
+        ];
+        const handleRequest = createRequestHandler();
+        const run = async (): Promise<string> => {
+          let body = "";
+          const req: BascikRequest = { method: "GET", path: "/api/value", headers: {}, remoteIp: "127.0.0.1" };
+          const res: BascikResponse = {
+            headersSent: false,
+            destroyed: false,
+            writable: {} as any,
+            respond: () => { },
+            write: (chunk) => { body += chunk.toString(); return true; },
+            end: (chunk) => { if (chunk) body += chunk.toString(); },
+            close: () => { },
+            on: () => { },
+            off: () => { },
+          };
+          await handleRequest(req, res);
+          return body;
+        };
+
+        expect(JSON.parse(await run()).value).toBe("OLD");
+
+        await writeFile(routeFile, `export const GET = async () => Response.json({ value: "NEW" });`);
+        // reload() would rescan BascikConfig.directory.api (not our temp dir);
+        // keep the route table and only exercise the identity handoff.
+        vi.spyOn(apiRouteRegistry, "reload").mockResolvedValue(undefined);
+        await apiRouteRegistry.invalidateFile(routeFile);
+
+        // The configured singleton runs in dev under vitest, so the edit is visible.
+        expect(scriptRegistry.mode).toBe("development");
+        expect(JSON.parse(await run()).value).toBe("NEW");
+      } finally {
+        (apiRouteRegistry as any).routes = [];
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("Security, Protection, Headers, and Traversal (Prompt 49)", () => {
     it("17. Encoded path traversal (%2e%2e%2f) is blocked before routing", async () => {
       const handleRequest = createRequestHandler();

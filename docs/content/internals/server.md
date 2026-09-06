@@ -98,7 +98,7 @@ Four native filesystem watchers (chokidar) handle source file updates in develop
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in every configured `directory.components` root. This is the only watcher with `followSymlinks: true`, so a symlinked directory inside a root triggers rebuilds; chokidar reports the link path, which is what the inverted component index expects. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
-4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. Gated on the dependency graph (`mem.pagesDependentOnFile`), it invalidates script/component caches and rebuilds only the dependent pages when a helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
+4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. It first advances the runtime module identity for the changed path (so an edited `src=` server script is reloaded on the next request), then, gated on the dependency graph (`mem.pagesDependentOnFile`), invalidates script/component caches and rebuilds only the dependent pages when a build-time helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
 
 When a page's build fails because a helper it imports does not exist yet, Bascik records that missing dependency in a separate failed-dependency index. Creating, changing, or removing the helper later routes through that index too, so the page rebuilds automatically the moment the missing file appears, with no restart or full rebuild. The index is drained on deletion and when the page's import set changes.
 
@@ -284,11 +284,35 @@ Dynamic server-side execution (`data-bascik-server` scripts and API routes) uses
 - **Rejected: Worker threads pool.** A worker pool requires structured-clone serialization of every request and payload, introduces pool lifecycle overhead, and complicates response streaming without solving event-loop starvation within workers.
 - **Adopted: In-process module cache.** Dynamic `import()` leverages Node's native module cache and V8 optimizations, executing request handlers with sub-millisecond dispatch overhead.
 
+#### Module Identity
+
+Every specifier the registry receives is canonicalized to one identity key before loading:
+
+- A filesystem path (absolute or relative to the project root) is resolved and converted with `pathToFileURL`, which percent-encodes spaces, `#`, `%`, and non-ASCII characters correctly.
+- A `file:` URL is parsed as a URL, never re-encoded as a path. An authored query string or fragment is part of the identity on purpose: Node treats `mod.ts?variant=a` and `mod.ts?variant=b` as distinct modules, and the registry preserves that distinction.
+- A `data:` URL (inline `data-bascik-server` source) is its own identity; the full string is the key.
+
+The identity key is the URL without the framework's own generation marker, so a path, its `file:` URL, and a relative form of the same file all share one module instance.
+
+#### Mode Ownership
+
+The process-wide registry decides its mode once, at construction, from the frozen configuration: `bascik --build` and `bascik --server` are production, everything else is development. `config.ts` imports only the user config, environment, and CLI parser, so reading it from the registry creates no import cycle, and because the mode is fixed there is no mutable global to reconfigure or race against. Tests construct their own `ScriptRegistry` instances with an explicit mode.
+
 #### Caching and Invalidation
 
-- **Production (`bascik --server`):** Modules load once on first request and are cached by resolved absolute file path for the lifetime of the process.
-- **Development (`bascik`):** File updates invalidate the registry entry. Cache-busting query URLs ensure edited modules take effect immediately without restarting the server.
-- **Error Containment:** A module that throws during load is contained to its own entry and does not poison the registry for other modules or subsequent retries after fixes.
+- **Production (`bascik --server`):** Modules load once on first request and the loaded identity is retained for the lifetime of the process. `invalidate()` is a deliberate no-op: editing a source file under a running production server changes nothing until the next deploy.
+- **Development (`bascik`):** The registry keeps a generation counter per identity. `invalidate()` unpublishes the current entry and advances the generation; the next load imports the module under `?bascik-gen=N`, which is a new module identity for Node's ESM loader. Stack traces from any generation remap to the authored source. The counter exists only for identities the registry has actually loaded or attempted, so watcher events for unrelated files allocate nothing.
+- **What invalidation does not do:** It never evicts anything from Node's module cache. Clearing the registry's own maps does not reclaim a loaded module; a previous generation stays in memory until the process exits. A request that already holds an entry finishes on that generation, and a load that completes after a newer invalidation is handed to its caller but never published, so no later request observes a superseded module.
+- **Error Containment:** A module that throws during load is never published. Node caches the failed evaluation under that URL, so in development the attempt is recorded and the fixed file is imported under a fresh generation; in production the next request retries the same identity.
+
+#### Watcher Ownership of Runtime Modules
+
+Request-time modules (API routes, `src=` server scripts, and the helpers they import) are imported by the runtime registry, not by the build, so the page dependency graph knows nothing about them. The watchers therefore advance the runtime identity directly:
+
+- The API route watcher calls `apiRouteRegistry.invalidateFile`, which invalidates the module identity and rescans the route table before `api-route-changed` is emitted.
+- The import-root and component watchers invalidate the changed path before deciding whether any page needs a rebuild.
+
+**Transitive helper limitation:** A generation query on an entry module gives Node a new entry identity, but the `import "./helper.ts"` specifier inside it is unchanged, so Node reuses the already evaluated helper. Editing only a helper that a `src=` server script imports does not change the served output until the entry module itself is edited or the dev server restarts. This is pinned by a deliberately failing test (`dev-module-reload.integration.test.ts`) rather than assumed. Supporting it requires dependency-generation ownership: the registry would need to own the entry module's import graph (collected with the same specifier scanner the build-script dependency walker uses), rewrite each local specifier in the entry to carry the helper's current generation, and advance the entry generation when any member of that graph changes. Bare package specifiers would stay untouched. That design is deferred; the limitation is documented instead of papered over.
 
 #### Concurrency and State Isolation
 
