@@ -40,13 +40,16 @@ const runBuild = (root: string, args?: string[]) =>
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // pkg entry point; the same one runRealBuild uses (Node runs .ts directly).
+// `--server` serves the fixture's own dist/ output (created by runBuild), so we
+// spawn the source entrypoint rather than the compiled pkg/dist/index.js. The
+// compiled output is gitignored (not present in the CI unit-test job, which runs
+// vitest over .ts source without a prior build), so depending on it here would
+// flake with ECONNREFUSED in CI. Node 24 runs .ts directly.
 const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
-// Built CLI entrypoint the E2E suite uses for `bascik --server`.
-const PKG_BUILT_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 
 /** Start `bascik --server` on a fixture and return a fetch helper + teardown. */
 const startServerFixture = async (root: string, port: number) => {
-  const child = spawn(process.execPath, [PKG_BUILT_ENTRY, "--server"], {
+  const child = spawn(process.execPath, [PKG_ENTRY, "--server"], {
     cwd: root,
     env: { ...process.env, BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false" },
     stdio: ["ignore", "pipe", "pipe"],
