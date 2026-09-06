@@ -390,6 +390,8 @@ describe("ScriptRegistry", () => {
     );
 
     const registry = new ScriptRegistry({ isDev: false });
+    // Pre-load module so load time does not consume the 2ms deadline before invocation starts
+    await registry.load(filePath);
     // Setting timeout to 2ms cannot preempt synchronous execution during the busy loop
     const result = await registry.invoke(filePath, [], { timeoutMs: 2 });
     // Synchronous execution ran to completion on the event loop

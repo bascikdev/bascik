@@ -296,8 +296,11 @@ Because modules run in-process, handlers receive request data via an explicit co
 
 #### Timeout, Cancellation, and Limitations
 
-- **Timeout:** Invocations accept a configurable timeout. On deadline, the registry aborts the invocation signal and returns a structured timeout result.
-- **Cleanup:** Timeout handles and upstream abort listeners are always cleared after invocation settlement.
+- **Cancellation and Deadline Ordering:** Invocations accept an optional upstream `AbortSignal` and a configurable timeout deadline. Cancellation is observed at each execution boundary: before module load, during deferred module loading, and before handler invocation. If an upstream signal is already aborted or the deadline expires before a handler starts, the handler is never called.
+- **Single Settlement State:** Each invocation settles exactly once across success, load failure, handler failure, upstream abort, or deadline timeout. Once settled, subsequent timer firings, late rejections, or late handler resolutions cannot mutate the result or trigger unhandled rejections.
+- **Deadline Boundary:** The invocation deadline timer starts before module loading begins, ensuring that sluggish module imports or cold-start disk I/O cannot exceed the configured time budget. While native `import()` cannot be preempted synchronously mid-flight, a deadline expired during import aborts invocation immediately upon import completion and prevents handler execution.
+- **Upstream Cancellation Independence:** Upstream transport cancellation (client disconnect) operates independently of whether a deadline timeout is configured. In API routes, client disconnect resolves cleanly to a 499 Client Closed Request status rather than being treated as a handler defect or unhandled error.
+- **Cleanup:** Timeout handles, internal race listeners, and upstream abort listeners are always removed on every completion path (success, failure, abort, or deadline).
 - **Synchronous CPU Limitation:** In Node's single-threaded event loop, synchronous blocking loops (such as `while(true)`) cannot be forcibly preempted by an in-process timer. Authors must structure long-running tasks asynchronously.
 
 For the full cross-subsystem time model, ownership boundaries, and deterministic testing strategy, see [Time Boundaries](/internals/time-boundaries).

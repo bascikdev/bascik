@@ -164,8 +164,50 @@ export class ScriptRegistry {
       }, timeoutMs);
     }
 
+    let settled = false;
+    let onAbortListener: (() => void) | undefined;
+
+    const toError = (raw: unknown): Error =>
+      raw instanceof Error ? raw : new Error(String(raw));
+
     try {
-      const loaded = await this.load(resolvedPath);
+      if (controller.signal.aborted) {
+        throw controller.signal.reason;
+      }
+
+      // Race load with abort signal
+      const loadPromise = Promise.resolve(this.load(resolvedPath));
+      loadPromise.catch(() => {});
+
+      const abortDuringLoadPromise = new Promise<never>((_, reject) => {
+        if (controller.signal.aborted) {
+          reject(controller.signal.reason);
+          return;
+        }
+        onAbortListener = () => {
+          if (!settled) {
+            if (didTimeout) {
+              reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
+            } else {
+              reject(controller.signal.reason);
+            }
+          }
+        };
+        controller.signal.addEventListener("abort", onAbortListener, { once: true });
+      });
+      abortDuringLoadPromise.catch(() => {});
+
+      const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as LoadedScriptModule;
+
+      if (onAbortListener) {
+        controller.signal.removeEventListener("abort", onAbortListener);
+        onAbortListener = undefined;
+      }
+
+      if (controller.signal.aborted) {
+        throw controller.signal.reason;
+      }
+
       const handler = loaded.module[exportName];
 
       if (typeof handler !== "function") {
@@ -174,39 +216,53 @@ export class ScriptRegistry {
         );
       }
 
-      // Execute handler passing isolated context and controller options
-      const resultPromise = Promise.resolve(
-        handler(...args, {
-          signal: controller.signal,
-        }),
-      );
-
-      // Race with timeout if applicable
-      let value: T;
-      if (timeoutMs && timeoutMs > 0) {
-        value = await Promise.race([
-          resultPromise,
-          new Promise<never>((_, reject) => {
-            const onAbort = () => {
-              if (didTimeout) {
-                reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
-              } else {
-                reject(controller.signal.reason);
-              }
-            };
-            controller.signal.addEventListener("abort", onAbort, { once: true });
+      let resultPromise: Promise<unknown>;
+      try {
+        resultPromise = Promise.resolve(
+          handler(...args, {
+            signal: controller.signal,
           }),
-        ]);
-      } else {
-        value = await resultPromise;
+        );
+      } catch (syncErr) {
+        resultPromise = Promise.reject(syncErr);
       }
+
+      // Observe rejection so late rejection after settlement never triggers unhandled-rejection
+      resultPromise.catch(() => {});
+
+      let value: T;
+      if (controller.signal.aborted) {
+        throw controller.signal.reason;
+      }
+
+      const abortPromise = new Promise<never>((_, reject) => {
+        if (controller.signal.aborted) {
+          reject(controller.signal.reason);
+          return;
+        }
+        onAbortListener = () => {
+          if (!settled) {
+            if (didTimeout) {
+              reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
+            } else {
+              reject(controller.signal.reason);
+            }
+          }
+        };
+        controller.signal.addEventListener("abort", onAbortListener, { once: true });
+      });
+      abortPromise.catch(() => {});
+
+      value = (await Promise.race([resultPromise, abortPromise])) as T;
+      settled = true;
 
       return {
         ok: true,
         value,
       };
     } catch (rawError: unknown) {
-      const err = rawError instanceof Error ? rawError : new Error(String(rawError));
+      settled = true;
+      const err = toError(rawError);
       const isNetReset = isNetworkResetError(rawError);
 
       if (!isNetReset && !didTimeout) {
@@ -220,11 +276,18 @@ export class ScriptRegistry {
         isNetworkReset: isNetReset,
       };
     } finally {
+      settled = true;
       if (timer) {
         this.clock.clearTimeout(timer);
+        timer = undefined;
+      }
+      if (onAbortListener) {
+        controller.signal.removeEventListener("abort", onAbortListener);
+        onAbortListener = undefined;
       }
       if (upstreamSignalUnsubscribe) {
         upstreamSignalUnsubscribe();
+        upstreamSignalUnsubscribe = undefined;
       }
     }
   }
