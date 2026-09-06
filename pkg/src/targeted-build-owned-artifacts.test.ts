@@ -262,6 +262,82 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
   }
 
   for (const workers of [false, true]) {
+    it(`zero-route shrink across TWO fresh targeted builds prunes once and stays pruned (workers=${workers})`, async () => {
+      const root = fixtureRoot(`owned-zero-2-${workers}`);
+      await createFixtureDirs(root);
+      await writeWorkersConfig(root, workers);
+      try {
+        // A dynamic template that emits two routes, each with its own server
+        // script, plus a second page with a server script we never touch.
+        await writeFixtureFile(
+          root,
+          "src/pages/a.html",
+          `<!DOCTYPE html><html><head><title>A</title></head><body>
+  <p data-testid="a">A</p>
+  <script data-bascik-server>export default () => '<div data-testid="a-server">A server</div>';</script>
+  </body></html>`,
+        );
+        await writeFixtureFile(
+          root,
+          "src/pages/blog/[slug].html",
+          `<!DOCTYPE html><html><head><title>Blog</title>
+  <script data-bascik-routes>console.log(JSON.stringify([
+    { params: { slug: "one" }, data: { title: "One" } },
+    { params: { slug: "two" }, data: { title: "Two" } },
+  ]));</script></head>
+  <body><h1 data-testid="post">post</h1>
+  <script data-bascik-server>export default () => '<div data-testid="blog-server">Blog server</div>';</script>
+  </body></html>`,
+        );
+        const full = await runBuild(root);
+        expect(full.stdout).toContain("Build complete");
+        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/one.html"]).toBeDefined();
+        expect(toInventory(await readEmittedFiles(join(root, "dist"))).files["blog/two.html"]).toBeDefined();
+
+        // Template now emits ZERO routes. Run TWO fresh targeted builds in a row.
+        await writeFixtureFile(
+          root,
+          "src/pages/blog/[slug].html",
+          `<!DOCTYPE html><html><head><title>Blog</title>
+  <script data-bascik-routes>console.log(JSON.stringify([]));</script></head>
+  <body><h1 data-testid="post">post</h1>
+  <script data-bascik-server>export default () => '<div data-testid="blog-server">Blog server</div>';</script>
+  </body></html>`,
+        );
+        const targeted1 = await runBuild(root, ["--only", "blog/*.html"]);
+        expect(targeted1.stdout).toContain("Build complete");
+        const targeted2 = await runBuild(root, ["--only", "blog/*.html"]);
+        expect(targeted2.stdout).toContain("Build complete");
+
+        const inv = toInventory(await readEmittedFiles(join(root, "dist")));
+        // (a) Removed routes are pruned from disk, manifest, and CSP after a
+        // successful staged commit on the first targeted build, and stay pruned
+        // after a second fresh targeted build.
+        expect(existsSync(join(root, "dist", "blog", "one.html"))).toBe(false);
+        expect(existsSync(join(root, "dist", "blog", "two.html"))).toBe(false);
+        expect(inv.files["blog/one.html"]).toBeUndefined();
+        expect(inv.files["blog/two.html"]).toBeUndefined();
+        expect(inv.csp["/blog/one"]).toBeUndefined();
+        expect(inv.csp["/blog/two"]).toBeUndefined();
+
+        // Untouched A page and its server script survive.
+        expect(inv.files["a.html"]).toBeDefined();
+        expect(Object.values(inv.sidecar).some((s) => s.includes("A server"))).toBe(true);
+
+        // (b) The zero-route owner's pair of sidecar script entries is dropped
+        // from the sidecar exactly once. Bascik stores server-script bodies
+        // inline in server-scripts.json (no separate .js files under
+        // dist/.bascik/server-scripts/), so the sidecar entry removal is the
+        // only cleanup the (now inert, unreachable) bodies require.
+        const blogScriptEntries = Object.values(inv.sidecar).filter((s) => s.includes("Blog server"));
+        expect(blogScriptEntries, "zero-route owner's sidecar entries must be dropped").toEqual([]);
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 120000);
+  }
+
+  for (const workers of [false, true]) {
     it(`does not corrupt the previous valid artifact set when a targeted update fails (workers=${workers})`, async () => {
       const root = fixtureRoot(`owned-fail-${workers}`);
       await writeOwnedFixture(root, { workers });

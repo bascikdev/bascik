@@ -241,6 +241,56 @@ describe("WorkerPool", () => {
       workers[0].emit("exit", 0);
       await pool.terminate();
     });
+
+    it("settles exactly once when a worker posts a message and exits in the same tick", async () => {
+      const pool = makePool(1);
+      const running = pool.run("task-1");
+      // The worker reports success and exits before the pool processes the next
+      // task's event-loop turn. The settle must happen exactly once (via the
+      // message path); the follow-up exit must NOT double-retire the slot or
+      // double-dispatch to a wasted replacement, and the completed worker's
+      // freed capacity must be restored exactly once.
+      let resolves = 0;
+      const first = running.then((r) => { resolves += 1; return r; });
+      workers[0].emit("message", { ok: true, result: "r1" });
+      workers[0].emit("exit", 0);
+      await expect(first).resolves.toBe("r1");
+      expect(resolves).toBe(1);
+      // The completed worker is unambiguously retired exactly once. A queued
+      // follow-up is served by one replacement worker (not a doubled one),
+      // proving capacity was not double-added to idle nor double-retired.
+      const second = pool.run("task-2");
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+      expect(workers[1]).toBeDefined();
+      expect(workers[1].postMessage).toHaveBeenCalledWith("task-2");
+      // No duplicate idle/dispatch on the retired worker; only workers[0] was
+      // the original, workers[1] the single replacement.
+      const dispatched = workers.filter((w) => w.postMessage.mock.calls.length > 0);
+      expect(dispatched.map((w) => workers.indexOf(w))).toEqual([0, 1]);
+      completeWith(workers[1], "r2");
+      await expect(second).resolves.toBe("r2");
+      await pool.terminate();
+    });
+
+    it("settles exactly once when a worker exits and posts a message in the same tick", async () => {
+      const pool = makePool(1);
+      const running = pool.run("task-1");
+      const first = running.then((r) => r);
+      // Reverse ordering: exit fires first (rejecting the active task), then a
+      // late message. The late message must be ignored because the slot is no
+      // longer live, so the reject happens exactly once and no replacement is
+      // double-dispatching a stale assignment.
+      workers[0].emit("exit", 0);
+      expect(WorkerMock).toHaveBeenCalledTimes(2); // replacement spawned once
+      workers[0].emit("message", { ok: true, result: "stale" });
+      await expect(first).rejects.toThrow("Worker exited with code 0");
+      // The next task is served by the single replacement.
+      const second = pool.run("task-2");
+      expect(workers[1].postMessage).toHaveBeenCalledWith("task-2");
+      completeWith(workers[1], "recovered");
+      await expect(second).resolves.toBe("recovered");
+      await pool.terminate();
+    });
   });
 
   describe("terminate", () => {

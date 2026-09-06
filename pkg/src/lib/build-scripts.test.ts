@@ -1148,6 +1148,30 @@ describe("build-script output cache", () => {
     expect(jsonWrites.length).toBe(0);
   });
 
+  it("classifies a member-expression dynamic import as non-cacheable (runs every build, no write)", async () => {
+    // `import(foo.bar)`, `import(pkg.method())`, and `import(x[0])` are
+    // identifier-prefixed member expressions whose argument is computed at
+    // runtime, so the script's dependency graph is unknowable. It must never
+    // write a cache entry and must re-run every build rather than be mis-keyed.
+    for (const importExpr of [
+      "import(foo.bar)",
+      "import(pkg.method())",
+      "import(x[0])",
+    ]) {
+      mockExecFile.mockClear();
+      mockWriteFile.mockClear();
+      mockReadFile.mockClear();
+      resolveWith("<p>member-dynamic</p>");
+      await executeBuildScripts(
+        `<script data-bascik-build>const m = await ${importExpr}; console.log(m);</script>`,
+        "src/pages/test.html",
+      );
+      expect(mockExecFile, `expected ${importExpr} to run`).toHaveBeenCalledTimes(1);
+      const jsonWrites = mockWriteFile.mock.calls.filter(([p]) => String(p).endsWith(".json"));
+      expect(jsonWrites.length, `expected no cache write for ${importExpr}`).toBe(0);
+    }
+  });
+
   it("keeps static string dynamic imports cacheable", async () => {
     mockReadFile.mockReset();
     mockWriteFile.mockReset();

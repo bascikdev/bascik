@@ -61,6 +61,12 @@ describe("hasDynamicImportExpression", () => {
     expect(hasDynamicImportExpression("const m = await import(`./${part}.mjs`);")).toBe(true);
     expect(hasDynamicImportExpression("const m = await import(foo + '.mjs');")).toBe(true);
     expect(hasDynamicImportExpression("for (const p of pkgs) await import(p);")).toBe(true);
+    // Member-expression arguments are identifier-prefixed tokens (`(` does not
+    // directly follow `import`), so they were never intended to be treated as
+    // static literals. They are genuinely dynamic and must classify non-cacheable.
+    expect(hasDynamicImportExpression("import(foo.bar)")).toBe(true);
+    expect(hasDynamicImportExpression("import(pkg.method())")).toBe(true);
+    expect(hasDynamicImportExpression("import(x[0])")).toBe(true);
   });
 
   it("ignores member-call obj.import(...) and non-import identifiers", () => {

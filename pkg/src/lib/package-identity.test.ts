@@ -80,6 +80,12 @@ describe("hasDynamicImport (non-cacheable classification)", () => {
     expect(hasDynamicImport(`const m = await import(name);`)).toBe(true);
     expect(hasDynamicImport("const m = await import(`./${part}.mjs`);")).toBe(true);
     expect(hasDynamicImport("const m = await import(foo + '.mjs');")).toBe(true);
+    // Member-expression arguments are genuinely dynamic (computed at runtime)
+    // even though a `.` or `[` follows the argument identifier rather than `(`.
+    // They must classify non-cacheable so the script re-runs every build.
+    expect(hasDynamicImport("import(foo.bar)")).toBe(true);
+    expect(hasDynamicImport("import(pkg.method())")).toBe(true);
+    expect(hasDynamicImport("import(list[0])")).toBe(true);
   });
 
   it("does not misclassify import.meta or static named/namespace imports", () => {

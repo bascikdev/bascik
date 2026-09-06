@@ -95,7 +95,8 @@ export const collectPackageSpecifiers = (script: string): string[] => {
 
 /**
  * Non-cacheable classification: true when the script's dependency graph cannot
- * be statically known. `import(` of a non-literal (identifier, template, or
+ * be statically known. `import(` of a non-literal (identifier, template,
+ * member expression such as `import(foo.bar)`, or any other computed
  * expression) resolves a package the analysis cannot see, so the script re-runs
  * on every build and never writes a cache entry rather than being mis-keyed.
  * Static `import('pkg')` of a fixed string is Bascik-rewritten to an absolute
