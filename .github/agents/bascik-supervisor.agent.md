@@ -1,7 +1,7 @@
 ---
 name: Bascik Supervisor
 description: "Primary orchestrator, supervisor, and continuous learning agent for Bascik. Coordinates specialized subagents, audits skills and instructions, and mines past chat sessions, PR fixes, and user feedback to keep tooling sharp."
-model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 Contributor (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
+model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
 user-invocable: true
 argument-hint: "Supervise a task, audit skills/agents, or extract learnings from history..."
 ---
