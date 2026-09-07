@@ -34,6 +34,13 @@ import type { EventEmitter } from 'node:events';
  * `exec-failed` per task as it settles, and this coordinator flushes the
  * consumers (or surfaces a build-error) exactly once per generation.
  *
+ * Each completion also carries what its producer declared it wrote
+ * (`ExecEntry.outputs`, prompt 139). The generation retains the union of those
+ * outputs next to the trigger paths and hands both to the consumer flush, which
+ * can then recompile only the pages that read the produced files. A producer
+ * that declares no outputs marks the generation unscoped and the flush keeps
+ * its blanket behavior.
+ *
  * Consumer compilation is late-bound: the event listeners are installed by the
  * dev lifecycle owner before `startExecDev`, but the actual recompile
  * function is registered by `watch.ts` during `watchFiles()` because the two
@@ -43,7 +50,18 @@ import type { EventEmitter } from 'node:events';
  * generation with nobody to publish to.
  */
 
-export type ConsumerFlush = (paths: string[]) => Promise<void> | void;
+/**
+ * What the producers that completed in one generation declared they wrote
+ * (prompt 139). `scoped` is true only when every completed producer declared
+ * `outputs`; a single producer without them falls the whole generation back to
+ * the blanket recompile, because its writes are unknown.
+ */
+export interface ExecFlushOutputs {
+  outputs: string[];
+  scoped: boolean;
+}
+
+export type ConsumerFlush = (paths: string[], declared: ExecFlushOutputs) => Promise<void> | void;
 
 let eventEmitter: EventEmitter | null = null;
 /** Late-bound consumer recompile, set by watch.ts. */
@@ -54,6 +72,18 @@ let producerWatchGlobs: string[][] = [];
 
 /** Pending overlapped paths awaiting producer completion (one generation). */
 const pending = new Set<string>();
+/** Union of declared outputs of the producers completed in the pending generation. */
+const pendingOutputs = new Set<string>();
+/** True once a producer without declared outputs completed in the pending generation. */
+let pendingUnscoped = false;
+
+/** Normalize an entry's `outputs` (string or array) to a list of non-empty paths. */
+export const execEntryOutputs = (entry: ExecEntry | undefined): string[] => {
+  const raw = entry?.outputs;
+  if (raw === undefined) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.filter((o): o is string => typeof o === 'string' && o.trim().length > 0);
+};
 /** Increments per accepted flush; strictly monotonic (prompt 98). */
 let generation = 0;
 /** True while a producer completion is being flushed. */
@@ -96,9 +126,12 @@ const flushPending = async (): Promise<void> => {
   coordinating = true;
   generation += 1;
   const snapshot = [...pending];
+  const declared: ExecFlushOutputs = { outputs: [...pendingOutputs], scoped: !pendingUnscoped };
   pending.clear();
+  pendingOutputs.clear();
+  pendingUnscoped = false;
   try {
-    await consumerFlush(snapshot);
+    await consumerFlush(snapshot, declared);
   } catch (err) {
     // Consumer failure was already surfaced by reportPageErrors / processing
     // (prompt 97). Never let it escape unobserved.
@@ -115,6 +148,15 @@ const onExecCompleted = (payload: { entry: ExecEntry; paths: string[] }): void =
   const paths = Array.isArray(payload.paths) ? payload.paths : [];
   if (paths.length === 0) return;
   for (const p of paths) pending.add(p);
+  // Retain what this producer declared it wrote so the flush can target the
+  // pages that read those files. A producer without `outputs` marks the
+  // generation unscoped: its writes are unknown, so the flush stays blanket.
+  const outputs = execEntryOutputs(payload.entry);
+  if (outputs.length === 0) {
+    pendingUnscoped = true;
+  } else {
+    for (const o of outputs) pendingOutputs.add(o);
+  }
   void flushPending();
 };
 
@@ -151,6 +193,12 @@ export const _execPublicationTestHooks = {
   get pendingPaths(): string[] {
     return [...pending];
   },
+  get pendingOutputs(): string[] {
+    return [...pendingOutputs];
+  },
+  get pendingUnscopedValue(): boolean {
+    return pendingUnscoped;
+  },
   get generationValue(): number {
     return generation;
   },
@@ -159,6 +207,8 @@ export const _execPublicationTestHooks = {
   },
   reset(): void {
     pending.clear();
+    pendingOutputs.clear();
+    pendingUnscoped = false;
     generation = 0;
     coordinating = false;
     producerWatchGlobs = [];

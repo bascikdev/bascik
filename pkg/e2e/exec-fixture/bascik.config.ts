@@ -12,6 +12,11 @@
 // server instead of blocking boot; when BASCIK_PARALLEL_GATE=1 it holds behind
 // an HTTP gate so the E2E can prove the server was live before it finished and
 // that its value is published once through the coordinator on release.
+//
+// Both producers declare `outputs` (prompt 139), so a completion recompiles
+// only the pages whose build scripts read those files. `unrelated.html` reads
+// `content/unrelated.txt`, which no producer writes; the dev-exec E2E asserts
+// it is never recompiled by a producer completion.
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
@@ -26,10 +31,12 @@ export default defineConfig({
         script: 'scripts/generator.mjs',
         phase: 'pre',
         watch: ['content/'],
+        outputs: ['dist/generated.json'],
       },
       {
         script: 'scripts/parallel-generator.mjs',
         phase: 'parallel',
+        outputs: ['dist/parallel.json'],
         // The gated run holds this child until the test releases it; keep the
         // deadline comfortably above the suite's runtime so the hold is never
         // misreported as a timeout.

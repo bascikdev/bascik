@@ -294,6 +294,69 @@ describe("pipeline.exec phase", () => {
   });
 });
 
+describe("pipeline.exec outputs (prompt 139)", () => {
+  it("accepts a string, a non-empty string array, and an omitted outputs", () => {
+    expect(
+      validateConfigShape({
+        pipeline: {
+          exec: [
+            { script: "a.js", outputs: "dist/generated.json" },
+            { script: "b.js", outputs: ["dist/a.json", "dist/b.json"] },
+            { script: "c.js" },
+          ],
+        },
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("is a known exec entry key (no unknown-key suggestion)", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "a.js", outputs: ["dist/x.json"] }] },
+    });
+    expect(errors.some((e) => e.unknownKey)).toBe(false);
+  });
+
+  it("rejects an empty array with an actionable message", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "a.js", outputs: [] }] },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("pipeline.exec[0].outputs");
+    expect(errors[0].message).toContain("dist/generated.json");
+  });
+
+  it("rejects an empty string and non-string items, naming the item index", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "a.js", outputs: ["dist/ok.json", "", 42 as any] }] },
+    });
+    expect(errors.map((e) => e.key)).toEqual([
+      "pipeline.exec[0].outputs[1]",
+      "pipeline.exec[0].outputs[2]",
+    ]);
+    for (const error of errors) {
+      expect(error.message).toContain("non-empty file path");
+    }
+  });
+
+  it("rejects a non-string, non-array value", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "a.js", outputs: { path: "dist/x.json" } as any }] },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("pipeline.exec[0].outputs");
+    expect(errors[0].message).toContain("array of path strings");
+  });
+
+  it("rejects glob patterns: outputs are matched literally against the dependency graph", () => {
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "a.js", outputs: ["dist/*.json"] }] },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("pipeline.exec[0].outputs[0]");
+    expect(errors[0].message).toContain("literal file path, not a glob");
+  });
+});
+
 describe("directory paths (fs half)", () => {
   const missingFs = {
     existsSync: () => false,

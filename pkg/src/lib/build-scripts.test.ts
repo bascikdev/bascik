@@ -8,6 +8,7 @@ import {
   resolveBuildScriptImports,
   SCRIPT_CACHE_VERSION,
   clearBuildScriptCaches,
+  _buildScriptCacheTestHooks as cacheHooks,
 } from "./build-scripts.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 
@@ -939,9 +940,9 @@ describe("build-script output cache", () => {
     expect(jsonWrite).toBeDefined();
     const [cachePath, cacheBody] = jsonWrite as [string, string];
 
-    // The exec consumer flush in watch.ts wipes the in-memory memo for every
-    // page. The disk entry survives, so the unrelated page's script must not
-    // spawn again.
+    // The blanket exec consumer flush in watch.ts (a producer without declared
+    // outputs) wipes the in-memory memo for every page. The disk entry
+    // survives, so the unrelated page's script must not spawn again.
     clearBuildScriptCaches();
     mockExecFile.mockClear();
     mockReadFile.mockReset();
@@ -952,6 +953,54 @@ describe("build-script output cache", () => {
     const result = await executeBuildScripts(tag, "src/pages/unrelated.html");
     expect(result).toBe("<p>unrelated</p>");
     expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("a per-path clearBuildScriptCaches(dep) drops only the memoized outputs that read that dependency (prompt 139)", async () => {
+    // Two pages, two scripts, two disjoint dependencies. Both execute once and
+    // land in the in-memory output memo.
+    const contents: Record<string, string> = {
+      "dist/generated.json": '{"value":"generation-1"}',
+      "content/other.txt": "other-1",
+    };
+    mockReadFile.mockReset();
+    mockReadFile.mockImplementation((path: string) => {
+      const p = String(path);
+      for (const [rel, body] of Object.entries(contents)) {
+        if (p.endsWith(rel)) return Promise.resolve(body);
+      }
+      return Promise.reject(new Error("ENOENT"));
+    });
+    const tagA = "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('dist/generated.json', 'utf8'));</script>";
+    const tagB = "<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('content/other.txt', 'utf8'));</script>";
+    resolveWith("<p>a</p>");
+    await executeBuildScripts(tagA, "src/pages/a.html");
+    resolveWith("<p>b</p>");
+    await executeBuildScripts(tagB, "src/pages/b.html");
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    expect(cacheHooks.outputCacheSize).toBe(2);
+    expect(cacheHooks.hasDepContent("dist/generated.json")).toBe(true);
+    expect(cacheHooks.hasDepContent("content/other.txt")).toBe(true);
+
+    // The producer rewrote dist/generated.json; only A's memo entries go.
+    clearBuildScriptCaches("dist/generated.json");
+    expect(cacheHooks.hasDepContent("dist/generated.json")).toBe(false);
+    expect(cacheHooks.hasDepContent("content/other.txt")).toBe(true);
+    expect(cacheHooks.outputCacheSize).toBe(1);
+
+    // B is served from the in-memory memo: no disk cache read, no child spawn.
+    mockExecFile.mockClear();
+    mockReadFile.mockClear();
+    const resultB = await executeBuildScripts(tagB, "src/pages/b.html");
+    expect(resultB).toBe("<p>b</p>");
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(mockReadFile.mock.calls.some(([p]) => String(p).endsWith(".json") && String(p).includes("cache"))).toBe(false);
+
+    // A re-reads its dependency (now changed) and executes against the new key.
+    contents["dist/generated.json"] = '{"value":"generation-2"}';
+    resolveWith("<p>a2</p>");
+    const resultA = await executeBuildScripts(tagA, "src/pages/a.html");
+    expect(resultA).toBe("<p>a2</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a cache entry whose version does not match", async () => {

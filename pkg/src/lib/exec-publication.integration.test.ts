@@ -10,7 +10,9 @@ import {
   installExecPublication,
   registerExecConsumerFlush,
   setExecProducerWatchGlobs,
+  execEntryOutputs,
   _execPublicationTestHooks,
+  type ExecFlushOutputs,
 } from "./exec-publication.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import type { ExecEntry } from "./types.ts";
@@ -23,14 +25,17 @@ const entry = (partial: Partial<ExecEntry> & { script: string }): ExecEntry => (
 describe("exec publication coordinator: producer/consumer overlap", () => {
   let emitter: EventEmitter;
   const flushCalls: string[][] = [];
+  const declaredCalls: ExecFlushOutputs[] = [];
 
   beforeEach(() => {
     _execPublicationTestHooks.reset();
     emitter = new EventEmitter();
     flushCalls.length = 0;
+    declaredCalls.length = 0;
     installExecPublication(emitter);
-    registerExecConsumerFlush(async (paths) => {
+    registerExecConsumerFlush(async (paths, declared) => {
       flushCalls.push(paths);
+      declaredCalls.push(declared);
     });
   });
 
@@ -228,6 +233,135 @@ describe("exec publication coordinator: producer/consumer overlap", () => {
     expect(errors[0].file).toBe("scripts/og-images.mjs");
     expect(errors[0].message).toContain("exited with code 1");
     expect(_execPublicationTestHooks.generationValue).toBe(0);
+  });
+
+  // ── Declared outputs (prompt 139) ──────────────────────────────────────────
+  // A producer that declares `outputs` lets the flush target the pages that
+  // read those files. The coordinator carries the union of declared outputs
+  // per generation alongside the trigger paths; one producer without outputs
+  // marks the whole generation unscoped so the flush falls back to blanket.
+
+  it("normalizes an entry's outputs to a list and ignores blanks", () => {
+    expect(execEntryOutputs(undefined)).toEqual([]);
+    expect(execEntryOutputs(entry({ script: "a.mjs" }))).toEqual([]);
+    expect(execEntryOutputs(entry({ script: "a.mjs", outputs: "dist/one.json" }))).toEqual(["dist/one.json"]);
+    expect(execEntryOutputs(entry({ script: "a.mjs", outputs: ["dist/one.json", " ", "dist/two.json"] }))).toEqual([
+      "dist/one.json",
+      "dist/two.json",
+    ]);
+  });
+
+  it("hands the flush the trigger paths and the producer's declared outputs, scoped", async () => {
+    setExecProducerWatchGlobs([["content/"]]);
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/generated.json"] }),
+      paths: ["content/doc.md"],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushCalls).toEqual([["content/doc.md"]]);
+    expect(declaredCalls).toEqual([{ outputs: ["dist/generated.json"], scoped: true }]);
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    expect(_execPublicationTestHooks.pendingOutputs).toEqual([]);
+    expect(_execPublicationTestHooks.pendingUnscopedValue).toBe(false);
+  });
+
+  it("a producer without outputs is handed to the flush unscoped with no outputs (pre-139 behavior)", async () => {
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/gen.mjs", watch: ["content/"] }),
+      paths: ["content/doc.md"],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(declaredCalls).toEqual([{ outputs: [], scoped: false }]);
+  });
+
+  it("unions declared outputs across producers completed in the same held generation and dedupes them", async () => {
+    // No consumer yet: both completions land in one held generation.
+    _execPublicationTestHooks.reset();
+    emitter = new EventEmitter();
+    installExecPublication(emitter);
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/a.mjs", phase: "parallel", outputs: ["dist/a.json", "dist/shared.json"] }),
+      paths: ["scripts/a.mjs"],
+    });
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/b.mjs", phase: "parallel", outputs: "dist/shared.json" }),
+      paths: ["scripts/b.mjs"],
+    });
+    expect(_execPublicationTestHooks.generationValue).toBe(0);
+    expect(new Set(_execPublicationTestHooks.pendingOutputs)).toEqual(new Set(["dist/a.json", "dist/shared.json"]));
+
+    registerExecConsumerFlush(async (paths, declared) => {
+      flushCalls.push(paths);
+      declaredCalls.push(declared);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushCalls).toEqual([["scripts/a.mjs", "scripts/b.mjs"]]);
+    expect(declaredCalls).toHaveLength(1);
+    expect(declaredCalls[0].scoped).toBe(true);
+    expect(new Set(declaredCalls[0].outputs)).toEqual(new Set(["dist/a.json", "dist/shared.json"]));
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+  });
+
+  it("one producer without outputs makes the whole held generation unscoped", async () => {
+    _execPublicationTestHooks.reset();
+    emitter = new EventEmitter();
+    installExecPublication(emitter);
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/a.mjs", phase: "parallel", outputs: ["dist/a.json"] }),
+      paths: ["scripts/a.mjs"],
+    });
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/legacy.mjs", phase: "parallel" }),
+      paths: ["scripts/legacy.mjs"],
+    });
+    registerExecConsumerFlush(async (paths, declared) => {
+      flushCalls.push(paths);
+      declaredCalls.push(declared);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(declaredCalls).toHaveLength(1);
+    expect(declaredCalls[0].scoped).toBe(false);
+    // The declared outputs are still passed along; only the scope flag drops.
+    expect(declaredCalls[0].outputs).toEqual(["dist/a.json"]);
+  });
+
+  it("declared outputs do not leak from one flushed generation into the next", async () => {
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/a.mjs", phase: "parallel", outputs: ["dist/a.json"] }),
+      paths: ["scripts/a.mjs"],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    emitter.emit("exec-completed", {
+      entry: entry({ script: "scripts/b.mjs", phase: "parallel", outputs: ["dist/b.json"] }),
+      paths: ["scripts/b.mjs"],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(declaredCalls).toEqual([
+      { outputs: ["dist/a.json"], scoped: true },
+      { outputs: ["dist/b.json"], scoped: true },
+    ]);
+    expect(_execPublicationTestHooks.generationValue).toBe(2);
+  });
+
+  it("a failed producer does not contribute its declared outputs to the pending generation", async () => {
+    _execPublicationTestHooks.reset();
+    emitter = new EventEmitter();
+    installExecPublication(emitter);
+    emitter.on("build-error", () => undefined);
+    emitter.emit("exec-failed", {
+      entry: entry({ script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/generated.json"] }),
+      paths: ["content/doc.md"],
+      error: new Error("boom"),
+    });
+    expect(_execPublicationTestHooks.pendingOutputs).toEqual([]);
+    expect(_execPublicationTestHooks.pendingPaths).toEqual([]);
   });
 
   it("recovers through the next valid generation after a failure", async () => {

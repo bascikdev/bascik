@@ -981,6 +981,148 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     _execPublicationTestHooks.reset();
   });
 
+  it("a parallel entry WITHOUT outputs keeps the blanket flush: no-arg cache clear and the all-pages fallback (pre-139 behavior)", async () => {
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: [],
+      exec: [{ script: "scripts/legacy.mjs", phase: "parallel" }],
+    };
+    await watchFiles();
+    mockClearBuildScriptCaches.mockClear();
+    mockProcessPageBatch.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/legacy.mjs", phase: "parallel" },
+      paths: ["scripts/legacy.mjs"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    // Blanket: per-trigger-path clear, then the argument-less clear.
+    expect(mockClearBuildScriptCaches.mock.calls).toEqual([["scripts/legacy.mjs"], []]);
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("scripts/legacy.mjs");
+    expect(processPageBatch).not.toHaveBeenCalled();
+    _execPublicationTestHooks.reset();
+  });
+
+  it("a parallel entry WITH outputs recompiles only the pages that read them and never clears every page's memo (prompt 139)", async () => {
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: [],
+      exec: [{ script: "scripts/search-index.mjs", phase: "parallel", outputs: ["dist/search-index.json"] }],
+    };
+    await watchFiles();
+    mockClearBuildScriptCaches.mockClear();
+    mockProcessPageBatch.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    mockEventEmit.mockClear();
+    mockPagesDependentOnFile.mockImplementation((path: string) =>
+      path === "dist/search-index.json" ? ["src/pages/search.html"] : [],
+    );
+
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/search-index.mjs", phase: "parallel", outputs: ["dist/search-index.json"] },
+      paths: ["scripts/search-index.mjs"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    // Scoped: the trigger path and each declared output are cleared per path;
+    // the argument-less clear is never called.
+    expect(mockClearBuildScriptCaches.mock.calls).toEqual([["scripts/search-index.mjs"], ["dist/search-index.json"]]);
+    expect(mockClearBuildScriptCaches).not.toHaveBeenCalledWith();
+    // Only the dependents of the output compile; the all-pages fallback is not used.
+    expect(processPageBatch).toHaveBeenCalledTimes(1);
+    expect(processPageBatch).toHaveBeenCalledWith(["src/pages/search.html"]);
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "watch-path-processed",
+      expect.objectContaining({ path: "scripts/search-index.mjs" }),
+    );
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    _execPublicationTestHooks.reset();
+  });
+
+  it("a scoped flush unions the dependents of every output with the dependents of the trigger paths", async () => {
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: ["content/"],
+      exec: [{ script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/a.json", "dist/b.json"] }],
+    };
+    await watchFiles();
+    mockProcessPageBatch.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    const graph: Record<string, string[]> = {
+      "dist/a.json": ["src/pages/a.html", "src/pages/both.html"],
+      "dist/b.json": ["src/pages/b.html", "src/pages/both.html"],
+      // The trigger path is read directly by one page too (e.g. a page that
+      // renders the markdown itself).
+      "content/doc.md": ["src/pages/doc.html"],
+    };
+    mockPagesDependentOnFile.mockImplementation((path: string) => graph[path] ?? []);
+
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/a.json", "dist/b.json"] },
+      paths: ["content/doc.md"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    expect(processPageBatch).toHaveBeenCalledTimes(1);
+    const [pages] = (processPageBatch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(new Set(pages)).toEqual(
+      new Set(["src/pages/a.html", "src/pages/both.html", "src/pages/b.html", "src/pages/doc.html"]),
+    );
+    expect(pages).toHaveLength(4); // deduped
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    _execPublicationTestHooks.reset();
+  });
+
+  it("a scoped flush with no dependent pages compiles nothing but still publishes the generation", async () => {
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: [],
+      exec: [{ script: "scripts/og.mjs", phase: "parallel", outputs: ["dist/og/cover.png"] }],
+    };
+    await watchFiles();
+    mockProcessPageBatch.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    mockEventEmit.mockClear();
+    mockPagesDependentOnFile.mockReturnValue([]);
+
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/og.mjs", phase: "parallel", outputs: ["dist/og/cover.png"] },
+      paths: ["scripts/og.mjs"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    // Nothing reads the output: no page compiles and, crucially, the
+    // all-pages fallback is not taken.
+    expect(processPageBatch).not.toHaveBeenCalled();
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    expect(mockEventEmit).toHaveBeenCalledWith("watch-path-processed", expect.objectContaining({ path: "scripts/og.mjs" }));
+    expect(_execPublicationTestHooks.generationValue).toBe(1);
+    _execPublicationTestHooks.reset();
+  });
+
   it("recompiles directly for a watch-path edit no exec producer covers", async () => {
     (BascikConfig as any).pipeline = {
       watchPaths: ["src/content/docs"],

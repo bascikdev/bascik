@@ -100,17 +100,52 @@ export interface ImportRootOptions {
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
 const inMemoryScriptOutputCache = new Map<string, string>();
+// Reverse index: dependency (project-relative key) -> the output cache keys
+// whose hash folded that dependency's content in. Lets a per-path clear drop
+// exactly the memoized outputs that read the changed file (prompt 139).
+const outputKeysByDependency = new Map<string, Set<string>>();
 
-/** Clear in-memory caches (called on watch change or between test runs). */
+/**
+ * Clear in-memory caches (called on watch change or between test runs).
+ *
+ * With a `filePath`, only that dependency's memoized content and the memoized
+ * outputs of the scripts that read it are dropped. Output entries are keyed by
+ * `computeScriptCacheKey`, a hash over the script and the content of every
+ * dependency it reads, so an entry memoized under the old content could never
+ * be hit again anyway; dropping it here reclaims the memory and leaves every
+ * unrelated script's memo intact so it does not re-read its disk cache entry.
+ *
+ * Without a `filePath`, all memos are cleared.
+ */
 export const clearBuildScriptCaches = (filePath?: string): void => {
   if (filePath) {
     const absPath = resolve(process.cwd(), filePath);
     const relKey = relative(process.cwd(), absPath).replace(/\\/g, "/");
     depContentCache.delete(relKey);
-  } else {
-    depContentCache.clear();
+    const keys = outputKeysByDependency.get(relKey);
+    if (keys) {
+      for (const key of keys) inMemoryScriptOutputCache.delete(key);
+      outputKeysByDependency.delete(relKey);
+    }
+    return;
   }
+  depContentCache.clear();
   inMemoryScriptOutputCache.clear();
+  outputKeysByDependency.clear();
+};
+
+/** Observe the in-memory caches in tests without exposing the maps. */
+export const _buildScriptCacheTestHooks = {
+  hasDepContent(filePath: string): boolean {
+    const relKey = relative(process.cwd(), resolve(process.cwd(), filePath)).replace(/\\/g, "/");
+    return depContentCache.has(relKey);
+  },
+  get depContentSize(): number {
+    return depContentCache.size;
+  },
+  get outputCacheSize(): number {
+    return inMemoryScriptOutputCache.size;
+  },
 };
 
 const readCachedFile = async (absPath: string, relKey: string): Promise<string> => {
@@ -285,7 +320,18 @@ const computeScriptCacheKey = async (
     hash.update(pkgIdentity);
   }
 
-  return hash.digest("hex");
+  const key = hash.digest("hex");
+  // Every dependency folded into this key (present or MISSING) indexes the
+  // key, so a later per-path clear of that dependency drops this output.
+  for (const relKey of visited) {
+    let keys = outputKeysByDependency.get(relKey);
+    if (!keys) {
+      keys = new Set();
+      outputKeysByDependency.set(relKey, keys);
+    }
+    keys.add(key);
+  }
+  return key;
 };
 
 const readScriptCache = async (

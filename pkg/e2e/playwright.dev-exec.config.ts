@@ -37,8 +37,11 @@ export default defineConfig({
   webServer: [{
     // The generator's persistent counter and gate marker are runtime state
     // from a previous run; reset them so "startup runs exactly once" asserts
-    // against this boot, not accumulated history.
-    command: `rm -f scripts/.generation scripts/.armed-gate && BASCIK_SERVER_PORT=9661 BASCIK_PARALLEL_GATE=1 node ${pkgDir}/dist/index.js`,
+    // against this boot, not accumulated history. The dev server log is teed
+    // to `.dev-server.log` so the suite can collect the lines between two
+    // markers and assert which pages a producer completion recompiled
+    // (prompt 139).
+    command: `rm -f scripts/.generation scripts/.armed-gate .dev-server.log && BASCIK_SERVER_PORT=9661 BASCIK_PARALLEL_GATE=1 node ${pkgDir}/dist/index.js 2>&1 | tee .dev-server.log`,
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,

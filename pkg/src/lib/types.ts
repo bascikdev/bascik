@@ -13,6 +13,15 @@ export interface ExecEntry {
   /** File/directory globs that trigger a re-run in dev. Omit for build-only scripts. */
   watch?: string | string[];
   /**
+   * Literal file paths (relative to the project root) this script writes, for
+   * example `'dist/generated.json'`. Dev only: when the script completes, Bascik
+   * invalidates and recompiles only the pages whose build scripts read these
+   * files, instead of dropping every page's memoized dependency state and
+   * recompiling by trigger path. Globs and directories are not matched; list
+   * each written file. Omit to keep the blanket recompile behavior.
+   */
+  outputs?: string | string[];
+  /**
    * When this script runs relative to page transpilation.
    * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
    * - 'post': runs after all pages are transpiled and written to dist.

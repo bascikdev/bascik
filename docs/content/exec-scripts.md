@@ -66,6 +66,7 @@ Each exec entry in `pipeline.exec` accepts:
 | `script` (required) | `string` | none | Path to the script file, relative to the project root |
 | `phase` | `'pre' \| 'post' \| 'parallel'` | `'pre'` | When the script executes relative to page transpilation |
 | `watch` | `string \| string[]` | `[]` | File or directory globs that trigger script re-execution during dev mode |
+| `outputs` | `string \| string[]` | none | Literal file paths (relative to the project root) the script writes. Dev only: scopes the recompile after each completion to the pages whose build scripts read those files |
 | `cwd` | `string` | `process.cwd()` | Working directory for the script execution |
 | `env` | `Record<string, string>` | `{}` | Custom environment variables merged with `process.env` |
 | `args` | `string[]` | `[]` | Command-line arguments passed as `process.argv` |
@@ -81,8 +82,40 @@ Each exec entry in `pipeline.exec` accepts:
   env: { NODE_ENV: 'production' },
   timeout: 30000,
   watch: ['vendor/src/**'],
+  outputs: ['dist/assets/vendor.js'],
 }
 ```
+
+### Declaring outputs
+
+`outputs` tells Bascik which files a script writes. In dev, when the script completes (after a watched edit or as a `parallel` entry), Bascik invalidates the memoized content of those files and recompiles only the pages whose build scripts read them, using the same dependency graph that powers build-script caching. Pages that read nothing the script wrote are left alone, so a producer completion costs the same on a ten-page site and a thousand-page site.
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  pipeline: {
+    watchPaths: ['content/'],
+    exec: [
+      {
+        script: 'scripts/generate-catalog.ts',
+        watch: ['content/'],
+        outputs: ['dist/catalog.json'],
+      },
+    ],
+  },
+});
+```
+
+```html
+<!-- src/pages/catalog.html: reads the declared output, so it is the only page recompiled -->
+<script data-bascik-build>
+  import { readFileSync } from 'node:fs';
+  const catalog = JSON.parse(readFileSync('dist/catalog.json', 'utf8'));
+  console.log(catalog.items.map((item) => `<li>${item.title}</li>`).join(''));
+</script>
+```
+
+List each written file as a literal path; globs and directories are rejected by config validation because outputs are matched against the literal paths build scripts read. Without `outputs`, Bascik does not know what the script wrote: it drops every page's memoized dependency state and recompiles the pages tied to the trigger path, or every page when none are. That fallback is correct and unchanged; declaring `outputs` is how you make it cheap. `outputs` has no effect in `bascik --build`.
 
 ## The Output Rule: Write to `dist/`, Not `src/`
 
@@ -101,7 +134,7 @@ A watched exec script still runs once at startup as part of its `phase`. A `pre`
 
 ### Parallel scripts in dev
 
-A `parallel` script never blocks dev startup. The dev server binds and the first transpile begins while the script is still running, so a page that reads the script's output sees whatever is on disk at compile time (or handles a missing file) until the script completes. When it completes, Bascik re-transpiles the pages that read its output and issues one coordinated reload. If it fails, the failure surfaces as a build-error overlay and no success reload is sent. Pages that must have the generated data before their first compile belong in `pre`.
+A `parallel` script never blocks dev startup. The dev server binds and the first transpile begins while the script is still running, so a page that reads the script's output sees whatever is on disk at compile time (or handles a missing file) until the script completes. When it completes, Bascik re-transpiles the affected pages and issues one coordinated reload. A parallel entry with `outputs` recompiles only the pages that read those files; without `outputs`, every page is recompiled because nothing ties the entry to the pages that consume it. If it fails, the failure surfaces as a build-error overlay and no success reload is sent. Pages that must have the generated data before their first compile belong in `pre`.
 
 ### The overlap contract
 

@@ -30,9 +30,81 @@ import {
   registerExecConsumerFlush,
   setExecProducerWatchGlobs,
   execProducerCovers,
+  type ExecFlushOutputs,
 } from "./exec-publication.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import type { ExecEntry } from "./types.ts";
+
+const logInfo = (message: string): void => {
+  if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
+};
+
+/**
+ * Consumer recompile for an exec producer completion (dev only). Registered
+ * with the exec publication coordinator by `watchFiles`; also reached by a dev
+ * `phase: 'parallel'` completion (prompt 137), which is why it is registered
+ * whenever exec entries exist, not only when `pipeline.watchPaths` is set.
+ *
+ * `paths` are the trigger paths of the generation (the producer's watched
+ * source edits, or its script for a parallel entry). `declared` carries the
+ * union of the `outputs` the completed producers declared (prompt 139).
+ *
+ * Two paths (prompt 109/S7, resolved by prompt 139):
+ *
+ * 1. Scoped: every completed producer declared `outputs`. Each output's
+ *    dependency-content memo entry is dropped (per-path clear) and the pages
+ *    that read it (`mem.pagesDependentOnFile`) are recompiled, together with
+ *    the pages that depend on the trigger paths. Unrelated pages keep their
+ *    memoized state and are not touched. The argument-less
+ *    `clearBuildScriptCaches()` is never called on this path.
+ *
+ * 2. Blanket: at least one completed producer declared no `outputs`, so its
+ *    writes are unknown. The dependency-content memo for every page is
+ *    dropped and each trigger path goes through
+ *    `selectivelyProcessPagesForWatchPath`, which recompiles the dependents
+ *    of the path or every page when none tie to it. This is the pre-139
+ *    behavior, kept unchanged so existing configs are unaffected. Unrelated
+ *    pages are not re-executed even here: an unchanged cache key still hits
+ *    the on-disk script cache; they only re-read dependency files once.
+ *
+ * Either way this invalidates changed inputs; it does not disable caching.
+ */
+export const execConsumerFlush = async (
+  paths: string[],
+  declared: ExecFlushOutputs = { outputs: [], scoped: false },
+): Promise<void> => {
+  for (const path of paths) {
+    clearBuildScriptCaches(path);
+  }
+
+  if (declared.scoped && declared.outputs.length > 0) {
+    const pagesToProcess = new Set<string>();
+    for (const output of declared.outputs) {
+      clearBuildScriptCaches(output);
+      for (const page of mem.pagesDependentOnFile(output)) pagesToProcess.add(page);
+    }
+    for (const path of paths) {
+      for (const page of mem.pagesDependentOnFile(path)) pagesToProcess.add(page);
+    }
+    if (pagesToProcess.size > 0) {
+      invalidateComponentListCache();
+      await processPageBatch([...pagesToProcess]);
+    }
+    for (const path of paths) {
+      eventEmitter.emit("watch-path-processed", { path });
+    }
+    logInfo(
+      `[bascik] exec outputs published: ${declared.outputs.join(", ")} (${pagesToProcess.size} page${pagesToProcess.size === 1 ? "" : "s"})`,
+    );
+    return;
+  }
+
+  clearBuildScriptCaches();
+  for (const path of paths) {
+    await selectivelyProcessPagesForWatchPath(path);
+    eventEmitter.emit("watch-path-processed", { path });
+  }
+};
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -41,9 +113,6 @@ export const watchFiles = async () => {
   }
 
   const onWatchError = (err: unknown) => console.error("[bascik] watch error:", err);
-  const logInfo = (message: string): void => {
-    if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
-  };
   // Request-time modules (`src=` server scripts, their helpers, API routes)
   // are imported by the runtime registry, not by the build, so the page
   // dependency graph knows nothing about them. Any file event under a watched
@@ -211,37 +280,13 @@ export const watchFiles = async () => {
       ),
     );
 
-    // Consumer recompile for a producer completion: hand every changed path to
-    // selectivelyProcessPagesForWatchPath, which re-transpiles only the pages
-    // that depend on the produced output (all pages when none tie to it).
     // A producer may have rewritten consumed outputs that the cache key reads
-    // via its dependency graph (e.g. `dist/generated.json`); clearing the
-    // build-script cache ensures the re-transpiled page re-runs its build
-    // script against the freshly produced bytes instead of a stale output.
-    // This invalidates a changed input; it does not disable caching.
-    // The same flush publishes a dev `phase: 'parallel'` completion (prompt
-    // 137), which is why it is registered whenever exec entries exist, not
-    // only when `pipeline.watchPaths` is set.
-    registerExecConsumerFlush(async (paths: string[]) => {
-      for (const path of paths) {
-        clearBuildScriptCaches(path);
-      }
-      // Trade-off (reviewed, prompt 109/S7): a producer's OUTPUT paths are not
-      // known here (only its input paths or entry script are), so the clear
-      // cannot be scoped to `mem.pagesDependentOnFile(<output>)` even though
-      // the dependency graph does record literal `dist/...` reads. The no-arg
-      // clear drops the in-memory dependency-content memo for every page; the
-      // per-path variant above already clears the whole in-memory output cache
-      // regardless. Cost: each recompiled page re-reads its dependency files
-      // once and re-derives its key. Unrelated pages are NOT re-executed: an
-      // unchanged key still hits the on-disk script cache. Scoping this
-      // requires producers to declare outputs; tracked as a follow-up.
-      clearBuildScriptCaches();
-      for (const path of paths) {
-        await selectivelyProcessPagesForWatchPath(path);
-        eventEmitter.emit("watch-path-processed", { path });
-      }
-    });
+    // via its dependency graph (e.g. `dist/generated.json`); the flush
+    // invalidates those inputs and re-transpiles the pages that read them so
+    // the build script re-runs against the freshly produced bytes instead of
+    // a stale output. This invalidates changed inputs; it does not disable
+    // caching. See `execConsumerFlush` for the two paths.
+    registerExecConsumerFlush(execConsumerFlush);
   }
   if (!BascikConfig.isBuild && watchPaths.length) {
     w(chokidar

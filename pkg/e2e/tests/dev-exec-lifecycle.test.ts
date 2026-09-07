@@ -15,6 +15,13 @@
  * server serves pages while the parallel entry is still running, and that the
  * generated value is published once through the coordinator on release.
  *
+ * Both producers declare `outputs` (prompt 139). A third page,
+ * `unrelated.html`, reads `data/unrelated.txt`, which no producer writes. The
+ * Playwright config tees the dev server log to `.dev-server.log`; after a
+ * producer completion the suite collects the log lines between the edit and
+ * the coordinator's `exec outputs published` marker and asserts the consumer
+ * page was transpiled while the unrelated page was not.
+ *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec.config.ts
  */
@@ -37,6 +44,39 @@ const readGeneration = async (): Promise<number> => {
   const marker = await readFile(markerPath, 'utf8').catch(() => '0');
   return Number(marker.trim()) || 0;
 };
+
+// ── Dev server log collection ────────────────────────────────────────────────
+// The webServer command tees stdout+stderr to `.dev-server.log`. `logOffset`
+// snapshots the current length as a start marker; `collectLogUntil` resolves
+// with every line written after that offset once `endMarker` appears, so an
+// assertion can be made about what did NOT happen in the window without a
+// wall-clock wait.
+const devServerLogPath = join(fixtureDir, '.dev-server.log');
+
+const readLog = (): Promise<string> => readFile(devServerLogPath, 'utf8').catch(() => '');
+
+const logOffset = async (): Promise<number> => (await readLog()).length;
+
+const collectLogUntil = async (from: number, endMarker: RegExp, timeout = 15000): Promise<string> => {
+  let window = '';
+  await expect
+    .poll(
+      async () => {
+        window = (await readLog()).slice(from);
+        return endMarker.test(window);
+      },
+      { timeout, message: `log marker ${endMarker} not seen after offset ${from}` },
+    )
+    .toBe(true);
+  return window;
+};
+
+const PUBLISHED_GENERATED = /exec outputs published: dist\/generated\.json/;
+const PUBLISHED_PARALLEL = /exec outputs published: dist\/parallel\.json/;
+// The dev server logs `transpiled: <path relative to directory.pages parent>`,
+// e.g. `transpiled: pages/consumer.html`.
+const TRANSPILED_CONSUMER = /transpiled: pages\/consumer\.html/;
+const TRANSPILED_UNRELATED = /transpiled: pages\/unrelated\.html/;
 
 test.describe('exec producer/consumer lifecycle ownership', () => {
   let originalDoc: string;
@@ -67,8 +107,16 @@ test.describe('exec producer/consumer lifecycle ownership', () => {
     // Arm reload observation BEFORE releasing the gate so the coordinated
     // reload for the parallel completion is captured deterministically.
     const reloaded = page.waitForEvent('framenavigated', { timeout: 20000 });
+    const from = await logOffset();
     await fetch(PARALLEL_RELEASE_URL);
     await reloaded;
+
+    // The parallel entry declared `outputs: ['dist/parallel.json']`, so its
+    // completion recompiled only the page that reads it. The unrelated page
+    // was not transpiled in the window between release and publication.
+    const window = await collectLogUntil(from, PUBLISHED_PARALLEL);
+    expect(window).toMatch(TRANSPILED_CONSUMER);
+    expect(window).not.toMatch(TRANSPILED_UNRELATED);
 
     // The parallel completion reached the coordinator, the consumer page
     // re-transpiled against the produced bytes, and the browser reloaded once
@@ -103,11 +151,25 @@ test.describe('exec producer/consumer lifecycle ownership', () => {
     // Write a content edit. The producer and the watch-path consumer both
     // observe `content/`; the consumer must wait for the producer to finish
     // before re-transpiling.
+    const from = await logOffset();
     await writeFile(docPath, `${originalDoc}\n\nEdit marker ${Date.now()}\n`, 'utf8');
 
     await expect(page.getByTestId('generated-value')).toHaveText(new RegExp(`generation-${before + 1}\\s*`), { timeout: 15000 });
     const after = await readGeneration();
     expect(after).toBe(before + 1);
+
+    // The producer declared `outputs: ['dist/generated.json']`. Between the
+    // edit and the coordinator's publication marker the consumer page was
+    // transpiled and the unrelated page (which reads a file no producer
+    // writes) was not.
+    const window = await collectLogUntil(from, PUBLISHED_GENERATED);
+    expect(window).toMatch(TRANSPILED_CONSUMER);
+    expect(window).not.toMatch(TRANSPILED_UNRELATED);
+  });
+
+  test('the unrelated page is served and keeps its value across producer completions', async ({ page }) => {
+    await page.goto('/unrelated');
+    await expect(page.getByTestId('unrelated-marker')).toHaveText(/unrelated-static-value\s*/);
   });
 
   test('(gated) the served page keeps last-known-good while the producer is held, then updates on release', async ({ page }) => {
