@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import chokidar from "chokidar";
 import type { Stats } from "node:fs";
-import { resolve, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import {
   pageProcessing,
   processAllPages,
@@ -19,11 +19,19 @@ import {
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { invalidateComponentListCache } from "./components.ts";
-import { BascikConfig } from "./config.ts";
+import { BascikConfig, shouldLog } from "./config.ts";
 import { eventEmitter, registerShutdownHandler } from "./events.ts";
 import { apiRouteRegistry } from "./server-api.ts";
+import { scriptRegistry } from "./script-registry.ts";
 import { mem } from "./mem.ts";
 import { getImportRoot } from "./import-root.ts";
+import {
+  registerExecConsumerFlush,
+  setExecProducerWatchGlobs,
+  execProducerCovers,
+} from "./exec-publication.ts";
+import { execWatchCoversPath } from "./exec.ts";
+import type { ExecEntry } from "./types.ts";
 
 export const watchFiles = async () => {
   if (BascikConfig.isBuild) {
@@ -32,6 +40,19 @@ export const watchFiles = async () => {
   }
 
   const onWatchError = (err: unknown) => console.error("[bascik] watch error:", err);
+  const logInfo = (message: string): void => {
+    if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
+  };
+  // Request-time modules (`src=` server scripts, their helpers, API routes)
+  // are imported by the runtime registry, not by the build, so the page
+  // dependency graph knows nothing about them. Any file event under a watched
+  // source root therefore advances the runtime identity first; the registry
+  // ignores identities it never loaded, so this costs nothing for other files.
+  const invalidateRuntimeModule = (path: string): void => {
+    if (scriptRegistry.invalidate(path)) {
+      logInfo(`[bascik] module invalidated: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
+    }
+  };
   const watchers: ReturnType<typeof chokidar.watch>[] = [];
   const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };
   registerShutdownHandler(() => Promise.all(watchers.map(watcher => watcher.close())).then(() => { }));
@@ -135,21 +156,71 @@ export const watchFiles = async () => {
     })
     // If you add a component, how will we know what pages to update unless we go and look
     .on("add", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       processAllPages().catch(onWatchError);
     })
     // For changes and deletion of components we can be selective
     .on("change", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       selectivelyProcessPages(path).catch(onWatchError);
     })
     .on("unlink", async (path) => {
+      invalidateRuntimeModule(path);
       clearBuildScriptCaches(path);
       selectivelyProcessPages(path).catch(onWatchError);
     }));
 
-  // Re-transpile all pages when user-specified extra paths change (dev only)
+  // Re-transpile all pages when user-specified extra paths change (dev only).
+  // A path covered by both `pipeline.watchPaths` and an `exec[].watch` glob is
+  // an overlap contract: the exec producer must finish BEFORE the consumer
+  // pages re-transpile, otherwise the page compiles against a previous
+  // generation. watch.ts registers the consumer flush with the exec
+  // publication coordinator and defers overlapped edits to it, so the producer
+  // completes first and the coordinator recompiles exactly once.
   const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
+  const execEntries = (BascikConfig.pipeline?.exec ?? []) as ExecEntry[];
+  if (!BascikConfig.isBuild && (watchPaths.length || execEntries.length)) {
+    const producerWatchEntries = execEntries.filter((entry) => !!entry.watch);
+    setExecProducerWatchGlobs(
+      producerWatchEntries.map((entry) =>
+        Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
+      ),
+    );
+
+    // Consumer recompile for a producer completion: hand every changed path to
+    // selectivelyProcessPagesForWatchPath, which re-transpiles only the pages
+    // that depend on the produced output (all pages when none tie to it).
+    // A producer may have rewritten consumed outputs that the cache key reads
+    // via its dependency graph (e.g. `dist/generated.json`); clearing the
+    // build-script cache ensures the re-transpiled page re-runs its build
+    // script against the freshly produced bytes instead of a stale output.
+    // This invalidates a changed input; it does not disable caching.
+    // The same flush publishes a dev `phase: 'parallel'` completion (prompt
+    // 137), which is why it is registered whenever exec entries exist, not
+    // only when `pipeline.watchPaths` is set.
+    registerExecConsumerFlush(async (paths: string[]) => {
+      for (const path of paths) {
+        clearBuildScriptCaches(path);
+      }
+      // Trade-off (reviewed, prompt 109/S7): a producer's OUTPUT paths are not
+      // known here (only its input paths or entry script are), so the clear
+      // cannot be scoped to `mem.pagesDependentOnFile(<output>)` even though
+      // the dependency graph does record literal `dist/...` reads. The no-arg
+      // clear drops the in-memory dependency-content memo for every page; the
+      // per-path variant above already clears the whole in-memory output cache
+      // regardless. Cost: each recompiled page re-reads its dependency files
+      // once and re-derives its key. Unrelated pages are NOT re-executed: an
+      // unchanged key still hits the on-disk script cache. Scoping this
+      // requires producers to declare outputs; tracked as a follow-up.
+      clearBuildScriptCaches();
+      for (const path of paths) {
+        await selectivelyProcessPagesForWatchPath(path);
+        eventEmitter.emit("watch-path-processed", { path });
+      }
+    });
+  }
   if (!BascikConfig.isBuild && watchPaths.length) {
     w(chokidar
       .watch(watchPaths, {
@@ -159,6 +230,12 @@ export const watchFiles = async () => {
       })
       .on("add", async (path) => {
         try {
+          // If a producer covers this path, it owns the recompile: wait for
+          // its completion (exec-completed) so the consumer never reads a
+          // not-yet-produced generation. Otherwise recompile directly.
+          if (execProducerCovers((patterns) => execWatchCoversPath(patterns, path, undefined))) {
+            return;
+          }
           clearBuildScriptCaches(path);
           await selectivelyProcessPagesForWatchPath(path);
           eventEmitter.emit("watch-path-processed", { path });
@@ -168,6 +245,9 @@ export const watchFiles = async () => {
       })
       .on("change", async (path) => {
         try {
+          if (execProducerCovers((patterns) => execWatchCoversPath(patterns, path, undefined))) {
+            return;
+          }
           clearBuildScriptCaches(path);
           await selectivelyProcessPagesForWatchPath(path);
           eventEmitter.emit("watch-path-processed", { path });
@@ -210,6 +290,7 @@ export const watchFiles = async () => {
       })
       .on("add", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           const dependents = mem.pagesDependentOnFile(path);
           if (dependents.length === 0) return;
           clearBuildScriptCaches(path);
@@ -219,6 +300,7 @@ export const watchFiles = async () => {
       })
       .on("change", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           const dependents = mem.pagesDependentOnFile(path);
           if (dependents.length === 0) return;
           clearBuildScriptCaches(path);
@@ -228,6 +310,7 @@ export const watchFiles = async () => {
       })
       .on("unlink", async (path) => {
         try {
+          invalidateRuntimeModule(path);
           // Rebuilding dependents on unlink is correct: the build script
           // import fails and the error surfaces in the overlay instead of
           // silently serving the last good output.
@@ -266,6 +349,7 @@ export const watchFiles = async () => {
       .on("add", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route add: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "add" });
         } catch (err) {
           onWatchError(err);
@@ -274,6 +358,7 @@ export const watchFiles = async () => {
       .on("change", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route change: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "change" });
         } catch (err) {
           onWatchError(err);
@@ -282,6 +367,7 @@ export const watchFiles = async () => {
       .on("unlink", async (path) => {
         try {
           await apiRouteRegistry.invalidateFile(path);
+          logInfo(`[bascik] api route unlink: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
           eventEmitter.emit("api-route-changed", { path, type: "unlink" });
         } catch (err) {
           onWatchError(err);

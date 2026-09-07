@@ -117,7 +117,8 @@ class MemoryStore {
     // path. Pages without scripts pay only a Buffer `includes` pre-filter.
     // Planner errors are stored, not thrown: in dev the page must still be
     // stored so the overlay can show the error, and in production boot one
-    // bad page must not stop the others from loading.
+    // bad page must not stop the others from loading. Production readiness
+    // validation surfaces stored `{ error }` plans before the socket binds.
     let serverScriptPlan: StoredPage["serverScriptPlan"];
     if (htmlHasServerScripts(buffer)) {
       try {
@@ -329,6 +330,14 @@ class MemoryStore {
       pages.delete(absolutePagePath);
       if (pages.size === 0) this.#failedDependencies.delete(depPath);
     }
+  }
+
+  /**
+   * Every stored page, used by the production boot boundary to validate that
+   * required server-script artifacts resolve before readiness is advertised.
+   */
+  pages(): StoredPage[] {
+    return [...this.#files.values()];
   }
 
   trackOpenPage(httpPath: string): void {

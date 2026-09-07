@@ -26,6 +26,18 @@ describe("cleanStackTrace", () => {
     expect(cleaned).toBe(`Error: Build error\n    at ${realPath}:6:4`);
   });
 
+  it("remaps frames that carry a dev generation query on the module path or file URL", () => {
+    const modulePath = "/project/src/lib/handler.ts";
+    const realPath = "src/pages/index.html";
+    const rawTrace =
+      `Error: gen failure\n` +
+      `    at default (file://${modulePath}?bascik-gen=3:2:9)\n` +
+      `    at default (${modulePath}?bascik-gen=3:4:1)`;
+
+    const cleaned = cleanStackTrace(rawTrace, modulePath, realPath, 40);
+    expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
+  });
+
   it("filters out Command failed lines and node:internal stack frames/code frames", () => {
     const tmpPath = "/project/node_modules/.cache/bascik/build-456.mjs";
     const realPath = "src/pages/cli.html";

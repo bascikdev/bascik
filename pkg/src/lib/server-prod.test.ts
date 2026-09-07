@@ -123,4 +123,86 @@ describe("startProdServer", () => {
     expect(log).toHaveBeenCalledWith("Loaded 1 page from dist/");
     log.mockRestore();
   });
+
+  it("fails startup with an actionable diagnostic when the sidecar is malformed", async () => {
+    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      "{corrupt",
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(startProdServer()).rejects.toThrow(/Failed to load server scripts sidecar/);
+    // A required runtime artifact that cannot be parsed must never bind.
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("fails startup when a present sidecar cannot resolve a placeholder reference", async () => {
+    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(
+      join(workDir, "dist", "index.html"),
+      '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
+    );
+    // A present but entry-less sidecar means no script can back the placeholder.
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      JSON.stringify({ version: "1", schema: 2, scripts: {} }),
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(/unresolvable or stale server-script placeholder/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("fails startup when a placeholder page has no sidecar at all", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(
+      join(workDir, "dist", "index.html"),
+      '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(/sidecar .*is missing/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("fails startup on an incompatible sidecar schema", async () => {
+    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");
+    await writeFile(
+      join(workDir, "dist", ".bascik", "server-scripts.json"),
+      JSON.stringify({ version: "1", schema: 99, scripts: {} }),
+      "utf8",
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(startProdServer()).rejects.toThrow(/schema 99/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("still serves a genuinely static release with no sidecar", async () => {
+    await writeFile(join(workDir, "dist", "index.html"), "<h1>static</h1>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await startProdServer();
+
+    expect(startServerMock).toHaveBeenCalledOnce();
+    // No sidecar exists, but the release is static and stays valid.
+    expect(mem.getPageExact("/")?.content.toString("utf8")).toBe("<h1>static</h1>");
+    log.mockRestore();
+    error.mockRestore();
+  });
 });

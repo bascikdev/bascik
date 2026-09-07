@@ -164,74 +164,6 @@ export const executeApiRoute = async (
   const { filePath, request, params, remoteIp, signal: userSignal, timeoutMs, clock = nativeClock } = options;
   const method = request.method.toUpperCase() as HttpMethod;
 
-  let loadedModule: any;
-  try {
-    const loaded = await scriptRegistry.load(filePath);
-    loadedModule = loaded.module;
-  } catch (err) {
-    console.error("[bascik] Failed to load API route module %s:", filePath, (err as Error).stack ?? String(err));
-    return new Response("Internal Server Error", { status: 500 });
-  }
-
-  // Determine exported methods
-  const exportedMethods: string[] = [];
-  for (const m of ALLOWED_METHODS) {
-    if (typeof loadedModule[m] === "function") {
-      exportedMethods.push(m);
-    }
-  }
-
-  // Calculate Allow header
-  const allowMethodsSet = new Set(exportedMethods);
-  // If GET is exported, HEAD is automatically supported
-  if (allowMethodsSet.has("GET")) {
-    allowMethodsSet.add("HEAD");
-  }
-  // OPTIONS is always supported automatically if not exported
-  allowMethodsSet.add("OPTIONS");
-
-  const sortedAllow = Array.from(allowMethodsSet).sort();
-  const allowHeader = sortedAllow.join(", ");
-
-  // Handle unexported method
-  const isMethodAllowed =
-    typeof loadedModule[method] === "function" ||
-    (method === "HEAD" && typeof loadedModule.GET === "function") ||
-    method === "OPTIONS";
-
-  if (!isMethodAllowed) {
-    return new Response("Method Not Allowed", {
-      status: 405,
-      headers: {
-        Allow: allowHeader,
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-    });
-  }
-
-  // Handle auto-OPTIONS
-  if (method === "OPTIONS" && typeof loadedModule.OPTIONS !== "function") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        Allow: allowHeader,
-      },
-    });
-  }
-
-  // Determine handler to call
-  let targetHandler = loadedModule[method];
-  let isDerivedHead = false;
-  if (method === "HEAD" && typeof loadedModule.HEAD !== "function") {
-    targetHandler = loadedModule.GET;
-    isDerivedHead = true;
-  }
-
-  const context: ApiRouteContext = {
-    params,
-    remoteIp,
-  };
-
   const effectiveTimeout = timeoutMs ?? BascikConfig.http?.apiTimeout ?? 10000;
   const abortController = new AbortController();
 
@@ -256,28 +188,148 @@ export const executeApiRoute = async (
     }, effectiveTimeout);
   }
 
-  try {
-    const handlerPromise = Promise.resolve(
-      targetHandler(request, context, { signal: abortController.signal })
-    );
+  let settled = false;
+  let onAbortListener: (() => void) | undefined;
 
-    let result: unknown;
-    if (effectiveTimeout && effectiveTimeout > 0) {
-      result = await Promise.race([
-        handlerPromise,
-        new Promise<never>((_, reject) => {
-          abortController.signal.addEventListener("abort", () => {
+  try {
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
+    let loadedModule: any;
+    try {
+      const loadPromise = Promise.resolve(scriptRegistry.load(filePath));
+      loadPromise.catch(() => {});
+
+      const abortDuringLoadPromise = new Promise<never>((_, reject) => {
+        if (abortController.signal.aborted) {
+          reject(abortController.signal.reason);
+          return;
+        }
+        onAbortListener = () => {
+          if (!settled) {
             if (didTimeout) {
               reject(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
             } else {
               reject(abortController.signal.reason);
             }
-          }, { once: true });
-        }),
-      ]);
-    } else {
-      result = await handlerPromise;
+          }
+        };
+        abortController.signal.addEventListener("abort", onAbortListener, { once: true });
+      });
+      abortDuringLoadPromise.catch(() => {});
+
+      const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as any;
+      if (onAbortListener) {
+        abortController.signal.removeEventListener("abort", onAbortListener);
+        onAbortListener = undefined;
+      }
+      loadedModule = loaded.module;
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        throw abortController.signal.reason;
+      }
+      console.error("[bascik] Failed to load API route module %s:", filePath, (err as Error).stack ?? String(err));
+      return new Response("Internal Server Error", { status: 500 });
     }
+
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
+    // Determine exported methods
+    const exportedMethods: string[] = [];
+    for (const m of ALLOWED_METHODS) {
+      if (typeof loadedModule[m] === "function") {
+        exportedMethods.push(m);
+      }
+    }
+
+    // Calculate Allow header
+    const allowMethodsSet = new Set(exportedMethods);
+    // If GET is exported, HEAD is automatically supported
+    if (allowMethodsSet.has("GET")) {
+      allowMethodsSet.add("HEAD");
+    }
+    // OPTIONS is always supported automatically if not exported
+    allowMethodsSet.add("OPTIONS");
+
+    const sortedAllow = Array.from(allowMethodsSet).sort();
+    const allowHeader = sortedAllow.join(", ");
+
+    // Handle unexported method
+    const isMethodAllowed =
+      typeof loadedModule[method] === "function" ||
+      (method === "HEAD" && typeof loadedModule.GET === "function") ||
+      method === "OPTIONS";
+
+    if (!isMethodAllowed) {
+      return new Response("Method Not Allowed", {
+        status: 405,
+        headers: {
+          Allow: allowHeader,
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
+    }
+
+    // Handle auto-OPTIONS
+    if (method === "OPTIONS" && typeof loadedModule.OPTIONS !== "function") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          Allow: allowHeader,
+        },
+      });
+    }
+
+    // Determine handler to call
+    let targetHandler = loadedModule[method];
+    let isDerivedHead = false;
+    if (method === "HEAD" && typeof loadedModule.HEAD !== "function") {
+      targetHandler = loadedModule.GET;
+      isDerivedHead = true;
+    }
+
+    const context: ApiRouteContext = {
+      params,
+      remoteIp,
+    };
+
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
+    let handlerPromise: Promise<unknown>;
+    try {
+      handlerPromise = Promise.resolve(
+        targetHandler(request, context, { signal: abortController.signal })
+      );
+    } catch (syncErr) {
+      handlerPromise = Promise.reject(syncErr);
+    }
+    handlerPromise.catch(() => {});
+
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (abortController.signal.aborted) {
+        reject(abortController.signal.reason);
+        return;
+      }
+      onAbortListener = () => {
+        if (!settled) {
+          if (didTimeout) {
+            reject(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
+          } else {
+            reject(abortController.signal.reason);
+          }
+        }
+      };
+      abortController.signal.addEventListener("abort", onAbortListener, { once: true });
+    });
+    abortPromise.catch(() => {});
+
+    const result = await Promise.race([handlerPromise, abortPromise]);
+    settled = true;
 
     if (!(result instanceof Response)) {
       console.error(
@@ -296,6 +348,7 @@ export const executeApiRoute = async (
 
     return result;
   } catch (err) {
+    settled = true;
     if (err instanceof PayloadTooLargeError || (err as any)?.name === "PayloadTooLargeError") {
       return new Response("Payload Too Large", {
         status: 413,
@@ -307,6 +360,13 @@ export const executeApiRoute = async (
     }
 
     if (isNetworkResetError(err)) {
+      return new Response("Client Closed Request", { status: 499 });
+    }
+
+    // Upstream (transport) cancellation is not a handler defect: the client
+    // went away, so the result is a quiet 499 that dispatch never delivers.
+    // Only a deadline is reported as a timeout below.
+    if (!didTimeout && (userSignal?.aborted || abortController.signal.aborted)) {
       return new Response("Client Closed Request", { status: 499 });
     }
 
@@ -323,7 +383,18 @@ export const executeApiRoute = async (
     );
     return new Response("Internal Server Error", { status: 500 });
   } finally {
-    if (timer) clock.clearTimeout(timer);
-    if (upstreamSignalUnsubscribe) upstreamSignalUnsubscribe();
+    settled = true;
+    if (timer) {
+      clock.clearTimeout(timer);
+      timer = undefined;
+    }
+    if (onAbortListener) {
+      abortController.signal.removeEventListener("abort", onAbortListener);
+      onAbortListener = undefined;
+    }
+    if (upstreamSignalUnsubscribe) {
+      upstreamSignalUnsubscribe();
+      upstreamSignalUnsubscribe = undefined;
+    }
   }
 };

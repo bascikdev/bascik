@@ -9,91 +9,219 @@ const gzipAsync = promisify(zlib.gzip);
 export const MAX_CACHED_REPRESENTATION_BYTES = 2 * 1024 * 1024; // 2 MiB per entry limit for memory retention
 export const MAX_COMPRESSED_CACHE_ENTRIES = 200;
 
-// Single-flight in-progress compression operations
-const inFlightCompressions = new Map<string, Promise<Buffer | null>>();
+export type RepresentationEncoding = "identity" | "br" | "gzip";
 
-// Bounded in-memory compressed representation cache
-interface CompressedCacheItem {
+/**
+ * A selected static representation owns its body, strong validator, and
+ * length as one immutable unit. Every field is derived from the same bytes
+ * (`buffer`) that are delivered on the wire, so a response never advertises a
+ * hash or length that describes different content. Prompt 107.
+ */
+export interface StaticRepresentation {
   buffer: Buffer;
-  encoding: "br" | "gzip";
-  mtimeMs: number;
+  encoding: RepresentationEncoding;
+  /** Strong ETag for the exact `buffer` delivered: identity, or `"-br"`/`"-gzip"` suffixed. */
+  etag: string;
+  /** Strong ETag of the raw (identity) bytes this representation derives from. */
+  rawEtag: string;
   size: number;
 }
-const compressedRepresentationCache = new Map<string, CompressedCacheItem>();
 
-export const clearCompressedRepresentationCache = (): void => {
-  inFlightCompressions.clear();
-  compressedRepresentationCache.clear();
+interface ReprCacheItem {
+  representation: StaticRepresentation;
+  /** Raw file size at cache time (invalidation hint). */
+  size: number;
+  /** Raw file mtime at cache time (invalidation hint). */
+  mtimeMs: number;
+}
+
+// Single-flight in-progress representation reads/compressions.
+const inFlightRepresentations = new Map<string, Promise<StaticRepresentation | null>>();
+
+// Bounded in-memory representation cache (raw and encoded shares one store).
+const representationCache = new Map<string, ReprCacheItem>();
+
+/** Clear all cached representations and any in-flight work. */
+export const clearStaticRepresentationCache = (): void => {
+  inFlightRepresentations.clear();
+  representationCache.clear();
 };
 
+// Back-compat alias used by the shutdown lifecycle and prompt 96 tests.
+export const clearCompressedRepresentationCache = clearStaticRepresentationCache;
+
+/** Number of in-progress single-flight representation ops. */
 export const getInFlightCompressionsCount = (): number => {
-  return inFlightCompressions.size;
+  return inFlightRepresentations.size;
 };
 
+/** Number of entries held in the shared bounded representation cache. */
 export const getCompressedCacheEntriesCount = (): number => {
-  return compressedRepresentationCache.size;
+  return representationCache.size;
 };
 
+/**
+ * Load a precompressed sidecar only if its recorded provenance matches the
+ * current raw content identity. Validation happens at representation creation
+ * (the sidecar is decompressed once to prove it is not corrupt), never a
+ * synchronous decompression on every request. Unverified, stale, or corrupt
+ * sidecars return null so the caller falls back to on-the-fly compression.
+ */
+const getVerifiedPrecompressedBytes = async (
+  fullPath: string,
+  encoding: "br" | "gzip",
+  rawEtag: string,
+): Promise<Buffer | null> => {
+  const sidecarPath = `${fullPath}.${encoding}`;
+  const metaPath = `${fullPath}.${encoding}.bmeta`;
+  let sidecar: Buffer;
+  try {
+    sidecar = await readFile(sidecarPath);
+    if (!sidecar || !Buffer.isBuffer(sidecar) || sidecar.length === 0) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  let meta: { rawHash?: string } | undefined;
+  try {
+    meta = JSON.parse(await readFile(metaPath, "utf8")) as { rawHash?: string };
+  } catch {
+    // No provenance sidecar: never serve unverified bytes as current content.
+    return null;
+  }
+  if (!meta || meta.rawHash !== rawEtag) {
+    // Stale provenance: never serve old bytes under the current ETag.
+    return null;
+  }
+  try {
+    // One-time validation at representation creation.
+    if (encoding === "br") {
+      zlib.brotliDecompressSync(sidecar);
+    } else {
+      zlib.gunzipSync(sidecar);
+    }
+  } catch {
+    // Corrupt gzip / Brotli bytes must not be served.
+    return null;
+  }
+  return sidecar;
+};
+
+/**
+ * Acquire a static representation as one immutable owner.
+ *
+ * `encoding` selects the representation to serve. A single file read binds the
+ * body, strong validator, and length together; encoded variants derive from the
+ * identical raw snapshot (never a re-opened path that could have changed in
+ * between). Concurrency is single-flighted per key and memory is bounded by
+ * `MAX_COMPRESSED_CACHE_ENTRIES`.
+ *
+ * `mtimeMs`/`size` are cache-invalidation hints only: the returned
+ * representation's `etag` and `size` always describe its own `buffer`, never
+ * the stat values.
+ *
+ * Returns null if the file is unreadable (caller maps to 404/500).
+ */
+export const getStaticRepresentation = async (
+  fullPath: string,
+  encoding: RepresentationEncoding = "identity",
+  mtimeMs?: number,
+  size?: number,
+): Promise<StaticRepresentation | null> => {
+  const cacheKey = `${fullPath}\0${encoding}`;
+
+  // Bounded cache hit (mirrors prompt 96 reuse/invalidation semantics).
+  const cached = representationCache.get(cacheKey);
+  if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {
+    return cached.representation;
+  }
+
+  const flightKey = `${cacheKey}\0${mtimeMs ?? 0}\0${size ?? 0}`;
+  const existing = inFlightRepresentations.get(flightKey);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = (async (): Promise<StaticRepresentation | null> => {
+    let raw: Buffer;
+    try {
+      const content = await readFile(fullPath);
+      if (!content || !Buffer.isBuffer(content)) return null;
+      raw = content;
+    } catch {
+      return null;
+    }
+    const rawEtag = getContentHashEtag(raw);
+
+    let buffer: Buffer = raw;
+    let reprEncoding: RepresentationEncoding = "identity";
+    let etag = rawEtag;
+
+    if (encoding === "br" || encoding === "gzip") {
+      // Prefer a verified precompressed sidecar bound to these exact raw bytes.
+      const verified = await getVerifiedPrecompressedBytes(fullPath, encoding, rawEtag);
+      if (verified && verified.length > 0) {
+        buffer = verified;
+        reprEncoding = encoding;
+        etag = getEncodedEtag(rawEtag, encoding);
+      } else {
+        const compressed = encoding === "br"
+          ? await brotliCompressAsync(raw)
+          : await gzipAsync(raw);
+        if (!compressed || !Buffer.isBuffer(compressed) || compressed.length === 0) {
+          // Compression unavailable: this asset cannot be served encoded.
+          return null;
+        }
+        buffer = compressed;
+        reprEncoding = encoding;
+        etag = getEncodedEtag(rawEtag, encoding);
+      }
+    }
+
+    const representation: StaticRepresentation = {
+      buffer,
+      encoding: reprEncoding,
+      etag,
+      rawEtag,
+      size: buffer.byteLength,
+    };
+
+    if (buffer.byteLength <= MAX_CACHED_REPRESENTATION_BYTES) {
+      // Bounded FIFO eviction shared by identity and encoded entries.
+      if (representationCache.size >= MAX_COMPRESSED_CACHE_ENTRIES) {
+        const oldestKey = representationCache.keys().next().value;
+        if (oldestKey) representationCache.delete(oldestKey);
+      }
+      representationCache.set(cacheKey, {
+        representation,
+        size: size ?? raw.byteLength,
+        mtimeMs: mtimeMs ?? 0,
+      });
+    }
+
+    return representation;
+  })().finally(() => {
+    inFlightRepresentations.delete(flightKey);
+  });
+
+  inFlightRepresentations.set(flightKey, promise);
+  return promise;
+};
+
+/**
+ * Prompt 96 compatibility wrapper: returns just the compressed Buffer for the
+ * negotiated encoding, backed by the shared single-flight owner so there is
+ * exactly one compression cache, not a second one.
+ */
 export const getCompressedStaticAsset = async (
   fullPath: string,
   mtimeMs: number,
   size: number,
   encoding: "br" | "gzip"
 ): Promise<Buffer | null> => {
-  const cacheKey = `${fullPath}:${encoding}`;
-
-  // 1. Check existing cached buffer if mtime and size match
-  const cached = compressedRepresentationCache.get(cacheKey);
-  if (cached && cached.mtimeMs === mtimeMs && cached.size === size) {
-    return cached.buffer;
-  }
-
-  // 2. Check if a single-flight compression is already in progress
-  const flightKey = `${cacheKey}:${mtimeMs}:${size}`;
-  const existingFlight = inFlightCompressions.get(flightKey);
-  if (existingFlight) {
-    return existingFlight;
-  }
-
-  // 3. Initiate single-flight async compression
-  const compressionPromise = (async (): Promise<Buffer | null> => {
-    try {
-      const raw = await readFile(fullPath);
-      if (!raw || !Buffer.isBuffer(raw) || raw.length === 0) {
-        return null;
-      }
-
-      const compressed = encoding === "br"
-        ? await brotliCompressAsync(raw)
-        : await gzipAsync(raw);
-
-      if (compressed && Buffer.isBuffer(compressed) && compressed.length > 0) {
-        // Only retain in memory if under per-item size threshold
-        if (compressed.byteLength <= MAX_CACHED_REPRESENTATION_BYTES) {
-          // Bounded cache eviction (LRU / FIFO eviction if full)
-          if (compressedRepresentationCache.size >= MAX_COMPRESSED_CACHE_ENTRIES) {
-            const oldestKey = compressedRepresentationCache.keys().next().value;
-            if (oldestKey) compressedRepresentationCache.delete(oldestKey);
-          }
-          compressedRepresentationCache.set(cacheKey, {
-            buffer: compressed,
-            encoding,
-            mtimeMs,
-            size,
-          });
-        }
-        return compressed;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  })().finally(() => {
-    inFlightCompressions.delete(flightKey);
-  });
-
-  inFlightCompressions.set(flightKey, compressionPromise);
-  return compressionPromise;
+  const repr = await getStaticRepresentation(fullPath, encoding, mtimeMs, size);
+  return repr ? repr.buffer : null;
 };
 
 export interface StaticCacheEntry {

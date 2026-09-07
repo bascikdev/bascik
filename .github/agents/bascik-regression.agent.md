@@ -1,7 +1,7 @@
 ---
 name: Bascik Regression Guardian
 description: "Regression detection agent for Bascik. Use to verify that live docs sites, dev servers, production HTTP/1.1 and HTTP/2 servers, asset pipelines, and client scripts continue functioning without regressions."
-model: ['DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 Contributor (openrouter)', 'Google: Gemini 3.8 Flash (batch) (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
+model: ['Google: Gemini 3.8 Flash (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'OpenAI: GPT-5.6 Sol (openrouter)']
 user-invocable: true
 argument-hint: "Check for regressions in docs site, servers, or build output..."
 ---

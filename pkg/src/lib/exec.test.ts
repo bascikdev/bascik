@@ -152,6 +152,104 @@ describe("startExecParallel", () => {
     startExecParallel();
     expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
+
+  it("exposes one task per parallel entry so dev can observe each outcome individually", async () => {
+    cfg.pipeline.exec = [
+      { script: "scripts/par1.ts", phase: "parallel" },
+      { script: "scripts/pre.ts", phase: "pre" },
+      { script: "scripts/par2.ts", phase: "parallel" },
+    ];
+
+    const handle = startExecParallel();
+    expect(handle.tasks.map((task) => task.entry.script)).toEqual(["scripts/par1.ts", "scripts/par2.ts"]);
+    // The joined promise still resolves for the build branch's awaited join.
+    await expect(handle).resolves.toBeUndefined();
+    await expect(Promise.all(handle.tasks.map((task) => task.promise))).resolves.toHaveLength(2);
+  });
+
+  it("returns an empty task list and a resolved join when no parallel entries exist", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/pre.ts", phase: "pre" }];
+    const handle = startExecParallel();
+    expect(handle.tasks).toEqual([]);
+    await expect(handle).resolves.toBeUndefined();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
+  it("emits exec-completed for each settled parallel task without awaiting the join first", async () => {
+    cfg.pipeline.exec = [
+      { script: "scripts/par1.ts", phase: "parallel" },
+      { script: "scripts/par2.ts", phase: "parallel" },
+    ];
+    const handle = startExecParallel();
+    // Both children were spawned before either settled: unrelated parallel
+    // entries stay concurrent.
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+    await startExecDev({ parallel: handle });
+    await handle;
+    await Promise.resolve();
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({
+        entry: { script: "scripts/par1.ts", phase: "parallel" },
+        paths: ["scripts/par1.ts"],
+      }),
+    );
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({
+        entry: { script: "scripts/par2.ts", phase: "parallel" },
+        paths: ["scripts/par2.ts"],
+      }),
+    );
+    const completed = mockEventEmit.mock.calls.filter(([name]) => name === "exec-completed");
+    expect(completed).toHaveLength(2);
+    // Registration does not rerun the already-started parallel work.
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("emits exec-failed (and never exec-completed) when a parallel task rejects, without throwing", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    const handle = startExecParallel();
+    await expect(startExecDev({ parallel: handle })).resolves.toBeUndefined();
+    await handle.catch(() => { });
+    await Promise.resolve();
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-failed",
+      expect.objectContaining({
+        entry: { script: "scripts/fail.ts", phase: "parallel" },
+        paths: ["scripts/fail.ts"],
+        error: expect.any(Error),
+      }),
+    );
+    expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
+    // One failure prints exactly one stderr line; exec-failed only feeds the
+    // SSE build-error overlay, which does not log.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] exec error:", expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
+  it("publishes parallel outcomes even when no watched entries exist", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/par1.ts", phase: "parallel" }];
+    const handle = startExecParallel();
+    await startExecDev({ parallel: handle });
+    await handle;
+    await Promise.resolve();
+
+    expect(mockWatch).not.toHaveBeenCalled();
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ paths: ["scripts/par1.ts"] }),
+    );
+  });
 });
 
 describe("startExecDev", () => {
@@ -162,10 +260,12 @@ describe("startExecDev", () => {
     expect(mockWatch).not.toHaveBeenCalled();
   });
 
-  it("lazy-loads chokidar and starts watched scripts", async () => {
+  it("lazy-loads chokidar and registers watchers without re-running completed pre work", async () => {
     cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/"] }];
     await startExecDev();
-    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    // Startup execution is owned by the phase runner; registration must not
+    // rerun already-completed pre/parallel/post work (prompt 109).
+    expect(mockSpawn).toHaveBeenCalledTimes(0);
     expect(mockWatch).toHaveBeenCalledTimes(1);
   });
 
@@ -177,10 +277,28 @@ describe("startExecDev", () => {
     watcher.handlers.all("change", "content/doc.md");
     await new Promise((r) => setTimeout(r, 70));
 
-    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
     expect(mockEventEmit).toHaveBeenCalledWith(
       "exec-completed",
-      expect.objectContaining({ path: "content/doc.md" }),
+      expect.objectContaining({
+        entry: { script: "scripts/gen.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
+    );
+  });
+
+  it("re-runs the producer when the watch entry is a file glob such as content/*.md", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/*.md"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "content/doc.md");
+    await new Promise((r) => setTimeout(r, 70));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ paths: ["content/doc.md"] }),
     );
   });
 
@@ -236,7 +354,8 @@ describe("startExecDev", () => {
     watcher.handlers.all();
     await new Promise((r) => setTimeout(r, 70));
 
-    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    // No startup run; the three rapid triggers coalesce into a single run.
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
   it("coordinates watched exec triggers with dependent page transpile before emitting reload", async () => {
@@ -252,8 +371,45 @@ describe("startExecDev", () => {
     // Must emit coordinated event or coordinate with processing pipeline
     expect(mockEventEmit).toHaveBeenCalledWith(
       "exec-completed",
-      expect.objectContaining({ path: "content/doc.md" }),
+      expect.objectContaining({
+        entry: { script: "scripts/gen.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
     );
+  });
+
+  it("emits exec-failed with a located error when a watched producer exits non-zero", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", watch: ["content/"] }];
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await startExecDev();
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "content/doc.md");
+    await new Promise((r) => setTimeout(r, 70));
+
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-failed",
+      expect.objectContaining({
+        entry: { script: "scripts/fail.ts", watch: ["content/"] },
+        paths: ["content/doc.md"],
+      }),
+    );
+    expect(errorSpy).toHaveBeenCalledWith('[bascik] exec error:', expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
+  it("ignores its own script path so a producer does not self-trigger (cyclic self-watch)", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["scripts/"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "scripts/gen.ts");
+    await new Promise((r) => setTimeout(r, 70));
+
+    // The producer's own path is filtered out before the debounced run.
+    expect(mockSpawn).toHaveBeenCalledTimes(0);
+    expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
   });
 });
 

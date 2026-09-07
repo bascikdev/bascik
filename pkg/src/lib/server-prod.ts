@@ -23,7 +23,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, extname, relative, resolve } from "node:path";
 import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
-import { serverSidecarRegistry } from "./server-sidecar.ts";
+import { serverSidecarRegistry, type SidecarLoadResult } from "./server-sidecar.ts";
+import { setServerHealthState } from "./server-lifecycle.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -45,7 +46,7 @@ const collectHtmlFiles = async (dir: string): Promise<string[]> => {
 /**
  * Read every HTML page from output directory and store it in the in-memory page store
  * so the HTTP/2 server can serve them. The same memory store and server used
- * for dev mode is reused here — no second server implementation needed.
+ * for dev mode is reused here, so no second server implementation is needed.
  */
 const loadDistIntoMemory = async (): Promise<void> => {
   const distDir = resolve(BascikConfig.directory.out);
@@ -75,10 +76,18 @@ const loadDistIntoMemory = async (): Promise<void> => {
   // would record an "unresolvable placeholder" error on every server-script
   // page.
   const sidecarPath = join(distDir, ".bascik", "server-scripts.json");
+  // Three distinct sidecar states. A missing file is an optional sidecar: a
+  // genuinely static release with no server scripts is valid, so it does NOT
+  // fail startup and does not trigger placeholder validation. A present but
+  // malformed, schema-incompatible, or stale sidecar is a required-runtime
+  // artifact defect: loadSidecar throws an actionable diagnostic and startup
+  // aborts before any socket binds.
+  let sidecarResult: SidecarLoadResult;
   try {
-    await serverSidecarRegistry.loadSidecar(sidecarPath);
-  } catch {
-    // Sidecar may not exist if no pages used server scripts
+    sidecarResult = await serverSidecarRegistry.loadSidecar(sidecarPath);
+  } catch (sidecarErr) {
+    setServerHealthState("booting");
+    throw sidecarErr;
   }
 
   // Bounded concurrency during production boot to avoid EMFILE on large sites
@@ -108,17 +117,53 @@ const loadDistIntoMemory = async (): Promise<void> => {
     );
   }
 
+  // ── Production readiness boundary (prompt 108) ─────────────────────────
+  // Once every page is stored, confirm that every server-script plan resolved
+  // before advertising readiness. Each stored page carries a precomputed
+  // serverScriptPlan; a `{ error }` plan (unresolvable placeholder ID, stale
+  // mode marker, conflicting directive) proves this release's required runtime
+  // artifacts cannot be resolved. This runs regardless of sidecar presence: a
+  // placeholder page with no sidecar would 500 on every request, so a missing
+  // sidecar is only optional when no page references a server script. A
+  // genuinely static release (no sidecar AND no placeholders) passes.
+  const failedPages = mem.pages().filter(
+    (page) => page.serverScriptPlan && "error" in page.serverScriptPlan,
+  );
+  if (failedPages.length > 0) {
+    const first = failedPages[0].serverScriptPlan as { error: Error };
+    const sidecarState = sidecarResult.present
+      ? `while ${outDirRel}/.bascik/server-scripts.json is present`
+      : `and the sidecar ${outDirRel}/.bascik/server-scripts.json is missing`;
+    setServerHealthState("booting");
+    throw new Error(
+      `[bascik] --server: production startup validation failed. ` +
+      `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
+      `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
+      `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
+    );
+  }
+
   console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`);
 };
 
 /**
  * Entry point for `bascik --server`.
  * Loads output directory into memory and starts the shared HTTP server.
+ * If validation fails, startup rejects before binding so a broken release is
+ * never advertised as ready; readiness state is reset to "booting" on failure.
  */
 export const startProdServer = async (): Promise<string> => {
-  await loadDistIntoMemory();
   const { startServer } = await import("./server.ts");
-  const url = await startServer();
-  if (url) console.log(`Server running at ${url}`);
-  return url;
+  try {
+    await loadDistIntoMemory();
+    const url = await startServer();
+    if (url) console.log(`Server running at ${url}`);
+    return url;
+  } catch (err) {
+    // The shared core flips "booting" -> "ready" when the socket binds. If
+    // validation (or binding) fails, reset so a later probe cannot observe a
+    // stale ready state and failure cleanup is explicit.
+    setServerHealthState("booting");
+    throw err;
+  }
 };

@@ -26,6 +26,8 @@ const devServerTestIgnore = [
   // http.httpCache defaults to false in dev, so ETags/304s are intentionally
   // absent. This suite only runs against playwright.server*.config.ts.
   '**/caching-layer.test.ts',
+  // Dev-exec lifecycle runs against its own exec-fixture config.
+  '**/dev-exec-lifecycle.test.ts',
 ];
 
 export default defineConfig({

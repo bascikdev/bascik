@@ -1,0 +1,9 @@
+# Runtime exec-producer state (generation counter and gate arm) written by
+# scripts/generator.mjs during E2E runs. Not source; regenerated each run.
+scripts/.generation
+scripts/.armed-gate
+
+# Local dev server artifacts are already ignored repo-wide (dist, node_modules),
+# kept here for explicitness.
+dist/
+node_modules/

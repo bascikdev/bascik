@@ -53,7 +53,7 @@ pipeline: {
 
 ### Overlapping Paths & Deduplication
 
-Listing a directory in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. Bascik's watch coordinator debounces filesystem events, executes associated lifecycle scripts first, re-transpiles affected pages, and sends exactly one coordinated SSE reload message to connected browsers.
+Listing a directory in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. When a matching file changes, the exec producer runs first. Only after the producer completes are the affected pages re-transpiled, so a page never compiles against a previous generation of a produced output. Every changed path in a batch is retained (not just the last filename), and the browser receives exactly one coordinated SSE reload for the finished generation.
 
 ## How It Works in Development
 
@@ -61,8 +61,9 @@ When you run `bascik` or `npm run dev`:
 
 1. **Watcher Initialization:** Bascik initializes Chokidar file watchers across pages, components, the import root, and all configured `watchPaths`.
 2. **Change Detection:** When an external file changes, Bascik determines whether any build script or template depends on it.
-3. **Cache Invalidation:** Build scripts importing or reading the modified path have their script cache invalidated.
-4. **Selective Re-Transpile:** Only affected pages are re-rendered.
-5. **Instant Live Reload:** An SSE generation signal is pushed to the browser client, refreshing the tab seamlessly without full server restarts.
+3. **Producer First:** If the path is covered by an exec producer's `watch` globs, the producer executes and completes before any page re-transpiles.
+4. **Cache Invalidation:** Build scripts importing or reading the modified path (or a producer's regenerated output) have their script cache invalidated.
+5. **Selective Re-Transpile:** Only affected pages are re-rendered, against the freshly produced output.
+6. **Instant Live Reload:** An SSE generation signal is pushed to the browser client once, refreshing the tab seamlessly without full server restarts.
 
 > **Testing and Verifying:** To test watch paths locally, start `npx bascik`, edit a watched Markdown or JSON file in another terminal, and observe the re-transpile log in the server console.

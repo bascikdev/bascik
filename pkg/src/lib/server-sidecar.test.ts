@@ -14,7 +14,7 @@ import {
 } from "./server-sidecar.ts";
 import { htmlHasServerScripts, executeServerScripts } from "./server-scripts.ts";
 import { BascikConfig } from "./config.ts";
-import { rm, mkdir, readFile } from "node:fs/promises";
+import { rm, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -159,5 +159,153 @@ export default function() { throw new Error('component sidecar failure'); }
       script_1: { id: "script_1", mode: "server", source: "console.log('from_worker');" },
     });
     expect(serverSidecarRegistry.getScript("script_1")?.source).toBe("console.log('from_worker');");
+  });
+});
+
+describe("loadSidecar production readiness distinctions", () => {
+  const outDir = () => join(tmpdir(), `bascik-sidecar-readiness-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+  beforeEach(() => {
+    serverSidecarRegistry.clear();
+  });
+
+  it("treats a missing optional sidecar as a valid static release", async () => {
+    const dir = outDir();
+    await mkdir(dir, { recursive: true });
+    try {
+      const result = await serverSidecarRegistry.loadSidecar(join(dir, ".bascik", "server-scripts.json"));
+      expect(result).toEqual({ present: false, scripts: {} });
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a present sidecar with a valid empty scripts map", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(path, JSON.stringify({ version: "1", schema: 2, scripts: {} }), "utf8");
+      const result = await serverSidecarRegistry.loadSidecar(path);
+      expect(result.present).toBe(true);
+      expect(result.scripts).toEqual({});
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts valid buffered (server) and streamed (stream) entries", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(
+        path,
+        JSON.stringify({
+          version: "1",
+          schema: 2,
+          scripts: {
+            buf: { id: "buf", mode: "server", source: "return 1" },
+            strm: { id: "strm", mode: "stream", source: "return 2", sourceFile: "src/pages/x.html", sourceLine: 3 },
+          },
+        }),
+        "utf8",
+      );
+      const result = await serverSidecarRegistry.loadSidecar(path);
+      expect(result.present).toBe(true);
+      expect(serverSidecarRegistry.getScript("buf")?.mode).toBe("server");
+      expect(serverSidecarRegistry.getScript("strm")).toMatchObject({ mode: "stream", sourceLine: 3 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed JSON with an actionable diagnostic", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(path, "{corrupt", "utf8");
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(
+        /Failed to load server scripts sidecar/,
+      );
+      expect(serverSidecarRegistry.isSidecarPresent()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an incompatible schema version", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(path, JSON.stringify({ version: "1", schema: 99, scripts: {} }), "utf8");
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(/schema 99/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a missing mode on an entry", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(
+        path,
+        JSON.stringify({ version: "1", schema: 2, scripts: { a: { id: "a", source: "return 1" } } }),
+        "utf8",
+      );
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(/has no mode/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a wrong mode value", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(
+        path,
+        JSON.stringify({ version: "1", schema: 2, scripts: { a: { id: "a", mode: "build", source: "return 1" } } }),
+        "utf8",
+      );
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(/has no mode/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a null/malformed entry", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(
+        path,
+        JSON.stringify({ version: "1", schema: 2, scripts: { a: null } }),
+        "utf8",
+      );
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(/null or malformed entry "a"/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a malformed scripts member", async () => {
+    const dir = outDir();
+    await mkdir(join(dir, ".bascik"), { recursive: true });
+    try {
+      const path = join(dir, ".bascik", "server-scripts.json");
+      await writeFile(path, JSON.stringify({ version: "1", schema: 2, scripts: [1, 2] }), "utf8");
+      await expect(serverSidecarRegistry.loadSidecar(path)).rejects.toThrow(/malformed "scripts" member/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

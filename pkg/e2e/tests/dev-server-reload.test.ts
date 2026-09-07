@@ -832,6 +832,47 @@ test.describe('Dev Server Request-Time Scripts (data-bascik-server)', () => {
   });
 });
 
+test.describe('Dev Server API Route Module Reload (prompt 112)', () => {
+  const apiRoutePath = join(e2eDir, 'src/api/health.ts');
+  let originalHealthRoute: string;
+
+  test.beforeAll(async () => {
+    originalHealthRoute = await readFile(apiRoutePath, 'utf8');
+  });
+
+  test.afterEach(async () => {
+    if (await restoreFileIfChanged(apiRoutePath, originalHealthRoute)) {
+      // Wait until the restored module is served again so the next suite never
+      // observes this test's edit. Event-driven: polls the live route.
+      await expect.poll(async () => {
+        const res = await fetch('http://localhost:9443/api/health');
+        return (await res.json()).status;
+      }, { timeout: 15000 }).toBe('healthy');
+    }
+  });
+
+  test('serves the edited API route handler on the next request without a restart', async ({ request }) => {
+    const before = await request.get('/api/health');
+    expect(before.status()).toBe(200);
+    expect((await before.json()).status).toBe('healthy');
+
+    const marker = `reloaded-${Date.now()}`;
+    await writeFile(
+      apiRoutePath,
+      originalHealthRoute.replace('status: "healthy"', `status: "${marker}"`),
+      'utf8',
+    );
+
+    // The watcher debounces the write and invalidates the module identity; the
+    // next request after invalidation must load the new code. Polling the
+    // route is the observable boundary a developer sees.
+    await expect.poll(async () => {
+      const res = await request.get('/api/health');
+      return (await res.json()).status;
+    }, { timeout: 15000 }).toBe(marker);
+  });
+});
+
 test.describe('Dev Server Startup Output', () => {
   test('startup logs do not contain duplicate transpiled page entries or duplicate completion summaries', async () => {
     const entryPath = join(pkgDir, 'bin/bascik.js');

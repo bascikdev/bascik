@@ -1,6 +1,5 @@
 import { stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { createReadStream } from "node:fs";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
@@ -17,18 +16,15 @@ import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
 import {
-  getContentHashEtag,
   getEncodedEtag,
   resolveCacheControl,
   negotiateCompression,
   matchesIfNoneMatch,
-  getCompressedStaticAsset,
+  getStaticRepresentation,
   clearCompressedRepresentationCache,
   isCompressibleMime,
-  STATIC_CACHE_METADATA,
   COMPRESSION_MIN_BYTES,
 } from "./caching.ts";
-import { readFile } from "node:fs/promises";
 
 import {
   RateLimiter,
@@ -375,39 +371,34 @@ export const createRequestHandler = () => {
           return;
         }
 
-        let cached = STATIC_CACHE_METADATA.get(fullPath);
-        if (!cached || cached.mtimeMs !== fileStat.mtimeMs || cached.size !== fileStat.size) {
-          // Compute the content-hash ETag once, before the first response is
-          // sent. A background-computed hash would still let the very first
-          // request on every fresh process (every restart, every replica)
-          // serve a non-deterministic mtime-derived ETag, the exact bug this
-          // cache exists to fix.
-          let etag: string;
-          try {
-            const rawContent = await readFile(fullPath);
-            etag = getContentHashEtag(rawContent);
-          } catch {
-            // File vanished or became unreadable between stat() and read();
-            // fall back rather than fail the whole request over an ETag.
-            etag = `"${fileStat.mtimeMs}-${fileStat.size}"`;
-          }
-          cached = {
-            etag,
-            size: fileStat.size,
-            mtimeMs: fileStat.mtimeMs,
-          };
-          STATIC_CACHE_METADATA.set(fullPath, cached);
-        }
-
-        const rawEtag = cached.etag;
         const mimeType = MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
         const cacheControlVal = BascikConfig.http.httpCache !== false
           ? resolveCacheControl(ext.toLowerCase(), BascikConfig.http.cacheControl)
           : "no-store";
 
+        // Negotiate the representation before validators, headers, or body so
+        // every field describes the one selected representation (prompt 95).
         const enableCompression = BascikConfig.http.compression !== false && isCompressibleMime(mimeType, ext.toLowerCase()) && fileStat.size >= COMPRESSION_MIN_BYTES;
         const negotiatedEncoding = enableCompression ? negotiateCompression(req.headers["accept-encoding"]) : "identity";
-        const effectiveEtag = negotiatedEncoding !== "identity" ? getEncodedEtag(rawEtag, negotiatedEncoding) : rawEtag;
+
+        // Acquire the selected representation as one immutable owner.
+        // `fileStat` is only a cache-invalidation hint; `etag`, `size`, and
+        // `buffer` all derive from the same bytes delivered (prompt 107).
+        const representation = negotiatedEncoding === "identity"
+          ? await getStaticRepresentation(fullPath, "identity", fileStat.mtimeMs, fileStat.size)
+          : (await getStaticRepresentation(fullPath, negotiatedEncoding, fileStat.mtimeMs, fileStat.size))
+            ?? await getStaticRepresentation(fullPath, "identity", fileStat.mtimeMs, fileStat.size);
+
+        if (!representation) {
+          if (res.destroyed) return;
+          responseStatus = 404;
+          res.respond(404, { ...secHeaders });
+          res.end("Not Found");
+          return;
+        }
+
+        const rawEtag = representation.rawEtag;
+        const effectiveEtag = representation.etag;
 
         // Conditional GET (304)
         if (BascikConfig.http.httpCache !== false && matchesIfNoneMatch(req.headers["if-none-match"], effectiveEtag, rawEtag)) {
@@ -427,6 +418,7 @@ export const createRequestHandler = () => {
           "content-type": mimeType,
           "cache-control": cacheControlVal,
           "vary": "Accept-Encoding",
+          "content-length": representation.size,
           ...secHeaders,
         };
 
@@ -434,79 +426,19 @@ export const createRequestHandler = () => {
           staticHeaders["etag"] = effectiveEtag;
         }
 
-        if (isHead) {
-          responseStatus = 200;
-          staticHeaders["content-length"] = fileStat.size;
-          res.respond(200, staticHeaders);
-          res.end();
+        if (representation.encoding !== "identity" && effectiveEtag !== rawEtag) {
+          staticHeaders["content-encoding"] = representation.encoding;
+        }
+
+        // The client may have disconnected while the representation was
+        // acquired; never commit headers or a body to a destroyed stream.
+        if (res.destroyed) {
           return;
         }
 
-        // Check for pre-compressed sidecars (.br / .gz) or compress asynchronously on the fly
-        let compressedBuffer: Buffer | null = null;
-        let compressedEncoding: string | undefined = undefined;
-
-        if (negotiatedEncoding === "br") {
-          try {
-            const sidecar = await readFile(`${fullPath}.br`);
-            if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
-              compressedBuffer = sidecar;
-              compressedEncoding = "br";
-            }
-          } catch { }
-        } else if (negotiatedEncoding === "gzip") {
-          try {
-            const sidecar = await readFile(`${fullPath}.gz`);
-            if (sidecar && Buffer.isBuffer(sidecar) && sidecar.length > 0) {
-              compressedBuffer = sidecar;
-              compressedEncoding = "gzip";
-            }
-          } catch { }
-        }
-
-        if (!compressedBuffer && enableCompression && (negotiatedEncoding === "br" || negotiatedEncoding === "gzip")) {
-          compressedBuffer = await getCompressedStaticAsset(
-            fullPath,
-            fileStat.mtimeMs,
-            fileStat.size,
-            negotiatedEncoding
-          );
-          if (compressedBuffer) {
-            compressedEncoding = negotiatedEncoding;
-          }
-        }
-
-        if (compressedBuffer && compressedEncoding) {
-          staticHeaders["content-encoding"] = compressedEncoding;
-          staticHeaders["content-length"] = compressedBuffer.byteLength;
-          responseStatus = 200;
-          res.respond(200, staticHeaders);
-          return res.end(compressedBuffer);
-        }
-
-        staticHeaders["content-length"] = fileStat.size;
-
-        const fileStream = createReadStream(fullPath);
-
-        fileStream.on("error", (err) => {
-          if (res.destroyed) return;
-          if (res.headersSent) {
-            res.close(2); // NGHTTP2_INTERNAL_ERROR equivalent
-            return;
-          }
-          responseStatus = (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
-          res.respond(responseStatus, { ...secHeaders });
-          res.end(responseStatus === 404 ? "Not Found" : "Internal Server Error");
-        });
-
-        fileStream.on("open", () => {
-          if (res.destroyed) { fileStream.destroy(); return; }
-          responseStatus = 200;
-          res.respond(200, staticHeaders);
-          fileStream.pipe(res.writable);
-        });
-
-        return;
+        responseStatus = 200;
+        res.respond(200, staticHeaders);
+        return res.end(isHead ? undefined : representation.buffer);
       }
 
       // Normalize pathname for page lookup (e.g. /about.html -> /about, /index.html -> /)

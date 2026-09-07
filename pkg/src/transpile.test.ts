@@ -8,10 +8,40 @@ const {
   _mockStartServer,
   _mockRm,
   _callOrder,
+  _parallel,
 } = vi.hoisted(() => {
   const _callOrder: string[] = [];
+  // The parallel phase is modeled as work that is still running when the
+  // phase runner returns. Its handle settles when the test releases it, so
+  // the call order can tell an awaited join apart from a non-awaited start:
+  // an implementation that awaits the handle cannot reach `startServer` until
+  // "startExecParallel:settled" has been recorded.
+  const _parallel: {
+    release: () => void;
+    settled: Promise<void>;
+    handle: Promise<void> & { tasks: unknown[] };
+    reset: () => void;
+  } = {
+    release: () => { },
+    settled: Promise.resolve(),
+    handle: Object.assign(Promise.resolve(), { tasks: [] as unknown[] }),
+    reset: () => { },
+  };
+  _parallel.reset = () => {
+    let resolveSettled: () => void = () => { };
+    const joined = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
+    });
+    _parallel.handle = Object.assign(joined, { tasks: [] as unknown[] });
+    _parallel.settled = joined.then(() => {
+      _callOrder.push("startExecParallel:settled");
+    });
+    _parallel.release = resolveSettled;
+  };
+  _parallel.reset();
   return {
     _callOrder,
+    _parallel,
     _mockWatchFiles: vi.fn().mockImplementation(async () => {
       _callOrder.push("watchFiles");
     }),
@@ -21,6 +51,7 @@ const {
     }),
     _mockStartExecParallel: vi.fn().mockImplementation(() => {
       _callOrder.push("startExecParallel");
+      return _parallel.handle;
     }),
     _mockStartExecDev: vi.fn().mockImplementation(async () => {
       _callOrder.push("startExecDev");
@@ -63,14 +94,16 @@ vi.mock("./lib/mem.js", () => ({
   mem: { setBootingDone: vi.fn() },
 }));
 
-vi.mock("./lib/events.js", () => ({
-  eventEmitter: { emit: vi.fn() },
-}));
+vi.mock("./lib/events.js", async () => {
+  const { EventEmitter } = await import("node:events");
+  return { eventEmitter: new EventEmitter() };
+});
 
 vi.mock("./lib/config.js", () => ({
   BascikConfig: {
     isBuild: false,
     directory: { out: "dist" },
+    pipeline: { exec: undefined },
   },
 }));
 
@@ -83,13 +116,20 @@ describe("runTranspile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _callOrder.length = 0;
+    _parallel.reset();
     (BascikConfig as any).directory.out = "dist";
   });
 
-  it("runs build pipeline with pre -> watchFiles -> post order and logs complete timing", async () => {
+  it("runs build pipeline with pre -> parallel (joined) -> watchFiles -> post order and logs complete timing", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = true;
-    await runTranspile();
+    // A one-shot build must join the parallel phase before writing dist/, so
+    // the handle is released only once watchFiles would otherwise be reached.
+    const run = runTranspile();
+    await Promise.resolve();
+    expect(_mockWatchFiles).not.toHaveBeenCalled();
+    _parallel.release();
+    await run;
 
     expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
     expect(_mockStartExecParallel).toHaveBeenCalled();
@@ -97,11 +137,12 @@ describe("runTranspile", () => {
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
     expect(_mockStartExecDev).not.toHaveBeenCalled();
 
-    // Verify ordering: pre -> watchFiles -> post
+    // Verify ordering: pre -> parallel joined -> watchFiles -> post
     expect(_callOrder).toEqual([
       "cleanOutput",
       "runExecPhase:pre",
       "startExecParallel",
+      "startExecParallel:settled",
       "watchFiles",
       "runExecPhase:post",
     ]);
@@ -112,8 +153,21 @@ describe("runTranspile", () => {
 
   it("runs dev pipeline awaiting pre exec BEFORE watchFiles, then post after watchFiles", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    const emitSpy = vi.spyOn(eventEmitter, "emit");
     (BascikConfig as any).isBuild = false;
+    // The parallel handle stays pending until the server has bound. An
+    // implementation that awaits the join before `startServer` never gets
+    // there, so a bounded fallback releases the handle and lets the ordering
+    // assertion below report the defect instead of hanging the test.
+    const fallback = setTimeout(() => _parallel.release(), 1000);
+    _mockStartServer.mockImplementationOnce(async () => {
+      _callOrder.push("startServer");
+      _parallel.release();
+      return "http://localhost:8080";
+    });
     await runTranspile();
+    await _parallel.settled;
+    clearTimeout(fallback);
 
     expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
     expect(_mockStartExecParallel).toHaveBeenCalled();
@@ -122,7 +176,8 @@ describe("runTranspile", () => {
     expect(_mockWatchFiles).toHaveBeenCalled();
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
     expect(mem.setBootingDone).toHaveBeenCalledOnce();
-    expect(eventEmitter.emit).toHaveBeenCalledWith("boot-done");
+    expect(emitSpy).toHaveBeenCalledWith("boot-done");
+    emitSpy.mockRestore();
 
     // Regression check: pre exec is awaited BEFORE watchFiles in dev mode
     const preIndex = _callOrder.indexOf("runExecPhase:pre");
@@ -132,7 +187,14 @@ describe("runTranspile", () => {
     expect(preIndex).toBeGreaterThanOrEqual(0);
     expect(watchIndex).toBeGreaterThan(preIndex);
     expect(postIndex).toBeGreaterThan(watchIndex);
-    expect(_callOrder).toEqual([
+
+    // Dev does NOT join the parallel phase before binding the server: the
+    // parallel work settles only after `startServer` was reached.
+    const serverIndex = _callOrder.indexOf("startServer");
+    const parallelSettledIndex = _callOrder.indexOf("startExecParallel:settled");
+    expect(serverIndex).toBeGreaterThanOrEqual(0);
+    expect(parallelSettledIndex).toBeGreaterThan(serverIndex);
+    expect(_callOrder.filter((step) => step !== "startExecParallel:settled")).toEqual([
       "cleanOutput",
       "runExecPhase:pre",
       "startExecParallel",
@@ -141,6 +203,12 @@ describe("runTranspile", () => {
       "watchFiles",
       "runExecPhase:post",
     ]);
+
+    // The retained handle is handed to the dev lifecycle owner so each
+    // parallel outcome is published through the exec coordinator.
+    expect(_mockStartExecDev).toHaveBeenCalledWith(
+      expect.objectContaining({ parallel: _parallel.handle }),
+    );
 
     expect(logSpy).toHaveBeenNthCalledWith(1, expect.stringMatching(/✓ All tasks completed in (?:[<]?[\d.]+(?:ms|s))/));
     expect(logSpy).toHaveBeenNthCalledWith(2, "Server running at http://localhost:8080");
@@ -152,6 +220,8 @@ describe("runTranspile", () => {
 
     for (const isBuild of [false, true]) {
       _callOrder.length = 0;
+      _parallel.reset();
+      _parallel.release();
       (BascikConfig as any).isBuild = isBuild;
       await runTranspile();
 
@@ -173,6 +243,7 @@ describe("runTranspile", () => {
 
   it("handles server startup error gracefully when exitOnError is false", async () => {
     (BascikConfig as any).isBuild = false;
+    _parallel.release();
     _mockStartServer.mockRejectedValueOnce(new Error("Port in use"));
 
     await expect(runTranspile({ exitOnError: false })).rejects.toThrow("Port in use");
