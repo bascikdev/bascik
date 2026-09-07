@@ -80,6 +80,7 @@ Every stored page is also gzip-compressed in the background (`Z_BEST_SPEED` in d
 ### Error page handling
 
 Custom 404 and 500 error pages are supported by filesystem convention:
+
 - `/404`: Rendered from `src/pages/404.html`.
 - `/500`: Rendered from `src/pages/500.html`. When an unhandled error occurs during request processing, `onError` serves `/500` with status 500. If missing, it falls back to a clean built-in HTML document. Server stack traces are sent to stderr only and never leaked to response payloads.
 
@@ -89,25 +90,34 @@ The development server binds its port immediately while page transpilation runs 
 
 The boot page connects to `/bascik-live-reload`. When the requested page finishes transpiling, the `"transpiled"` event fires, the SSE connection receives a reload signal, and the browser fetches the actual page automatically. Once `watchFiles()` completes the initial build, the `isBooting` flag is cleared and unmatched paths fall through to 404 handling. The boot page is never used in production mode.
 
-> **Developer Experience (DX) & Startup Logging:** Although `startServer()` binds the HTTP port immediately in the background so developers can open the URL at any time (with the boot page serving pending requests), `transpile.ts` delays printing `Server running at http://...` until after all initial tasks (`watchFiles()` and `exec`) finish. This DX design choice ensures the clickable server URL appears as the final line in the terminal output without being scrolled up by page transpilation logs.
+> **Startup logging:** After the awaited `pre` phase, `startServer()` binds while page compilation runs. The server URL is printed after the initial compilation and `post` phase finish. Parallel exec tasks are not awaited in dev and may log completion later.
 
 ### Watch system (`watch.ts`)
 
-Four native filesystem watchers (chokidar) handle source file updates in development mode:
+Without watched exec entries, separate native filesystem watchers (chokidar) handle source file updates:
 
 1. **Static assets watcher:** Copies non-HTML files in `pages/` to `dist/` on `add` or `change`, deletes them on `unlink`, and triggers a live-reload event.
 2. **Page HTML watcher:** Listens for `.html` file changes in `pages/`. Triggers full or single-page transpilation and updates `MemoryStore`.
 3. **Component watcher:** Listens for changes in every configured `directory.components` root. This is the only watcher with `followSymlinks: true`, so a symlinked directory inside a root triggers rebuilds; chokidar reports the link path, which is what the inverted component index expects. On change or deletion, uses the inverted component index (`#components`) to selectively rebuild only affected pages.
-4. **Import-root watcher:** Listens for changes under `scripts.importRoot`. It first advances the runtime module identity for the changed path (so an edited `src=` server script is reloaded on the next request), then, gated on the dependency graph (`mem.pagesDependentOnFile`), invalidates script/component caches and rebuilds only the dependent pages when a build-time helper changes. `directory.pages` and every `directory.components` root are excluded when nested inside it.
+4. **Import-root watcher:** Listens under `scripts.importRoot` and advances request-time module identities so an edited `src=` server script reloads on the next request. It does not compile pages. `directory.pages` and every `directory.components` root are excluded when nested inside it.
 
-When a page's build fails because a helper it imports does not exist yet, Bascik records that missing dependency in a separate failed-dependency index. Creating, changing, or removing the helper later routes through that index too, so the page rebuilds automatically the moment the missing file appears, with no restart or full rebuild. The index is drained on deletion and when the page's import set changes.
+With watched exec entries, `watch-source.ts` replaces the asset, page, component, and extra-path observers with one source observer. It watches the union of source roots and literal roots extracted from globs, filters events using the configured patterns, and excludes `directory.out`. Runtime import-root and API observers remain separate. Overlapping page, content, and exec watches therefore cannot race into duplicate compilation.
+
+`source-cycle.ts` debounces source paths into one serialized phase cycle. Matching pre scripts run sequentially before compilation; matching parallel scripts start alongside compilation; matching post scripts run after compilation and disk writes finish. The dependency graph and component index select a deduplicated page batch. External inputs with no known dependents fall back to all pages, but never rerun unmatched exec entries. Edits received during a cycle or initial compilation are retained. Failed paths are retried on a later source edit, not automatically in a loop.
+
+`compilation-events.ts` uses async-local publication scopes to hold page reloads and join dev disk writes through post. A pre, compile, write, or post failure reports a build-error and discards success reloads for that cycle. Memory pages are not transactionally rolled back; a manual request may see newly compiled HTML before post finishes. Exec completion never schedules another compilation. Build helpers and external inlined stylesheets need `watchPaths` or exec input patterns; neither `scripts.importRoot` nor `assets.inlineStyles` adds a compilation watch.
+
+Exec artifacts must go only to `dist/`, never source or watched paths. Do not watch generated files. Chokidar events do not identify the writer, so distinguishing a legitimate edit from an accidental exec write is unsafe. No time-window, self-script, or repeat-count suppression hides edits; scripts that write watched sources can still loop and must be corrected.
+
+When a page's build fails because a helper does not exist yet, Bascik records that dependency in a failed-dependency index. If a compilation watch covers the helper, creating or repairing it routes through that index so the page can recover. The index selects pages but does not create watchers. It is drained on deletion and when the page's import set changes.
 
 ### Live reload (`live-reload.ts`, `sse.ts`)
 
 Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik injects a lightweight SSE client script into HTML pages in development mode. The SSE system features:
+
 - **Monotonic Generation Counter:** Reload events include an incrementing integer generation counter (`data: reload <gen>`). The client-side script tracks `lastGeneration` and ignores stale, duplicate, or out-of-order reload messages.
-- **Reload Coordination:** Reload notifications across asset updates, watched custom paths, exec script completions, and page transpilation are coordinated through SSE generation tracking, ensuring clients reload once on complete batch cycles rather than multiple times.
-- **Exec Producer/Consumer Coordination:** A watched exec producer that regenerates an output is joined with the watch-path consumer that re-transpiles pages reading it. The producer completes first, then the affected pages re-transpile and the browser reloads exactly once for the finished generation. Independent exec entries stay concurrent; only paths a producer covers are serialized in front of the consumer compile. A failed producer surfaces a build-error overlay and never a success reload (`exec-publication.ts`). The same coordinator owns `phase: 'parallel'` entries in dev: `transpile.ts` starts them without awaiting, hands the retained handle to `startDevServer`, and each task's settlement is published as `exec-completed` or `exec-failed`, so the server binds and pages compile while parallel work runs and its output lands once it finishes. The consumer flush (`watch.ts#execConsumerFlush`) has two paths. When every producer completed in a generation declared `outputs`, the flush drops only those files' dependency-content memo entries (and the memoized outputs of the scripts that read them) and recompiles the union of `mem.pagesDependentOnFile(output)` plus the pages that depend on the trigger paths; unrelated pages keep their memoized state and are not compiled. When a completed producer declared no `outputs`, the flush keeps the blanket behavior: every page's dependency memo is cleared and each trigger path goes through `selectivelyProcessPagesForWatchPath`, which falls back to every page when nothing depends on the path.
+- **Reload Coordination:** Reload notifications from asset updates, explicitly watched paths, and page transpilation use SSE generation tracking. Exec completion never requests a reload.
+- **Phase-ordered Exec Lifecycle:** `exec.watch` selects matching scripts for the source-owned cycle described above. `transpile.ts` starts parallel tasks without awaiting them in dev; `startExecDev` observes each outcome. `exec-publication.ts` maps startup parallel failures to located build-errors, with no completion listener. The source cycle reports watched failures directly. Parallel completion never requests a reload and cannot retract reloads already delivered before a later failure. Build runs parallel alongside compilation and joins both branches before reporting success.
 - **Monotonic Publication:** Every compilation entrypoint assigns the page a monotonic generation and only applies side effects (memory, disk, dependency index, sidecar, reload event) if that generation is still latest. A stale batch that finishes after a newer direct edit cannot overwrite it; a deleted page cannot be resurrected by late work. See [Generation Ownership](/internals/transpilation-pipeline#generation-ownership-monotonic-dev-publication).
 - **Periodic Heartbeats:** Sends `: ping\n\n` comments every 20 seconds, preventing proxy/VPN idle disconnection.
 - **Bounded Backpressure:** Honors `res.write()` return values. Each connection owns exactly one drain subscription, so a burst of backpressured writes cannot accumulate listeners; writes stop until the watcher drains, and the single listener is removed on client removal or manager destroy. Persistently wedged clients are terminated after a heartbeat threshold.
@@ -129,6 +139,8 @@ Bascik solves this with open-page priority batching (`partitionByOpenPages` in `
 4. **Background completion:** Once the active tabs have been updated, the remaining pages are transpiled and cached in the background.
 
 This prioritization operates identically whether running on the main thread or across multi-threaded workers via `WorkerPool` (`useWorkers: true`).
+
+Lifecycle publication scopes preserve compilation priority but defer reload delivery through post. Both main-thread and worker results join their disk writes before post scripts inspect `dist/`.
 
 ## Production Server Mode (`bascik --server`)
 
@@ -250,6 +262,7 @@ Every response includes standard security headers:
 ### Graceful shutdown sequence and health checks
 
 When receiving `SIGTERM` or `SIGINT`:
+
 1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable` while `/_health/live` continues returning `200 OK`.
 2. Idle keepalive connections are closed with `closeIdleConnections()`, and HTTP/2 sessions receive `session.close()` (GOAWAY) to prevent new streams without resetting active work.
 3. The server stops accepting new TCP connections and drains in-flight requests during `http.timeouts.drain` (default 5000 ms).

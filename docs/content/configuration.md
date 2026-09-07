@@ -403,7 +403,7 @@ pipeline: {
 }
 ```
 
-Listing a path in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. Bascik coordinates the watch triggers and SSE generation counter so that edits to overlapping paths execute the associated exec script, re-transpile affected pages, and issue exactly one coordinated browser reload rather than duplicate or conflicting reload signals.
+`exec.watch` selects scripts after matching source edits. Pages, components, `watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
 
 ### `scripts`
 

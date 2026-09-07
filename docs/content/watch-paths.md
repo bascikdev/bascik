@@ -31,9 +31,11 @@ Bascik automatically monitors standard project locations without requiring confi
 | :--- | :--- | :--- |
 | `directory.pages` (`src/pages`) | Yes | Detects page additions, removals, and edits. |
 | `directory.components` (`src/components` or array) | Yes | Re-transpiles all pages consuming updated components. |
-| `scripts.importRoot` (`src` or custom) | Yes | Watches shared `@/` helper scripts and invalidates dependent page caches. |
+| `scripts.importRoot` (`src` or custom) | Runtime only | Invalidates request-time modules. Build-time helpers need an explicit compilation watch. |
 | `pipeline.watchPaths` | User-defined | Extra content directories, JSON fixtures, external assets. |
-| `pipeline.exec[].watch` | User-defined | Specific globs that trigger individual lifecycle scripts. |
+| `pipeline.exec[].watch` | Source inputs | Selects matching lifecycle scripts and rebuilds associated pages in one phase-ordered cycle. |
+
+Add shared build helpers and inlined stylesheets outside the source directories to `watchPaths`, unless an exec source watch already covers them. `scripts.importRoot` and `assets.inlineStyles` do not implicitly opt them into compilation watching. A dependency graph entry selects affected pages after an observed source change, but does not create a watcher.
 
 ## Glob Patterns & Path Syntax
 
@@ -51,19 +53,20 @@ pipeline: {
 }
 ```
 
-### Overlapping Paths & Deduplication
+### Overlapping Paths
 
-Listing a directory in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. When a matching file changes, the exec producer runs first. Only after the producer completes are the affected pages re-transpiled, so a page never compiles against a previous generation of a produced output. Every changed path in a batch is retained (not just the last filename), and the browser receives exactly one coordinated SSE reload for the finished generation.
+Listing a source in both `pipeline.watchPaths` and `exec.watch` creates one phase-ordered rebuild, not independent actions. Matching pre scripts finish before compilation; parallel starts alongside compilation; post starts after compilation and disk writes complete. Only matching scripts rerun. Exec-only source edits can rebuild associated pages without duplicate `watchPaths` entries. See [Exec Scripts](/exec-scripts#watching-source-inputs).
+
+Never watch generated outputs, including individual files such as `dist/catalog.json`. Exec scripts must write artifacts only to the output directory, not sources or watched paths. Completion and output writes do not trigger compilation. Bascik does not hide legitimate edits using self-write or loop-suppression heuristics.
 
 ## How It Works in Development
 
 When you run `bascik` or `npm run dev`:
 
-1. **Watcher Initialization:** Bascik initializes Chokidar file watchers across pages, components, the import root, and all configured `watchPaths`.
-2. **Change Detection:** When an external file changes, Bascik determines whether any build script or template depends on it.
-3. **Producer First:** If the path is covered by an exec producer's `watch` globs, the producer executes and completes before any page re-transpiles.
-4. **Cache Invalidation:** Build scripts importing or reading the modified path (or a producer's regenerated output) have their script cache invalidated.
-5. **Selective Re-Transpile:** Only affected pages are re-rendered, against the freshly produced output.
-6. **Instant Live Reload:** An SSE generation signal is pushed to the browser client once, refreshing the tab seamlessly without full server restarts.
+1. **Watcher Initialization:** With watched exec entries, one source observer covers pages, components, `watchPaths`, and exec input patterns. Runtime-module invalidation remains separate.
+2. **Change Detection:** On an observed add, change, or deletion, Bascik identifies dependent pages.
+3. **Phase Ordering:** Matching pre scripts finish before dependency-content memoization is invalidated. Result caching stays enabled and rechecks dependency bytes. Parallel starts alongside compilation.
+4. **Selective Re-Transpile:** Known dependents rebuild. An extra watch path with no known dependents falls back to all pages.
+5. **Live Reload:** After successful compilation and post scripts, the cycle publishes its buffered page reloads. Failures publish errors instead. Exec completion alone emits none; later source edits retry failed paths.
 
 > **Testing and Verifying:** To test watch paths locally, start `npx bascik`, edit a watched Markdown or JSON file in another terminal, and observe the re-transpile log in the server console.

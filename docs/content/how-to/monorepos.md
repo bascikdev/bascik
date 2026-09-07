@@ -67,7 +67,7 @@ With `scripts.importRoot` pointing at the shared scripts directory, `@/` reaches
 
 One alias root for shared code, relative paths for local code. The aliases are rewritten only inside script blocks: a helper file that imports another helper uses `./` or `../`, because Node loads helper files from disk as-is. See [Build Scripts](/build-scripts#import-root-aliases) for the full alias rules.
 
-> **Watching shared helpers.** Bascik tracks which pages depend on each alias-imported helper and watches `scripts.importRoot` automatically, even when it points outside the project root, so an edit rebuilds only the pages that use it.
+> **Watching shared helpers.** Bascik tracks which pages depend on each alias-imported helper. Add the shared helper directory to `pipeline.watchPaths` to rebuild dependent pages on edits. `scripts.importRoot` controls resolution and request-time module invalidation, not compilation triggers, even when it points outside the project root.
 
 ## Components: shared and site-local at once
 

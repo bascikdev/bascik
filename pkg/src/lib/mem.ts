@@ -300,7 +300,7 @@ class MemoryStore {
   /**
    * Records the dependencies a page *attempted* to read even though its build
    * failed. These are kept separate from successful dependencies: they let the
-   * import-root watcher rebuild the page when a previously missing helper is
+  * configured compilation watcher rebuild the page when a missing helper is
    * created, changed, or removed. They are reclaimed when the page later
    * succeeds, changes imports, or is deleted.
    */

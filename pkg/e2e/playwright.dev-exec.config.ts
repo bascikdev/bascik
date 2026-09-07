@@ -9,8 +9,8 @@
  *
  * BASCIK_PARALLEL_GATE=1 holds the fixture's `phase: 'parallel'` producer
  * behind an HTTP gate (prompt 137) so the suite can prove the dev server is
- * live and serving before the parallel entry finishes, and that its output is
- * published once on release.
+ * live and serving before the parallel entry finishes, and that completion
+ * does not recompile pages.
  *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec.config.ts
@@ -39,8 +39,8 @@ export default defineConfig({
     // marker (runtime state from a previous run) so "startup runs exactly
     // once" asserts against this boot, then spawns the dev server and mirrors
     // its output to `.dev-server.log` so the suite can collect the lines
-    // between two markers and assert which pages a producer completion
-    // recompiled (prompt 139). Unlike a `| tee` pipeline, the wrapper
+    // between two markers and assert which watched edits recompiled pages.
+    // Unlike a `| tee` pipeline, the wrapper
     // propagates the server's exit code and signals, so a crashed or killed
     // server is never hidden behind tee's exit status or left orphaned.
     command: `node scripts/run-dev-logged.mjs ${pkgDir}/dist/index.js`,

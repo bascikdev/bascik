@@ -109,7 +109,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   base: null,
 };
 
-const KNOWN_EXEC_ENTRY_KEYS = ["script", "watch", "outputs", "phase", "cwd", "env", "args", "timeout"];
+const KNOWN_EXEC_ENTRY_KEYS = ["script", "watch", "phase", "cwd", "env", "args", "timeout"];
 
 /* ── Edit-distance suggestions ────────────────────────────────────────── */
 
@@ -171,12 +171,6 @@ const isValidBasePathPrefix = (base: string): boolean => {
 /* ── Pure validation half ─────────────────────────────────────────────── */
 
 const VALID_EXEC_PHASES = ["pre", "post", "parallel"];
-const EXEC_OUTPUTS_SHAPE_MESSAGE =
-  'expected a non-empty path string or array of path strings naming the files the script writes (for example ["dist/generated.json"])';
-const EXEC_OUTPUTS_ITEM_MESSAGE =
-  'expected a non-empty file path relative to the project root (for example "dist/generated.json")';
-/** `outputs` entries are matched literally against the page dependency graph; globs cannot be. */
-const EXEC_OUTPUT_GLOB_CHARS = /[*?]/;
 const SCRIPT_ERROR_ACTIONS = ['"warn", "error", or "ignore"'];
 const VALID_SCRIPT_ERROR_VALUES = new Set(["warn", "error", "ignore"]);
 const VALID_MINIFY_ERROR_VALUES = new Set(["warn", "error"]);
@@ -488,26 +482,6 @@ export const validateConfigShape = (
           }
           if (entry.phase !== undefined && !VALID_EXEC_PHASES.includes(entry.phase as string)) {
             push(`pipeline.exec[${index}].phase`, entry.phase, 'expected "pre", "post", or "parallel"');
-          }
-          if (entry.outputs !== undefined) {
-            const outputs = entry.outputs;
-            const outputsKey = `pipeline.exec[${index}].outputs`;
-            if (typeof outputs !== "string" && !Array.isArray(outputs)) {
-              push(outputsKey, outputs, EXEC_OUTPUTS_SHAPE_MESSAGE);
-            } else {
-              const list = Array.isArray(outputs) ? outputs : [outputs];
-              if (list.length === 0) {
-                push(outputsKey, outputs, EXEC_OUTPUTS_SHAPE_MESSAGE);
-              }
-              list.forEach((output, outputIndex) => {
-                const itemKey = Array.isArray(outputs) ? `${outputsKey}[${outputIndex}]` : outputsKey;
-                if (typeof output !== "string" || output.trim().length === 0) {
-                  push(itemKey, output, EXEC_OUTPUTS_ITEM_MESSAGE);
-                } else if (EXEC_OUTPUT_GLOB_CHARS.test(output)) {
-                  push(itemKey, output, "expected a literal file path, not a glob; list each file the script writes (for example \"dist/generated.json\")");
-                }
-              });
-            }
           }
         });
       }

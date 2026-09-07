@@ -11,6 +11,8 @@ import { serverSidecarRegistry } from "./lib/server-sidecar.ts";
 import { cspHashCollector } from "./lib/csp-hashes.ts";
 import { finalizeOwnedArtifacts } from "./lib/ownership.ts";
 import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./lib/api-routes.ts";
+import { withCompilationPublisher } from "./lib/compilation-events.ts";
+import { eventEmitter } from "./lib/events.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -36,9 +38,18 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
 
   if (BascikConfig.isBuild) {
     await runExecPhase("pre");
-    await startExecParallel();
-    await watchFiles();
-    await runExecPhase("post");
+    const parallel = startExecParallel();
+    // Start both branches before joining. Observe every failure immediately,
+    // and wait for all children even when compilation or another child fails.
+    const results = await Promise.allSettled([
+      parallel,
+      (async () => {
+        await watchFiles();
+        await runExecPhase("post");
+      })(),
+    ]);
+    const failures = results.filter(result => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), `Build pipeline failed: ${failures.map(result => String(result.reason)).join('; ')}`);
     const version = await readVersion();
     // Prompt 101: all metadata (sidecar, CSP, manifest) and the durable
     // ownership inventory land in ONE ownership transaction. For a targeted
@@ -70,9 +81,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     // Parallel entries run alongside the dev server and page compilation:
     // the handle is started here but NOT awaited, so the server binds and
     // pages compile while the entries work. The handle is retained and handed
-    // to the dev lifecycle owner, which publishes each task's completion or
-    // failure through the exec publication coordinator (exec-completed /
-    // exec-failed) the moment it settles. A parallel failure therefore
+    // to the dev lifecycle owner, which observes every task's outcome.
+    // Completion never compiles pages. A parallel failure
     // surfaces as an honest build-error and never a success reload, without
     // blocking boot. Only the build branch above joins parallel, because a
     // one-shot build must be complete before dist/ is finalized.
@@ -83,8 +93,10 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const dev = startDevServer({ ...options, parallel });
     const url = await dev.url;
 
-    await watchFiles();
+    const publications: [string, unknown][] = [];
+    await withCompilationPublisher((event, payload) => publications.push([event, payload]), watchFiles);
     await runExecPhase("post");
+    for (const [event, payload] of publications) eventEmitter.emit(event, payload);
     const version = await readVersion();
     const sidecarPath = await serverSidecarRegistry.writeSidecar(version);
     if (sidecarPath) {

@@ -17,7 +17,7 @@ export default defineConfig({
     preserve: ['pre', 'code'],
   },
   pipeline: {
-    watchPaths: ['src/content/'],
+    watchPaths: ['src/content/', 'src/lib/', 'src/css/'],
     workers: true,
     exec: [
       { script: 'scripts/generate-manifest.ts' },

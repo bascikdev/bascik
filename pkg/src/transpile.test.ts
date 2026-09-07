@@ -120,16 +120,17 @@ describe("runTranspile", () => {
     (BascikConfig as any).directory.out = "dist";
   });
 
-  it("runs build pipeline with pre -> parallel (joined) -> watchFiles -> post order and logs complete timing", async () => {
+  it("compiles alongside parallel exec and joins before declaring build success", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     (BascikConfig as any).isBuild = true;
-    // A one-shot build must join the parallel phase before writing dist/, so
-    // the handle is released only once watchFiles would otherwise be reached.
     const run = runTranspile();
-    await Promise.resolve();
-    expect(_mockWatchFiles).not.toHaveBeenCalled();
-    _parallel.release();
-    await run;
+    try {
+      await vi.waitFor(() => expect(_mockWatchFiles).toHaveBeenCalled(), { timeout: 250 });
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("Build complete"));
+    } finally {
+      _parallel.release();
+      await run;
+    }
 
     expect(_mockRunExecPhase).toHaveBeenCalledWith("pre");
     expect(_mockStartExecParallel).toHaveBeenCalled();
@@ -137,14 +138,14 @@ describe("runTranspile", () => {
     expect(_mockRunExecPhase).toHaveBeenCalledWith("post");
     expect(_mockStartExecDev).not.toHaveBeenCalled();
 
-    // Verify ordering: pre -> parallel joined -> watchFiles -> post
+    // Post follows compilation, not the parallel join.
     expect(_callOrder).toEqual([
       "cleanOutput",
       "runExecPhase:pre",
       "startExecParallel",
-      "startExecParallel:settled",
       "watchFiles",
       "runExecPhase:post",
+      "startExecParallel:settled",
     ]);
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/✓ Build complete in (?:[<]?[\d.]+(?:ms|s))/));
@@ -205,7 +206,7 @@ describe("runTranspile", () => {
     ]);
 
     // The retained handle is handed to the dev lifecycle owner so each
-    // parallel outcome is published through the exec coordinator.
+    // parallel outcome is observed without scheduling compilation.
     expect(_mockStartExecDev).toHaveBeenCalledWith(
       expect.objectContaining({ parallel: _parallel.handle }),
     );

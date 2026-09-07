@@ -11,7 +11,7 @@
  *
  * Usage: node scripts/run-dev-logged.mjs <path-to-bascik-entry> [args...]
  * Environment is inherited unchanged (BASCIK_SERVER_PORT, gates, ...).
- * Runtime state from a previous run (`scripts/.generation`,
+ * Runtime state from a previous run (`dist/.generation`,
  * `scripts/.armed-gate`, `.dev-server.log`) is removed before boot so
  * "startup runs exactly once" asserts against this boot, not history.
  */
@@ -31,7 +31,7 @@ if (!entry) {
 }
 
 await Promise.all([
-  rm(join(fixtureDir, "scripts/.generation"), { force: true }),
+  rm(join(fixtureDir, "dist/.generation"), { force: true }),
   rm(join(fixtureDir, "scripts/.armed-gate"), { force: true }),
   rm(logPath, { force: true }),
 ]);

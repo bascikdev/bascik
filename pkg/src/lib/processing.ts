@@ -1,3 +1,4 @@
+import { publishTranspiled, trackCompilationWrite, hasCompilationPublisher } from "./compilation-events.ts";
 /**
  * @module processing
  *
@@ -420,7 +421,7 @@ const publishBuildError = (err: PageProcessingError): void => {
 };
 
 // Records the dependencies a page tried to use but that do not exist on disk.
-// These live in a separate failed-dependency index so the import-root watcher
+// These live in a separate failed-dependency index so a compilation watcher
 // can rebuild the page the moment a previously-missing helper is created,
 // changed, or removed, without a restart or a full rebuild. Replacing the page's
 // entries wholesale on each attempt drops deps the page no longer references.
@@ -440,7 +441,7 @@ const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promi
 const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
   if (pageErrors.length === 0) return;
   const aggregateError = new PageProcessingAggregateError(pageErrors);
-  if (BascikConfig.isBuild) throw aggregateError;
+  if (BascikConfig.isBuild || hasCompilationPublisher()) throw aggregateError;
 
   // One owner publishes located build failures to the SSE layer. The dev
   // browser overlay needs the source file and line; suppressing stack detail
@@ -860,6 +861,7 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
       await writeTranspiledPage(result);
     })
     .catch((error) => {
+      if (hasCompilationPublisher()) throw error;
       console.error(`[bascik] Failed to write dev page "${pagePath}":`, error);
     })
     .finally(() => {
@@ -868,6 +870,7 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
       }
     });
   pageProcessingQueues.set(pagePath, queued);
+  trackCompilationWrite(queued);
   return queued;
 };
 
@@ -989,7 +992,7 @@ export const processPageBatch = async (
           generation,
         });
       }
-      eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+      publishTranspiled({ relativePagePath: result.relativePagePath });
     }
     return result;
   };
@@ -1156,7 +1159,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               generation,
             });
           }
-          eventEmitter.emit("transpiled", { relativePagePath: result.relativePagePath });
+          publishTranspiled({ relativePagePath: result.relativePagePath });
         }
         return result;
       } catch (error) {
@@ -1251,7 +1254,7 @@ export const pageProcessing = (
               generation,
             });
           }
-          eventEmitter.emit("transpiled", { relativePagePath });
+          publishTranspiled({ relativePagePath });
           resolveAvailable(relativePagePath);
           return relativePagePath;
         }
