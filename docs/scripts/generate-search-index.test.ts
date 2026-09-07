@@ -1,8 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import config from '../bascik.config.ts';
 
 describe('generate-search-index', () => {
+  it('declares the generated asset so dev completion does not rebuild every page', async () => {
+    const producer = config.pipeline?.exec?.find(entry => entry.script === 'scripts/generate-search-index.ts');
+    expect(producer).toMatchObject({
+      phase: 'parallel',
+      watch: ['content/'],
+      outputs: ['dist/assets/search-index.json'],
+    });
+
+    await import('./generate-search-index.js');
+    for (const output of [producer?.outputs].flat()) {
+      expect(output).toBeTypeOf('string');
+      const generated = await fs.readFile(path.resolve(import.meta.dirname, '..', output!), 'utf8');
+      expect(JSON.parse(generated).length).toBeGreaterThan(0);
+    }
+  });
+
   it('generates dist/assets/search-index.json from nav pages', async () => {
     await import('./generate-search-index.js');
 
