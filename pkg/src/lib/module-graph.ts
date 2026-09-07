@@ -80,11 +80,66 @@ const safeRealpath = (path: string): string => {
 };
 
 /**
- * Graph key for a filesystem path: the `file:` href of its realpath (or of
- * the resolved path when the file does not exist yet).
+ * Memoized realpath for module identity, keyed by the absolute path as
+ * spelled. Identity resolution runs on every registry `load()` and `invoke()`,
+ * so without the memo a production server would pay a filesystem round trip
+ * per request per script. A production identity never changes for the process
+ * lifetime. In development, `ScriptRegistry.invalidate()` calls
+ * `forgetModulePaths` for the invalidated key and every dependent it advanced,
+ * so a path that later appears, disappears, or is re-pointed through a symlink
+ * is re-resolved.
+ */
+const realpathMemo = new Map<string, string>();
+
+const memoizedRealpath = (absPath: string): string => {
+  const cached = realpathMemo.get(absPath);
+  if (cached !== undefined) return cached;
+  const real = safeRealpath(absPath);
+  realpathMemo.set(absPath, real);
+  return real;
+};
+
+/**
+ * Drop memoized realpaths for the given paths: every entry whose spelled path
+ * or resolved realpath matches one of them (as spelled or as realpath'd now).
+ * Paths are resolved against cwd. Called on invalidation only, so the fresh
+ * realpath per target is not on a request path.
+ */
+export const forgetModulePaths = (paths: Iterable<string>): void => {
+  const targets = new Set<string>();
+  for (const path of paths) {
+    const abs = resolve(process.cwd(), path);
+    targets.add(abs);
+    targets.add(safeRealpath(abs));
+  }
+  for (const [spelled, real] of realpathMemo) {
+    if (targets.has(spelled) || targets.has(real)) realpathMemo.delete(spelled);
+  }
+};
+
+/** Test-only observation of the realpath memo. */
+export const _moduleKeyTestHooks = {
+  clearRealpathMemo(): void {
+    realpathMemo.clear();
+  },
+  get realpathMemoSize(): number {
+    return realpathMemo.size;
+  },
+  hasRealpathMemo(path: string): boolean {
+    return realpathMemo.has(resolve(process.cwd(), path));
+  },
+};
+
+/**
+ * The single owner of the module key rule: the `file:` href of a path's
+ * realpath (or of the resolved path when the file does not exist yet). The
+ * registry's `resolveModuleIdentity` builds file identities on top of this
+ * (adding only an authored query or fragment), and a watcher path must pass
+ * through it before it can match what the hook recorded, because Node's
+ * resolver reports realpaths.
  */
 export const moduleKeyForPath = (path: string): string =>
-  pathToFileURL(safeRealpath(resolve(process.cwd(), path))).href;
+  pathToFileURL(memoizedRealpath(resolve(process.cwd(), path))).href;
 
 export interface ModuleGraph {
   /** Current generation for a key (0 when never invalidated or never seen). */

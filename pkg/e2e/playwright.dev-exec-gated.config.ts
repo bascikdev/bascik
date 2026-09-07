@@ -29,7 +29,9 @@ export default defineConfig({
     headless: true,
   },
   webServer: [{
-    command: `rm -f scripts/.generation scripts/.armed-gate .dev-server.log && BASCIK_SERVER_PORT=9661 BASCIK_GENERATOR_GATE=1 node ${pkgDir}/dist/index.js 2>&1 | tee .dev-server.log`,
+    // See playwright.dev-exec.config.ts for why the wrapper replaces `| tee`.
+    command: `node scripts/run-dev-logged.mjs ${pkgDir}/dist/index.js`,
+    env: { BASCIK_SERVER_PORT: '9661', BASCIK_GENERATOR_GATE: '1' },
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,

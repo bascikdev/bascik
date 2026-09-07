@@ -7,6 +7,7 @@ import {
   collectAllScriptDeps,
   resolveBuildScriptImports,
   SCRIPT_CACHE_VERSION,
+  MAX_IN_MEMORY_SCRIPT_OUTPUTS,
   clearBuildScriptCaches,
   _buildScriptCacheTestHooks as cacheHooks,
 } from "./build-scripts.ts";
@@ -1001,6 +1002,33 @@ describe("build-script output cache", () => {
     const resultA = await executeBuildScripts(tagA, "src/pages/a.html");
     expect(resultA).toBe("<p>a2</p>");
     expect(mockExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds the in-memory output memo with FIFO eviction and prunes the reverse index of evicted keys (finding #4)", async () => {
+    // Every inline body reads the same dependency, so all keys index under one
+    // reverse-index entry; the reverse index must not keep evicted keys alive.
+    mockReadFile.mockReset();
+    mockReadFile.mockImplementation((path: string) =>
+      String(path).endsWith("content/shared.txt")
+        ? Promise.resolve("shared")
+        : Promise.reject(new Error("ENOENT")),
+    );
+    resolveWith("<p>x</p>");
+    const total = MAX_IN_MEMORY_SCRIPT_OUTPUTS + 50;
+    for (let i = 0; i < total; i++) {
+      const tag = `<script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('content/shared.txt', 'utf8') + ${i});</script>`;
+      await executeBuildScripts(tag, `src/pages/p${i}.html`);
+    }
+    expect(mockExecFile).toHaveBeenCalledTimes(total);
+    expect(cacheHooks.outputCacheSize).toBe(MAX_IN_MEMORY_SCRIPT_OUTPUTS);
+    // Every key the reverse index still holds is a live memo entry.
+    expect(cacheHooks.reverseIndexHasStaleKeys()).toBe(false);
+    expect(cacheHooks.reverseIndexKeyCount("content/shared.txt")).toBe(MAX_IN_MEMORY_SCRIPT_OUTPUTS);
+
+    // A per-path clear of the shared dependency empties both structures.
+    clearBuildScriptCaches("content/shared.txt");
+    expect(cacheHooks.outputCacheSize).toBe(0);
+    expect(cacheHooks.reverseIndexKeyCount("content/shared.txt")).toBe(0);
   });
 
   it("ignores a cache entry whose version does not match", async () => {

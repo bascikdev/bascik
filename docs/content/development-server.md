@@ -59,7 +59,7 @@ The development server watches:
 
 - **`src/pages/`:** Adding or editing pages immediately creates or updates the corresponding route.
 - **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag.
-- **`src/` (or `scripts.importRoot`):** Updating shared `@/` script helpers invalidates dependent build script caches and re-renders affected pages. A helper imported at request time by a server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed.
+- **`src/` (or `scripts.importRoot`):** Updating shared `@/` script helpers invalidates dependent build script caches and re-renders affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
 
 > **Next:** See [Watch Paths](/watch-paths) to configure custom watch directories, or explore [Production Server](/production-server) to learn about production runtime hosting.

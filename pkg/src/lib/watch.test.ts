@@ -1123,6 +1123,41 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     _execPublicationTestHooks.reset();
   });
 
+  it("documented limitation (finding #5): a consumer that reads a declared output through a computed path is not detected, so a scoped flush compiles nothing and emits no transpiled", async () => {
+    const { _execPublicationTestHooks, installExecPublication } = await import("./exec-publication.ts");
+    const { EventEmitter } = await import("node:events");
+    _execPublicationTestHooks.reset();
+    const emitter = new EventEmitter();
+    installExecPublication(emitter);
+    (BascikConfig as any).pipeline = {
+      watchPaths: ["content/"],
+      exec: [{ script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/catalog.json"] }],
+    };
+    await watchFiles();
+    mockProcessPageBatch.mockClear();
+    mockSelectivelyProcessPagesForWatchPath.mockClear();
+    mockEventEmit.mockClear();
+    // The consumer page reads `join('dist', name)`: `extractScriptDeps` only
+    // sees literal string paths, so the dependency graph has no page for the
+    // output (nor for the trigger path).
+    mockPagesDependentOnFile.mockReturnValue([]);
+
+    emitter.emit("exec-completed", {
+      entry: { script: "scripts/gen.mjs", watch: ["content/"], outputs: ["dist/catalog.json"] },
+      paths: ["content/item.md"],
+    });
+    await _execPublicationTestHooks.flushNow();
+    await Promise.resolve();
+
+    expect(mockPagesDependentOnFile).toHaveBeenCalledWith("dist/catalog.json");
+    expect(processPageBatch).not.toHaveBeenCalled();
+    expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
+    expect(mockEventEmit).not.toHaveBeenCalledWith("transpiled", expect.anything());
+    // The generation still publishes; only the recompile is (correctly) scoped away.
+    expect(mockEventEmit).toHaveBeenCalledWith("watch-path-processed", expect.objectContaining({ path: "content/item.md" }));
+    _execPublicationTestHooks.reset();
+  });
+
   it("recompiles directly for a watch-path edit no exec producer covers", async () => {
     (BascikConfig as any).pipeline = {
       watchPaths: ["src/content/docs"],

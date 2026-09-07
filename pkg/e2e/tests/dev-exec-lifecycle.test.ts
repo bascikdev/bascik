@@ -17,7 +17,8 @@
  *
  * Both producers declare `outputs` (prompt 139). A third page,
  * `unrelated.html`, reads `data/unrelated.txt`, which no producer writes. The
- * Playwright config tees the dev server log to `.dev-server.log`; after a
+ * Playwright config's `run-dev-logged.mjs` wrapper mirrors the dev server log
+ * to `.dev-server.log`; after a
  * producer completion the suite collects the log lines between the edit and
  * the coordinator's `exec outputs published` marker and asserts the consumer
  * page was transpiled while the unrelated page was not.
@@ -46,7 +47,7 @@ const readGeneration = async (): Promise<number> => {
 };
 
 // ── Dev server log collection ────────────────────────────────────────────────
-// The webServer command tees stdout+stderr to `.dev-server.log`. `logOffset`
+// The webServer wrapper mirrors stdout+stderr to `.dev-server.log`. `logOffset`
 // snapshots the current length as a start marker; `collectLogUntil` resolves
 // with every line written after that offset once `endMarker` appears, so an
 // assertion can be made about what did NOT happen in the window without a

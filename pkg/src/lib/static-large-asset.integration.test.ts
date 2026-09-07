@@ -25,7 +25,7 @@
  * margin and far below the buffered floor.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir, readFile, stat as fsStat } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile, stat as fsStat, appendFile, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFile as execFileCb } from "node:child_process";
@@ -80,7 +80,7 @@ vi.mock("./mem.js", () => ({
 import { createRequestHandler } from "./server.ts";
 import { adaptHttp1 } from "./http.ts";
 import { adaptHttp2 } from "./http2.ts";
-import { BascikConfig } from "./config.ts";
+import { BascikConfig, shouldLog } from "./config.ts";
 import {
   MAX_BUFFERED_ASSET_BYTES,
   MAX_CACHED_REPRESENTATION_BYTES,
@@ -93,6 +93,7 @@ import {
 } from "./caching.ts";
 import { emitPrecompressedSidecars } from "./precompress.ts";
 import { manifestCollector } from "./manifest.ts";
+import { ensureCertificates } from "./pki.ts";
 
 const setDistDir = (dir: string) => {
   (BascikConfig.directory as { out: string }).out = dir;
@@ -219,18 +220,25 @@ const makeHttp1Server = (): http.Server => {
 };
 
 const makeHttp2Server = async (certDir: string): Promise<http2.Http2SecureServer> => {
-  const keyFile = join(certDir, "key.pem");
-  const certFile = join(certDir, "cert.pem");
   await mkdir(certDir, { recursive: true });
-  await execFile("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
-    "-subj", "/CN=localhost",
-    "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-    "-keyout", keyFile, "-out", certFile,
-  ]);
+  // The package's own certificate helper (mkcert, then openssl fallback), so
+  // the test does not carry a second copy of the openssl invocation. It only
+  // generates under its default names relative to cwd (custom paths must
+  // already exist), so point cwd at the temp cert dir for the call. This file
+  // runs in its own forked process, so the brief chdir is not observable by
+  // other tests.
+  const previousCwd = process.cwd();
+  process.chdir(certDir);
+  let keyPath: string;
+  let certPath: string;
+  try {
+    ({ keyPath, certPath } = await ensureCertificates());
+  } finally {
+    process.chdir(previousCwd);
+  }
   const server = http2.createSecureServer({
-    key: await readFile(keyFile),
-    cert: await readFile(certFile),
+    key: await readFile(keyPath),
+    cert: await readFile(certPath),
     allowHTTP1: true,
   });
   const handleRequest = createRequestHandler();
@@ -376,6 +384,136 @@ describe("Prompt 140 - large static assets are streamed with a weak validator", 
     await waitFor(() => getOpenStreamedAssetHandles() === 0);
     expect(getOpenStreamedAssetHandles()).toBe(0);
   });
+
+  /**
+   * The body must be framed by the `content-length` taken from the handle's
+   * `fstat`, not by wherever EOF happens to land after the file changes under
+   * the open handle. A raw HTTP/1.1 socket is used so the test can pause
+   * reading (keeping the server's stream in flight), mutate the same inode,
+   * and then inspect the exact bytes on the wire.
+   */
+  const MUTATE_SIZE = 16 * 1024 * 1024;
+
+  const parseHttp1Head = (buf: Buffer): { headEnd: number; status: number; contentLength: number } | null => {
+    const idx = buf.indexOf("\r\n\r\n");
+    if (idx < 0) return null;
+    const head = buf.subarray(0, idx).toString("latin1");
+    const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(head)?.[1] ?? 0);
+    const cl = /content-length:\s*(\d+)/i.exec(head);
+    return { headEnd: idx + 4, status, contentLength: cl ? Number(cl[1]) : NaN };
+  };
+
+  it("clamps the streamed body to the advertised content-length when the file grows mid-stream, and the keep-alive socket stays usable", async () => {
+    const body = makeLargeBody(MUTATE_SIZE);
+    const target = join(dist, "grow.bin");
+    await writeFile(target, body);
+    await writeFile(join(dist, "small.txt"), "small");
+    const addr = http1Server.address() as net.AddressInfo;
+
+    const chunks: Buffer[] = [];
+    const socket = net.connect(addr.port, "127.0.0.1");
+    socket.on("data", (c: Buffer) => chunks.push(c));
+    const firstData = new Promise<void>((resolve, reject) => {
+      socket.once("data", () => {
+        // Headers (and the first body bytes) arrived: the server has fstat'd
+        // and committed content-length. Stop reading so its stream stays open.
+        socket.pause();
+        resolve();
+      });
+      socket.on("error", reject);
+    });
+    await new Promise<void>((r) => socket.once("connect", r));
+    socket.write(`GET /grow.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n`);
+    await firstData;
+
+    // Grow the same inode while the server is mid-stream.
+    await appendFile(target, Buffer.alloc(1024 * 1024, 0xab));
+
+    const closed = new Promise<void>((r) => socket.once("close", () => r()));
+    socket.resume();
+    // Second request on the same keep-alive connection; `Connection: close`
+    // makes the server end the socket after it, which bounds the test.
+    socket.write(`GET /small.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
+    await closed;
+
+    const wire = Buffer.concat(chunks);
+    const first = parseHttp1Head(wire);
+    expect(first).not.toBeNull();
+    expect(first!.status).toBe(200);
+    expect(first!.contentLength).toBe(MUTATE_SIZE);
+    const bodyEnd = first!.headEnd + MUTATE_SIZE;
+    // Exactly content-length body bytes, byte-exact with the original file.
+    expect(wire.subarray(first!.headEnd, bodyEnd).equals(body)).toBe(true);
+    // The very next byte begins the second response: nothing leaked past the
+    // advertised length, so the connection was not poisoned.
+    const second = parseHttp1Head(wire.subarray(bodyEnd));
+    expect(second).not.toBeNull();
+    expect(second!.status).toBe(200);
+    expect(wire.subarray(bodyEnd + second!.headEnd).toString()).toBe("small");
+    expect(getOpenStreamedAssetHandles()).toBe(0);
+  }, 30000);
+
+  it("destroys the transport and logs a non-200 status when the file shrinks mid-stream", async () => {
+    const body = makeLargeBody(MUTATE_SIZE);
+    const target = join(dist, "shrink.bin");
+    await writeFile(target, body);
+    const addr = http1Server.address() as net.AddressInfo;
+
+    // Turn the access log on for this test so the logged status is observable.
+    (BascikConfig.logging as { requests: boolean }).requests = true;
+    vi.mocked(shouldLog).mockReturnValue(true);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const chunks: Buffer[] = [];
+      const socket = net.connect(addr.port, "127.0.0.1");
+      socket.on("data", (c: Buffer) => chunks.push(c));
+      const firstData = new Promise<void>((resolve, reject) => {
+        socket.once("data", () => {
+          socket.pause();
+          resolve();
+        });
+        socket.on("error", reject);
+      });
+      await new Promise<void>((r) => socket.once("connect", r));
+      socket.write(`GET /shrink.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n`);
+      await firstData;
+
+      // Shrink the same inode while the server is mid-stream.
+      await truncate(target, 1);
+
+      // The server must tear the transport down rather than "finish" a short
+      // body; the client observes the socket close (or reset) without a
+      // Connection: close request and with fewer bytes than advertised.
+      const closed = new Promise<void>((r) => {
+        socket.once("close", () => r());
+        socket.on("error", () => r());
+      });
+      socket.resume();
+      await closed;
+
+      const wire = Buffer.concat(chunks);
+      const head = parseHttp1Head(wire);
+      expect(head).not.toBeNull();
+      expect(head!.contentLength).toBe(MUTATE_SIZE);
+      expect(wire.byteLength - head!.headEnd).toBeLessThan(MUTATE_SIZE);
+      expect(socket.destroyed).toBe(true);
+
+      await waitFor(() => logSpy.mock.calls.some((c) => String(c[0]).includes("/shrink.bin")));
+      const accessLine = logSpy.mock.calls.map((c) => String(c[0])).find((l) => l.includes("/shrink.bin"))!;
+      expect(accessLine).toMatch(/^GET \/shrink\.bin 500 /);
+      // Logged once, by the delivery, not again by the outer handler.
+      const truncationLogs = errorSpy.mock.calls.filter((c) => /streamed asset/.test(String(c[0])));
+      expect(truncationLogs).toHaveLength(1);
+      expect(errorSpy.mock.calls.filter((c) => /Request\/Stream error/.test(String(c[0])))).toHaveLength(0);
+      await waitFor(() => getOpenStreamedAssetHandles() === 0);
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+      vi.mocked(shouldLog).mockReturnValue(false);
+      (BascikConfig.logging as { requests: boolean }).requests = false;
+    }
+  }, 30000);
 
   it("a file exactly at the bound stays on the buffered path with a strong ETag", async () => {
     const exact = makeLargeBody(MAX_BUFFERED_ASSET_BYTES);

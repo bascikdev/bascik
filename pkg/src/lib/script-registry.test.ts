@@ -2,12 +2,26 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { realpathSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
+
+// Pass-through spy on `realpathSync` so the tests can count how often the
+// registry hits the filesystem for identity resolution (finding #2). The real
+// implementation runs; only the call count is observed.
+const { realpathSyncSpy } = vi.hoisted(() => ({ realpathSyncSpy: vi.fn() }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  realpathSyncSpy.mockImplementation((...args: Parameters<typeof actual.realpathSync>) =>
+    actual.realpathSync(...args),
+  );
+  return { ...actual, realpathSync: realpathSyncSpy };
+});
+
+import { realpathSync } from "node:fs";
 import {
   ScriptRegistry,
   scriptRegistry,
   resolveModuleIdentity,
+  _identityTestHooks,
 } from "./script-registry.ts";
 
 describe("ScriptRegistry", () => {
@@ -899,6 +913,68 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
       await registry.load(entry);
       expect(registry.invalidate(entry)).toBe(false);
       expect(registry.graph.size).toBe(0);
+    });
+  });
+
+  describe("realpath memoization (finding #2)", () => {
+    beforeEach(() => {
+      _identityTestHooks.clearRealpathMemo();
+      realpathSyncSpy.mockClear();
+    });
+
+    it("production: realpathSync runs once per specifier across repeated load() and invoke()", async () => {
+      const filePath = join(tempDir, "memo-prod.mjs");
+      await writeFile(filePath, "export default () => 'v';\n");
+      const registry = new ScriptRegistry({ isDev: false });
+
+      await registry.load(filePath);
+      const afterFirst = realpathSyncSpy.mock.calls.filter((c) => c[0] === filePath).length;
+      expect(afterFirst).toBe(1);
+
+      await registry.load(filePath);
+      await registry.invoke(filePath, []);
+      await registry.invoke(filePath, []);
+      expect(realpathSyncSpy.mock.calls.filter((c) => c[0] === filePath)).toHaveLength(1);
+    });
+
+    it("the memo maps a symlinked path to the realpath and keeps both spellings as one identity", async () => {
+      const realDir = join(tempDir, "real-memo");
+      await mkdir(realDir, { recursive: true });
+      const realFile = join(realDir, "m.mjs");
+      await writeFile(realFile, "export default 1;\n");
+      const linkDir = join(tempDir, "link-memo");
+      const { symlink } = await import("node:fs/promises");
+      await symlink(realDir, linkDir);
+      const linkFile = join(linkDir, "m.mjs");
+
+      expect(resolveModuleIdentity(linkFile).key).toBe(resolveModuleIdentity(realFile).key);
+      resolveModuleIdentity(linkFile);
+      resolveModuleIdentity(linkFile);
+      expect(realpathSyncSpy.mock.calls.filter((c) => c[0] === linkFile)).toHaveLength(1);
+    });
+
+    it("development: invalidate() drops the memo entry for the key and its advanced dependents so a re-pointed path is re-resolved", async () => {
+      const helper = join(tempDir, "memo-helper.mjs");
+      const entry = join(tempDir, "memo-entry.mjs");
+      await writeFile(helper, 'export const v = "A";\n');
+      await writeFile(entry, 'import { v } from "./memo-helper.mjs";\nexport default () => v;\n');
+      const registry = new ScriptRegistry({ isDev: true });
+      registry.graph.recordEdge(resolveModuleIdentity(helper).key, resolveModuleIdentity(entry).key);
+      await registry.load(entry);
+      expect(_identityTestHooks.realpathMemoSize).toBeGreaterThan(0);
+      const before = _identityTestHooks.realpathMemoSize;
+
+      // A missing helper is memoized to itself (no realpath); invalidation must
+      // drop it so a file that later appears (or is re-pointed through a new
+      // symlink) resolves fresh.
+      registry.invalidate(helper);
+      expect(_identityTestHooks.realpathMemoSize).toBeLessThan(before);
+      expect(_identityTestHooks.hasRealpathMemo(helper)).toBe(false);
+      expect(_identityTestHooks.hasRealpathMemo(entry)).toBe(false);
+
+      realpathSyncSpy.mockClear();
+      await registry.load(entry);
+      expect(realpathSyncSpy.mock.calls.filter((c) => c[0] === entry)).toHaveLength(1);
     });
   });
 

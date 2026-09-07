@@ -117,6 +117,10 @@ export default defineConfig({
 
 List each written file as a literal path; globs and directories are rejected by config validation because outputs are matched against the literal paths build scripts read. Without `outputs`, Bascik does not know what the script wrote: it drops every page's memoized dependency state and recompiles the pages tied to the trigger path, or every page when none are. That fallback is correct and unchanged; declaring `outputs` is how you make it cheap. `outputs` has no effect in `bascik --build`.
 
+> **Outputs are matched against literal path strings only.** The dependency graph is built by scanning build scripts for string-literal file paths (`readFileSync('dist/catalog.json')`, `import data from './data.json'`). A page that reaches a produced file through a computed path is not detected: `join('dist', name)`, `readdirSync('dist/og')`, template strings such as `` `dist/${slug}.json` ``, or a helper that builds the path at runtime. If any consumer of a producer's outputs reads them that way, leave `outputs` undeclared on that producer so the blanket recompile still covers it. Declaring `outputs` for a producer whose consumers cannot be detected means those pages are never recompiled on completion.
+
+> **Mixed generations are unscoped.** When several producers complete in one coordinated flush (for example, two exec entries watching the same edit, or a `parallel` entry finishing alongside a watched one), the flush is scoped only if every completed producer declared `outputs`. One producer without `outputs` makes the whole generation take the blanket path, because its writes are unknown and could overlap anything.
+
 ## The Output Rule: Write to `dist/`, Not `src/`
 
 > **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated files directly to the output directory (`dist/`), never into source directories (`src/`). Writing generated artifacts into source directories pollutes source control and triggers infinite file watcher loops in dev mode.

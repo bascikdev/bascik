@@ -2119,23 +2119,45 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
     }
   }
 
+  /**
+   * A fake `fs.ReadStream`: `bytesRead` mirrors the real stream's counter so
+   * the delivery's truncation check (`bytesRead !== size`) is exercised. A
+   * real `Readable.from` has no `bytesRead`, and `undefined !== size` would
+   * make every happy-path test look truncated.
+   */
+  const countingStream = (chunks: Buffer[]): Readable & { bytesRead: number } => {
+    const stream = Readable.from(chunks) as Readable & { bytesRead: number };
+    stream.bytesRead = chunks.reduce((n, c) => n + c.byteLength, 0);
+    return stream;
+  };
+
   const makeHandle = (body: Buffer | (() => Readable)) => {
     const close = vi.fn(async () => {});
-    const createReadStream = vi.fn(() => (typeof body === "function" ? body() : Readable.from([body])));
+    const createReadStream = vi.fn(() =>
+      typeof body === "function" ? body() : countingStream([body]),
+    );
     const handle = { stat: vi.fn(async () => handleStat), close, createReadStream };
     return { handle, close, createReadStream };
   };
 
   const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  let logSpy: ReturnType<typeof vi.fn>;
+
+  /** The access-log line for `path`, or undefined when none was written. */
+  const accessLineFor = (path: string): string | undefined =>
+    logSpy.mock.calls.map((c: unknown[]) => String(c[0])).find((l: string) => l.startsWith("GET ") && l.includes(path));
 
   beforeEach(async () => {
     mockStat.mockResolvedValue({ mtimeMs: handleStat.mtimeMs, size: LARGE });
     errorSpy.mockClear();
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {}) as unknown as ReturnType<typeof vi.fn>;
+    (BascikConfig as any).logging = { level: "info", requests: true };
     await startHttp2Server();
   });
 
   afterEach(() => {
     mockStat.mockResolvedValue({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    (logSpy as unknown as { mockRestore: () => void }).mockRestore();
   });
 
   it("streams the body from the opened handle with a weak ETag and content-length, then closes the handle", async () => {
@@ -2157,7 +2179,9 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
     // Never compressed on this tier.
     expect(stream.respond.mock.calls[0][0]).not.toHaveProperty("content-encoding");
     expect(Buffer.concat(stream.chunks).equals(body)).toBe(true);
-    expect(createReadStream).toHaveBeenCalledWith({ autoClose: false });
+    // The read range is clamped to the advertised content-length (finding #1):
+    // a file that grows under the handle never leaks bytes past the framing.
+    expect(createReadStream).toHaveBeenCalledWith({ start: 0, end: LARGE - 1, autoClose: false });
     expect(close).toHaveBeenCalledTimes(1);
     expect(getOpenStreamedAssetHandles()).toBe(0);
     (BascikConfig as any).http.httpCache = false;
@@ -2207,6 +2231,84 @@ describe("startHttp2Server – streamed large-asset delivery (prompt 140)", () =
     expect(stream.destroyed).toBe(true);
     expect(close).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("streamed asset read failed after headers"), expect.anything());
+  });
+
+  /**
+   * Finding #6: a post-header failure is logged exactly once (by the delivery,
+   * never again by the outer handler), the access log records a defined
+   * status (500 for a server-side fault, 499 for a vanished peer), and the
+   * HTTP/2 stream is closed with NGHTTP2_INTERNAL_ERROR so the peer sees a
+   * server fault, not a cancel.
+   */
+  it("logs a post-header read failure once, closes HTTP/2 with NGHTTP2_INTERNAL_ERROR, and logs status 500", async () => {
+    const failing = () => new Readable({
+      read() {
+        this.push(Buffer.from("partial"));
+        this.destroy(Object.assign(new Error("EIO"), { code: "EIO" }));
+      },
+    });
+    const { handle } = makeHandle(failing);
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    await getStreamHandler()!(stream, makeHeaders("/big.png", "GET"));
+
+    expect(stream.close).toHaveBeenCalledWith(2); // NGHTTP2_INTERNAL_ERROR (mocked constants)
+    const streamedLogs = errorSpy.mock.calls.filter((c) => /streamed asset/.test(String(c[0])));
+    expect(streamedLogs).toHaveLength(1);
+    // Nothing propagated to the outer handler's error paths.
+    expect(errorSpy.mock.calls.filter((c) => /Request\/Stream error|Unhandled error/.test(String(c[0])))).toHaveLength(0);
+    expect(accessLineFor("/big.png")).toMatch(/^GET \/big\.png 500 /);
+  });
+
+  it("treats a short read (file shrank under the handle) as truncation: destroys the transport, logs once, status 500", async () => {
+    // The stream ends cleanly but delivered fewer bytes than advertised.
+    const short = () => countingStream([Buffer.from("only-some-bytes")]);
+    const { handle, close } = makeHandle(short);
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    await getStreamHandler()!(stream, makeHeaders("/big.png", "GET"));
+
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 200, "content-length": LARGE }));
+    expect(stream.close).toHaveBeenCalledWith(2);
+    expect(stream.destroyed).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("streamed asset truncated after headers"));
+    expect(accessLineFor("/big.png")).toMatch(/^GET \/big\.png 500 /);
+  });
+
+  it("logs status 499 (not 0, not 200) when the peer is already gone before headers", async () => {
+    const { handle, close, createReadStream } = makeHandle(Buffer.from("x"));
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    stream.destroy();
+    await getStreamHandler()!(stream, makeHeaders("/big.png", "GET"));
+
+    expect(createReadStream).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(accessLineFor("/big.png")).toMatch(/^GET \/big\.png 499 /);
+  });
+
+  it("logs status 499 when the peer aborts mid-body, without an error log", async () => {
+    const { handle, close } = makeHandle(() => new Readable({
+      read() {
+        this.push(Buffer.from("first"));
+        this.push(null);
+      },
+    }));
+    mockOpen.mockResolvedValueOnce(handle);
+
+    const stream = new FakeHttp2Stream();
+    stream.respond.mockImplementationOnce(() => { (stream as any).sent = true; stream.destroy(); });
+    await getStreamHandler()!(stream, makeHeaders("/big.png", "GET"));
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(accessLineFor("/big.png")).toMatch(/^GET \/big\.png 499 /);
   });
 
   it("responds 500 and closes the handle when the read stream cannot be created before headers", async () => {

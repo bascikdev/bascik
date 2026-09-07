@@ -62,8 +62,10 @@ export const isPrecompressCandidate = (distRelPath: string, size: number): boole
 
 const atomicWriteBytes = async (target: string, bytes: Buffer | string): Promise<void> => {
   const tmp = join(dirname(target), `.${target.split(/[\\/]/).pop()}.${process.pid}.tmp`);
-  await writeFile(tmp, bytes);
   try {
+    // Both steps inside one try: a failed write (ENOSPC, EACCES) must remove
+    // the partial temp sibling just as a failed rename does.
+    await writeFile(tmp, bytes);
     await rename(tmp, target);
   } catch (err) {
     await rm(tmp, { force: true }).catch(() => {});
@@ -107,8 +109,13 @@ const emitSidecarsFor = async (outDir: string, distRelPath: string): Promise<str
 /**
  * Produce sidecars for every candidate the current build recorded in the
  * manifest collector. Walking the collector (not the filesystem) means a
- * targeted build only emits for what it rebuilt, and stale files outside this
- * build's ownership are never touched. No-op unless `http.precompress` is on.
+ * targeted build only emits for what it rebuilt. Each emitted sidecar and its
+ * `.bmeta` are recorded in the manifest alongside the asset, so the build
+ * inventory accounts for them. Sidecars are not owned or tracked per page:
+ * a sidecar left behind by an earlier build whose asset has since changed is
+ * simply never served, because the server's `.bmeta` verification rejects any
+ * sidecar whose recorded `rawHash` does not match the current asset bytes.
+ * No-op unless `http.precompress` is on.
  */
 export const emitPrecompressedSidecars = async (): Promise<PrecompressResult> => {
   const emitted: string[] = [];

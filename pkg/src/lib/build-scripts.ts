@@ -99,11 +99,70 @@ export interface ImportRootOptions {
 
 // In-memory cache for dependency file contents during a build run and in-memory cache for outputs.
 const depContentCache = new Map<string, string>();
+
+/**
+ * Entry cap for the in-memory build-script output memo. Each entry is one
+ * script's rendered output (page-aware scripts produce one per page, and in
+ * dev every edit to an inline body is a new key), so an unbounded map grows for
+ * the life of a dev session. Eviction is FIFO in insertion order, like
+ * `representationCache` in `caching.ts`: the on-disk cache still hits for an
+ * evicted key, so eviction costs one file read, never a child spawn.
+ */
+export const MAX_IN_MEMORY_SCRIPT_OUTPUTS = 512;
+
 const inMemoryScriptOutputCache = new Map<string, string>();
 // Reverse index: dependency (project-relative key) -> the output cache keys
 // whose hash folded that dependency's content in. Lets a per-path clear drop
-// exactly the memoized outputs that read the changed file (prompt 139).
+// exactly the memoized outputs that read the changed file (prompt 139). Kept
+// in lockstep with the memo: a key evicted or cleared from the memo is removed
+// from every dependency's set, and a set that empties is deleted.
 const outputKeysByDependency = new Map<string, Set<string>>();
+// The dependencies each key's hash folded in, recorded by
+// `computeScriptCacheKey` and consumed when (if) the output is memoized. Only
+// memoized keys enter `outputKeysByDependency`, so the reverse index never
+// holds a key the memo does not. Bounded: an entry is removed on memoization
+// or eviction, and a key that is never memoized (script failed) is at most one
+// pending list per distinct failing key until the next full clear.
+const dependenciesByOutputKey = new Map<string, string[]>();
+
+const unindexOutputKey = (key: string): void => {
+  const deps = dependenciesByOutputKey.get(key);
+  if (!deps) return;
+  dependenciesByOutputKey.delete(key);
+  for (const relKey of deps) {
+    const keys = outputKeysByDependency.get(relKey);
+    if (!keys) continue;
+    keys.delete(key);
+    if (keys.size === 0) outputKeysByDependency.delete(relKey);
+  }
+};
+
+const indexOutputKey = (key: string): void => {
+  const deps = dependenciesByOutputKey.get(key);
+  if (!deps) return;
+  for (const relKey of deps) {
+    let keys = outputKeysByDependency.get(relKey);
+    if (!keys) {
+      keys = new Set();
+      outputKeysByDependency.set(relKey, keys);
+    }
+    keys.add(key);
+  }
+};
+
+const memoizeOutput = (key: string, output: string): void => {
+  if (inMemoryScriptOutputCache.has(key)) {
+    inMemoryScriptOutputCache.set(key, output);
+    return;
+  }
+  while (inMemoryScriptOutputCache.size >= MAX_IN_MEMORY_SCRIPT_OUTPUTS) {
+    const oldest = inMemoryScriptOutputCache.keys().next().value as string;
+    inMemoryScriptOutputCache.delete(oldest);
+    unindexOutputKey(oldest);
+  }
+  inMemoryScriptOutputCache.set(key, output);
+  indexOutputKey(key);
+};
 
 /**
  * Clear in-memory caches (called on watch change or between test runs).
@@ -124,7 +183,12 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
     depContentCache.delete(relKey);
     const keys = outputKeysByDependency.get(relKey);
     if (keys) {
-      for (const key of keys) inMemoryScriptOutputCache.delete(key);
+      for (const key of [...keys]) {
+        inMemoryScriptOutputCache.delete(key);
+        // Drop this key from every other dependency's set too, so no
+        // dependency indexes a key that is no longer memoized.
+        unindexOutputKey(key);
+      }
       outputKeysByDependency.delete(relKey);
     }
     return;
@@ -132,6 +196,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   depContentCache.clear();
   inMemoryScriptOutputCache.clear();
   outputKeysByDependency.clear();
+  dependenciesByOutputKey.clear();
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */
@@ -145,6 +210,20 @@ export const _buildScriptCacheTestHooks = {
   },
   get outputCacheSize(): number {
     return inMemoryScriptOutputCache.size;
+  },
+  /** Number of memo keys the reverse index holds for a dependency. */
+  reverseIndexKeyCount(filePath: string): number {
+    const relKey = relative(process.cwd(), resolve(process.cwd(), filePath)).replace(/\\/g, "/");
+    return outputKeysByDependency.get(relKey)?.size ?? 0;
+  },
+  /** True when any reverse-index key is not a live memo entry. */
+  reverseIndexHasStaleKeys(): boolean {
+    for (const keys of outputKeysByDependency.values()) {
+      for (const key of keys) {
+        if (!inMemoryScriptOutputCache.has(key)) return true;
+      }
+    }
+    return false;
   },
 };
 
@@ -321,16 +400,10 @@ const computeScriptCacheKey = async (
   }
 
   const key = hash.digest("hex");
-  // Every dependency folded into this key (present or MISSING) indexes the
-  // key, so a later per-path clear of that dependency drops this output.
-  for (const relKey of visited) {
-    let keys = outputKeysByDependency.get(relKey);
-    if (!keys) {
-      keys = new Set();
-      outputKeysByDependency.set(relKey, keys);
-    }
-    keys.add(key);
-  }
+  // Every dependency folded into this key (present or MISSING) is recorded so
+  // that, once the output is memoized, a later per-path clear of that
+  // dependency drops this output. Indexing happens in `memoizeOutput`.
+  dependenciesByOutputKey.set(key, [...visited]);
   return key;
 };
 
@@ -344,7 +417,7 @@ const readScriptCache = async (
     const raw = await readFile(join(cacheDir, `${key}.json`), "utf8");
     const entry = JSON.parse(raw) as { v?: number; output?: string };
     if (typeof entry === "object" && entry !== null && entry.v === SCRIPT_CACHE_VERSION && typeof entry.output === "string") {
-      inMemoryScriptOutputCache.set(key, entry.output);
+      memoizeOutput(key, entry.output);
       return entry.output;
     }
   } catch { /* cache miss */ }
@@ -356,7 +429,7 @@ const writeScriptCache = async (
   key: string,
   output: string,
 ): Promise<void> => {
-  inMemoryScriptOutputCache.set(key, output);
+  memoizeOutput(key, output);
   // Best-effort: don't let a cache write failure abort the build.
   await writeFile(
     join(cacheDir, `${key}.json`),
@@ -608,6 +681,9 @@ export const executeBuildScripts = async (
           const lines = prefix.split(/\r?\n/);
           errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
         }
+        // Nothing was memoized for this key; drop its pending dependency list
+        // so a failing script cannot accumulate index state across edits.
+        if (task.cacheKey !== null) dependenciesByOutputKey.delete(task.cacheKey);
         const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
         if (behavior === "error") {
           console.error(`${errorMsg}:\n${cleanedMsg}`);

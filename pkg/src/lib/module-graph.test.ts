@@ -22,6 +22,8 @@ import {
   createResolveHook,
   installModuleGraphHook,
   moduleKeyForPath,
+  forgetModulePaths,
+  _moduleKeyTestHooks,
   stripGeneration,
   DEV_GENERATION_PARAM,
   type ResolveHookContext,
@@ -134,6 +136,36 @@ describe("module graph: key helpers", () => {
       const missing = join(dir, "link", "missing.mjs");
       expect(moduleKeyForPath(missing)).toBe(pathToFileURL(missing).href);
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("moduleKeyForPath is the single owner of the key rule: the registry's identity key equals it, and forgetModulePaths drops the memo (finding #12/#2)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-key-owner-"));
+    try {
+      const realDir = join(dir, "real");
+      await mkdir(realDir);
+      const realFile = join(realDir, "m.mjs");
+      await writeFile(realFile, "export default 1;\n");
+      await symlink(realDir, join(dir, "link"));
+      const linkFile = join(dir, "link", "m.mjs");
+
+      _moduleKeyTestHooks.clearRealpathMemo();
+      const { resolveModuleIdentity } = await import("./script-registry.ts");
+      expect(resolveModuleIdentity(linkFile).key).toBe(moduleKeyForPath(linkFile));
+      expect(resolveModuleIdentity(`${pathToFileURL(linkFile).href}?flavor=x#f`).key).toBe(
+        `${moduleKeyForPath(linkFile)}?flavor=x#f`,
+      );
+      expect(_moduleKeyTestHooks.hasRealpathMemo(linkFile)).toBe(true);
+
+      // Forgetting by the spelled path or by the realpath drops the entry.
+      forgetModulePaths([realFile]);
+      expect(_moduleKeyTestHooks.hasRealpathMemo(linkFile)).toBe(false);
+      moduleKeyForPath(linkFile);
+      forgetModulePaths([linkFile]);
+      expect(_moduleKeyTestHooks.hasRealpathMemo(linkFile)).toBe(false);
+    } finally {
+      _moduleKeyTestHooks.clearRealpathMemo();
       await rm(dir, { recursive: true, force: true });
     }
   });

@@ -7,10 +7,31 @@
  * sidecar is never served under an ETag that describes different bytes.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import zlib from "node:zlib";
+
+// Pass-through `node:fs/promises` with one injectable failure point: the
+// nit #9 test makes `writeFile` throw AFTER the bytes reached disk (the shape
+// of a mid-write ENOSPC) to prove the producer removes its temp sibling. ESM
+// namespaces cannot be spied on, so the seam is a module mock.
+const { writeFileFailure } = vi.hoisted(() => ({
+  writeFileFailure: { nextError: null as Error | null },
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const writeFile: typeof actual.writeFile = async (path, data, options) => {
+    await actual.writeFile(path, data, options as never);
+    if (writeFileFailure.nextError && String(path).includes(".tmp")) {
+      const err = writeFileFailure.nextError;
+      writeFileFailure.nextError = null;
+      throw err;
+    }
+  };
+  return { ...actual, writeFile };
+});
+
+import { mkdir, mkdtemp, readFile, rm, writeFile, stat as fsStat } from "node:fs/promises";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -138,5 +159,21 @@ describe("Prompt 140 - precompressed sidecar producer (http.precompress)", () =>
     const { readdir } = await import("node:fs/promises");
     const names = await readdir(dist);
     expect(names.filter((n) => n.includes(".tmp"))).toEqual([]);
+  });
+
+  it("a failed sidecar write removes its temp sibling and surfaces the error (nit #9)", async () => {
+    // The first temp write lands on disk and then reports ENOSPC: the partial
+    // temp sibling must not be left behind, and the error must propagate.
+    writeFileFailure.nextError = Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    try {
+      const { emitPrecompressedSidecars } = await import("./precompress.ts");
+      await expect(emitPrecompressedSidecars()).rejects.toThrow(/ENOSPC/);
+      expect(writeFileFailure.nextError).toBeNull();
+      const { readdir } = await import("node:fs/promises");
+      const all = [...(await readdir(dist)), ...(await readdir(join(dist, "nested")))];
+      expect(all.filter((n) => n.includes(".tmp"))).toEqual([]);
+    } finally {
+      writeFileFailure.nextError = null;
+    }
   });
 });

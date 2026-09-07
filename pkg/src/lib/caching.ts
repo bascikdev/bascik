@@ -309,6 +309,12 @@ export const getStaticDelivery = async (
     await close();
     return null;
   }
+  // Accepted weak-validator trade-off: an in-place rewrite that keeps the same
+  // size, lands in the same millisecond, and reuses the inode yields the same
+  // `W/"size-mtime-ino"` and so a false 304 for a client holding the old tag.
+  // Hashing the bytes to rule this out would mean reading the whole file per
+  // request, which is exactly what this tier exists to avoid; `W/` marks the
+  // validator as weak so caches treat it as equivalence, not identity.
   return {
     kind: "streamed",
     fd,

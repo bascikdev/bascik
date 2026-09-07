@@ -38,10 +38,17 @@
  */
 
 import { resolve } from "node:path";
-import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { cleanStackTrace } from "./stack-trace.ts";
-import { moduleGraph, createModuleGraph, DEV_GENERATION_PARAM, type ModuleGraph } from "./module-graph.ts";
+import {
+  moduleGraph,
+  createModuleGraph,
+  moduleKeyForPath,
+  forgetModulePaths,
+  _moduleKeyTestHooks,
+  DEV_GENERATION_PARAM,
+  type ModuleGraph,
+} from "./module-graph.ts";
 import { isNetworkResetError } from "./server.ts";
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
 import { BascikConfig } from "./config.ts";
@@ -80,9 +87,12 @@ export { DEV_GENERATION_PARAM };
  *   converted with `pathToFileURL`, which percent-encodes `#`, `%`, spaces,
  *   and non-ASCII correctly.
  *
- * In both file forms the filesystem path is realpath'd when it exists (Node's
- * resolver reports realpaths, and the module graph is keyed by what the
- * resolver reports); a missing file keeps its unresolved path.
+ * In both file forms the key is built by `moduleKeyForPath` (`module-graph.ts`),
+ * the single owner of the key rule: the path is realpath'd when it exists
+ * (Node's resolver reports realpaths, and the module graph is keyed by what
+ * the resolver reports) and a missing file keeps its unresolved path. The
+ * realpath is memoized there; see `forgetModulePaths` for how development
+ * invalidation keeps the memo honest.
  */
 export interface ModuleIdentity {
   key: string;
@@ -91,6 +101,9 @@ export interface ModuleIdentity {
   /** Parsed URL for file identities (undefined for data URLs). */
   url?: URL;
 }
+
+/** Test-only observation of the shared realpath memo (owned by `module-graph.ts`). */
+export const _identityTestHooks = _moduleKeyTestHooks;
 
 export const resolveModuleIdentity = (specifier: string): ModuleIdentity => {
   if (specifier.startsWith("data:")) {
@@ -112,22 +125,14 @@ export const resolveModuleIdentity = (specifier: string): ModuleIdentity => {
     const pathOnly = new URL(url.href);
     pathOnly.search = "";
     pathOnly.hash = "";
-    displayPath = fileURLToPath(pathOnly);
-    // Realpath so a symlinked path and the real path are one identity and the
-    // key matches what Node's resolver hands the module graph hook.
-    let real: string;
-    try {
-      real = realpathSync(displayPath);
-    } catch {
-      real = displayPath;
-    }
-    if (real !== displayPath) {
-      const realUrl = pathToFileURL(real);
-      realUrl.search = url.search;
-      realUrl.hash = url.hash;
-      url = realUrl;
-      displayPath = real;
-    }
+    const spelledPath = fileURLToPath(pathOnly);
+    // One key rule for the registry, the hook, and the watchers: the file: href
+    // of the realpath. Only the authored query and fragment are layered on top.
+    const keyUrl = new URL(moduleKeyForPath(spelledPath));
+    displayPath = fileURLToPath(keyUrl);
+    keyUrl.search = url.search;
+    keyUrl.hash = url.hash;
+    url = keyUrl;
   } catch {
     displayPath = url.href;
   }
@@ -282,13 +287,30 @@ export class ScriptRegistry {
    */
   invalidate(specifier: string): boolean {
     if (!this.isDev) return false;
-    const { key } = resolveModuleIdentity(specifier);
+    const { key, displayPath, kind } = resolveModuleIdentity(specifier);
     const advanced = this.graph.invalidateModule(key);
+    // The file changed (or appeared, or vanished): its realpath may differ
+    // next time, so the memo entry for the specifier itself is dropped even
+    // when the graph has never seen it.
+    if (kind === "file") forgetModulePaths([displayPath]);
     if (advanced.size === 0) {
       this.lastAdvanced = advanced;
       return false;
     }
-    for (const advancedKey of advanced) this.cache.delete(advancedKey);
+    const advancedPaths: string[] = [];
+    for (const advancedKey of advanced) {
+      this.cache.delete(advancedKey);
+      if (!advancedKey.startsWith("file:")) continue;
+      try {
+        const pathOnly = new URL(advancedKey);
+        pathOnly.search = "";
+        pathOnly.hash = "";
+        advancedPaths.push(fileURLToPath(pathOnly));
+      } catch {
+        // A key that is not a decodable file URL has no memo entry.
+      }
+    }
+    forgetModulePaths(advancedPaths);
     this.lastAdvanced = advanced;
     return true;
   }
@@ -301,6 +323,7 @@ export class ScriptRegistry {
     this.cache.clear();
     this.graph.clear();
     this.lastAdvanced = new Set();
+    _moduleKeyTestHooks.clearRealpathMemo();
   }
 
   /**
