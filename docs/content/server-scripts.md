@@ -127,6 +127,8 @@ Import it from any server script using the `@/` import root alias:
 </script>
 ```
 
+> **Live reload of helpers.** In development, editing a helper (or a helper of a helper) under the import root reloads it and every server script or API route that imports it on the next request. Bare package imports keep their identity until the dev server restarts, and module-level state in a previous version of a helper stays in memory until the process exits. See the Dependency Generations section of the [Server Internals](/internals/server#in-process-script-module-registry).
+
 ## Server-Rendered Pagination
 
 Use `new URL(request.url).searchParams` to page through database records without client-side JavaScript:

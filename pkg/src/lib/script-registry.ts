@@ -10,14 +10,19 @@
  *
  * Behavior:
  * - Production: Modules load once and remain cached for the server's lifetime.
- * - Development: `invalidate()` advances a per-identity generation counter.
- *   The next load imports the module under a new URL (`?bascik-gen=N`), which
- *   is a new identity for Node's ESM loader. The framework never claims to
- *   evict Node's module cache: previous generations stay loaded until the
- *   process exits, and any request already holding one keeps using it.
- * - Identity: filesystem paths are canonicalized with `pathToFileURL`;
- *   `file:` URLs are parsed as URLs (an authored query or fragment is a
- *   deliberate distinct identity and is preserved); `data:` URLs are used as-is.
+ * - Development: `invalidate()` advances the identity's generation in the
+ *   shared module graph (`module-graph.ts`), together with every module that
+ *   transitively imports it. The next load imports the entry under a new URL
+ *   (`?bascik-gen=N`), which is a new identity for Node's ESM loader, and the
+ *   dev resolve hook hands its edited helpers new generation URLs as well. The
+ *   framework never claims to evict Node's module cache: previous generations
+ *   stay loaded until the process exits, and any request already holding one
+ *   keeps using it.
+ * - Identity: filesystem paths are realpath'd (so registry keys agree with
+ *   the URLs Node's resolver reports to the hook) and canonicalized with
+ *   `pathToFileURL`; `file:` URLs are parsed as URLs (an authored query or
+ *   fragment is a deliberate distinct identity and is preserved); `data:` URLs
+ *   are used as-is.
  * - Concurrency: Handlers receive per-invocation explicit context arguments;
  *   state does not leak across concurrent requests.
  * - Timeout: Configurable per invocation via AbortController/AbortSignal.
@@ -33,8 +38,10 @@
  */
 
 import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { moduleGraph, createModuleGraph, DEV_GENERATION_PARAM, type ModuleGraph } from "./module-graph.ts";
 import { isNetworkResetError } from "./server.ts";
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
 import { BascikConfig } from "./config.ts";
@@ -60,8 +67,7 @@ export interface LoadedScriptModule {
 
 export type ScriptRegistryMode = "development" | "production";
 
-/** Query parameter appended in development so each generation is a new ESM identity. */
-export const DEV_GENERATION_PARAM = "bascik-gen";
+export { DEV_GENERATION_PARAM };
 
 /**
  * The canonical identity of a specifier.
@@ -73,6 +79,10 @@ export const DEV_GENERATION_PARAM = "bascik-gen";
  * - anything else: a filesystem path resolved against `process.cwd()` and
  *   converted with `pathToFileURL`, which percent-encodes `#`, `%`, spaces,
  *   and non-ASCII correctly.
+ *
+ * In both file forms the filesystem path is realpath'd when it exists (Node's
+ * resolver reports realpaths, and the module graph is keyed by what the
+ * resolver reports); a missing file keeps its unresolved path.
  */
 export interface ModuleIdentity {
   key: string;
@@ -103,6 +113,21 @@ export const resolveModuleIdentity = (specifier: string): ModuleIdentity => {
     pathOnly.search = "";
     pathOnly.hash = "";
     displayPath = fileURLToPath(pathOnly);
+    // Realpath so a symlinked path and the real path are one identity and the
+    // key matches what Node's resolver hands the module graph hook.
+    let real: string;
+    try {
+      real = realpathSync(displayPath);
+    } catch {
+      real = displayPath;
+    }
+    if (real !== displayPath) {
+      const realUrl = pathToFileURL(real);
+      realUrl.search = url.search;
+      realUrl.hash = url.hash;
+      url = realUrl;
+      displayPath = real;
+    }
   } catch {
     displayPath = url.href;
   }
@@ -133,6 +158,11 @@ export interface ScriptExecutionResult<T = unknown> {
 export interface ScriptRegistryOptions {
   isDev?: boolean;
   clock?: FrameworkClock;
+  /**
+   * Generation owner shared with the dev resolve hook. Defaults to the
+   * process-wide graph; tests pass their own so instances do not interfere.
+   */
+  graph?: ModuleGraph;
 }
 
 /**
@@ -148,17 +178,23 @@ export class ScriptRegistry {
   /** Published current-generation entries by identity key. */
   private cache = new Map<string, LoadedScriptModule>();
   /**
-   * Current generation per identity key. Only identities that were loaded,
-   * attempted, or explicitly invalidated have an entry; a key that was never
-   * seen stays at 0 without allocating.
+   * The single generation owner, shared with the dev resolve hook. Only
+   * identities that were loaded, attempted, resolved by the hook, or
+   * explicitly invalidated have an entry; a key that was never seen stays at
+   * 0 without allocating. Production never writes to it.
    */
-  private generations = new Map<string, number>();
+  readonly graph: ModuleGraph;
+  /** Keys advanced by the most recent `invalidate()` call (for watcher logs). */
+  private lastAdvanced: ReadonlySet<string> = new Set();
   private isDev: boolean;
   private clock: FrameworkClock;
 
   constructor(options: ScriptRegistryOptions = {}) {
     this.isDev = options.isDev ?? false;
     this.clock = options.clock ?? nativeClock;
+    // A production registry gets a private, always-empty graph so it can never
+    // observe or grow the dev graph even when both exist in one process (tests).
+    this.graph = options.graph ?? (this.isDev ? moduleGraph : createModuleGraph());
   }
 
   get mode(): ScriptRegistryMode {
@@ -167,7 +203,17 @@ export class ScriptRegistry {
 
   /** Current generation for a specifier (0 when never invalidated). */
   generationOf(specifier: string): number {
-    return this.generations.get(resolveModuleIdentity(specifier).key) ?? 0;
+    return this.graph.generationOf(resolveModuleIdentity(specifier).key);
+  }
+
+  /** Whether a current-generation entry is published for the specifier. */
+  isPublished(specifier: string): boolean {
+    return this.cache.has(resolveModuleIdentity(specifier).key);
+  }
+
+  /** Identity keys advanced by the most recent `invalidate()` (empty when it returned false). */
+  lastInvalidated(): ReadonlySet<string> {
+    return this.lastAdvanced;
   }
 
   /**
@@ -186,7 +232,7 @@ export class ScriptRegistry {
     const published = this.cache.get(key);
     if (published) return published;
 
-    const generation = this.generations.get(key) ?? 0;
+    const generation = this.isDev ? this.graph.generationOf(key) : 0;
     let targetUrl: string;
     if (identity.kind === "data") {
       targetUrl = key;
@@ -201,7 +247,7 @@ export class ScriptRegistry {
     // Record the attempt so a later invalidate() advances this identity even
     // when the import fails: Node caches a module whose evaluation threw, so
     // the fixed file must be imported under a new generation URL.
-    if (this.isDev && !this.generations.has(key)) this.generations.set(key, generation);
+    if (this.isDev) this.graph.track(key);
 
     // Failed imports are never published, so a fixed file loads on the next attempt.
     const imported = await import(targetUrl);
@@ -215,30 +261,35 @@ export class ScriptRegistry {
     // Publish only if this load is still the current generation. A concurrent
     // load for the same generation may already have published an equivalent
     // entry; keeping the first keeps one module instance per generation.
-    if ((this.generations.get(key) ?? 0) === generation && !this.cache.has(key)) {
+    const current = this.isDev ? this.graph.generationOf(key) : 0;
+    if (current === generation && !this.cache.has(key)) {
       this.cache.set(key, entry);
     }
     return entry;
   }
 
   /**
-   * Invalidate a module identity. Development: unpublish the current entry and
-   * advance the generation so the next load is a fresh ESM identity. In-flight
-   * requests keep the entry they already hold. Production: a deliberate no-op
-   * for published modules, so a loaded module's identity is stable for the
-   * process lifetime; only a not-yet-loaded identity is affected (nothing).
+   * Invalidate a module identity. Development: advance the generation of the
+   * identity and of every module that transitively imports it (per the module
+   * graph), and unpublish each advanced entry so the next load is a fresh ESM
+   * identity. The specifier may name a helper the registry never imported
+   * directly: the graph knows which entries import it. In-flight requests keep
+   * the entry they already hold. Production: a deliberate no-op, so a loaded
+   * module's identity is stable for the process lifetime.
    *
-   * Returns true when a generation was advanced (the identity had been loaded
-   * or attempted in development), false otherwise.
+   * Returns true when at least one generation was advanced, false otherwise. A
+   * key that neither the registry nor the hook has seen allocates nothing.
    */
   invalidate(specifier: string): boolean {
     if (!this.isDev) return false;
     const { key } = resolveModuleIdentity(specifier);
-    // Only identities this registry has loaded or attempted carry a generation.
-    // Watcher events for files the runtime never imported must not grow state.
-    if (!this.generations.has(key)) return false;
-    this.cache.delete(key);
-    this.generations.set(key, this.generations.get(key)! + 1);
+    const advanced = this.graph.invalidateModule(key);
+    if (advanced.size === 0) {
+      this.lastAdvanced = advanced;
+      return false;
+    }
+    for (const advancedKey of advanced) this.cache.delete(advancedKey);
+    this.lastAdvanced = advanced;
     return true;
   }
 
@@ -248,7 +299,8 @@ export class ScriptRegistry {
    */
   clear(): void {
     this.cache.clear();
-    this.generations.clear();
+    this.graph.clear();
+    this.lastAdvanced = new Set();
   }
 
   /**

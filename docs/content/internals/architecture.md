@@ -72,8 +72,9 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `pki.ts` | Generates a self-signed TLS certificate (`bascik-cert.pem` / `bascik-privkey.pem`) via OpenSSL or PowerShell on Windows. |
 | `processing.ts` | The core transpilation pipeline. Contains `pageProcessing` (page phase) and `recursivelyTranspile` (component phase), plus pipeline utility types. |
 | `rate-limit.ts` | In-memory sliding-window rate limiter for server request protection. |
+| `module-graph.ts` | Development-only module dependency graph and `node:module` resolve hook. Records importer edges for project files, appends `?bascik-gen=N` to invalidated modules, and advances generations transitively so editing a helper reloads every entry that imports it. Never installed by the production server or the build. |
 | `script-registry.ts` | Manages compiled script registries and handler maps for request-time execution. |
-| `server-dev.ts` | Dev server additions (`bascik`). Binds the shared `server.ts` immediately, starts dev `exec` scripts alongside it, and flips the boot flag (`boot-done`) once the initial transpile lands. |
+| `server-dev.ts` | Dev server additions (`bascik`). Installs the module graph resolve hook, binds the shared `server.ts` immediately, starts dev `exec` scripts alongside it, and flips the boot flag (`boot-done`) once the initial transpile lands. |
 | `server-prod.ts` | Production server additions (`bascik --server`). Pre-loads pre-rendered `dist/` HTML and the server-script sidecar into `mem.ts`, then boots the shared `server.ts`. |
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks at request time, remapping stack traces to the authored file and line before emitting markup into the page stream. |
 | `server-sidecar.ts` | Production sidecar manager for server script registry serialization and startup loading. |

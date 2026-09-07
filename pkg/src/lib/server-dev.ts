@@ -25,6 +25,8 @@ import { startExecDev, type ParallelExecHandle } from "./exec.ts";
 import { installExecPublication, setExecProducerWatchGlobs } from "./exec-publication.ts";
 import { startServer } from "./server.ts";
 import { BascikConfig } from "./config.ts";
+import { installModuleGraphHook } from "./module-graph.ts";
+import { getImportRoot } from "./import-root.ts";
 import type { ExecEntry } from "./types.ts";
 
 export interface DevServerOptions {
@@ -57,6 +59,16 @@ export interface DevServerHandle {
  * and then calls `finishBoot()`.
  */
 export const startDevServer = (options: DevServerOptions = {}): DevServerHandle => {
+  // Dev-only dependency generations (prompt 138): the `node:module` resolve
+  // hook must be registered before the first request can import a runtime
+  // module, so it is installed ahead of binding the port. This is the only
+  // install site; `server-prod.ts` and the build never call it, and the
+  // function itself refuses to install outside development.
+  installModuleGraphHook({
+    projectRoot: process.cwd(),
+    extraRoots: [getImportRoot()],
+    isDev: !BascikConfig.isBuild && !BascikConfig.isProdServer,
+  });
   const url = startServer().catch((err) => {
     console.error("Server startup failed:", err);
     if (options.exitOnError !== false) {

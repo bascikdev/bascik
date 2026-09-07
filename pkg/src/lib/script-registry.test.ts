@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import {
   ScriptRegistry,
   scriptRegistry,
+  resolveModuleIdentity,
 } from "./script-registry.ts";
 
 describe("ScriptRegistry", () => {
@@ -660,7 +662,8 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
       const filePath = join(tempDir, "display.mjs");
       await writeModule(filePath, "x");
       const registry = new ScriptRegistry({ isDev: false });
-      expect((await registry.load(pathToFileURL(filePath).href)).filePath).toBe(filePath);
+      // The display path is the realpath (macOS tmpdir is a symlink to /private/var).
+      expect((await registry.load(pathToFileURL(filePath).href)).filePath).toBe(realpathSync(filePath));
 
       const dataUrl = "data:text/javascript;charset=utf-8,export%20default%20()%20%3D%3E%20'd'";
       const loaded = await registry.load(dataUrl);
@@ -791,6 +794,111 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
       // Frame line 2 of the module plus offset 40 minus 1 equals authored line 41.
       expect(logOutput).toContain("src/pages/index.html:41");
       expect(logOutput).not.toContain("bascik-gen");
+    });
+  });
+
+  describe("dependency generations (prompt 138)", () => {
+    it("keys a file identity by its realpath so a symlinked path and the real path share one identity", async () => {
+      const realDir = join(tempDir, "real");
+      await mkdir(realDir, { recursive: true });
+      const realFile = join(realDir, "m.mjs");
+      await writeFile(realFile, "export const instance = { id: Math.random() };\nexport default instance;");
+      const linkDir = join(tempDir, "link");
+      const { symlink } = await import("node:fs/promises");
+      await symlink(realDir, linkDir);
+      const linkFile = join(linkDir, "m.mjs");
+
+      const viaLink = resolveModuleIdentity(linkFile);
+      const viaReal = resolveModuleIdentity(realFile);
+      expect(viaLink.key).toBe(viaReal.key);
+      expect(viaLink.key).toBe(pathToFileURL(realpathSync(realFile)).href);
+      // The display path is the resolved filesystem path too.
+      expect(viaLink.displayPath).toBe(realpathSync(realFile));
+
+      // A missing file cannot be realpath'd and falls back to the unresolved path.
+      const missing = join(linkDir, "missing.mjs");
+      expect(resolveModuleIdentity(missing).key).toBe(pathToFileURL(missing).href);
+
+      const registry = new ScriptRegistry({ isDev: true });
+      const a = await registry.load(linkFile);
+      const b = await registry.load(realFile);
+      expect(a.module).toBe(b.module);
+    });
+
+    it("invalidate() on a helper the registry never imported directly unpublishes the entry that imports it", async () => {
+      const registry = new ScriptRegistry({ isDev: true });
+      const helper = join(tempDir, "helper.mjs");
+      const entry = join(tempDir, "entry.mjs");
+      await writeFile(helper, 'export const v = "H-OLD";\n');
+      await writeFile(entry, 'import { v } from "./helper.mjs";\nexport default () => v;\n');
+      // Simulate what the resolve hook records when Node resolves ./helper.mjs
+      // from the entry: the registry and the graph share one generation owner.
+      const graph = registry.graph;
+      graph.recordEdge(resolveModuleIdentity(helper).key, resolveModuleIdentity(entry).key);
+
+      const first = await registry.load(entry);
+      expect(first.version).toBe(0);
+      expect(registry.generationOf(helper)).toBe(0);
+
+      // Helper edit: the watcher reports the helper path only.
+      expect(registry.invalidate(helper)).toBe(true);
+      expect(registry.generationOf(helper)).toBe(1);
+      expect(registry.generationOf(entry)).toBe(1);
+      // The entry was unpublished even though invalidate() was called with the helper.
+      expect(registry.isPublished(entry)).toBe(false);
+      const second = await registry.load(entry);
+      expect(second.version).toBe(1);
+      expect(second.url).toContain("bascik-gen=1");
+    });
+
+    it("returns false and allocates nothing for a key neither the registry nor the graph has seen", () => {
+      const registry = new ScriptRegistry({ isDev: true });
+      const never = join(tempDir, "never.mjs");
+      expect(registry.invalidate(never)).toBe(false);
+      expect(registry.generationOf(never)).toBe(0);
+      expect(registry.graph.has(resolveModuleIdentity(never).key)).toBe(false);
+    });
+
+    it("lastInvalidated() reports every key advanced by the most recent invalidate()", async () => {
+      const registry = new ScriptRegistry({ isDev: true });
+      const helper = join(tempDir, "h2.mjs");
+      const entry = join(tempDir, "e2.mjs");
+      await writeFile(helper, 'export const v = 1;\n');
+      await writeFile(entry, 'import { v } from "./h2.mjs";\nexport default () => v;\n');
+      registry.graph.recordEdge(resolveModuleIdentity(helper).key, resolveModuleIdentity(entry).key);
+      await registry.load(entry);
+      registry.invalidate(helper);
+      expect([...registry.lastInvalidated()].sort()).toEqual(
+        [resolveModuleIdentity(helper).key, resolveModuleIdentity(entry).key].sort(),
+      );
+    });
+
+    it("preserves in-flight semantics when a helper invalidation supersedes an entry load", async () => {
+      const registry = new ScriptRegistry({ isDev: true });
+      const helper = join(tempDir, "h3.mjs");
+      const entry = join(tempDir, "e3.mjs");
+      await writeFile(helper, 'export const v = "OLD";\n');
+      await writeFile(entry, 'import { v } from "./h3.mjs";\nexport default () => v;\n');
+      registry.graph.recordEdge(resolveModuleIdentity(helper).key, resolveModuleIdentity(entry).key);
+
+      const inFlight = registry.load(entry);
+      registry.invalidate(helper);
+      const stale = await inFlight;
+      expect(stale.version).toBe(0);
+      // Completed for a superseded generation: handed back, not published.
+      expect(registry.isPublished(entry)).toBe(false);
+      const current = await registry.load(entry);
+      expect(current.version).toBe(1);
+      expect(registry.isPublished(entry)).toBe(true);
+    });
+
+    it("production mode never consults or grows the graph", async () => {
+      const registry = new ScriptRegistry({ isDev: false });
+      const entry = join(tempDir, "prod-entry.mjs");
+      await writeModule(entry, "P");
+      await registry.load(entry);
+      expect(registry.invalidate(entry)).toBe(false);
+      expect(registry.graph.size).toBe(0);
     });
   });
 

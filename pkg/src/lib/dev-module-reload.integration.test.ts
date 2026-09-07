@@ -9,9 +9,9 @@
  * identity change, and the next request must observe the new code.
  *
  * Nothing here is mocked: the point is that the singleton composition (not an
- * explicitly constructed dev registry) reloads edited modules. The last group
- * verifies the transitive-import boundary honestly: an entry module query does
- * not invalidate a helper it imports, and the registry never claims otherwise.
+ * explicitly constructed dev registry) reloads edited modules. The transitive
+ * cases (prompt 138) prove that editing only a helper, one or two levels below
+ * the entry, changes the served output through the dev module graph hook.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -229,15 +229,14 @@ describe("live development module invalidation (real dev server)", () => {
   }, 30000);
 
   /**
-   * Transitive helper imports. Node resolves `./helper.ts` from the entry
-   * module's own URL. A generation query on the entry alone gives Node a new
-   * entry identity, but the helper specifier inside it is unchanged, so Node
-   * reuses the already evaluated helper. Making this pass requires
-   * dependency-generation ownership (see the internals doc), which this prompt
-   * deliberately does not build. The test stays red on purpose so the
-   * limitation is pinned rather than assumed.
+   * Transitive helper imports (prompt 138). Node resolves `./helper.ts` from
+   * the entry module's own URL, and a generation query on the entry alone
+   * would not reach it. The dev-only module graph (`module-graph.ts`) records
+   * child -> parent edges through a `node:module` resolve hook and advances the
+   * entry's generation when the helper changes, so the next request must serve
+   * the new helper value with the entry file untouched.
    */
-  it.fails("reloads a helper imported by a src= server script when only the helper changes (known limitation)", async () => {
+  it("reloads a helper imported by a src= server script when only the helper changes", async () => {
     // Re-point the entry at the helper so this test does not depend on order.
     const entryChanged = server.waitForLog(/module invalidated: src\/lib\/src-script\.ts/);
     await writeAt(root, "src/lib/src-script.ts", srcScriptModule());
@@ -245,15 +244,38 @@ describe("live development module invalidation (real dev server)", () => {
     const before = await fetchText(`${server.base}/`);
     expect(before.body).toContain('data-testid="src-value">HELPER-OLD<');
 
-    // The helper was imported by Node (transitively), never by the registry,
-    // so the registry has no identity for it and cannot advance a generation.
-    // The watcher still observes the edit; wait on the page rebuild instead.
-    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/, 3000).catch(() => "");
+    // The helper was imported by Node (transitively) and recorded by the
+    // module graph hook; the watcher's invalidate must advance it and log it.
+    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
     await writeAt(root, "src/lib/helper.ts", helperModule("HELPER-NEW"));
-    await helperChanged;
+    const logged = await helperChanged;
+    // The log names the entry the graph advanced transitively.
+    expect(logged).toMatch(/module invalidated: src\/lib\/helper\.ts \(reloads src\/lib\/src-script\.ts\)/);
 
     const after = await fetchText(`${server.base}/`);
     expect(after.body).toContain('data-testid="src-value">HELPER-NEW<');
+    expect(server.logs()).not.toMatch(/reloads .*bascik-gen/);
+  }, 30000);
+
+  it("reloads a helper two levels deep (entry -> helper -> util) when only the util changes", async () => {
+    // Entry -> helper -> util: only the leaf is edited.
+    const utilModule = (value: string): string => `export const utilValue = () => ${JSON.stringify(value)};\n`;
+    const helperViaUtil = `import { utilValue } from "./util.ts";\nexport const helperValue = () => utilValue();\n`;
+
+    await writeAt(root, "src/lib/util.ts", utilModule("UTIL-OLD"));
+    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
+    await writeAt(root, "src/lib/helper.ts", helperViaUtil);
+    await helperChanged;
+    const before = await fetchText(`${server.base}/`);
+    expect(before.body).toContain('data-testid="src-value">UTIL-OLD<');
+
+    const utilChanged = server.waitForLog(/module invalidated: src\/lib\/util\.ts/);
+    await writeAt(root, "src/lib/util.ts", utilModule("UTIL-NEW"));
+    const logged = await utilChanged;
+    expect(logged).toMatch(/module invalidated: src\/lib\/util\.ts \(reloads src\/lib\/helper\.ts, src\/lib\/src-script\.ts\)/);
+
+    const after = await fetchText(`${server.base}/`);
+    expect(after.body).toContain('data-testid="src-value">UTIL-NEW<');
   }, 30000);
 });
 
@@ -261,6 +283,7 @@ describe("production server module reuse (real --server)", () => {
   let root: string;
   let child: ChildProcess | undefined;
   let base: string;
+  let prodOutput = "";
 
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), "bascik-112-prod-"));
@@ -292,6 +315,8 @@ describe("production server module reuse (real --server)", () => {
       env: { ...process.env, BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false", BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    child.stdout?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
     const started = Date.now();
     while (Date.now() - started < 20000) {
       try {
@@ -324,5 +349,9 @@ describe("production server module reuse (real --server)", () => {
     const after = await fetchText(`${base}/api/value`);
     expect(after.status).toBe(200);
     expect(JSON.parse(after.body).value).toBe("PROD-OLD");
+    // The dev module graph hook is never installed here: no generation marker
+    // may appear in production output or logs.
+    expect(prodOutput).not.toContain("bascik-gen");
+    expect(prodOutput).not.toContain("module invalidated");
   }, 30000);
 });

@@ -28,6 +28,10 @@ vi.mock("./events.js", async () => {
 vi.mock("./config.js", () => ({
   BascikConfig: { pipeline: { exec: undefined } },
 }));
+const { _mockInstallModuleGraphHook } = vi.hoisted(() => ({
+  _mockInstallModuleGraphHook: vi.fn(() => ({ installed: true, deregister: () => { } })),
+}));
+vi.mock("./module-graph.js", () => ({ installModuleGraphHook: _mockInstallModuleGraphHook }));
 
 import { startDevServer } from "./server-dev.ts";
 import { mem } from "./mem.ts";
@@ -110,6 +114,21 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
     release();
     await dev.execReady;
     expect(_mockStartExecDev).toHaveBeenCalledWith(expect.objectContaining({ parallel }));
+  });
+
+  it("installs the dev-only module graph hook before the server binds (prompt 138)", async () => {
+    _mockInstallModuleGraphHook.mockClear();
+    const dev = startDevServer({ exitOnError: false });
+    await dev.url;
+    expect(_mockInstallModuleGraphHook).toHaveBeenCalledTimes(1);
+    expect(_mockInstallModuleGraphHook).toHaveBeenCalledWith(
+      expect.objectContaining({ isDev: true, projectRoot: process.cwd() }),
+    );
+    // The hook must be registered before any request can import a runtime module.
+    expect(_mockInstallModuleGraphHook.mock.invocationCallOrder[0]).toBeLessThan(
+      _mockStartServer.mock.invocationCallOrder[0],
+    );
+    await dev.execReady;
   });
 
   it("installs the single exec publication coordinator after dev exec registration", async () => {

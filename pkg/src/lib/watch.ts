@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import chokidar from "chokidar";
 import type { Stats } from "node:fs";
 import { relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   pageProcessing,
   processAllPages,
@@ -47,11 +48,32 @@ export const watchFiles = async () => {
   // are imported by the runtime registry, not by the build, so the page
   // dependency graph knows nothing about them. Any file event under a watched
   // source root therefore advances the runtime identity first; the registry
-  // ignores identities it never loaded, so this costs nothing for other files.
+  // ignores identities neither it nor the dev module graph has seen, so this
+  // costs nothing for other files. When the edited file is a helper, the graph
+  // also advances every entry that transitively imports it; those entries are
+  // named in the log so the author can see what reloads.
+  const toRelative = (path: string): string => relative(process.cwd(), path).replace(/\\/g, "/");
   const invalidateRuntimeModule = (path: string): void => {
-    if (scriptRegistry.invalidate(path)) {
-      logInfo(`[bascik] module invalidated: ${relative(process.cwd(), path).replace(/\\/g, "/")}`);
+    if (!scriptRegistry.invalidate(path)) return;
+    const changed = toRelative(path);
+    const dependents: string[] = [];
+    for (const key of scriptRegistry.lastInvalidated()) {
+      if (!key.startsWith("file:")) continue;
+      let advancedPath: string;
+      try {
+        advancedPath = fileURLToPath(key);
+      } catch {
+        continue;
+      }
+      const rel = toRelative(advancedPath);
+      if (rel !== changed) dependents.push(rel);
     }
+    dependents.sort();
+    logInfo(
+      dependents.length
+        ? `[bascik] module invalidated: ${changed} (reloads ${dependents.join(", ")})`
+        : `[bascik] module invalidated: ${changed}`,
+    );
   };
   const watchers: ReturnType<typeof chokidar.watch>[] = [];
   const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };

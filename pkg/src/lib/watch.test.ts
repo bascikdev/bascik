@@ -25,10 +25,14 @@ const {
   mockGetImportRoot,
   mockExistsSync,
   mockScriptRegistryInvalidate,
+  mockScriptRegistryLastInvalidated,
+  mockShouldLog,
   mockApiInvalidateFile,
 } = vi.hoisted(() => {
   const watchers: { on: ReturnType<typeof vi.fn> }[] = [];
   const mockScriptRegistryInvalidate = vi.fn();
+  const mockScriptRegistryLastInvalidated = vi.fn(() => new Set<string>());
+  const mockShouldLog = vi.fn(() => false);
   const mockApiInvalidateFile = vi.fn().mockResolvedValue(undefined);
   const mockPageProcessing = vi.fn().mockResolvedValue(undefined);
   const mockProcessAllPages = vi.fn().mockResolvedValue(undefined);
@@ -87,6 +91,8 @@ const {
     // probes existsSync) is not created in these tests.
     mockExistsSync.mockReset().mockImplementation((p: string) => p === mockGetImportRoot());
     mockScriptRegistryInvalidate.mockReset();
+    mockScriptRegistryLastInvalidated.mockReset().mockImplementation(() => new Set<string>());
+    mockShouldLog.mockReset().mockImplementation(() => false);
     mockApiInvalidateFile.mockReset().mockResolvedValue(undefined);
   };
   return {
@@ -114,6 +120,8 @@ const {
     mockGetImportRoot,
     mockExistsSync,
     mockScriptRegistryInvalidate,
+    mockScriptRegistryLastInvalidated,
+    mockShouldLog,
     mockApiInvalidateFile,
   };
 });
@@ -162,7 +170,7 @@ vi.mock("./asset-filter.js", () => ({
 }));
 
 vi.mock("./config.js", () => ({
-  shouldLog: () => false,
+  shouldLog: mockShouldLog,
   BascikConfig: {
     directory: {
       pages: "/project/src/pages",
@@ -185,7 +193,10 @@ vi.mock("./events.js", () => ({
 }));
 
 vi.mock("./script-registry.js", () => ({
-  scriptRegistry: { invalidate: mockScriptRegistryInvalidate },
+  scriptRegistry: {
+    invalidate: mockScriptRegistryInvalidate,
+    lastInvalidated: mockScriptRegistryLastInvalidated,
+  },
 }));
 
 vi.mock("./server-api.js", () => ({
@@ -1032,6 +1043,69 @@ describe("watchFiles – runtime module invalidation (prompt 112)", () => {
     const handler = getHandler(2, "change");
     await handler?.("/project/src/components/card/card.server.ts");
     expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith("/project/src/components/card/card.server.ts");
+  });
+});
+
+describe("watchFiles – transitive helper invalidation (prompt 138)", () => {
+  beforeEach(async () => {
+    await watchFiles();
+    mockScriptRegistryInvalidate.mockClear();
+  });
+
+  it("import-root 'change' on a helper reaches the registry and logs the entries the graph advanced", async () => {
+    const { pathToFileURL } = await import("node:url");
+    const { resolve: resolvePath } = await import("node:path");
+    const helper = resolvePath(process.cwd(), "src/lib/helper.ts");
+    const entry = resolvePath(process.cwd(), "src/lib/src-script.ts");
+    mockShouldLog.mockReturnValue(true);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    // The registry reports that the helper key and, transitively, the entry key advanced.
+    mockScriptRegistryInvalidate.mockReturnValue(true);
+    mockScriptRegistryLastInvalidated.mockReturnValue(
+      new Set([pathToFileURL(helper).href, pathToFileURL(entry).href]),
+    );
+    mockPagesDependentOnFile.mockReturnValue([]);
+
+    const handler = getHandler(3, "change");
+    await handler?.(helper);
+
+    expect(mockScriptRegistryInvalidate).toHaveBeenCalledWith(helper);
+    const line = logSpy.mock.calls.map((c) => c.join(" ")).find((l) => l.includes("module invalidated"));
+    logSpy.mockRestore();
+    expect(line).toContain("module invalidated: src/lib/helper.ts");
+    // The entry that imports the helper is named so the author sees what reloads.
+    expect(line).toContain("src/lib/src-script.ts");
+    expect(line).not.toContain("bascik-gen");
+  });
+
+  it("logs only the changed path when it was the sole key advanced", async () => {
+    const { pathToFileURL } = await import("node:url");
+    const { resolve: resolvePath } = await import("node:path");
+    const entry = resolvePath(process.cwd(), "src/lib/src-script.ts");
+    mockShouldLog.mockReturnValue(true);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    mockScriptRegistryInvalidate.mockReturnValue(true);
+    mockScriptRegistryLastInvalidated.mockReturnValue(new Set([pathToFileURL(entry).href]));
+
+    const handler = getHandler(3, "change");
+    await handler?.(entry);
+
+    const line = logSpy.mock.calls.map((c) => c.join(" ")).find((l) => l.includes("module invalidated"));
+    logSpy.mockRestore();
+    expect(line).toBe("[bascik] module invalidated: src/lib/src-script.ts");
+  });
+
+  it("does not log or consult the graph when the registry never imported the file", async () => {
+    mockShouldLog.mockReturnValue(true);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
+    mockScriptRegistryInvalidate.mockReturnValue(false);
+
+    const handler = getHandler(3, "change");
+    await handler?.("/project/src/lib/unrelated.ts");
+
+    expect(mockScriptRegistryLastInvalidated).not.toHaveBeenCalled();
+    expect(logSpy.mock.calls.some((c) => c.join(" ").includes("module invalidated"))).toBe(false);
+    logSpy.mockRestore();
   });
 });
 
