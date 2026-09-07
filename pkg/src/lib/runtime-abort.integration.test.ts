@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { getEventListeners } from "node:events";
 import { ScriptRegistry } from "./script-registry.js";
 import { executeApiRoute } from "./api-runtime.js";
 import { scriptRegistry } from "./script-registry.js";
@@ -444,15 +445,19 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       expect(result.error?.message).toContain("Synchronous explosion");
     });
 
-    it("reentrant upstream abort from inside handler settles with handler result if completed or abort if raced", async () => {
+    it("reentrant upstream abort from inside the handler: the abort wins because it is observed before the handler promise settles", async () => {
       const controller = new AbortController();
       const registry = new ScriptRegistry();
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
         filePath: "reentrant-abort.js",
         module: {
           default: async () => {
+            // Fires synchronously during the handler call, so the signal is
+            // already aborted when the runtime checks it before racing. The
+            // handler's return value (settled one microtask later) is discarded.
             controller.abort(new Error("Reentrant abort from inside"));
-            return "handler-won-or-completed";
+            return "handler-value";
           },
         },
         version: 0,
@@ -462,13 +467,10 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         signal: controller.signal,
       });
 
-      // Whether result is ok or error, it settled cleanly without hang
-      expect(typeof result.ok).toBe("boolean");
-      if (result.ok) {
-        expect(result.value).toBe("handler-won-or-completed");
-      } else {
-        expect(result.error?.message).toContain("Reentrant abort");
-      }
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(false);
+      expect(result.error?.message).toBe("Reentrant abort from inside");
+      errorSpy.mockRestore();
     });
 
     it("import rejection after cancellation is swallowed/contained without crashing process", async () => {
@@ -516,13 +518,18 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       expect(result.error?.message).toBe("plain string abort reason");
     });
 
-    it("simultaneous completion under injected clock", async () => {
+    /**
+     * Settlement contract under an injected clock: whichever of the handler
+     * promise and the deadline settles first wins. Both settle in the same
+     * synchronous turn here, so promise reaction order (settlement order)
+     * decides deterministically.
+     */
+    const makeSimultaneousFixture = () => {
       let timeoutCallback: (() => void) | undefined;
-      let resolveHandler: (val: any) => void;
+      let resolveHandler: (val: unknown) => void = () => {};
       const handlerPromise = new Promise((resolve) => {
         resolveHandler = resolve;
       });
-
       const mockClock: FrameworkClock = {
         now: () => 1000,
         setTimeout: (cb) => {
@@ -533,27 +540,52 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         setInterval: vi.fn(),
         clearInterval: vi.fn(),
       };
-
       const registry = new ScriptRegistry({ clock: mockClock });
       loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
         filePath: "simultaneous.js",
-        module: {
-          default: () => handlerPromise,
-        },
+        module: { default: () => handlerPromise },
         version: 0,
       });
+      return {
+        registry,
+        mockClock,
+        fireTimeout: () => timeoutCallback!(),
+        resolveHandler: (v: unknown) => resolveHandler(v),
+      };
+    };
 
-      const invokePromise = registry.invoke("simultaneous.js", [], {
-        timeoutMs: 100,
-      });
+    it("simultaneous completion: the deadline wins when it fires before the handler promise settles", async () => {
+      const fx = makeSimultaneousFixture();
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const invokePromise = fx.registry.invoke("simultaneous.js", [], { timeoutMs: 100 });
+      // Let invoke reach the result race before both settle in one turn.
+      await Promise.resolve();
+      await Promise.resolve();
 
-      // Fire timeout and resolve handler simultaneously
-      timeoutCallback!();
-      resolveHandler!("resolved-value");
+      fx.fireTimeout();
+      fx.resolveHandler("resolved-value");
 
       const result = await invokePromise;
-      expect(typeof result.ok).toBe("boolean");
-      expect(mockClock.clearTimeout).toHaveBeenCalled();
+      expect(result.ok).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.error?.message).toContain("timed out after 100ms");
+      expect(fx.mockClock.clearTimeout).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+    });
+
+    it("simultaneous completion: the handler result wins when its promise settles before the deadline fires", async () => {
+      const fx = makeSimultaneousFixture();
+      const invokePromise = fx.registry.invoke("simultaneous.js", [], { timeoutMs: 100 });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      fx.resolveHandler("resolved-value");
+      fx.fireTimeout();
+
+      const result = await invokePromise;
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.value).toBe("resolved-value");
+      expect(fx.mockClock.clearTimeout).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -571,6 +603,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         version: 0,
       });
 
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
       for (let i = 0; i < 100; i++) {
         const res = await registry.invoke("cleanup-test.js", [], {
           signal: controller.signal,
@@ -578,16 +611,8 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         });
         expect(res.ok).toBe(true);
       }
-
-      // Check listener count on controller.signal
-      // In Node.js, AbortSignal inherits from EventTarget or EventEmitter;
-      // We can inspect event listener removal by aborting and verifying no memory leak warning or multiple calls.
-      let abortDispatched = 0;
-      controller.signal.addEventListener("abort", () => {
-        abortDispatched++;
-      });
-      controller.abort();
-      expect(abortDispatched).toBe(1);
+      // Every invocation removed its upstream abort subscription.
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
     });
 
     it("proves zero listener leaks on upstream signal after 100 invocations of executeApiRoute", async () => {
@@ -600,6 +625,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         version: 0,
       });
 
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
       for (let i = 0; i < 100; i++) {
         const req = new Request(`http://localhost:8080/api/cleanup?i=${i}`);
         const res = await executeApiRoute({
@@ -612,13 +638,7 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
         });
         expect(res.status).toBe(200);
       }
-
-      let abortDispatched = 0;
-      controller.signal.addEventListener("abort", () => {
-        abortDispatched++;
-      });
-      controller.abort();
-      expect(abortDispatched).toBe(1);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
     });
   });
 });

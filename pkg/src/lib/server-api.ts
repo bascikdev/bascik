@@ -111,8 +111,14 @@ export const streamApiResponse = async (
         console.error("[bascik] API route body stream failed after commit:", err);
       }
     } else {
+      // The header set is uncommitted, so the client gets a complete error
+      // response. `respond` alone only writes headers on both transports
+      // (`writeHead` / `stream.respond`); without `end` a real client hangs.
       try {
-        res.respond(500, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        if (!res.destroyed) {
+          res.respond(500, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+          res.end("Internal Server Error");
+        }
       } catch { }
     }
   } finally {

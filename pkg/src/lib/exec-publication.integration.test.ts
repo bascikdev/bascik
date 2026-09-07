@@ -44,6 +44,34 @@ describe("exec publication coordinator: producer/consumer overlap", () => {
     expect(execWatchCoversPath(["content/"], "src/other.md", undefined)).toBe(false);
   });
 
+  it("covers common glob shapes, absolute paths, and ./-prefixed patterns (reviewer probe table)", () => {
+    const cwd = process.cwd();
+    // Single-segment glob
+    expect(execWatchCoversPath(["content/*.md"], "content/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["content/*.md"], "content/sub/doc.md")).toBe(false);
+    expect(execWatchCoversPath(["content/*.md"], "content/doc.txt")).toBe(false);
+    // Globstar
+    expect(execWatchCoversPath(["content/**/*.md"], "content/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["content/**/*.md"], "content/sub/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["content/**/*.md"], "content/sub/doc.txt")).toBe(false);
+    // Nested literal directory with extension glob
+    expect(execWatchCoversPath(["src/data/*.json"], "src/data/x.json")).toBe(true);
+    expect(execWatchCoversPath(["src/data/*.json"], "src/other/x.json")).toBe(false);
+    // Absolute pattern vs absolute path
+    expect(execWatchCoversPath(["/abs/content"], "/abs/content/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["/abs/content"], "/abs/other/doc.md")).toBe(false);
+    // ./-prefixed pattern vs absolute cwd path (chokidar reports absolute paths
+    // when the watched glob is absolute, and relative otherwise)
+    expect(execWatchCoversPath(["./content"], `${cwd}/content/doc.md`)).toBe(true);
+    expect(execWatchCoversPath(["./content"], "content/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["content/*.md"], `${cwd}/content/doc.md`)).toBe(true);
+    // Absolute self-script vs relative change path still guards
+    expect(execWatchCoversPath(["scripts/"], `${cwd}/scripts/gen.mjs`, "scripts/gen.mjs")).toBe(false);
+    // Existing true cases
+    expect(execWatchCoversPath(["content"], "content/doc.md")).toBe(true);
+    expect(execWatchCoversPath(["content/**"], "content/sub/doc.md")).toBe(true);
+  });
+
   it("never matches the producer's own script (cyclic self-watch guard)", () => {
     expect(execWatchCoversPath(["scripts/"], "scripts/generator.mjs", "scripts/generator.mjs")).toBe(false);
     expect(execWatchCoversPath(["scripts/"], "scripts/generator.mjs", undefined)).toBe(true);

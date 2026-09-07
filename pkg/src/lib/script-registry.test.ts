@@ -186,6 +186,41 @@ describe("ScriptRegistry", () => {
     stderrSpy.mockRestore();
   });
 
+  // 8b. An upstream abort (the response sink's "client disconnected" reason,
+  // which is neither a net-reset code nor a timeout) is not a server fault.
+  it("does not log an error when the upstream signal aborts with a disconnect reason", async () => {
+    const filePath = join(tempDir, "upstream-disconnect.mjs");
+    await writeFile(
+      filePath,
+      `export default async function(context, opts) {
+        return new Promise((resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true });
+        });
+      }`
+    );
+
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const controller = new AbortController();
+    const registry = new ScriptRegistry({ isDev: false });
+    await registry.load(filePath);
+
+    const invokePromise = registry.invoke(filePath, [{}], {
+      timeoutMs: 10000,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort(new Error("client disconnected"));
+
+    const result = await invokePromise;
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(false);
+    expect(result.error?.message).toBe("client disconnected");
+    expect(stderrSpy).not.toHaveBeenCalled();
+
+    stderrSpy.mockRestore();
+  });
+
   // 9. An unhandled rejection inside a module does not crash the process.
   it("captures async promise rejections without crashing the process", async () => {
     const filePath = join(tempDir, "async-reject.mjs");

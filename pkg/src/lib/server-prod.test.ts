@@ -162,6 +162,21 @@ describe("startProdServer", () => {
     error.mockRestore();
   });
 
+  it("fails startup when a placeholder page has no sidecar at all", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(
+      join(workDir, "dist", "index.html"),
+      '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(/sidecar .*is missing/);
+    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it("fails startup on an incompatible sidecar schema", async () => {
     await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
     await writeFile(join(workDir, "dist", "index.html"), "<h1>home</h1>");

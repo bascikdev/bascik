@@ -928,6 +928,32 @@ describe("build-script output cache", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
+  it("a no-arg clearBuildScriptCaches() does not re-execute an unchanged script: the on-disk cache still hits (S7 trade-off pin)", async () => {
+    // First run: miss on disk, execute, write the entry.
+    mockReadFile.mockRejectedValue(new Error("ENOENT"));
+    resolveWith("<p>unrelated</p>");
+    const tag = "<script data-bascik-build>unrelated()</script>";
+    await executeBuildScripts(tag, "src/pages/unrelated.html");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite).toBeDefined();
+    const [cachePath, cacheBody] = jsonWrite as [string, string];
+
+    // The exec consumer flush in watch.ts wipes the in-memory memo for every
+    // page. The disk entry survives, so the unrelated page's script must not
+    // spawn again.
+    clearBuildScriptCaches();
+    mockExecFile.mockClear();
+    mockReadFile.mockReset();
+    mockReadFile.mockImplementation((path: string) =>
+      String(path) === String(cachePath) ? Promise.resolve(cacheBody) : Promise.reject(new Error("ENOENT")),
+    );
+
+    const result = await executeBuildScripts(tag, "src/pages/unrelated.html");
+    expect(result).toBe("<p>unrelated</p>");
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
   it("ignores a cache entry whose version does not match", async () => {
     resolveWith("<p>fresh</p>");
     // Stale version — should be treated as a miss.

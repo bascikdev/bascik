@@ -29,7 +29,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: [{
-    command: `BASCIK_SERVER_PORT=9661 BASCIK_GENERATOR_GATE=1 node ${pkgDir}/dist/index.js`,
+    command: `rm -f scripts/.generation scripts/.armed-gate && BASCIK_SERVER_PORT=9661 BASCIK_GENERATOR_GATE=1 node ${pkgDir}/dist/index.js`,
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,

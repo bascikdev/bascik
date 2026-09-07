@@ -125,10 +125,23 @@ test.describe('exec producer/consumer lifecycle ownership', () => {
     await writeFile(armedGatePath, 'armed', 'utf8');
     await writeFile(docPath, `${originalDoc}\n\ngated ${Date.now()}\n`, 'utf8');
 
-    // The producer has started (generation bumped) but not published. The page
-    // must still serve the previous known-good generation: no premature reload
-    // and no blank/error page.
-    await page.waitForTimeout(1500);
+    // Observe the gate signal: the producer has started (generation bumped)
+    // and is holding behind its release server, which answers 404 for any
+    // path other than /release. No wall-clock wait: this resolves the moment
+    // the gate binds.
+    await expect
+      .poll(() => fetch('http://127.0.0.1:9777/held').then((r) => r.status).catch(() => 0), { timeout: 15000 })
+      .toBe(404);
+    // The marker is written before the gate binds, so this is a plain read.
+    expect(await readGeneration()).toBe(before + 1);
+
+    // The producer has not published. The page must still serve the previous
+    // known-good generation: the armed navigation promise must still be
+    // pending (race against an already-resolved sentinel), and the DOM must be
+    // intact, not blank or an error page.
+    const sentinel = Symbol('no-navigation');
+    const raced = await Promise.race([reloaded.then(() => 'navigated' as const), Promise.resolve(sentinel)]);
+    expect(raced).toBe(sentinel);
     await expect(page.getByTestId('generated-value')).toHaveText(new RegExp(`generation-${before}\\s*`));
     await rm(armedGatePath, { force: true });
 

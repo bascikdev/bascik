@@ -145,6 +145,24 @@ describe("production sidecar readiness integration", () => {
     expect(getBound()).toBeUndefined();
   });
 
+  it("rejects a placeholder page when the sidecar is missing, never advertising readiness", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    await writeFile(
+      join(distDir, "index.html"),
+      '<script type="text/bascik-server" data-bascik-server-id="missing"></script>',
+      "utf8",
+    );
+    // No dist/.bascik/server-scripts.json at all.
+    const getBound = captureBoundServer();
+
+    await expect(startProdServer()).rejects.toThrow(/production startup validation failed/);
+    await expect(startProdServer()).rejects.toThrow(/sidecar .*is missing/);
+
+    // The page would 500 on every request; it must never be advertised ready.
+    expect(getServerHealthState()).toBe("booting");
+    expect(getBound()).toBeUndefined();
+  });
+
   it("serves a genuinely static release with no sidecar and reports ready 200", async () => {
     await writeFile(join(distDir, "index.html"), "<h1>static</h1>", "utf8");
     const getBound = captureBoundServer();

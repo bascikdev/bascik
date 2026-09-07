@@ -387,8 +387,13 @@ export class ScriptRegistry {
       settled = true;
       const err = toError(rawError);
       const isNetReset = isNetworkResetError(rawError);
+      // An upstream abort (the response sink aborts with "client disconnected"
+      // on a dropped connection) is a client event, not a script fault, so it
+      // is not reported as an error. A timeout also aborts the internal
+      // controller but never the upstream signal, so it is tracked separately.
+      const upstreamAborted = !didTimeout && options.signal?.aborted === true;
 
-      if (!isNetReset && !didTimeout) {
+      if (!isNetReset && !didTimeout && !upstreamAborted) {
         this.logError(err, resolvedPath, options);
       }
 

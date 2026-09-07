@@ -46,7 +46,7 @@ const collectHtmlFiles = async (dir: string): Promise<string[]> => {
 /**
  * Read every HTML page from output directory and store it in the in-memory page store
  * so the HTTP/2 server can serve them. The same memory store and server used
- * for dev mode is reused here — no second server implementation needed.
+ * for dev mode is reused here, so no second server implementation is needed.
  */
 const loadDistIntoMemory = async (): Promise<void> => {
   const distDir = resolve(BascikConfig.directory.out);
@@ -118,26 +118,29 @@ const loadDistIntoMemory = async (): Promise<void> => {
   }
 
   // ── Production readiness boundary (prompt 108) ─────────────────────────
-  // Once every page is stored, confirm that a present sidecar was fully
-  // consumable before advertising readiness. Each stored page carries a
-  // precomputed serverScriptPlan; a `{ error }` plan (unresolvable placeholder
-  // ID, stale mode marker, conflicting directive) proves this release's
-  // required runtime artifacts cannot be resolved. A genuinely static release
-  // with no sidecar remains valid and skips this check.
-  if (sidecarResult.present) {
-    const failedPages = mem.pages().filter(
-      (page) => page.serverScriptPlan && "error" in page.serverScriptPlan,
+  // Once every page is stored, confirm that every server-script plan resolved
+  // before advertising readiness. Each stored page carries a precomputed
+  // serverScriptPlan; a `{ error }` plan (unresolvable placeholder ID, stale
+  // mode marker, conflicting directive) proves this release's required runtime
+  // artifacts cannot be resolved. This runs regardless of sidecar presence: a
+  // placeholder page with no sidecar would 500 on every request, so a missing
+  // sidecar is only optional when no page references a server script. A
+  // genuinely static release (no sidecar AND no placeholders) passes.
+  const failedPages = mem.pages().filter(
+    (page) => page.serverScriptPlan && "error" in page.serverScriptPlan,
+  );
+  if (failedPages.length > 0) {
+    const first = failedPages[0].serverScriptPlan as { error: Error };
+    const sidecarState = sidecarResult.present
+      ? `while ${outDirRel}/.bascik/server-scripts.json is present`
+      : `and the sidecar ${outDirRel}/.bascik/server-scripts.json is missing`;
+    setServerHealthState("booting");
+    throw new Error(
+      `[bascik] --server: production startup validation failed. ` +
+      `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
+      `placeholder ${sidecarState}. First failure (${failedPages[0].relativePagePath}): ` +
+      `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
     );
-    if (failedPages.length > 0) {
-      const first = failedPages[0].serverScriptPlan as { error: Error };
-      setServerHealthState("booting");
-      throw new Error(
-        `[bascik] --server: production startup validation failed. ` +
-        `${failedPages.length} stored page(s) reference an unresolvable or stale server-script ` +
-        `placeholder while dist/.bascik/server-scripts.json is present. First failure (${failedPages[0].relativePagePath}): ` +
-        `${first.error.message}. Run \`bascik --build\` to regenerate matching artifacts.`,
-      );
-    }
   }
 
   console.log(`Loaded ${htmlFiles.length} page${htmlFiles.length !== 1 ? "s" : ""} from ${outDirRel}/`);

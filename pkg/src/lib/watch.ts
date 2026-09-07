@@ -204,8 +204,16 @@ export const watchFiles = async () => {
       for (const path of paths) {
         clearBuildScriptCaches(path);
       }
-      // Produce outputs are not statically known, so invalidate any consumed
-      // script cache entry the producer may have rewritten before recompiling.
+      // Trade-off (reviewed, prompt 109/S7): a producer's OUTPUT paths are not
+      // known here (only its input paths or entry script are), so the clear
+      // cannot be scoped to `mem.pagesDependentOnFile(<output>)` even though
+      // the dependency graph does record literal `dist/...` reads. The no-arg
+      // clear drops the in-memory dependency-content memo for every page; the
+      // per-path variant above already clears the whole in-memory output cache
+      // regardless. Cost: each recompiled page re-reads its dependency files
+      // once and re-derives its key. Unrelated pages are NOT re-executed: an
+      // unchanged key still hits the on-disk script cache. Scoping this
+      // requires producers to declare outputs; tracked as a follow-up.
       clearBuildScriptCaches();
       for (const path of paths) {
         await selectivelyProcessPagesForWatchPath(path);

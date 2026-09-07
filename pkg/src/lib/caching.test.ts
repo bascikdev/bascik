@@ -14,6 +14,7 @@ import {
   STATIC_CACHE_METADATA,
   getStaticRepresentation,
   clearStaticRepresentationCache,
+  MAX_CACHED_REPRESENTATION_BYTES,
 } from "./caching.ts";
 
 describe("Prompt 39 - Caching Layer Unit Tests", () => {
@@ -344,5 +345,53 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
     expect(br!.etag).toBe(getEncodedEtag(raw!.etag, "br"));
     expect(gz!.etag).toBe(getEncodedEtag(raw!.etag, "gzip"));
     expect(br!.size).toBe(br!.buffer.byteLength);
+  });
+
+  it("serves a file one byte over the cache ceiling correctly, fully buffered, and does not retain it", async () => {
+    // Pins the current contract (S2): identity delivery is a single full
+    // read per request with no upper bound; only representations at or under
+    // MAX_CACHED_REPRESENTATION_BYTES are retained, so an oversized asset is
+    // re-read on every request.
+    const p = join(dir, "large.bin");
+    const body = Buffer.alloc(MAX_CACHED_REPRESENTATION_BYTES + 1, 0x61);
+    await writeFile(p, body);
+
+    const repr1 = await getStaticRepresentation(p, "identity", 1, body.byteLength);
+    expect(repr1).not.toBeNull();
+    expect(repr1!.size).toBe(MAX_CACHED_REPRESENTATION_BYTES + 1);
+    expect(repr1!.buffer.byteLength).toBe(MAX_CACHED_REPRESENTATION_BYTES + 1);
+    expect(repr1!.etag).toBe(getContentHashEtag(body));
+    expect(getCompressedCacheEntriesCount()).toBe(0);
+
+    // A second request produces a fresh buffer (not the cached instance).
+    // Identity is compared as a boolean: `expect(buf).not.toBe(other)` makes
+    // vitest deep-compare two 2 MiB buffers for its hint message.
+    const repr2 = await getStaticRepresentation(p, "identity", 1, body.byteLength);
+    expect(repr2!.buffer === repr1!.buffer).toBe(false);
+    expect(repr2!.etag).toBe(repr1!.etag);
+    expect(getCompressedCacheEntriesCount()).toBe(0);
+  });
+
+  it("ignores a precompressed .br sidecar without a .bmeta provenance stamp and compresses on the fly", async () => {
+    // Pins the current contract (S3): nothing in the build emits `.bmeta`, so
+    // a bare `.br` sidecar is unverified and never served.
+    const zlib = await import("node:zlib");
+    const p = join(dir, "asset.js");
+    const body = Buffer.from("export const answer = 42;".repeat(40));
+    await writeFile(p, body);
+    // A sidecar with recognizably different (stale) content.
+    await writeFile(`${p}.br`, zlib.brotliCompressSync(Buffer.from("stale bytes")));
+
+    const br = await getStaticRepresentation(p, "br");
+    expect(br).not.toBeNull();
+    expect(zlib.brotliDecompressSync(br!.buffer).equals(body)).toBe(true);
+
+    // With a matching provenance stamp, the sidecar is served verbatim.
+    clearStaticRepresentationCache();
+    const sidecar = zlib.brotliCompressSync(body);
+    await writeFile(`${p}.br`, sidecar);
+    await writeFile(`${p}.br.bmeta`, JSON.stringify({ rawHash: getContentHashEtag(body) }));
+    const verified = await getStaticRepresentation(p, "br");
+    expect(verified!.buffer.equals(sidecar)).toBe(true);
   });
 });

@@ -230,6 +230,9 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
       }),
     );
     expect(mockEventEmit).not.toHaveBeenCalledWith("exec-completed", expect.anything());
+    // One failure prints exactly one stderr line; exec-failed only feeds the
+    // SSE build-error overlay, which does not log.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith("[bascik] exec error:", expect.any(Error));
     errorSpy.mockRestore();
   });
@@ -281,6 +284,21 @@ describe("startExecDev", () => {
         entry: { script: "scripts/gen.ts", watch: ["content/"] },
         paths: ["content/doc.md"],
       }),
+    );
+  });
+
+  it("re-runs the producer when the watch entry is a file glob such as content/*.md", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/gen.ts", watch: ["content/*.md"] }];
+    await startExecDev();
+
+    const watcher = getWatcher(0);
+    watcher.handlers.all("change", "content/doc.md");
+    await new Promise((r) => setTimeout(r, 70));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockEventEmit).toHaveBeenCalledWith(
+      "exec-completed",
+      expect.objectContaining({ paths: ["content/doc.md"] }),
     );
   });
 

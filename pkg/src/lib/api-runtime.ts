@@ -366,7 +366,7 @@ export const executeApiRoute = async (
     // Upstream (transport) cancellation is not a handler defect: the client
     // went away, so the result is a quiet 499 that dispatch never delivers.
     // Only a deadline is reported as a timeout below.
-    if (!didTimeout && (userSignal?.aborted || (abortController.signal.aborted && !didTimeout))) {
+    if (!didTimeout && (userSignal?.aborted || abortController.signal.aborted)) {
       return new Response("Client Closed Request", { status: 499 });
     }
 

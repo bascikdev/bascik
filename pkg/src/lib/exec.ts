@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { resolve, sep } from 'node:path';
+import { matchesGlob, resolve, sep } from 'node:path';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
@@ -293,6 +293,9 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
         eventEmitter.emit('exec-completed', { entry, paths });
       })
       .catch((err) => {
+        // Single stderr report per failure. The `exec-failed` -> `build-error`
+        // path only broadcasts an SSE frame to browser overlays (sse.ts); it
+        // does not write to stderr, so this is the one terminal line.
         console.error('[bascik] exec error:', err);
         eventEmitter.emit('exec-failed', { entry, paths, error: err });
       });
@@ -400,43 +403,45 @@ export const startExecDev = (options?: ExecDevOptions): Promise<void> => {
   });
 };
 
+/** Glob metacharacters recognized by `path.matchesGlob` (minimatch syntax). */
+const GLOB_META = /[?*[\]{}()!+@]/;
+
+/** Resolve a path or glob against cwd and normalize separators to `/`. */
+const toAbsolutePosix = (p: string): string =>
+  resolve(process.cwd(), p).replace(/\\/g, "/");
+
 /**
  * True when `changedPath` (relative or absolute) is covered by an exec watch
- * glob, ignoring the producer's own script so a generator does not re-trigger
- * itself (cyclic self-watch). Conservative overlap only over-watches a
- * generation; it never drops a required edit.
+ * pattern, ignoring the producer's own script so a generator does not
+ * re-trigger itself (cyclic self-watch).
+ *
+ * Both sides are resolved against cwd first, so `./content`, `content/`,
+ * `/abs/content`, and chokidar's absolute or relative report paths all
+ * compare on the same footing. Glob patterns (`content/*.md`,
+ * `content/**\/*.md`, `src/data/*.json`) use a real matcher; a non-glob
+ * pattern is a directory or file base that matches itself and every
+ * descendant, so `watch: ['content']` behaves like `'content/'` and
+ * `'content/**'`. This gate sits in front of the exec re-run, so a false
+ * negative here drops a required edit; a false positive only over-watches.
  */
 export const execWatchCoversPath = (
   patterns: string[],
   changedPath: string,
   script?: string,
 ): boolean => {
-  const cwdPrefix = `${process.cwd()}/`.replace(/\\/g, "/");
-  const normalized = changedPath.replace(/\\/g, "/");
-  const rel = normalized.startsWith(cwdPrefix)
-    ? normalized.slice(cwdPrefix.length)
-    : normalized;
+  const abs = toAbsolutePosix(changedPath);
 
   if (script) {
-    const resolvedScript = resolve(process.cwd(), script).replace(/\\/g, "/");
-    const relScript = resolvedScript.startsWith(cwdPrefix)
-      ? resolvedScript.slice(cwdPrefix.length)
-      : resolvedScript;
-    if (rel === relScript || rel.startsWith(`${relScript}/`)) return false;
+    const absScript = toAbsolutePosix(script);
+    if (abs === absScript || abs.startsWith(`${absScript}/`)) return false;
   }
 
   return patterns.some((pattern) => {
     const pat = pattern.replace(/\\/g, "/");
-    if (pat.endsWith("/")) {
-      return rel === pat.slice(0, -1) || rel.startsWith(pat);
+    if (GLOB_META.test(pat)) {
+      return matchesGlob(abs, toAbsolutePosix(pat));
     }
-    if (!/[?*[\]{}()!+@]/.test(pat)) {
-      // A literal path pattern serves as a directory base: it matches the path
-      // or any descendant, so `watch: ['src/content/docs']` overlaps edits
-      // inside that directory exactly as `'src/content/docs/'` would.
-      return pat === rel || rel.startsWith(`${pat}/`);
-    }
-    const base = pat.replace(/[?*[\]{}()!+@]/g, "").replace(/\/\*+/g, "/");
-    return rel.startsWith(base) || pat === rel;
+    const base = toAbsolutePosix(pat.endsWith("/") ? pat.slice(0, -1) : pat);
+    return abs === base || abs.startsWith(`${base}/`);
   });
 };

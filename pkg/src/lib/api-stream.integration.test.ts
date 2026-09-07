@@ -687,4 +687,100 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     expect(healthyRes.status).toBe(200);
     expect(healthyRes.body).toBe("h2 healthy ok");
   });
+
+  /** Install a single streaming route whose first pull errors before any byte is produced. */
+  const installFailingProducer = () => {
+    vi.spyOn(scriptRegistry, "load").mockResolvedValue({
+      filePath: "/app/src/api/fail.ts",
+      version: 0,
+      module: {
+        GET: async () => {
+          const stream = new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.error(new Error("producer failure before commit"));
+            },
+          }, { highWaterMark: 0 });
+          return new Response(stream, { status: 200 });
+        },
+      },
+    });
+    (apiRouteRegistry as any).routes = [
+      { path: "/api/fail", filePath: "/app/src/api/fail.ts", paramNames: [], isDynamic: false },
+    ];
+    return createRequestHandler();
+  };
+
+  it("HTTP/1.1: a producer failure before commit delivers a completed 500 response to a real client", async () => {
+    const nodeHttp = await import("node:http");
+    const { adaptHttp1 } = await import("./http.ts");
+    const handle = installFailingProducer();
+
+    http1Server = nodeHttp.createServer((reqMsg, resMsg) => {
+      const { req, res } = adaptHttp1(reqMsg, resMsg);
+      handle(req, res).catch(() => {});
+    });
+    await new Promise<void>((r) => http1Server.listen(0, "127.0.0.1", r));
+    const port = (http1Server.address() as any).port;
+
+    // The client must observe `end`: a 500 whose response is never ended
+    // leaves a real client hanging on the socket.
+    const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = nodeHttp.get("http://127.0.0.1:" + port + "/api/fail", (res) => {
+        let b = "";
+        res.on("data", (c) => { b += c.toString(); });
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b }));
+        res.on("error", reject);
+      });
+      req.on("error", reject);
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.body.length).toBeGreaterThan(0);
+  });
+
+  it("HTTP/2: a producer failure before commit delivers a completed 500 response to a real client", async () => {
+    const nodeHttp2 = await import("node:http2");
+    const { adaptHttp2 } = await import("./http2.ts");
+    const { readFile } = await import("node:fs/promises");
+    const { execFile: execFileCb } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFile = promisify(execFileCb);
+    const keyFile = (await import("node:path")).join(distDir, "key.pem");
+    const certFile = (await import("node:path")).join(distDir, "cert.pem");
+    await execFile("openssl", [
+      "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
+      "-subj", "/CN=localhost",
+      "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+      "-keyout", keyFile, "-out", certFile,
+    ]);
+
+    const handle = installFailingProducer();
+    http2Server = nodeHttp2.createSecureServer({
+      key: await readFile(keyFile),
+      cert: await readFile(certFile),
+    });
+    http2Server.on("stream", (stream: any, headers: any) => {
+      const { req, res } = adaptHttp2(stream, headers);
+      handle(req, res).catch(() => {});
+    });
+    await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
+    const port = (http2Server.address() as any).port;
+
+    const client = nodeHttp2.connect("https://127.0.0.1:" + port, { rejectUnauthorized: false });
+    try {
+      const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = client.request({ ":path": "/api/fail", ":method": "GET" });
+        let status = 0;
+        let b = "";
+        req.on("response", (h: any) => { status = Number(h[":status"]); });
+        req.on("data", (c: Buffer) => { b += c.toString(); });
+        req.on("end", () => resolve({ status, body: b }));
+        req.on("error", reject);
+      });
+      expect(result.status).toBe(500);
+      expect(result.body.length).toBeGreaterThan(0);
+    } finally {
+      client.close();
+    }
+  });
 });

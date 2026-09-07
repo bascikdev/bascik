@@ -35,7 +35,10 @@ export default defineConfig({
     headless: true,
   },
   webServer: [{
-    command: `BASCIK_SERVER_PORT=9661 BASCIK_PARALLEL_GATE=1 node ${pkgDir}/dist/index.js`,
+    // The generator's persistent counter and gate marker are runtime state
+    // from a previous run; reset them so "startup runs exactly once" asserts
+    // against this boot, not accumulated history.
+    command: `rm -f scripts/.generation scripts/.armed-gate && BASCIK_SERVER_PORT=9661 BASCIK_PARALLEL_GATE=1 node ${pkgDir}/dist/index.js`,
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,
