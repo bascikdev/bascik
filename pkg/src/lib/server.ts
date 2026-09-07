@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import { extname, resolve, sep } from "node:path";
 import type { Server as NetServer } from "node:net";
 import { mem } from "./mem.ts";
@@ -20,10 +21,11 @@ import {
   resolveCacheControl,
   negotiateCompression,
   matchesIfNoneMatch,
-  getStaticRepresentation,
+  getStaticDelivery,
   clearCompressedRepresentationCache,
   isCompressibleMime,
   COMPRESSION_MIN_BYTES,
+  type StreamedStaticDelivery,
 } from "./caching.ts";
 
 import {
@@ -217,6 +219,123 @@ export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest
   console.error("Request/Stream error:", error);
 };
 
+/**
+ * The peer went away while a committed body was in flight: not a server
+ * fault. Decided from the error code only, never from `res.destroyed`, because
+ * `pipeline` destroys the transport on a read failure too and that must still
+ * surface as an error.
+ */
+const isPeerAbort = (err: unknown): boolean => {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return (
+    isNetworkResetError(err) ||
+    code === "ERR_STREAM_PREMATURE_CLOSE" ||
+    code === "ERR_STREAM_UNABLE_TO_PIPE"
+  );
+};
+
+interface StreamedAssetContext {
+  req: BascikRequest;
+  res: BascikResponse;
+  isHead: boolean;
+  mimeType: string;
+  cacheControlVal: string;
+  secHeaders: Record<string, string>;
+}
+
+/**
+ * Deliver a large static asset from one opened file handle (prompt 140).
+ *
+ * Contract:
+ * - Headers carry the weak validator and `content-length` from the handle's
+ *   own `fstat`, so validator and framing describe the streamed inode.
+ * - `HEAD` and a matching weak `If-None-Match` are answered before any read
+ *   stream exists; the handle is closed immediately.
+ * - The body is `fd.createReadStream()` piped through `pipeline`, so socket
+ *   backpressure governs reads and memory stays at the stream high-water mark.
+ * - A read error before headers is a 500. A read error after headers destroys
+ *   the transport (mirrors prompt 110: a committed response is never silently
+ *   truncated into a "successful" short body).
+ * - The handle closes on every path: success, error, and client abort. The
+ *   read stream is created with `autoClose: false` so the delivery owns the
+ *   single close, and `pipeline` destroys the read side on either end failing.
+ *
+ * Returns the status for access logging.
+ */
+const serveStreamedAsset = async (
+  delivery: StreamedStaticDelivery,
+  ctx: StreamedAssetContext,
+): Promise<number> => {
+  const { req, res, isHead, mimeType, cacheControlVal, secHeaders } = ctx;
+  const httpCache = BascikConfig.http.httpCache !== false;
+  try {
+    if (res.destroyed) {
+      return 0;
+    }
+
+    if (httpCache && matchesIfNoneMatch(req.headers["if-none-match"], delivery.etag)) {
+      res.respond(304, {
+        etag: delivery.etag,
+        "cache-control": cacheControlVal,
+        vary: "Accept-Encoding",
+        ...secHeaders,
+      });
+      res.end();
+      return 304;
+    }
+
+    const headers: Record<string, string | number> = {
+      "content-type": mimeType,
+      "cache-control": cacheControlVal,
+      vary: "Accept-Encoding",
+      "content-length": delivery.size,
+      ...secHeaders,
+    };
+    if (httpCache) {
+      headers["etag"] = delivery.etag;
+    }
+
+    if (isHead) {
+      res.respond(200, headers);
+      res.end();
+      return 200;
+    }
+
+    // Own the read stream before committing headers so an open failure can
+    // still become a clean 500 rather than a truncated 200.
+    const fileStream = delivery.fd.createReadStream({ autoClose: false });
+    res.respond(200, headers);
+    if (res.destroyed) {
+      // The peer vanished as headers committed; nothing to write to.
+      fileStream.destroy();
+      return 200;
+    }
+    try {
+      await pipeline(fileStream, res.writable);
+    } catch (err) {
+      // Headers are committed. A peer abort (reset, or the transport closing
+      // under the pipeline) is not a server fault. Anything else must not
+      // leave a short body that looks complete: destroy the transport so the
+      // client sees a broken response, never a truncated 200.
+      if (isPeerAbort(err)) return 200;
+      console.error("[bascik] streamed asset read failed after headers:", err);
+      res.close();
+      throw err;
+    }
+    return 200;
+  } catch (err) {
+    if (!res.headersSent && !res.destroyed) {
+      res.respond(500, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+      res.end("Internal Server Error");
+      return 500;
+    }
+    if (isPeerAbort(err)) return 200;
+    throw err;
+  } finally {
+    await delivery.close();
+  }
+};
+
 export const createRequestHandler = () => {
   const distDir = resolve(BascikConfig.directory.out);
 
@@ -381,15 +500,15 @@ export const createRequestHandler = () => {
         const enableCompression = BascikConfig.http.compression !== false && isCompressibleMime(mimeType, ext.toLowerCase()) && fileStat.size >= COMPRESSION_MIN_BYTES;
         const negotiatedEncoding = enableCompression ? negotiateCompression(req.headers["accept-encoding"]) : "identity";
 
-        // Acquire the selected representation as one immutable owner.
-        // `fileStat` is only a cache-invalidation hint; `etag`, `size`, and
-        // `buffer` all derive from the same bytes delivered (prompt 107).
-        const representation = negotiatedEncoding === "identity"
-          ? await getStaticRepresentation(fullPath, "identity", fileStat.mtimeMs, fileStat.size)
-          : (await getStaticRepresentation(fullPath, negotiatedEncoding, fileStat.mtimeMs, fileStat.size))
-            ?? await getStaticRepresentation(fullPath, "identity", fileStat.mtimeMs, fileStat.size);
+        // Acquire the selected delivery as one owner (prompt 140). At or under
+        // MAX_BUFFERED_ASSET_BYTES this is the prompt 107 immutable
+        // representation (`fileStat` is only a cache-invalidation hint; `etag`,
+        // `size`, and `buffer` all derive from the same bytes delivered). Above
+        // it the file is opened once and streamed with a weak validator taken
+        // from that handle's own stat.
+        const delivery = await getStaticDelivery(fullPath, negotiatedEncoding, fileStat);
 
-        if (!representation) {
+        if (!delivery) {
           if (res.destroyed) return;
           responseStatus = 404;
           res.respond(404, { ...secHeaders });
@@ -397,6 +516,19 @@ export const createRequestHandler = () => {
           return;
         }
 
+        if (delivery.kind === "streamed") {
+          responseStatus = await serveStreamedAsset(delivery, {
+            req,
+            res,
+            isHead,
+            mimeType,
+            cacheControlVal,
+            secHeaders,
+          });
+          return;
+        }
+
+        const representation = delivery.representation;
         const rawEtag = representation.rawEtag;
         const effectiveEtag = representation.etag;
 

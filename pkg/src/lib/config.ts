@@ -185,6 +185,7 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
     trustProxy: false,
     cacheControl: "public, max-age=3600",
     compression: true,
+    precompress: false,
     timeouts: undefined,
     maxBodySize: 1048576,
     apiTimeout: 10000,

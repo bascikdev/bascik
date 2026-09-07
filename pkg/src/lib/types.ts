@@ -250,6 +250,13 @@ export interface HttpOptions {
   trustProxy: boolean;
   cacheControl: string | Record<string, string>;
   compression: boolean;
+  /**
+   * Emit verified `.br`/`.gz` sidecars with `.bmeta` provenance for
+   * compressible static assets at build time, so `bascik --server` serves them
+   * without on-the-fly compression. Default `false` (costs build time and
+   * roughly doubles the on-disk footprint of compressible assets).
+   */
+  precompress: boolean;
   timeouts?: HttpTimeoutsOptions;
   maxBodySize: number;
   apiTimeout: number;
@@ -319,6 +326,7 @@ export type UserConfig = {
     trustProxy?: boolean;
     cacheControl?: string;
     compression?: boolean;
+    precompress?: boolean;
     timeouts?: HttpTimeoutsOptions;
     maxBodySize?: number;
     apiTimeout?: number;

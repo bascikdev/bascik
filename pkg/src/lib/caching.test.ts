@@ -15,6 +15,10 @@ import {
   getStaticRepresentation,
   clearStaticRepresentationCache,
   MAX_CACHED_REPRESENTATION_BYTES,
+  MAX_BUFFERED_ASSET_BYTES,
+  getStaticDelivery,
+  getOpenStreamedAssetHandles,
+  makeStreamedAssetEtag,
 } from "./caching.ts";
 
 describe("Prompt 39 - Caching Layer Unit Tests", () => {
@@ -168,7 +172,7 @@ describe("Prompt 39 - Caching Layer Unit Tests", () => {
   });
 });
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat as fsStat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -347,29 +351,79 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
     expect(br!.size).toBe(br!.buffer.byteLength);
   });
 
-  it("serves a file one byte over the cache ceiling correctly, fully buffered, and does not retain it", async () => {
-    // Pins the current contract (S2): identity delivery is a single full
-    // read per request with no upper bound; only representations at or under
-    // MAX_CACHED_REPRESENTATION_BYTES are retained, so an oversized asset is
-    // re-read on every request.
-    const p = join(dir, "large.bin");
-    const body = Buffer.alloc(MAX_CACHED_REPRESENTATION_BYTES + 1, 0x61);
-    await writeFile(p, body);
+  describe("two-tier delivery (prompt 140)", () => {
+    it("streams a file one byte over MAX_BUFFERED_ASSET_BYTES from one handle with a weak validator, never buffered or cached", async () => {
+      const p = join(dir, "large.bin");
+      const body = Buffer.alloc(MAX_BUFFERED_ASSET_BYTES + 1, 0x61);
+      await writeFile(p, body);
+      const st = await fsStat(p);
 
-    const repr1 = await getStaticRepresentation(p, "identity", 1, body.byteLength);
-    expect(repr1).not.toBeNull();
-    expect(repr1!.size).toBe(MAX_CACHED_REPRESENTATION_BYTES + 1);
-    expect(repr1!.buffer.byteLength).toBe(MAX_CACHED_REPRESENTATION_BYTES + 1);
-    expect(repr1!.etag).toBe(getContentHashEtag(body));
-    expect(getCompressedCacheEntriesCount()).toBe(0);
+      // Even with a compressible encoding negotiated, the large tier is
+      // identity only: no buffer-compress path exists for it.
+      const delivery = await getStaticDelivery(p, "br", st);
+      expect(delivery).not.toBeNull();
+      expect(delivery!.kind).toBe("streamed");
+      if (!delivery || delivery.kind !== "streamed") throw new Error("unreachable");
+      try {
+        expect(delivery.encoding).toBe("identity");
+        expect(delivery.size).toBe(MAX_BUFFERED_ASSET_BYTES + 1);
+        // Weak validator derived from the opened handle's fstat.
+        const hst = await delivery.fd.stat();
+        expect(delivery.etag).toBe(makeStreamedAssetEtag(hst));
+        expect(delivery.etag).toMatch(/^W\/"[0-9a-z]+-[0-9a-z]+-[0-9a-z]+"$/);
+        expect(getOpenStreamedAssetHandles()).toBe(1);
+        expect(getCompressedCacheEntriesCount()).toBe(0);
+        // The handle reads the same bytes the validator describes.
+        const chunk = Buffer.alloc(16);
+        const { bytesRead } = await delivery.fd.read(chunk, 0, 16, 0);
+        expect(bytesRead).toBe(16);
+        expect(chunk.equals(body.subarray(0, 16))).toBe(true);
+      } finally {
+        await delivery.close();
+      }
+      expect(getOpenStreamedAssetHandles()).toBe(0);
+      // close() is idempotent.
+      await delivery.close();
+      expect(getOpenStreamedAssetHandles()).toBe(0);
+    });
 
-    // A second request produces a fresh buffer (not the cached instance).
-    // Identity is compared as a boolean: `expect(buf).not.toBe(other)` makes
-    // vitest deep-compare two 2 MiB buffers for its hint message.
-    const repr2 = await getStaticRepresentation(p, "identity", 1, body.byteLength);
-    expect(repr2!.buffer === repr1!.buffer).toBe(false);
-    expect(repr2!.etag).toBe(repr1!.etag);
-    expect(getCompressedCacheEntriesCount()).toBe(0);
+    it("keeps a file exactly at MAX_BUFFERED_ASSET_BYTES on the buffered tier with a strong ETag", async () => {
+      const p = join(dir, "exact.bin");
+      const body = Buffer.alloc(MAX_BUFFERED_ASSET_BYTES, 0x62);
+      await writeFile(p, body);
+      const st = await fsStat(p);
+
+      const delivery = await getStaticDelivery(p, "identity", st);
+      expect(delivery!.kind).toBe("buffered");
+      if (!delivery || delivery.kind !== "buffered") throw new Error("unreachable");
+      expect(delivery.representation.etag).toBe(getContentHashEtag(body));
+      expect(delivery.representation.size).toBe(MAX_BUFFERED_ASSET_BYTES);
+      expect(getOpenStreamedAssetHandles()).toBe(0);
+    });
+
+    it("falls back to identity on the buffered tier when the encoded representation is unavailable", async () => {
+      const p = join(dir, "small.css");
+      const body = Buffer.from("body{color:red}".repeat(40));
+      await writeFile(p, body);
+      const st = await fsStat(p);
+      const delivery = await getStaticDelivery(p, "gzip", st);
+      expect(delivery!.kind).toBe("buffered");
+      if (!delivery || delivery.kind !== "buffered") throw new Error("unreachable");
+      expect(delivery.representation.encoding).toBe("gzip");
+      expect(delivery.representation.rawEtag).toBe(getContentHashEtag(body));
+    });
+
+    it("returns null for a large file that disappears between stat and open, leaving no handle open", async () => {
+      const p = join(dir, "gone.bin");
+      const st = { size: MAX_BUFFERED_ASSET_BYTES + 1, mtimeMs: 1 };
+      const delivery = await getStaticDelivery(p, "identity", st);
+      expect(delivery).toBeNull();
+      expect(getOpenStreamedAssetHandles()).toBe(0);
+    });
+
+    it("the bound is the cache ceiling, so buffered and cacheable describe the same assets", () => {
+      expect(MAX_BUFFERED_ASSET_BYTES).toBe(MAX_CACHED_REPRESENTATION_BYTES);
+    });
   });
 
   it("ignores a precompressed .br sidecar without a .bmeta provenance stamp and compresses on the fly", async () => {

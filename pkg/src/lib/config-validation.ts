@@ -100,6 +100,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     trustProxy: null,
     cacheControl: null,
     compression: null,
+    precompress: null,
     timeouts: { request: null, headers: null, keepAlive: null, drain: null },
     maxBodySize: null,
     apiTimeout: null,
@@ -377,6 +378,12 @@ export const validateConfigShape = (
     }
     if (http.trustProxy !== undefined && typeof http.trustProxy !== "boolean") {
       push("http.trustProxy", http.trustProxy, "expected true or false");
+    }
+    if (http.compression !== undefined && typeof http.compression !== "boolean") {
+      push("http.compression", http.compression, "expected true or false");
+    }
+    if (http.precompress !== undefined && typeof http.precompress !== "boolean") {
+      push("http.precompress", http.precompress, "expected true or false");
     }
     if (http.rateLimit !== undefined) {
       const rateLimit = http.rateLimit;

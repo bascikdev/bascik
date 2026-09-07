@@ -351,6 +351,7 @@ import {
   type ManifestEntry,
 } from "./manifest.ts";
 import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
+import { emitPrecompressedSidecars } from "./precompress.ts";
 import {
   serverSidecarRegistry,
   type ServerScriptEntry,
@@ -504,6 +505,14 @@ export const finalizeOwnedArtifacts = async (
 
   const inv = result.inventory;
   validateInventory(inv);
+
+  // Prompt 140: with `http.precompress`, emit verified `.br`/`.gz` sidecars
+  // plus `.bmeta` provenance for the compressible assets THIS build recorded.
+  // Runs before the manifest snapshot below so the sidecars are accounted for
+  // in the same artifact set. Each file is written atomically (temp sibling
+  // then rename); a failure here aborts before any metadata commit, so the
+  // previous valid artifact set is untouched.
+  await emitPrecompressedSidecars();
 
   const currentManifest = manifestCollector.getFiles();
   const currentCsp = cspHashCollector.getManifest();

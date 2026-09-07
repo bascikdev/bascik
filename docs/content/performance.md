@@ -24,9 +24,21 @@ Bascik's performance story starts before any of the techniques on this page. The
 
 **Script minification.** `minify.js` is `true` by default, stripping comments and whitespace from every inline `<script>` block and any `.js` static files copied to `dist/`. For identifier mangling and dead-code elimination, plug in esbuild (see [Minify JavaScript Output](#minify-javascript-output) below).
 
-**Maximum Brotli compression.** Under `bascik --server` and `bascik --build`, pages are compressed using maximum Brotli quality (`BROTLI_MAX_QUALITY = 11`), delivering optimal payload sizes for production delivery.
+**Maximum Brotli compression.** Under `bascik --server` and `bascik --build`, pages are compressed using maximum Brotli quality (`BROTLI_MAX_QUALITY = 11`), delivering optimal payload sizes for production delivery. Compressible static assets (CSS, JavaScript, SVG, JSON) up to 2 MiB are compressed on demand by negotiation; already-compressed formats (images, video, WOFF2) and assets above 2 MiB are served as-is. Large assets are streamed from disk rather than buffered, so a burst of requests for a big file does not multiply its size in server memory.
 
 **Inline styles.** Set `inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request for that file entirely. Pair it with `minify.css: true` to minify the injected CSS at build time. When enforcing a strict Content Security Policy, enable `generate.cspHashes: true` to obtain exact SHA-256 hashes for all inlined styles and scripts without resorting to `'unsafe-inline'`.
+
+### Precompressed assets
+
+By default `bascik --server` compresses eligible static assets on demand, once per representation, and keeps the result in a bounded in-memory cache. To move that work to build time, set `http.precompress: true`:
+
+```ts
+export const build = defineConfig({
+  http: { precompress: true },
+});
+```
+
+The build then writes `<asset>.br`, `<asset>.gz`, and a `.bmeta` provenance file beside each compressible asset of at least 512 bytes. The server serves a sidecar only when its `.bmeta` hash matches the current asset bytes, so a stale sidecar from an earlier deploy is never served under a new ETag; it falls back to on-demand compression instead. Sidecars are also useful when `dist/` is deployed to a static host or CDN that honors precompressed files. The option is off by default because it adds two max-quality codec passes per asset to the build and roughly doubles the on-disk footprint of compressible assets.
 
 Hitting 100 across the board is achievable on any Bascik site. The techniques below cover the rest: standard HTML patterns with no build plugins, no dependencies, and no configuration required.
 
