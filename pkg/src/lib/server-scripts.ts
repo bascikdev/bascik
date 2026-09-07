@@ -25,9 +25,9 @@ import { readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import { scriptRegistry, type ScriptExecutionResult } from "./script-registry.ts";
+import { scriptRegistry, resolveModuleIdentity, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
-import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers, findModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
@@ -109,6 +109,24 @@ interface ScriptJob {
   sourceFile?: string;
   sourceLine?: number;
 }
+
+const inlineDependencies = new WeakMap<ScriptJob, { source: string; keys: string[] }>();
+
+const inlineGenerationSuffix = (job: ScriptJob, source: string): string => {
+  if (scriptRegistry.mode !== "development") return "";
+  let dependencies = inlineDependencies.get(job);
+  if (dependencies?.source !== source) {
+    dependencies = {
+      source,
+      keys: findModuleSpecifiers(source)
+        .filter(specifier => specifier.value.startsWith("file:"))
+        .map(specifier => resolveModuleIdentity(specifier.value).key),
+    };
+    inlineDependencies.set(job, dependencies);
+  }
+  const generations = dependencies.keys.map(key => scriptRegistry.graph.generationOf(key));
+  return generations.some(generation => generation > 0) ? `#bascik-dependencies=${generations.join(",")}` : "";
+};
 
 export interface StaticSegment {
   kind: "static";
@@ -300,7 +318,7 @@ export const runServerScriptJob = async (
     ? job.startLine
     : job.sourceLine + authoredLeadingLines;
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
-  const specifier = moduleFilePath ?? dataUri;
+  const specifier = moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
 
   const originalSourcePath = containingFile
     ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
@@ -314,6 +332,7 @@ export const runServerScriptJob = async (
       originalSourcePath,
       lineOffset,
       exportName: "default",
+      ...(!moduleFilePath ? { moduleOwner: job } : {}),
       ...(signal ? { signal } : {}),
     },
   );

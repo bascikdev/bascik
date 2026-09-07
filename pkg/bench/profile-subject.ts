@@ -10,6 +10,7 @@ import http from "node:http";
 import { cleanGeneratorEnvironment, digest } from "./profile-workload.ts";
 import { pageCount, componentsPerPage, pageSource, assetBytes } from "./profile-fixture.ts";
 import { observeSubjects } from "./profile-observers.ts";
+import { profileJournal } from "./profile-diagnostics.ts";
 
 const [scenario, reportDirectory, encoding, rounds, injectFailure] = process.argv.slice(2);
 process.argv = process.argv.slice(0, 2);
@@ -18,6 +19,10 @@ delete process.env.BASCIK_SERVER;
 const startedAt = Date.now();
 const start = performance.now();
 const subjectEvents = observeSubjects(process.env.BASCIK_PROFILE_CAPTURE_DIR);
+const journal = profileJournal(process.env.BASCIK_PROFILE_CAPTURE_DIR);
+journal("subject-started", { scenario });
+const diagnosticDeadline = setTimeout(() => journal("subject-pre-deadline", { cpu: process.cpuUsage(), memory: process.memoryUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage(), subjectEvents }), 90_000);
+diagnosticDeadline.unref();
 const compression = { calls: 0, active: 0, maxActive: 0, callbackMs: 0, syncCalls: 0, syncMs: 0 };
 const pendingCodecs = new Set<Promise<void>>();
 function codecCompletion() {
@@ -77,12 +82,18 @@ if (["prepare", "serial", "workers"].includes(scenario)) {
     const begin = performance.now();
     const cpuStart = process.cpuUsage();
     const beginEpoch = Date.now();
+    journal("build-start", { phase });
     await runTranspile();
+    journal("build-returned", { phase });
     const durationMs = performance.now() - begin;
     builds.push({ phase, startedAt: beginEpoch, endedAt: Date.now(), durationMs, cpuMicros: process.cpuUsage(cpuStart), ...await validateBuild() });
+    journal("build-validated", { phase });
   }
   const { runShutdownHandlers } = await import("../src/lib/events.ts");
+  journal("shutdown-start");
   await runShutdownHandlers();
+  journal("shutdown-completed");
+  clearTimeout(diagnosticDeadline);
   if (scenario !== "prepare") await writeFile(join(reportDirectory, "result.json"), JSON.stringify({ pid: process.pid, startedAt, endedAt: Date.now(), startupMs, builds, subjectEvents, memory: process.memoryUsage() }, null, 2));
 } else {
   let origin: string;

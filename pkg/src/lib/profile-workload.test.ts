@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { promisify } from "node:util";
@@ -24,8 +24,15 @@ async function temporaryRoot() {
   roots.push(root);
   return root;
 }
-afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+async function cleanupReports(reports: string[], failed: boolean) {
+  if (failed) {
+    for (const root of reports) console.error(`Private profiling diagnostics retained: ${root}`);
+    return;
+  }
+  await Promise.all(reports.map((root) => rm(root, { recursive: true, force: true })));
+}
+afterEach(async ({ task }) => {
+  await cleanupReports(roots.splice(0), task.result?.state === "fail" || process.env.BASCIK_PROFILE_TEST_KEEP_REPORTS === "1");
 });
 
 const body = Buffer.from("exact response $1 $& <html>seed-128</html>");
@@ -90,6 +97,17 @@ const cpu = {
 };
 
 describe("capture artifact integrity", () => {
+  it("retains private diagnostics on failure and removes successful reports", async () => {
+    const root = await temporaryRoot();
+    const journal = join(root, "events.jsonl");
+    await writeFile(journal, '{"event":"dispatch"}\n', { mode: 0o600 });
+    await cleanupReports([root], true);
+    expect(await readFile(journal, "utf8")).toContain("dispatch");
+    expect((await stat(root)).mode & 0o777).toBe(0o700);
+    expect((await stat(journal)).mode & 0o777).toBe(0o600);
+    await cleanupReports([root], false);
+    await expect(stat(root)).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("rejects an existing world-readable report root", async () => {
     const root = join(await temporaryRoot(), "unsafe");
     await mkdir(root, { mode: 0o755 });
@@ -163,6 +181,33 @@ describe("capture artifact integrity", () => {
 
 describe("bounded real profiling runner", () => {
   const runner = fileURLToPath(new URL("../../bench/profile-workload.ts", import.meta.url));
+  it.each([false, true])("journals native worker progress before shutdown (failure=%s)", async (failure) => {
+    const root = await temporaryRoot();
+    const worker = join(root, "worker.mjs");
+    await writeFile(worker, `import {parentPort} from 'node:worker_threads'; parentPort.on('message', () => { ${failure ? "throw new Error('injected worker failure');" : "parentPort.postMessage('done');"} });`);
+    const source = `import {observeSubjects} from ${JSON.stringify(new URL("../../bench/profile-observers.ts", import.meta.url).href)};
+      observeSubjects(${JSON.stringify(root)});
+      const {Worker} = await import('node:worker_threads');
+      const {once} = await import('node:events');
+      const worker = new Worker(${JSON.stringify(worker)});
+      const completed = once(worker, ${JSON.stringify(failure ? "error" : "message")});
+      worker.postMessage('page.html');
+      await completed;
+      await worker.terminate();`;
+    await promisify(execFile)(process.execPath, ["--input-type=module", "-e", source], { timeout: 10_000, env: cleanGeneratorEnvironment(process.env) });
+    const journals = (await readdir(root)).filter((name) => name.endsWith(".jsonl"));
+    expect(journals.length).toBeGreaterThan(0);
+    const entries = (await Promise.all(journals.map(async (name) => {
+      const path = join(root, name);
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      return (await readFile(path, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    }))).flat();
+    const events = entries.map((entry) => entry.event);
+    for (const event of ["worker-created", "dispatch", "listener-registered", "listener-entry", "inspector-start", "inspector-stop", "inspector-stop-callback", "artifact-written", "worker-exit", "termination-requested", "termination-completed"]) expect(events).toContain(event);
+    expect(events).toContain(failure ? "worker-error" : "reply-received");
+    expect(entries.find((entry) => entry.event === "listener-entry")).toMatchObject({ taskId: "page.html:0", threadId: expect.any(Number), pid: expect.any(Number) });
+    await expect(stat(join(root, "result.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it.each(["SIGINT", "SIGTERM"] as const)("cancels disposable descendants on %s even when the leader exits first", async (signal) => {
     const root = await temporaryRoot();
     const stubborn = `process.on('SIGTERM', () => {}); process.on('SIGINT', () => {}); console.log(JSON.stringify({leader:process.ppid, descendant:process.pid})); setInterval(() => {}, 1000);`;

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { createFixture, seed } from "./profile-fixture.ts";
+import { profileJournal } from "./profile-diagnostics.ts";
 import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
@@ -25,10 +26,13 @@ async function filesUnder(root: string): Promise<string[]> {
 }
 export async function execute(command: string[], cwd: string, directory: string, env = cleanGeneratorEnvironment(process.env)) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  const journal = profileJournal(directory);
   await writeFile(join(directory, "command.json"), JSON.stringify({ command, cwd, startedAt: Date.now() }, null, 2));
   const logPath = join(directory, "process.log");
   const log = createWriteStream(logPath, { mode: 0o600 });
   const child = spawn(command[0], command.slice(1), { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+  journal("subject-spawned", { childPid: child.pid });
+  child.on("exit", (code, signal) => journal("subject-exit", { childPid: child.pid, code, signal }));
   child.stdout.pipe(log, { end: false });
   child.stderr.pipe(log, { end: false });
   const closed = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
@@ -42,11 +46,14 @@ export async function execute(command: string[], cwd: string, directory: string,
   };
   const cancel = (error: Error) => {
     if (cleanup) return;
+    journal("capture-cancelled", { childPid: child.pid, error: String(error) });
     cancellationError = error;
     cleanup = (async () => {
+      journal("group-signal", { childPid: child.pid, signal: "SIGTERM" });
       killGroup("SIGTERM");
       await new Promise<void>((resolve) => setTimeout(resolve, 500));
       killGroup("SIGKILL");
+      journal("group-signal", { childPid: child.pid, signal: "SIGKILL" });
       let reapDeadline: NodeJS.Timeout | undefined;
       try {
         await Promise.race([closed.catch(() => { }), new Promise<void>((resolve) => { reapDeadline = setTimeout(resolve, 1000); })]);
@@ -58,7 +65,8 @@ export async function execute(command: string[], cwd: string, directory: string,
   const terminate = () => { process.exitCode = 143; cancel(new CaptureCancelled("capture interrupted by SIGTERM")); };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
-  const deadline = setTimeout(() => cancel(new Error("capture deadline exceeded")), 120_000);
+  const diagnosticDeadline = setTimeout(() => journal("capture-pre-deadline", { childPid: child.pid, cpu: process.cpuUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage() }), 90_000);
+  const deadline = setTimeout(() => cancel(new Error(`capture deadline exceeded; private diagnostics: ${directory}`)), 110_000);
   try {
     const code = await Promise.race([closed, cancellation.promise]);
     if (cleanup) { await cleanup; throw cancellationError; }
@@ -67,6 +75,7 @@ export async function execute(command: string[], cwd: string, directory: string,
   } finally {
     await cleanup;
     clearTimeout(deadline);
+    clearTimeout(diagnosticDeadline);
     process.off("SIGINT", interrupt);
     process.off("SIGTERM", terminate);
     child.stdout.destroy();
@@ -102,8 +111,8 @@ export async function runProfiles() {
   const clinicCli = require.resolve("clinic/bin.js");
   if (values.tools!.split(",").includes("0x")) await execute([process.execPath, zeroCli, "--help"], root, join(root, "0x-help"));
   if (values.tools!.split(",").includes("doctor")) await execute([process.execPath, clinicCli, "doctor", "--help"], root, join(root, "doctor-help"));
-  const sourceHashes = Object.fromEntries(await Promise.all(["server.ts", "processing.ts", "page-worker.ts", "script-runner.ts", "caching.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/src/lib", file)))])));
-  const harnessHashes = Object.fromEntries(await Promise.all(["profile-workload.ts", "profile-runner.ts", "profile-fixture.ts", "profile-load.ts", "profile-subject.ts", "profile-observers.ts", "profile-isolate.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/bench", file)))])));
+  const sourceHashes = Object.fromEntries(await Promise.all(["server.ts", "processing.ts", "page-worker.ts", "worker-pool.ts", "script-runner.ts", "caching.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/src/lib", file)))])));
+  const harnessHashes = Object.fromEntries(await Promise.all(["profile-workload.ts", "profile-runner.ts", "profile-fixture.ts", "profile-load.ts", "profile-subject.ts", "profile-observers.ts", "profile-isolate.ts", "profile-diagnostics.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/bench", file)))])));
   const metadata = {
     seed, rounds, lanes: 4, revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).trim(), sourceHashes, harnessHashes, libuvPoolSize: process.env.UV_THREADPOOL_SIZE ?? "4 (Node default)", runtime: process.versions, platform: process.platform, arch: process.arch, os: release(), cpu: cpus()[0]?.model, logicalCpus: cpus().length,
     versions, benchmark124: "not available; standalone correctness-checked profiling fixture, not release budgets", diskState: "fresh process/application cache; OS disk cache not evicted or claimed cold", root,

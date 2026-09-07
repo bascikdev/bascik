@@ -17,6 +17,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { realpathSync } from "node:fs";
+import { assertRegistryReleased } from "./module-retention.test-helper.ts";
 import {
   ScriptRegistry,
   scriptRegistry,
@@ -26,6 +27,39 @@ import {
 
 describe("ScriptRegistry", () => {
   let tempDir: string;
+
+  it("retention oracle detects a deliberately framework-held module after clear", async () => {
+    const registry = new ScriptRegistry({ isDev: false });
+    await registry.load("data:text/javascript,export default function retentionOracle129(){}");
+    const cache: unknown = Reflect.get(registry, "cache");
+    expect(cache).toBeInstanceOf(Map);
+    if (!(cache instanceof Map)) throw new Error("registry cache observation unavailable");
+    const clearSpy = vi.spyOn(cache, "clear").mockImplementation(() => { });
+    try {
+      registry.clear();
+      expect(registry.graph.size).toBe(0);
+      expect(() => assertRegistryReleased(registry)).toThrow("framework cache");
+    } finally {
+      clearSpy.mockRestore();
+      registry.clear();
+    }
+    expect(() => assertRegistryReleased(registry)).not.toThrow();
+  });
+
+  it("Node retains a dependency-free namespace after source reversion and framework clear", async () => {
+    const registry = new ScriptRegistry({ isDev: true });
+    const originalSource = "data:text/javascript,export default function retentionReversion129(){return 'original'}";
+    const original = await registry.load(originalSource);
+    await registry.load("data:text/javascript,export default function retentionReversion129(){return 'changed'}");
+    expect((await registry.load(originalSource)).module).toBe(original.module);
+    registry.clear();
+    assertRegistryReleased(registry);
+    const reverted = await registry.load(originalSource);
+    expect(reverted.url).toBe(original.url);
+    expect(reverted.module).toBe(original.module);
+    expect(reverted.module.default()).toBe("original");
+    registry.clear();
+  });
 
   beforeEach(async () => {
     tempDir = join(tmpdir(), `bascik-script-reg-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -123,7 +157,7 @@ describe("ScriptRegistry", () => {
     const count = 50;
     const tasks = Array.from({ length: count }, async (_, i) => {
       const ctx = { id: `req-${i}`, user: `user-${i}` };
-      const res = await registry.invoke<{ echoId: string; echoUser: string }>(filePath, [ctx]);
+      const res = await registry.invoke<{ echoId: string; echoUser: string; }>(filePath, [ctx]);
       return { expectedId: ctx.id, expectedUser: ctx.user, actual: res.value };
     });
 
