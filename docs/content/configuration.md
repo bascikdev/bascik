@@ -182,6 +182,7 @@ export default defineConfig({
     trustProxy: false,
     cacheControl: 'public, max-age=3600', // string or per-extension map: { '.woff2': 'public, max-age=31536000, immutable' }
     compression: true,
+    precompress: false,   // emit verified .br/.gz sidecars at build time
     maxBodySize: 1048576,
     apiTimeout: 10000,
   },
@@ -402,7 +403,7 @@ pipeline: {
 }
 ```
 
-Listing a path in both `pipeline.watchPaths` and an `exec[].watch` configuration is fully supported. Bascik coordinates the watch triggers and SSE generation counter so that edits to overlapping paths execute the associated exec script, re-transpile affected pages, and issue exactly one coordinated browser reload rather than duplicate or conflicting reload signals.
+`exec.watch` selects scripts after matching source edits. Pages, components, `watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
 
 ### `scripts`
 
@@ -458,6 +459,7 @@ http: {
   trustProxy: false,        // trust X-Forwarded-For and X-Forwarded-Proto behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
+  precompress: false,       // emit .br/.gz sidecars with .bmeta provenance at build time
   timeouts: {
     request: 30000,         // request socket timeout (ms)
     headers: 10000,         // headers timeout (ms)
@@ -468,6 +470,8 @@ http: {
   apiTimeout: 10000,        // maximum execution time for API route handlers in ms (10s default)
 }
 ```
+
+`compression` negotiates Brotli or gzip on demand for compressible static assets up to 2 MiB. `precompress` is a build-time option: when `true`, `bascik --build` writes `<asset>.br`, `<asset>.gz`, and matching `.bmeta` provenance files next to each compressible asset of at least 512 bytes, so `bascik --server` serves them without compressing on demand. It is off by default because it adds two max-quality codec passes per asset to the build and roughly doubles the on-disk size of compressible assets. Both options must be booleans.
 
 ### `logging`
 

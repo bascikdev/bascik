@@ -14,21 +14,31 @@ on:
     branches: [main]
 ```
 
-It runs two parallel jobs across Node 24:
+It executes across three structured stages on Node 24:
 
-**`test`**: unit tests with coverage:
+### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
 
-```sh
-yarn pkg:test:ci
-```
+- **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
+- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, and `extensions/vscode-bascik/`.
+- **Spelling & Web Standards (`standards`)**: Runs `yarn check:spelling` (codespell) and `yarn check:standards` (webhint).
+- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), and `extensions/vscode-bascik` (`xvfb-run -a yarn ext:test`).
 
-**`e2e`**: end-to-end Playwright tests against the built fixture site:
+### Stage 2: End-to-End Test Matrix (Parallel)
 
-```sh
-yarn pkg:build && yarn pkg:e2e
-```
+Runs after all Stage 1 jobs pass. Installs Chromium via `playwright install chromium` and executes:
 
-The `e2e` job installs only the Chromium browser via `playwright install chromium` before running. Both jobs have `permissions: contents: read` to enforce least privilege.
+- **Framework E2E (Static)**: `yarn pkg:e2e`
+- **Framework E2E (Dev Server & Dev Exec Lifecycle)**: `yarn pkg:e2e:dev` and `yarn pkg:e2e:dev:exec`
+- **Framework E2E (Production HTTP/1.1 Server)**: `yarn pkg:e2e:prod:http1`
+- **Framework E2E (Production HTTP/2 TLS Server)**: `yarn pkg:e2e:prod:http2`
+- **Docs Site E2E**: `yarn docs:e2e`
+- **Create Scaffold E2E**: `yarn create:test-site`
+
+### Stage 3: Semgrep Static Analysis
+
+Runs comprehensive security and vulnerability rulesets via `semgrep-action` (`p/default`) after all E2E test suites pass.
+
+All jobs enforce least-privilege with `permissions: contents: read`.
 
 ## Release Workflow
 

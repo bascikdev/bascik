@@ -2,9 +2,14 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   pipeline: {
-    watchPaths: ['scripts/', 'content/', '../pkg/test-coverage.json', '../pkg/e2e-test-coverage.json'],
+    watchPaths: ['scripts/', 'content/', 'src/lib/', 'src/css/', '../pkg/test-coverage.json', '../pkg/e2e-test-coverage.json'],
     exec: [
-      { script: 'scripts/generate-search-index.ts', phase: 'parallel', watch: ['content/'] },
+      {
+        script: 'scripts/generate-search-index.ts',
+        phase: 'parallel',
+        watch: ['content/'],
+        // Fetched by the browser. Completion does not trigger compilation.
+      },
     ],
   },
   assets: {

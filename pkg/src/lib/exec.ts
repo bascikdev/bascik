@@ -5,7 +5,6 @@ import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
 import { getSiteUrl } from './environment.ts';
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
-import { debounce } from './debounce.ts';
 import type { ExecEntry, ExecPhase } from './types.ts';
 
 export interface ExecOptions {
@@ -21,12 +20,14 @@ interface ChildExecutionRecord {
 
 const activeChildren = new Set<ChildProcess>();
 const childRecords = new Map<ChildProcess, ChildExecutionRecord>();
+const entryExecutions = new Map<ExecEntry, Promise<number>>();
 
 export const getActiveExecChildrenCount = (): number => activeChildren.size;
 
 export const resetActiveExecChildrenForTests = (): void => {
   activeChildren.clear();
   childRecords.clear();
+  entryExecutions.clear();
 };
 
 /**
@@ -105,7 +106,19 @@ export const execShutdownHandler = async (options?: ExecOptions): Promise<void> 
 
 registerShutdownHandler(() => execShutdownHandler());
 
-const runScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<number> => {
+export const runScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<number> => {
+  if (typeof entry === 'string') return spawnScript(entry, options);
+  const previous = entryExecutions.get(entry);
+  const execution = previous
+    ? previous.catch(() => undefined).then(() => spawnScript(entry, options))
+    : spawnScript(entry, options);
+  entryExecutions.set(entry, execution);
+  const cleanup = () => { if (entryExecutions.get(entry) === execution) entryExecutions.delete(entry); };
+  void execution.then(cleanup, cleanup);
+  return execution;
+};
+
+const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<number> => {
   const clock = options?.clock ?? nativeClock;
   const scriptPath = typeof entry === 'string' ? entry : entry.script;
   const entryObj = typeof entry === 'string' ? { script: entry } : entry;
@@ -252,12 +265,11 @@ export type ParallelExecHandle = Promise<void> & { tasks: ParallelExecTask[] };
 /**
  * Start every `phase: 'parallel'` entry concurrently.
  *
- * The returned handle is the joined promise (it adopts the first rejection,
- * so a build that awaits it fails honestly) and also carries `tasks`, one per
+ * The returned handle joins all settlements and aggregates failures. It also carries `tasks`, one per
  * entry. Build awaits the join before `dist/` finalization. Dev does not
  * await it: the server binds and pages compile while the entries run, and
- * `startExecDev` hands each task's settlement to the exec publication
- * coordinator so a completion or failure is observed the moment it lands.
+ * `startExecDev` observes each settlement and reports failures without
+ * scheduling compilation.
  */
 export const startExecParallel = (options?: ExecOptions): ParallelExecHandle => {
   const entries = BascikConfig.pipeline?.exec;
@@ -266,17 +278,22 @@ export const startExecParallel = (options?: ExecOptions): ParallelExecHandle => 
     entry,
     promise: runScript(entry, options),
   }));
-  const joined = Promise.all(tasks.map((task) => task.promise)).then(() => undefined);
+  const joined = Promise.allSettled(tasks.map((task) => task.promise)).then(results => {
+    const failures = results.filter(result => result.status === 'rejected');
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), `Parallel exec failed: ${failures.map(result => String(result.reason)).join('; ')}`);
+  });
+  // Observe immediately across the lazy dev-server import gap. Keep the
+  // original rejected handle for build callers and per-task dev reporting.
+  void joined.catch(() => undefined);
   return Object.assign(joined, { tasks });
 };
 
 /**
  * Publish each parallel task's outcome through the same events the watched
- * producer path uses, so the exec publication coordinator (installed by the
- * dev lifecycle owner) flushes consumers on success and surfaces an honest
- * build-error on failure. Unrelated tasks are never serialized: every task is
- * observed independently as it settles. `paths` carries the entry's script so
- * the consumer flush has a stable, per-entry key for the produced generation.
+ * script path uses. The dev lifecycle owner reports build-error on failure.
+ * Success never invalidates caches, compiles pages, or sends a reload.
+ * Every task is observed independently as it settles. Startup has no source
+ * edits, so `paths` is empty.
  *
  * The joined handle is marked observed here because each rejection it adopts
  * is published individually below; nothing is swallowed.
@@ -287,7 +304,7 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
     () => undefined,
   );
   for (const { entry, promise } of handle.tasks) {
-    const paths = [entry.script];
+    const paths: string[] = [];
     promise
       .then(() => {
         eventEmitter.emit('exec-completed', { entry, paths });
@@ -311,96 +328,16 @@ export interface ExecDevOptions extends ExecOptions {
   parallel?: ParallelExecHandle;
 }
 
-/** Normalized watch glob list for an exec entry. */
-const watcherPatterns = (entry: ExecEntry): string[] =>
-  Array.isArray(entry.watch) ? entry.watch : [entry.watch as string];
-
 /**
- * Fire watch-enabled exec entries in dev mode and set up chokidar re-run
- * watchers with debounce.
- *
- * Startup execution is OWNED by the phase runner (`runExecPhase("pre")`,
- * `startExecParallel`, `runExecPhase("post")`), which has already executed a
- * watched entry before this function is called. Registering watch behavior
- * therefore must NOT rerun that already-completed pre/parallel/post work:
- * this function only registers event-driven watchers. Each started producer
- * task is observed, and its outcome reaches the exec publication coordinator
- * (a listener installed by the dev lifecycle owner), never silently dropped.
- *
- * When the dev branch passes the retained parallel handle, each parallel
- * task's settlement is registered here synchronously, before the lazy chokidar
- * import, so a parallel entry that finishes while the server is still booting
- * is published rather than lost.
+ * Observe startup parallel outcomes without running scripts a second time.
+ * Source watcher registration and edit phases belong to watch-source.ts.
+ * Registration is synchronous so settlements cannot be lost during boot.
  */
 export const startExecDev = (options?: ExecDevOptions): Promise<void> => {
-  const clock = options?.clock ?? nativeClock;
   if (options?.parallel) publishParallelOutcomes(options.parallel);
-  const entries = BascikConfig.pipeline?.exec;
-  if (!entries?.length) return Promise.resolve();
-  const watchedEntries = entries.filter((entry) => !!entry.watch);
-  if (watchedEntries.length === 0) return Promise.resolve();
-
-  return import('chokidar').then(({ default: chokidar }) => {
-    for (const entry of watchedEntries) {
-      if (!entry.watch) continue;
-      let running = false;
-      let pending = false;
-      // Retain every changed path in a pending batch, not just the last
-      // filename, so the coordinator can route all of a generation's source
-      // and output edits to the affected consumers exactly once.
-      const pendingPaths: string[] = [];
-
-      const debouncedAction = debounce(
-        () => {
-          if (running) {
-            pending = true;
-            return;
-          }
-          running = true;
-          const batch = [...pendingPaths];
-          pendingPaths.length = 0;
-          runScript(entry, options)
-            .then(() => {
-              // The producer lifecycle coordinator flushes consumers after
-              // this completion. All started tasks are observed; a genuine
-              // failure publishes an honest build-error below.
-              eventEmitter.emit('exec-completed', { entry, paths: batch });
-            })
-            .catch((err) => {
-              console.error('[bascik] exec error:', err);
-              eventEmitter.emit('exec-failed', { entry, paths: batch, error: err });
-            })
-            .finally(() => {
-              running = false;
-              if (pending) {
-                pending = false;
-                debouncedAction();
-              }
-            });
-        },
-        50,
-        { clock },
-      );
-
-      const patterns = watcherPatterns(entry);
-      const watcher = chokidar
-        .watch(patterns, { ignoreInitial: true, persistent: true })
-        .on('all', (_event, changedPath) => {
-          // Avoid cyclic self-watch: a producer writing its own script or a
-          // path it alone owns must not re-trigger itself.
-          if (typeof changedPath === 'string') {
-            if (!execWatchCoversPath(patterns, changedPath, entry.script)) return;
-            pendingPaths.push(changedPath);
-          }
-          debouncedAction();
-        });
-      registerShutdownHandler(() => {
-        debouncedAction.cancel();
-        return watcher.close();
-      });
-    }
-    return Promise.resolve();
-  });
+  // watch.ts owns a single source watcher and phase queue. Registering a
+  // second exec watcher here would race it and compile the same edit twice.
+  return Promise.resolve();
 };
 
 /** Glob metacharacters recognized by `path.matchesGlob` (minimatch syntax). */

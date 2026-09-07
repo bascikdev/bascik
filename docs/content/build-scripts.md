@@ -139,7 +139,7 @@ Relative paths change shape with the depth of the file that contains them (`../l
 - **Data paths:** Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their standard `process.cwd()` semantics.
 - **Bare leading `/` is an error:** `import x from '/lib/x.ts'` (or `src="/lib/x.ts"`) inside a Bascik script is rejected because a leading slash is ambiguous between the filesystem root and site root. The error names both valid rewrites: `@/lib/x.ts` for the import root or `./lib/x.ts` for a path relative to the file. Plain client `<script>` tags are unaffected.
 
-Editing an alias-imported helper invalidates the script cache and, in dev mode, rebuilds the pages that depend on it automatically. Bascik watches the import root directory in dev mode and rebuilds only dependent pages. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared directory.
+Editing an alias-imported helper rebuilds dependent pages only when its path is covered by `directory.*` or `pipeline.watchPaths`. The import-root watcher invalidates request-time modules, but does not trigger compilation. Add build helper directories such as `src/lib/` to `pipeline.watchPaths`. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared directory.
 
 ## npm Packages in Build Scripts
 

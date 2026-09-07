@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open, readFile, type FileHandle } from "node:fs/promises";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 
@@ -8,6 +8,26 @@ const gzipAsync = promisify(zlib.gzip);
 
 export const MAX_CACHED_REPRESENTATION_BYTES = 2 * 1024 * 1024; // 2 MiB per entry limit for memory retention
 export const MAX_COMPRESSED_CACHE_ENTRIES = 200;
+/**
+ * Acquisition bound (prompt 140). Assets at or under this size are read into
+ * one buffer and served as an immutable representation with a strong ETag.
+ * Assets above it are streamed from a single opened file handle with a weak
+ * validator and are never compressed or cached. Equal to the cache ceiling so
+ * "buffered" and "cacheable" describe the same set of assets.
+ */
+export const MAX_BUFFERED_ASSET_BYTES = MAX_CACHED_REPRESENTATION_BYTES;
+
+let openStreamedAssetHandles = 0;
+/** Number of streamed-asset file handles currently open (test observability). */
+export const getOpenStreamedAssetHandles = (): number => openStreamedAssetHandles;
+
+let onTheFlyCompressions = 0;
+/**
+ * Number of on-the-fly codec runs performed by the representation owner since
+ * process start (test observability). A verified precompressed sidecar does
+ * not increment this; a missing, stale, or corrupt sidecar does.
+ */
+export const getOnTheFlyCompressionCount = (): number => onTheFlyCompressions;
 
 export type RepresentationEncoding = "identity" | "br" | "gzip";
 
@@ -166,6 +186,7 @@ export const getStaticRepresentation = async (
         reprEncoding = encoding;
         etag = getEncodedEtag(rawEtag, encoding);
       } else {
+        onTheFlyCompressions++;
         const compressed = encoding === "br"
           ? await brotliCompressAsync(raw)
           : await gzipAsync(raw);
@@ -207,6 +228,101 @@ export const getStaticRepresentation = async (
 
   inFlightRepresentations.set(flightKey, promise);
   return promise;
+};
+
+/**
+ * A large asset streamed from one opened file handle (prompt 140).
+ *
+ * `size` and `etag` derive from `fstat` on `handle`, so the validator and the
+ * body describe the same inode and length: the pathname is never re-opened
+ * between deciding what to advertise and reading what to send. The validator
+ * is deliberately weak (`W/"<size>-<mtimeMs>-<ino>"`, base36): the bytes are
+ * not hashed before they are streamed, so a strong validator would be a claim
+ * the server cannot back. Streamed deliveries are never compressed and never
+ * cached. `close()` is idempotent and must be called on every path.
+ */
+export interface StreamedStaticDelivery {
+  kind: "streamed";
+  fd: FileHandle;
+  size: number;
+  etag: string;
+  encoding: "identity";
+  close: () => Promise<void>;
+}
+
+export interface BufferedStaticDelivery {
+  kind: "buffered";
+  representation: StaticRepresentation;
+}
+
+export type StaticDelivery = BufferedStaticDelivery | StreamedStaticDelivery;
+
+/** Weak validator for a streamed asset, derived from the opened handle's stat. */
+export const makeStreamedAssetEtag = (st: { size: number; mtimeMs: number; ino: number | bigint }): string =>
+  `W/"${st.size.toString(36)}-${Math.trunc(st.mtimeMs).toString(36)}-${st.ino.toString(36)}"`;
+
+/**
+ * Two-tier static delivery owner (prompt 140).
+ *
+ * - At or under `MAX_BUFFERED_ASSET_BYTES` (by the caller's `stat`): the
+ *   prompt 107 immutable representation, one buffer, strong ETag, cacheable,
+ *   compressible.
+ * - Above it: the file is opened once with `fs.promises.open`; `fstat` on that
+ *   handle supplies `size` and the weak validator. The negotiated `encoding` is
+ *   ignored for this tier (large assets are identity only), which is why the
+ *   returned encoding is always `"identity"`.
+ *
+ * Returns null when the file cannot be opened or read (caller maps to 404/500).
+ * The streamed handle is owned by the caller from the moment this resolves.
+ */
+export const getStaticDelivery = async (
+  fullPath: string,
+  encoding: RepresentationEncoding,
+  stat: { size: number; mtimeMs: number },
+): Promise<StaticDelivery | null> => {
+  if (stat.size <= MAX_BUFFERED_ASSET_BYTES) {
+    const representation = encoding === "identity"
+      ? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size)
+      : (await getStaticRepresentation(fullPath, encoding, stat.mtimeMs, stat.size))
+        ?? await getStaticRepresentation(fullPath, "identity", stat.mtimeMs, stat.size);
+    return representation ? { kind: "buffered", representation } : null;
+  }
+
+  let fd: FileHandle;
+  try {
+    fd = await open(fullPath, "r");
+  } catch {
+    return null;
+  }
+  openStreamedAssetHandles++;
+  let closed = false;
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    openStreamedAssetHandles--;
+    await fd.close();
+  };
+  let handleStat: Awaited<ReturnType<FileHandle["stat"]>>;
+  try {
+    handleStat = await fd.stat();
+  } catch {
+    await close();
+    return null;
+  }
+  // Accepted weak-validator trade-off: an in-place rewrite that keeps the same
+  // size, lands in the same millisecond, and reuses the inode yields the same
+  // `W/"size-mtime-ino"` and so a false 304 for a client holding the old tag.
+  // Hashing the bytes to rule this out would mean reading the whole file per
+  // request, which is exactly what this tier exists to avoid; `W/` marks the
+  // validator as weak so caches treat it as equivalence, not identity.
+  return {
+    kind: "streamed",
+    fd,
+    size: handleStat.size,
+    etag: makeStreamedAssetEtag(handleStat),
+    encoding: "identity",
+    close,
+  };
 };
 
 /**

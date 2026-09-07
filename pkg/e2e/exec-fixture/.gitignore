@@ -2,6 +2,10 @@
 # scripts/generator.mjs during E2E runs. Not source; regenerated each run.
 scripts/.generation
 scripts/.armed-gate
+# Dev server log written by scripts/run-dev-logged.mjs (the dev-exec Playwright
+# webServer wrapper) so tests can assert which pages a producer completion
+# recompiled.
+.dev-server.log
 
 # Local dev server artifacts are already ignored repo-wide (dist, node_modules),
 # kept here for explicitness.

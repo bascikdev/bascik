@@ -38,6 +38,27 @@ describe("cleanStackTrace", () => {
     expect(cleaned).toBe(`Error: gen failure\n    at default (${realPath}:41:9)\n    at default (${realPath}:43:1)`);
   });
 
+  it("strips the dev generation marker from helper frames loaded under a generation URL (prompt 138)", () => {
+    // The entry remaps to the authored source; helpers are their own files, so
+    // their frames keep the helper path but must not carry `?bascik-gen=N`.
+    const entryPath = "/project/src/lib/src-script.ts";
+    const realPath = "src/pages/index.html";
+    const rawTrace =
+      `Error: from helper\n` +
+      `    at utilValue (file:///project/src/lib/util.ts?bascik-gen=2:1:29)\n` +
+      `    at helperValue (file:///project/src/lib/helper.ts?bascik-gen=2:2:35)\n` +
+      `    at default (file://${entryPath}?bascik-gen=2:2:60)`;
+
+    const cleaned = cleanStackTrace(rawTrace, entryPath, realPath, 10);
+    expect(cleaned).toBe(
+      `Error: from helper\n` +
+      `    at utilValue (file:///project/src/lib/util.ts:1:29)\n` +
+      `    at helperValue (file:///project/src/lib/helper.ts:2:35)\n` +
+      `    at default (${realPath}:11:60)`,
+    );
+    expect(cleaned).not.toContain("bascik-gen");
+  });
+
   it("filters out Command failed lines and node:internal stack frames/code frames", () => {
     const tmpPath = "/project/node_modules/.cache/bascik/build-456.mjs";
     const realPath = "src/pages/cli.html";

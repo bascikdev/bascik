@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Unrelated to any exec producer</title>
+</head>
+
+<body>
+  <h1>Unrelated page</h1>
+  <!-- Reads a file no exec producer writes. A producer completion that declares
+       its outputs must not recompile this page (prompt 139). -->
+  <p data-testid="unrelated-marker">
+    <script
+      data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('data/unrelated.txt', 'utf8').trim());</script>
+  </p>
+</body>
+
+</html>

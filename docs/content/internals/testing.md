@@ -2,6 +2,12 @@
 
 Bascik has two separate test suites: **unit tests** (Vitest) that verify individual library modules, and **end-to-end tests** (Playwright) that build and browser-test the full transpilation pipeline against a fixture site.
 
+## Exec Lifecycle Boundaries
+
+`source-cycle.test.ts` uses injected clocks and promise gates to pin phase ordering, overlapping edits, retained changes, failure recovery, and nonblocking parallel work. `watch-source.integration.test.ts` exercises the source observer with the real cycle coordinator, including glob roots, output exclusion, and dependency routing. Compilation publication tests verify async-scoped reload buffering and disk-write joins.
+
+The dedicated exec Playwright configurations use HTTP release gates rather than arbitrary delays to hold pre and parallel children. Real CLI build fixtures use temporary project directories and an event-driven artifact gate to prove that post sees compiled pages while parallel still runs. Both serial and worker builds must join parallel completion before success. Fixtures write generated artifacts only to `dist/`, and watch source inputs rather than generated files.
+
 ## Running Unit Tests
 
 Commands can be run per-package or across the workspace from the repository root:
@@ -280,12 +286,12 @@ yarn ext:typecheck
 
 The root `package.json` provides aggregated tasks across all projects:
 
-* `yarn typecheck:all`: runs typechecks across all packages in the workspace
-* `yarn check:all`: runs spelling (`check:spelling`) and web standards (`check:standards`)
-* `yarn unit:all`: runs unit test suites across all packages
-* `yarn e2e:all`: runs Playwright E2E suites across the workspace
-* `yarn coverage:all`: generates and updates coverage reports across all packages
-* `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, and E2E suites in sequence (coverage excluded)
+- `yarn typecheck:all`: runs typechecks across all packages in the workspace
+- `yarn check:all`: runs spelling (`check:spelling`) and web standards (`check:standards`)
+- `yarn unit:all`: runs unit test suites across all packages
+- `yarn e2e:all`: runs Playwright E2E suites across the workspace
+- `yarn coverage:all`: generates and updates coverage reports across all packages
+- `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, and E2E suites in sequence (coverage excluded)
 
 ## Contributing a Fix
 

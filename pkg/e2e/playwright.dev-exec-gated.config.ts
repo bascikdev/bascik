@@ -1,10 +1,9 @@
 /**
- * Gated variant of the exec producer/consumer dev E2E (prompt 109).
+ * Gated variant of the source-owned exec lifecycle E2E.
  *
  * Starts the same exec-fixture dev server with BASCIK_GENERATOR_GATE=1 so the
- * producer holds each completion behind an HTTP release server, letting a test
- * observe the served page keep last-known-good while the producer is in flight
- * and then update exactly once on release.
+ * script writes an unwatched dist artifact, then holds behind an HTTP gate.
+ * The associated page must wait for pre to exit and compile only once.
  *
  * Run with:
  *   npx playwright test --config e2e/playwright.dev-exec-gated.config.ts
@@ -29,7 +28,9 @@ export default defineConfig({
     headless: true,
   },
   webServer: [{
-    command: `rm -f scripts/.generation scripts/.armed-gate && BASCIK_SERVER_PORT=9661 BASCIK_GENERATOR_GATE=1 node ${pkgDir}/dist/index.js`,
+    // See playwright.dev-exec.config.ts for why the wrapper replaces `| tee`.
+    command: `node scripts/run-dev-logged.mjs ${pkgDir}/dist/index.js`,
+    env: { BASCIK_SERVER_PORT: '9661', BASCIK_GENERATOR_GATE: '1' },
     cwd: fixtureDir,
     url: 'http://localhost:9661/consumer',
     reuseExistingServer: false,

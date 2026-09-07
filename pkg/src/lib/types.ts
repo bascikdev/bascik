@@ -10,15 +10,14 @@ export type ExecPhase = "pre" | "post" | "parallel";
 export interface ExecEntry {
   /** Path to the script (relative to project root). */
   script: string;
-  /** File/directory globs that trigger a re-run in dev. Omit for build-only scripts. */
+  /** Source globs selecting this script for a phase-ordered dev rebuild of associated pages. Never watch outputs. */
   watch?: string | string[];
   /**
    * When this script runs relative to page transpilation.
    * - 'pre' (default): awaited before any page is transpiled, in dev and build alike.
    * - 'post': runs after all pages are transpiled and written to dist.
    * - 'parallel': started before transpilation and run concurrently with it. Build joins it before
-   *   dist/ is finalized; dev does not await it and publishes each outcome through the exec
-   *   publication coordinator when it settles.
+    *   dist/ is finalized; dev observes every outcome without awaiting or recompiling on completion.
    */
   phase?: ExecPhase;
   /** Working directory for the script execution. Defaults to process.cwd(). */
@@ -241,6 +240,13 @@ export interface HttpOptions {
   trustProxy: boolean;
   cacheControl: string | Record<string, string>;
   compression: boolean;
+  /**
+   * Emit verified `.br`/`.gz` sidecars with `.bmeta` provenance for
+   * compressible static assets at build time, so `bascik --server` serves them
+   * without on-the-fly compression. Default `false` (costs build time and
+   * roughly doubles the on-disk footprint of compressible assets).
+   */
+  precompress: boolean;
   timeouts?: HttpTimeoutsOptions;
   maxBodySize: number;
   apiTimeout: number;
@@ -310,6 +316,7 @@ export type UserConfig = {
     trustProxy?: boolean;
     cacheControl?: string;
     compression?: boolean;
+    precompress?: boolean;
     timeouts?: HttpTimeoutsOptions;
     maxBodySize?: number;
     apiTimeout?: number;

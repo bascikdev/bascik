@@ -27,11 +27,17 @@ export const cleanStackTrace = (
   // is optional here so every generation remaps to the same authored source.
   const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath})(?:\\?bascik-gen=\\d+)?:(\\d+)`, "g");
 
-  const mappedTrace = rawTrace.replace(regex, (_match, lineStr) => {
-    const lineNum = parseInt(lineStr, 10);
-    const mappedLine = lineOffset + lineNum - 1;
-    return `${realPath}:${mappedLine}`;
-  });
+  const mappedTrace = rawTrace
+    .replace(regex, (_match, lineStr) => {
+      const lineNum = parseInt(lineStr, 10);
+      const mappedLine = lineOffset + lineNum - 1;
+      return `${realPath}:${mappedLine}`;
+    })
+    // Helpers imported by the entry are loaded under their own generation URL
+    // by the dev module graph hook. Their frames keep the helper's path (it is
+    // the authored file) but the framework marker is noise, so it is removed
+    // from every remaining frame.
+    .replace(/\?bascik-gen=\d+(?=:\d+)/g, () => "");
 
   const lines = mappedTrace.split(/\r?\n/);
   const filteredLines: string[] = [];

@@ -1,8 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import config from '../bascik.config.ts';
 
 describe('generate-search-index', () => {
+  it('keeps browser-only generation independent of compilation watches', () => {
+    const producer = config.pipeline?.exec?.find(entry => entry.script === 'scripts/generate-search-index.ts');
+    expect(producer).toMatchObject({
+      phase: 'parallel',
+      watch: ['content/'],
+    });
+    expect(producer).not.toHaveProperty('outputs');
+    expect(config.pipeline?.watchPaths).not.toContain('dist/assets/search-index.json');
+    expect(config.pipeline?.watchPaths).toContain('src/css/');
+    expect(config.pipeline?.watchPaths).toContain('src/lib/');
+  });
+
   it('generates dist/assets/search-index.json from nav pages', async () => {
     await import('./generate-search-index.js');
 

@@ -42,7 +42,7 @@ The `phase` property controls when your script runs relative to HTML page transp
 | Phase | Description | Common Use Cases |
 | :--- | :--- | :--- |
 | `'pre'` (default) | Awaited before any page or component is transpiled. | Fetching external CMS data, preparing JSON catalogs, asset downloading |
-| `'parallel'` | Started before transpilation and runs concurrently with page compilation. In dev the server binds and pages compile while it runs; its output is published through the exec publication coordinator when it completes. In build it is joined before `dist/` is finalized. | Independent background artifact generation |
+| `'parallel'` | Starts alongside page compilation in dev and build. Dev does not wait; a build joins every parallel task before reporting success. Completion never compiles pages. | Independent background artifact generation |
 | `'post'` | Executed after all pages and assets are compiled and written to `dist/`. | Search indexing, XML sitemap generation, post-processing bundles |
 
 ```ts
@@ -84,34 +84,67 @@ Each exec entry in `pipeline.exec` accepts:
 }
 ```
 
+### Watching source inputs
+
+`exec.watch` selects which scripts rerun after a matching source edit. That edit owns one phase-ordered rebuild cycle: matching pre scripts finish, parallel scripts start alongside associated page compilation, then matching post scripts run after compilation and its disk writes finish. Completion itself never queues a second compilation. Do not configure `watchPaths` for generated outputs.
+
+This illustrative configuration generates a catalog before compilation and observes its source inputs for subsequent updates:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  pipeline: {
+    exec: [
+      {
+        script: 'scripts/generate-catalog.ts',
+        phase: 'pre',
+        watch: ['content/'],
+      },
+    ],
+  },
+});
+```
+
+```html
+<!-- src/pages/catalog.html -->
+<script data-bascik-build>
+  import { readFileSync } from 'node:fs';
+  const catalog = JSON.parse(readFileSync('dist/catalog.json', 'utf8'));
+  console.log(catalog.items.map((item) => `<li>${item.title}</li>`).join(''));
+</script>
+```
+
+Known source dependents rebuild once per cycle. If an external source input or watched script has no known dependents, all pages rebuild conservatively, but unmatched exec scripts do not rerun. For selective rebuilding, page build scripts should read their source inputs so the dependency graph can associate them with pages. Generated dependency bytes are rechecked after pre finishes; result caching remains enabled.
+
 ## The Output Rule: Write to `dist/`, Not `src/`
 
-> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated files directly to the output directory (`dist/`), never into source directories (`src/`). Writing generated artifacts into source directories pollutes source control and triggers infinite file watcher loops in dev mode.
+> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated artifacts directly to the output directory (`dist/`), never into source files or any watched files or directories. This includes pre, post, and parallel scripts. Do not add generated outputs to `watchPaths` or `exec.watch`. There is no `outputs` option.
+
+The coordinated watcher excludes the output directory, including when a broad source pattern would otherwise cover it. Bascik cannot safely distinguish a child process writing a source file from a user editing that same file. It does not suppress edits using time windows, rewrite counts, or script-path exclusions. Accidental writes to watched sources can therefore loop; fix the script's destination rather than relying on loop detection.
 
 ## File Watching in Dev Mode
 
 When running `bascik` in development mode:
 
-1. Scripts with a `watch` pattern re-execute automatically whenever matching files change.
-2. Bascik coordinates exec script execution with page compilation and Server-Sent Events (SSE) live reload, ensuring that edits to watched paths trigger the script and issue a single coordinated browser reload.
+1. A single source observer combines pages, components, `watchPaths`, and exec source patterns when watched exec entries exist.
+2. Matching scripts run in their configured phases around one associated compilation batch. Pre and post scripts run sequentially in configuration order.
+3. A page edit does not rerun scripts whose watch patterns do not match. An exec-only source edit still rebuilds its associated pages; duplicating that source in `watchPaths` is unnecessary.
+4. Edits arriving during pre, compilation, or post are retained for a following cycle. Failed-cycle paths are retained for retry when another source edit arrives, not retried endlessly without an edit.
+5. Successful compilation reloads are held until post succeeds. Pre, compilation, or post failure reports a build-error without a success reload for that cycle.
 
 ### Start-of-session behavior
 
-A watched exec script still runs once at startup as part of its `phase`. A `pre` script is awaited before any page compiles; a `parallel` script starts alongside the server and page compilation and publishes its output when it finishes; a `post` script runs after the initial transpile. Registering the dev watcher does **not** re-run that startup work: each session runs an exec script exactly once for its phase plus once per later matching edit.
+A watched exec script still runs once at startup as part of its `phase`. A `pre` script is awaited before any page compiles; a `parallel` script starts alongside the server and page compilation; a `post` script runs after the initial transpile. Registering the dev watcher does **not** re-run that startup work: each session runs an exec script exactly once for its phase plus debounced reruns for later matching edits.
 
 ### Parallel scripts in dev
 
-A `parallel` script never blocks dev startup. The dev server binds and the first transpile begins while the script is still running, so a page that reads the script's output sees whatever is on disk at compile time (or handles a missing file) until the script completes. When it completes, Bascik re-transpiles the pages that read its output and issues one coordinated reload. If it fails, the failure surfaces as a build-error overlay and no success reload is sent. Pages that must have the generated data before their first compile belong in `pre`.
+A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
 
-### The overlap contract
+In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and reports any failure with a nonzero exit status.
 
-Listing a path in both `pipeline.watchPaths` and an `exec[].watch` config means an edit to that path has two consumers: the exec producer that regenerates an output and the watch-path handler that re-transpiles pages. Bascik coordinates these into one owner:
+### Overlapping watches share one cycle
 
-1. When a watched path changes, any matching exec producer runs first.
-2. Only after the producer completes are the affected consumer pages re-transpiled, so a page never compiles against a not-yet-produced output.
-3. The browser receives exactly one reload for the completed generation.
-
-A producer that fails surfaces an honest build-error overlay and never issues a success reload. Pages keep serving their last-known-good representation until the next valid producer run.
+Listing a source in both `pipeline.watchPaths` and `exec.watch`, or watching a page source with exec, does not create independent rebuilds. The same edit selects matching scripts and affected pages once, preserving pre and post ordering. No generated output watcher or completion-driven second pass is needed.
 
 ## Example: Generating a Search Index
 

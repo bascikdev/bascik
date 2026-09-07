@@ -9,9 +9,9 @@
  * identity change, and the next request must observe the new code.
  *
  * Nothing here is mocked: the point is that the singleton composition (not an
- * explicitly constructed dev registry) reloads edited modules. The last group
- * verifies the transitive-import boundary honestly: an entry module query does
- * not invalidate a helper it imports, and the registry never claims otherwise.
+ * explicitly constructed dev registry) reloads edited modules. The transitive
+ * cases (prompt 138) prove that editing only a helper, one or two levels below
+ * the entry, changes the served output through the dev module graph hook.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -229,15 +229,14 @@ describe("live development module invalidation (real dev server)", () => {
   }, 30000);
 
   /**
-   * Transitive helper imports. Node resolves `./helper.ts` from the entry
-   * module's own URL. A generation query on the entry alone gives Node a new
-   * entry identity, but the helper specifier inside it is unchanged, so Node
-   * reuses the already evaluated helper. Making this pass requires
-   * dependency-generation ownership (see the internals doc), which this prompt
-   * deliberately does not build. The test stays red on purpose so the
-   * limitation is pinned rather than assumed.
+   * Transitive helper imports (prompt 138). Node resolves `./helper.ts` from
+   * the entry module's own URL, and a generation query on the entry alone
+   * would not reach it. The dev-only module graph (`module-graph.ts`) records
+   * child -> parent edges through a `node:module` resolve hook and advances the
+   * entry's generation when the helper changes, so the next request must serve
+   * the new helper value with the entry file untouched.
    */
-  it.fails("reloads a helper imported by a src= server script when only the helper changes (known limitation)", async () => {
+  it("reloads a helper imported by a src= server script when only the helper changes", async () => {
     // Re-point the entry at the helper so this test does not depend on order.
     const entryChanged = server.waitForLog(/module invalidated: src\/lib\/src-script\.ts/);
     await writeAt(root, "src/lib/src-script.ts", srcScriptModule());
@@ -245,15 +244,87 @@ describe("live development module invalidation (real dev server)", () => {
     const before = await fetchText(`${server.base}/`);
     expect(before.body).toContain('data-testid="src-value">HELPER-OLD<');
 
-    // The helper was imported by Node (transitively), never by the registry,
-    // so the registry has no identity for it and cannot advance a generation.
-    // The watcher still observes the edit; wait on the page rebuild instead.
-    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/, 3000).catch(() => "");
+    // The helper was imported by Node (transitively) and recorded by the
+    // module graph hook; the watcher's invalidate must advance it and log it.
+    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
     await writeAt(root, "src/lib/helper.ts", helperModule("HELPER-NEW"));
-    await helperChanged;
+    const logged = await helperChanged;
+    // The log names the entry the graph advanced transitively.
+    expect(logged).toMatch(/module invalidated: src\/lib\/helper\.ts \(reloads src\/lib\/src-script\.ts\)/);
 
     const after = await fetchText(`${server.base}/`);
     expect(after.body).toContain('data-testid="src-value">HELPER-NEW<');
+    expect(server.logs()).not.toMatch(/reloads .*bascik-gen/);
+  }, 30000);
+
+  it("reloads a helper two levels deep (entry -> helper -> util) when only the util changes", async () => {
+    // Entry -> helper -> util: only the leaf is edited.
+    const utilModule = (value: string): string => `export const utilValue = () => ${JSON.stringify(value)};\n`;
+    const helperViaUtil = `import { utilValue } from "./util.ts";\nexport const helperValue = () => utilValue();\n`;
+
+    await writeAt(root, "src/lib/util.ts", utilModule("UTIL-OLD"));
+    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/helper\.ts/);
+    await writeAt(root, "src/lib/helper.ts", helperViaUtil);
+    await helperChanged;
+    const before = await fetchText(`${server.base}/`);
+    expect(before.body).toContain('data-testid="src-value">UTIL-OLD<');
+
+    const utilChanged = server.waitForLog(/module invalidated: src\/lib\/util\.ts/);
+    await writeAt(root, "src/lib/util.ts", utilModule("UTIL-NEW"));
+    const logged = await utilChanged;
+    expect(logged).toMatch(/module invalidated: src\/lib\/util\.ts \(reloads src\/lib\/helper\.ts, src\/lib\/src-script\.ts\)/);
+
+    const after = await fetchText(`${server.base}/`);
+    expect(after.body).toContain('data-testid="src-value">UTIL-NEW<');
+  }, 30000);
+
+  /**
+   * Finding #3: an INLINE `data-bascik-server` script is imported as a `data:`
+   * URL. The resolve hook cannot record an edge from a `data:` parent, so a
+   * helper edit advances the helper's generation but no entry re-imports it.
+   * The documented contract is therefore narrower than for `src=` scripts:
+   * the served output picks up the helper change only when the page itself
+   * is recompiled with a changed inline body (which yields a new `data:` URL
+   * and, through the hook, the helper's new generation URL). This test pins
+   * that contract so the docs and the code cannot drift apart silently.
+   */
+  it("inline data-bascik-server: a helper edit alone does not change the served output; a recompile with a new inline body does", async () => {
+    await writeAt(root, "src/lib/inline-helper.ts", helperModule("INLINE-OLD"));
+    const inlinePage = (marker: string): string =>
+      `<!DOCTYPE html><html><head><title>inline</title></head><body>
+  <script data-bascik-server>
+    import { helperValue } from "@/lib/inline-helper.ts";
+    // ${marker}
+    export default () => '<span data-testid="inline-value">' + helperValue() + '</span>';
+  </script>
+</body></html>`;
+    const compiled = server.waitForLog(/transpiled: pages\/inline\.html/);
+    await writeAt(root, "src/pages/inline.html", inlinePage("v1"));
+    await compiled;
+
+    const before = await fetchText(`${server.base}/inline`);
+    expect(before.status).toBe(200);
+    expect(before.body).toContain('data-testid="inline-value">INLINE-OLD<');
+
+    // The helper is tracked (the hook saw Node resolve it), so the watcher
+    // logs an invalidation, but with no recorded importer it reloads nothing.
+    const helperChanged = server.waitForLog(/module invalidated: src\/lib\/inline-helper\.ts/);
+    await writeAt(root, "src/lib/inline-helper.ts", helperModule("INLINE-NEW"));
+    const logged = await helperChanged;
+    expect(logged).not.toMatch(/module invalidated: src\/lib\/inline-helper\.ts \(reloads/);
+
+    // Same page, same data: URL: Node reuses the evaluated module and its
+    // already-linked helper instance. The served value is unchanged.
+    const stillOld = await fetchText(`${server.base}/inline`);
+    expect(stillOld.body).toContain('data-testid="inline-value">INLINE-OLD<');
+
+    // Editing the page produces a new data: URL; resolving the helper from it
+    // now hands back the helper's advanced generation, so the new value shows.
+    const recompiled = server.waitForLog(/transpiled: pages\/inline\.html/);
+    await writeAt(root, "src/pages/inline.html", inlinePage("v2"));
+    await recompiled;
+    const after = await fetchText(`${server.base}/inline`);
+    expect(after.body).toContain('data-testid="inline-value">INLINE-NEW<');
   }, 30000);
 });
 
@@ -261,6 +332,7 @@ describe("production server module reuse (real --server)", () => {
   let root: string;
   let child: ChildProcess | undefined;
   let base: string;
+  let prodOutput = "";
 
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), "bascik-112-prod-"));
@@ -292,6 +364,8 @@ describe("production server module reuse (real --server)", () => {
       env: { ...process.env, BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false", BASCIK_BUILD: "0", BASCIK_SERVER: "0" },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    child.stdout?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
+    child.stderr?.on("data", (d: Buffer) => { prodOutput += d.toString(); });
     const started = Date.now();
     while (Date.now() - started < 20000) {
       try {
@@ -324,5 +398,9 @@ describe("production server module reuse (real --server)", () => {
     const after = await fetchText(`${base}/api/value`);
     expect(after.status).toBe(200);
     expect(JSON.parse(after.body).value).toBe("PROD-OLD");
+    // The dev module graph hook is never installed here: no generation marker
+    // may appear in production output or logs.
+    expect(prodOutput).not.toContain("bascik-gen");
+    expect(prodOutput).not.toContain("module invalidated");
   }, 30000);
 });

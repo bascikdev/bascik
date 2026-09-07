@@ -1,7 +1,7 @@
 // Exec producer (prompt 109): a watched pre-phase generator.
 //
 // On every run it increments a persistent generation counter (stored in
-// `.generation`), writes `dist/generated.json` (out of src/), and prints the
+// `dist/.generation`), writes `dist/generated.json` (out of src/), and prints the
 // generation.
 //
 // Gated mode (BASCIK_GENERATOR_GATE=1): when an `.armed-gate` marker file is
@@ -20,11 +20,17 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(scriptDir, '..');
 const outDir = join(projectRoot, 'dist');
 const outFile = join(outDir, 'generated.json');
-const marker = join(scriptDir, '.generation');
+const marker = join(outDir, '.generation');
 const armedGate = join(scriptDir, '.armed-gate');
+
+if (readFileSync(join(projectRoot, 'content/doc.md'), 'utf8').includes('FAIL_EXEC')) {
+  console.error('[generator] requested failure');
+  process.exit(1);
+}
 
 // Persist the counter across runs so tests can assert the exact number of
 // startup/reexec executions.
+await mkdir(outDir, { recursive: true });
 let generation = 0;
 if (existsSync(marker)) {
   generation = Number(readFileSync(marker, 'utf8')) || 0;

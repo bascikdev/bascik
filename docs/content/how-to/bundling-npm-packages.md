@@ -96,4 +96,4 @@ Bascik copies page assets from the pages tree, but generated files that live out
 
 ## What happens on watch
 
-In dev mode, editing a file listed in `exec[].watch` re-runs the bundler, re-transpiles affected pages, and issues exactly one coordinated browser reload. Editing the page itself re-transpiles the page but does not re-run the bundler, which is correct: the bundle depends on the entry point, not on the page.
+In dev mode, editing a source listed in `exec.watch` reruns the bundler in its configured phase and rebuilds associated pages in the same cycle. Use `pre` when pages need the bundle ready. Do not add generated bundles to `pipeline.watchPaths`: completion and output writes never start another compile. Editing a page recompiles it without rerunning the bundler unless its watch patterns also match that page.

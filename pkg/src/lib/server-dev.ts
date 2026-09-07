@@ -22,17 +22,18 @@
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
 import { startExecDev, type ParallelExecHandle } from "./exec.ts";
-import { installExecPublication, setExecProducerWatchGlobs } from "./exec-publication.ts";
+import { installExecPublication } from "./exec-publication.ts";
 import { startServer } from "./server.ts";
 import { BascikConfig } from "./config.ts";
-import type { ExecEntry } from "./types.ts";
+import { installModuleGraphHook } from "./module-graph.ts";
+import { getImportRoot } from "./import-root.ts";
 
 export interface DevServerOptions {
   exitOnError?: boolean;
   /**
    * The parallel exec handle the dev branch of `transpile.ts` started but did
    * not await. The dev lifecycle owner registers each task's outcome with the
-   * exec publication coordinator so it is published when it lands.
+    * failure reporter without blocking boot or scheduling compilation.
    */
   parallel?: ParallelExecHandle;
 }
@@ -57,6 +58,16 @@ export interface DevServerHandle {
  * and then calls `finishBoot()`.
  */
 export const startDevServer = (options: DevServerOptions = {}): DevServerHandle => {
+  // Dev-only dependency generations (prompt 138): the `node:module` resolve
+  // hook must be registered before the first request can import a runtime
+  // module, so it is installed ahead of binding the port. This is the only
+  // install site; `server-prod.ts` and the build never call it, and the
+  // function itself refuses to install outside development.
+  installModuleGraphHook({
+    projectRoot: process.cwd(),
+    extraRoots: [getImportRoot()],
+    isDev: !BascikConfig.isBuild && !BascikConfig.isProdServer,
+  });
   const url = startServer().catch((err) => {
     console.error("Server startup failed:", err);
     if (options.exitOnError !== false) {
@@ -64,24 +75,10 @@ export const startDevServer = (options: DevServerOptions = {}): DevServerHandle 
     }
     throw err;
   });
-  // Install the exec producer/consumer coordinator BEFORE any exec outcome can
-  // be emitted. Watched producers only fire on later edits, but a parallel
-  // entry started by transpile.ts may settle at any moment, including before
-  // startExecDev's lazy chokidar import resolves. Installing first guarantees
-  // the exec-completed / exec-failed listener exists for every outcome.
+  // Install failure reporting before startExecDev observes parallel outcomes.
+  // Completions have no compilation or reload listener.
   installExecPublication(eventEmitter);
-  const execReady = startExecDev({ parallel: options.parallel }).then(() => {
-    // Producer globs feed overlap detection so watch.ts can defer a
-    // watch-path edit until the matching producer completes.
-    const watchedEntries = (BascikConfig.pipeline?.exec ?? []).filter(
-      (entry) => !!entry.watch,
-    ) as ExecEntry[];
-    setExecProducerWatchGlobs(
-      watchedEntries.map((entry) =>
-        Array.isArray(entry.watch) ? entry.watch : [entry.watch as string],
-      ),
-    );
-  });
+  const execReady = startExecDev({ parallel: options.parallel });
 
   const finishBoot = async (): Promise<void> => {
     await execReady;

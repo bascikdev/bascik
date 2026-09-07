@@ -32,6 +32,23 @@ describe("startProdServer", () => {
   let workDir: string;
   let originalCwd: string;
 
+  it("never installs the dev module graph resolve hook (prompt 138)", async () => {
+    // The production server and the build must leave Node's resolver alone:
+    // `?bascik-gen` must never appear in production URLs or logs. The dev hook
+    // is installed only by the dev server startup path (server-dev.ts), and
+    // the graph module itself refuses to install outside development.
+    const { installModuleGraphHook, isModuleGraphHookInstalled } = await import("./module-graph.ts");
+    expect(isModuleGraphHookInstalled()).toBe(false);
+    const handle = installModuleGraphHook({ projectRoot: process.cwd(), isDev: false });
+    expect(handle.installed).toBe(false);
+    expect(isModuleGraphHookInstalled()).toBe(false);
+    // The production startup module does not even reference the graph.
+    const { readFile } = await import("node:fs/promises");
+    const { fileURLToPath } = await import("node:url");
+    const prodSource = await readFile(fileURLToPath(new URL("./server-prod.ts", import.meta.url)), "utf8");
+    expect(prodSource).not.toContain("module-graph");
+  });
+
   beforeEach(async () => {
     startServerMock.mockClear();
     originalCwd = process.cwd();

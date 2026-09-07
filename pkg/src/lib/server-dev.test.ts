@@ -28,11 +28,14 @@ vi.mock("./events.js", async () => {
 vi.mock("./config.js", () => ({
   BascikConfig: { pipeline: { exec: undefined } },
 }));
+const { _mockInstallModuleGraphHook } = vi.hoisted(() => ({
+  _mockInstallModuleGraphHook: vi.fn(() => ({ installed: true, deregister: () => { } })),
+}));
+vi.mock("./module-graph.js", () => ({ installModuleGraphHook: _mockInstallModuleGraphHook }));
 
 import { startDevServer } from "./server-dev.ts";
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
-import { _execPublicationTestHooks } from "./exec-publication.ts";
 
 describe("server-dev: the dev-only additions on top of the shared server", () => {
   beforeEach(() => {
@@ -90,10 +93,7 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
     errorSpy.mockRestore();
   });
 
-  it("forwards the retained parallel handle to startExecDev and installs the coordinator before it can settle", async () => {
-    // A parallel entry that finishes fast must find the exec-completed
-    // listener already installed; otherwise the completion is dropped. The
-    // handle is therefore released only after startExecDev has been reached.
+  it("observes failures before exec starts and finishes boot without waiting for parallel completion", async () => {
     let release: () => void = () => { };
     const joined = new Promise<void>((resolve) => {
       release = resolve;
@@ -102,24 +102,37 @@ describe("server-dev: the dev-only additions on top of the shared server", () =>
     _mockStartExecDev.mockImplementationOnce(async (opts?: { parallel?: unknown }) => {
       _callOrder.push("startExecDev");
       expect(opts?.parallel).toBe(parallel);
-      expect(eventEmitter.listenerCount("exec-completed")).toBeGreaterThan(0);
+      expect(eventEmitter.listenerCount("exec-completed")).toBe(0);
       expect(eventEmitter.listenerCount("exec-failed")).toBeGreaterThan(0);
     });
 
     const dev = startDevServer({ exitOnError: false, parallel });
+    await dev.finishBoot();
+    expect(mem.setBootingDone).toHaveBeenCalledOnce();
     release();
-    await dev.execReady;
     expect(_mockStartExecDev).toHaveBeenCalledWith(expect.objectContaining({ parallel }));
   });
 
-  it("installs the single exec publication coordinator after dev exec registration", async () => {
+  it("installs the dev-only module graph hook before the server binds (prompt 138)", async () => {
+    _mockInstallModuleGraphHook.mockClear();
+    const dev = startDevServer({ exitOnError: false });
+    await dev.url;
+    expect(_mockInstallModuleGraphHook).toHaveBeenCalledTimes(1);
+    expect(_mockInstallModuleGraphHook).toHaveBeenCalledWith(
+      expect.objectContaining({ isDev: true, projectRoot: process.cwd() }),
+    );
+    // The hook must be registered before any request can import a runtime module.
+    expect(_mockInstallModuleGraphHook.mock.invocationCallOrder[0]).toBeLessThan(
+      _mockStartServer.mock.invocationCallOrder[0],
+    );
+    await dev.execReady;
+  });
+
+  it("installs only one exec failure listener across repeated startup registration", async () => {
     const dev = startDevServer({ exitOnError: false });
     await dev.execReady;
-    // The lifecycle owner wired the exec-completed listener to the shared
-    // emitter: a producer completion must now reach the coordinator.
-    expect(eventEmitter.listenerCount("exec-completed")).toBeGreaterThan(0);
-    expect(eventEmitter.listenerCount("exec-failed")).toBeGreaterThan(0);
-    // A fresh fixture run leaves no leaked pending generation.
-    expect(_execPublicationTestHooks.generationValue).toBe(0);
+    await startDevServer({ exitOnError: false }).execReady;
+    expect(eventEmitter.listenerCount("exec-completed")).toBe(0);
+    expect(eventEmitter.listenerCount("exec-failed")).toBe(1);
   });
 });

@@ -1025,6 +1025,35 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(emitOrder).toContain("pages/faq.html");
   });
 
+  it("awaits dev artifact writes inside a lifecycle publication scope before post can run", async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const { withCompilationPublisher } = await import('./compilation-events.ts');
+    const writeGate = Promise.withResolvers<void>();
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writeGate.promise);
+    let completed = false;
+    const work = withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/phase.html'], {}))
+      .then(() => { completed = true; });
+    try {
+      await vi.waitFor(() => expect(writeFile).toHaveBeenCalled());
+      expect(completed).toBe(false);
+    } finally { writeGate.resolve(); await work; }
+  });
+
+  it("rejects scoped dev artifact write failures instead of allowing post success", async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const { withCompilationPublisher } = await import('./compilation-events.ts');
+    (writeFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
+    await expect(withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/write-failure.html'], {})))
+      .rejects.toThrow('disk full');
+  });
+
+  it("rejects scoped compilation errors so post cannot run after invalid markup", async () => {
+    const { withCompilationPublisher } = await import('./compilation-events.ts');
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue('<html><head></head></html>');
+    await expect(withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/invalid-phase.html'], {})))
+      .rejects.toThrow('validate markup');
+  });
+
   it("stores open page in memory and emits transpiled BEFORE rest pages start transpiling", async () => {
     (mem as any).openPages = ["/internals/scoping-system"];
     const callSequence: string[] = [];
@@ -3199,7 +3228,7 @@ describe("prompt 99: failed import dependency recovery", () => {
     );
   });
 
-  it("records failed dependencies so the import-root watcher rebuilds the page when the helper appears", async () => {
+  it("records failed dependencies so a compilation watcher rebuilds the page when the helper appears", async () => {
     const { executeBuildScripts, collectAllScriptDeps } = await import("./build-scripts.ts");
     const missingHtml = '<html><body><script data-bascik-build>import x from "@/lib/new-helper.ts";</script></body></html>';
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(missingHtml);
