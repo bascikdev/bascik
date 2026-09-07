@@ -13,6 +13,7 @@ import { observeSubjects } from "./profile-observers.ts";
 import { profileJournal } from "./profile-diagnostics.ts";
 
 const [scenario, reportDirectory, encoding, rounds, injectFailure] = process.argv.slice(2);
+const stopHeapSampling = process.env.HEAP_PROFILER_PATH ? process.listeners("SIGINT")[0] : undefined;
 process.argv = process.argv.slice(0, 2);
 delete process.env.BASCIK_BUILD;
 delete process.env.BASCIK_SERVER;
@@ -201,6 +202,10 @@ if (["prepare", "serial", "workers"].includes(scenario)) {
     delay.disable();
     child.kill();
     if (staticServer) await new Promise<void>((resolve, reject) => staticServer!.close((error) => error ? reject(error) : resolve()));
-    else process.kill(process.pid, "SIGTERM");
+    else if (stopHeapSampling) {
+      const { runShutdownHandlers } = await import("../src/lib/events.ts");
+      await runShutdownHandlers();
+      stopHeapSampling("SIGINT");
+    } else process.kill(process.pid, "SIGTERM");
   }
 }

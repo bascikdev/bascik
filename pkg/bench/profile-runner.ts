@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { cpus, release } from "node:os";
@@ -10,11 +12,31 @@ import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { createFixture, seed } from "./profile-fixture.ts";
 import { profileJournal } from "./profile-diagnostics.ts";
-import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
+import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, summarizeAllocationProfile, workerCpuLimitation, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const subject = fileURLToPath(new URL("./profile-subject.ts", import.meta.url));
 const require = createRequire(import.meta.url);
+async function decodeClinicDataset(tool: string, dataset: string) {
+  if (tool === "heapprofiler") {
+    const profile = JSON.parse(await readFile(dataset, "utf8"));
+    const summary = summarizeAllocationProfile(profile);
+    await new Promise<void>((resolve, reject) => require("@clinic/heap-profiler/src/analysis/index.js").analyse(dataset, (error: Error | null, result: { data?: unknown }) => {
+      if (error) reject(error); else if (!result.data) reject(new Error("allocation conversion missing tree")); else resolve();
+    }));
+    return { tool, ...summary };
+  }
+  const counts: Record<string, number> = {};
+  for (const [suffix, decoder] of Object.entries({ systeminfo: "system-info", stacktrace: "stack-trace", traceevent: "trace-event" })) {
+    const paths = (await filesUnder(dataset)).filter((path) => path.endsWith(suffix));
+    assert.equal(paths.length, 1, `missing Bubbleprof ${suffix}`);
+    const Decoder = require(`@clinic/bubbleprof/format/${decoder}-decoder.js`);
+    counts[suffix] = 0;
+    await pipeline(createReadStream(paths[0]), new Decoder(), new Writable({ objectMode: true, write(_record, _encoding, callback) { counts[suffix]++; callback(); } }));
+    assert(counts[suffix] > 0, `empty decoded Bubbleprof ${suffix}`);
+  }
+  return { tool, records: counts.traceevent, counts };
+}
 class CaptureCancelled extends Error { }
 async function filesUnder(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -106,11 +128,11 @@ export async function runProfiles() {
   assert(Number.isInteger(rounds) && rounds > 0 && rounds <= 100, "rounds must be 1..100");
   const captures: object[] = [];
   const failures: object[] = [];
-  const versions = Object.fromEntries(["0x", "clinic", "@clinic/doctor", "typescript", "vitest"].map((name) => [name, require(`${name}/package.json`).version]));
+  const versions = Object.fromEntries(["0x", "clinic", "@clinic/doctor", "@clinic/bubbleprof", "@clinic/heap-profiler", "typescript", "vitest"].map((name) => [name, require(`${name}/package.json`).version]));
   const zeroCli = require.resolve("0x/cmd.js");
   const clinicCli = require.resolve("clinic/bin.js");
   if (values.tools!.split(",").includes("0x")) await execute([process.execPath, zeroCli, "--help"], root, join(root, "0x-help"));
-  if (values.tools!.split(",").includes("doctor")) await execute([process.execPath, clinicCli, "doctor", "--help"], root, join(root, "doctor-help"));
+  for (const tool of ["doctor", "bubbleprof", "heapprofiler"]) if (values.tools!.split(",").includes(tool)) await execute([process.execPath, clinicCli, tool, "--help"], root, join(root, `${tool}-help`));
   const sourceHashes = Object.fromEntries(await Promise.all(["server.ts", "processing.ts", "page-worker.ts", "worker-pool.ts", "script-runner.ts", "caching.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/src/lib", file)))])));
   const harnessHashes = Object.fromEntries(await Promise.all(["profile-workload.ts", "profile-runner.ts", "profile-fixture.ts", "profile-load.ts", "profile-subject.ts", "profile-observers.ts", "profile-isolate.ts", "profile-diagnostics.ts"].map(async (file) => [file, digest(await readFile(join(repository, "pkg/bench", file)))])));
   const metadata = {
@@ -124,17 +146,27 @@ export async function runProfiles() {
     const directory = join(root, label);
     const project = join(directory, "project");
     try {
-      assert(["control", "doctor", "0x", "cpu"].includes(tool), "unsupported profiler");
+      assert(["control", "doctor", "bubbleprof", "heapprofiler", "0x", "cpu"].includes(tool), "unsupported profiler");
       assert(["http1", "http2", "static", "dev", "serial", "workers"].includes(scenario), "unsupported scenario");
+      assert(!(tool === "cpu" && scenario === "workers" && workerCpuLimitation()), workerCpuLimitation());
       await createFixture(project, scenario === "workers", await freePort(), scenario === "http2");
       const profiles = join(directory, "profiles");
       await mkdir(profiles, { recursive: true, mode: 0o700 });
       if (!["dev", "serial", "workers"].includes(scenario)) await execute([process.execPath, subject, "prepare"], project, join(directory, "prepare"));
       const target = [process.execPath, ...(tool === "cpu" ? ["--cpu-prof", `--cpu-prof-dir=${profiles}`] : []), subject, scenario, directory, encoding, String(rounds), String(values["inject-failure"])];
-      const command = tool === "doctor" ? [process.execPath, clinicCli, "doctor", "--collect-only", "--open=false", "--dest", profiles, "--", ...target]
+      const clinicTool = ["doctor", "bubbleprof", "heapprofiler"].includes(tool);
+      const command = clinicTool ? [process.execPath, clinicCli, tool, "--collect-only", "--open=false", "--dest", profiles, "--", ...target]
         : tool === "0x" ? [process.execPath, zeroCli, "--tree-debug", "--output-dir", profiles, "--", ...target] : target;
       const environment = { ...cleanGeneratorEnvironment(process.env), ...(tool === "cpu" ? { BASCIK_PROFILE_CAPTURE_DIR: profiles } : {}) };
       await execute(command, project, join(directory, "capture"), environment);
+      let decoded;
+      if (tool === "bubbleprof" || tool === "heapprofiler") {
+        const datasets = (await readdir(profiles)).filter((name) => name.endsWith(`.clinic-${tool}`));
+        assert.equal(datasets.length, 1, `missing or ambiguous ${tool} dataset`);
+        const dataset = join(profiles, datasets[0]);
+        decoded = await decodeClinicDataset(tool, dataset);
+        await execute([process.execPath, clinicCli, tool, "--visualize-only", dataset, "--open=false", "--dest", profiles], project, join(directory, "visualize"));
+      }
       if (tool === "doctor") {
         const dataset = (await readdir(profiles)).find((name) => name.endsWith(".clinic-doctor"));
         assert(dataset, "Doctor dataset missing");
@@ -178,9 +210,9 @@ export async function runProfiles() {
         for (const event of result.subjectEvents ?? []) if (event.role === "native-child") coverage.push({ ...event, captured: false, tool: "none", limitation: "native child requires separately authorized kernel profiling" });
       }
       else for (const event of result.subjectEvents ?? []) coverage.push({ ...event, tool: "none", captured: false, limitation: "separate Node CPU capture required" });
-      if (["doctor", "0x"].includes(tool)) assert(artifacts.some((item) => item.path.endsWith(".html")), "missing rendered capture");
+      if (clinicTool || tool === "0x") assert(artifacts.some((item) => item.path.endsWith(".html")), "missing rendered capture");
       const config = await readFile(join(project, "bascik.config.ts"), "utf8");
-      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution });
+      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution, decoded });
     } catch (error) {
       if (error instanceof CaptureCancelled) throw error;
       failures.push({ label, error: String(error) });

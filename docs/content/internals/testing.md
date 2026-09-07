@@ -32,6 +32,20 @@ Only disposable subject processes receive GC and snapshot flags. Captures use ex
 
 Interruption cancels the capture and terminates its owned POSIX process group with bounded graceful-close and force-kill deadlines. This cannot cover uncatchable parent termination or descendants that leave the group; Windows does not provide the POSIX group guarantee. See [Module Lifetime](/internals/server#module-lifetime) for runtime limitations.
 
+## Profiling Resource Boundaries
+
+The profiling workload validates response bytes, completion counts, process coverage, and decoded artifacts before accepting a capture. Run one tool at a time in a new, empty, user-owned directory with mode `0700`, outside the repository and every served or watched tree. For example, replace the illustrative private path below with a new directory:
+
+```sh
+yarn workspace @bascik/bascik profile:workload --tools bubbleprof --scenarios http1 --rounds 20 --report-dir /private/tmp/bascik-async-capture
+```
+
+Tool choices include `control`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `cpu`. Clinic datasets must decode and render successfully. Allocation samples must reference nodes in their captured tree; incomplete or unattributed captures fail and remain private. The load generator runs without profiler flags. Main-isolate captures do not establish worker or child-process CPU coverage. Worker CPU recording is rejected on Node v24.17.0/macOS because of a native loader lock stall; unprofiled worker execution and timelines remain available.
+
+`profile-resource-boundaries.test.ts` uses isolated native processes and explicit producer and consumer gates. Injected controls verify detection of live timers, open descriptors, serialized independent work, and unfinished streams. Actual boundary checks exercise script settlement, response backpressure and disconnect, child permits, source-cycle ordering, worker transfer, disk publication, and cancellation. Resource samples follow explicit cleanup and event-loop checkpoints. Async hooks track resources created after module setup, including unreferenced timers; supported platforms also inspect process-wide open descriptors. Closed file handles are not counted as open resources. These checks do not establish Promise reclamation or native allocator behavior.
+
+The standalone `pkg/bench/profile-boundaries.ts` entry point accepts a new private report directory and an optional `--allocation` flag. Allocation sampling covers the main script and source-cycle window and stops before worker execution. CPU time, elapsed wait, sampled allocation, and retained heap are separate measurements. Worker queue-to-entry and reply-to-receive timings include scheduling costs, and the controlled worker fixture is not a page-worker CPU profile. Use the separate module-retention experiments for snapshots and retainer paths. HeapProfiler request captures stop through the profiler's own writer after framework cleanup; they do not measure full server shutdown.
+
 ## Running Unit Tests
 
 Commands can be run per-package or across the workspace from the repository root:

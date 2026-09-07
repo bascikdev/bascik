@@ -16,6 +16,8 @@ import {
   validateProcessCoverage,
   validateCpuCaptureArtifacts,
   validateCompression,
+  summarizeAllocationProfile,
+  workerCpuLimitation,
 } from "../../bench/profile-workload.ts";
 
 const roots: string[] = [];
@@ -97,6 +99,18 @@ const cpu = {
 };
 
 describe("capture artifact integrity", () => {
+  it("reports the affected native worker CPU recorder without disabling actual workers", () => {
+    expect(workerCpuLimitation("darwin", "v24.17.0")).toMatch(/unsupported.*worker CPU/i);
+    expect(workerCpuLimitation("linux", "v24.17.0")).toBeUndefined();
+  });
+  it("keeps sampled allocation separate from retained bytes and rejects unattributed samples", () => {
+    const head = { id: 1, callFrame: { functionName: "allocate", url: "fixture.mjs", lineNumber: 0 }, selfSize: 64, children: [] };
+    const profile = { head, samples: [{ nodeId: 1, size: 128, ordinal: 1 }] };
+    expect(summarizeAllocationProfile(profile)).toMatchObject({ records: 1, nodes: 1, sampledBytes: 128 });
+    for (const invalid of [{}, { ...profile, samples: [] }, { ...profile, samples: [{ nodeId: 2, size: 128 }] }, { ...profile, samples: [{ nodeId: 1, size: -1 }] }]) {
+      expect(() => summarizeAllocationProfile(invalid)).toThrow(/allocation/);
+    }
+  });
   it("retains private diagnostics on failure and removes successful reports", async () => {
     const root = await temporaryRoot();
     const journal = join(root, "events.jsonl");
@@ -203,9 +217,13 @@ describe("bounded real profiling runner", () => {
       return (await readFile(path, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     }))).flat();
     const events = entries.map((entry) => entry.event);
-    for (const event of ["worker-created", "dispatch", "listener-registered", "listener-entry", "inspector-start", "inspector-stop", "inspector-stop-callback", "artifact-written", "worker-exit", "termination-requested", "termination-completed"]) expect(events).toContain(event);
+    for (const event of ["worker-created", "dispatch", "worker-exit", "termination-requested", "termination-completed"]) expect(events).toContain(event);
     expect(events).toContain(failure ? "worker-error" : "reply-received");
-    expect(entries.find((entry) => entry.event === "listener-entry")).toMatchObject({ taskId: "page.html:0", threadId: expect.any(Number), pid: expect.any(Number) });
+    if (workerCpuLimitation()) expect(events).not.toContain("inspector-start");
+    else {
+      for (const event of ["listener-registered", "listener-entry", "inspector-start", "inspector-stop", "inspector-stop-callback", "artifact-written"]) expect(events).toContain(event);
+      expect(entries.find((entry) => entry.event === "listener-entry")).toMatchObject({ taskId: "page.html:0", threadId: expect.any(Number), pid: expect.any(Number) });
+    }
     await expect(stat(join(root, "result.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
   it.each(["SIGINT", "SIGTERM"] as const)("cancels disposable descendants on %s even when the leader exits first", async (signal) => {
@@ -264,18 +282,24 @@ describe("bounded real profiling runner", () => {
   }, 60_000);
   it.each(["http2", "static", "dev", "serial", "workers"])("validates real %s work and labeled CPU coverage", async (scenario) => {
     const root = await temporaryRoot();
-    await promisify(execFile)(process.execPath, [runner, "--tools", "cpu", "--scenarios", scenario, "--rounds", "1", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
+    const tool = scenario === "workers" && workerCpuLimitation() ? "control" : "cpu";
+    await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", scenario, "--rounds", "1", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
     const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
     expect(manifest.success).toBe(true);
     expect(manifest.captures.length).toBeGreaterThan(0);
     for (const capture of manifest.captures) {
-      expect(capture.artifacts.some((artifact: { path: string }) => artifact.path.endsWith(".cpuprofile"))).toBe(true);
+      expect(capture.artifacts.some((artifact: { path: string }) => artifact.path.endsWith(".cpuprofile"))).toBe(tool === "cpu");
       if (scenario === "workers") {
         expect(capture.coverage.some((entry: { role: string }) => entry.role === "page-worker")).toBe(true);
-        expect(capture.coverage.some((entry: { role: string }) => entry.role === "script-child")).toBe(true);
+        if (tool === "cpu") expect(capture.coverage.some((entry: { role: string }) => entry.role === "script-child")).toBe(true);
         const events = capture.result.subjectEvents.filter((event: { role: string }) => event.role !== "native-child");
         const tasks = events.filter((event: { taskId?: string }) => event.taskId !== undefined);
         expect(tasks).toHaveLength(18);
+        if (tool === "control") {
+          expect(capture.coverage.filter((entry: { role: string }) => entry.role === "page-worker").every((entry: { captured: boolean }) => entry.captured === false)).toBe(true);
+          expect(capture.result.builds.map((build: { completed: number }) => build.completed)).toEqual([8, 8]);
+          continue;
+        }
         const paths = capture.artifacts.map((artifact: { path: string }) => artifact.path);
         const taskArtifacts = capture.coverage.filter((entry: { role: string; taskId?: string }) => entry.role === "page-worker" && entry.taskId !== undefined);
         expect(taskArtifacts).toHaveLength(18);
@@ -291,14 +315,32 @@ describe("bounded real profiling runner", () => {
       if (scenario === "serial" || scenario === "workers") expect(capture.result.builds.map((build: { completed: number }) => build.completed)).toEqual([8, 8]);
     }
   }, 120_000);
-  it.each(["doctor", "0x"])("requires decodable real %s output before accepting the capture", async (tool) => {
+  it.each(["doctor", "0x", "bubbleprof", "heapprofiler"])("requires decodable real %s output before accepting the capture", async (tool) => {
     const root = await temporaryRoot();
-    await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", "http1", "--rounds", "2", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
+    let failure: unknown;
+    try {
+      await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", "http1", "--rounds", "2", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
+    } catch (error) { failure = error; }
     const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
+    if (failure) {
+      expect(tool).toBe("heapprofiler");
+      expect(manifest.success).toBe(false);
+      expect(manifest.failures.length).toBeGreaterThan(0);
+      for (const rejected of manifest.failures) expect(rejected.error).toContain("invalid allocation sample");
+      roots.splice(roots.indexOf(root), 1);
+      console.error(`Rejected allocation diagnostics retained: ${root}`);
+      return;
+    }
     expect(manifest.success).toBe(true);
     for (const capture of manifest.captures) {
       expect(capture.artifacts.some((artifact: { path: string }) => artifact.path.endsWith(".html"))).toBe(true);
       expect(capture.artifacts.every((artifact: { bytes: number; sha256: string }) => artifact.bytes > 0 && artifact.sha256.length === 64)).toBe(true);
+      if (tool === "bubbleprof" || tool === "heapprofiler") {
+        expect(capture.decoded.records).toBeGreaterThan(0);
+        expect(capture.decoded.tool).toBe(tool);
+        expect(capture.result.generator.execArgv).toEqual([]);
+        expect(capture.result.generator.nodeOptions).toBeNull();
+      }
     }
   }, 120_000);
 });

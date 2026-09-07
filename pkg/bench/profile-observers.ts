@@ -1,6 +1,6 @@
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
-import { cleanGeneratorEnvironment, type ProcessCoverage } from "./profile-workload.ts";
+import { cleanGeneratorEnvironment, workerCpuLimitation, type ProcessCoverage } from "./profile-workload.ts";
 import type { WorkerOptions } from "node:worker_threads";
 import { profileJournal } from "./profile-diagnostics.ts";
 
@@ -13,7 +13,7 @@ export function observeSubjects(directory: string | undefined) {
   const originalExecFile = children.execFile;
   const preload = fileURLToPath(new URL("./profile-isolate.ts", import.meta.url));
   const events: object[] = [];
-  const environment = () => ({ ...cleanGeneratorEnvironment(process.env), ...(directory ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) });
+  const environment = () => ({ ...cleanGeneratorEnvironment(process.env), ...(directory && !workerCpuLimitation() ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) });
   threads.Worker = class extends OriginalWorker {
     sequence = 0;
     pending?: ProcessCoverage;

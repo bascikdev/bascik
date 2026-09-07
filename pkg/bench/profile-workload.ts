@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHook } from "node:async_hooks";
+import { fstatSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
@@ -7,7 +9,59 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 export interface ExpectedResponse { id: string; body: Buffer; encoding?: string }
-export interface ObservedResponse { id: string; status: number; encoding: string; body: Buffer; durationMs: number }
+export interface ObservedResponse { id: string; status: number; encoding: string; body: Buffer; durationMs: number; complete?: boolean }
+export interface ResourceSnapshot { resources: Record<string, number>; descriptors: number[] | null }
+export function createResourceProbe() {
+  const active = new Map<number, { type: string; resource: WeakRef<object> }>();
+  const hook = createHook({
+    init(id, type, _trigger, resource) {
+      if (/^(Timeout|TCPWRAP|TCPSERVERWRAP|HTTP2SESSION|PIPEWRAP|PROCESSWRAP|WORKER|MESSAGEPORT|FSEVENTWRAP|STATWATCHER|FILEHANDLE|FSREQCALLBACK|FSREQPROMISE)$/.test(type)) active.set(id, { type, resource: new WeakRef(resource) });
+    },
+    destroy(id) { active.delete(id); },
+  }).enable();
+  return {
+    snapshot(): ResourceSnapshot {
+      const resources: Record<string, number> = {};
+      for (const { type, resource } of active.values()) {
+        const handle = resource.deref();
+        if (!handle || (type === "FILEHANDLE" && Reflect.get(handle, "fd") < 0)) continue;
+        resources[type] = (resources[type] ?? 0) + 1;
+      }
+      let descriptors: number[] | null = null;
+      if (process.platform === "darwin" || process.platform === "linux") {
+        descriptors = readdirSync(process.platform === "linux" ? "/proc/self/fd" : "/dev/fd")
+          .map(Number).filter((descriptor) => {
+            try { fstatSync(descriptor); return true; } catch { return false; }
+          }).sort((left, right) => left - right);
+      }
+      return { resources, descriptors };
+    },
+    close() { hook.disable(); active.clear(); },
+  };
+}
+export function validateResourceBoundary(baseline: ResourceSnapshot, final: ResourceSnapshot) {
+  for (const [type, count] of Object.entries(final.resources)) {
+    assert(Number.isInteger(count) && count >= 0 && count <= (baseline.resources[type] ?? 0), `resource boundary: ${type} ${count} exceeds ${baseline.resources[type] ?? 0}`);
+  }
+  assert.equal(final.descriptors === null, baseline.descriptors === null, "resource boundary: descriptor coverage changed");
+  if (baseline.descriptors && final.descriptors) {
+    assert(final.descriptors.every((descriptor) => baseline.descriptors!.includes(descriptor)), "resource boundary: open descriptor survived cleanup");
+  }
+}
+export interface GateEvent { gate: string; event: "start" | "release" | "end"; at: number }
+export function validateIndependentGates(events: GateEvent[], gates: string[]) {
+  assert(gates.length > 1 && new Set(gates).size === gates.length, "independent gates require distinct producers");
+  assert(events.every((entry, index) => Number.isFinite(entry.at) && (index === 0 || entry.at >= events[index - 1].at)), "independent gates require monotonic timestamps");
+  const firstRelease = events.findIndex((entry) => entry.event === "release");
+  for (const gate of gates) {
+    const indices = ["start", "release", "end"].map((event) => {
+      const matches = events.flatMap((entry, index) => entry.gate === gate && entry.event === event ? [index] : []);
+      assert.equal(matches.length, 1, `independent gates: missing or duplicate ${gate} ${event}`);
+      return matches[0];
+    });
+    assert(indices[0] < firstRelease && indices[0] < indices[1] && indices[1] < indices[2], `independent gates serialized or out of order: ${gate}`);
+  }
+}
 export interface CompressionMetrics { calls: number; active: number; maxActive: number; syncCalls: number; pending: number }
 export function validateCompression(metrics: CompressionMetrics, expectedCalls: number) {
   assert.equal(metrics.calls, expectedCalls, "compression asynchronous single-flight count");
@@ -17,6 +71,9 @@ export function validateCompression(metrics: CompressionMetrics, expectedCalls: 
   assert(Number.isInteger(metrics.maxActive) && metrics.maxActive >= (expectedCalls ? 1 : 0) && metrics.maxActive <= expectedCalls, "compression observed concurrency exceeds useful work");
 }
 export interface ProcessCoverage { role: string; pid: number; threadId?: number; taskId?: string; startedAt?: number; endedAt?: number; dispatchedAt?: number; completedAt?: number }
+export function workerCpuLimitation(platform: string = process.platform, version: string = process.version) {
+  if (platform === "darwin" && version === "v24.17.0") return "Unsupported worker CPU capture on Node v24.17.0/macOS: native built-in loader lock stall; unprofiled worker timelines remain available";
+}
 export function validateProcessCoverage(events: ProcessCoverage[], coverage: ProcessCoverage[]) {
   for (const event of events) {
     assert(coverage.some((capture) => capture.role === event.role && capture.pid === event.pid && capture.threadId === event.threadId
@@ -39,6 +96,7 @@ export function validateResponses(expected: ExpectedResponse[], responses: Obser
     assert(tasks.has(response.id) && !seen.has(response.id), `unknown or duplicate task ${response.id}`);
     seen.add(response.id);
     assert.equal(response.status, 200, `status for ${response.id}`);
+    assert(response.complete !== false, `stream completion for ${response.id}`);
     assert(Number.isFinite(response.durationMs) && response.durationMs >= 0, "invalid duration");
     assert(["identity", "br", "gzip"].includes(response.encoding), "unsupported encoding");
     const encoding = expected.find((task) => task.id === response.id)!.encoding;
@@ -74,7 +132,29 @@ export async function validatePrivateDirectory(path: string, forbidden: string[]
 }
 export function cleanGeneratorEnvironment(environment: NodeJS.ProcessEnv) {
   return Object.fromEntries(Object.entries(environment).filter(([key]) =>
-    !/^(NODE_OPTIONS|NODE_V8_COVERAGE|BASCIK_PROFILE_.*|CLINIC_.*|ZEROX_.*|VITEST(?:_.*)?)$/.test(key)));
+    !/^(NODE_OPTIONS|NODE_V8_COVERAGE|NODE_CLINIC_.*|HEAP_PROFILER_.*|BASCIK_PROFILE_.*|CLINIC_.*|ZEROX_.*|VITEST(?:_.*)?)$/.test(key)));
+}
+
+interface AllocationNode { id: number; selfSize: number; callFrame: { functionName: string; url: string; lineNumber: number }; children: AllocationNode[] }
+export function summarizeAllocationProfile(value: unknown) {
+  assert(value && typeof value === "object", "invalid allocation profile");
+  const profile = value as { head: AllocationNode; samples: { nodeId: number; size: number }[] };
+  assert(Array.isArray(profile.samples) && profile.samples.length > 0, "missing allocation samples");
+  const nodes = new Map<number, AllocationNode>();
+  const visit = (node: AllocationNode) => {
+    assert(node && Number.isInteger(node.id) && !nodes.has(node.id) && Number.isFinite(node.selfSize) && node.selfSize >= 0 && Array.isArray(node.children) && typeof node.callFrame?.functionName === "string", "invalid allocation node");
+    nodes.set(node.id, node);
+    for (const child of node.children) visit(child);
+  };
+  visit(profile.head);
+  let sampledBytes = 0;
+  const sites = new Map<number, number>();
+  for (const sample of profile.samples) {
+    assert(nodes.has(sample.nodeId) && Number.isFinite(sample.size) && sample.size > 0, "invalid allocation sample");
+    sampledBytes += sample.size;
+    sites.set(sample.nodeId, (sites.get(sample.nodeId) ?? 0) + sample.size);
+  }
+  return { records: profile.samples.length, nodes: nodes.size, sampledBytes, sites: [...sites].map(([nodeId, bytes]) => ({ ...nodes.get(nodeId)!.callFrame, sampledBytes: bytes })).sort((left, right) => right.sampledBytes - left.sampledBytes) };
 }
 
 interface CpuNode { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[] }
