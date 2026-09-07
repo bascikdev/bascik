@@ -150,6 +150,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Typecheck all workspace packages
         run: yarn typecheck:all
 
@@ -174,7 +177,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Install codespell
-        run: pip install codespell
+        run: pipx install codespell
 
       - name: Check spelling
         run: yarn check:spelling
