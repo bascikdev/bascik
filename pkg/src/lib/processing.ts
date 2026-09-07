@@ -1,4 +1,9 @@
-import { publishTranspiled, trackCompilationWrite, hasCompilationPublisher } from "./compilation-events.ts";
+import {
+  getCompilationPageErrorPolicy,
+  publishTranspiled,
+  trackCompilationWrite,
+  hasCompilationPublisher,
+} from "./compilation-events.ts";
 /**
  * @module processing
  *
@@ -441,7 +446,8 @@ const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promi
 const reportPageErrors = (pageErrors: PageProcessingError[]): void => {
   if (pageErrors.length === 0) return;
   const aggregateError = new PageProcessingAggregateError(pageErrors);
-  if (BascikConfig.isBuild || hasCompilationPublisher()) throw aggregateError;
+  const pageErrorPolicy = getCompilationPageErrorPolicy();
+  if (BascikConfig.isBuild || pageErrorPolicy === "throw") throw aggregateError;
 
   // One owner publishes located build failures to the SSE layer. The dev
   // browser overlay needs the source file and line; suppressing stack detail

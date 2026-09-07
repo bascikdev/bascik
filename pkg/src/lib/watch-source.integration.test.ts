@@ -98,4 +98,27 @@ describe('source observer and phase queue integration', () => {
     expect(mocks.all).toHaveBeenCalledTimes(1);
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
+
+  it('runs the boot compile hook only after the source watcher is ready', async () => {
+    const ready = Promise.withResolvers<void>();
+    mocks.watch.mockReset().mockImplementation(() => {
+      queueMicrotask(() => ready.promise.then(() => watcher.emit('ready')));
+      return watcher;
+    });
+    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
+      expect(mocks.copy).not.toHaveBeenCalled();
+      expect(mocks.all).not.toHaveBeenCalled();
+      await compileInitialSources();
+    });
+
+    const watchPromise = watchSourceCycles(vi.fn(), bootCompile);
+
+    expect(bootCompile).not.toHaveBeenCalled();
+    ready.resolve();
+    await watchPromise;
+
+    expect(bootCompile).toHaveBeenCalledOnce();
+    expect(mocks.copy).toHaveBeenCalledTimes(1);
+    expect(mocks.all).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
+  _state,
   _mockWatchFiles,
   _mockRunExecPhase,
   _mockStartExecParallel,
@@ -11,6 +12,24 @@ const {
   _parallel,
 } = vi.hoisted(() => {
   const _callOrder: string[] = [];
+  const _state: {
+    emitFromWatcher?: () => Promise<void>;
+    hasPublisherDuringBoot: boolean;
+    emitDuringBoot: boolean;
+    bootError?: unknown;
+    reset(): void;
+  } = {
+    emitFromWatcher: undefined,
+    hasPublisherDuringBoot: false,
+    emitDuringBoot: false,
+    bootError: undefined,
+    reset() {
+      this.emitFromWatcher = undefined;
+      this.hasPublisherDuringBoot = false;
+      this.emitDuringBoot = false;
+      this.bootError = undefined;
+    },
+  };
   // The parallel phase is modeled as work that is still running when the
   // phase runner returns. Its handle settles when the test releases it, so
   // the call order can tell an awaited join apart from a non-awaited start:
@@ -40,10 +59,36 @@ const {
   };
   _parallel.reset();
   return {
+    _state,
     _callOrder,
     _parallel,
-    _mockWatchFiles: vi.fn().mockImplementation(async () => {
+    _mockWatchFiles: vi.fn().mockImplementation(async (options?: {
+      bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
+    }) => {
       _callOrder.push("watchFiles");
+      _state.emitFromWatcher = async () => {
+        const compilationEvents = await import("./lib/compilation-events.ts");
+        compilationEvents.publishTranspiled({ relativePagePath: "watcher-after-boot.html" });
+      };
+      if (options?.bootCompile) {
+        await options.bootCompile(async () => {
+          const compilationEvents = await import("./lib/compilation-events.ts");
+          _state.hasPublisherDuringBoot = compilationEvents.hasCompilationPublisher();
+          if (_state.emitDuringBoot) {
+            compilationEvents.publishTranspiled({ relativePagePath: "boot-buffered.html" });
+          }
+          if (_state.bootError) {
+            if (compilationEvents.getCompilationPageErrorPolicy() === "publish") {
+              eventEmitter.emit("build-error", {
+                message: (_state.bootError as Error).message,
+                file: "/project/src/pages/broken.html",
+              });
+              return;
+            }
+            throw _state.bootError;
+          }
+        });
+      }
     }),
     _mockRunExecPhase: vi.fn().mockImplementation(async (phase: string) => {
       _callOrder.push(`runExecPhase:${phase}`);
@@ -111,12 +156,14 @@ import { runTranspile } from "./transpile.ts";
 import { BascikConfig } from "./lib/config.ts";
 import { mem } from "./lib/mem.ts";
 import { eventEmitter } from "./lib/events.ts";
+import { PageProcessingAggregateError, PageProcessingError } from "./lib/processing.ts";
 
 describe("runTranspile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _callOrder.length = 0;
     _parallel.reset();
+    _state.reset();
     (BascikConfig as any).directory.out = "dist";
   });
 
@@ -256,6 +303,49 @@ describe("runTranspile", () => {
 
     await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
     expect(_mockWatchFiles).not.toHaveBeenCalled();
+  });
+
+  it("buffers only the boot compile and emits later watcher publications directly", async () => {
+    const emitSpy = vi.spyOn(eventEmitter, "emit");
+    (BascikConfig as any).isBuild = false;
+    _state.emitDuringBoot = true;
+    _parallel.release();
+
+    await runTranspile({ exitOnError: false });
+
+    expect(_mockWatchFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ bootCompile: expect.any(Function) }),
+    );
+    expect(_state.hasPublisherDuringBoot).toBe(true);
+    expect(emitSpy).toHaveBeenCalledWith("transpiled", { relativePagePath: "boot-buffered.html" });
+
+    emitSpy.mockClear();
+    await _state.emitFromWatcher?.();
+    expect(emitSpy).toHaveBeenCalledWith("transpiled", { relativePagePath: "watcher-after-boot.html" });
+    emitSpy.mockRestore();
+  });
+
+  it("publishes boot page errors in dev instead of rejecting the dev boot", async () => {
+    const emitSpy = vi.spyOn(eventEmitter, "emit");
+    const pageError = new PageProcessingError(
+      "/project/src/pages/broken.html",
+      "worker transpile",
+      new Error("validate markup: missing body"),
+    );
+    (BascikConfig as any).isBuild = false;
+    _state.bootError = new PageProcessingAggregateError([pageError]);
+    _parallel.release();
+
+    await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+
+    expect(_state.hasPublisherDuringBoot).toBe(true);
+    expect(emitSpy).toHaveBeenCalledWith(
+      "build-error",
+      expect.objectContaining({
+        file: "/project/src/pages/broken.html",
+      }),
+    );
+    emitSpy.mockRestore();
   });
 });
 

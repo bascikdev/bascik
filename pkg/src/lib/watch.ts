@@ -25,11 +25,15 @@ import { scriptRegistry } from "./script-registry.ts";
 import { getImportRoot } from "./import-root.ts";
 import { watchSourceCycles } from "./watch-source.ts";
 
+export interface WatchFilesOptions {
+  bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>;
+}
+
 const logInfo = (message: string): void => {
   if (shouldLog(BascikConfig.logging?.level, "info")) console.log(message);
 };
 
-export const watchFiles = async () => {
+export const watchFiles = async (options: WatchFilesOptions = {}) => {
   if (BascikConfig.isBuild) {
     await Promise.all([copyStaticAssets(), processAllPages()]);
     return;
@@ -80,11 +84,12 @@ export const watchFiles = async () => {
     followSymlinks: false,
     persistent: !BascikConfig.isBuild,
   };
+  let compileInitialSources: (() => Promise<void>) | undefined;
 
   // When exec entries watch sources, one observer owns compilation and exec
   // selection. Independent observers would race and duplicate the same edit.
   if (BascikConfig.pipeline?.exec?.some(entry => !!entry.watch)) {
-    await watchSourceCycles(invalidateRuntimeModule);
+    await watchSourceCycles(invalidateRuntimeModule, options.bootCompile);
   } else {
   // Copy non-page files
   w(chokidar
@@ -134,6 +139,10 @@ export const watchFiles = async () => {
 
   // Transpile pages as they change
   let initialScanDone = false;
+  compileInitialSources = async (): Promise<void> => {
+    await Promise.all([copyStaticAssets(), processAllPages()]);
+    initialScanDone = true;
+  };
   await new Promise<void>((resolve, reject) => {
     w(chokidar
       .watch([BascikConfig.directory.pages], {
@@ -151,11 +160,15 @@ export const watchFiles = async () => {
         removePage(path).then(() => processAllPages()).catch(onWatchError);
       })
       .on("unlinkDir", (path: string, _stats?: Stats) => deleteDistDir(path).catch(onWatchError))
-      .on("ready", () => {
-        initialScanDone = true;
-        Promise.all([copyStaticAssets(), processAllPages()]).then(() => resolve()).catch(reject);
-      }));
+      .on("ready", () => resolve())
+      .on("error", reject));
   });
+
+  if (compileInitialSources && options.bootCompile) {
+    await options.bootCompile(compileInitialSources);
+  } else if (compileInitialSources) {
+    await compileInitialSources();
+  }
 
   // Transpile pages if components change. Every configured root is watched;
   // symlinks are followed here (and only here) so a linked shared directory
@@ -176,19 +189,31 @@ export const watchFiles = async () => {
     // If you add a component, how will we know what pages to update unless we go and look
     .on("add", async (path) => {
       invalidateRuntimeModule(path);
-      clearBuildScriptCaches(path);
-      processAllPages().catch(onWatchError);
+      try {
+        clearBuildScriptCaches(path);
+        await processAllPages();
+      } catch (err) {
+        onWatchError(err);
+      }
     })
     // For changes and deletion of components we can be selective
     .on("change", async (path) => {
       invalidateRuntimeModule(path);
-      clearBuildScriptCaches(path);
-      selectivelyProcessPages(path).catch(onWatchError);
+      try {
+        clearBuildScriptCaches(path);
+        await selectivelyProcessPages(path);
+      } catch (err) {
+        onWatchError(err);
+      }
     })
     .on("unlink", async (path) => {
       invalidateRuntimeModule(path);
-      clearBuildScriptCaches(path);
-      selectivelyProcessPages(path).catch(onWatchError);
+      try {
+        clearBuildScriptCaches(path);
+        await selectivelyProcessPages(path);
+      } catch (err) {
+        onWatchError(err);
+      }
     }));
 
   // Compilation watches are independent of exec.watch and exec completion.

@@ -94,7 +94,14 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const url = await dev.url;
 
     const publications: [string, unknown][] = [];
-    await withCompilationPublisher((event, payload) => publications.push([event, payload]), watchFiles);
+    await watchFiles({
+      bootCompile: (compileInitialSources) =>
+        withCompilationPublisher(
+          (event, payload) => publications.push([event, payload]),
+          compileInitialSources,
+          { onPageErrors: "publish" },
+        ),
+    });
     await runExecPhase("post");
     for (const [event, payload] of publications) eventEmitter.emit(event, payload);
     const version = await readVersion();

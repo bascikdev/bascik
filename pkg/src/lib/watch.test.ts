@@ -543,10 +543,8 @@ describe("watchFiles – html page watcher (watcher 1)", () => {
     await watchFiles();
   });
 
-  it("calls processAllPages on 'ready'", async () => {
-    const readyHandler = getHandler(1, "ready");
-    mockProcessAllPages.mockClear();
-    await readyHandler?.();
+  it("runs the initial compile after watcher setup resolves", () => {
+    expect(copyStaticAssets).toHaveBeenCalledTimes(1);
     expect(processAllPages).toHaveBeenCalledTimes(1);
   });
 
@@ -761,6 +759,122 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
     await captured["ready"]?.();
     await watchPromise;
   });
+
+  it("accepts a bootCompile hook so watcher installation stays outside publisher scope", async () => {
+    const captured: Record<string, (...args: any[]) => any> = {};
+    const deferredWatcher = {
+      on: vi.fn(function (this: any, event: string, handler: any) {
+        captured[event] = handler;
+        return this;
+      }),
+    };
+    const simpleWatcher = {
+      on: vi.fn(function (this: any) {
+        return this;
+      }),
+    };
+    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
+      expect(copyStaticAssets).not.toHaveBeenCalled();
+      expect(processAllPages).not.toHaveBeenCalled();
+      await compileInitialSources();
+    });
+
+    mockWatch
+      .mockImplementationOnce(() => simpleWatcher)
+      .mockImplementationOnce(() => deferredWatcher)
+      .mockImplementation(() => simpleWatcher);
+
+    const watchPromise = watchFiles({ bootCompile });
+
+    expect(bootCompile).not.toHaveBeenCalled();
+    await captured["ready"]?.();
+    await watchPromise;
+
+    expect(bootCompile).toHaveBeenCalledOnce();
+    expect(copyStaticAssets).toHaveBeenCalledTimes(1);
+    expect(processAllPages).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs component and watchPaths watchers only after bootCompile returns, outside the publisher scope", async () => {
+    (BascikConfig as any).pipeline = { watchPaths: ["/extra/watch/path"] };
+    const bootCompilePaused = Promise.withResolvers<void>();
+    const releaseBootCompile = Promise.withResolvers<void>();
+    const registrationPublisherStates: boolean[] = [];
+    const compilationEvents = await import("./compilation-events.ts");
+    let componentChangeHandler: ((path: string) => Promise<void>) | undefined;
+    let watchPathChangeHandler: ((path: string) => Promise<void>) | undefined;
+
+    mockWatch.mockImplementation((path: string | string[]) => {
+      const watched = Array.isArray(path) ? path : [path];
+      const watcher = {
+        on: vi.fn(function (this: any, event: string, handler: (...args: any[]) => any) {
+          if (watched.includes("/project/src/components") && event === "change") {
+            componentChangeHandler = handler as (path: string) => Promise<void>;
+          }
+          if (watched.includes("/extra/watch/path") && event === "change") {
+            watchPathChangeHandler = handler as (path: string) => Promise<void>;
+          }
+          if (event === "ready") {
+            void handler();
+          }
+          return this;
+        }),
+      };
+      if (
+        watched.includes("/project/src/components") ||
+        watched.includes("/extra/watch/path")
+      ) {
+        registrationPublisherStates.push(compilationEvents.hasCompilationPublisher());
+      }
+      return watcher;
+    });
+
+    const bootCompile = vi.fn(async (compileInitialSources: () => Promise<void>) => {
+      await compilationEvents.withCompilationPublisher(
+        vi.fn(),
+        async () => {
+          await compileInitialSources();
+          bootCompilePaused.resolve();
+          await releaseBootCompile.promise;
+          expect(compilationEvents.hasCompilationPublisher()).toBe(true);
+        },
+        { onPageErrors: "publish" },
+      );
+    });
+
+    const watchPromise = watchFiles({ bootCompile });
+
+    await bootCompilePaused.promise;
+    const watchedBeforeBootReturns = mockWatch.mock.calls.map(([path]) => path);
+    expect(watchedBeforeBootReturns).not.toContainEqual(["/project/src/components"]);
+    expect(watchedBeforeBootReturns).not.toContainEqual(["/extra/watch/path"]);
+
+    releaseBootCompile.resolve();
+    await watchPromise;
+
+    const watchedAfterBootReturns = mockWatch.mock.calls.map(([path]) => path);
+    expect(watchedAfterBootReturns).toContainEqual(["/project/src/components"]);
+    expect(watchedAfterBootReturns).toContainEqual(["/extra/watch/path"]);
+    expect(registrationPublisherStates).toEqual([false, false]);
+
+    mockSelectivelyProcessPages.mockImplementation(async () => {
+      expect(compilationEvents.hasCompilationPublisher()).toBe(false);
+    });
+    mockSelectivelyProcessPagesForWatchPath.mockImplementation(async () => {
+      expect(compilationEvents.hasCompilationPublisher()).toBe(false);
+    });
+
+    await componentChangeHandler?.("/project/src/components/button.html");
+    await watchPathChangeHandler?.("/extra/watch/path/content.md");
+
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith("/project/src/components/button.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith("/extra/watch/path/content.md");
+    expect(selectivelyProcessPages).toHaveBeenCalledWith("/project/src/components/button.html");
+    expect(selectivelyProcessPagesForWatchPath).toHaveBeenCalledWith("/extra/watch/path/content.md");
+    expect(eventEmitter.emit).toHaveBeenCalledWith("watch-path-processed", {
+      path: "/extra/watch/path/content.md",
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -919,7 +1033,7 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     };
     await watchFiles();
     const { watchSourceCycles } = await import('./watch-source.ts');
-    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function));
+    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function), undefined);
     expect(mockWatch).not.toHaveBeenCalledWith(expect.arrayContaining(['src/content/docs']), expect.anything());
     expect(processAllPages).not.toHaveBeenCalled();
     expect(mockEventEmit).not.toHaveBeenCalledWith("asset-changed");
@@ -954,7 +1068,7 @@ describe("watchFiles – overlap between pipeline.watchPaths and exec.watch", ()
     await watchFiles();
 
     const { watchSourceCycles } = await import('./watch-source.ts');
-    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function));
+    expect(watchSourceCycles).toHaveBeenCalledWith(expect.any(Function), undefined);
     expect(selectivelyProcessPagesForWatchPath).not.toHaveBeenCalled();
   });
 });

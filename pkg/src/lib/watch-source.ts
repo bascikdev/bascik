@@ -23,7 +23,10 @@ export const sourceWatchRoot = (pattern: string): string => {
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
  * suppresses legitimate source edits, including edits to a watched script.
  */
-export const watchSourceCycles = async (invalidateRuntimeModule: (path: string) => void): Promise<void> => {
+export const watchSourceCycles = async (
+  invalidateRuntimeModule: (path: string) => void,
+  bootCompile?: (compileInitialSources: () => Promise<void>) => Promise<void>,
+): Promise<void> => {
   const entries = BascikConfig.pipeline?.exec ?? [];
   const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
   const execPatterns = entries.flatMap(entry => entry.watch ? Array.isArray(entry.watch) ? entry.watch : [entry.watch] : []);
@@ -80,7 +83,7 @@ export const watchSourceCycles = async (invalidateRuntimeModule: (path: string) 
       }
       if (all) await processAllPages();
       else if (pages.size) await processPageBatch([...pages]);
-    }),
+    }, { onPageErrors: 'throw' }),
   });
   const onBoot = () => {
     booted = true;
@@ -117,5 +120,12 @@ export const watchSourceCycles = async (invalidateRuntimeModule: (path: string) 
     watcher.once('error', reject);
   });
   watcher.on('error', error => eventEmitter.emit('build-error', { message: error instanceof Error ? error.message : String(error) }));
-  await Promise.all([copyStaticAssets(), processAllPages()]);
+  const compileInitialSources = async (): Promise<void> => {
+    await Promise.all([copyStaticAssets(), processAllPages()]);
+  };
+  if (bootCompile) {
+    await bootCompile(compileInitialSources);
+  } else {
+    await compileInitialSources();
+  }
 };
