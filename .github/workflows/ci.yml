@@ -130,14 +130,66 @@ jobs:
       - name: Run extension tests
         run: xvfb-run -a yarn ext:test
 
-  # ── Stage 2: E2E Tests (Parallel, Depends on Jelly & Unit Tests) ────────────
+  typecheck:
+    name: Workspace Typechecks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Typecheck all workspace packages
+        run: yarn typecheck:all
+
+  standards:
+    name: Spelling & Web Standards
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Install codespell
+        run: pip install codespell
+
+      - name: Check spelling
+        run: yarn check:spelling
+
+      - name: Check web standards
+        run: yarn check:standards
+
+  # ── Stage 2: E2E Tests (Parallel, Depends on Stage 1) ───────────────────────
 
   e2e-pkg-static:
     name: Framework E2E (Static)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -167,7 +219,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -192,12 +244,15 @@ jobs:
       - name: Run framework E2E tests (dev server)
         run: yarn pkg:e2e:dev
 
+      - name: Run framework E2E tests (dev exec lifecycle)
+        run: yarn pkg:e2e:dev:exec
+
   e2e-pkg-prod-http1:
     name: Framework E2E (Prod Server HTTP/1.1)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -227,7 +282,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -257,7 +312,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -287,7 +342,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension]
+    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
