@@ -123,6 +123,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bascik/adapter-cloudflare@workspace:adapters/cloudflare":
+  version: 0.0.0-use.local
+  resolution: "@bascik/adapter-cloudflare@workspace:adapters/cloudflare"
+  dependencies:
+    "@bascik/bascik": "workspace:*"
+    "@playwright/test": "npm:^1.58.2"
+    "@types/node": "npm:^24.0.0"
+    esbuild: "npm:^0.28.2"
+    miniflare: "npm:4.20260730.0"
+    typescript: "npm:^7.0.2"
+    vitest: "npm:^4.1.10"
+  peerDependencies:
+    "@bascik/bascik": ^1.0.0
+  languageName: unknown
+  linkType: soft
+
 "@bascik/bascik@workspace:*, @bascik/bascik@workspace:pkg":
   version: 0.0.0-use.local
   resolution: "@bascik/bascik@workspace:pkg"
@@ -143,7 +159,6 @@ __metadata:
     css-tree: "npm:^3.2.1"
     esbuild: "npm:^0.28.2"
     fast-check: "npm:^4.9.0"
-    miniflare: "npm:4.20260730.0"
     postcss: "npm:^8.5.26"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.1.5"
@@ -1639,7 +1654,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@playwright/test@npm:^1.62.0":
+"@playwright/test@npm:^1.58.2, @playwright/test@npm:^1.62.0":
   version: 1.62.1
   resolution: "@playwright/test@npm:1.62.1"
   dependencies:

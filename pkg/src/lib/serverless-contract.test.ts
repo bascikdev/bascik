@@ -64,7 +64,6 @@ describe("serverless contract: host-neutral runtime boundary", () => {
       resolve(here, "request-execution.ts"),
       resolve(here, "web-response.ts"),
       resolve(here, "route-matching.ts"),
-      resolve(here, "../adapters/cloudflare-runtime.ts"),
     ];
     for (const entry of entries) {
       const { errors } = await bundleForWeb(entry);

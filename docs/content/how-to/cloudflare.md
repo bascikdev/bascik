@@ -20,10 +20,10 @@ No client-side JavaScript is added, nothing hydrates, and there is no per-fragme
 ## Prerequisites
 
 - Node.js 24 for the build.
-- `esbuild` installed in your project. Bascik uses it to compile request-time code and does not ship it as a dependency:
+- `@bascik/adapter-cloudflare` installed in your project:
 
 ```sh
-npm install --save-dev esbuild
+npm install --save-dev @bascik/adapter-cloudflare
 ```
 
 - Wrangler for local preview and deployment:

@@ -1,6 +1,0 @@
-{
-  "name": "bascik-e2e-cloudflare-fixture",
-  "private": true,
-  "type": "module",
-  "description": "Fixture site for the Cloudflare adapter E2E lane. esbuild is resolved from the workspace root."
-}

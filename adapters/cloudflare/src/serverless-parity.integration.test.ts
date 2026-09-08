@@ -24,7 +24,7 @@ import {
   cleanupServerlessFixture,
   createServerlessFixture,
 } from "./serverless-fixture.test-helper.ts";
-import { createGate, startHarness, type Harness, type StreamedResponse } from "../adapters/cloudflare-harness.test-helper.ts";
+import { createGate, startHarness, type Harness, type StreamedResponse } from "./cloudflare-harness.test-helper.ts";
 
 /**
  * Header-level differences that are platform facts, not adapter defects.
@@ -62,7 +62,7 @@ interface NodeOracle {
 
 const startNodeServer = async (projectRoot: string): Promise<NodeOracle> => {
   const port = await freePort();
-  const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
+  const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../../../pkg/dist/index.js");
   const child: ChildProcess = spawn(process.execPath, [cli, "--server", "--port", String(port), "--host", "127.0.0.1"], {
     cwd: projectRoot,
     env: { ...process.env, BASCIK_LOG_LEVEL: "silent" },
@@ -399,7 +399,7 @@ describe("serverless parity: failed deployment assembly", () => {
       // Assemble from the tampered dist/ through a child process with the same
       // config, without rebuilding pages (the emitter is the unit under test).
       const script = `
-        import { emitServerlessArtifacts } from ${JSON.stringify(resolve(dirname(fileURLToPath(import.meta.url)), "serverless-artifacts.ts"))};
+        import { emitServerlessArtifacts } from ${JSON.stringify(resolve(dirname(fileURLToPath(import.meta.url)), "../../../pkg/dist/lib/serverless-artifacts.js"))};
         await emitServerlessArtifacts("cloudflare-pages", { version: "test" });
       `;
       const { execFile } = await import("node:child_process");

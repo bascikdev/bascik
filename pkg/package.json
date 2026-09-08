@@ -23,6 +23,14 @@
     "./config": {
       "types": "./dist/lib/defineConfig.d.ts",
       "default": "./dist/lib/defineConfig.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "default": "./dist/adapter.js"
     }
   },
   "engines": {
@@ -50,7 +58,6 @@
     "css-tree": "^3.2.1",
     "esbuild": "^0.28.2",
     "fast-check": "^4.9.0",
-    "miniflare": "4.20260730.0",
     "postcss": "^8.5.26",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",

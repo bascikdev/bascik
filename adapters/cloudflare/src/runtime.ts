@@ -40,22 +40,18 @@ import {
   type ExecutionSegment,
   type PlatformContext,
   type ScriptJobRunner,
-} from "../lib/request-execution.ts";
-import {
   dynamicPageHeaders,
   errorResponse,
   internalErrorPage,
   mergeHandlerHeaders,
   stripRepresentationHeaders,
-} from "../lib/web-response.ts";
-import {
   GENERATED_CONTROL_PATHS,
   hasHiddenSegment,
   isUnsafePathname,
   matchApiRoute,
   pageLookupCandidates,
   type ApiRouteDefinition,
-} from "../lib/route-matching.ts";
+} from "@bascik/bascik/runtime";
 
 // ─── Site graph contract (emitted by serverless-artifacts.ts) ────────────────
 

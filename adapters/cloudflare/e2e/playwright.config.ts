@@ -15,13 +15,15 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
-const pkgDir = join(e2eDir, '..');
-const fixtureDir = join(e2eDir, 'cloudflare');
+const adapterDir = join(e2eDir, '..');
+const rootDir = join(adapterDir, '../..');
+const pkgDir = join(rootDir, 'pkg');
+const fixtureDir = join(e2eDir, 'fixture');
 const PORT = 9876;
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: '**/cloudflare-adapter.test.ts',
+  testMatch: '**/adapter.test.ts',
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

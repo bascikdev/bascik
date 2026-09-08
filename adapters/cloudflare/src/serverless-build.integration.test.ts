@@ -93,15 +93,21 @@ describe("serverless build artifacts (real build, cloudflare-pages)", () => {
     expect(routes.exclude).toEqual([]);
   });
 
-  it("build-info.json records release identity, compatibility date, bundle size, and inventory", async () => {
+  it("build-info.json records release identity, bundle size, and inventory with notes", async () => {
     const info = JSON.parse(await readFile(join(targetDir, "build-info.json"), "utf8"));
     expect(info.target).toBe("cloudflare-pages");
-    expect(info.compatibilityDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(info.compatibilityFlags).toContain("nodejs_compat");
+    expect(info.adapter).toBe("cloudflare");
     expect(info.bundleBytes).toBeGreaterThan(1000);
     expect(info.dynamicPages).toEqual(["/account", "/broken-server", "/broken-stream", "/dashboard"]);
     expect(info.apiRoutes).toEqual(expect.arrayContaining(["/api/health", "/api/users/[id]", "/api/echo", "/api/stream", "/api/boom"]));
     expect(typeof info.release).toBe("string");
+    expect(info.notes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^compatibility date: \d{4}-\d{2}-\d{2}$/),
+        expect.stringContaining("compatibility flags:"),
+        expect.stringContaining("invocation routes:"),
+      ]),
+    );
   });
 
   it("is deterministic: a second build produces a byte-identical worker", async () => {

@@ -199,9 +199,14 @@ Hosts adapt onto it:
 
 Every handler receives `context.platform` (`{ name: "node" }` on the built-in server; `{ name: "cloudflare", env, waitUntil }` in a Worker). It is additive: a handler that never reads it runs unchanged on both.
 
-#### Serverless build artifacts (`serverless-artifacts.ts`)
+#### Serverless adapter contract and runtime exports
 
-`bascik --build --target cloudflare-pages|cloudflare-workers` runs the normal build, then assembles `dist/.bascik/<target>/` from the finalized `dist/` tree and the server-scripts sidecar. Pages that contain any placeholder become private templates compiled into the Worker; every other file is copied into `public/`. Inline script sources are staged as real module files (never `eval`), `src=` modules and API routes are imported from source, and the whole graph is bundled with the project's own `esbuild` install. `node:*` imports are classified against the pinned compatibility date: supported builtins stay external, unsupported ones fail the build with the authored import chain. The generated invocation routes (`_routes.json` or `run_worker_first`) cover every alias of every dynamic page, the API prefix, and the control files themselves, so `_worker.js` can never be downloaded from the public origin. `--target` is rejected with `--only` because a deployment bundle must be one consistent release.
+`bascik --build --target <name>` orchestrates hosting adapter builds through a typed contract (`HostingAdapter` in `@bascik/bascik/adapter`). Core exposes two dedicated package exports:
+
+- `@bascik/bascik/runtime`: the host-neutral request execution engine (`request-execution.ts`, `web-response.ts`, `route-matching.ts`). It is the same code the built-in Node server runs, bundled with zero Node builtins.
+- `@bascik/bascik/adapter`: the adapter contract (`SiteGraph`, `AdapterBuildContext`, `AdapterBuildResult`, `defineAdapter`, and `readSiteGraph`).
+
+Core reads the finalized `dist/` output and sidecar into a `SiteGraph`, stages inline scripts with module specifiers rewritten, resolves the target to an adapter package or local module, and calls `adapter.build(context)`. Core validates that all outputs stay within `dist/.bascik/<target>/`, writes `build-info.json`, and removes staging files. `--target` is rejected with `--only` because a deployment bundle must describe one consistent release.
 
 #### Why stream pages skip ETag, Brotli, and `content-length`
 

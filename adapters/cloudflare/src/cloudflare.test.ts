@@ -16,9 +16,8 @@ import {
   buildServerlessFixture,
   cleanupServerlessFixture,
   createServerlessFixture,
-} from "../lib/serverless-fixture.test-helper.ts";
-import { createGate, startHarness, type Harness } from "./cloudflare-harness.test-helper.ts";
-import type { DeployTarget } from "../lib/cli.ts";
+} from "./serverless-fixture.test-helper.ts";
+import { createGate, startHarness, type Harness, type DeployTarget } from "./cloudflare-harness.test-helper.ts";
 
 const TARGETS: DeployTarget[] = ["cloudflare-pages", "cloudflare-workers"];
 

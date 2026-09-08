@@ -1,0 +1,46 @@
+{
+  "name": "@bascik/adapter-cloudflare",
+  "version": "1.0.0",
+  "description": "Cloudflare Pages and Workers adapter for Bascik",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "cp ../../LICENSE LICENSE",
+    "prepare": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "unit": "vitest run",
+    "test:ci": "vitest run",
+    "e2e": "playwright test --config e2e/playwright.config.ts"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "peerDependencies": {
+    "@bascik/bascik": "^1.0.0"
+  },
+  "devDependencies": {
+    "@bascik/bascik": "workspace:*",
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^24.0.0",
+    "miniflare": "4.20260730.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

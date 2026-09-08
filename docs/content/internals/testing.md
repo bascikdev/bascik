@@ -90,8 +90,8 @@ yarn pkg:e2e:prod
 yarn pkg:e2e:prod:http1
 yarn pkg:e2e:prod:http2
 
-# Cloudflare adapter suite (emitted Pages bundle in local workerd)
-yarn pkg:e2e:cloudflare
+# Cloudflare adapter suite in @bascik/adapter-cloudflare workspace (emitted Pages bundle in local workerd)
+yarn adapter:cf:e2e
 ```
 
 This builds the fixture site (using the current `dist/`) and then runs Playwright against it. The first run requires the package to be built first:

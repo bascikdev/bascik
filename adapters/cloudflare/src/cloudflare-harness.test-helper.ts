@@ -21,8 +21,12 @@ import http from "node:http";
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Miniflare } from "miniflare";
-import { CLOUDFLARE_COMPATIBILITY_DATE, CLOUDFLARE_COMPATIBILITY_FLAGS } from "../lib/serverless-artifacts.ts";
-import type { DeployTarget } from "../lib/cli.ts";
+import {
+  CLOUDFLARE_COMPATIBILITY_DATE,
+  CLOUDFLARE_COMPATIBILITY_FLAGS,
+} from "./compat.ts";
+
+export type DeployTarget = "cloudflare-pages" | "cloudflare-workers";
 
 export interface Gate {
   release(): void;
@@ -76,12 +80,23 @@ export const startHarness = async (options: HarnessOptions): Promise<Harness> =>
   // workerd resolves paths itself and rejects a symlinked prefix such as
   // macOS `/tmp` or `/var/folders`; hand it the canonical path.
   const targetDir = await realpath(join(options.projectRoot, "dist", ".bascik", options.target));
-  const info = JSON.parse(await readFile(join(targetDir, "build-info.json"), "utf8")) as {
-    invocationRoutes: { include: string[] };
-  };
   const scriptPath =
     options.target === "cloudflare-pages" ? join(targetDir, "public", "_worker.js") : join(targetDir, "worker.js");
-  const userWorkerRoutes = options.invocationRoutes ?? info.invocationRoutes.include;
+
+  let userWorkerRoutes: string[];
+  if (options.invocationRoutes) {
+    userWorkerRoutes = options.invocationRoutes;
+  } else if (options.target === "cloudflare-pages") {
+    const routes = JSON.parse(await readFile(join(targetDir, "public", "_routes.json"), "utf8")) as {
+      include: string[];
+    };
+    userWorkerRoutes = routes.include;
+  } else {
+    const wrangler = JSON.parse(await readFile(join(targetDir, "wrangler.jsonc"), "utf8")) as {
+      assets?: { run_worker_first?: string[] };
+    };
+    userWorkerRoutes = wrangler.assets?.run_worker_first ?? ["/*"];
+  }
 
   const gate = options.gate;
   const mf = new Miniflare({

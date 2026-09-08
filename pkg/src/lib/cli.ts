@@ -42,8 +42,8 @@ export interface CliFlags {
   siteUrl?: string;
   envFiles: string[];
   only?: string[];
-  /** Serverless deployment target for `--build` (prompt 131). */
-  target?: DeployTarget;
+  /** Serverless deployment target for `--build` (prompt 131, 142). */
+  target?: string;
   strict?: boolean;
   json?: boolean;
   force?: boolean;
@@ -52,9 +52,8 @@ export interface CliFlags {
   addTargets?: string[];
 }
 
-/** Deployment targets `--build --target <name>` understands. */
 export const DEPLOY_TARGETS = ["cloudflare-pages", "cloudflare-workers"] as const;
-export type DeployTarget = (typeof DEPLOY_TARGETS)[number];
+export type DeployTarget = string;
 
 export interface CliDecision {
   action: CliAction;
@@ -274,13 +273,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
         flags.only.push(value);
         break;
       case "--target":
-        if (!(DEPLOY_TARGETS as readonly string[]).includes(value)) {
-          valueErrors.push(
-            `Error: --target expects one of ${DEPLOY_TARGETS.join(", ")} (received "${value}").`,
-          );
-          return;
-        }
-        flags.target = value as DeployTarget;
+        flags.target = value;
         break;
       case "--log":
         flags.log = value || DEFAULT_LOG_PATH;
@@ -495,7 +488,6 @@ Options:
                      (only with --build; default: .bascik/build.log)
   --target <name>    Also emit a serverless deployment bundle under
                      dist/.bascik/<name>/ (only with --build).
-                     Targets: cloudflare-pages, cloudflare-workers
   --port <n>         Override the server port
                      (overrides BASCIK_SERVER_PORT and http.port)
   --host <name>      Override the server hostname

@@ -84,6 +84,29 @@ jobs:
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
 
+  unit-adapter-cloudflare:
+    name: Cloudflare Adapter Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run Cloudflare adapter unit tests
+        run: yarn adapter:cf:test:ci
+
   unit-docs:
     name: Docs Unit Tests
     runs-on: ubuntu-latest
@@ -310,12 +333,12 @@ jobs:
       - name: Run framework E2E tests (production server HTTP/2)
         run: yarn pkg:e2e:prod:http2
 
-  e2e-pkg-cloudflare:
-    name: Framework E2E (Cloudflare adapter, local workerd)
+  e2e-adapter-cloudflare:
+    name: Cloudflare Adapter E2E (local workerd)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -331,14 +354,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build package
-        run: yarn pkg:build
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
 
       - name: Install Playwright browsers
         run: npx playwright install chromium
 
-      - name: Run framework E2E tests (Cloudflare Pages bundle in workerd)
-        run: yarn pkg:e2e:cloudflare
+      - name: Run Cloudflare adapter E2E tests
+        run: yarn adapter:cf:e2e
 
   e2e-docs:
     name: Docs E2E

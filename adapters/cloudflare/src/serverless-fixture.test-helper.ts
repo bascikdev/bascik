@@ -17,12 +17,15 @@
  * the workspace install) because esbuild is resolved from the project.
  */
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { runRealBuild } from "./build-fixtures.ts";
-import type { DeployTarget } from "./cli.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+export type DeployTarget = "cloudflare-pages" | "cloudflare-workers";
 
 export const SERVERLESS_FIXTURE_HEADER = "x-bascik-gate";
 
@@ -38,20 +41,14 @@ export const createServerlessFixture = async (name: string, options: { base?: st
   await mkdir(join(root, "src/components"), { recursive: true });
   await mkdir(join(root, "node_modules"), { recursive: true });
 
-  // esbuild is the project's dependency; link the workspace install (hoisted
-  // by Yarn to the repo root) into the fixture's own node_modules.
   const here = dirname(fileURLToPath(import.meta.url));
-  const esbuildPkgJson = createRequire(join(here, "package.json")).resolve("esbuild/package.json");
-  await symlink(dirname(esbuildPkgJson), join(root, "node_modules/esbuild"), "dir");
-  // esbuild's platform binary package is a sibling it resolves at runtime.
-  const binaryPkg = `@esbuild/${process.platform}-${process.arch}`;
-  try {
-    const binaryPkgJson = createRequire(join(here, "package.json")).resolve(`${binaryPkg}/package.json`);
-    await mkdir(join(root, "node_modules/@esbuild"), { recursive: true });
-    await symlink(dirname(binaryPkgJson), join(root, "node_modules", binaryPkg), "dir");
-  } catch {
-    // Some installs ship the binary inside esbuild itself; resolution falls back.
-  }
+  const rootDir = resolve(here, "../../..");
+  const adapterPkgDir = resolve(here, "..");
+  const bascikPkgDir = resolve(rootDir, "pkg");
+
+  await mkdir(join(root, "node_modules/@bascik"), { recursive: true });
+  await symlink(adapterPkgDir, join(root, "node_modules/@bascik/adapter-cloudflare"), "dir");
+  await symlink(bascikPkgDir, join(root, "node_modules/@bascik/bascik"), "dir");
 
   await write(
     root,
@@ -205,8 +202,19 @@ export const GET = async () => new Response(run());`,
   );
 };
 
-export const buildServerlessFixture = async (root: string, target: DeployTarget, extraArgs: string[] = []) =>
-  runRealBuild({ projectRoot: root, args: ["--target", target, ...extraArgs] });
+export const buildServerlessFixture = async (root: string, target: DeployTarget, extraArgs: string[] = []) => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const cliPath = resolve(here, "../../../pkg/dist/index.js");
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, "--build", "--target", target, ...extraArgs], {
+      cwd: root,
+      env: { ...process.env, BASCIK_BUILD: "1" },
+    });
+    return { stdout, stderr };
+  } catch (err: any) {
+    return { stdout: err.stdout ?? "", stderr: err.stderr ?? err.message };
+  }
+};
 
 export const cleanupServerlessFixture = async (root: string): Promise<void> => {
   await rm(root, { recursive: true, force: true });

@@ -22,8 +22,10 @@ const { resolveCliAction, DEPLOY_TARGETS } = (await importPkgModule('cli.ts')) a
   resolveCliAction: (args: string[]) => { action: string; flags: { target?: string } };
   DEPLOY_TARGETS: readonly string[];
 };
-const { CLOUDFLARE_COMPATIBILITY_DATE, CLOUDFLARE_COMPATIBILITY_FLAGS } = (await importPkgModule(
-  'serverless-artifacts.ts',
+const ADAPTER_CF_ROOT = path.resolve(DOCS_ROOT, '../adapters/cloudflare/src');
+const importAdapterModule = (file: string): Promise<unknown> => import(pathToFileURL(path.join(ADAPTER_CF_ROOT, file)).href);
+const { CLOUDFLARE_COMPATIBILITY_DATE, CLOUDFLARE_COMPATIBILITY_FLAGS } = (await importAdapterModule(
+  'compat.ts',
 )) as {
   CLOUDFLARE_COMPATIBILITY_DATE: string;
   CLOUDFLARE_COMPATIBILITY_FLAGS: readonly string[];

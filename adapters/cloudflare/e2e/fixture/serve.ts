@@ -17,19 +17,24 @@ import { Miniflare } from 'miniflare';
 const here = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.argv[2] ?? 9876);
 const targetDir = await realpath(join(here, 'dist', '.bascik', 'cloudflare-pages'));
-const info = JSON.parse(await readFile(join(targetDir, 'build-info.json'), 'utf8')) as {
-  compatibilityDate: string;
-  compatibilityFlags: string[];
-  invocationRoutes: { include: string[] };
-};
 const publicDir = join(targetDir, 'public');
+const routes = JSON.parse(await readFile(join(publicDir, '_routes.json'), 'utf8')) as {
+  include: string[];
+};
+const info = JSON.parse(await readFile(join(targetDir, 'build-info.json'), 'utf8')) as {
+  notes?: string[];
+};
+const compatDateNote = info.notes?.find((n: string) => n.startsWith('compatibility date:'));
+const compatFlagsNote = info.notes?.find((n: string) => n.startsWith('compatibility flags:'));
+const compatibilityDate = compatDateNote ? compatDateNote.split(':')[1]?.trim() : '2024-09-23';
+const compatibilityFlags = compatFlagsNote ? compatFlagsNote.split(':')[1]?.trim().split(', ') : ['nodejs_compat'];
 
 const mf = new Miniflare({
   modules: true,
   modulesRoot: publicDir,
   scriptPath: join(publicDir, '_worker.js'),
-  compatibilityDate: info.compatibilityDate,
-  compatibilityFlags: info.compatibilityFlags,
+  compatibilityDate,
+  compatibilityFlags,
   host: '127.0.0.1',
   port,
   assets: {
@@ -39,7 +44,7 @@ const mf = new Miniflare({
     routerConfig: {
       has_user_worker: true,
       invoke_user_worker_ahead_of_assets: false,
-      static_routing: { user_worker: info.invocationRoutes.include },
+      static_routing: { user_worker: routes.include },
     },
   },
 });

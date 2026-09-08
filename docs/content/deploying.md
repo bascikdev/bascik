@@ -206,7 +206,7 @@ A custom domain mapped to the project site usually serves it from `/`, so leave 
 
 Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
 
-The first supported target is Cloudflare Pages, with a Workers Static Assets variant. See the [Cloudflare guide](/how-to/cloudflare) for the tested recipe, the support matrix, and the limits that come with running inside a provider's function runtime.
+Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See the [Cloudflare guide](/how-to/cloudflare) for the tested recipe, the support matrix, and the limits that come with running inside a provider's function runtime.
 
 ## Using the production server
 

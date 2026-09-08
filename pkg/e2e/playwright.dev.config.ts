@@ -15,8 +15,6 @@ const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const devServerTestIgnore = [
-  // Runs only under playwright.cloudflare.config.ts (workerd, not a Bascik server).
-  '**/cloudflare-adapter.test.ts',
   // server-scripts.test.ts and server-scripts-stream.test.ts run here on
   // purpose (prompt 68): the dev server shares createRequestHandler with
   // production and re-stores the server-script plan on every transpile.
