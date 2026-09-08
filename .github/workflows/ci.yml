@@ -427,7 +427,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-pkg-cloudflare, e2e-docs, e2e-create]
+    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-adapter-cloudflare, e2e-docs, e2e-create]
     steps:
       - uses: actions/checkout@v5
 

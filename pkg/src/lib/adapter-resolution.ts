@@ -37,7 +37,9 @@ export const resolveAdapterTarget = async (
   projectRoot = process.cwd(),
   options: ResolveAdapterOptions = {},
 ): Promise<ResolvedAdapterTarget> => {
-  const official = OFFICIAL_TARGETS[target];
+  const official = Object.prototype.hasOwnProperty.call(OFFICIAL_TARGETS, target)
+    ? OFFICIAL_TARGETS[target]
+    : undefined;
   let specifier: string;
   let variant = official?.variant;
   let pkgName: string | undefined;

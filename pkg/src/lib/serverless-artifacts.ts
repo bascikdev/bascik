@@ -48,6 +48,11 @@ export interface EmitServerlessOptions {
 const ident = (id: string) => `m_${id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
 const hashOf = (str: string) => createHash("sha256").update(str).digest("hex").slice(0, 16);
 
+const isSubpath = (parent: string, child: string): boolean => {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep) && !rel.startsWith("/"));
+};
+
 interface DistFileSnapshot {
   size: number;
   mtimeMs: number;
@@ -59,7 +64,7 @@ const snapshotDistInventory = async (distDir: string, outDir: string, root = dis
   const entries = await readdir(root, { withFileTypes: true });
   for (const entry of entries) {
     const full = join(root, entry.name);
-    if (resolve(full).startsWith(resolve(outDir))) continue;
+    if (isSubpath(outDir, full)) continue;
     const stat = await lstat(full);
     if (stat.isDirectory()) {
       const sub = await snapshotDistInventory(distDir, outDir, full);
@@ -71,7 +76,7 @@ const snapshotDistInventory = async (distDir: string, outDir: string, root = dis
   return map;
 };
 
-const verifyDistNotModified = async (prior: Map<string, DistFileSnapshot>): Promise<void> => {
+const verifyDistNotModified = async (distDir: string, outDir: string, prior: Map<string, DistFileSnapshot>): Promise<void> => {
   for (const [path, snap] of prior) {
     try {
       const current = await lstat(path);
@@ -85,22 +90,50 @@ const verifyDistNotModified = async (prior: Map<string, DistFileSnapshot>): Prom
       throw err;
     }
   }
+
+  // Also check for newly injected files in dist outside outDir
+  const currentSnapshot = await snapshotDistInventory(distDir, outDir);
+  for (const [path] of currentSnapshot) {
+    if (!prior.has(path)) {
+      throw new Error(`[bascik] Adapter modified dist/ which is read-only for adapters (new file): ${path}`);
+    }
+  }
 };
 
-const assertWrittenPathsUnderOutDir = async (outDir: string, root = outDir): Promise<void> => {
+const assertWrittenPathsUnderOutDir = async (
+  outDir: string,
+  root = outDir,
+  visited = new Set<string>(),
+): Promise<void> => {
   const canonicalOutDir = await realpath(outDir);
+  const canonicalRoot = await realpath(root);
+  if (visited.has(canonicalRoot)) return;
+  visited.add(canonicalRoot);
+
   const entries = await readdir(root, { withFileTypes: true });
   for (const entry of entries) {
     const full = join(root, entry.name);
     const linkStat = await lstat(full);
-    const canonicalPath = await realpath(full);
+    let canonicalPath: string;
+    try {
+      canonicalPath = await realpath(full);
+    } catch {
+      canonicalPath = resolve(full);
+    }
     if (!canonicalPath.startsWith(canonicalOutDir + sep) && canonicalPath !== canonicalOutDir) {
       throw new Error(`[bascik] Adapter wrote path outside target output directory: ${full}`);
     }
     if (linkStat.isDirectory()) {
-      await assertWrittenPathsUnderOutDir(outDir, full);
+      await assertWrittenPathsUnderOutDir(outDir, full, visited);
     }
   }
+};
+
+const sanitizeTargetDirName = (target: string): string => {
+  if (/^[a-zA-Z0-9_-]+$/.test(target)) return target;
+  const base = target.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const hash = createHash("sha256").update(target).digest("hex").slice(0, 8);
+  return `${base}_${hash}`;
 };
 
 export const emitServerlessArtifacts = async (
@@ -112,14 +145,14 @@ export const emitServerlessArtifacts = async (
   const base = options.base ?? BascikConfig?.base ?? "/";
   const log = options.log ?? console.log;
 
-  // 0. Clean outDir before assembling
-  const targetDirName = target.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const outDir = join(distDir, ".bascik", targetDirName);
-  await rm(outDir, { recursive: true, force: true });
-
-  // 1. Resolve adapter
+  // 1. Resolve adapter FIRST before mutating filesystem
   const resolved = await resolveAdapterTarget(target, projectRoot);
   const adapter = resolved.adapter!;
+
+  // 0. Clean outDir before assembling
+  const targetDirName = sanitizeTargetDirName(target);
+  const outDir = join(distDir, ".bascik", targetDirName);
+  await rm(outDir, { recursive: true, force: true });
 
   // 2. Read host-neutral SiteGraph
   const graph: SiteGraph = await readSiteGraph({
@@ -181,8 +214,27 @@ export const emitServerlessArtifacts = async (
     await rm(stagingDir, { recursive: true, force: true });
   }
 
+  if (!buildResult || typeof buildResult !== "object") {
+    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: build() returned invalid result`);
+  }
+  if (typeof buildResult.publicDir !== "string" || !buildResult.publicDir.trim()) {
+    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir must be a non-empty string`);
+  }
+  if (!existsSync(buildResult.publicDir)) {
+    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir does not exist: ${buildResult.publicDir}`);
+  }
+  const publicDirStat = await lstat(buildResult.publicDir);
+  if (!publicDirStat.isDirectory()) {
+    throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: publicDir is not a directory: ${buildResult.publicDir}`);
+  }
+  if (buildResult.notes !== undefined) {
+    if (!Array.isArray(buildResult.notes) || buildResult.notes.some((n) => typeof n !== "string")) {
+      throw new Error(`[bascik] --target ${target}: HostingAdapter contract violation: notes must be an array of strings`);
+    }
+  }
+
   // Verify dist was not modified by the adapter
-  await verifyDistNotModified(distSnapshot);
+  await verifyDistNotModified(distDir, outDir, distSnapshot);
 
   // 5. Verify every written path in buildResult is under outDir
   if (
