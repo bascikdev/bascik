@@ -46,13 +46,6 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Deployment', pages: [
-      { href: '/deployment', label: 'Overview' },
-      { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
-      { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
-    ]
-  },
-  {
     section: 'Reference', pages: [
       { href: '/development-server', label: 'Development Server' },
       { href: '/production-server', label: 'Production Server' },
@@ -75,6 +68,13 @@ export const NAV: NavSection[] = [
       { href: '/testing/debugging', label: 'Debugging' },
       { href: '/testing/source-maps', label: 'Source Maps' },
       { href: '/testing/linting', label: 'Linting' },
+    ]
+  },
+  {
+    section: 'Deployment', pages: [
+      { href: '/deployment', label: 'Overview' },
+      { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
+      { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
     ]
   },
   {
