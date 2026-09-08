@@ -1,4 +1,4 @@
-# Deploying
+# Overview
 
 Bascik's build output is a standard folder of static HTML, CSS, and JavaScript files. `bascik --build` writes everything to `dist/`, and that folder can be served by any static host or CDN without additional configuration.
 
@@ -206,7 +206,7 @@ A custom domain mapped to the project site usually serves it from `/`, so leave 
 
 Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
 
-Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See the [Cloudflare guide](/how-to/cloudflare) for the tested recipe, the support matrix, and the limits that come with running inside a provider's function runtime.
+Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See [Cloudflare Adapter](/deployment/cloudflare) for the tested recipe, support matrix, and provider limits, or read [Custom Adapters](/deployment/custom-adapters) to learn how to author custom deployment adapters.
 
 ## Using the production server
 

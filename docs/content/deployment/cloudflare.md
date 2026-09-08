@@ -1,4 +1,4 @@
-# Cloudflare
+# Cloudflare Adapter
 
 Deploy a Bascik site to Cloudflare Pages or Workers so a CDN serves your static files and a Worker runs your server scripts, stream scripts, and API routes per request, with no Bascik server process to operate.
 
@@ -159,4 +159,4 @@ Every build has a release id in `build-info.json`. Cloudflare Pages keeps previo
 
 The adapter is tested in local workerd on every commit: a Node oracle (`bascik --server`) and the emitted Worker serve the same build and are compared for pages, streams, APIs, methods, cookies, errors, and source leakage, with a browser paint test run with JavaScript disabled. A deployed canary on Cloudflare's network is an owner-run release gate; until it is recorded, treat remote routing, CDN buffering, and quota behavior as pending verification rather than proven.
 
-> **Next:** [Deploying](/deploying) covers static hosting and the built-in Node server. [API Routes](/api-routes) documents the handler contract the Worker executes.
+> **Next:** [Custom Adapters](/deployment/custom-adapters) covers building custom deployment adapters. [Overview](/deploying) covers static hosting and the built-in Node server.

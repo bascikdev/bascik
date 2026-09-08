@@ -204,7 +204,7 @@ bascik --build --target cloudflare-pages
 bascik --build --target cloudflare-workers
 ```
 
-`--target <name>` accepts an official target name, an installed adapter package, or a local file path. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare guide](/how-to/cloudflare) for the full workflow.
+`--target <name>` accepts an official target name, an installed adapter package, or a local file path. The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare Adapter](/deployment/cloudflare) guide for the full workflow.
 
 ## Starting the dev server
 

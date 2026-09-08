@@ -6,7 +6,7 @@ Cloudflare Pages and Workers Static Assets hosting adapter for [Bascik](https://
 
 This adapter compiles Bascik request-time scripts and API routes into a Cloudflare Workers deployment bundle with asset routing.
 
-See the [Cloudflare deployment guide](https://bascik.dev/how-to/cloudflare) for setup instructions, recipes, and limits.
+See the [Cloudflare deployment guide](https://bascik.dev/deployment/cloudflare) for setup instructions, recipes, and limits.
 
 ## Variants
 

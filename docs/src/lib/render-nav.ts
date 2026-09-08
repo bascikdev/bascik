@@ -26,7 +26,9 @@ function resolveRoutePath(currentPath?: string): string {
     }
   }
   if (!path) return '';
-  return path === '/using-markdown' ? '/how-to/markdown' : path;
+  if (path === '/using-markdown') return '/how-to/markdown';
+  if (path === '/how-to/cloudflare') return '/deployment/cloudflare';
+  return path;
 }
 
 /**

@@ -20,8 +20,8 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Overview of deployment options for Bascik sites, including static hosting, bascik --server, and serverless hosting adapters." />
-  <title>Overview - Bascik Docs</title>
+    content="Deploy a Bascik site to Cloudflare Pages or Workers: a CDN serves static files while a generated Worker runs server scripts, stream scripts, and API routes, with no Node server to operate." />
+  <title>Cloudflare Adapter - Bascik Docs</title>
 </head>
 
 <body>
@@ -36,13 +36,11 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/deploying'));
+          console.log(renderSectionLabel('/deployment/cloudflare'));
         </script>
-        <!-- Content rendered from docs/content/deploying.md at build time.
-             To update page content, edit the MD file — not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/deploying.md'));
+          console.log(await renderMd('./content/deployment/cloudflare.md'));
         </script>
 
         <docs-pagination />

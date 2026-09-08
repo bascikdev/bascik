@@ -58,11 +58,11 @@ describe('serverless docs: claims', () => {
     expect(staticSection).toContain('data-bascik-stream');
     expect(staticSection).toMatch(/API route/);
     expect(md).toContain('## Serverless hosting');
-    expect(md).toContain('/how-to/cloudflare');
+    expect(md).toContain('/deployment/cloudflare');
   });
 
   it('the guide carries a support matrix that marks other hosts as manual porting, not supported', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     expect(md).toContain('## What runs where');
     expect(md).toMatch(/Other serverless hosts/);
     expect(md).toMatch(/Manual porting/);
@@ -72,23 +72,23 @@ describe('serverless docs: claims', () => {
   });
 
   it('the guide states remote validation status honestly', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     expect(md).toContain('## Verification status');
     expect(md).toMatch(/pending/i);
     expect(md).not.toMatch(/five nines|99\.999/i);
   });
 
-  it('the guide is in the How-to nav and its h1 matches the nav label', async () => {
-    const page = NAV.flatMap((s) => s.pages).find((p) => p.href === '/how-to/cloudflare');
-    expect(page?.label).toBe('Cloudflare');
-    const md = await read('how-to/cloudflare.md');
-    expect(md.split('\n')[0]).toBe('# Cloudflare');
+  it('the guide is in the Deployment nav and its h1 matches the nav label', async () => {
+    const page = NAV.flatMap((s) => s.pages).find((p) => p.href === '/deployment/cloudflare');
+    expect(page?.label).toBe('Cloudflare Adapter');
+    const md = await read('deployment/cloudflare.md');
+    expect(md.split('\n')[0]).toBe('# Cloudflare Adapter');
   });
 });
 
 describe('serverless docs: commands and code agree with the implementation', () => {
   it('every documented bascik command parses to a build with a known target, and the --only combination is rejected', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     const shBlocks = fencedBlocks(md, 'sh').join('\n');
     const bascikLines = shBlocks.split('\n').filter((l) => l.trim().startsWith('bascik ') || l.includes('npx bascik'));
     expect(bascikLines.length).toBeGreaterThan(0);
@@ -103,7 +103,7 @@ describe('serverless docs: commands and code agree with the implementation', () 
   });
 
   it('the documented wrangler preview uses the exact compatibility date and flags the Worker declares', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     expect(md).toContain(`--compatibility-date=${CLOUDFLARE_COMPATIBILITY_DATE}`);
     for (const flag of CLOUDFLARE_COMPATIBILITY_FLAGS) expect(md).toContain(flag);
     // Only the pinned date appears; a stale hard-coded one would be a drift.
@@ -112,14 +112,14 @@ describe('serverless docs: commands and code agree with the implementation', () 
   });
 
   it('the documented output tree names the files the emitter writes', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     for (const name of ['_worker.js', '_routes.json', 'build-info.json', 'wrangler.jsonc', 'worker.js']) {
       expect(md, name).toContain(name);
     }
   });
 
   it('the binding example executes against the adapter context shape and degrades on Node', async () => {
-    const md = await read('how-to/cloudflare.md');
+    const md = await read('deployment/cloudflare.md');
     const [tsBlock] = fencedBlocks(md, 'ts');
     expect(tsBlock).toContain('context.platform');
     // Compile the snippet by stripping type annotations the way Node does,
