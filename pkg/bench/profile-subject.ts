@@ -8,7 +8,7 @@ import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import zlib from "node:zlib";
 import http from "node:http";
 import { cleanGeneratorEnvironment, digest } from "./profile-workload.ts";
-import { pageCount, componentsPerPage, pageSource, assetBytes } from "./profile-fixture.ts";
+import { pageCount, componentsPerPage, pageSource, assetBytes, fixtureTlsFiles } from "./profile-fixture.ts";
 import { observeSubjects } from "./profile-observers.ts";
 import { profileJournal } from "./profile-diagnostics.ts";
 
@@ -136,7 +136,7 @@ if (["prepare", "serial", "workers"].includes(scenario)) {
   let probeError: unknown;
   const filesystemProbe = { completed: 0, active: 0, totalMs: 0, maxMs: 0, meanMs: 0 };
   const probeBytes = assetBytes();
-  const child = fork(fileURLToPath(new URL("./profile-load.ts", import.meta.url)), [origin, encoding, rounds, injectFailure, scenario], { execArgv: [], env: cleanGeneratorEnvironment(process.env), stdio: ["ignore", "inherit", "inherit", "ipc"] });
+  const child = fork(fileURLToPath(new URL("./profile-load.ts", import.meta.url)), [origin, encoding, rounds, injectFailure, scenario, join(process.cwd(), fixtureTlsFiles.ca)], { execArgv: [], env: cleanGeneratorEnvironment(process.env), stdio: ["ignore", "inherit", "inherit", "ipc"] });
   child.on("message", async (message: { event: string; phase: string; phases: unknown; generator: unknown }) => {
     if (message.event === "start") {
       delay.reset(); delay.enable(); cpuStart = process.cpuUsage();

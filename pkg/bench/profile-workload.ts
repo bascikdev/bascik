@@ -216,8 +216,18 @@ export async function validateArtifact(path: string, kind: "cpu" | "json" | "htm
   return { path, bytes: content.length, sha256: digest(content) };
 }
 
+const cpuProfileFilename = /^CPU\.(\d{8})\.(\d{6})\.(\d+)\.(\d+)\.(\d+)\.cpuprofile$/;
+export function parseCpuProfileFilename(name: string) {
+  const match = cpuProfileFilename.exec(name);
+  if (!match) return undefined;
+  return { date: match[1], time: match[2], pid: Number(match[3]), threadId: Number(match[4]), sequence: Number(match[5]) };
+}
 export async function validateCpuCaptureArtifacts(paths: string[], mainPid: number, events: ProcessCoverage[] = []) {
-  const main = paths.find((path) => new RegExp(`^CPU\\.\\d{8}\\.\\d{6}\\.${mainPid}\\.0\\.\\d+\\.cpuprofile$`).test(basename(path)));
+  assert(typeof mainPid === "number" && Number.isSafeInteger(mainPid) && mainPid > 0, `invalid main PID ${String(mainPid)}`);
+  const main = paths.find((path) => {
+    const parsed = parseCpuProfileFilename(basename(path));
+    return parsed !== undefined && parsed.pid === mainPid && parsed.threadId === 0;
+  });
   assert(main, `missing main CPU profile for PID ${mainPid}`);
   await validateArtifact(main, "cpu");
   const coverage: ProcessCoverage[] = [];

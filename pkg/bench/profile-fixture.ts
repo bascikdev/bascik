@@ -1,5 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createFixtureTrust } from "./profile-tls.ts";
+
+/** Relative to the fixture root; the subject passes the absolute CA path to the load generator. */
+export const fixtureTlsFiles = { key: "tls/server-key.pem", cert: "tls/server.pem", ca: "tls/ca.pem" };
 
 export const seed = 128;
 export const pageCount = 8;
@@ -18,10 +22,11 @@ export function pageSource(index: number, edited = false) {
 }
 export async function createFixture(root: string, workers: boolean, port: number, tls: boolean) {
   for (const directory of ["src/pages", "src/components", "src/api"]) await mkdir(join(root, directory), { recursive: true });
+  if (tls) await createFixtureTrust(join(root, "tls"), ["127.0.0.1"]);
   await writeFile(join(root, "bascik.config.ts"), `export default ${JSON.stringify({
     directory: { pages: "src/pages", components: "src/components", out: "dist", api: "src/api" },
     pipeline: { workers }, minify: false,
-    http: { hostname: "127.0.0.1", port, tls: { enabled: tls }, rateLimit: false },
+    http: { hostname: "127.0.0.1", port, tls: tls ? { enabled: true, keyFile: fixtureTlsFiles.key, certFile: fixtureTlsFiles.cert } : { enabled: false }, rateLimit: false },
     logging: { level: "error" }, generate: { sitemap: false, robots: false },
   })};`);
   await writeFile(join(root, "src/components/profile-card.html"), '<style>.card { color: red; }</style><article class="card"><p>component-128</p><div data-bascik-slot></div></article>');

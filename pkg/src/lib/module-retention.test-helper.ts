@@ -5,9 +5,9 @@ import { mkdir, readdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
-import http2 from "node:http2";
 import { cleanGeneratorEnvironment, validatePrivateDirectory, digest } from "../../bench/profile-workload.ts";
 import { execute } from "../../bench/profile-runner.ts";
+import { createFixtureTrust, http2Request } from "../../bench/profile-tls.ts";
 import type { ScriptRegistry } from "./script-registry.ts";
 import { analyzeRetentionHeap } from "./module-retention-heap.test-helper.ts";
 
@@ -66,6 +66,11 @@ export function compareRetentionTrends(stable: RetentionCheckpoint[], changing: 
 const requestObservation = 'function retentionRequestClosure129() { return request.url; } globalThis[Symbol.for("bascik.retention.observe")](request, context, retentionRequestClosure129);';
 export const inlineSource = (revision: number, generation: number) => `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-${generation}</p><script data-bascik-server>export default function retentionInline129(request, context) { ${requestObservation} return "inline-${revision}:" + new URL(request.url).searchParams.get("request"); }</script></body></html>`;
 
+// Literal fixture markup: the `<script>` tags are constant authored HTML, not interpolated values. The two write
+// sites below carry an exact-rule exception because the analyzer taints the destination path, not the HTML.
+const externalPageSource = '<!DOCTYPE html><html><head></head><body><script data-bascik-server src="../lib/handler.mjs"></script></body></html>';
+const realisticExternalPageSource = '<!DOCTYPE html><html><head></head><body><script data-bascik-server src="../lib/handler.mjs"></script><retention-shared></retention-shared></body></html>';
+
 export const retentionHelperPaths = (realistic: boolean): string[] => realistic
   ? Array.from({ length: 10 }, (_, chain) => {
     const root = chain === 9 ? "api" : "src/lib";
@@ -100,15 +105,17 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   await new Promise<void>((resolveReady, reject) => { listener.once("error", reject); listener.listen(0, "127.0.0.1", resolveReady); });
   const port = (listener.address() as net.AddressInfo).port;
   await new Promise<void>((resolveClosed, reject) => listener.close(error => error ? reject(error) : resolveClosed()));
+  const trust = mode === "http2" ? await createFixtureTrust(join(project, "tls"), ["127.0.0.1"]) : undefined;
+  const fixtureCa = trust ? await readFile(trust.caPath) : undefined;
   await writeFile(join(project, "bascik.config.ts"), `export default ${JSON.stringify({
     directory: { pages: "src/pages", components: "src/components", out: "dist", api: "api" },
     pipeline: { workers: false, exec: [{ script: "scripts/post.mjs", phase: "post", watch: ["src/pages/**/*.html", "src/components/**/*.html"] }] },
-    minify: false, http: { hostname: "127.0.0.1", port, tls: { enabled: mode === "http2" }, rateLimit: false },
+    minify: false, http: { hostname: "127.0.0.1", port, tls: trust ? { enabled: true, keyFile: "tls/server-key.pem", certFile: "tls/server.pem" } : { enabled: false }, rateLimit: false },
     logging: { level: "error" }, generate: { sitemap: false, robots: false },
   })};`);
   await writeFile(join(project, "scripts/post.mjs"), 'import { mkdir, writeFile } from "node:fs/promises"; await mkdir("dist", {recursive:true}); await writeFile("dist/post.json", "{\\"complete\\":true}");');
   await writeFile(join(project, "src/pages/inline.html"), inlineSource(0, 0));
-  await writeFile(join(project, "src/pages/external.html"), '<!DOCTYPE html><html><head></head><body><script data-bascik-server src="../lib/handler.mjs"></script></body></html>');
+  await writeFile(join(project, "src/pages/external.html"), externalPageSource); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the HTML is a literal constant
   await writeFile(join(project, "src/lib/handler.mjs"), `import {revision} from "./helper.mjs"; export default function retentionSrc129(request, context) { ${requestObservation} return "src-" + revision + ":" + new URL(request.url).searchParams.get("request"); }`);
   await writeFile(join(project, "api/probe.mjs"), `import {revision} from "./helper.mjs"; export function GET(request, context) { ${requestObservation} return new Response("api-" + revision + ":" + new URL(request.url).searchParams.get("request")); }`);
   for (const path of ["src/lib/helper.mjs", "api/helper.mjs"]) await writeFile(join(project, path), 'export const revision = 0;');
@@ -135,7 +142,7 @@ export default function retentionShared129(request, context) { ${requestObservat
     }
     await writeFile(join(project, "src/components/retention-shared.html"), componentSource());
     await writeFile(join(project, "src/pages/inline.html"), realisticInline());
-    await writeFile(join(project, "src/pages/external.html"), '<!DOCTYPE html><html><head></head><body><script data-bascik-server src="../lib/handler.mjs"></script><retention-shared></retention-shared></body></html>');
+    await writeFile(join(project, "src/pages/external.html"), realisticExternalPageSource); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the HTML is a literal constant
     for (let page = 0; page < 18; page++) {
       await writeFile(join(project, `src/pages/page-${page}.html`), `<!DOCTYPE html><html><head></head><body><p>page-${page}</p><retention-shared></retention-shared></body></html>`);
     }
@@ -264,20 +271,8 @@ export default function retentionShared129(request, context) { ${requestObservat
       const response = await fetch(`${origin}${path}`, { signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]), headers: { connection: "close" } });
       return { status: response.status, text: await response.text() };
     }
-    const session = http2.connect(origin, { rejectUnauthorized: false });
-    const stream = session.request({ ":path": path });
-    const deadline = setTimeout(() => session.destroy(new Error("HTTP2 retention request deadline exceeded")), 10_000);
-    try {
-      return await new Promise((resolveResponse, reject) => {
-        let status = 0;
-        const chunks: Buffer[] = [];
-        session.once("error", reject); stream.once("error", reject);
-        stream.on("response", headers => { status = Number(headers[":status"]); });
-        stream.on("data", chunk => chunks.push(Buffer.from(chunk)));
-        stream.once("end", () => resolveResponse({ status, text: Buffer.concat(chunks).toString("utf8") }));
-        stream.end();
-      });
-    } finally { clearTimeout(deadline); stream.close(); session.destroy(); }
+    const response = await http2Request(origin, path, fixtureCa);
+    return { status: response.status, text: response.body.toString("utf8") };
   }
   async function requestAll(revision: number, generation: number) {
     if (realistic) {

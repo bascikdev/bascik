@@ -26,6 +26,25 @@ async function temporaryRoot() {
   roots.push(root);
   return root;
 }
+async function freshConsentEnvironment(root: string) {
+  const home = join(root, "home");
+  await mkdir(home, { mode: 0o700 });
+  const environment = cleanGeneratorEnvironment(process.env);
+  delete environment.NO_INSIGHT;
+  delete environment.CI;
+  return { ...environment, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), XDG_DATA_HOME: join(home, ".local", "share") };
+}
+async function consentFiles(home: string): Promise<string[]> {
+  const files: string[] = [];
+  const walk = async (directory: string) => {
+    for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isDirectory()) await walk(join(directory, entry.name));
+      else if (/insight/i.test(entry.name)) files.push(join(directory, entry.name));
+    }
+  };
+  await walk(home);
+  return files;
+}
 async function cleanupReports(reports: string[], failed: boolean) {
   if (failed) {
     for (const root of reports) console.error(`Private profiling diagnostics retained: ${root}`);
@@ -149,6 +168,20 @@ describe("capture artifact integrity", () => {
     await expect(validateCpuCaptureArtifacts([main, child, metadata], 20)).rejects.toThrow();
     await expect(validateCpuCaptureArtifacts([main, child], 20)).resolves.toBeUndefined();
   });
+  it("validates the main PID and parses CPU filenames literally instead of building a pattern", async () => {
+    const root = await temporaryRoot();
+    const main = join(root, "CPU.20260907.120000.20.0.001.cpuprofile");
+    await writeFile(main, JSON.stringify(cpu));
+    for (const pid of [".*", "20", 20.5, -20, 0, NaN, Infinity, Number.MAX_SAFE_INTEGER + 2] as unknown as number[]) {
+      await expect(validateCpuCaptureArtifacts([main], pid)).rejects.toThrow(/PID/);
+    }
+    for (const name of ["CPU.20260907.120000.20.1.001.cpuprofile", "CPU.20260907.120000.120.0.001.cpuprofile", "CPU.20260907.120000.20.0.001.cpuprofile.bak", "xCPU.20260907.120000.20.0.001.cpuprofile"]) {
+      const path = join(root, name);
+      await writeFile(path, JSON.stringify(cpu));
+      await expect(validateCpuCaptureArtifacts([path], 20)).rejects.toThrow(/main CPU/);
+    }
+    await expect(validateCpuCaptureArtifacts([main], 20)).resolves.toBeUndefined();
+  });
   it("rejects missing or mismatched subprocess CPU attribution", () => {
     const events = [{ role: "page-worker", pid: 20, threadId: 1 }, { role: "script-child", pid: 21 }];
     expect(() => validateProcessCoverage(events, [])).toThrow(/coverage/);
@@ -251,6 +284,56 @@ describe("bounded real profiling runner", () => {
       child.kill("SIGKILL");
     }
   }, 12_000);
+  it.each([
+    ["ignored", 0], ["ignored", 3], ["held", 0],
+  ] as const)("settles %s-stdio descendants before reporting a leader exit of %d", async (stdio, exitCode) => {
+    const root = await temporaryRoot();
+    const descendant = `process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`;
+    const leader = `import {spawn} from 'node:child_process'; import {writeFileSync} from 'node:fs';
+      const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio: ${JSON.stringify(stdio === "ignored" ? "ignore" : "inherit")}});
+      ${stdio === "ignored" ? "child.unref();" : ""}
+      writeFileSync(${JSON.stringify(join(root, "descendant.json"))}, JSON.stringify({leader: process.pid, descendant: child.pid}));
+      process.exit(${exitCode});`;
+    const wrapper = `import {execute} from ${JSON.stringify(new URL("../../bench/profile-runner.ts", import.meta.url).href)};
+      const outcome = await execute([process.execPath, '--input-type=module', '-e', ${JSON.stringify(leader)}], ${JSON.stringify(root)}, ${JSON.stringify(join(root, "capture"))}).then(() => ({ok: true}), (error) => ({ok: false, message: String(error)}));
+      const {readFileSync, writeFileSync} = await import('node:fs');
+      const {descendant} = JSON.parse(readFileSync(${JSON.stringify(join(root, "descendant.json"))}, 'utf8'));
+      let alive = true;
+      try { process.kill(descendant, 0); } catch { alive = false; }
+      writeFileSync(${JSON.stringify(join(root, "outcome.json"))}, JSON.stringify({...outcome, descendantAlive: alive}));`;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", wrapper], { env: cleanGeneratorEnvironment(process.env), stdio: "ignore" });
+    const exited = once(child, "exit");
+    try {
+      await exited;
+      const outcome = JSON.parse(await readFile(join(root, "outcome.json"), "utf8"));
+      expect(outcome.descendantAlive).toBe(false);
+      expect(outcome.ok).toBe(exitCode === 0);
+      if (exitCode !== 0) expect(outcome.message).toMatch(/exit 3/);
+      const journals = (await readdir(join(root, "capture"))).filter((name) => name.endsWith(".jsonl"));
+      const events = (await Promise.all(journals.map((name) => readFile(join(root, "capture", name), "utf8")))).join("\n").trim().split("\n").map((line) => JSON.parse(line).event);
+      expect(events.indexOf("subject-exit")).toBeLessThan(events.indexOf("group-settled"));
+      if (stdio === "held") expect(events).toContain("group-signal");
+    } finally {
+      const descendants = JSON.parse(await readFile(join(root, "descendant.json"), "utf8").catch(() => "null"));
+      if (descendants) { try { process.kill(descendants.descendant, "SIGKILL"); } catch { } }
+      child.kill("SIGKILL");
+    }
+  }, 15_000);
+  it("reports spawn failure without waiting for exit and settles all resources", async () => {
+    const root = await temporaryRoot();
+    const wrapper = `import {execute} from ${JSON.stringify(new URL("../../bench/profile-runner.ts", import.meta.url).href)};
+      const {setImmediate: checkpoint} = await import('node:timers/promises');
+      const {writeFileSync} = await import('node:fs');
+      const baseline = process.getActiveResourcesInfo().toSorted();
+      const outcome = await execute([${JSON.stringify(join(root, "missing-binary"))}], ${JSON.stringify(root)}, ${JSON.stringify(join(root, "capture"))}).then(() => ({ok: true}), (error) => ({ok: false, code: error.code, message: String(error)}));
+      await checkpoint(); await checkpoint();
+      writeFileSync(${JSON.stringify(join(root, "outcome.json"))}, JSON.stringify({...outcome, baseline, resources: process.getActiveResourcesInfo().toSorted()}));`;
+    await promisify(execFile)(process.execPath, ["--input-type=module", "-e", wrapper], { timeout: 10_000, env: cleanGeneratorEnvironment(process.env) });
+    const outcome = JSON.parse(await readFile(join(root, "outcome.json"), "utf8"));
+    expect(outcome.ok).toBe(false);
+    expect(outcome.code).toBe("ENOENT");
+    expect(outcome.resources).toEqual(outcome.baseline);
+  });
   it("runs real HTTP1 controls with complete byte-checked task counts", async () => {
     const root = await temporaryRoot();
     await promisify(execFile)(process.execPath, [runner, "--tools", "control", "--scenarios", "http1", "--rounds", "20", "--report-dir", root], { timeout: 60_000, env: cleanGeneratorEnvironment(process.env) });
@@ -315,19 +398,24 @@ describe("bounded real profiling runner", () => {
       if (scenario === "serial" || scenario === "workers") expect(capture.result.builds.map((build: { completed: number }) => build.completed)).toEqual([8, 8]);
     }
   }, 120_000);
-  it.each(["doctor", "0x", "bubbleprof", "heapprofiler"])("requires decodable real %s output before accepting the capture", async (tool) => {
-    const root = await temporaryRoot();
+  it.each(["doctor", "0x", "bubbleprof", "heapprofiler"])("requires decodable real %s output from a fresh consent environment before accepting the capture", async (tool) => {
+    const parent = await temporaryRoot();
+    const root = join(parent, "report");
+    const environment = await freshConsentEnvironment(parent);
     let failure: unknown;
     try {
-      await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", "http1", "--rounds", "2", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
+      await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", "http1", "--rounds", "2", "--report-dir", root], { timeout: 120_000, env: environment });
     } catch (error) { failure = error; }
     const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
+    for (const file of await consentFiles(environment.HOME)) expect(JSON.parse(await readFile(file, "utf8"))).not.toHaveProperty("optOut");
     if (failure) {
       expect(tool).toBe("heapprofiler");
       expect(manifest.success).toBe(false);
       expect(manifest.failures.length).toBeGreaterThan(0);
       for (const rejected of manifest.failures) expect(rejected.error).toContain("invalid allocation sample");
-      roots.splice(roots.indexOf(root), 1);
+      const captured = await readdir(join(root, "heapprofiler-http1-identity", "profiles")).catch(() => []);
+      expect(captured.some((name) => name.endsWith(".clinic-heapprofiler"))).toBe(true);
+      roots.splice(roots.indexOf(parent), 1);
       console.error(`Rejected allocation diagnostics retained: ${root}`);
       return;
     }

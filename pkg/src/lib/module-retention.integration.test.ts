@@ -1,16 +1,33 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
+import { mkdtemp, rm, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runRetentionExperiment, compareRetentionTrends, type RetentionCheckpoint } from "./module-retention.test-helper.ts";
 import { analyzeRetentionHeap, type HeapSnapshot } from "./module-retention-heap.test-helper.ts";
 
 const directories: string[] = [];
-afterEach(async () => {
-  await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
+export async function cleanupRetentionReports(reports: string[], failed: boolean) {
+  if (failed) {
+    for (const directory of reports) console.error(`Private retention diagnostics retained: ${directory}`);
+    return;
+  }
+  await Promise.all(reports.map(directory => rm(directory, { recursive: true, force: true })));
+}
+afterEach(async ({ task }) => {
+  await cleanupRetentionReports(directories.splice(0), task.result?.state === "fail" || process.env.BASCIK_PROFILE_TEST_KEEP_REPORTS === "1");
 });
 
 describe("module retention lifecycle evidence", () => {
+  it("retains failed retention diagnostics privately and removes successful reports", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+    const manifest = join(directory, "manifest.json");
+    await writeFile(manifest, '{"success":false}', { mode: 0o600 });
+    await cleanupRetentionReports([directory], true);
+    expect(await readFile(manifest, "utf8")).toContain("success");
+    expect((await stat(directory)).mode & 0o777).toBe(0o700);
+    await cleanupRetentionReports([directory], false);
+    await expect(stat(directory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
   it("captures twenty fixed live pages and thirty helpers through realistic source cycles", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
     directories.push(directory);

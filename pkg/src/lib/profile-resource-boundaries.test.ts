@@ -26,7 +26,7 @@ describe("profiling boundary controls", () => {
       expect(result.sourceCycle.publications).toBe(1);
       expect(result.worker.completed).toBe(4);
       expect(result.worker.maxActive).toBe(2);
-      expect(result.worker.cancelled).toBe(3);
+      expect(result.worker.canceled).toBe(3);
       if (allocation) {
         expect(result.allocation.records).toBeGreaterThan(0);
         expect(result.allocation.coverage).toBe("main script and source-cycle window only");

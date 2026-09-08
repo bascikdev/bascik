@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import http2 from "node:http2";
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { readFile as readFileAsync } from "node:fs/promises";
 import { once } from "node:events";
 import { performance } from "node:perf_hooks";
 import { assetBytes, apiBody, streamBody } from "./profile-fixture.ts";
 import { digest, validateResponses, type ExpectedResponse, type ObservedResponse } from "./profile-workload.ts";
 
-const [origin, encoding, roundsText, injectFailure, scenario] = process.argv.slice(2);
+const [origin, encoding, roundsText, injectFailure, scenario, fixtureCaPath] = process.argv.slice(2);
 const rounds = Number(roundsText);
 const agent = new http.Agent({ keepAlive: true, maxSockets: 12 });
-const session = scenario === "http2" ? http2.connect(origin, { rejectUnauthorized: false }) : undefined;
+assert(scenario !== "http2" || fixtureCaPath, "HTTP/2 load requires the fixture CA path; peer verification is never bypassed");
+// The session trusts only the private fixture CA that signed the subject's server certificate.
+const session = scenario === "http2" ? http2.connect(origin, { ca: readFileSync(fixtureCaPath) }) : undefined;
 session?.on("error", (error) => { console.error(error); process.exitCode = 1; });
 async function request(path: string, id: string): Promise<ObservedResponse> {
   const start = performance.now();
@@ -59,7 +62,7 @@ try {
         const visit = async (path: string) => {
           const id = `${phase}:${lane}:${round}:${path}`;
           const distinct = /^\/asset-(\d+)\.txt$/.exec(path);
-          const body = distinct ? distinctAssets[Number(distinct[1])] : path === "/asset.txt" ? asset : path === "/page-0.html" ? await readFile("dist/page-0.html") : Buffer.from(path === "/api/probe" ? apiBody : path === "/stream" ? streamBody : '{"status":"ok","ready":true}');
+          const body = distinct ? distinctAssets[Number(distinct[1])] : path === "/asset.txt" ? asset : path === "/page-0.html" ? await readFileAsync("dist/page-0.html") : Buffer.from(path === "/api/probe" ? apiBody : path === "/stream" ? streamBody : '{"status":"ok","ready":true}');
           expected.push({ id, body, encoding: path.endsWith(".txt") ? encoding : "identity" });
           responses.push(await request(injectFailure === "true" && lane === 0 && round === 0 ? "/injected-failure" : path, id));
         };

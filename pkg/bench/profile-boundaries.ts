@@ -274,15 +274,15 @@ try {
   await sample("worker-success");
   const cancelGate = await gateServer();
   const cancelPool = new WorkerPool<string, WorkerResult>(workerPath, 1, { port: cancelGate.port });
-  const cancelled = Promise.allSettled([cancelPool.run("one"), cancelPool.run("two"), cancelPool.run("three")]);
+  const canceled = Promise.allSettled([cancelPool.run("one"), cancelPool.run("two"), cancelPool.run("three")]);
   try { await cancelGate.arrived(1); await cancelPool.terminate(); }
   finally { await cancelPool.terminate(); await cancelGate.close(); }
-  const cancellations = await cancelled;
+  const cancellations = await canceled;
   assert(cancellations.every((result) => result.status === "rejected"));
   await sample("worker-cancel");
   await execShutdownHandler();
   await sample("shutdown");
-  await writeFile(join(root, "boundaries.json"), JSON.stringify({ success: true, pid: process.pid, versions: process.versions, baseline, checkpoints, gc, allocation, scriptGates: events, sourceCycle: { compilations, publications, events: sourceEvents, execTimings }, worker: { completed: timings.length, maxActive, cancelled: cancellations.length, timings }, limitations: ["WorkerPool fixture timings are not page-worker CPU samples", "Queue-to-entry includes startup and IPC; reply-to-receive includes scheduling", "Async resource tracking begins after module setup; descriptor inventory is process-wide where supported", "Resource probe excludes Promise retention; use the separate retention harness", "Response capacity and disconnect are controlled at the real stream bridge"] }, null, 2));
+  await writeFile(join(root, "boundaries.json"), JSON.stringify({ success: true, pid: process.pid, versions: process.versions, baseline, checkpoints, gc, allocation, scriptGates: events, sourceCycle: { compilations, publications, events: sourceEvents, execTimings }, worker: { completed: timings.length, maxActive, canceled: cancellations.length, timings }, limitations: ["WorkerPool fixture timings are not page-worker CPU samples", "Queue-to-entry includes startup and IPC; reply-to-receive includes scheduling", "Async resource tracking begins after module setup; descriptor inventory is process-wide where supported", "Resource probe excludes Promise retention; use the separate retention harness", "Response capacity and disconnect are controlled at the real stream bridge"] }, null, 2));
 } finally {
   sampler?.disconnect();
   probe.close();
