@@ -107,8 +107,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build package
-        run: yarn pkg:build
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
 
       - name: Run Cloudflare adapter unit tests
         run: yarn adapter:cf:test:ci
