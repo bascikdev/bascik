@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Run framework unit tests with coverage
         run: yarn pkg:test:ci
 
