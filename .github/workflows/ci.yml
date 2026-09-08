@@ -104,6 +104,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Run Cloudflare adapter unit tests
         run: yarn adapter:cf:test:ci
 
@@ -215,7 +218,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -245,7 +248,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -278,7 +281,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -308,7 +311,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -368,7 +371,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -398,7 +401,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
