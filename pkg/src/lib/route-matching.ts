@@ -133,6 +133,14 @@ export const matchApiRoute = <R extends ApiRouteDefinition>(routes: R[], pathnam
   return null;
 };
 
+/**
+ * Deployment control files that live in the public upload tree of a
+ * serverless bundle. The emitter routes them to the worker and the worker
+ * refuses them, so the bundle can never be downloaded from the public origin.
+ * One list, imported by both sides, so the two can never disagree.
+ */
+export const GENERATED_CONTROL_PATHS: readonly string[] = Object.freeze(["/_worker.js", "/_routes.json"]);
+
 // ─── Path normalization shared with page lookup ──────────────────────────────
 
 /**

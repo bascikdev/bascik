@@ -49,6 +49,7 @@ import {
   stripRepresentationHeaders,
 } from "../lib/web-response.ts";
 import {
+  GENERATED_CONTROL_PATHS,
   hasHiddenSegment,
   isUnsafePathname,
   matchApiRoute,
@@ -130,8 +131,7 @@ export interface CloudflareWorker {
 
 const encoder = new TextEncoder();
 
-/** Mirrors `GENERATED_CONTROL_PATHS` in `serverless-artifacts.ts` (which is Node-only). */
-const CONTROL_PATHS: ReadonlySet<string> = new Set(["/_worker.js", "/_routes.json"]);
+const CONTROL_PATHS: ReadonlySet<string> = new Set(GENERATED_CONTROL_PATHS);
 
 /** `stripBasePath` from `lib/base-path.ts`, inlined to keep this graph free of the shielding import. */
 export const stripBase = (pathname: string, base: string): string | null => {

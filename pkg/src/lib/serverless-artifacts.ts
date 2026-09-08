@@ -45,6 +45,7 @@ import { getImportRoot } from "./import-root.ts";
 import { rewriteModuleSpecifiers, resolveScriptSrcPath } from "./module-specifiers.ts";
 import { scanApiRouteFiles, buildApiRouteTree, type ApiRouteDefinition } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
+import { GENERATED_CONTROL_PATHS } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import { SIDECAR_SCHEMA_VERSION, type ServerScriptEntry, type ServerScriptsSidecar } from "./server-sidecar.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
@@ -236,8 +237,7 @@ export const buildInvocationRoutes = (input: {
   return { include: sorted, exclude: [], overflowed: false };
 };
 
-/** Public-tree control files the worker refuses to serve. */
-export const GENERATED_CONTROL_PATHS = ["/_worker.js", "/_routes.json"] as const;
+export { GENERATED_CONTROL_PATHS };
 
 const CONTROL_FILES: Record<DeployTarget, string[]> = {
   "cloudflare-pages": ["_worker.js", "_routes.json"],
@@ -657,4 +657,3 @@ export const formatServerlessSummary = (result: ServerlessBuildResult, projectRo
   }
   return lines.join("\n");
 };
-
