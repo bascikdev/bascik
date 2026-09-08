@@ -73,7 +73,7 @@ export const createServerlessFixture = async (name: string, options: { base?: st
     `<!DOCTYPE html><html><head><title>Static</title></head><body><h1 data-testid="static-heading">Static home</h1></body></html>`,
   );
   await write(
-    root,
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/account.html",
     `<!DOCTYPE html><html><head><title>Account</title></head><body>
 <p data-testid="account-static">Account</p>
@@ -103,7 +103,7 @@ export default function (request: Request) {
 }`,
   );
   await write(
-    root,
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/dashboard.html",
     `<!DOCTYPE html><html><head><title>Dashboard</title></head><body>
 <header data-testid="shell">Shell 日本 🚀</header>
@@ -127,14 +127,14 @@ export default async function (request, context) {
 </body></html>`,
   );
   await write(
-    root,
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/broken-stream.html",
     `<!DOCTYPE html><html><body><p data-testid="before">before</p>
 <script data-bascik-stream>export default async function () { throw new Error("stream job failed on purpose"); }</script>
 <p data-testid="after">after</p></body></html>`,
   );
   await write(
-    root,
+    root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/broken-server.html",
     `<!DOCTYPE html><html><body><p>never</p>
 <script data-bascik-server>export default function () { throw new Error("server job failed on purpose SECRET_DETAIL"); }</script>

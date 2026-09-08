@@ -257,9 +257,13 @@ export const executeApiRoute = async (
         return undefined;
       },
       onError: (message, error) => {
+        // Format string first, values as arguments: a `%` in a path or a
+        // handler message must never be interpreted by util.format.
         console.error(
-          `[bascik] ${message.replace(/^API route handler/, `API route handler in ${filePath}`)}`,
-          error !== undefined ? ((error as Error).stack ?? String(error)) : "",
+          "[bascik] %s in %s%s",
+          message,
+          filePath,
+          error !== undefined ? `:\n${(error as Error).stack ?? String(error)}` : "",
         );
       },
     });
