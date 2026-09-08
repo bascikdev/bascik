@@ -11,6 +11,9 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "resolutions": {
+    "miniflare/undici": "7.29.0"
+  },
   "scripts": {
     "pkg:build": "yarn workspace @bascik/bascik build",
     "pkg:bench": "yarn workspace @bascik/bascik bench",
