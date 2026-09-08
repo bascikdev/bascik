@@ -260,4 +260,4 @@ bascik --build --target ./adapters/custom-node.ts
 3. **Error Isolation:** Ensure unhandled handler errors are trapped gracefully and return a `500` status with `graph.custom500` if provided.
 4. **Publishing:** Publish your adapter as an npm package (e.g. `bascik-adapter-aws`). Export the `HostingAdapter` instance as the package's default export so users can pass `--target bascik-adapter-aws`.
 
-> **Next:** [Cloudflare Adapter](/deployment/cloudflare) provides a full example of a production serverless adapter. [Overview](/deploying) covers static hosting and built-in production server configuration.
+> **Next:** [Cloudflare Adapter](/deployment/cloudflare) provides a full example of a production serverless adapter. [Overview](/deployment) covers static hosting and built-in production server configuration.

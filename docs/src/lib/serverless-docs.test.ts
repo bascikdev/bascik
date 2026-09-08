@@ -48,11 +48,11 @@ describe('serverless docs: claims', () => {
     for (const host of ['Fastly Compute', 'Netlify Edge Functions', 'AWS Lambda', 'Google Cloud Functions']) {
       expect(md, host).not.toContain(host);
     }
-    expect(md).toContain('/deploying#serverless-hosting');
+    expect(md).toContain('/deployment#serverless-hosting');
   });
 
-  it('deploying.md gates static hosting on server scripts, stream scripts, and API routes and links the guide', async () => {
-    const md = await read('deploying.md');
+  it('deployment/index.md gates static hosting on server scripts, stream scripts, and API routes and links the guide', async () => {
+    const md = await read('deployment/index.md');
     const staticSection = md.slice(md.indexOf('## Static hosting'), md.indexOf('## Serverless hosting'));
     expect(staticSection).toContain('data-bascik-server');
     expect(staticSection).toContain('data-bascik-stream');

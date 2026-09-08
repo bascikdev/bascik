@@ -21,13 +21,15 @@ function resolveRoutePath(currentPath?: string): string {
     if (pageFile && pagesDir && pageFile.startsWith(pagesDir)) {
       const relPath = pageFile.slice(pagesDir.length).replace(/^[\\/]/, '').replace(/\\/g, '/');
       const withoutExt = relPath.replace(/\.html$/, '');
-      const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '/');
+      const routePath = withoutExt === 'index' ? '' : withoutExt.replace(/\/index$/, '');
       path = routePath ? `/${routePath}` : '/';
     }
   }
   if (!path) return '';
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
   if (path === '/using-markdown') return '/how-to/markdown';
   if (path === '/how-to/cloudflare') return '/deployment/cloudflare';
+  if (path === '/deploying') return '/deployment';
   return path;
 }
 

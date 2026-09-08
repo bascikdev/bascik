@@ -95,8 +95,8 @@ describe("serverless contract: documentation says what works today", () => {
     expect(md).toMatch(/serverless/i);
   });
 
-  it("deploying.md gates static hosting on every request-time feature, not only data-bascik-server", async () => {
-    const md = await read("deploying.md");
+  it("deployment/index.md gates static hosting on every request-time feature, not only data-bascik-server", async () => {
+    const md = await read("deployment/index.md");
     const staticSection = md.slice(md.indexOf("## Static hosting"));
     expect(staticSection).toMatch(/data-bascik-stream/);
     expect(staticSection).toMatch(/API route/i);

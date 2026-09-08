@@ -49,7 +49,7 @@ Reusable code is not the same as a deployable service. Three more things have to
 Where handlers run today:
 
 - **`bascik --server`** and the dev server: supported, in-process, with routing, dispatch, body limits, and timeouts handled for you.
-- **Serverless (static assets on a CDN plus managed functions):** supported through a build target and adapter, starting with Cloudflare Pages and Workers. The same routing and dispatch core runs inside the generated function. See [Deploying](/deploying#serverless-hosting) for the support matrix.
+- **Serverless (static assets on a CDN plus managed functions):** supported through a build target and adapter, starting with Cloudflare Pages and Workers. The same routing and dispatch core runs inside the generated function. See [Deployment](/deployment#serverless-hosting) for the support matrix.
 - **Other hosts:** manual porting only. Write the wrapper for the platform's request shape and reuse the handler function; Bascik does not generate one for you.
 
 ## The Context Argument
@@ -144,7 +144,7 @@ warning: 3 API routes found in src/api/ but static builds cannot serve them.
   Routes: /api/health, /api/contact, /api/users/[id]
 ```
 
-To serve API routes, run Bascik in production server mode using `bascik --server`, during development using `bascik`, or build for a serverless target that packages the routes into a managed function (see [Deploying](/deploying#serverless-hosting)).
+To serve API routes, run Bascik in production server mode using `bascik --server`, during development using `bascik`, or build for a serverless target that packages the routes into a managed function (see [Deployment](/deployment#serverless-hosting)).
 
 ## What Bascik Deliberately Omits
 
