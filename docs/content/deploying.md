@@ -135,7 +135,7 @@ Configure your container orchestrator (e.g. Kubernetes, AWS ECS) or load balance
 
 ## Static hosting
 
-For most Bascik sites, `dist/` is the deployable artifact. If your site has no `data-bascik-server` scripts, you only need a static host.
+For most Bascik sites, `dist/` is the deployable artifact. You only need a static host when nothing on the site runs at request time: no `data-bascik-server` scripts, no `data-bascik-stream` scripts, and no API route files in `src/api/`. Each of those needs something to execute code per request, either the built-in Node server or a [serverless target](#serverless-hosting).
 
 Every major platform follows the same pattern:
 
@@ -201,6 +201,12 @@ Bascik normalizes the leading and trailing slash, rewrites root-relative HTML, C
 Requests outside the configured prefix return `404 Not Found`. With `base: '/my-site/'`, request `/my-site/about`, not `/about`. This strict behavior matches a static host and catches incorrect links during local preview. Live reload also connects through the prefix automatically.
 
 A custom domain mapped to the project site usually serves it from `/`, so leave the default `base: '/'` in that deployment shape.
+
+## Serverless hosting
+
+Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
+
+The first supported target is Cloudflare Pages, with a Workers Static Assets variant. See the [Cloudflare guide](/how-to/cloudflare) for the tested recipe, the support matrix, and the limits that come with running inside a provider's function runtime.
 
 ## Using the production server
 

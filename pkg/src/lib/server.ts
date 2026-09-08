@@ -46,6 +46,7 @@ import {
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { createWebRequest, requestOrigin } from "./api-runtime.ts";
+import { NODE_PLATFORM } from "./request-execution.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
 
@@ -774,7 +775,7 @@ export const createRequestHandler = () => {
         if ("error" in page.serverScriptPlan) throw page.serverScriptPlan.error;
         const plan = page.serverScriptPlan;
         const request = createWebRequest(req, requestOrigin(req));
-        const context = { remoteIp: req.remoteIp };
+        const context = { remoteIp: req.remoteIp, platform: NODE_PLATFORM };
         const timeout = BascikConfig.scripts.timeout ?? DEFAULT_SCRIPT_TIMEOUT_MS;
         responseHeaders["cache-control"] = "private, no-store";
         // The plan was built at store time (prompt 67): no regex scan and no

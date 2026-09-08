@@ -14,24 +14,21 @@
 import { readdir } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
 import { existsSync } from "node:fs";
-import { extractRouteParamNames, isDynamicRoute } from "./routes.ts";
 import { withBasePath } from "./base-path.ts";
+import {
+  extractRouteParamNames,
+  isDynamicRoute,
+  matchApiRoute,
+  normalizeApiRouteDefinition,
+  sortApiRoutes,
+  type ApiRouteDefinition,
+  type ApiRouteMatch,
+} from "./route-matching.ts";
 
-export interface ApiRouteDefinition {
-  /** Normalized route path, e.g. "/api/users" or "/api/users/[id]" (including base if applicable) */
-  path: string;
-  /** Absolute file path on disk */
-  filePath: string;
-  /** Ordered list of param names extracted from `[param]` segments */
-  paramNames: string[];
-  /** Whether the route contains any dynamic segment */
-  isDynamic: boolean;
-}
-
-export interface ApiRouteMatch {
-  route: ApiRouteDefinition;
-  params: Record<string, string>;
-}
+// The matcher itself is host-neutral and lives in `route-matching.ts` so a
+// serverless function can run it without this module's filesystem imports.
+export { matchApiRoute, normalizeApiRouteDefinition, sortApiRoutes };
+export type { ApiRouteDefinition, ApiRouteMatch };
 
 /**
  * Normalizes an API route file path relative to the api directory into a route path.
@@ -57,30 +54,6 @@ export const fileToApiRoutePath = (relPath: string, basePath = "/"): string => {
   // Ensure clean leading slash and no trailing slash except root
   routeSegment = "/" + routeSegment.replace(/^\/+/, "").replace(/\/+$/, "");
   return withBasePath(routeSegment, basePath);
-};
-
-export const sortApiRoutes = (routes: ApiRouteDefinition[]): ApiRouteDefinition[] => {
-  return [...routes].sort((a, b) => {
-    if (!a.isDynamic && b.isDynamic) return -1;
-    if (a.isDynamic && !b.isDynamic) return 1;
-
-    // Segment count comparison
-    const aSegments = a.path.split("/").filter(Boolean);
-    const bSegments = b.path.split("/").filter(Boolean);
-
-    for (let i = 0; i < Math.min(aSegments.length, bSegments.length); i++) {
-      const aIsParam = aSegments[i].startsWith("[");
-      const bIsParam = bSegments[i].startsWith("[");
-      if (!aIsParam && bIsParam) return -1;
-      if (aIsParam && !bIsParam) return 1;
-    }
-
-    if (aSegments.length !== bSegments.length) {
-      return bSegments.length - aSegments.length;
-    }
-
-    return a.path.localeCompare(b.path);
-  });
 };
 
 /**
@@ -139,78 +112,6 @@ export const buildApiRouteTree = (
   return sortApiRoutes(routes);
 };
 
-export const normalizeApiRouteDefinition = (
-  def: ApiRouteDefinition
-): ApiRouteDefinition => {
-  const isDynamic = def.isDynamic ?? isDynamicRoute(def.path);
-  const paramNames =
-    def.paramNames && def.paramNames.length > 0
-      ? def.paramNames
-      : isDynamic
-        ? extractRouteParamNames(def.path)
-        : [];
-  return {
-    path: def.path,
-    filePath: def.filePath,
-    isDynamic,
-    paramNames,
-  };
-};
-
-/**
- * Match an incoming request pathname against registered API routes.
- * Uses exact segment matching for static paths and deterministic parameter
- * extraction for `[param]` dynamic segments without generating dynamic regular expressions.
- */
-export const matchApiRoute = (
-  routes: ApiRouteDefinition[],
-  pathname: string
-): ApiRouteMatch | null => {
-  const pathSegments = pathname.split("/").filter(Boolean);
-
-  for (const rawRoute of routes) {
-    const route = normalizeApiRouteDefinition(rawRoute);
-    const routeSegments = route.path.split("/").filter(Boolean);
-
-    if (pathSegments.length !== routeSegments.length) {
-      continue;
-    }
-
-    if (!route.isDynamic) {
-      if (routeSegments.every((seg, i) => seg === pathSegments[i])) {
-        return { route, params: {} };
-      }
-      continue;
-    }
-
-    const params: Record<string, string> = {};
-    let isMatch = true;
-
-    for (let i = 0; i < routeSegments.length; i++) {
-      const rSeg = routeSegments[i];
-      const pSeg = pathSegments[i];
-
-      if (rSeg.startsWith("[") && rSeg.endsWith("]")) {
-        const paramName = rSeg.slice(1, -1);
-        try {
-          params[paramName] = decodeURIComponent(pSeg);
-        } catch {
-          params[paramName] = pSeg;
-        }
-      } else if (rSeg !== pSeg) {
-        isMatch = false;
-        break;
-      }
-    }
-
-    if (isMatch) {
-      return { route, params };
-    }
-  }
-
-  return null;
-};
-
 /**
  * Recursively scans directory for API route source files (.ts, .js, .mjs).
  */
@@ -245,7 +146,7 @@ export const formatApiRouteWarning = (routes: string[], apiDir = "src/api"): str
   const routeList = routes.join(", ");
   return (
     `warning: ${count} API route${count === 1 ? "" : "s"} found in ${apiDir}/ but static builds cannot serve them.\n` +
-    `  Deploy with \`bascik --server\`, or port them to your host's function runtime.\n` +
+    `  Deploy with \`bascik --server\`, build a serverless bundle with \`bascik --build --target <name>\`, or port them to your host's function runtime.\n` +
     `  Routes: ${routeList}`
   );
 };

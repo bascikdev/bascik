@@ -14,6 +14,7 @@ const defaultProjectExclusions = (config: typeof staticConfig): string[] => {
 describe('Playwright project test selection', () => {
   it.each([
     [staticConfig, [
+      '**/cloudflare-adapter.test.ts',
       '**/server-scripts.test.ts',
       '**/server-scripts-stream.test.ts',
       '**/api-routes.test.ts',
@@ -26,6 +27,7 @@ describe('Playwright project test selection', () => {
       '**/base-serving.test.ts',
     ]],
     [devConfig, [
+      '**/cloudflare-adapter.test.ts',
       '**/prod-server.test.ts',
       '**/sitemap.test.ts',
       '**/exec.test.ts',
@@ -36,6 +38,7 @@ describe('Playwright project test selection', () => {
       '**/base-serving.test.ts',
     ]],
     [http1Config, [
+      '**/cloudflare-adapter.test.ts',
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
       '**/bascik-add.test.ts',
@@ -44,6 +47,7 @@ describe('Playwright project test selection', () => {
       '**/base-serving.test.ts',
     ]],
     [http2Config, [
+      '**/cloudflare-adapter.test.ts',
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
       '**/bascik-add.test.ts',

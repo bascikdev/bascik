@@ -83,6 +83,7 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | --- | --- |
 | `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
 | `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
+| `--target <name>` | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Targets: `cloudflare-pages`, `cloudflare-workers`. Only valid with `--build`; cannot be combined with `--only` |
 | `--strict` | Treat warnings as errors during `--check` (exits with code 1 if warnings are found) |
 | `--json` | Emit findings as a structured JSON document during `--check` |
 | `--force` | Overwrite locally modified components during `bascik add` |
@@ -193,6 +194,17 @@ Important rules for targeted builds:
 - **Pages only:** `--only` scopes page transpilation, not static assets. Static assets are still copied and verified.
 - **Sitemap and robots:** `sitemap.xml` and `robots.txt` generation is skipped with a warning during targeted builds to prevent delisting pages that were not rebuilt. Run a full `bascik --build` to regenerate whole-site sitemaps.
 - **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`dist/.bascik/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
+
+## Serverless bundles (`--target`)
+
+Use `--target <name>` to emit a deployment bundle for a serverless host in addition to the normal static output:
+
+```sh
+bascik --build --target cloudflare-pages
+bascik --build --target cloudflare-workers
+```
+
+The default `dist/` is unchanged. The bundle lands in `dist/.bascik/<name>/` with a `public/` upload tree, the compiled request-time code, and a `build-info.json` describing the release. It needs `esbuild` installed in your project and is rejected together with `--only`, because a deployment bundle must describe one complete release. See the [Cloudflare guide](/how-to/cloudflare) for the full workflow.
 
 ## Starting the dev server
 

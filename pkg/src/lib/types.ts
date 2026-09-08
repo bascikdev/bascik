@@ -275,6 +275,8 @@ export interface BascikConfigOptions {
   isBuild: boolean;
   isProdServer: boolean;
   only?: string[];
+  /** Serverless deployment target requested with `--build --target`. */
+  target?: "cloudflare-pages" | "cloudflare-workers";
 }
 
 export type UserConfig = {

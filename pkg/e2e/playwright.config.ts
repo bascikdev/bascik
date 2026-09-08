@@ -6,6 +6,8 @@ const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const staticTestIgnore = [
+  // Runs only under playwright.cloudflare.config.ts (workerd, not a Bascik server).
+  '**/cloudflare-adapter.test.ts',
   '**/server-scripts.test.ts',
   // The static harness (e2e/server.ts) serves files and cannot execute server
   // scripts; the `<script type="text/bascik-server" data-bascik-server-id>`

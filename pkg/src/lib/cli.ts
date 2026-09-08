@@ -42,6 +42,8 @@ export interface CliFlags {
   siteUrl?: string;
   envFiles: string[];
   only?: string[];
+  /** Serverless deployment target for `--build` (prompt 131). */
+  target?: DeployTarget;
   strict?: boolean;
   json?: boolean;
   force?: boolean;
@@ -49,6 +51,10 @@ export interface CliFlags {
   dryRun?: boolean;
   addTargets?: string[];
 }
+
+/** Deployment targets `--build --target <name>` understands. */
+export const DEPLOY_TARGETS = ["cloudflare-pages", "cloudflare-workers"] as const;
+export type DeployTarget = (typeof DEPLOY_TARGETS)[number];
 
 export interface CliDecision {
   action: CliAction;
@@ -93,6 +99,7 @@ const VALUE_FLAGS = new Set([
   "--site-url",
   "--env-file",
   "--only",
+  "--target",
 ]);
 
 /** `--log` is the one flag whose value is optional. */
@@ -122,6 +129,7 @@ const SUGGESTION_CANDIDATES = [
   "--site-url",
   "--env-file",
   "--only",
+  "--target",
   "--log",
 ];
 
@@ -264,6 +272,15 @@ export const resolveCliAction = (args: string[]): CliDecision => {
       case "--only":
         if (!flags.only) flags.only = [];
         flags.only.push(value);
+        break;
+      case "--target":
+        if (!(DEPLOY_TARGETS as readonly string[]).includes(value)) {
+          valueErrors.push(
+            `Error: --target expects one of ${DEPLOY_TARGETS.join(", ")} (received "${value}").`,
+          );
+          return;
+        }
+        flags.target = value as DeployTarget;
         break;
       case "--log":
         flags.log = value || DEFAULT_LOG_PATH;
@@ -443,6 +460,17 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     return error("Error: --only only applies to --build.");
   }
 
+  if (flags.target !== undefined && action !== "build") {
+    return error("Error: --target only applies to --build.");
+  }
+
+  // A deployment bundle is one consistent release inventory; a partial rebuild
+  // cannot produce one, so the combination is rejected instead of emitting a
+  // half-assembled bundle.
+  if (flags.target !== undefined && flags.only !== undefined) {
+    return error("Error: --target cannot be combined with --only. A deployment bundle needs a full build.");
+  }
+
   return { action, flags };
 };
 
@@ -465,6 +493,9 @@ Options:
   --dry-run          List what add would do without writing to disk
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)
+  --target <name>    Also emit a serverless deployment bundle under
+                     dist/.bascik/<name>/ (only with --build).
+                     Targets: cloudflare-pages, cloudflare-workers
   --port <n>         Override the server port
                      (overrides BASCIK_SERVER_PORT and http.port)
   --host <name>      Override the server hostname

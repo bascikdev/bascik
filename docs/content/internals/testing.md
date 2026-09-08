@@ -89,6 +89,9 @@ yarn pkg:e2e:prod
 # Or run HTTP/1.1 and HTTP/2 prod server suites individually:
 yarn pkg:e2e:prod:http1
 yarn pkg:e2e:prod:http2
+
+# Cloudflare adapter suite (emitted Pages bundle in local workerd)
+yarn pkg:e2e:cloudflare
 ```
 
 This builds the fixture site (using the current `dist/`) and then runs Playwright against it. The first run requires the package to be built first:
@@ -150,14 +153,15 @@ pkg/e2e/
   tests/                          ← Playwright test files
 ```
 
-The E2E suite supports four execution modes:
+The E2E suite supports five execution modes:
 
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
 2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
 4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots the live dev server on port 9443 (configured via `BASCIK_SERVER_PORT=9443`) to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
+5. **Cloudflare adapter suite (`playwright.cloudflare.config.ts`)**: builds the small fixture at `pkg/e2e/cloudflare/` with `--target cloudflare-pages` and serves the emitted `_worker.js` and public tree inside local workerd (Miniflare) with the asset layer in front, on port 9876. It covers static bypass, worker-side pages and APIs, and a stream paint-order test with JavaScript disabled. Request-level Node-versus-Worker parity is a Vitest integration test (`serverless-parity.integration.test.ts`), which runs one build under both `bascik --server` and workerd and compares them.
 
-Each configuration owns its mode-specific `testIgnore` list on the `default` project. Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports all four configs and pins their project exclusions before any browser starts.
+Each configuration owns its mode-specific `testIgnore` list on the `default` project. Playwright project arrays replace matching top-level arrays rather than extending them, so splitting exclusions across both levels can silently run server-only tests in the wrong mode. For example, `server-scripts.test.ts` and `server-scripts-stream.test.ts` run under dev, HTTP/1.1, and HTTP/2 configs, and are ignored under the static config because the static file server cannot execute server scripts. A unit regression test imports the four Bascik-server configs and pins their project exclusions before any browser starts; the Cloudflare config selects its single test file with `testMatch` and is excluded from the other four.
 
 Tests navigate to pages on the active server and assert against the live browser DOM.
 
