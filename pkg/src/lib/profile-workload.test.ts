@@ -203,6 +203,14 @@ describe("capture artifact integrity", () => {
     await writeFile(path, JSON.stringify(cpu));
     await expect(validateArtifact(path, "cpu")).resolves.toMatchObject({ path, bytes: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
   });
+  it("accepts V8 sampler clock jitter but rejects non-numeric deltas and timelines outside the profile interval", () => {
+    // V8 emits occasional small negative timeDeltas between the sampling thread and isolate clocks; consumers such
+    // as the DevTools/Lighthouse CPU model clamp them. A real capture must not be rejected for that jitter.
+    expect(() => summarizeCpuProfile({ ...cpu, timeDeltas: [1, -1, 3] }, "codec")).not.toThrow();
+    for (const timeDeltas of [[1, NaN, 1], [1, Infinity, 1], [1, "1", 1], [1, 1], [50, 1, 1], [-3, 1, 1]]) {
+      expect(() => summarizeCpuProfile({ ...cpu, timeDeltas }, "codec")).toThrow(/sample time|time deltas/);
+    }
+  });
   it("distinguishes inclusive ancestry from self samples", () => {
     expect(summarizeCpuProfile(cpu, "codec")).toEqual({ samples: 3, inclusive: 3, self: 1 });
     expect(summarizeCpuProfile(cpu, "processChunkSync")).toEqual({ samples: 3, inclusive: 2, self: 2 });

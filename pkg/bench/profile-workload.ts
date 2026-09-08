@@ -166,7 +166,15 @@ function decodeCpuProfile(value: unknown): CpuProfile {
   assert(Array.isArray(profile.samples) && profile.samples.length > 0, "missing CPU samples");
   assert(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length, "invalid CPU time deltas");
   assert(Number.isFinite(profile.startTime) && Number.isFinite(profile.endTime) && profile.endTime > profile.startTime, "invalid CPU interval");
-  assert(profile.timeDeltas.every((delta) => Number.isFinite(delta) && delta >= 0), "invalid sample time");
+  // V8's sampler records deltas from a different clock than the isolate; adjacent samples may carry small negative
+  // deltas (DevTools and Lighthouse clamp them). Reject non-numeric deltas and any reconstructed sample time that
+  // falls outside the profile interval, which is what actually invalidates a capture.
+  let sampleTime = profile.startTime;
+  for (const delta of profile.timeDeltas) {
+    assert(typeof delta === "number" && Number.isFinite(delta), "invalid sample time");
+    sampleTime += delta;
+    assert(sampleTime >= profile.startTime && sampleTime <= profile.endTime, "invalid sample time: outside profile interval");
+  }
   const nodes = new Map(profile.nodes.map((node) => [node.id, node]));
   assert.equal(nodes.size, profile.nodes.length, "duplicate CPU node ids");
   const parents = new Map<number, number>();
