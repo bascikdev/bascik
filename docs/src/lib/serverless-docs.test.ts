@@ -12,11 +12,22 @@
 import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveCliAction, DEPLOY_TARGETS } from '../../../pkg/src/lib/cli.ts';
-import { CLOUDFLARE_COMPATIBILITY_DATE, CLOUDFLARE_COMPATIBILITY_FLAGS } from '../../../pkg/src/lib/serverless-artifacts.ts';
+import { pathToFileURL } from 'node:url';
 import { NAV } from './nav.ts';
 
 const DOCS_ROOT = path.resolve(import.meta.dirname, '../..');
+const PKG_LIB_ROOT = path.resolve(DOCS_ROOT, '../pkg/src/lib');
+const importPkgModule = (file: string): Promise<unknown> => import(pathToFileURL(path.join(PKG_LIB_ROOT, file)).href);
+const { resolveCliAction, DEPLOY_TARGETS } = (await importPkgModule('cli.ts')) as {
+  resolveCliAction: (args: string[]) => { action: string; flags: { target?: string } };
+  DEPLOY_TARGETS: readonly string[];
+};
+const { CLOUDFLARE_COMPATIBILITY_DATE, CLOUDFLARE_COMPATIBILITY_FLAGS } = (await importPkgModule(
+  'serverless-artifacts.ts',
+)) as {
+  CLOUDFLARE_COMPATIBILITY_DATE: string;
+  CLOUDFLARE_COMPATIBILITY_FLAGS: readonly string[];
+};
 const read = (rel: string) => readFile(path.join(DOCS_ROOT, 'content', rel), 'utf8');
 
 const fencedBlocks = (md: string, lang: string): string[] => {
