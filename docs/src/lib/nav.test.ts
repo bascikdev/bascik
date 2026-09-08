@@ -73,8 +73,8 @@ describe('renderPagination', () => {
     expect(html).toContain('data-pg="next"');
     expect(html).toContain('<span data-pg-section>Deployment</span>');
     expect(html).toContain('<span data-pg-label>Cloudflare Adapter</span>');
-    expect(html).toContain('<span data-pg-section>Reference</span>');
-    expect(html).toContain('<span data-pg-label>Development Server</span>');
+    expect(html).toContain('<span data-pg-section>Tooling</span>');
+    expect(html).toContain('<span data-pg-label>VS Code Extension</span>');
   });
 
   it('includes section names within the same section', () => {
