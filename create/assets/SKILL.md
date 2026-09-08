@@ -958,7 +958,7 @@ Rules:
 
 ### data-bascik-server
 
-Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request and are never cached. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters. All `data-bascik-server` scripts on a page resolve before the response is sent, returning a complete buffered response with `Content-Length`.
+Tag a `<script>` block with `data-bascik-server` to run it **at request time** on the server. Server scripts execute in-process via `ScriptRegistry` on every request; handler results are not cached, but loaded modules are reused. Use them to personalize pages per visitor, reading cookies, querying a database, rendering content based on query parameters. All `data-bascik-server` scripts on a page resolve before the response is sent, returning a complete buffered response with `Content-Length`.
 
 ```html
 <script data-bascik-server>
@@ -995,6 +995,12 @@ Rules:
 * Execution is bounded by `scripts.timeout` in `bascik.config.ts`.
 * On error, behavior is governed by `scripts.onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`). Under `'error'`, the request halts and returns an HTTP 500. Under `'warn'`, the error is logged and the tag is replaced with an empty string without failing other scripts or the page.
 * In-process caveat: synchronous blocking code blocks Node's single-threaded event loop and cannot be interrupted by timeouts; always use async APIs.
+
+#### Request Module Lifetime
+
+* Node retains evaluated ESM identities, including old development generations, until process exit. Clearing framework caches does not reclaim them; release authored timers and resources explicitly and keep request-specific data in handler arguments.
+* Inline `server` and `stream` loads use weak script-job owners. Replacing a page does not retain its inline source history globally; accepted requests can finish using their old jobs without publishing loads into the replacement page.
+* In development, generations of literal file imports contribute to inline module identity. Tracked helper edits reload affected inline modules, while unrelated edits preserve singleton state. Computed imports do not gain this guarantee; watcher and tracked-root limits still apply. Production uses stable identities and immutable releases.
 
 ### data-bascik-stream
 
@@ -1608,6 +1614,12 @@ yarn pkg:bench         # benchmarks
 ```
 
 Each `pkg/src/lib/*.ts` module has a paired `*.test.ts`. Because modules depend on `BascikConfig` (a singleton), unit tests use `vi.mock('../config.ts', ...)` to stub configuration, then import the module under test **after** the mock call.
+
+### Runtime Profiling and Retention
+
+Use `yarn workspace @bascik/bascik profile:workload --report-dir <private-directory>` for bounded runtime captures, separate from throughput benchmarks. Replace the illustrative placeholder with a new, empty, absolute directory outside the repository and all served or watched trees; existing roots must be user-owned and mode `0700`. Run tools sequentially and keep manifests, profiles, and snapshots private.
+
+Captures require complete byte-checked work and valid artifacts, not merely exit code zero. Main-isolate CPU profiles do not establish worker or child-process coverage. Worker CPU recording is unsupported on Node v24.17.0/macOS; unprofiled workers remain available. Allocation samples do not prove reclamation: use the separate module-retention experiments and heap retainer paths described in the testing docs. Failed profiling tests retain private diagnostic paths; do not retry failures into success or infer Node ESM eviction from framework cache cleanup.
 
 ### End-to-End Tests (Playwright)
 

@@ -161,7 +161,7 @@ describe("live development module invalidation (real dev server)", () => {
 
   afterAll(async () => {
     await server?.close();
-    await rm(root, { recursive: true, force: true }).catch(() => {});
+    await rm(root, { recursive: true, force: true }).catch(() => { });
   });
 
   it("serves the edited API route module after the watcher invalidates it (no restart)", async () => {
@@ -278,17 +278,7 @@ describe("live development module invalidation (real dev server)", () => {
     expect(after.body).toContain('data-testid="src-value">UTIL-NEW<');
   }, 30000);
 
-  /**
-   * Finding #3: an INLINE `data-bascik-server` script is imported as a `data:`
-   * URL. The resolve hook cannot record an edge from a `data:` parent, so a
-   * helper edit advances the helper's generation but no entry re-imports it.
-   * The documented contract is therefore narrower than for `src=` scripts:
-   * the served output picks up the helper change only when the page itself
-   * is recompiled with a changed inline body (which yields a new `data:` URL
-   * and, through the hook, the helper's new generation URL). This test pins
-   * that contract so the docs and the code cannot drift apart silently.
-   */
-  it("inline data-bascik-server: a helper edit alone does not change the served output; a recompile with a new inline body does", async () => {
+  it("reloads literal inline helpers without recompilation and preserves freshness on original-source reversion", async () => {
     await writeAt(root, "src/lib/inline-helper.ts", helperModule("INLINE-OLD"));
     const inlinePage = (marker: string): string =>
       `<!DOCTYPE html><html><head><title>inline</title></head><body>
@@ -313,10 +303,8 @@ describe("live development module invalidation (real dev server)", () => {
     const logged = await helperChanged;
     expect(logged).not.toMatch(/module invalidated: src\/lib\/inline-helper\.ts \(reloads/);
 
-    // Same page, same data: URL: Node reuses the evaluated module and its
-    // already-linked helper instance. The served value is unchanged.
-    const stillOld = await fetchText(`${server.base}/inline`);
-    expect(stillOld.body).toContain('data-testid="inline-value">INLINE-OLD<');
+    const helperReloaded = await fetchText(`${server.base}/inline`);
+    expect(helperReloaded.body).toContain('data-testid="inline-value">INLINE-NEW<');
 
     // Editing the page produces a new data: URL; resolving the helper from it
     // now hands back the helper's advanced generation, so the new value shows.
@@ -325,6 +313,11 @@ describe("live development module invalidation (real dev server)", () => {
     await recompiled;
     const after = await fetchText(`${server.base}/inline`);
     expect(after.body).toContain('data-testid="inline-value">INLINE-NEW<');
+
+    const reverted = server.waitForLog(/transpiled: pages\/inline\.html/);
+    await writeAt(root, "src/pages/inline.html", inlinePage("v1"));
+    await reverted;
+    expect((await fetchText(`${server.base}/inline`)).body).toContain('data-testid="inline-value">INLINE-NEW<');
   }, 30000);
 });
 
@@ -384,7 +377,7 @@ describe("production server module reuse (real --server)", () => {
         child!.kill("SIGTERM");
       });
     }
-    await rm(root, { recursive: true, force: true }).catch(() => {});
+    await rm(root, { recursive: true, force: true }).catch(() => { });
   });
 
   it("keeps serving the loaded module after the source file is edited on disk", async () => {

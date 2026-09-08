@@ -140,6 +140,7 @@ export const resolveModuleIdentity = (specifier: string): ModuleIdentity => {
 };
 
 export interface ScriptExecutionOptions {
+  moduleOwner?: object;
   /** Optional timeout in milliseconds. */
   timeoutMs?: number;
   /** Custom AbortSignal if passed from upstream request. */
@@ -182,6 +183,7 @@ export const resolveRegistryMode = (
 export class ScriptRegistry {
   /** Published current-generation entries by identity key. */
   private cache = new Map<string, LoadedScriptModule>();
+  private ownedLoads = new WeakMap<object, { specifier: string; load: Promise<LoadedScriptModule> }>();
   /**
    * The single generation owner, shared with the dev resolve hook. Only
    * identities that were loaded, attempted, resolved by the hook, or
@@ -230,9 +232,23 @@ export class ScriptRegistry {
    * its caller (that request finishes on the generation it started with) but
    * is NOT published, so no later request can observe a superseded module.
    */
-  async load(specifier: string): Promise<LoadedScriptModule> {
+  async load(specifier: string, owner?: object): Promise<LoadedScriptModule> {
     const identity = resolveModuleIdentity(specifier);
     const { key } = identity;
+
+    if (owner && identity.kind === "data") {
+      const cached = this.ownedLoads.get(owner);
+      if (cached?.specifier === specifier) return cached.load;
+      const load = import(specifier).then(module => ({
+        filePath: identity.displayPath, key, url: specifier, module, version: 0,
+      }));
+      const state = { specifier, load };
+      this.ownedLoads.set(owner, state);
+      void load.catch(() => {
+        if (this.ownedLoads.get(owner) === state) this.ownedLoads.delete(owner);
+      });
+      return load;
+    }
 
     const published = this.cache.get(key);
     if (published) return published;
@@ -321,6 +337,7 @@ export class ScriptRegistry {
    */
   clear(): void {
     this.cache.clear();
+    this.ownedLoads = new WeakMap();
     this.graph.clear();
     this.lastAdvanced = new Set();
     _moduleKeyTestHooks.clearRealpathMemo();
@@ -374,8 +391,8 @@ export class ScriptRegistry {
       }
 
       // Race load with abort signal
-      const loadPromise = Promise.resolve(this.load(specifier));
-      loadPromise.catch(() => {});
+      const loadPromise = Promise.resolve(this.load(specifier, options.moduleOwner));
+      loadPromise.catch(() => { });
 
       const abortDuringLoadPromise = new Promise<never>((_, reject) => {
         if (controller.signal.aborted) {
@@ -393,7 +410,7 @@ export class ScriptRegistry {
         };
         controller.signal.addEventListener("abort", onAbortListener, { once: true });
       });
-      abortDuringLoadPromise.catch(() => {});
+      abortDuringLoadPromise.catch(() => { });
 
       const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as LoadedScriptModule;
 
@@ -426,7 +443,7 @@ export class ScriptRegistry {
       }
 
       // Observe rejection so late rejection after settlement never triggers unhandled-rejection
-      resultPromise.catch(() => {});
+      resultPromise.catch(() => { });
 
       let value: T;
       if (controller.signal.aborted) {
@@ -449,7 +466,7 @@ export class ScriptRegistry {
         };
         controller.signal.addEventListener("abort", onAbortListener, { once: true });
       });
-      abortPromise.catch(() => {});
+      abortPromise.catch(() => { });
 
       value = (await Promise.race([resultPromise, abortPromise])) as T;
       settled = true;

@@ -8,6 +8,44 @@ Bascik has two separate test suites: **unit tests** (Vitest) that verify individ
 
 The dedicated exec Playwright configurations use HTTP release gates rather than arbitrary delays to hold pre and parallel children. Real CLI build fixtures use temporary project directories and an event-driven artifact gate to prove that post sees compiled pages while parallel still runs. Both serial and worker builds must join parallel completion before success. Fixtures write generated artifacts only to `dist/`, and watch source inputs rather than generated files.
 
+## Module Retention Experiments
+
+`module-retention.integration.test.ts` runs bounded native-process experiments with changing-source and stable-source controls. It checks completed responses, framework-owned references, and strong heap retainer paths separately. Framework cache cleanup does not evict Node's ESM cache, and allocation samples alone do not prove reclamation. Like the profiling tests, a failed experiment retains its private report directory and prints the path; successful reports are removed.
+
+Run captures from the repository root in a new private directory outside the repository and all served or watched trees. This illustrative command retains a changing-source dev capture:
+
+```sh
+node --input-type=module -e '
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runRetentionExperiment } from "./pkg/src/lib/module-retention.test-helper.ts";
+const directory = await mkdtemp(join(tmpdir(), "bascik-retention-"));
+await runRetentionExperiment(directory, true, 60);
+console.log(directory);
+'
+```
+
+Use `false` for the changing-source argument to run the stable control with the same count. A fourth argument of `"http1"` or `"http2"` measures stable-source production requests without edits. Counts must be even and between 2 and 100. Production rounds are request rounds, not compilation generations.
+
+Only disposable subject processes receive GC and snapshot flags. Captures use external deadlines and fail on incomplete requests or publication. Reports include runtime versions, source hashes, checkpoints, and snapshot metadata. Existing report roots must be empty, user-owned, and mode `0700`; snapshots are mode `0600`. Test runs remove temporary artifacts, while explicit captures retain them privately.
+
+Interruption cancels the capture and terminates its owned POSIX process group with bounded graceful-close and force-kill deadlines. This cannot cover uncatchable parent termination or descendants that leave the group; Windows does not provide the POSIX group guarantee. See [Module Lifetime](/internals/server#module-lifetime) for runtime limitations.
+
+## Profiling Resource Boundaries
+
+The profiling workload validates response bytes, completion counts, process coverage, and decoded artifacts before accepting a capture. Run one tool at a time in a new, empty, user-owned directory with mode `0700`, outside the repository and every served or watched tree. For example, replace the illustrative private path below with a new directory:
+
+```sh
+yarn workspace @bascik/bascik profile:workload --tools bubbleprof --scenarios http1 --rounds 20 --report-dir /private/tmp/bascik-async-capture
+```
+
+Tool choices include `control`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `cpu`. Clinic datasets must decode and render successfully. Allocation samples must reference nodes in their captured tree; incomplete or unattributed captures fail and remain private. The load generator runs without profiler flags. Main-isolate captures do not establish worker or child-process CPU coverage. Worker CPU recording is rejected on Node v24.17.0/macOS because of a native loader lock stall; unprofiled worker execution and timelines remain available.
+
+`profile-resource-boundaries.test.ts` uses isolated native processes and explicit producer and consumer gates. Injected controls verify detection of live timers, open descriptors, serialized independent work, and unfinished streams. Actual boundary checks exercise script settlement, response backpressure and disconnect, child permits, source-cycle ordering, worker transfer, disk publication, and cancellation. Resource samples follow explicit cleanup and event-loop checkpoints. Async hooks track resources created after module setup, including unreferenced timers; supported platforms also inspect process-wide open descriptors. Closed file handles are not counted as open resources. These checks do not establish Promise reclamation or native allocator behavior.
+
+The standalone `pkg/bench/profile-boundaries.ts` entry point accepts a new private report directory and an optional `--allocation` flag. Allocation sampling covers the main script and source-cycle window and stops before worker execution. CPU time, elapsed wait, sampled allocation, and retained heap are separate measurements. Worker queue-to-entry and reply-to-receive timings include scheduling costs, and the controlled worker fixture is not a page-worker CPU profile. Use the separate module-retention experiments for snapshots and retainer paths. HeapProfiler request captures stop through the profiler's own writer after framework cleanup; they do not measure full server shutdown.
+
 ## Running Unit Tests
 
 Commands can be run per-package or across the workspace from the repository root:
@@ -250,6 +288,28 @@ describe("prefixElementAttribute", () => {
 > **Important.** Always import the module under test *after* calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
 ## Benchmarks
+
+### Runtime Profiling
+
+The bounded profiling runner is separate from Vitest throughput benchmarks. Run it from the repository root with a new, empty, absolute private report directory. The path below is illustrative; choose a private directory outside the repository and any served, watched, or cleaned output tree.
+
+```sh
+yarn workspace @bascik/bascik profile:workload --report-dir /private/tmp/bascik-profile-run
+```
+
+The default matrix runs unprofiled controls, Clinic Doctor, top-level 0x, and Node CPU sampling across HTTP/1.1, HTTP/2 with TLS, static file serving, live development, serial builds, and worker builds. Use `--tools control,cpu`, `--scenarios http1,workers`, or `--rounds 20` to select a bounded subset. Rounds must be between 1 and 100. Every capture command has a 110-second deadline, leaving cleanup time before the worker profiling test's 120-second limit; failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run. On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome: remaining descendants receive termination, get 500ms to exit, are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
+
+Clinic commands (collection, visualization, and help) run with Clinic's supported `NO_INSIGHT` opt-out set in the child environment only. Without it, a fresh non-interactive environment never starts collection and exits zero with no dataset. The runner never writes or reads the user's saved consent, and the fresh-environment unit tests use a disposable `HOME` and XDG directories so an existing consent file cannot mask a false start.
+
+HTTP/2 harness clients verify TLS normally. `pkg/bench/profile-tls.ts` issues a private fixture certificate authority and a server certificate whose subject alternative name matches the connection host; the fixture config passes the key and certificate through `http.tls`, and clients trust only that fixture CA. Wrong-CA and hostname-mismatch controls confirm that verification is active rather than bypassed. Existing report roots must belong to the current user and have mode `0700`; unsafe roots are rejected before report writes. There are no automatic retries.
+
+The fixtures check byte-identical asset delivery, API responses, complete streamed responses, source-edit publication, and serial/worker build output. Static hosting checks file delivery only. Cold and warm phases describe application-cache state, not physical disk-cache state.
+
+Manifests record runtime/profiler versions, hardware, source hashes, configuration, commands, task counts, response hashes, phase timings, memory, and artifact hashes. Keep manifests and raw captures private: they can contain source code and filesystem paths. Profiler and target must use the same stable project working directory.
+
+CPU captures append owner-only event journals as worker dispatch, listener entry, inspector operations, artifact writes, replies, and termination occur. Build and shutdown markers do not depend on a successful final result. At 90 seconds, responsive runner and subject event loops record resource snapshots before the capture deadline. Profiling unit tests retain failed report directories and print their private paths; successful test reports are removed. Event journals diagnose incomplete work but do not replace the required task counts or CPU attribution checks.
+
+Compare controls with profiled runs using completed useful work and validated response bytes. Consult separate startup and workload timings before attributing CPU samples. Worker and build-script child profiles are labeled independently; a main-isolate profile cannot establish their CPU cost. Native helpers and libuv threads require separate low-level profiling. Inclusive samples describe ancestry, while self samples identify the sampled leaf. Instrumentation adds overhead, and a finite fixture does not establish a universal memory or latency budget.
 
 Performance benchmarks live in `pkg/bench/` and use Vitest's built-in `bench` API. They measure the transpilation pipeline on fixed, repeatable inputs:
 
