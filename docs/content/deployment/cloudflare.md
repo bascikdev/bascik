@@ -162,6 +162,20 @@ Every `Set-Cookie` header an API handler returns is preserved individually.
 
 Fetching your static HTML from a second public origin and having a Worker rewrite it costs an extra round trip per request, reintroduces recursion and origin-bypass risks, carries stale compressed headers across the rewrite, and creates two independently versioned deployments that can drift. A Worker also cannot modify HTML the browser has already received from another origin without client-side code. One versioned upload that contains both the assets and the function avoids all of it, which is why the build emits a single folder.
 
+## How this compares to other full-stack frameworks
+
+Modern full-stack web frameworks such as Next.js, Astro, SvelteKit, and Nuxt also offer Cloudflare deployment targets that divide traffic between static CDN assets and edge workers. Bascik adopts the same unified CDN-plus-worker deployment topology, but with a different client runtime footprint:
+
+| Capability | Bascik (`@bascik/adapter-cloudflare`) | Astro (`@astrojs/cloudflare`) | Next.js (`@opennextjs/cloudflare` / Vercel Edge) | SvelteKit / Nuxt / Remix |
+| :--- | :--- | :--- | :--- | :--- |
+| **Unified CDN + Worker output** | Yes (`_routes.json` / `wrangler.jsonc`) | Yes (`_routes.json`) | Yes (via OpenNext or Vercel) | Yes (`_routes.json`) |
+| **Client-side framework runtime** | **Zero JS** (vanilla HTML/CSS/JS only) | Opt-in per island (`client:*`) | Required (React runtime + hydration) | Required (Svelte/Vue/React) |
+| **Client hydration overhead** | **0 KB** | 0 KB (unless using interactive islands) | 70–120+ KB base | 20–50+ KB base |
+| **Streaming mechanism** | Native HTTP streaming in document order | Native HTTP streaming | React Server Components (RSC) streaming | Framework SSR streaming |
+| **Edge Worker bundle content** | Compiled HTML templates + server/stream jobs | Component SSR render functions | React SSR runtime + compiled routes | Framework SSR runtime + virtual DOM |
+
+With Bascik, dynamic edge execution does not force a client-side JavaScript framework or hydration layer onto the visitor. The Worker executes data-fetching scripts at the edge, populates server slots, streams the document progressively, and finishes with zero client hydration overhead.
+
 ## Rollback and diagnostics
 
 Every build has a release id in `build-info.json`. Cloudflare Pages keeps previous deployments; rolling back is a dashboard action or a redeploy of the earlier commit. Errors thrown by handlers are logged to the Worker's console (visible in `wrangler tail` or the dashboard) and never reach the client, which sees a generic `500`.
