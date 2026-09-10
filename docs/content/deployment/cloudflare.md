@@ -1,13 +1,22 @@
 # Cloudflare Adapter
 
-Deploy a Bascik site to Cloudflare Pages or Workers so a CDN serves your static files and a Worker runs your server scripts, stream scripts, and API routes per request, with no Bascik server process to operate.
+Deploy a Bascik site to Cloudflare Pages or Workers so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring.
+
+## How it works: CDN-first with Edge Workers
+
+The Cloudflare adapter eliminates the need to run, configure, or pay for a separate origin server for dynamic content:
+
+- **Single unified deployment:** You do not need to host dynamic pages separately or wire up proxy rules between static storage and application servers. A single `bascik --build --target cloudflare-pages` command packages both static assets and edge execution logic into one deployment bundle.
+- **Static pages and assets come directly from the CDN:** Pure static HTML pages, CSS, client JavaScript, images, and fonts are served directly by Cloudflare's global edge cache. The Worker is never invoked for these paths, eliminating execution costs and compute latency.
+- **Dynamic pages execute inside the Worker:** Pages that contain `<script data-bascik-server>` or `<script data-bascik-stream>` have their compiled HTML templates baked directly into the generated Worker bundle. When a visitor requests a dynamic page, the Worker invokes the server scripts, resolves data from bindings (such as KV or D1) or external APIs, interpolates the values into the page template, and streams the finished HTML to the browser.
+- **Zero client-side hydration or API boilerplate:** There is no client-side framework, no hydration step, and no need to manually author `/api/*` endpoints to hydrate client components. The browser receives standard HTML rendered directly from the edge Worker.
 
 ## What you get
 
 Build once on Node with `bascik --build --target cloudflare-pages`. The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
 
 - a **public tree** to upload: every static file plus the generated Worker and its routing table;
-- **private request-time code** compiled into that Worker: each `data-bascik-server` and `data-bascik-stream` job, every API route, and the page templates those jobs render into.
+- **private request-time code** compiled into that Worker: each `data-bascik-server` and `data-bascik-stream` job, every API route, and the precompiled page templates those jobs render into.
 
 At request time the flow is:
 
@@ -15,7 +24,7 @@ At request time the flow is:
 2. Requests for a page with request-time scripts, or for any `/api/` path, invoke the Worker.
 3. The Worker resolves every `server` job, commits headers, and streams the document: static HTML first, then each `stream` fragment as it resolves, in source order.
 
-No client-side JavaScript is added, nothing hydrates, and there is no per-fragment HTTP endpoint. A page with stream scripts renders progressively in a browser with JavaScript disabled.
+No client-side JavaScript is added, nothing hydrates, and there is no per-fragment HTTP endpoint. A page with stream scripts renders progressively in a browser even with JavaScript disabled.
 
 ## Prerequisites
 
@@ -124,7 +133,9 @@ export const GET = async (
 | `data-bascik-stream` pages | No | Supported | Supported | Manual porting |
 | API routes | No | Supported | Supported | Manual porting |
 
-"Manual porting" means the handler function is reusable because it takes a standard `Request`, but you write the platform wrapper, the route table, and the method dispatch yourself. Bascik generates those only for the targets in this table. Additional targets are additive: the same host-neutral execution core runs inside the Cloudflare Worker and the Node server today.
+"Manual porting" means the handler function is reusable because it takes a standard `Request`, but you write the platform wrapper, the route table, and the method dispatch yourself. Bascik generates those only for the targets in this table.
+
+Cloudflare Pages and Workers are Bascik's initial official serverless adapters. Future official adapters will expand out-of-the-box platform targets, and developers can author and publish custom adapters for other hosts (such as Fastly, AWS, or Netlify) using the `@bascik/bascik/adapter` contract. See [Custom Adapters](/deployment/custom-adapters) for authoring details.
 
 ## Limits that come with the platform
 
