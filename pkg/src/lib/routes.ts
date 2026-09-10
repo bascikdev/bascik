@@ -17,6 +17,10 @@ import {
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
+import { extractRouteParamNames, isDynamicRoute } from "./route-matching.ts";
+
+export { extractRouteParamNames, isDynamicRoute };
+
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
 const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
 
@@ -43,18 +47,6 @@ const ROUTES_SERVER_CONFLICT_RE = new RegExp(
   "i",
 );
 
-/** True when any path segment is a [param] placeholder. */
-export const isDynamicRoute = (pagePath: string): boolean => {
-  DYNAMIC_ROUTE_RE.lastIndex = 0;
-  return DYNAMIC_ROUTE_RE.test(pagePath);
-};
-
-/** Ordered param names from the path, e.g. ['category', 'slug']. */
-export const extractRouteParamNames = (pagePath: string): string[] => {
-  const matches = pagePath.match(DYNAMIC_ROUTE_RE);
-  if (!matches) return [];
-  return matches.map((m) => m.slice(1, -1));
-};
 
 /** Substitute params into the template path to get the source-relative output path. */
 export const resolveRoutePath = (

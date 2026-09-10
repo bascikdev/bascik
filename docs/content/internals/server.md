@@ -188,6 +188,26 @@ When a request arrives:
 3. **Backpressure and disconnect handling:** Chunk writes check the return value of `res.write()`. If a write returns `false`, production pauses until the underlying socket emits `drain`. Because job dispatch is tied to the write cursor, a stalled socket also stops new `stream` jobs from starting, so unwritten script output held in heap per connection stays bounded by the lookahead window rather than growing with the number of stream tags on the page. If the client disconnects before streaming completes (`close` event), all pending script jobs are aborted immediately via their passed `AbortSignal` (`{ signal }`), and `res.end()` is never called on a destroyed stream.
 4. **Post-commit errors:** Because response headers are already committed before `stream` output begins, a runtime error in a `data-bascik-stream` script cannot return an HTTP 500. Instead, the error is logged at the configured severity (`scripts.onServerScriptError`), an empty string is emitted for that slot, and the rest of the document streams to completion. The author's placeholder markup remains in the DOM.
 
+#### Host-neutral execution core (`request-execution.ts`)
+
+The scheduler described above is not Node code. `pkg/src/lib/request-execution.ts` implements buffered composition (`composeBufferedResponse`), the two-phase streamer with its bounded lookahead (`streamComposedResponse`), deadline-bounded invocation (`invokeWithDeadline`), and API method dispatch (`dispatchApiHandler`) against Web platform primitives only: `Uint8Array`, `ReadableStream`, `AbortController`, `Request`, and `Response`. It never imports `node:*`, the config, the filesystem, or the module registry; `serverless-contract.test.ts` bundles it for `platform: "browser"` and fails on any Node resolution error.
+
+Hosts adapt onto it:
+
+- The Node server (`server-scripts.ts`, `api-runtime.ts`) supplies a `ScriptJobRunner` that resolves each job through `ScriptRegistry`, a `StreamWriter` over the backpressure-aware response sink, and a `classifyError` hook that maps Node transport failures (`PayloadTooLargeError` to 413, socket resets to 499) before the generic 500. The pure route matcher lives in `route-matching.ts`; `api-routes.ts` re-exports it and adds only the filesystem scanner.
+- The Cloudflare adapter (`pkg/src/adapters/cloudflare-runtime.ts`) supplies a runner over the compiled module graph, returns `streamComposedResponse(...).toReadableStream()` as a `Response` body before the body completes (the stream is demand-gated, so returning early is required, not optional), and maps `env` and `ctx.waitUntil` onto `context.platform`.
+
+Every handler receives `context.platform` (`{ name: "node" }` on the built-in server; `{ name: "cloudflare", env, waitUntil }` in a Worker). It is additive: a handler that never reads it runs unchanged on both.
+
+#### Serverless adapter contract and runtime exports
+
+`bascik --build --target <name>` orchestrates hosting adapter builds through a typed contract (`HostingAdapter` in `@bascik/bascik/adapter`). Core exposes two dedicated package exports:
+
+- `@bascik/bascik/runtime`: the host-neutral request execution engine (`request-execution.ts`, `web-response.ts`, `route-matching.ts`). It is the same code the built-in Node server runs, bundled with zero Node builtins.
+- `@bascik/bascik/adapter`: the adapter contract (`SiteGraph`, `AdapterBuildContext`, `AdapterBuildResult`, `defineAdapter`, and `readSiteGraph`).
+
+Core reads the finalized `dist/` output and sidecar into a `SiteGraph`, stages inline scripts with module specifiers rewritten, resolves the target to an adapter package or local module, and calls `adapter.build(context)`. Core validates that all outputs stay within `dist/.bascik/<target>/`, writes `build-info.json`, and removes staging files. `--target` is rejected with `--only` because a deployment bundle must describe one consistent release.
+
 #### Why stream pages skip ETag, Brotli, and `content-length`
 
 HTTP chunked streaming delivers bytes incrementally as they are produced. Calculating a `Content-Length` or `ETag` requires buffering the entire response in memory first, which defeats the purpose of early flushing. Similarly, max-quality Brotli compression (`BROTLI_MAX_QUALITY = 11`) requires large sliding lookahead buffers that prevent immediate chunk delivery. Consequently, pages with active `stream` scripts omit `Content-Length`, `ETag`, and Brotli `Content-Encoding` headers and emit `Cache-Control: private, no-store`.
@@ -381,9 +401,12 @@ The server registers signal handlers for `SIGTERM` and `SIGINT`. Upon receiving 
 
 ## E2E Server Testing
 
-Server behavior is validated through Playwright E2E suites across four environment configurations:
+Server behavior is validated through Playwright E2E suites across five environment configurations:
 
 - `playwright.dev.config.ts`: Dev server (`bascik`) live reload, watchers, and boot page.
 - `playwright.server.config.ts`: Production server (`bascik --server`) over HTTP/1.1.
 - `playwright.server-http2.config.ts`: Production server over encrypted HTTP/2 (HTTPS).
 - `playwright.config.ts`: Static build output serving.
+- `playwright.cloudflare.config.ts`: The emitted Cloudflare Pages bundle running in local workerd (Miniflare) with the asset layer in front, including a paint-order test with JavaScript disabled.
+
+Request-level parity between the Node server and the Worker is covered by `src/lib/serverless-parity.integration.test.ts`, which serves one build both ways and compares pages, streams, APIs, methods, cookies, errors, and source leakage. Deliberate platform differences are enumerated in that test rather than excluded silently.

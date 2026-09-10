@@ -357,6 +357,7 @@ export const initBascikConfig = (
     host?: string;
     logLevel?: LogLevel;
     only?: string[];
+    target?: BascikConfigOptions["target"];
     allowInvalidConfig?: boolean;
   } = {},
   deps: ConfigValidationDeps = {},
@@ -477,6 +478,7 @@ export const initBascikConfig = (
     isBuild,
     isProdServer,
     ...(flags.only && flags.only.length > 0 ? { only: flags.only } : {}),
+    ...(flags.target ? { target: flags.target } : {}),
   };
 
   if (BascikConfig.pipeline?.exec) {
@@ -518,6 +520,7 @@ export const { BascikConfig } = initBascikConfig(
     host: envHost,
     logLevel: envLogLevel as LogLevel | undefined,
     only: cliDecision.flags.only,
+    target: cliDecision.flags.target,
     allowInvalidConfig: cliDecision.action === "check",
   },
 );

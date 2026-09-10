@@ -228,7 +228,7 @@ Use `data-bascik-server` when rendering HTML into the document flow. Use API rou
 - A server script must `export default` a function. A script without one is a located build error naming the file and line.
 - Scripts run on **every request** and are **never cached:** the output is always fresh.
 - During `bascik --build`, server script tags are stripped and stored in `dist/.bascik/server-scripts.json`, leaving inert `<script type="text/bascik-server">` placeholders in the static HTML.
-- Execution happens when served by `bascik` (dev server) or `bascik --server` (production server).
+- Execution happens when served by `bascik` (dev server), `bascik --server` (production server), or a generated serverless function built with a `--target` such as Cloudflare Pages (see [Deployment](/deployment#serverless-hosting)). A static-only host leaves the placeholders inert.
 - On error, `scripts.onServerScriptError` controls behavior: `'error'` responds with HTTP 500, while `'warn'` logs to stderr and replaces the tag with an empty string. Stack traces remap to your original source file line and column.
 - Directives (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-routes`) are mutually exclusive and cannot be combined on the same tag.
 

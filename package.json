@@ -5,10 +5,14 @@
     "pkg",
     "create",
     "docs",
-    "extensions/vscode-bascik"
+    "extensions/vscode-bascik",
+    "adapters/cloudflare"
   ],
   "engines": {
     "node": ">=22.18.0"
+  },
+  "resolutions": {
+    "miniflare/undici": "7.29.0"
   },
   "scripts": {
     "pkg:build": "yarn workspace @bascik/bascik build",
@@ -37,6 +41,13 @@
     "create:test": "yarn workspace create-bascik test",
     "create:test:ci": "yarn workspace create-bascik test:ci",
     "create:update-coverage": "yarn create:coverage",
+    "adapter:cf:build": "yarn workspace @bascik/adapter-cloudflare build",
+    "adapter:cf:prepack": "yarn workspace @bascik/adapter-cloudflare prepack",
+    "adapter:cf:typecheck": "yarn workspace @bascik/adapter-cloudflare typecheck",
+    "adapter:cf:unit": "yarn workspace @bascik/adapter-cloudflare unit",
+    "adapter:cf:test:ci": "yarn workspace @bascik/adapter-cloudflare test:ci",
+    "adapter:cf:e2e": "yarn workspace @bascik/adapter-cloudflare e2e",
+    "adapter:cf:fixture:build": "yarn pkg:build && yarn adapter:cf:build && cd adapters/cloudflare/e2e/fixture && node ../../../../pkg/dist/index.js --build --target cloudflare-pages",
     "docs:build": "yarn workspace bascik-docs build",
     "docs:dev": "yarn workspace bascik-docs dev",
     "docs:preview": "yarn workspace bascik-docs preview",
@@ -63,9 +74,9 @@
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
     "check:all": "yarn check:spelling && yarn check:standards",
-    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck",
-    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit",
-    "e2e:all": "yarn pkg:e2e:all && yarn docs:e2e",
+    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck",
+    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit",
+    "e2e:all": "yarn pkg:e2e:all && yarn docs:e2e && yarn adapter:cf:e2e",
     "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage",
     "cover:all": "yarn coverage:all",
     "update-coverage:all": "yarn coverage:all",

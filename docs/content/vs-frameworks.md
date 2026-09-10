@@ -89,6 +89,17 @@ Bascik overlaps with them at the output level, all of these tools can ship plain
 
 The browser can parse Bascik's source without needing to understand a new runtime language: custom tags are valid custom-element-shaped HTML names, and build instructions use the web platform's `data-*` convention. Bascik resolves both before deployment. By contrast, runtime directives such as `hx-get`, `x-data`, and `v-scope` only gain behavior after their library's JavaScript loads.
 
+## Dynamic Edge Deployments
+
+Modern frameworks like Next.js, Astro, and SvelteKit often provide adapters for edge serverless platforms like Cloudflare Pages or Workers. They achieve dynamic behavior by packaging serverless functions alongside static assets.
+
+Bascik supports this same unified edge deployment model via deployment adapters (such as `@bascik/adapter-cloudflare` or [custom adapters](/deployment/custom-adapters)). Running `bascik --build --target cloudflare-pages` partitions your application into:
+
+1. **CDN static assets:** pure static HTML pages, CSS, and client-side assets served directly by Cloudflare's edge cache with zero compute invocation;
+2. **Edge worker scripts:** pages containing `<script data-bascik-server>` or `<script data-bascik-stream>` compile their HTML templates and request-time code directly into a single worker bundle that executes at the edge.
+
+The crucial difference lies in the client footprint. Frameworks like Next.js or SvelteKit require client-side runtimes to hydrate components, manage routing, and handle DOM reconciliations. Bascik streams clean, final HTML from the edge worker directly to the browser. Visitors receive live dynamic data and progressive rendering with zero client hydration overhead.
+
 Most of what people build, content sites, marketing pages, docs portals, company blogs, landing pages, does not require a framework runtime in the browser. Knowing what each tool is optimized for is the best basis for choosing. Bascik fills the gap they leave open: component reuse and predictable build output, without a runtime or a new programming model to adopt. You write vanilla HTML, CSS, and JavaScript, get the organizational benefits you would expect from a framework, and ship a dist folder you can fully audit. For the parts of a project that do need client-side behavior, Bascik composes cleanly with HTMX or Alpine.
 
 > **Combining tools.** A common pattern is Bascik for layout components (nav, footer, hero sections) and HTMX or Alpine for specific interactive elements. Each tool does what it is best at, and neither one intrudes on the other's domain.

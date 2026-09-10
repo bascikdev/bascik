@@ -1421,7 +1421,7 @@ describe("onError and server resiliency edge cases", () => {
     expect(mockExecute).toHaveBeenCalledWith(
       "<script data-bascik-server>1</script>",
       expect.any(Request),
-      { remoteIp: "127.0.0.1" },
+      { remoteIp: "127.0.0.1", platform: { name: "node" } },
       30000,
       "/abs/pages/about.html",
     );

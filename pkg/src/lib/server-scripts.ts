@@ -30,6 +30,14 @@ import { stripAnsiEscapeCodes } from "./script-runner.ts";
 import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers, findModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
+  composeBufferedResponse,
+  streamComposedResponse,
+  STREAM_LOOKAHEAD,
+  type ExecutionPlan,
+  type PlatformContext,
+  type ScriptJobRunner,
+} from "./request-execution.ts";
+import {
   ATTR,
   BUILD_FLAG,
   ROUTES_FLAG,
@@ -46,7 +54,11 @@ import type { ServerScriptMode } from "./server-sidecar.ts";
 export interface ServerScriptContext {
   /** The remote IP address of the client. */
   remoteIp: string;
+  /** Host capabilities (prompt 131). The Node server passes `{ name: "node" }`. */
+  platform?: PlatformContext;
 }
+
+export { STREAM_LOOKAHEAD };
 
 // Match <script data-bascik-server …> … </script> or <script type="text/bascik-server" …> … </script>.
 // The attribute is matched as a whole name (SERVER_ATTR_NAME) so
@@ -357,6 +369,34 @@ export const runServerScriptJob = async (
 };
 
 /**
+ * Bridge a Node plan onto the portable core (prompt 132). Script jobs are
+ * addressed by segment index; the runner closes over the request so the core
+ * never sees ScriptRegistry, paths, or config.
+ */
+const toExecution = (
+  plan: ServerScriptPlan,
+  request: Request,
+  context: ServerScriptContext,
+  timeoutMs: number,
+  filePath: string | undefined,
+  signal?: AbortSignal,
+): { execution: ExecutionPlan; run: ScriptJobRunner } => {
+  const execution: ExecutionPlan = {
+    segments: plan.segments.map((segment, i) =>
+      segment.kind === "static"
+        ? { kind: "static", bytes: segment.bytes }
+        : { kind: "script", mode: segment.mode, id: String(i) },
+    ),
+    firstStreamIndex: plan.firstStreamIndex,
+  };
+  const run: ScriptJobRunner = (id) => {
+    const segment = plan.segments[Number(id)] as ScriptSegment;
+    return runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal);
+  };
+  return { execution, run };
+};
+
+/**
  * Buffered execution of a plan: every job runs (concurrently), then outputs are
  * joined with the static segments into one Buffer. This is the byte-for-byte
  * behavior every `data-bascik-server` page has always had.
@@ -368,16 +408,9 @@ export const executeServerScriptPlan = async (
   timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   filePath?: string,
 ): Promise<Buffer> => {
-  const outputs = await Promise.all(
-    plan.segments.map((segment) =>
-      segment.kind === "script" ? runServerScriptJob(segment.job, request, context, timeoutMs, filePath) : undefined,
-    ),
-  );
-  return Buffer.concat(
-    plan.segments.map((segment, i) =>
-      segment.kind === "static" ? segment.bytes : Buffer.from(outputs[i] ?? "", "utf8"),
-    ),
-  );
+  const { execution, run } = toExecution(plan, request, context, timeoutMs, filePath);
+  const bytes = await composeBufferedResponse(execution, run);
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 };
 
 /**
@@ -397,13 +430,6 @@ export const executeServerScripts = async (
   if (plan.segments.every((segment) => segment.kind === "static")) return html;
   return (await executeServerScriptPlan(plan, request, context, timeoutMs, filePath)).toString("utf8");
 };
-
-/**
- * How many `stream` jobs beyond the one the write cursor is waiting on may be
- * in flight at once (prompt 84). One keeps a fast consumer overlapping
- * adjacent jobs while a stalled socket caps unwritten output held in heap.
- */
-export const STREAM_LOOKAHEAD = 1;
 
 /** Where streamed bytes go. Prompt 66 gives this backpressure; here it is a plain write. */
 export interface ResponseSink {
@@ -437,6 +463,10 @@ export interface ServerScriptStreamer {
  * comes. A `stream` job that throws under `"error"` cannot become a 500
  * (headers are sent): it is logged at error severity and written as empty.
  * If `signal` aborts, the walk stops and the sink is not called again.
+ *
+ * The scheduler itself is the portable core in `request-execution.ts`; this
+ * function only adapts the Node plan, the ScriptRegistry runner, and the
+ * Buffer sink onto it.
  */
 export const streamServerScripts = (
   plan: ServerScriptPlan,
@@ -447,78 +477,19 @@ export const streamServerScripts = (
   sink: ResponseSink,
   signal?: AbortSignal,
 ): ServerScriptStreamer => {
-  const serverOutputs = new Map<number, Promise<string>>();
-  for (let i = 0; i < plan.segments.length; i++) {
-    const segment = plan.segments[i];
-    if (segment.kind === "script" && segment.mode === "server") {
-      serverOutputs.set(i, runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal));
-    }
-  }
-  const ready = Promise.all(serverOutputs.values()).then(() => undefined);
-
-  let releaseCommit!: () => void;
-  const committed = new Promise<void>((resolveCommit) => {
-    releaseCommit = resolveCommit;
-  });
-
-  const runStreamJob = async (segment: ScriptSegment): Promise<string> => {
-    try {
-      return await runServerScriptJob(segment.job, request, context, timeoutMs, filePath, signal);
-    } catch (err) {
-      if (signal?.aborted) return "";
+  const { execution, run } = toExecution(plan, request, context, timeoutMs, filePath, signal);
+  const streamer = streamComposedResponse(
+    execution,
+    run,
+    {
+      write: (chunk) => sink.write(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)),
+    },
+    {
+      signal,
       // Status is already committed; this can never be a 500. Same message
       // shape `warn` uses, at error severity.
-      console.error(err instanceof Error ? err.message : String(err));
-      return "";
-    }
-  };
-
-  const done = (async () => {
-    // A phase-one failure is reported through `ready`; `done` then resolves
-    // quietly so a caller that never commits is not left with a second,
-    // unhandled rejection.
-    try {
-      await ready;
-    } catch {
-      return;
-    }
-    await committed;
-    // Bounded dispatch (prompt 84): a stream job starts only when the write
-    // cursor has reached it or it is within STREAM_LOOKAHEAD stream jobs of
-    // the next one due. `sink.write` awaits `drain`, so a stalled socket
-    // stops the cursor and therefore stops dispatch; resolved outputs never
-    // pile up in heap beyond the window.
-    const streamIndices: number[] = [];
-    for (let i = 0; i < plan.segments.length; i++) {
-      const segment = plan.segments[i];
-      if (segment.kind === "script" && segment.mode === "stream") streamIndices.push(i);
-    }
-    const streamOutputs = new Map<number, Promise<string>>();
-    let nextDue = 0; // position in streamIndices of the first job at or after the cursor
-    let nextToDispatch = 0; // position in streamIndices of the first job not yet started
-    const dispatchWindow = (cursor: number): void => {
-      while (nextDue < streamIndices.length && streamIndices[nextDue] < cursor) nextDue++;
-      const limit = Math.min(streamIndices.length, nextDue + STREAM_LOOKAHEAD + 1);
-      while (nextToDispatch < limit) {
-        if (signal?.aborted) return;
-        const index = streamIndices[nextToDispatch++];
-        streamOutputs.set(index, runStreamJob(plan.segments[index] as ScriptSegment));
-      }
-    };
-
-    for (let i = 0; i < plan.segments.length; i++) {
-      if (signal?.aborted) return;
-      dispatchWindow(i);
-      const segment = plan.segments[i];
-      if (segment.kind === "static") {
-        await sink.write(segment.bytes);
-        continue;
-      }
-      const output = await (segment.mode === "server" ? serverOutputs.get(i)! : streamOutputs.get(i)!);
-      if (signal?.aborted) return;
-      if (output) await sink.write(Buffer.from(output, "utf8"));
-    }
-  })();
-
-  return { ready, commit: releaseCommit, done };
+      onStreamError: (err) => console.error(err instanceof Error ? err.message : String(err)),
+    },
+  );
+  return { ready: streamer.ready, commit: streamer.commit, done: streamer.done };
 };
