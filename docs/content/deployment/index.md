@@ -1,10 +1,71 @@
 # Overview
 
-Bascik's build output is a standard folder of static HTML, CSS, and JavaScript files. `bascik --build` writes everything to `dist/`, and that folder can be served by any static host or CDN without additional configuration.
+Deploying a Bascik site is fast and flexible. Because Bascik compiles your components, styles, and scripts into standard vanilla HTML, CSS, and client JavaScript in `dist/`, you can host your site anywhere: from zero-configuration static hosts and global CDNs to edge serverless platforms and dedicated Node servers.
 
-Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
+## Choosing Where to Deploy
 
-Every full dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
+Most websites built with Bascik fall into one of three deployment models:
+
+### 1. Static Hosting (Most Common)
+
+If your site is a marketing page, blog, documentation site, portfolio, or uses build-time scripts (`data-bascik-build`) to fetch data, **static hosting is all you need**.
+
+- **How it works:** Run `bascik --build` to produce `dist/` and upload it to any host or CDN.
+- **Popular hosts:** Cloudflare Pages, GitHub Pages, Netlify, Vercel, AWS S3 / CloudFront, and traditional web servers (NGINX, Caddy, Apache).
+- **Zero runtime maintenance:** No Node.js process to keep alive in production, zero compute charges, and instant global caching.
+
+> **Get Started:** Follow our step-by-step, hand-holding [Static Hosting Guide](/deployment/static-hosting) to deploy your site to Cloudflare Pages, GitHub Pages, Netlify, and more in minutes.
+
+### 2. Serverless & Edge Adapters (Cloudflare Pages & Workers)
+
+If your site uses request-time server scripts (`data-bascik-server`), progressive HTML streams (`data-bascik-stream`), or edge API routes (`src/api/`), you can deploy to edge platforms without managing a dedicated server.
+
+- **How it works:** Running `bascik --build --target cloudflare-pages` compiles static assets for the CDN while packaging your server scripts and API routes into an edge Worker automatically.
+- **Benefits:** Global edge execution, zero origin servers to maintain, and automatic streaming.
+
+> **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, Wrangler configuration, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
+
+### 3. Node.js Production Server (`bascik --server`)
+
+If you prefer self-hosting on a VPS, Docker container, or cloud virtual machine, Bascik includes a built-in production HTTP/1.1 and HTTP/2 server.
+
+- **How it works:** Run `bascik --build` followed by `bascik --server`.
+- **Capabilities:** High-throughput HTTP/2, automatic Brotli and Gzip compression, health-check probes, and zero-downtime draining.
+
+> **Read the Guide:** See [Production Server](/production-server) and [Server Scripts](/server-scripts) for configuration details.
+
+---
+
+## Static hosting
+
+For most Bascik sites, `dist/` is the deployable artifact. You only need a static host when nothing on the site runs at request time: no `data-bascik-server` scripts, no `data-bascik-stream` scripts, and no API route files in `src/api/`. Each of those needs something to execute code per request, either the built-in Node server or a [serverless target](#serverless-hosting).
+
+Every major platform follows the same pattern:
+
+1. Run `bascik --build` to produce `dist/`
+2. Configure the host to deploy from the `dist/` folder
+3. Point the publish directory at `dist/`
+
+For step-by-step walkthroughs across popular platforms, see the dedicated [Static Hosting](/deployment/static-hosting) guide.
+
+## Serverless hosting
+
+Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
+
+Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See [Cloudflare Adapter](/deployment/cloudflare) for the tested recipe, support matrix, and provider limits, or read [Custom Adapters](/deployment/custom-adapters) to learn how to author custom deployment adapters.
+
+## Using the production server
+
+If your site uses `data-bascik-server` scripts for per-request dynamic content, you need infrastructure that can execute Node.js alongside the built files. The built-in production server handles this without any additional framework.
+
+```sh
+bascik --build   # compile to dist/
+bascik --server   # start the HTTP server; runs server scripts per request
+```
+
+See [Production Server](/production-server) for full documentation on server configuration and [Server Scripts](/server-scripts) for the request context API.
+
+---
 
 ## Per-environment values: the site URL
 
@@ -26,6 +87,10 @@ Running `bascik --build` produces:
 - **Static assets**: eligible images, fonts, downloads, and other files from `src/pages/`, preserving their relative paths
 
 The output uses root-relative paths (e.g. `/css/styles.css`). Files must be served from an HTTP server; opening them directly with `file://` will break asset loading.
+
+Builds are reproducible and deterministic: identical source inputs always produce byte-identical output across repeated runs and machines. This makes it straightforward to diff `dist/` between builds or verify deployed artifacts against the exact commit that produced them.
+
+Every full dev or build run cleans `directory.out` before pre-phase lifecycle scripts run. The output therefore reflects the current source tree, without pages or assets left behind by earlier runs. Pre-phase scripts can still generate files in the output directory because cleaning finishes before those scripts start. `bascik --server` only reads an existing build and never cleans it. Targeted builds (`bascik --build --only <glob>`) also skip cleaning so existing pages survive when rebuilding a small subset.
 
 ### Consuming the build manifest
 
@@ -103,6 +168,25 @@ npx http-server dist
 
 Then open `http://localhost:8080` in your browser to inspect your production site.
 
+### Subdirectory deploys
+
+Set `base` when the site is published at a path such as `https://example.com/docs/` instead of the domain root. GitHub Pages project sites are a common example: a repository named `my-site` is normally published at `https://account.github.io/my-site/`.
+
+```ts
+// bascik.config.ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  base: '/my-site/',
+});
+```
+
+Bascik normalizes the leading and trailing slash, rewrites root-relative HTML, CSS, and web app manifest URLs during the build, and serves pages and static assets below the same prefix in development and with `bascik --server`. Generated sitemap, robots, and canonical URLs compose the site URL, base, and page path in that order.
+
+Requests outside the configured prefix return `404 Not Found`. With `base: '/my-site/'`, request `/my-site/about`, not `/about`. This strict behavior matches a static host and catches incorrect links during local preview. Live reload also connects through the prefix automatically.
+
+A custom domain mapped to the project site usually serves it from `/`, so leave the default `base: '/'` in that deployment shape.
+
 ### Reverse proxy and CDN deployments (`trustProxy`)
 
 When deploying `bascik --server` behind a CDN, load balancer, or reverse proxy (such as Cloudflare, AWS CloudFront/ALB, or NGINX), set `http.trustProxy: true` in `bascik.config.ts` (or under `export const server`):
@@ -132,89 +216,3 @@ Configure your container orchestrator (e.g. Kubernetes, AWS ECS) or load balance
 - **Health check path:** `/_health`
 - **Shutdown signal:** `SIGTERM`
 - **Deregistration delay:** Match or exceed `http.timeouts.drain` (default `5000` ms) so the load balancer stops routing new traffic before the process exits.
-
-## Static hosting
-
-For most Bascik sites, `dist/` is the deployable artifact. You only need a static host when nothing on the site runs at request time: no `data-bascik-server` scripts, no `data-bascik-stream` scripts, and no API route files in `src/api/`. Each of those needs something to execute code per request, either the built-in Node server or a [serverless target](#serverless-hosting).
-
-Every major platform follows the same pattern:
-
-1. Run `bascik --build` to produce `dist/`
-2. Configure the host to deploy from the `dist/` folder
-3. Point the publish directory at `dist/`
-
-That covers GitHub Pages, Netlify, Cloudflare Pages, AWS S3, Vercel, and any other static host. Refer to your hosting provider's documentation for the exact steps. Because the output is vanilla HTML, CSS, and JS, it follows the same conventions as Vite, Astro, and other tools, so guides for those tools are largely applicable.
-
-### Tips that apply everywhere
-
-**Custom 404 page.** Name your page `src/pages/404.html`. After building, `dist/404.html` is the standard location for custom 404 pages recognized by GitHub Pages, Netlify, Cloudflare Pages, and Vercel.
-
-**Root-relative paths.** The default `base: '/'` targets the domain root. Set `base` when the host mounts the site below the root.
-
-**Build command.** If your host runs a build command for you, use `npx bascik --build` or `bascik --build` (if installed as a dev dependency). Set the output directory to `dist/`.
-
-**No runtime required.** Bascik does not need Node.js at serve time for static sites. Any CDN or file server that can serve HTML files is sufficient.
-
-**Caching on a CDN.** For immutable, far-future caching of images and fonts, see [Asset Fingerprinting](/how-to/asset-fingerprinting). For most sites the built-in content-hash ETags plus `http.cacheControl` are enough, with no build step.
-
-### GitHub Actions example
-
-A minimal workflow for building and uploading to any static host:
-
-```yaml
-name: Build
-on:
-  push:
-    branches: [main]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-      - run: npm ci
-      - run: npx bascik --build
-        env:
-          BASCIK_SITE_URL: https://example.com
-      # Upload dist/ to your host here
-```
-
-`dist/` is the artifact to upload or deploy.
-
-### Subdirectory deploys
-
-Set `base` when the site is published at a path such as `https://example.com/docs/` instead of the domain root. GitHub Pages project sites are a common example: a repository named `my-site` is normally published at `https://account.github.io/my-site/`.
-
-```ts
-// bascik.config.ts
-import { defineConfig } from '@bascik/bascik/config';
-
-export default defineConfig({
-  base: '/my-site/',
-});
-```
-
-Bascik normalizes the leading and trailing slash, rewrites root-relative HTML, CSS, and web app manifest URLs during the build, and serves pages and static assets below the same prefix in development and with `bascik --server`. Generated sitemap, robots, and canonical URLs compose the site URL, base, and page path in that order.
-
-Requests outside the configured prefix return `404 Not Found`. With `base: '/my-site/'`, request `/my-site/about`, not `/about`. This strict behavior matches a static host and catches incorrect links during local preview. Live reload also connects through the prefix automatically.
-
-A custom domain mapped to the project site usually serves it from `/`, so leave the default `base: '/'` in that deployment shape.
-
-## Serverless hosting
-
-Serverless here means you do not operate Bascik's Node server: a CDN serves the static files and a managed function runs your server scripts, stream scripts, and API routes per request. Bascik builds this as an explicit, opt-in target so the default `dist/` stays a plain static tree.
-
-Hosting adapters are installable packages that implement the `@bascik/bascik/adapter` contract. Official targets include `cloudflare-pages` and `cloudflare-workers` via `@bascik/adapter-cloudflare`. Third parties can publish custom adapters using `@bascik/bascik/adapter` and runtime helpers from `@bascik/bascik/runtime`. See [Cloudflare Adapter](/deployment/cloudflare) for the tested recipe, support matrix, and provider limits, or read [Custom Adapters](/deployment/custom-adapters) to learn how to author custom deployment adapters.
-
-## Using the production server
-
-If your site uses `data-bascik-server` scripts for per-request dynamic content, you need infrastructure that can execute Node.js alongside the built files. The built-in production server handles this without any additional framework.
-
-```sh
-bascik --build   # compile to dist/
-bascik --server   # start the HTTP server; runs server scripts per request
-```
-
-See [Production Server](/production-server) for full documentation on server configuration and [Server Scripts](/server-scripts) for the request context API.

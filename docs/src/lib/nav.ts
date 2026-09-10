@@ -73,6 +73,7 @@ export const NAV: NavSection[] = [
   {
     section: 'Deployment', pages: [
       { href: '/deployment', label: 'Overview' },
+      { href: '/deployment/static-hosting', label: 'Static Hosting' },
       { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
       { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
     ]
