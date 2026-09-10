@@ -1,13 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <title>Cloudflare stream</title>
   <style>
     /* Author CSS owns the placeholder swap; no framework bytes are injected. */
-    [data-testid="cf-slot"] { min-height: 3rem; }
+    [data-testid="cf-slot"] {
+      min-height: 3rem;
+    }
+
+    [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"] {
+      display: none;
+    }
   </style>
 </head>
+
 <body>
   <header data-testid="cf-header">header</header>
 
@@ -39,4 +47,5 @@
 
   <footer data-testid="cf-footer">footer</footer>
 </body>
+
 </html>

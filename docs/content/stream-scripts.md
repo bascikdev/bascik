@@ -4,7 +4,7 @@ Imagine a dashboard or product page where the navigation, header, and sidebar ar
 
 ## See it in action
 
-The two-stage illustration below shows progressive rendering: the static header and pending placeholder paint immediately in the initial chunk, and the streamed result updates the view once the backend task resolves.
+The live preview below cycles through the streaming lifecycle: the static header and pending placeholder paint immediately in the initial chunk (Stage 1), and the streamed result replaces the placeholder once the asynchronous backend task resolves (Stage 2).
 
 ## data-bascik-stream
 
@@ -123,6 +123,9 @@ Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced
     50% { opacity: 0.85; }
     100% { opacity: 0.5; }
   }
+  .skeleton-container {
+    min-block-size: 6rem;
+  }
   .skeleton {
     min-block-size: 6rem;
     background: var(--surface-subtle, #f3f4f6);
@@ -133,9 +136,14 @@ Add a loading animation with pure CSS keyframes, accounting for [prefers-reduced
       animation: shimmer 1.5s ease-in-out infinite;
     }
   }
+  /* Automatically hide the skeleton once the streamed result chunk arrives */
+  .skeleton-container:has(.result) .skeleton {
+    display: none;
+  }
 </style>
 
-<div class="skeleton" role="status" aria-label="Loading data">
+<div class="skeleton-container" aria-busy="true">
+  <div class="skeleton" role="status" aria-label="Loading data"></div>
   <script data-bascik-stream>
     import { escape } from '@/lib/server.ts';
 
@@ -181,6 +189,8 @@ In Bascik streaming, source order is delivery order: bytes before the first stre
       import { escape } from '@/lib/server.ts';
 
       export default async function (request, context, { signal }) {
+        // Emulate database latency
+        await new Promise((resolve) => setTimeout(resolve, 300));
         const res = await fetch('https://api.example.com/metrics', { signal });
         const stats = await res.json();
         return `<div class="result"><p>${escape(stats.summary)}</p></div>`;
@@ -194,6 +204,8 @@ In Bascik streaming, source order is delivery order: bytes before the first stre
       import { escape } from '@/lib/server.ts';
 
       export default async function (request, context, { signal }) {
+        // Emulate external API latency
+        await new Promise((resolve) => setTimeout(resolve, 600));
         const res = await fetch('https://api.example.com/billing', { signal });
         const bills = await res.json();
         return `<div class="result"><p>${escape(bills.total)}</p></div>`;
@@ -234,6 +246,16 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 
 <!-- demo:source-usage -->
 ```html
+<style>
+  .stream-panel {
+    min-block-size: 4rem;
+  }
+  /* When the stream chunk arrives, CSS automatically hides the pending placeholder */
+  .stream-panel:has(.result) .pending {
+    display: none;
+  }
+</style>
+
 <section class="stream-panel" aria-busy="true">
   <p class="pending" role="status">Loading live status…</p>
   <script data-bascik-stream>
@@ -250,9 +272,10 @@ Pages containing streaming scripts automatically adjust HTTP transport headers:
 
 <!-- demo:output-html -->
 ```html
-<!-- The shell is sent immediately; the result chunk arrives in the stream -->
+<!-- The shell is sent immediately; the result chunk arrives in the stream.
+     CSS :has(.result) automatically hides the .pending placeholder. -->
 <section class="stream-panel" aria-busy="true">
-  <p class="pending" role="status">Loading live status…</p>
+  <p class="pending" role="status" style="display: none;">Loading live status…</p>
   <p class="result">System online: 99.99%</p>
 </section>
 ```

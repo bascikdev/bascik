@@ -57,6 +57,8 @@ test.describe('cloudflare adapter: streamed paint order', () => {
     await expect(page.getByTestId('cf-greeting')).toHaveText('Hello Guest on cloudflare');
 
     await expect(page.getByTestId('cf-result')).toBeVisible();
+    // Once the streamed chunk arrives, the CSS :has() selector hides the loading skeleton.
+    await expect(page.getByTestId('cf-skeleton')).toBeHidden();
     const tResult = Date.now() - t0;
 
     expect(tSkeleton).toBeLessThan(1000);
