@@ -7,16 +7,19 @@
   <title>Bascik · Edge User Profile (Server Script Demo)</title>
   <style>
     :root {
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --accent-light: #eff6ff;
-      --accent-border: #bfdbfe;
-      --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
     }
 
     * {
@@ -59,10 +62,10 @@
       display: inline-flex;
       align-items: center;
       background: var(--accent);
-      color: #ffffff;
+      color: #18191b;
       padding: 0.25rem 0.65rem;
       border-radius: 9999px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       font-size: 0.75rem;
@@ -146,7 +149,7 @@
     td {
       text-align: left;
       padding: 0.65rem 0.25rem;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid var(--border);
     }
 
     th {

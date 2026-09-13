@@ -7,20 +7,23 @@
   <title>Bascik · Cloudflare Workers Architecture Demo</title>
   <style>
     :root {
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --accent-light: #eff6ff;
-      --accent-border: #bfdbfe;
-      --success-bg: #f0fdf4;
-      --success-border: #bbf7d0;
-      --success-text: #166534;
-      --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
-      --card-shadow-hover: 0 10px 15px -3px rgb(37 99 235 / 0.08), 0 4px 6px -4px rgb(37 99 235 / 0.05);
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --success-bg: rgba(211, 255, 141, 0.08);
+      --success-border: rgba(211, 255, 141, 0.22);
+      --success-text: #d3ff8d;
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+      --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 0 15px rgba(211, 255, 141, 0.1);
     }
 
     * {
@@ -65,9 +68,10 @@
       display: inline-flex;
       align-items: center;
       background: var(--accent);
-      color: #ffffff;
+      color: #18191b;
       padding: 0.25rem 0.65rem;
       border-radius: 9999px;
+      font-weight: 800;
       white-space: nowrap;
     }
 
@@ -138,7 +142,7 @@
     }
 
     .demo-card:hover {
-      border-color: var(--accent);
+      border-color: var(--border-hover);
       box-shadow: var(--card-shadow-hover);
       transform: translateY(-2px);
     }
@@ -231,19 +235,29 @@
 
       <a class="demo-card" href="/stream" data-testid="cf-link-stream">
         <div>
-          <div class="demo-tag">Mixed: Server + Stream</div>
+          <div class="demo-tag">&lt;script data-bascik-stream&gt;</div>
           <h3 class="demo-title">Stream Scripts</h3>
-          <p class="demo-desc">Initial server script greeting with progressive async data streams replacing skeletons in
-            document order.</p>
+          <p class="demo-desc">Immediate page shell paint with progressive async data streams replacing skeleton cards
+            smoothly in document order.</p>
         </div>
       </a>
 
-      <a class="demo-card" href="/api/ping" data-testid="cf-link-api">
+      <a class="demo-card" href="/mixed" data-testid="cf-link-mixed">
         <div>
-          <div class="demo-tag">src/api/ping.ts</div>
-          <h3 class="demo-title">Edge API Route</h3>
-          <p class="demo-desc">Standard WHATWG Request/Response API route dispatched directly inside the Cloudflare
-            Worker.</p>
+          <div class="demo-tag">Server + Stream</div>
+          <h3 class="demo-title">Mixed-Page Ordering</h3>
+          <p class="demo-desc">Demonstrates the two-phase lifecycle: pre-header server script execution followed by
+            early
+            flush and async streaming.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/api-demo" data-testid="cf-link-api-demo">
+        <div>
+          <div class="demo-tag">Interactive Client</div>
+          <h3 class="demo-title">Edge API Client</h3>
+          <p class="demo-desc">Interactive frontend UI demonstrating client-side fetch calls dispatched directly to
+            edge API routes (<code style="font-size: 0.8rem;">/api/ping</code>).</p>
         </div>
       </a>
     </div>

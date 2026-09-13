@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Edge API Route Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem 1.25rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .brand-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #18191b;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: clamp(1.35rem, 3.8vw, 1.75rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+      margin-bottom: 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .endpoint-badge {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-light);
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent-border);
+      margin-bottom: 1rem;
+    }
+
+    .client-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      background: #151618;
+      margin-bottom: 1rem;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #18191b;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.15s ease;
+    }
+
+    .btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    pre {
+      background: #0d0e0f;
+      color: #f0f1f2;
+      border: 1px solid var(--border);
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      margin-top: 0.75rem;
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    .status-pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    .status-pill.success {
+      background: rgba(211, 255, 141, 0.12);
+      color: #d3ff8d;
+      border: 1px solid rgba(211, 255, 141, 0.25);
+    }
+
+    .next-nav {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .next-nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .next-nav a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand-nav">
+      <span class="brand-pill">Bascik Edge API Route</span>
+      <a class="back-link" href="/">← Back to Demo Home</a>
+    </div>
+    <h1>Edge API Route Client</h1>
+    <p class="subtitle">API routes written with standard WHATWG <code>Request</code> and <code>Response</code> are
+      dispatched
+      directly inside the Cloudflare Worker at edge latency.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Interactive Endpoint Consumer</h2>
+      <div class="endpoint-badge">GET /api/ping</div>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
+        Click the button below to test client-side <code>fetch()</code> dispatch against the live edge worker endpoint:
+      </p>
+
+      <div class="client-box">
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn" id="fetch-btn" type="button">⚡ Send Request to /api/ping</button>
+          <span id="response-status" class="status-pill" style="display: none;"></span>
+          <span id="latency-tag" style="font-size: 0.8rem; color: var(--text-muted);"></span>
+        </div>
+
+        <div class="code-header">
+          <span>Response JSON:</span>
+          <a href="/api/ping" target="_blank" style="color: var(--accent); text-decoration: none;">Open Raw Endpoint
+            ↗</a>
+        </div>
+        <pre><code id="json-display">// Click "Send Request" above to test the API route...</code></pre>
+      </div>
+
+      <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text);">Source:
+        src/api/ping.ts</h3>
+      <pre><code>export const GET = async (_request: Request, context: { remoteIp: string; platform?: { name: string } }) => {
+  return Response.json({
+    pong: true,
+    platform: context.platform?.name ?? 'unknown',
+  });
+};</code></pre>
+    </div>
+
+    <p class="next-nav">
+      Next: Explore <a href="/server">Server Scripts</a> or <a href="/stream">Live Activity Stream</a>.
+    </p>
+  </main>
+
+  <footer>
+    <div>Bascik · API Routes on Cloudflare Workers</div>
+    <div><a href="https://bascik.dev/api-routes">API Routes Guide →</a></div>
+  </footer>
+
+  <script>
+    const btn = document.getElementById('fetch-btn');
+    const display = document.getElementById('json-display');
+    const statusPill = document.getElementById('response-status');
+    const latencyTag = document.getElementById('latency-tag');
+
+    btn.addEventListener('click', async () => {
+      display.textContent = '// Sending request to /api/ping...';
+      const t0 = performance.now();
+      try {
+        const res = await fetch('/api/ping');
+        const elapsed = Math.round(performance.now() - t0);
+        const data = await res.json();
+        statusPill.style.display = 'inline-block';
+        statusPill.className = 'status-pill success';
+        statusPill.textContent = 'HTTP ' + res.status + ' OK';
+        latencyTag.textContent = 'Resolved in ' + elapsed + 'ms';
+        display.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        statusPill.style.display = 'inline-block';
+        statusPill.className = 'status-pill';
+        statusPill.style.background = '#fee2e2';
+        statusPill.style.color = '#991b1b';
+        statusPill.textContent = 'Request Failed';
+        display.textContent = '// Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+
+</html>

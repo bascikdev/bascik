@@ -7,16 +7,19 @@
   <title>Bascik · Edge Stream Scripts Demo</title>
   <style>
     :root {
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --accent-light: #eff6ff;
-      --accent-border: #bfdbfe;
-      --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
     }
 
     * {
@@ -60,10 +63,10 @@
       display: inline-flex;
       align-items: center;
       background: var(--accent);
-      color: #ffffff;
+      color: #18191b;
       padding: 0.25rem 0.65rem;
       border-radius: 9999px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       font-size: 0.75rem;
@@ -136,7 +139,7 @@
 
     .intro-text {
       margin-bottom: 0.5rem;
-      color: var(--text);
+      color: var(--text-muted);
       font-size: 0.85rem;
       line-height: 1.4;
     }
@@ -174,6 +177,19 @@
       box-shadow: var(--card-shadow);
       display: flex;
       flex-direction: column;
+      animation: stream-appear 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes stream-appear {
+      from {
+        opacity: 0.3;
+        transform: scale(0.99);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
 
     .stream-card-header {
@@ -209,17 +225,20 @@
     }
 
     .status-ok {
-      background: #dcfce7;
-      color: #15803d;
+      background: rgba(211, 255, 141, 0.12);
+      color: #d3ff8d;
+      border: 1px solid rgba(211, 255, 141, 0.25);
     }
 
     .status-pending {
-      background: #fef9c3;
-      color: #854d0e;
+      background: rgba(254, 240, 138, 0.12);
+      color: #fef08a;
+      border: 1px solid rgba(254, 240, 138, 0.25);
     }
 
     .stream-card small {
       font-size: 0.72rem;
+      color: var(--text-muted);
       margin-top: auto;
     }
 
@@ -228,16 +247,17 @@
     [data-testid="cf-slot-2"],
     [data-testid="cf-slot-3"] {
       min-height: 7.25rem;
+      display: grid;
     }
 
-    [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"] {
-      display: none;
+    [data-testid="cf-slot"]>*,
+    [data-testid="cf-slot-2"]>*,
+    [data-testid="cf-slot-3"]>* {
+      grid-area: 1 / 1;
     }
 
-    [data-testid="cf-slot-2"]:has([data-testid="cf-invoice-2"]) [data-testid="cf-skeleton-2"] {
-      display: none;
-    }
-
+    [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"],
+    [data-testid="cf-slot-2"]:has([data-testid="cf-invoice-2"]) [data-testid="cf-skeleton-2"],
     [data-testid="cf-slot-3"]:has([data-testid="cf-invoice-3"]) [data-testid="cf-skeleton-3"] {
       display: none;
     }
@@ -245,29 +265,49 @@
     .skeleton {
       animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       background: var(--surface);
-      border: 1px dashed #cbd5e1;
+      border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 0.5rem;
+      padding: 0.7rem 0.85rem;
       color: var(--text-muted);
-      text-align: center;
       margin-bottom: 0;
       min-height: 7.25rem;
-      font-size: 0.8rem;
-      font-weight: 500;
+      box-shadow: var(--card-shadow);
       display: flex;
+      flex-direction: column;
+    }
+
+    .skeleton-header {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .skeleton-bar {
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .skeleton-pill {
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .skeleton-text {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: auto;
     }
 
     @keyframes pulse {
 
       0%,
       100% {
-        opacity: 0.6;
+        opacity: 0.55;
       }
 
       50% {
-        opacity: 1;
+        opacity: 0.95;
       }
     }
   </style>
@@ -305,7 +345,12 @@
       <!-- Slot 1 (Primary / Fast Stream) -->
       <section data-testid="cf-slot" aria-busy="true">
         <div class="skeleton" data-testid="cf-skeleton" role="status">
-          ⏳ Loading System Metrics (Fast)...
+          <div class="skeleton-header">
+            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
+          </div>
+          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+          <div class="skeleton-text">⏳ Loading System Metrics (Fast)…</div>
         </div>
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {
@@ -332,7 +377,12 @@
       <!-- Slot 2 (Secondary / Medium Stream) -->
       <section data-testid="cf-slot-2" aria-busy="true">
         <div class="skeleton" data-testid="cf-skeleton-2" role="status">
-          ⏳ Loading Service Feed (Medium)...
+          <div class="skeleton-header">
+            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
+          </div>
+          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+          <div class="skeleton-text">⏳ Loading Service Feed (Medium)…</div>
         </div>
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {
@@ -360,7 +410,12 @@
       <!-- Slot 3 (Tertiary / Slower Stream) -->
       <section data-testid="cf-slot-3" aria-busy="true">
         <div class="skeleton" data-testid="cf-skeleton-3" role="status">
-          ⏳ Loading Analytics Database (Slower)...
+          <div class="skeleton-header">
+            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
+          </div>
+          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+          <div class="skeleton-text">⏳ Loading Analytics Database (Slower)…</div>
         </div>
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {

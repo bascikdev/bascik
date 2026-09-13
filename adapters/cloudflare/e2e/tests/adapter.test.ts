@@ -57,6 +57,26 @@ test.describe('cloudflare adapter: request-time pages', () => {
     expect(options.status()).toBe(204);
     expect(options.headers()['allow']).toBe('GET, HEAD, OPTIONS');
   });
+
+  test('mixed server and stream execution page composes properly', async ({ page }) => {
+    const res = await page.goto('/mixed');
+    expect(res?.status()).toBe(200);
+    expect(res?.headers()['cache-control']).toBe('private, no-store');
+    await expect(page.locator('h1')).toContainText('Mixed-Page Ordering Rule');
+    await expect(page.locator('.stream-resolved')).toBeVisible();
+    const html = await page.content();
+    expect(html).not.toContain('text/bascik-server');
+    expect(html).toContain('Public Visitor');
+  });
+
+  test('interactive API client page is served and can fetch from /api/ping', async ({ page }) => {
+    const res = await page.goto('/api-demo');
+    expect(res?.status()).toBe(200);
+    await expect(page.locator('h1')).toContainText('Edge API Route Client');
+    await page.click('#fetch-btn');
+    await expect(page.locator('#response-status')).toContainText('HTTP 200 OK');
+    await expect(page.locator('#json-display')).toContainText('"pong": true');
+  });
 });
 
 test.describe('cloudflare adapter: streamed paint order', () => {

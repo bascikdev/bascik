@@ -1,6 +1,6 @@
 # Cloudflare Adapter
 
-Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring. Inspect a live production deployment at [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/).
+Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring. Inspect live production demonstrations of [server scripts](https://cloudflare-adapter.bascik.dev/server), [stream scripts](https://cloudflare-adapter.bascik.dev/stream), [mixed-page ordering](https://cloudflare-adapter.bascik.dev/mixed), and [edge API routes](https://cloudflare-adapter.bascik.dev/api-demo) at [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/).
 
 ## How it works: CDN-first with Edge Workers
 

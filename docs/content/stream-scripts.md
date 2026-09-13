@@ -72,7 +72,7 @@ When a page contains both `data-bascik-server` and `data-bascik-stream` blocks:
 2. **Phase 2 (Commit & Early Flush):** HTTP headers and all static HTML bytes up to the first `data-bascik-stream` tag are committed and sent immediately to the browser.
 3. **Phase 3 (Streaming Output):** Static segments and stream script outputs are emitted in strict document source order. While the server executes stream jobs concurrently with bounded concurrency, chunks are flushed sequentially so the HTML stream remains valid.
 
-> **Placement tip:** A slow `data-bascik-server` script on a page delays the initial response commit for the entire page. If a data operation is slow or latency-sensitive, use `data-bascik-stream` instead.
+> **Placement tip:** A slow `data-bascik-server` script on a page delays the initial response commit for the entire page. If a data operation is slow or latency-sensitive, use `data-bascik-stream` instead. See a live demonstration of this execution flow on our [mixed server and stream demo](https://cloudflare-adapter.bascik.dev/mixed).
 
 ## Placeholders That Do Not Shift Layout
 

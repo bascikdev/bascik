@@ -49,7 +49,7 @@ Reusable code is not the same as a deployable service. Three more things have to
 Where handlers run today:
 
 - **`bascik --server`** and the dev server: supported, in-process, with routing, dispatch, body limits, and timeouts handled for you.
-- **Serverless (static assets on a CDN plus managed functions):** supported through a build target and adapter, starting with Cloudflare Pages and Workers. The same routing and dispatch core runs inside the generated function. See [Deployment](/deployment#serverless-hosting) for the support matrix.
+- **Serverless (static assets on a CDN plus managed functions):** supported through a build target and adapter, starting with Cloudflare Pages and Workers. The same routing and dispatch core runs inside the generated function. See [Deployment](/deployment#serverless-hosting) for the support matrix, or test an endpoint live on our [interactive edge API demo](https://cloudflare-adapter.bascik.dev/api-demo).
 - **Other hosts:** manual porting only. Write the wrapper for the platform's request shape and reuse the handler function; Bascik does not generate one for you.
 
 ## The Context Argument
