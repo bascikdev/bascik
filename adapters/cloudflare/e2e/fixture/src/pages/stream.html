@@ -147,12 +147,29 @@
     .stream-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
+      grid-template-areas: "slot1 slot2 slot3";
       gap: 0.6rem;
+    }
+
+    .cell-1 {
+      grid-area: slot1;
+    }
+
+    .cell-2 {
+      grid-area: slot2;
+    }
+
+    .cell-3 {
+      grid-area: slot3;
     }
 
     @media (max-width: 640px) {
       .stream-grid {
         grid-template-columns: 1fr;
+        grid-template-areas:
+          "slot1"
+          "slot2"
+          "slot3";
       }
     }
 
@@ -242,23 +259,18 @@
       margin-top: auto;
     }
 
-    /* Author CSS manages placeholder state without JS */
-    [data-testid="cf-slot"],
-    [data-testid="cf-slot-2"],
-    [data-testid="cf-slot-3"] {
-      min-height: 7.25rem;
-      display: grid;
+    /* CSS in-place swap:
+       When a stream chunk result arrives in its grid-area slot,
+       the matching skeleton placeholder in the same grid-area is hidden. */
+    .stream-grid:has([data-testid="cf-result"]) .cell-1.skeleton {
+      display: none;
     }
 
-    [data-testid="cf-slot"]>*,
-    [data-testid="cf-slot-2"]>*,
-    [data-testid="cf-slot-3"]>* {
-      grid-area: 1 / 1;
+    .stream-grid:has([data-testid="cf-invoice-2"]) .cell-2.skeleton {
+      display: none;
     }
 
-    [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"],
-    [data-testid="cf-slot-2"]:has([data-testid="cf-invoice-2"]) [data-testid="cf-skeleton-2"],
-    [data-testid="cf-slot-3"]:has([data-testid="cf-invoice-3"]) [data-testid="cf-skeleton-3"] {
+    .stream-grid:has([data-testid="cf-invoice-3"]) .cell-3.skeleton {
       display: none;
     }
 
@@ -316,10 +328,10 @@
 <body>
   <header data-testid="cf-header">
     <div class="brand-nav">
-      <span class="brand-pill">Bascik Stream Scripts</span>
+      <span class="brand-pill">Stream Swap Demo</span>
       <a class="back-link" href="/">← Back to Demo Home</a>
     </div>
-    <h1>Live Activity Stream</h1>
+    <h1>Progressive Stream (In-Place Swap)</h1>
     <p class="greeting" data-testid="cf-greeting">
       <script data-bascik-server>
         export default function (request, context) {
@@ -342,16 +354,37 @@
     <p class="intro-text">Below are live service panels streaming progressively from backend sources in real time:</p>
 
     <div class="stream-grid">
-      <!-- Slot 1 (Primary / Fast Stream) -->
-      <section data-testid="cf-slot" aria-busy="true">
-        <div class="skeleton" data-testid="cf-skeleton" role="status">
-          <div class="skeleton-header">
-            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
-            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
-          </div>
-          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
-          <div class="skeleton-text">⏳ Loading System Metrics (Fast)…</div>
+      <!-- ── Initial Chunk 1: All 3 Skeleton Placeholders render immediately on first paint ── -->
+      <div class="skeleton cell-1" data-testid="cf-skeleton" role="status">
+        <div class="skeleton-header">
+          <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+          <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
         </div>
+        <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+        <div class="skeleton-text">⏳ Loading System Metrics (Fast · 300ms)…</div>
+      </div>
+
+      <div class="skeleton cell-2" data-testid="cf-skeleton-2" role="status">
+        <div class="skeleton-header">
+          <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+          <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
+        </div>
+        <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+        <div class="skeleton-text">⏳ Loading Service Feed (Medium · 800ms)…</div>
+      </div>
+
+      <div class="skeleton cell-3" data-testid="cf-skeleton-3" role="status">
+        <div class="skeleton-header">
+          <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
+          <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
+        </div>
+        <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
+        <div class="skeleton-text">⏳ Loading Analytics Database (Slower · 1300ms)…</div>
+      </div>
+
+      <!-- ── Progressive Stream Chunks: Each script streams its card and swaps its slot in-place ── -->
+      <!-- Slot 1 (Primary / Fast Stream) -->
+      <div class="cell-1" data-testid="cf-slot" aria-busy="true">
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {
             const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
@@ -372,18 +405,10 @@
               '</article>';
           }
         </script>
-      </section>
+      </div>
 
       <!-- Slot 2 (Secondary / Medium Stream) -->
-      <section data-testid="cf-slot-2" aria-busy="true">
-        <div class="skeleton" data-testid="cf-skeleton-2" role="status">
-          <div class="skeleton-header">
-            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
-            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
-          </div>
-          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
-          <div class="skeleton-text">⏳ Loading Service Feed (Medium)…</div>
-        </div>
+      <div class="cell-2" data-testid="cf-slot-2" aria-busy="true">
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {
             const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
@@ -405,18 +430,10 @@
               '</article>';
           }
         </script>
-      </section>
+      </div>
 
       <!-- Slot 3 (Tertiary / Slower Stream) -->
-      <section data-testid="cf-slot-3" aria-busy="true">
-        <div class="skeleton" data-testid="cf-skeleton-3" role="status">
-          <div class="skeleton-header">
-            <div class="skeleton-bar" style="width: 55%; height: 0.85rem;"></div>
-            <div class="skeleton-pill" style="width: 28%; height: 0.85rem;"></div>
-          </div>
-          <div class="skeleton-bar" style="width: 45%; height: 1.25rem; margin-bottom: 0.35rem;"></div>
-          <div class="skeleton-text">⏳ Loading Analytics Database (Slower)…</div>
-        </div>
+      <div class="cell-3" data-testid="cf-slot-3" aria-busy="true">
         <script data-bascik-stream>
           export default async function (request, context, { signal }) {
             const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
@@ -438,7 +455,7 @@
               '</article>';
           }
         </script>
-      </section>
+      </div>
     </div>
   </main>
 </body>

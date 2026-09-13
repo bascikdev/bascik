@@ -235,10 +235,20 @@
 
       <a class="demo-card" href="/stream" data-testid="cf-link-stream">
         <div>
-          <div class="demo-tag">&lt;script data-bascik-stream&gt;</div>
-          <h3 class="demo-title">Stream Scripts</h3>
-          <p class="demo-desc">Immediate page shell paint with progressive async data streams replacing skeleton cards
-            smoothly in document order.</p>
+          <div class="demo-tag">Stream Pattern 1</div>
+          <h3 class="demo-title">In-Place Skeleton Swap</h3>
+          <p class="demo-desc">Shimmer skeleton cards render immediately on initial paint and swap in-place with
+            resolved
+            content as streams deliver.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/stream-append" data-testid="cf-link-stream-append">
+        <div>
+          <div class="demo-tag">Stream Pattern 2</div>
+          <h3 class="demo-title">Progressive Stream Append</h3>
+          <p class="demo-desc">Zero-placeholder stream: page shell and footer paint first, then cards stream directly
+            into the open response grid.</p>
         </div>
       </a>
 

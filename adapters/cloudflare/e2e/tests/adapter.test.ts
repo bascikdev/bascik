@@ -58,6 +58,14 @@ test.describe('cloudflare adapter: request-time pages', () => {
     expect(options.headers()['allow']).toBe('GET, HEAD, OPTIONS');
   });
 
+  test('progressive append stream page paints chunks in order', async ({ page }) => {
+    const res = await page.goto('/stream-append?delay=500');
+    expect(res?.status()).toBe(200);
+    expect(res?.headers()['cache-control']).toBe('private, no-store');
+    await expect(page.locator('h1')).toContainText('Progressive Stream (Append Flow)');
+    await expect(page.locator('.stream-card')).toHaveCount(3);
+  });
+
   test('mixed server and stream execution page composes properly', async ({ page }) => {
     const res = await page.goto('/mixed');
     expect(res?.status()).toBe(200);

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Stream Append Demo (Zero Placeholder)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0.85rem 1rem 0.65rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      order: 1;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .brand-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.8rem;
+    }
+
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #18191b;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: clamp(1.3rem, 3.5vw, 1.65rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.2rem;
+      color: var(--text);
+    }
+
+    .greeting {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      background: var(--accent-light);
+      color: var(--accent);
+      border-radius: 4px;
+      border: 1px solid var(--accent-border);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Secret Sauce: Footer sent in initial chunk, positioned visually at bottom */
+    footer {
+      order: 4;
+      margin-top: auto;
+      padding-top: 0.65rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    main {
+      order: 2;
+      flex: 1 0 auto;
+      margin-bottom: 0.65rem;
+    }
+
+    .intro-text {
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .stream-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6rem;
+    }
+
+    @media (max-width: 640px) {
+      .stream-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .stream-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 0.85rem;
+      margin-bottom: 0;
+      min-height: 7.25rem;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+      animation: stream-appear 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes stream-appear {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stream-card-header {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .stream-card-header strong {
+      font-size: 0.825rem;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    .stream-card-metric {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 0.2rem;
+    }
+
+    .stream-card-status {
+      align-self: flex-start;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.15rem 0.55rem;
+      border-radius: 9999px;
+    }
+
+    .status-ok {
+      background: rgba(211, 255, 141, 0.12);
+      color: #d3ff8d;
+      border: 1px solid rgba(211, 255, 141, 0.25);
+    }
+
+    .status-pending {
+      background: rgba(254, 240, 138, 0.12);
+      color: #fef08a;
+      border: 1px solid rgba(254, 240, 138, 0.25);
+    }
+
+    .stream-card small {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand-nav">
+      <span class="brand-pill">Stream Append Demo</span>
+      <a class="back-link" href="/">← Back to Demo Home</a>
+    </div>
+    <h1>Progressive Stream (Append Flow)</h1>
+    <p class="greeting">
+      <script data-bascik-server>
+        export default function (request, context) {
+          const name = new URL(request.url).searchParams.get('name') ?? 'Guest';
+          const platformName = context?.platform?.name ?? 'local';
+          return 'Welcome back, ' + name.replace(/[<>&"']/g, '') + ' · Edge host: <span class="badge">' + platformName + '</span>';
+        }
+      </script>
+    </p>
+  </header>
+
+  <!-- Static footer sent immediately in the initial chunk before streaming slots!
+       CSS flexbox order places it at the visual bottom of the layout. -->
+  <footer>
+    <div>Zero client JS framework hydration · Native chunked HTTP streaming in document order</div>
+    <div><a href="https://bascik.dev/stream-scripts">Stream Scripts Docs →</a></div>
+  </footer>
+
+  <main>
+    <p class="intro-text">
+      This page demonstrates <strong>zero-placeholder progressive append</strong>: the page shell and footer paint
+      immediately, and each card streams into the grid as its backend task resolves:
+    </p>
+
+    <div class="stream-grid">
+      <!-- Stream Slot 1 (300ms) -->
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          if (delay > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="stream-card" data-delay="' + delay + '">' +
+            '<div class="stream-card-header">' +
+            '<strong>System Health · Edge Ingress</strong>' +
+            '<span class="stream-card-status status-ok">Operational</span>' +
+            '</div>' +
+            '<div class="stream-card-metric">99.99% Uptime</div>' +
+            '<small>Latency: 14ms · Streamed after ' + delay + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+
+      <!-- Stream Slot 2 (800ms) -->
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          const delay2 = Math.min(delay + 500, 5000);
+          if (delay2 > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay2);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="stream-card">' +
+            '<div class="stream-card-header">' +
+            '<strong>Data Processing · Worker Pool</strong>' +
+            '<span class="stream-card-status status-ok">Operational</span>' +
+            '</div>' +
+            '<div class="stream-card-metric">1,420 req/s</div>' +
+            '<small>Queue: 0 pending · Streamed after ' + delay2 + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+
+      <!-- Stream Slot 3 (1300ms) -->
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          const delay3 = Math.min(delay + 1000, 5000);
+          if (delay3 > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay3);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="stream-card">' +
+            '<div class="stream-card-header">' +
+            '<strong>Storage Replicas · Database Sync</strong>' +
+            '<span class="stream-card-status status-pending">Syncing</span>' +
+            '</div>' +
+            '<div class="stream-card-metric">64.2 MB / 65 MB</div>' +
+            '<small>Replication: 98% · Streamed after ' + delay3 + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+    </div>
+  </main>
+</body>
+
+</html>
