@@ -86,6 +86,14 @@ Or connect the repository with Cloudflare Workers Builds in the dashboard:
 - Build command: `npx bascik --build --target cloudflare`
 - Root directory: `dist/.bascik/cloudflare`
 
+### Worker Name Resolution
+
+The generated `name` in `wrangler.jsonc` is automatically resolved in priority order:
+1. **Environment variables:** `CLOUDFLARE_WORKER_NAME` or `WORKER_NAME` (e.g. `CLOUDFLARE_WORKER_NAME=bascik-streaming-test` in Cloudflare dashboard build settings).
+2. **Authored Wrangler config:** An existing `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml` in your project root.
+3. **Project `package.json`:** The `name` property from your root `package.json` (with npm `@scope/` prefixes stripped).
+4. **Fallback:** Defaults to `"bascik-site"` only if no project name, config file, or environment variable is found.
+
 Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
 
 ## Generated configuration (wrangler.jsonc)

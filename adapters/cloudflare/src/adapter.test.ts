@@ -133,7 +133,7 @@ describe("cloudflare adapter definition and execution", () => {
     }
   });
 
-  it("derives worker name from package.json or environment variable", async () => {
+  it("derives worker name from wrangler config, package.json, or environment variable", async () => {
     const testDir = join(tmpdir(), `bascik-cf-worker-name-${Date.now()}`);
     const distDir = join(testDir, "dist");
     const outDir = join(distDir, ".bascik/cloudflare-workers");
@@ -171,6 +171,25 @@ describe("cloudflare adapter definition and execution", () => {
 
       const wrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
       expect(wrangler.name).toBe("custom-worker-app");
+
+      // Test root wrangler.jsonc takes precedence over package.json
+      await writeFile(
+        join(testDir, "wrangler.jsonc"),
+        JSON.stringify({ name: "authored-wrangler-name" }),
+        "utf8",
+      );
+      await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: () => {},
+        runtimeEntry: "",
+      });
+      const authoredWrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      expect(authoredWrangler.name).toBe("authored-wrangler-name");
+      await rm(join(testDir, "wrangler.jsonc"), { force: true });
 
       // Test CLOUDFLARE_WORKER_NAME override
       process.env.CLOUDFLARE_WORKER_NAME = "env-worker-override";

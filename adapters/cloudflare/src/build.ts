@@ -220,8 +220,43 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
 
-    // Derive worker name from environment variable, project package.json name, or default to "bascik-site"
-    let workerName = process.env.CLOUDFLARE_WORKER_NAME || process.env.WORKER_NAME;
+    // Derive worker name in priority order:
+    // 1. Environment variables (e.g. CI, Cloudflare Workers Builds, or user env)
+    // 2. Authored wrangler.json / wrangler.jsonc / wrangler.toml in project root
+    // 3. Project package.json "name"
+    // 4. Fallback to "bascik-site"
+    let workerName =
+      process.env.CLOUDFLARE_WORKER_NAME ||
+      process.env.WORKER_NAME ||
+      process.env.CF_PAGES_PROJECT_NAME;
+
+    if (!workerName) {
+      for (const configName of ["wrangler.jsonc", "wrangler.json"]) {
+        try {
+          const raw = await readFile(join(projectRoot, configName), "utf8");
+          const parsed = JSON.parse(raw) as { name?: string };
+          if (parsed.name && typeof parsed.name === "string") {
+            workerName = parsed.name.trim();
+            break;
+          }
+        } catch {
+          // Continue if file doesn't exist or isn't strict JSON
+        }
+      }
+    }
+
+    if (!workerName) {
+      try {
+        const raw = await readFile(join(projectRoot, "wrangler.toml"), "utf8");
+        const match = raw.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+        if (match?.[1]) {
+          workerName = match[1].trim();
+        }
+      } catch {
+        // Fall back if wrangler.toml doesn't exist
+      }
+    }
+
     if (!workerName) {
       try {
         const pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
@@ -234,6 +269,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
         // Fall back if package.json is missing or invalid
       }
     }
+
     if (!workerName) {
       workerName = "bascik-site";
     }
