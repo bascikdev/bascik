@@ -7,13 +7,16 @@
   <title>Bascik · Edge User Profile (Server Script Demo)</title>
   <style>
     :root {
-      --bg: #fafafa;
+      --bg: #f8fafc;
       --surface: #ffffff;
-      --text: #111827;
-      --text-muted: #6b7280;
-      --border: #e5e7eb;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
       --accent: #2563eb;
+      --accent-hover: #1d4ed8;
       --accent-light: #eff6ff;
+      --accent-border: #bfdbfe;
+      --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
     }
 
     * {
@@ -26,44 +29,51 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       max-width: 760px;
       margin: 0 auto;
-      padding: 1.5rem 1rem;
+      padding: 1.5rem 1rem 1.25rem;
       line-height: 1.5;
       color: var(--text);
       background: var(--bg);
       display: flex;
       flex-direction: column;
       min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
     }
 
     header {
       border-bottom: 1px solid var(--border);
       padding-bottom: 1.25rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
     }
 
     .brand-nav {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
+      gap: 0.5rem;
       margin-bottom: 0.75rem;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
     }
 
     .brand-pill {
-      background: var(--accent-light);
-      padding: 0.15rem 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #ffffff;
+      padding: 0.25rem 0.65rem;
       border-radius: 9999px;
-      border: 1px solid #bfdbfe;
-      color: var(--accent);
       font-weight: 700;
-      text-transform: uppercase;
       letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      white-space: nowrap;
     }
 
     .back-link {
       color: var(--accent);
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
+      font-size: 0.85rem;
     }
 
     .back-link:hover {
@@ -71,47 +81,54 @@
     }
 
     h1 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      line-height: 1.25;
+      font-size: clamp(1.35rem, 3.8vw, 1.75rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
       margin-bottom: 0.5rem;
+      color: var(--text);
     }
 
     .subtitle {
       color: var(--text-muted);
       font-size: 0.95rem;
+      line-height: 1.5;
     }
 
     .card {
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 1.25rem;
       background: var(--surface);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-      margin-bottom: 1.5rem;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 1.25rem;
     }
 
     .card h2 {
-      font-size: 1.15rem;
-      font-weight: 600;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
       margin-bottom: 0.75rem;
+      color: var(--text);
     }
 
     .greeting {
-      font-size: 1.05rem;
+      font-size: 1rem;
       margin-bottom: 1rem;
       padding-bottom: 0.75rem;
       border-bottom: 1px solid var(--border);
+      color: var(--text);
     }
 
     .badge {
       display: inline-block;
-      padding: 0.2rem 0.5rem;
+      padding: 0.2rem 0.55rem;
       background: var(--accent-light);
       color: var(--accent);
       border-radius: 4px;
-      font-size: 0.85rem;
-      font-weight: 600;
+      border: 1px solid var(--accent-border);
+      font-size: 0.8rem;
+      font-weight: 700;
     }
 
     .table-container {
@@ -121,37 +138,40 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 0.5rem;
-      font-size: 0.9rem;
+      margin-top: 0.25rem;
+      font-size: 0.875rem;
     }
 
     th,
     td {
       text-align: left;
-      padding: 0.6rem 0.25rem;
-      border-bottom: 1px solid #f3f4f6;
+      padding: 0.65rem 0.25rem;
+      border-bottom: 1px solid #f1f5f9;
     }
 
     th {
       color: var(--text-muted);
-      width: 40%;
-      font-weight: 500;
+      width: 38%;
+      font-weight: 600;
     }
 
     td {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.85rem;
+      color: var(--text);
+      word-break: break-all;
     }
 
     .next-nav {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       color: var(--text-muted);
+      line-height: 1.5;
     }
 
     .next-nav a {
       color: var(--accent);
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
     }
 
     .next-nav a:hover {
@@ -160,20 +180,27 @@
 
     footer {
       margin-top: auto;
-      padding-top: 1.5rem;
+      padding-top: 1.25rem;
       border-top: 1px solid var(--border);
       color: var(--text-muted);
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
       gap: 0.5rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
     }
 
     footer a {
       color: var(--accent);
       text-decoration: none;
+      font-weight: 500;
     }
 
     footer a:hover {
@@ -190,8 +217,7 @@
     </div>
     <h1 data-testid="cf-server-heading">User Profile &amp; Request Info</h1>
     <p class="subtitle">This page uses <code>&lt;script data-bascik-server&gt;</code> to render dynamic request-time
-      data on the Edge
-      Worker before committing headers.</p>
+      data on the Edge Worker before committing headers.</p>
   </header>
 
   <main>
