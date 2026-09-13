@@ -177,10 +177,72 @@ The browser paints the complete page container and footer immediately, with plac
 
 Ensure that visual reordering maintains an intuitive reading and focus order according to the [W3C CSS Grid Placement](https://www.w3.org/TR/css-grid-1/#order-accessibility) specification.
 
-#### Option 1: CSS Grid Areas
+#### Option 1: Multi-Slot Grid with In-Place Skeleton Swapping (Recommended)
+
+When rendering multiple independent streaming sections (like cards in a dashboard), place **all skeleton placeholders first** in the initial HTML chunk before the streaming script slots, and assign them to named CSS grid areas. As each stream chunk resolves, its arrived card lands in the corresponding grid area, and CSS `:has()` swaps out only that specific skeleton:
 
 ```html
 <!-- src/pages/dashboard.html -->
+<style>
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas: "slot1 slot2 slot3";
+    gap: 1rem;
+  }
+  .cell-1 { grid-area: slot1; }
+  .cell-2 { grid-area: slot2; }
+  .cell-3 { grid-area: slot3; }
+
+  /* In-place swap: when result markup arrives in a slot, hide its matching skeleton */
+  .dash-grid:has(.result-1) .cell-1.skeleton { display: none; }
+  .dash-grid:has(.result-2) .cell-2.skeleton { display: none; }
+  .dash-grid:has(.result-3) .cell-3.skeleton { display: none; }
+</style>
+
+<div class="dash-grid">
+  <!-- All 3 skeletons delivered in the very first byte flush -->
+  <div class="skeleton cell-1" role="status"><p>Loading Metrics…</p></div>
+  <div class="skeleton cell-2" role="status"><p>Loading Feed…</p></div>
+  <div class="skeleton cell-3" role="status"><p>Loading Database…</p></div>
+
+  <!-- Streaming scripts resolve independently in source order -->
+  <div class="cell-1">
+    <script data-bascik-stream>
+      import { escape } from '@/lib/server.ts';
+      export default async function (request, context, { signal }) {
+        const stats = await fetchMetrics({ signal });
+        return `<article class="card result-1"><h3>${escape(stats.uptime)}</h3></article>`;
+      }
+    </script>
+  </div>
+
+  <div class="cell-2">
+    <script data-bascik-stream>
+      import { escape } from '@/lib/server.ts';
+      export default async function (request, context, { signal }) {
+        const feed = await fetchFeed({ signal });
+        return `<article class="card result-2"><h3>${escape(feed.rate)}</h3></article>`;
+      }
+    </script>
+  </div>
+
+  <div class="cell-3">
+    <script data-bascik-stream>
+      import { escape } from '@/lib/server.ts';
+      export default async function (request, context, { signal }) {
+        const db = await fetchDb({ signal });
+        return `<article class="card result-3"><h3>${escape(db.status)}</h3></article>`;
+      }
+    </script>
+  </div>
+</div>
+```
+
+#### Option 2: Full Dashboard Layout (Grid Template Areas)
+
+```html
+<!-- src/pages/dashboard-layout.html -->
 <style>
   .dash-layout {
     display: grid;
@@ -230,7 +292,7 @@ Ensure that visual reordering maintains an intuitive reading and focus order acc
 </div>
 ```
 
-#### Option 2: Flexbox Column Order
+#### Option 3: Flexbox Column Order
 
 ```html
 <!-- src/pages/report.html -->
@@ -264,6 +326,29 @@ Ensure that visual reordering maintains an intuitive reading and focus order acc
     </script>
   </section>
 </main>
+```
+
+#### Option 4: Zero-Placeholder Progressive Append Flow
+
+If you want content to append progressively as it streams in without showing placeholders upfront, simply omit the placeholder markup before the `<script data-bascik-stream>` tags. The browser constructs and renders each element as soon as its stream chunk is flushed:
+
+```html
+<!-- src/pages/feed.html -->
+<div class="feed-grid">
+  <!-- Items stream and append into the grid in arrival order with no placeholders -->
+  <script data-bascik-stream>
+    export default async function (request, context, { signal }) {
+      const item = await fetchPrimaryFeed({ signal });
+      return `<article class="feed-card"><h3>${escape(item.title)}</h3></article>`;
+    }
+  </script>
+  <script data-bascik-stream>
+    export default async function (request, context, { signal }) {
+      const item = await fetchSecondaryFeed({ signal });
+      return `<article class="feed-card"><h3>${escape(item.title)}</h3></article>`;
+    }
+  </script>
+</div>
 ```
 
 ## Error Handling & Headers
