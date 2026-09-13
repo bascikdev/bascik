@@ -1,27 +1,27 @@
 # Cloudflare Adapter
 
-Deploy a Bascik site to Cloudflare Pages or Workers so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring.
+Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring.
 
 ## How it works: CDN-first with Edge Workers
 
 The Cloudflare adapter eliminates the need to run, configure, or pay for a separate origin server for dynamic content:
 
-- **Single unified deployment:** You do not need to host dynamic pages separately or wire up proxy rules between static storage and application servers. A single `bascik --build --target cloudflare-pages` command packages both static assets and edge execution logic into one deployment bundle.
+- **Single unified deployment:** You do not need to host dynamic pages separately or wire up proxy rules between static storage and application servers. A single `bascik --build --target cloudflare` command packages both static assets and edge execution logic into one deployment bundle.
 - **Static pages and assets come directly from the CDN:** Pure static HTML pages, CSS, client JavaScript, images, and fonts are served directly by Cloudflare's global edge cache. The Worker is never invoked for these paths, eliminating execution costs and compute latency.
 - **Dynamic pages execute inside the Worker:** Pages that contain `<script data-bascik-server>` or `<script data-bascik-stream>` have their compiled HTML templates baked directly into the generated Worker bundle. When a visitor requests a dynamic page, the Worker invokes the server scripts, resolves data from bindings (such as KV or D1) or external APIs, interpolates the values into the page template, and streams the finished HTML to the browser.
 - **Zero client-side hydration or API boilerplate:** There is no client-side framework, no hydration step, and no need to manually author `/api/*` endpoints to hydrate client components. The browser receives standard HTML rendered directly from the edge Worker.
 
 ## What you get
 
-Build once on Node with `bascik --build --target cloudflare-pages`. The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
+Build once on Node with `bascik --build --target cloudflare` (or `--target cloudflare-workers`). The normal `dist/` output is unchanged; alongside it Bascik writes a deployment folder with two halves:
 
-- a **public tree** to upload: every static file plus the generated Worker and its routing table;
-- **private request-time code** compiled into that Worker: each `data-bascik-server` and `data-bascik-stream` job, every API route, and the precompiled page templates those jobs render into.
+- a **public tree** (`public/`): every static file uploaded to Cloudflare's global CDN;
+- a **generated Worker bundle** (`worker.js`) and config (`wrangler.jsonc`): each `data-bascik-server` and `data-bascik-stream` job, every API route, and the precompiled page templates those jobs render into.
 
 At request time the flow is:
 
 1. The CDN answers ordinary static paths directly. The Worker is never invoked for them.
-2. Requests for a page with request-time scripts, or for any `/api/` path, invoke the Worker.
+2. Requests for a page with request-time scripts, or for any `/api/` path, invoke the Worker based on `run_worker_first`.
 3. The Worker resolves every `server` job, commits headers, and streams the document: static HTML first, then each `stream` fragment as it resolves, in source order.
 
 No client-side JavaScript is added, nothing hydrates, and there is no per-fragment HTTP endpoint. A page with stream scripts renders progressively in a browser even with JavaScript disabled.
@@ -44,65 +44,91 @@ npm install --save-dev wrangler
 ## Build
 
 ```sh
-bascik --build --target cloudflare-pages
+bascik --build --target cloudflare
 ```
 
-The build prints a summary and writes `dist/.bascik/cloudflare-pages/`:
+The build prints a summary and writes `dist/.bascik/cloudflare/` (or `dist/.bascik/<target>/` matching the specified target name):
 
 ```text
-dist/.bascik/cloudflare-pages/
-  public/            upload this directory
-    _worker.js       the generated Module Worker
-    _routes.json     which paths invoke the Worker
+dist/.bascik/cloudflare/
+  public/            static assets directory served by the CDN
     index.html       static pages and assets, unchanged
     ...
+  worker.js          the generated Worker bundle
+  wrangler.jsonc     Workers static assets and routing configuration
   build-info.json    release id, compatibility date, bundle size, routes
 ```
 
-Pages with request-time scripts are **not** in `public/`. Their templates live inside `_worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
+Pages with request-time scripts are **not** in `public/`. Their templates live inside `worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
 
 `--target` needs a complete build and is rejected together with `--only`: a deployment bundle is one consistent release inventory.
 
 ## Preview locally
 
-Preview the emitted bundle in Cloudflare's local runtime (workerd), not the Bascik dev server:
+Preview the emitted bundle in Cloudflare's local runtime (workerd) using Wrangler from the emitted target folder:
 
 ```sh
-npx wrangler pages dev dist/.bascik/cloudflare-pages/public --compatibility-date=2026-08-01 --compatibility-flags=nodejs_compat
+cd dist/.bascik/cloudflare
+npx wrangler dev
 ```
 
-Use the compatibility date and flags from `build-info.json`; the generated Worker declares them. The Bascik dev server (`bascik`) is still the fastest loop for authoring components and scripts, but it runs on Node. Preview in workerd before deploying to catch runtime differences such as an unsupported Node module.
+The Bascik dev server (`bascik`) is still the fastest loop for authoring components and scripts, but it runs on Node. Preview in workerd before deploying to catch runtime differences such as an unsupported Node module.
 
 ## Deploy
 
 ```sh
-npx wrangler pages deploy dist/.bascik/cloudflare-pages/public --project-name <your-project>
-```
-
-Or connect the repository in the Cloudflare dashboard with:
-
-- Build command: `npx bascik --build --target cloudflare-pages`
-- Build output directory: `dist/.bascik/cloudflare-pages/public`
-
-Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
-
-## Workers Static Assets variant
-
-If you deploy Workers rather than Pages, build with the Workers target:
-
-```sh
-bascik --build --target cloudflare-workers
-```
-
-This writes `dist/.bascik/cloudflare-workers/` with `worker.js`, a `public/` assets directory, and a `wrangler.jsonc` that binds the assets directory as `ASSETS` and lists the request-time routes under `run_worker_first`. Preview and deploy from that folder:
-
-```sh
-cd dist/.bascik/cloudflare-workers
-npx wrangler dev
+cd dist/.bascik/cloudflare
 npx wrangler deploy
 ```
 
-The runtime code is identical in both variants; only the packaging and routing configuration differ.
+Or connect the repository with Cloudflare Workers Builds in the dashboard:
+
+- Build command: `npx bascik --build --target cloudflare`
+- Root directory: `dist/.bascik/cloudflare`
+
+Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
+
+## Generated configuration (wrangler.jsonc)
+
+The adapter generates a complete `wrangler.jsonc` file:
+
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bascik-site",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/api/*",
+      "/stream"
+    ]
+  }
+}
+```
+
+Static requests are served directly from `./public` by the Cloudflare CDN, while paths in `run_worker_first` route directly to `worker.js`.
+
+## Legacy Cloudflare Pages target
+
+If you are maintaining an existing project on Cloudflare Pages, build with the `cloudflare-pages` variant:
+
+```sh
+bascik --build --target cloudflare-pages
+```
+
+This writes `dist/.bascik/cloudflare-pages/` with `public/_worker.js` and `public/_routes.json`. Preview and deploy with:
+
+```sh
+npx wrangler pages dev dist/.bascik/cloudflare-pages/public --compatibility-date=2026-08-01 --compatibility-flags=nodejs_compat
+npx wrangler pages deploy dist/.bascik/cloudflare-pages/public --project-name <your-project>
+```
+
+The runtime request handling is identical between both variants; only the packaging and routing files differ.
 
 ## Bindings and secrets
 
@@ -135,7 +161,7 @@ export const GET = async (
 
 "Manual porting" means the handler function is reusable because it takes a standard `Request`, but you write the platform wrapper, the route table, and the method dispatch yourself. Bascik generates those only for the targets in this table.
 
-Cloudflare Pages and Workers are Bascik's initial official serverless adapters. Future official adapters will expand out-of-the-box platform targets, and developers can author and publish custom adapters for other hosts (such as Fastly, AWS, or Netlify) using the `@bascik/bascik/adapter` contract. See [Custom Adapters](/deployment/custom-adapters) for authoring details.
+Cloudflare Workers and Pages are Bascik's initial official serverless adapters. Future official adapters will expand out-of-the-box platform targets, and developers can author and publish custom adapters for other hosts (such as Fastly, AWS, or Netlify) using the `@bascik/bascik/adapter` contract. See [Custom Adapters](/deployment/custom-adapters) for authoring details.
 
 ## Limits that come with the platform
 
@@ -168,7 +194,7 @@ Modern full-stack web frameworks such as Next.js, Astro, SvelteKit, and Nuxt als
 
 | Capability | Bascik (`@bascik/adapter-cloudflare`) | Astro (`@astrojs/cloudflare`) | Next.js (`@opennextjs/cloudflare` / Vercel Edge) | SvelteKit / Nuxt / Remix |
 | :--- | :--- | :--- | :--- | :--- |
-| **Unified CDN + Worker output** | Yes (`_routes.json` / `wrangler.jsonc`) | Yes (`_routes.json`) | Yes (via OpenNext or Vercel) | Yes (`_routes.json`) |
+| **Unified CDN + Worker output** | Yes (`wrangler.jsonc` / `_routes.json`) | Yes (`_routes.json`) | Yes (via OpenNext or Vercel) | Yes (`_routes.json`) |
 | **Client-side framework runtime** | **Zero JS** (vanilla HTML/CSS/JS only) | Opt-in per island (`client:*`) | Required (React runtime + hydration) | Required (Svelte/Vue/React) |
 | **Client hydration overhead** | **0 KB** | 0 KB (unless using interactive islands) | 70–120+ KB base | 20–50+ KB base |
 | **Streaming mechanism** | Native HTTP streaming in document order | Native HTTP streaming | React Server Components (RSC) streaming | Framework SSR streaming |
@@ -178,10 +204,14 @@ With Bascik, dynamic edge execution does not force a client-side JavaScript fram
 
 ## Rollback and diagnostics
 
-Every build has a release id in `build-info.json`. Cloudflare Pages keeps previous deployments; rolling back is a dashboard action or a redeploy of the earlier commit. Errors thrown by handlers are logged to the Worker's console (visible in `wrangler tail` or the dashboard) and never reach the client, which sees a generic `500`.
+Every build includes a release identifier in `build-info.json`. Deployments can be rolled back via the Cloudflare dashboard or by redeploying an earlier commit. Errors thrown by server handlers are logged to the Worker console (viewable using `wrangler tail` or in the Cloudflare dashboard) and return an HTTP 500 status to the client without exposing internal traces or system paths.
 
-## Verification status
+## Testing and local validation
 
-The adapter is tested in local workerd on every commit: a Node oracle (`bascik --server`) and the emitted Worker serve the same build and are compared for pages, streams, APIs, methods, cookies, errors, and source leakage, with a browser paint test run with JavaScript disabled. A deployed canary on Cloudflare's network is an owner-run release gate; until it is recorded, treat remote routing, CDN buffering, and quota behavior as pending verification rather than proven.
+You can test Cloudflare deployments locally using the same workerd runtime that powers Cloudflare Workers:
+
+- Run `npx wrangler dev` in `dist/.bascik/cloudflare` to preview static routing, server scripts, and API routes locally.
+- Use curl with chunked output (`curl -N http://127.0.0.1:8787/<path>`) to inspect progressive streaming responses and timing in real time.
+- Verify headers using `curl -i` to confirm static assets receive edge cache headers while dynamic and streamed pages receive `Cache-Control: private, no-store`.
 
 > **Next:** [Custom Adapters](/deployment/custom-adapters) covers building custom deployment adapters. [Overview](/deployment) covers static hosting and the built-in Node server.

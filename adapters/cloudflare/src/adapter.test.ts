@@ -11,6 +11,52 @@ describe("cloudflare adapter definition and execution", () => {
     expect(typeof adapter.build).toBe("function");
   });
 
+  it("build without explicit variant defaults to 'workers' writing worker.js, wrangler.jsonc, public/", async () => {
+    const testDir = join(tmpdir(), `bascik-cf-default-${Date.now()}`);
+    const distDir = join(testDir, "dist");
+    const outDir = join(distDir, ".bascik/cloudflare-workers");
+    await mkdir(distDir, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [],
+      importRoot: testDir,
+    };
+
+    try {
+      const result = await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        log: () => {},
+        runtimeEntry: "",
+      });
+
+      expect(result.workerPath).toBe(join(outDir, "worker.js"));
+      const wrangler = await readFile(join(outDir, "wrangler.jsonc"), "utf8");
+      const parsed = JSON.parse(wrangler);
+      expect(parsed.main).toBe("worker.js");
+      expect(parsed.assets).toEqual({
+        directory: "./public",
+        binding: "ASSETS",
+        not_found_handling: "404-page",
+        run_worker_first: ["/_routes.json", "/_worker.js"],
+      });
+      expect(parsed.compatibility_date).toBeDefined();
+      expect(Array.isArray(parsed.compatibility_flags)).toBe(true);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
   it("build with variant 'pages' writes public/_worker.js and public/_routes.json", async () => {
     const testDir = join(tmpdir(), `bascik-cf-pages-${Date.now()}`);
     const distDir = join(testDir, "dist");

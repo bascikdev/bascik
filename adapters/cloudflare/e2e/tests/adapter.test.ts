@@ -26,11 +26,25 @@ test.describe('cloudflare adapter: static bypass', () => {
 });
 
 test.describe('cloudflare adapter: request-time pages', () => {
-  test('a server script composes per request with the platform context', async ({ page }) => {
+  test('a pure server script page composes per request with context and headers', async ({ page }) => {
+    const res = await page.goto('/server?user=Alice&role=Architect');
+    expect(res?.status()).toBe(200);
+    expect(res?.headers()['cache-control']).toBe('private, no-store');
+    await expect(page.getByTestId('cf-server-heading')).toBeVisible();
+    await expect(page.getByTestId('cf-server-greeting')).toContainText('Alice');
+    await expect(page.getByTestId('cf-server-greeting')).toContainText('Architect');
+    await expect(page.getByTestId('cf-platform-name')).toHaveText('cloudflare');
+    await expect(page.getByTestId('cf-remote-ip')).toBeVisible();
+    const html = await page.content();
+    expect(html).not.toContain('text/bascik-server');
+  });
+
+  test('a server script composes per request with the platform context on the stream page', async ({ page }) => {
     const res = await page.goto('/stream?name=Jane');
     expect(res?.status()).toBe(200);
     expect(res?.headers()['cache-control']).toBe('private, no-store');
-    await expect(page.getByTestId('cf-greeting')).toHaveText('Hello Jane on cloudflare');
+    await expect(page.getByTestId('cf-greeting')).toContainText('Welcome back, Jane');
+    await expect(page.getByTestId('cf-greeting')).toContainText('cloudflare');
     const html = await page.content();
     expect(html).not.toContain('text/bascik-server');
   });
@@ -54,7 +68,7 @@ test.describe('cloudflare adapter: streamed paint order', () => {
     await expect(page.getByTestId('cf-skeleton')).toBeVisible();
     const tSkeleton = Date.now() - t0;
     expect(await page.getByTestId('cf-result').count()).toBe(0);
-    await expect(page.getByTestId('cf-greeting')).toHaveText('Hello Guest on cloudflare');
+    await expect(page.getByTestId('cf-greeting')).toContainText('Welcome back, Guest');
 
     await expect(page.getByTestId('cf-result')).toBeVisible();
     // Once the streamed chunk arrives, the CSS :has() selector hides the loading skeleton.
@@ -63,6 +77,6 @@ test.describe('cloudflare adapter: streamed paint order', () => {
 
     expect(tSkeleton).toBeLessThan(1000);
     expect(tResult).toBeGreaterThanOrEqual(1500);
-    await expect(page.getByTestId('cf-footer')).toHaveText('footer');
+    await expect(page.getByTestId('cf-footer')).toContainText('Zero client JS framework hydration');
   });
 });

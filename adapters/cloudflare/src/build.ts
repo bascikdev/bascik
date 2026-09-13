@@ -67,7 +67,7 @@ export const detectControlCollisions = (publicPaths: string[], variant: string):
 };
 
 export const build = async (context: AdapterBuildContext): Promise<AdapterBuildResult> => {
-  const { graph, distDir, outDir, projectRoot, variant = "pages" } = context;
+  const { graph, distDir, outDir, projectRoot, variant = "workers" } = context;
   if (variant !== "pages" && variant !== "workers") {
     throw new Error(`[bascik] --target cloudflare: unknown variant "${variant}". Valid variants are "pages" and "workers".`);
   }

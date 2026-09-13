@@ -5,6 +5,12 @@ import { writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 describe("resolveAdapterTarget", () => {
+  it("resolves cloudflare to official package with workers variant by default", async () => {
+    const resolved = await resolveAdapterTarget("cloudflare", process.cwd(), { load: false });
+    expect(resolved.package).toBe("@bascik/adapter-cloudflare");
+    expect(resolved.variant).toBe("workers");
+  });
+
   it("resolves cloudflare-pages to official package with pages variant", async () => {
     const resolved = await resolveAdapterTarget("cloudflare-pages", process.cwd(), { load: false });
     expect(resolved.package).toBe("@bascik/adapter-cloudflare");

@@ -1,11 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <title>Cloudflare fixture</title>
+  <title>Cloudflare Workers &amp; Pages Architecture Demo</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+      color: #1a1a1a;
+    }
+
+    header {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .banner {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 600px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .demo-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1.25rem;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .demo-card:hover {
+      border-color: #3b82f6;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .demo-tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #2563eb;
+      margin-bottom: 0.5rem;
+    }
+
+    .demo-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem 0;
+      color: #111827;
+    }
+
+    .demo-desc {
+      font-size: 0.9rem;
+      color: #4b5563;
+      margin: 0;
+    }
+
+    footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+      color: #6b7280;
+      font-size: 0.85rem;
+    }
+  </style>
 </head>
+
 <body>
-  <h1 data-testid="cf-static-heading">Static home served by the asset layer</h1>
-  <a data-testid="cf-link-stream" href="/stream">stream page</a>
+  <header>
+    <h1 data-testid="cf-static-heading">Cloudflare Workers Architecture Demo</h1>
+    <p>Zero-overhead static asset delivery from global CDN edge cache combined with native edge script execution.</p>
+  </header>
+
+  <main>
+    <div class="banner">
+      ⚡ <strong>Static CDN Layer:</strong> This home page is served directly from Cloudflare's static cache with zero
+      compute latency or Worker invocations.
+    </div>
+
+    <h2>Explore Edge Rendering Features</h2>
+    <div class="grid">
+      <a class="demo-card" href="/server" data-testid="cf-link-server">
+        <div>
+          <div class="demo-tag">&lt;script data-bascik-server&gt;</div>
+          <h3 class="demo-title">Server Scripts</h3>
+          <p class="demo-desc">Inspect dynamic request context (IP, headers, platform bindings) computed at request time
+            before headers commit.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/stream" data-testid="cf-link-stream">
+        <div>
+          <div class="demo-tag">Mixed: Server + Stream</div>
+          <h3 class="demo-title">Streaming Invoices</h3>
+          <p class="demo-desc">Initial server script greeting with three progressive async data streams replacing
+            skeletons in document order.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/api/ping" data-testid="cf-link-api">
+        <div>
+          <div class="demo-tag">src/api/ping.ts</div>
+          <h3 class="demo-title">Edge API Route</h3>
+          <p class="demo-desc">Standard WHATWG Request/Response API route dispatched directly inside the Cloudflare
+            Worker.</p>
+        </div>
+      </a>
+    </div>
+  </main>
+
+  <footer data-testid="cf-static-footer">
+    Bascik · Vanilla HTML/CSS/JS · Cloudflare Workers with Static Assets
+  </footer>
 </body>
+
 </html>

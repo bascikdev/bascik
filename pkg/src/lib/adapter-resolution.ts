@@ -22,6 +22,10 @@ export interface ResolveAdapterOptions {
 }
 
 const OFFICIAL_TARGETS: Record<string, { package: string; variant?: string }> = {
+  cloudflare: {
+    package: "@bascik/adapter-cloudflare",
+    variant: "workers",
+  },
   "cloudflare-pages": {
     package: "@bascik/adapter-cloudflare",
     variant: "pages",

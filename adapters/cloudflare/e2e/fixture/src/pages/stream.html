@@ -3,49 +3,219 @@
 
 <head>
   <meta charset="utf-8">
-  <title>Cloudflare stream</title>
+  <title>Cloudflare Stream Invoices Demo</title>
   <style>
-    /* Author CSS owns the placeholder swap; no framework bytes are injected. */
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+      color: #1a1a1a;
+    }
+
+    header {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .invoice-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .invoice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .invoice-amount {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .invoice-status {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+    }
+
+    .status-paid {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .status-pending {
+      background: #fef9c3;
+      color: #854d0e;
+    }
+
+    /* Author CSS manages placeholder state without JS */
     [data-testid="cf-slot"] {
-      min-height: 3rem;
+      min-height: 5rem;
     }
 
     [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"] {
       display: none;
     }
+
+    [data-testid="cf-slot-2"]:has([data-testid="cf-invoice-2"]) [data-testid="cf-skeleton-2"] {
+      display: none;
+    }
+
+    [data-testid="cf-slot-3"]:has([data-testid="cf-invoice-3"]) [data-testid="cf-skeleton-3"] {
+      display: none;
+    }
+
+    .skeleton {
+      animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 1.5rem;
+      color: #6b7280;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
   </style>
 </head>
 
 <body>
-  <header data-testid="cf-header">header</header>
-
-  <p data-testid="cf-greeting">
-    <script data-bascik-server>
-      export default function (request, context) {
-        const name = new URL(request.url).searchParams.get('name') ?? 'Guest';
-        return 'Hello ' + name.replace(/[<>&"']/g, '') + ' on ' + context.platform.name;
-      }
-    </script>
-  </p>
-
-  <section data-testid="cf-slot" aria-busy="true">
-    <p data-testid="cf-skeleton" role="status">Loading account...</p>
-    <script data-bascik-stream>
-      export default async function (request, context, { signal }) {
-        const requested = Number(new URL(request.url).searchParams.get('delay') ?? 0);
-        const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 0;
-        if (delay > 0) {
-          await new Promise((resolve, reject) => {
-            const t = setTimeout(resolve, delay);
-            signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
-          });
+  <header data-testid="cf-header">
+    <h1>Billing Dashboard</h1>
+    <p data-testid="cf-greeting">
+      <script data-bascik-server>
+        export default function (request, context) {
+          const name = new URL(request.url).searchParams.get('name') ?? 'Guest';
+          const platformName = context?.platform?.name ?? 'local';
+          return 'Welcome back, ' + name.replace(/[<>&"']/g, '') + ' · Edge host: <span class="badge">' + platformName + '</span>';
         }
-        return '<article data-testid="cf-result" data-delay="' + delay + '">account loaded</article>';
-      }
-    </script>
-  </section>
+      </script>
+    </p>
+  </header>
 
-  <footer data-testid="cf-footer">footer</footer>
+  <main>
+    <p>Below are recent invoices streaming progressively from edge data services in real time:</p>
+
+    <!-- Invoice 1 (Primary / Fast Stream) -->
+    <section data-testid="cf-slot" aria-busy="true">
+      <div class="skeleton" data-testid="cf-skeleton" role="status">
+        ⏳ Loading Invoice #INV-2026-001 (Recent)...
+      </div>
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          if (delay > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="invoice-card" data-testid="cf-result" data-delay="' + delay + '">' +
+            '<div class="invoice-header">' +
+            '<strong>#INV-2026-001 · Enterprise Cloudflare Edge Plan</strong>' +
+            '<span class="invoice-status status-paid">Paid</span>' +
+            '</div>' +
+            '<div class="invoice-amount">$2,450.00</div>' +
+            '<small>Issued: Sep 1, 2026 · Streamed after ' + delay + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+    </section>
+
+    <!-- Invoice 2 (Secondary / Medium Stream) -->
+    <section data-testid="cf-slot-2" aria-busy="true">
+      <div class="skeleton" data-testid="cf-skeleton-2" role="status">
+        ⏳ Loading Invoice #INV-2026-002 (Processing)...
+      </div>
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          const delay2 = Math.min(delay + 500, 5000);
+          if (delay2 > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay2);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="invoice-card" data-testid="cf-invoice-2">' +
+            '<div class="invoice-header">' +
+            '<strong>#INV-2026-002 · High-Throughput Stream Workers</strong>' +
+            '<span class="invoice-status status-paid">Paid</span>' +
+            '</div>' +
+            '<div class="invoice-amount">$1,200.00</div>' +
+            '<small>Issued: Sep 5, 2026 · Streamed after ' + delay2 + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+    </section>
+
+    <!-- Invoice 3 (Tertiary / Slower Stream) -->
+    <section data-testid="cf-slot-3" aria-busy="true">
+      <div class="skeleton" data-testid="cf-skeleton-3" role="status">
+        ⏳ Loading Invoice #INV-2026-003 (Archived DB)...
+      </div>
+      <script data-bascik-stream>
+        export default async function (request, context, { signal }) {
+          const requested = Number(new URL(request.url).searchParams.get('delay') ?? 300);
+          const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 300;
+          const delay3 = Math.min(delay + 1000, 5000);
+          if (delay3 > 0) {
+            await new Promise((resolve, reject) => {
+              const t = setTimeout(resolve, delay3);
+              signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+            });
+          }
+          return '<article class="invoice-card" data-testid="cf-invoice-3">' +
+            '<div class="invoice-header">' +
+            '<strong>#INV-2026-003 · Dedicated D1 Database Replica</strong>' +
+            '<span class="invoice-status status-pending">Pending</span>' +
+            '</div>' +
+            '<div class="invoice-amount">$650.00</div>' +
+            '<small>Issued: Sep 10, 2026 · Streamed after ' + delay3 + 'ms</small>' +
+            '</article>';
+        }
+      </script>
+    </section>
+  </main>
+
+  <footer data-testid="cf-footer"
+    style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 0.9rem;">
+    Zero client JS framework hydration · Native chunked HTTP streaming in document order
+  </footer>
 </body>
 
 </html>
