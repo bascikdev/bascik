@@ -3,25 +3,84 @@
 
 <head>
   <meta charset="utf-8">
-  <title>Cloudflare Stream Invoices Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Cloudflare Stream Invoices Demo</title>
   <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --text: #111827;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 720px;
-      margin: 2rem auto;
-      padding: 0 1rem;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem;
       line-height: 1.5;
-      color: #1a1a1a;
+      color: var(--text);
+      background: var(--bg);
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
+      min-height: 100dvh;
     }
 
     header {
       order: 1;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
       margin-bottom: 1.5rem;
+    }
+
+    .brand-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .brand-pill {
+      background: var(--accent-light);
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      border: 1px solid #bfdbfe;
+      color: var(--accent);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 0.5rem;
+    }
+
+    .greeting {
+      font-size: 1rem;
+      color: var(--text-muted);
     }
 
     /* Secret Sauce: The footer markup is sent in the initial chunk BEFORE stream content,
@@ -29,52 +88,77 @@
     footer {
       order: 4;
       margin-top: auto;
-      padding-top: 1rem;
-      border-top: 1px solid #e5e7eb;
-      color: #6b7280;
-      font-size: 0.9rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
     }
 
     main {
       order: 2;
+      flex: 1 0 auto;
+      margin-bottom: 1.5rem;
+    }
+
+    .intro-text {
+      margin-bottom: 1rem;
+      color: var(--text);
+      font-size: 0.95rem;
     }
 
     .badge {
       display: inline-block;
       padding: 0.2rem 0.5rem;
-      background: #e0f2fe;
-      color: #0369a1;
+      background: var(--accent-light);
+      color: var(--accent);
       border-radius: 4px;
       font-size: 0.85rem;
-      font-weight: 500;
+      font-weight: 600;
     }
 
     .invoice-card {
-      border: 1px solid #e5e7eb;
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 1rem 1.25rem;
       margin-bottom: 1rem;
-      background: #fff;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     }
 
     .invoice-header {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
+      gap: 0.5rem;
       margin-bottom: 0.5rem;
     }
 
     .invoice-amount {
       font-size: 1.25rem;
-      font-weight: 600;
-      color: #111827;
+      font-weight: 700;
+      color: var(--text);
     }
 
     .invoice-status {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.05em;
       padding: 0.2rem 0.6rem;
       border-radius: 9999px;
     }
@@ -91,7 +175,7 @@
 
     /* Author CSS manages placeholder state without JS */
     [data-testid="cf-slot"] {
-      min-height: 5rem;
+      min-height: 5.5rem;
     }
 
     [data-testid="cf-slot"]:has([data-testid="cf-result"]) [data-testid="cf-skeleton"] {
@@ -109,11 +193,13 @@
     .skeleton {
       animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       background: #f3f4f6;
-      border-radius: 6px;
-      padding: 1.5rem;
-      color: #6b7280;
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 1.25rem;
+      color: var(--text-muted);
       text-align: center;
       margin-bottom: 1rem;
+      font-size: 0.9rem;
     }
 
     @keyframes pulse {
@@ -132,8 +218,12 @@
 
 <body>
   <header data-testid="cf-header">
+    <div class="brand-nav">
+      <span class="brand-pill">Bascik Stream Scripts</span>
+      <a class="back-link" href="/">← Back to Demo Home</a>
+    </div>
     <h1>Billing Dashboard</h1>
-    <p data-testid="cf-greeting">
+    <p class="greeting" data-testid="cf-greeting">
       <script data-bascik-server>
         export default function (request, context) {
           const name = new URL(request.url).searchParams.get('name') ?? 'Guest';
@@ -147,11 +237,12 @@
   <!-- Static footer sent immediately in the initial chunk before streaming slots!
        CSS flexbox order places it at the visual bottom of the layout. -->
   <footer data-testid="cf-footer">
-    Zero client JS framework hydration · Native chunked HTTP streaming in document order
+    <div>Zero client JS framework hydration · Native chunked HTTP streaming in document order</div>
+    <div><a href="https://bascik.dev/stream-scripts">Stream Scripts Docs →</a></div>
   </footer>
 
   <main>
-    <p>Below are recent invoices streaming progressively from edge data services in real time:</p>
+    <p class="intro-text">Below are recent invoices streaming progressively from edge data services in real time:</p>
 
     <!-- Invoice 1 (Primary / Fast Stream) -->
     <section data-testid="cf-slot" aria-busy="true">
@@ -174,7 +265,7 @@
             '<span class="invoice-status status-paid">Paid</span>' +
             '</div>' +
             '<div class="invoice-amount">$2,450.00</div>' +
-            '<small>Issued: Sep 1, 2026 · Streamed after ' + delay + 'ms</small>' +
+            '<small style="color: #6b7280;">Issued: Sep 1, 2026 · Streamed after ' + delay + 'ms</small>' +
             '</article>';
         }
       </script>
@@ -202,7 +293,7 @@
             '<span class="invoice-status status-paid">Paid</span>' +
             '</div>' +
             '<div class="invoice-amount">$1,200.00</div>' +
-            '<small>Issued: Sep 5, 2026 · Streamed after ' + delay2 + 'ms</small>' +
+            '<small style="color: #6b7280;">Issued: Sep 5, 2026 · Streamed after ' + delay2 + 'ms</small>' +
             '</article>';
         }
       </script>
@@ -230,7 +321,7 @@
             '<span class="invoice-status status-pending">Pending</span>' +
             '</div>' +
             '<div class="invoice-amount">$650.00</div>' +
-            '<small>Issued: Sep 10, 2026 · Streamed after ' + delay3 + 'ms</small>' +
+            '<small style="color: #6b7280;">Issued: Sep 10, 2026 · Streamed after ' + delay3 + 'ms</small>' +
             '</article>';
         }
       </script>

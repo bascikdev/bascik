@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import adapter from "./index.ts";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdir, rm, readFile } from "node:fs/promises";
+import { mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import type { SiteGraph } from "@bascik/bascik/adapter";
 
 describe("cloudflare adapter definition and execution", () => {
@@ -129,6 +129,65 @@ describe("cloudflare adapter definition and execution", () => {
       const wrangler = await readFile(join(outDir, "wrangler.jsonc"), "utf8");
       expect(JSON.parse(wrangler).main).toBe("worker.js");
     } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it("derives worker name from package.json or environment variable", async () => {
+    const testDir = join(tmpdir(), `bascik-cf-worker-name-${Date.now()}`);
+    const distDir = join(testDir, "dist");
+    const outDir = join(distDir, ".bascik/cloudflare-workers");
+    await mkdir(distDir, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+
+    await writeFile(
+      join(testDir, "package.json"),
+      JSON.stringify({ name: "@my-org/custom-worker-app" }),
+      "utf8",
+    );
+
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [],
+      importRoot: testDir,
+    };
+
+    try {
+      await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: () => {},
+        runtimeEntry: "",
+      });
+
+      const wrangler = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      expect(wrangler.name).toBe("custom-worker-app");
+
+      // Test CLOUDFLARE_WORKER_NAME override
+      process.env.CLOUDFLARE_WORKER_NAME = "env-worker-override";
+      await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: () => {},
+        runtimeEntry: "",
+      });
+      const overridden = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      expect(overridden.name).toBe("env-worker-override");
+      delete process.env.CLOUDFLARE_WORKER_NAME;
+    } finally {
+      delete process.env.CLOUDFLARE_WORKER_NAME;
       await rm(testDir, { recursive: true, force: true });
     }
   });

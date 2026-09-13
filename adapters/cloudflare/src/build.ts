@@ -7,7 +7,7 @@
 import { pageAliasesFor, type AdapterBuildContext, type AdapterBuildResult } from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, copyFile, writeFile } from "node:fs/promises";
+import { mkdir, copyFile, writeFile, readFile } from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
@@ -219,9 +219,28 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
   } else {
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
+
+    // Derive worker name from environment variable, project package.json name, or default to "bascik-site"
+    let workerName = process.env.CLOUDFLARE_WORKER_NAME || process.env.WORKER_NAME;
+    if (!workerName) {
+      try {
+        const pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
+        const pkgJson = JSON.parse(pkgJsonRaw) as { name?: string };
+        if (pkgJson.name && typeof pkgJson.name === "string") {
+          // Worker names cannot contain npm scopes like "@scope/"
+          workerName = pkgJson.name.replace(/^@[^/]+\//, "").trim();
+        }
+      } catch {
+        // Fall back if package.json is missing or invalid
+      }
+    }
+    if (!workerName) {
+      workerName = "bascik-site";
+    }
+
     const wrangler = {
       $schema: "node_modules/wrangler/config-schema.json",
-      name: "bascik-site",
+      name: workerName,
       main: "worker.js",
       compatibility_date: CLOUDFLARE_COMPATIBILITY_DATE,
       compatibility_flags: [...CLOUDFLARE_COMPATIBILITY_FLAGS],
