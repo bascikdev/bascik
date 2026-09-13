@@ -52,7 +52,7 @@ export interface CliFlags {
   addTargets?: string[];
 }
 
-export const DEPLOY_TARGETS = ["cloudflare-pages", "cloudflare-workers"] as const;
+export const DEPLOY_TARGETS = ["cloudflare", "cloudflare-pages", "cloudflare-workers"] as const;
 export type DeployTarget = string;
 
 export interface CliDecision {

@@ -93,7 +93,7 @@ The browser can parse Bascik's source without needing to understand a new runtim
 
 Modern frameworks like Next.js, Astro, and SvelteKit often provide adapters for edge serverless platforms like Cloudflare Pages or Workers. They achieve dynamic behavior by packaging serverless functions alongside static assets.
 
-Bascik supports this same unified edge deployment model via deployment adapters (such as `@bascik/adapter-cloudflare` or [custom adapters](/deployment/custom-adapters)). Running `bascik --build --target cloudflare-pages` partitions your application into:
+Bascik supports this same unified edge deployment model via deployment adapters (such as `@bascik/adapter-cloudflare` or [custom adapters](/deployment/custom-adapters)). Running `bascik --build --target cloudflare` partitions your application into:
 
 1. **CDN static assets:** pure static HTML pages, CSS, and client-side assets served directly by Cloudflare's edge cache with zero compute invocation;
 2. **Edge worker scripts:** pages containing `<script data-bascik-server>` or `<script data-bascik-stream>` compile their HTML templates and request-time code directly into a single worker bundle that executes at the edge.

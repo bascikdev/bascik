@@ -71,10 +71,9 @@ describe('serverless docs: claims', () => {
     expect(md).not.toMatch(/any cloud/i);
   });
 
-  it('the guide states remote validation status honestly', async () => {
+  it('the guide describes local workerd testing and verification honestly', async () => {
     const md = await read('deployment/cloudflare.md');
-    expect(md).toContain('## Verification status');
-    expect(md).toMatch(/pending/i);
+    expect(md).toContain('## Testing and local validation');
     expect(md).not.toMatch(/five nines|99\.999/i);
   });
 

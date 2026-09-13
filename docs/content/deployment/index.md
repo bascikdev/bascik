@@ -16,11 +16,11 @@ If your site is a marketing page, blog, documentation site, portfolio, or uses b
 
 > **Get Started:** Follow our step-by-step, hand-holding [Static Hosting Guide](/deployment/static-hosting) to deploy your site to Cloudflare Pages, GitHub Pages, Netlify, and more in minutes.
 
-### 2. Serverless & Edge Adapters (Cloudflare Pages & Workers)
+### 2. Serverless & Edge Adapters (Cloudflare Workers & Pages)
 
 If your site uses request-time server scripts (`data-bascik-server`), progressive HTML streams (`data-bascik-stream`), or edge API routes (`src/api/`), you can deploy to edge platforms without managing a dedicated server.
 
-- **How it works:** Running `bascik --build --target cloudflare-pages` compiles static assets for the CDN while packaging your server scripts and API routes into an edge Worker automatically.
+- **How it works:** Running `bascik --build --target cloudflare` compiles static assets for the CDN while packaging your server scripts, stream scripts, and API routes into an edge Worker automatically.
 - **Benefits:** Global edge execution, zero origin servers to maintain, and automatic streaming.
 
 > **Read the Guide:** Check out the [Cloudflare Adapter](/deployment/cloudflare) guide for build commands, Wrangler configuration, and edge features, or learn about [Custom Adapters](/deployment/custom-adapters).
