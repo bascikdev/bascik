@@ -12,12 +12,31 @@
       padding: 0 1rem;
       line-height: 1.5;
       color: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
 
     header {
+      order: 1;
       border-bottom: 1px solid #e5e7eb;
       padding-bottom: 1rem;
       margin-bottom: 1.5rem;
+    }
+
+    /* Secret Sauce: The footer markup is sent in the initial chunk BEFORE stream content,
+       but CSS flexbox order: 4 renders it visually at the bottom of the page! */
+    footer {
+      order: 4;
+      margin-top: auto;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+      color: #6b7280;
+      font-size: 0.9rem;
+    }
+
+    main {
+      order: 2;
     }
 
     .badge {
@@ -125,6 +144,12 @@
     </p>
   </header>
 
+  <!-- Static footer sent immediately in the initial chunk before streaming slots!
+       CSS flexbox order places it at the visual bottom of the layout. -->
+  <footer data-testid="cf-footer">
+    Zero client JS framework hydration · Native chunked HTTP streaming in document order
+  </footer>
+
   <main>
     <p>Below are recent invoices streaming progressively from edge data services in real time:</p>
 
@@ -211,11 +236,6 @@
       </script>
     </section>
   </main>
-
-  <footer data-testid="cf-footer"
-    style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 0.9rem;">
-    Zero client JS framework hydration · Native chunked HTTP streaming in document order
-  </footer>
 </body>
 
 </html>
