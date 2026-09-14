@@ -47,14 +47,13 @@ export const NAV: NavSection[] = [
   },
   {
     section: 'Reference', pages: [
-      { href: '/development-server', label: 'Development Server' },
-      { href: '/production-server', label: 'Production Server' },
       { href: '/faq', label: 'FAQ' },
-      { href: '/cli', label: 'Command Line Interface (CLI)' },
       { href: '/configuration', label: 'Configuration' },
       { href: '/environment-variables', label: 'Environment Variables' },
       { href: '/compatibility', label: 'Compatibility' },
-      { href: '/deploying', label: 'Deploying' },
+      { href: '/cli', label: 'Command Line Interface (CLI)' },
+      { href: '/development-server', label: 'Development Server' },
+      { href: '/production-server', label: 'Production Server' },
     ]
   },
   {
@@ -69,6 +68,14 @@ export const NAV: NavSection[] = [
       { href: '/testing/debugging', label: 'Debugging' },
       { href: '/testing/source-maps', label: 'Source Maps' },
       { href: '/testing/linting', label: 'Linting' },
+    ]
+  },
+  {
+    section: 'Deployment', pages: [
+      { href: '/deployment', label: 'Overview' },
+      { href: '/deployment/static-hosting', label: 'Static Hosting' },
+      { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
+      { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
     ]
   },
   {

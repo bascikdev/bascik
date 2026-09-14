@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationDir": "dist",
+    "sourceMap": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "lib": ["ES2025"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-helper.ts", "e2e", "node_modules"]
+}

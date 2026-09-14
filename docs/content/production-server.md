@@ -126,4 +126,4 @@ The production server responds to `SIGTERM` and `SIGINT` process signals by stop
 - **Built-in Health Checks:** Deploy `src/api/health.ts` or query `/_health` for orchestrator liveness and readiness probes. Readiness transitions to 503 during draining while liveness remains 200.
 - **Connection Draining:** In-flight streaming scripts and requests complete within `http.timeouts.drain` before connections close. Forced socket termination only occurs if the deadline expires.
 
-> **Next:** See [Deploying](/deploying) for deployment guides on Node servers, Docker, PM2, and systemd.
+> **Next:** See [Deployment Overview](/deployment) for deployment guides on Node servers, Docker, PM2, and systemd.

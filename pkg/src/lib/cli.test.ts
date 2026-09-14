@@ -302,6 +302,30 @@ describe("cli helper tests", () => {
       expect(decision.errorMessage).toContain("--json");
       expect(decision.errorMessage).toContain("--check");
     });
+
+    it("parses --target flag with any non-empty value during build", () => {
+      const customDecision = resolveCliAction(["--build", "--target", "@acme/adapter-foo"]);
+      expect(customDecision.action).toBe("build");
+      expect(customDecision.flags.target).toBe("@acme/adapter-foo");
+
+      const localDecision = resolveCliAction(["--build", "--target=./my-adapter.ts"]);
+      expect(localDecision.action).toBe("build");
+      expect(localDecision.flags.target).toBe("./my-adapter.ts");
+    });
+
+    it("rejects --target without --build", () => {
+      const decision = resolveCliAction(["--target", "cloudflare-pages"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--target");
+      expect(decision.errorMessage).toContain("--build");
+    });
+
+    it("rejects --target with --only", () => {
+      const decision = resolveCliAction(["--build", "--target", "cloudflare-pages", "--only", "index.html"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--target");
+      expect(decision.errorMessage).toContain("--only");
+    });
   });
 
   describe("--log gating", () => {

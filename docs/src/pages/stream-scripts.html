@@ -45,26 +45,187 @@
           console.log(await renderMdRange('./content/stream-scripts.md', { to: 'data-bascik-stream' }));
         </script>
 
+        <style>
+          .stream-demo-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.25rem 0;
+          }
+
+          .stream-demo-timeline {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-muted, #6b7280);
+          }
+
+          .stream-demo-pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent, #6366f1);
+            animation: stream-dot-pulse 1.2s ease-in-out infinite;
+          }
+
+          @keyframes stream-dot-pulse {
+
+            0%,
+            100% {
+              opacity: 0.4;
+              transform: scale(0.9);
+            }
+
+            50% {
+              opacity: 1;
+              transform: scale(1.15);
+            }
+          }
+
+          .stream-demo-card-stage {
+            position: relative;
+            min-block-size: 5.5rem;
+            display: grid;
+          }
+
+          .stream-demo-stage-1,
+          .stream-demo-stage-2 {
+            grid-area: 1 / 1;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+          }
+
+          .stream-demo-stage-1 {
+            animation: stream-loop-pending 6s ease-in-out infinite;
+          }
+
+          .stream-demo-stage-2 {
+            animation: stream-loop-result 6s ease-in-out infinite;
+          }
+
+          @keyframes stream-loop-pending {
+
+            0%,
+            35% {
+              opacity: 1;
+              visibility: visible;
+              pointer-events: auto;
+              transform: translateY(0);
+            }
+
+            42%,
+            92% {
+              opacity: 0;
+              visibility: hidden;
+              pointer-events: none;
+              transform: translateY(-4px);
+            }
+
+            97%,
+            100% {
+              opacity: 1;
+              visibility: visible;
+              pointer-events: auto;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes stream-loop-result {
+
+            0%,
+            35% {
+              opacity: 0;
+              visibility: hidden;
+              pointer-events: none;
+              transform: translateY(4px);
+            }
+
+            42%,
+            92% {
+              opacity: 1;
+              visibility: visible;
+              pointer-events: auto;
+              transform: translateY(0);
+            }
+
+            97%,
+            100% {
+              opacity: 0;
+              visibility: hidden;
+              pointer-events: none;
+              transform: translateY(4px);
+            }
+          }
+
+          .stream-badge-text::before {
+            content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
+            animation: stream-badge-swap 6s step-end infinite;
+          }
+
+          @keyframes stream-badge-swap {
+
+            0%,
+            97% {
+              content: "Stage 1: Initial Paint (Shell & Pending Placeholder)";
+            }
+
+            42% {
+              content: "Stage 2: Stream Chunk Arrived (Placeholder Hidden)";
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+
+            .stream-demo-stage-1,
+            .stream-demo-stage-2 {
+              animation: none;
+              position: static;
+              opacity: 1;
+              visibility: visible;
+              pointer-events: auto;
+              transform: none;
+            }
+
+            .stream-demo-card-stage {
+              display: flex;
+              flex-direction: column;
+              gap: 1rem;
+            }
+
+            .stream-badge-text::before {
+              content: "Stage 1 & Stage 2 Overview";
+              animation: none;
+            }
+
+            .stream-demo-pulse-dot {
+              animation: none;
+            }
+          }
+        </style>
+
         <component-demo data-bascik-prop-file="src/pages/stream-scripts.html">
           <div data-bascik-slot="example">
-            <div style="display: flex; flex-direction: column; gap: 1rem;">
-              <div>
-                <p
-                  style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #6b7280); margin-bottom: 0.35rem;">
-                  Stage 1: Initial Paint (Shell &amp; Pending Placeholder)</p>
-                <aside class="alert-box" style="opacity: 0.85;">
-                  <strong class="alert-box-title">System Status</strong>
-                  <p class="alert-box-message">Loading live metrics…</p>
-                </aside>
+            <div class="stream-demo-wrap">
+              <div class="stream-demo-timeline">
+                <span class="stream-demo-pulse-dot"></span>
+                <span class="stream-badge-text"></span>
               </div>
-              <div>
-                <p
-                  style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted, #6b7280); margin-bottom: 0.35rem;">
-                  Stage 2: Stream Chunk Arrives</p>
-                <aside class="alert-box">
-                  <strong class="alert-box-title">System Online</strong>
-                  <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
-                </aside>
+              <div class="stream-demo-card-stage">
+                <div class="stream-demo-stage-1">
+                  <aside class="alert-box" style="opacity: 0.85;">
+                    <strong class="alert-box-title">System Status</strong>
+                    <p class="alert-box-message">Loading live metrics…</p>
+                  </aside>
+                </div>
+                <div class="stream-demo-stage-2">
+                  <aside class="alert-box">
+                    <strong class="alert-box-title">System Online</strong>
+                    <p class="alert-box-message">Streaming chunks active &bull; Uptime 99.99%</p>
+                  </aside>
+                </div>
               </div>
             </div>
           </div>

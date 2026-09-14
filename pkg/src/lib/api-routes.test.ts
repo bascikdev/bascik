@@ -149,7 +149,7 @@ describe("API route matching (pure)", () => {
   it("formats build warning message accurately", () => {
     const warning = formatApiRouteWarning(["/api/health", "/api/contact", "/api/users/[id]"], "src/api");
     expect(warning).toContain("warning: 3 API routes found in src/api/ but static builds cannot serve them.");
-    expect(warning).toContain("Deploy with `bascik --server`, or port them to your host's function runtime.");
+    expect(warning).toContain("Deploy with `bascik --server`, build a serverless bundle with `bascik --build --target <name>`, or port them to your host's function runtime.");
     expect(warning).toContain("Routes: /api/health, /api/contact, /api/users/[id]");
   });
 });

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Cloudflare Workers Architecture Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --success-bg: rgba(211, 255, 141, 0.08);
+      --success-border: rgba(211, 255, 141, 0.22);
+      --success-text: #d3ff8d;
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+      --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 0 15px rgba(211, 255, 141, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem 1.25rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .brand {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #18191b;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      color: var(--text-muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    h1 {
+      font-size: clamp(1.4rem, 4vw, 1.85rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .banner {
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      color: var(--success-text);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.85rem;
+      color: var(--text);
+    }
+
+    .grid {
+      display: grid;
+      gap: 0.85rem;
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 600px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .demo-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.15rem;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .demo-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--card-shadow-hover);
+      transform: translateY(-2px);
+    }
+
+    .demo-tag {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-light);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--accent-border);
+      margin-bottom: 0.6rem;
+    }
+
+    .demo-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 0 0 0.35rem 0;
+      color: var(--text);
+    }
+
+    .demo-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin: 0;
+      line-height: 1.45;
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand">
+      <span class="brand-pill">Bascik Example</span>
+      <span class="brand-sub">Cloudflare Workers + Assets</span>
+    </div>
+    <h1 data-testid="cf-static-heading">Cloudflare Workers Architecture Demo</h1>
+    <p class="subtitle">Zero-overhead static asset delivery from global CDN edge cache combined with native edge script
+      execution.</p>
+  </header>
+
+  <main>
+    <div class="banner">
+      ⚡ <strong>Static CDN Layer:</strong> This home page is served directly from Cloudflare's static cache with zero
+      compute latency or Worker invocations.
+    </div>
+
+    <h2 class="section-title">Explore Edge Rendering Features</h2>
+    <div class="grid">
+      <a class="demo-card" href="/server" data-testid="cf-link-server">
+        <div>
+          <div class="demo-tag">&lt;script data-bascik-server&gt;</div>
+          <h3 class="demo-title">Server Scripts</h3>
+          <p class="demo-desc">Inspect dynamic request context (IP, headers, platform bindings) computed at request time
+            before headers commit.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/stream" data-testid="cf-link-stream">
+        <div>
+          <div class="demo-tag">Stream Pattern 1</div>
+          <h3 class="demo-title">In-Place Skeleton Swap</h3>
+          <p class="demo-desc">Shimmer skeleton cards render immediately on initial paint and swap in-place with
+            resolved
+            content as streams deliver.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/stream-append" data-testid="cf-link-stream-append">
+        <div>
+          <div class="demo-tag">Stream Pattern 2</div>
+          <h3 class="demo-title">Progressive Stream Append</h3>
+          <p class="demo-desc">Zero-placeholder stream: page shell and footer paint first, then cards stream directly
+            into the open response grid.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/mixed" data-testid="cf-link-mixed">
+        <div>
+          <div class="demo-tag">Server + Stream</div>
+          <h3 class="demo-title">Mixed-Page Ordering</h3>
+          <p class="demo-desc">Demonstrates the two-phase lifecycle: pre-header server script execution followed by
+            early
+            flush and async streaming.</p>
+        </div>
+      </a>
+
+      <a class="demo-card" href="/api-demo" data-testid="cf-link-api-demo">
+        <div>
+          <div class="demo-tag">Interactive Client</div>
+          <h3 class="demo-title">Edge API Client</h3>
+          <p class="demo-desc">Interactive frontend UI demonstrating client-side fetch calls dispatched directly to
+            edge API routes (<code style="font-size: 0.8rem;">/api/ping</code>).</p>
+        </div>
+      </a>
+    </div>
+  </main>
+
+  <footer data-testid="cf-static-footer">
+    <div>Bascik · Vanilla HTML/CSS/JS · Cloudflare Workers with Static Assets</div>
+    <div><a href="https://bascik.dev/deployment/cloudflare">Read the Adapter Docs →</a></div>
+  </footer>
+</body>
+
+</html>

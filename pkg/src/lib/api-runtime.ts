@@ -19,23 +19,18 @@ import { scriptRegistry } from "./script-registry.ts";
 import { BascikConfig } from "./config.ts";
 import { isNetworkResetError, type BascikRequest } from "./server.ts";
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from "./clock.ts";
+import {
+  ALLOWED_METHODS,
+  NODE_PLATFORM,
+  dispatchApiHandler,
+  type ApiHandlerContext,
+  type HttpMethod,
+} from "./request-execution.ts";
 
-export const ALLOWED_METHODS = [
-  "GET",
-  "POST",
-  "PUT",
-  "PATCH",
-  "DELETE",
-  "OPTIONS",
-  "HEAD",
-] as const;
+export { ALLOWED_METHODS, NODE_PLATFORM };
+export type { HttpMethod };
 
-export type HttpMethod = (typeof ALLOWED_METHODS)[number];
-
-export interface ApiRouteContext {
-  params: Record<string, string>;
-  remoteIp: string;
-}
+export type ApiRouteContext = ApiHandlerContext;
 
 export interface ExecuteApiRouteOptions {
   filePath: string;
@@ -46,6 +41,7 @@ export interface ExecuteApiRouteOptions {
   timeoutMs?: number;
   clock?: FrameworkClock;
 }
+
 
 export class PayloadTooLargeError extends Error {
   constructor(message = "Payload Too Large") {
@@ -237,116 +233,48 @@ export const executeApiRoute = async (
       throw abortController.signal.reason;
     }
 
-    // Determine exported methods
-    const exportedMethods: string[] = [];
-    for (const m of ALLOWED_METHODS) {
-      if (typeof loadedModule[m] === "function") {
-        exportedMethods.push(m);
-      }
-    }
-
-    // Calculate Allow header
-    const allowMethodsSet = new Set(exportedMethods);
-    // If GET is exported, HEAD is automatically supported
-    if (allowMethodsSet.has("GET")) {
-      allowMethodsSet.add("HEAD");
-    }
-    // OPTIONS is always supported automatically if not exported
-    allowMethodsSet.add("OPTIONS");
-
-    const sortedAllow = Array.from(allowMethodsSet).sort();
-    const allowHeader = sortedAllow.join(", ");
-
-    // Handle unexported method
-    const isMethodAllowed =
-      typeof loadedModule[method] === "function" ||
-      (method === "HEAD" && typeof loadedModule.GET === "function") ||
-      method === "OPTIONS";
-
-    if (!isMethodAllowed) {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: {
-          Allow: allowHeader,
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
-    }
-
-    // Handle auto-OPTIONS
-    if (method === "OPTIONS" && typeof loadedModule.OPTIONS !== "function") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          Allow: allowHeader,
-        },
-      });
-    }
-
-    // Determine handler to call
-    let targetHandler = loadedModule[method];
-    let isDerivedHead = false;
-    if (method === "HEAD" && typeof loadedModule.HEAD !== "function") {
-      targetHandler = loadedModule.GET;
-      isDerivedHead = true;
-    }
-
     const context: ApiRouteContext = {
       params,
       remoteIp,
+      platform: NODE_PLATFORM,
     };
 
-    if (abortController.signal.aborted) {
-      throw abortController.signal.reason;
-    }
-
-    let handlerPromise: Promise<unknown>;
-    try {
-      handlerPromise = Promise.resolve(
-        targetHandler(request, context, { signal: abortController.signal })
-      );
-    } catch (syncErr) {
-      handlerPromise = Promise.reject(syncErr);
-    }
-    handlerPromise.catch(() => {});
-
-    const abortPromise = new Promise<never>((_, reject) => {
-      if (abortController.signal.aborted) {
-        reject(abortController.signal.reason);
-        return;
-      }
-      onAbortListener = () => {
-        if (!settled) {
-          if (didTimeout) {
-            reject(new Error(`API route handler timed out after ${effectiveTimeout}ms`));
-          } else {
-            reject(abortController.signal.reason);
-          }
+    // Method dispatch, Allow/HEAD/OPTIONS policy, and the generic error
+    // mapping are the shared core (prompt 132). The deadline timer above
+    // already owns the timeout, so the core is handed only the combined
+    // signal; a timeout arrives here as an abort and is classified below.
+    const response = await dispatchApiHandler(loadedModule, request, context, {
+      signal: abortController.signal,
+      // Node transport failures the core cannot know about.
+      classifyError: (err) => {
+        if (err instanceof PayloadTooLargeError || (err as { name?: string })?.name === "PayloadTooLargeError") {
+          return new Response("Payload Too Large", {
+            status: 413,
+            headers: { "Connection": "close", "Content-Type": "text/plain; charset=utf-8" },
+          });
         }
-      };
-      abortController.signal.addEventListener("abort", onAbortListener, { once: true });
+        if (isNetworkResetError(err)) return new Response("Client Closed Request", { status: 499 });
+        return undefined;
+      },
+      onError: (message, error) => {
+        // Format string first, values as arguments: a `%` in a path or a
+        // handler message must never be interpreted by util.format.
+        console.error(
+          "[bascik] %s in %s%s",
+          message,
+          filePath,
+          error !== undefined ? `:\n${(error as Error).stack ?? String(error)}` : "",
+        );
+      },
     });
-    abortPromise.catch(() => {});
-
-    const result = await Promise.race([handlerPromise, abortPromise]);
     settled = true;
-
-    if (!(result instanceof Response)) {
-      console.error(
-        `[bascik] API route handler "${filePath}" (${method}) did not return a WHATWG Response object. Returned: ${typeof result}`
-      );
-      return new Response("Internal Server Error", { status: 500 });
+    // The core reports an upstream abort as 499. When our own deadline caused
+    // that abort the truthful status is 504, matching the pre-132 behavior.
+    if (response.status === 499 && didTimeout) {
+      console.error("[bascik] API route handler timed out in %s (%s) after %dms", filePath, method, effectiveTimeout);
+      return new Response("Gateway Timeout", { status: 504 });
     }
-
-    if (isDerivedHead) {
-      return new Response(null, {
-        status: result.status,
-        statusText: result.statusText,
-        headers: result.headers,
-      });
-    }
-
-    return result;
+    return response;
   } catch (err) {
     settled = true;
     if (err instanceof PayloadTooLargeError || (err as any)?.name === "PayloadTooLargeError") {

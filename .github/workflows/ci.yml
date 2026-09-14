@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Run framework unit tests with coverage
         run: yarn pkg:test:ci
 
@@ -83,6 +86,32 @@ jobs:
 
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
+
+  unit-adapter-cloudflare:
+    name: Cloudflare Adapter Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
+
+      - name: Run Cloudflare adapter unit tests
+        run: yarn adapter:cf:test:ci
 
   unit-docs:
     name: Docs Unit Tests
@@ -192,7 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -222,7 +251,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -255,7 +284,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -285,7 +314,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -310,12 +339,42 @@ jobs:
       - name: Run framework E2E tests (production server HTTP/2)
         run: yarn pkg:e2e:prod:http2
 
+  e2e-adapter-cloudflare:
+    name: Cloudflare Adapter E2E (local workerd)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run Cloudflare adapter E2E tests
+        run: yarn adapter:cf:e2e
+
   e2e-docs:
     name: Docs E2E
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -345,7 +404,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -374,7 +433,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-docs, e2e-create]
+    needs: [e2e-pkg-static, e2e-pkg-dev, e2e-pkg-prod-http1, e2e-pkg-prod-http2, e2e-adapter-cloudflare, e2e-docs, e2e-create]
     steps:
       - uses: actions/checkout@v5
 

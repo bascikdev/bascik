@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Edge User Profile (Server Script Demo)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem 1.25rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .brand-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #18191b;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: clamp(1.35rem, 3.8vw, 1.75rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+      margin-bottom: 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.75rem;
+      color: var(--text);
+    }
+
+    .greeting {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      background: var(--accent-light);
+      color: var(--accent);
+      border-radius: 4px;
+      border: 1px solid var(--accent-border);
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.25rem;
+      font-size: 0.875rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 0.65rem 0.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-muted);
+      width: 38%;
+      font-weight: 600;
+    }
+
+    td {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .next-nav {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .next-nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .next-nav a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand-nav">
+      <span class="brand-pill">Bascik Server Scripts</span>
+      <a class="back-link" href="/">← Back to Demo Home</a>
+    </div>
+    <h1 data-testid="cf-server-heading">User Profile &amp; Request Info</h1>
+    <p class="subtitle">This page uses <code>&lt;script data-bascik-server&gt;</code> to render dynamic request-time
+      data on the Edge Worker before committing headers.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Session Identity</h2>
+      <p class="greeting" data-testid="cf-server-greeting">
+        <script data-bascik-server>
+          export default function (request, context) {
+            const url = new URL(request.url);
+            const user = url.searchParams.get('user') ?? 'Developer';
+            const role = url.searchParams.get('role') ?? 'Admin';
+            return 'Hello, <strong>' + user.replace(/[<>&"']/g, '') + '</strong> · Role: <span class="badge">' + role.replace(/[<>&"']/g, '') + '</span>';
+          }
+        </script>
+      </p>
+
+      <div class="table-container">
+        <table>
+          <tr>
+            <th>Edge Platform</th>
+            <td data-testid="cf-platform-name">
+              <script data-bascik-server>
+                export default function (request, context) {
+                  return context?.platform?.name ?? 'unknown';
+                }
+              </script>
+            </td>
+          </tr>
+          <tr>
+            <th>Connecting Client IP</th>
+            <td data-testid="cf-remote-ip">
+              <script data-bascik-server>
+                export default function (request, context) {
+                  return context?.remoteIp ?? '127.0.0.1';
+                }
+              </script>
+            </td>
+          </tr>
+          <tr>
+            <th>Request Method</th>
+            <td>
+              <script data-bascik-server>
+                export default function (request) {
+                  return request.method;
+                }
+              </script>
+            </td>
+          </tr>
+          <tr>
+            <th>Timestamp (Edge UTC)</th>
+            <td>
+              <script data-bascik-server>
+                export default function () {
+                  return new Date().toISOString();
+                }
+              </script>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <p class="next-nav">
+      Next: Explore <a href="/stream">Live Activity Stream</a> or <a href="/api/ping">Edge API Route</a>.
+    </p>
+  </main>
+
+  <footer>
+    <div>Bascik · Server Scripts on Cloudflare Workers</div>
+    <div><a href="https://bascik.dev/server-scripts">Server Scripts Guide →</a></div>
+  </footer>
+</body>
+
+</html>

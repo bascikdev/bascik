@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bascik · Mixed Server &amp; Stream Execution Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #18191b;
+      --surface: #1e2022;
+      --surface-elevated: #242628;
+      --text: #f0f1f2;
+      --text-muted: #8d929e;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(211, 255, 141, 0.35);
+      --accent: #d3ff8d;
+      --accent-hover: #bbf06a;
+      --accent-light: rgba(211, 255, 141, 0.12);
+      --accent-border: rgba(211, 255, 141, 0.22);
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0.85rem 1rem 0.65rem;
+      line-height: 1.45;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .brand-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.8rem;
+    }
+
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      background: var(--accent);
+      color: #18191b;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: clamp(1.3rem, 3.5vw, 1.65rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.2rem;
+      color: var(--text);
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.4;
+    }
+
+    .callout {
+      background: rgba(211, 255, 141, 0.08);
+      border-left: 4px solid var(--accent);
+      padding: 0.6rem 0.85rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 0.75rem;
+      font-size: 0.825rem;
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .phases-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 0.65rem;
+    }
+
+    @media (max-width: 680px) {
+      .phases-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .phase-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      background: var(--surface);
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .phase-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .phase-tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+    }
+
+    .tag-server {
+      background: rgba(254, 240, 138, 0.12);
+      color: #fef08a;
+      border: 1px solid rgba(254, 240, 138, 0.25);
+    }
+
+    .tag-stream {
+      background: rgba(211, 255, 141, 0.12);
+      color: #d3ff8d;
+      border: 1px solid rgba(211, 255, 141, 0.25);
+    }
+
+    .phase-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      background: var(--accent-light);
+      color: var(--accent);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Streaming slot in phase 2 */
+    .stream-slot-container {
+      min-height: 8.5rem;
+      display: grid;
+      margin-top: auto;
+    }
+
+    .stream-slot-container>* {
+      grid-area: 1 / 1;
+    }
+
+    .stream-slot-container:has(.stream-resolved) .skeleton {
+      display: none;
+    }
+
+    .skeleton {
+      animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      background: #151618;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.85rem;
+      color: var(--text-muted);
+      min-height: 8.5rem;
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .skeleton-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .skeleton-bar {
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .skeleton-pill {
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .skeleton-status {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: #fef08a;
+      font-weight: 700;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #fef08a;
+      animation: dot-glow 1.2s ease-in-out infinite;
+    }
+
+    @keyframes dot-glow {
+
+      0%,
+      100% {
+        opacity: 0.4;
+        transform: scale(0.85);
+      }
+
+      50% {
+        opacity: 1;
+        transform: scale(1.15);
+      }
+    }
+
+    .stream-resolved {
+      background: rgba(211, 255, 141, 0.08);
+      border: 1px solid rgba(211, 255, 141, 0.22);
+      border-radius: 8px;
+      padding: 0.75rem 0.85rem;
+      color: var(--text);
+      font-size: 0.85rem;
+      min-height: 8.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      animation: stream-appear 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .resolved-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.35rem;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    @keyframes stream-appear {
+      from {
+        opacity: 0.3;
+        transform: scale(0.99);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 0.55;
+      }
+
+      50% {
+        opacity: 0.95;
+      }
+    }
+
+    .next-nav {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .next-nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .next-nav a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    @media (min-width: 540px) {
+      footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="brand-nav">
+      <span class="brand-pill">Mixed Execution Demo</span>
+      <a class="back-link" href="/">← Back to Demo Home</a>
+    </div>
+    <h1>The Mixed-Page Ordering Rule</h1>
+    <p class="subtitle">Demonstrating pages that combine <code>&lt;script data-bascik-server&gt;</code> and
+      <code>&lt;script data-bascik-stream&gt;</code> in one document response.
+    </p>
+  </header>
+
+  <main>
+    <div class="callout">
+      <strong>How Mixed Pages Execute:</strong><br>
+      1. <strong>Phase 1:</strong> All <code>data-bascik-server</code> scripts execute first. If any fail, the request
+      aborts with an HTTP 500 status.<br>
+      2. <strong>Phase 2:</strong> HTTP headers and static HTML preceding stream tags commit and flush immediately.<br>
+      3. <strong>Phase 3:</strong> Stream script outputs flush progressively across the open connection in document
+      source order.
+    </div>
+
+    <div class="phases-grid">
+      <!-- Phase 1: Server Script Block -->
+      <div class="phase-card">
+        <div class="phase-header">
+          <h2 class="phase-title">Phase 1: Server Script</h2>
+          <span class="phase-tag tag-server">&lt;script data-bascik-server&gt;</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+          Executes on Worker before headers commit:
+        </p>
+
+        <div
+          style="background: #151618; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.85rem; font-size: 0.85rem; margin-top: auto;">
+          <script data-bascik-server>
+            export default function (request, context) {
+              const platform = context?.platform?.name ?? 'edge';
+              const authStatus = request.headers.get('cookie')?.includes('session') ? 'Authenticated' : 'Public Visitor';
+              const renderTime = new Date().toISOString();
+              return '<div style="display: flex; flex-direction: column; gap: 0.35rem;">' +
+                '<div><strong>Session Context:</strong> <span class="badge">' + authStatus + '</span></div>' +
+                '<div style="color: var(--text-muted); font-size: 0.78rem;"><strong>Edge Host:</strong> ' + platform + '<br><strong>Pre-Commit UTC:</strong> ' + renderTime + '</div>' +
+                '</div>';
+            }
+          </script>
+        </div>
+      </div>
+
+      <!-- Phase 2 & 3: Streaming Script Block -->
+      <div class="phase-card">
+        <div class="phase-header">
+          <h2 class="phase-title">Phase 2 &amp; 3: Stream Script</h2>
+          <span class="phase-tag tag-stream">&lt;script data-bascik-stream&gt;</span>
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+          Headers commit immediately; chunk delivers over open stream:
+        </p>
+
+        <section class="stream-slot-container" aria-busy="true">
+          <div class="skeleton" role="status">
+            <div class="skeleton-header">
+              <div class="skeleton-bar" style="width: 45%; height: 0.9rem;"></div>
+              <span class="skeleton-status">
+                <span class="pulse-dot"></span>
+                Pending Stream…
+              </span>
+            </div>
+            <div class="skeleton-bar" style="width: 75%; height: 0.85rem; margin-bottom: 0.4rem;"></div>
+            <div class="skeleton-bar" style="width: 60%; height: 0.85rem; margin-bottom: 0.5rem;"></div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+              <span>Stage 1: Flushed Shell</span>
+              <span>Waiting for stream (~800ms)…</span>
+            </div>
+          </div>
+          <script data-bascik-stream>
+            export default async function (request, context, { signal }) {
+              // Emulate asynchronous latency
+              await new Promise((resolve, reject) => {
+                const t = setTimeout(resolve, 800);
+                signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+              });
+              const arrivalTime = new Date().toISOString();
+              return '<div class="stream-resolved">' +
+                '<div class="resolved-header">' +
+                '<strong>✓ Phase 3 Stream Chunk Resolved</strong>' +
+                '<span class="badge" style="background: rgba(211, 255, 141, 0.15); color: #d3ff8d;">Delivered in Open Stream</span>' +
+                '</div>' +
+                '<p style="font-size: 0.8rem; margin-bottom: 0.35rem; color: var(--text);">' +
+                'Asynchronous edge database query finished. HTML chunk was flushed progressively over open connection.' +
+                '</p>' +
+                '<div style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.35rem;">' +
+                '<span>Stage 2: Chunk Arrival</span>' +
+                '<span>800ms elapsed</span>' +
+                '</div>' +
+                '</div>';
+            }
+          </script>
+        </section>
+      </div>
+    </div>
+
+    <p class="next-nav">
+      Next: Explore <a href="/stream">Live Activity Stream</a>, <a href="/server">Server Scripts</a>, or <a
+        href="/api-demo">API Route Client</a>.
+    </p>
+  </main>
+
+  <footer>
+    <div>Bascik · Mixed Server &amp; Stream Architecture</div>
+    <div><a href="https://bascik.dev/stream-scripts#the-mixed-page-ordering-rule">Read Mixed-Page Ordering Rule Docs
+        →</a></div>
+  </footer>
+</body>
+
+</html>

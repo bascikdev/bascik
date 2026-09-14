@@ -344,7 +344,7 @@ Bascik follows the standard precedence chain instead: `--site-url` flag, then th
 
 ## How do I deploy to `example.com/docs` instead of `example.com`?
 
-Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML and CSS URLs during the build, serves dev and production-server requests below `/docs/`, and includes the prefix in generated sitemap, robots, and canonical URLs. Requests without the prefix return `404`, matching a static subdirectory host. See [Subdirectory deploys](/deploying#subdirectory-deploys).
+Set `base: '/docs/'` in `bascik.config.ts`. Bascik prefixes root-relative HTML and CSS URLs during the build, serves dev and production-server requests below `/docs/`, and includes the prefix in generated sitemap, robots, and canonical URLs. Requests without the prefix return `404`, matching a static subdirectory host. See [Subdirectory deploys](/deployment#subdirectory-deploys).
 
 ## Why is my `fetch('/api/x')` broken under `base`?
 

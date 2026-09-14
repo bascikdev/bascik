@@ -229,7 +229,7 @@ base: '/docs/',
 
 Bascik normalizes `docs`, `/docs`, and `/docs/` to `/docs/`. Nested paths such as `/products/docs` normalize to `/products/docs/`. An empty value is treated as `/`, while full URLs such as `https://example.com/docs` are rejected. Use `BASCIK_SITE_URL` for the origin instead.
 
-For a non-root base, the build rewrites root-relative URLs in HTML URL attributes, `srcset`, inline and hoisted CSS, copied stylesheets, and web app manifest URL fields. Absolute URLs, protocol-relative URLs, other schemes, fragments, and already-relative paths remain unchanged. Serving the resulting site under this prefix is described in [Deploying](/deploying).
+For a non-root base, the build rewrites root-relative URLs in HTML URL attributes, `srcset`, inline and hoisted CSS, copied stylesheets, and web app manifest URL fields. Absolute URLs, protocol-relative URLs, other schemes, fragments, and already-relative paths remain unchanged. Serving the resulting site under this prefix is described in [Deployment Overview](/deployment).
 
 ### `directory`
 

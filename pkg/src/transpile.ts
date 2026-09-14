@@ -60,17 +60,26 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
       forTargetedBuild: Boolean(BascikConfig.only && BascikConfig.only.length > 0),
     });
 
-    // Prompt 48: Warn when API routes are found in src/api/ during static builds
-    const apiDir = BascikConfig.directory?.api ?? "src/api";
-    const absoluteApiDir = resolve(projectRoot, apiDir);
-    const apiFiles = await scanApiRouteFiles(absoluteApiDir);
-    if (apiFiles.length > 0) {
-      try {
-        const routes = buildApiRouteTree(apiFiles, absoluteApiDir, BascikConfig.base);
-        const routePaths = routes.map((r) => r.path);
-        console.warn("\n" + formatApiRouteWarning(routePaths, apiDir));
-      } catch (err) {
-        console.warn("\n" + (err as Error).message);
+    if (BascikConfig.target) {
+      // Prompt 133: the deployment bundle is assembled from the finalized
+      // dist/ tree and the sidecar it just committed. Failure here is a build
+      // failure: a half-assembled bundle is never left behind.
+      const { emitServerlessArtifacts, formatServerlessSummary } = await import("./lib/serverless-artifacts.ts");
+      const result = await emitServerlessArtifacts(BascikConfig.target, { version, projectRoot });
+      console.log("\n" + formatServerlessSummary(result, projectRoot));
+    } else {
+      // Prompt 48: Warn when API routes are found in src/api/ during static builds
+      const apiDir = BascikConfig.directory?.api ?? "src/api";
+      const absoluteApiDir = resolve(projectRoot, apiDir);
+      const apiFiles = await scanApiRouteFiles(absoluteApiDir);
+      if (apiFiles.length > 0) {
+        try {
+          const routes = buildApiRouteTree(apiFiles, absoluteApiDir, BascikConfig.base);
+          const routePaths = routes.map((r) => r.path);
+          console.warn("\n" + formatApiRouteWarning(routePaths, apiDir));
+        } catch (err) {
+          console.warn("\n" + (err as Error).message);
+        }
       }
     }
 
