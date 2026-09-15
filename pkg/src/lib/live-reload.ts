@@ -4,10 +4,31 @@
  * Appended to HTML pages in dev mode. Connects to the SSE endpoint
  * and reloads the page on transpilation or hot asset updates.
  * Shuts down permanently on connection failure to keep the console clean.
+ *
+ * The open tag carries `data-bascik-live-reload` so this injected script can
+ * be identified by its tag alone. Production startup (`server-prod.ts`) and
+ * E2E harnesses rely on that attribute; never identify the script by
+ * scanning page content for the SSE path, which ordinary pages may mention.
  */
 
+/** Attribute that marks the injected dev live-reload `<script>` tag. */
+export const LIVE_RELOAD_SCRIPT_ATTR = "data-bascik-live-reload";
+
+/**
+ * Match one complete injected live-reload `<script>` element. The body is a
+ * lazy `[\s\S]*?` bounded by the element's own `</script>`, and the open tag
+ * must carry `data-bascik-live-reload` as a whole attribute name, so a match
+ * can never start at an unrelated `<script>` or run across several elements.
+ */
+export const LIVE_RELOAD_SCRIPT_TAG_RE =
+  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-live-reload(?=[\s=/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script>/gi;
+
+/** Remove every injected live-reload script from `html`, leaving all other scripts intact. */
+export const stripLiveReloadScript = (html: string): string =>
+  html.replace(LIVE_RELOAD_SCRIPT_TAG_RE, () => "");
+
 export const getLiveReloadScript = (url = "/bascik-live-reload") => `
-<script>
+<script ${LIVE_RELOAD_SCRIPT_ATTR}>
   (function() {
     var wasConnected = false;
     var source = null;

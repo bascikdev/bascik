@@ -209,6 +209,62 @@ describe("startProdServer", () => {
     error.mockRestore();
   });
 
+  // ── Regression: ordinary client scripts must survive `bascik --server` ──
+  // The former "defense in depth" strip matched from the FIRST `<script` in
+  // the document to the first `</script>` after any mention of the SSE path,
+  // so a page that referenced `/bascik-live-reload` in prose, a code sample,
+  // or an ordinary client script lost every client script before it.
+  it("preserves ordinary inline client scripts that mention the live-reload path", async () => {
+    const clientScript = `<script>document.getElementById("b").addEventListener("click", () => { n++; });</script>`;
+    const html =
+      `<!DOCTYPE html><html><head>${clientScript}</head><body>` +
+      `<button id="b">Count: 0</button>` +
+      `<p>Dev servers expose <code>/bascik-live-reload</code>.</p>` +
+      `<script type="application/ld+json">{"@type":"WebPage","name":"bascik-live-reload docs"}</script>` +
+      `</body></html>`;
+    await writeFile(join(workDir, "dist", "index.html"), html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+
+    await startProdServer();
+
+    const served = mem.getPageExact("/")?.content.toString("utf8");
+    expect(served).toBe(html);
+    expect(served?.match(/<script/g)).toHaveLength(2);
+    log.mockRestore();
+  });
+
+  it("preserves client scripts that themselves mention the live-reload path", async () => {
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+    const html =
+      `<script>console.log("hello")</script>` +
+      `<script>fetch("/bascik-live-reload").catch(() => {})</script>` +
+      `<script>console.log("after")</script>`;
+    await writeFile(join(workDir, "dist", "index.html"), html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+
+    await startProdServer();
+
+    expect(mem.getPageExact("/")?.content.toString("utf8")).toBe(html);
+    log.mockRestore();
+  });
+
+  it("strips only the injected dev live-reload script, keeping neighbors intact", async () => {
+    const { getLiveReloadScript } = await import("./live-reload.ts");
+    const before = `<script>window.before = 1</script>`;
+    const after = `<script>window.after = 2</script>`;
+    const html = `<body>${before}${getLiveReloadScript("/sub/bascik-live-reload").trim()}${after}</body>`;
+    await writeFile(join(workDir, "dist", "index.html"), html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => { });
+
+    await startProdServer();
+
+    const served = mem.getPageExact("/")?.content.toString("utf8");
+    expect(served).toBe(`<body>${before}${after}</body>`);
+    expect(served).not.toContain("EventSource");
+    expect(served).not.toContain("data-bascik-live-reload");
+    log.mockRestore();
+  });
+
   it("still serves a genuinely static release with no sidecar", async () => {
     await writeFile(join(workDir, "dist", "index.html"), "<h1>static</h1>");
     const log = vi.spyOn(console, "log").mockImplementation(() => { });
