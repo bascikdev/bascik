@@ -226,16 +226,18 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
     // 3. Project package.json "name"
     // 4. Fallback to "bascik-site"
-    const { workerName, config: userConfig } = await resolveWorkerName(projectRoot);
+    const { workerName, discoveredConfig } = await resolveWorkerName(projectRoot);
+
+    const authoredFlags = Array.isArray(discoveredConfig?.values?.compatibility_flags)
+      ? discoveredConfig.values.compatibility_flags.filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+      : [];
 
     const wrangler = {
       $schema: "node_modules/wrangler/config-schema.json",
       name: workerName,
       main: "worker.js",
-      compatibility_date: (userConfig?.config?.compatibility_date as string | undefined) ?? CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibility_flags: Array.isArray(userConfig?.config?.compatibility_flags)
-        ? [...new Set([...(userConfig.config.compatibility_flags as string[]), ...CLOUDFLARE_COMPATIBILITY_FLAGS])]
-        : [...CLOUDFLARE_COMPATIBILITY_FLAGS],
+      compatibility_date: (discoveredConfig?.values?.compatibility_date as string | undefined) ?? CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibility_flags: [...new Set([...authoredFlags, ...CLOUDFLARE_COMPATIBILITY_FLAGS])],
       assets: {
         directory: "./public",
         binding: "ASSETS",

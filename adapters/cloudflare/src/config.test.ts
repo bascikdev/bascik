@@ -135,6 +135,61 @@ describe("parseToml", () => {
     });
   });
 
+  it("parses inline arrays in TOML", () => {
+    const toml = `
+    name = "array-worker"
+    compatibility_flags = ["nodejs_compat", "custom_flag"]
+    `;
+    const result = parseToml(toml);
+    expect(result).toEqual({
+      name: "array-worker",
+      compatibility_flags: ["nodejs_compat", "custom_flag"],
+    });
+  });
+
+  it("parses multi-line arrays in TOML", () => {
+    const toml = `
+    name = "multiline-array-worker"
+    compatibility_flags = [
+      "nodejs_compat",
+      "custom_flag",
+    ]
+    `;
+    const result = parseToml(toml);
+    expect(result).toEqual({
+      name: "multiline-array-worker",
+      compatibility_flags: ["nodejs_compat", "custom_flag"],
+    });
+  });
+
+  it("parses array of tables in TOML ([[migrations]])", () => {
+    const toml = `
+    name = "durable-objects-worker"
+
+    [[migrations]]
+    tag = "v1"
+    new_classes = ["MyDurableObject"]
+
+    [[migrations]]
+    tag = "v2"
+    deleted_classes = ["OldDurableObject"]
+    `;
+    const result = parseToml(toml);
+    expect(result).toEqual({
+      name: "durable-objects-worker",
+      migrations: [
+        {
+          tag: "v1",
+          new_classes: ["MyDurableObject"],
+        },
+        {
+          tag: "v2",
+          deleted_classes: ["OldDurableObject"],
+        },
+      ],
+    });
+  });
+
   it("throws actionable errors for malformed TOML syntax", () => {
     const badToml = `invalid toml line without equals`;
     expect(() => parseToml(badToml, "wrangler.toml")).toThrowError(
@@ -176,7 +231,7 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.jsonc");
-    expect(discovered?.config.name).toBe("from-jsonc");
+    expect(discovered?.values.name).toBe("from-jsonc");
   });
 
   it("prefers wrangler.json over wrangler.toml when wrangler.jsonc is absent", async () => {
@@ -185,7 +240,7 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.json");
-    expect(discovered?.config.name).toBe("from-json");
+    expect(discovered?.values.name).toBe("from-json");
   });
 
   it("finds wrangler.toml when json/jsonc are absent", async () => {
@@ -193,7 +248,7 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
 
     const discovered = await discoverWranglerConfig(testDir);
     expect(discovered?.filename).toBe("wrangler.toml");
-    expect(discovered?.config.name).toBe("from-toml");
+    expect(discovered?.values.name).toBe("from-toml");
   });
 
   it("throws when the discovered configuration file is malformed rather than silently ignoring it", async () => {
@@ -225,5 +280,25 @@ describe("discoverWranglerConfig and resolveWorkerName", () => {
     const resolved = await resolveWorkerName(testDir);
     expect(resolved.workerName).toBe("bascik-site");
     expect(resolved.source).toBe("default");
+  });
+
+  it("extracts compatibility_date and compatibility_flags from discovered TOML configuration", async () => {
+    await writeFile(
+      join(testDir, "wrangler.toml"),
+      `
+      name = "toml-meta-worker"
+      compatibility_date = "2026-09-01"
+      compatibility_flags = ["custom_toml_flag", "nodejs_compat"]
+      `,
+      "utf8",
+    );
+
+    const resolved = await resolveWorkerName(testDir);
+    expect(resolved.workerName).toBe("toml-meta-worker");
+    expect(resolved.discoveredConfig?.values.compatibility_date).toBe("2026-09-01");
+    expect(resolved.discoveredConfig?.values.compatibility_flags).toEqual([
+      "custom_toml_flag",
+      "nodejs_compat",
+    ]);
   });
 });
