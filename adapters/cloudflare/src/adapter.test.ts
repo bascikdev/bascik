@@ -211,6 +211,78 @@ describe("cloudflare adapter definition and execution", () => {
     }
   });
 
+  it("preserves authored configuration without overwriting it across repeated builds", async () => {
+    const testDir = join(tmpdir(), `bascik-cf-authored-preserve-${Date.now()}`);
+    const distDir = join(testDir, "dist");
+    const outDir = join(distDir, ".bascik/cloudflare-workers");
+    await mkdir(distDir, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+
+    const authoredConfigContent = `// Authored config
+{
+  "name": "my-custom-authored-worker",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat", "custom_flag"],
+  "vars": {
+    "SECRET_API": "dummy-token",
+  },
+}
+`;
+    await writeFile(join(testDir, "wrangler.jsonc"), authoredConfigContent, "utf8");
+
+    const graph: SiteGraph = {
+      base: "/",
+      release: "test-rel",
+      scriptTimeoutMs: 1000,
+      apiTimeoutMs: 1000,
+      onServerScriptError: "error",
+      publicFiles: [],
+      pages: {},
+      apiRoutes: [],
+      importRoot: testDir,
+    };
+
+    try {
+      // Build once
+      await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: () => {},
+        runtimeEntry: "",
+      });
+
+      // Confirm root wrangler.jsonc was not overwritten or touched
+      const rootConfigAfterFirstBuild = await readFile(join(testDir, "wrangler.jsonc"), "utf8");
+      expect(rootConfigAfterFirstBuild).toBe(authoredConfigContent);
+
+      // Confirm generated wrangler.jsonc in outDir has derived settings
+      const generated1 = JSON.parse(await readFile(join(outDir, "wrangler.jsonc"), "utf8"));
+      expect(generated1.name).toBe("my-custom-authored-worker");
+      expect(generated1.compatibility_flags).toContain("custom_flag");
+      expect(generated1.compatibility_flags).toContain("nodejs_compat");
+
+      // Build a second time
+      await adapter.build({
+        graph,
+        distDir,
+        outDir,
+        projectRoot: testDir,
+        variant: "workers",
+        log: () => {},
+        runtimeEntry: "",
+      });
+
+      // Still unchanged in root
+      const rootConfigAfterSecondBuild = await readFile(join(testDir, "wrangler.jsonc"), "utf8");
+      expect(rootConfigAfterSecondBuild).toBe(authoredConfigContent);
+    } finally {
+      await rm(testDir, { recursive: true, force: true });
+    }
+  });
+
   it("throws on unknown variant naming both valid ones", async () => {
     const testDir = join(tmpdir(), `bascik-cf-invalid-${Date.now()}`);
     const distDir = join(testDir, "dist");

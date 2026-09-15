@@ -90,15 +90,19 @@ Or connect the repository with Cloudflare Workers Builds in the dashboard:
 
 The generated `name` in `wrangler.jsonc` is automatically resolved in priority order:
 1. **Environment variables:** `CLOUDFLARE_WORKER_NAME` or `WORKER_NAME` (e.g. `CLOUDFLARE_WORKER_NAME=bascik-streaming-test` in Cloudflare dashboard build settings).
-2. **Authored Wrangler config:** An existing `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml` in your project root.
+2. **Authored Wrangler config:** An existing `wrangler.jsonc`, `wrangler.json`, or `wrangler.toml` in your project root (matching Wrangler discovery precedence, supporting JSONC comments, trailing commas, and TOML syntax).
 3. **Project `package.json`:** The `name` property from your root `package.json` (with npm `@scope/` prefixes stripped).
 4. **Fallback:** Defaults to `"bascik-site"` only if no project name, config file, or environment variable is found.
 
 Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
 
-## Generated configuration (wrangler.jsonc)
+## Configuration Ownership and Wrangler Integration
 
-The adapter generates a complete `wrangler.jsonc` file:
+Bascik supports two clean configuration ownership workflows:
+
+### 1. Default Generated Configuration (Zero-Configuration Workflow)
+
+By default, running `bascik --build --target cloudflare` generates a complete, self-contained `wrangler.jsonc` in `dist/.bascik/cloudflare/` that points to the compiled `worker.js` and `./public` assets directory.
 
 ```jsonc
 {
@@ -120,6 +124,72 @@ The adapter generates a complete `wrangler.jsonc` file:
 ```
 
 Static requests are served directly from `./public` by the Cloudflare CDN, while paths in `run_worker_first` route directly to `worker.js`.
+
+You can run Wrangler commands directly from the output directory:
+
+```sh
+cd dist/.bascik/cloudflare
+npx wrangler dev
+npx wrangler deploy
+```
+
+### 2. Application-Authored Wrangler Configuration (Root Config Workflow)
+
+For projects that manage bindings (KV, D1, R2, Vectorize), environment variables (`vars`), named environments (`[env.production]`), custom routes, or observability settings, maintain your own `wrangler.jsonc` (or `wrangler.json` / `wrangler.toml`) in the project root.
+
+Bascik never overwrites or modifies your authored configuration. In your root `wrangler.jsonc`, configure `main` and `assets.directory` to point to Bascik's output artifacts:
+
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-application",
+  "main": "dist/.bascik/cloudflare/worker.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/.bascik/cloudflare/public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page"
+  },
+  "vars": {
+    "ENVIRONMENT": "production"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "GREETINGS",
+      "id": "xxxxxx"
+    }
+  ]
+}
+```
+
+With an application-authored root config, run Wrangler from your project root:
+
+```sh
+# Local workerd preview with your local bindings and .dev.vars
+npx wrangler dev
+
+# Deploy with your project environments and bindings
+npx wrangler deploy
+```
+
+Local secrets and environment variables can be placed in `.dev.vars` in the project root according to standard Wrangler conventions.
+
+### Composition and Custom Worker Wrappers
+
+If you need custom Cloudflare Worker composition (such as authentication checks, analytics interception, or proxying), you can author an application-owned entry point that wraps Bascik's generated Worker:
+
+```js
+// worker-wrapper.js
+import bascikWorker from "./dist/.bascik/cloudflare/worker.js";
+
+export default {
+  async fetch(request, env, ctx) {
+    // Perform custom Cloudflare logic or header transformations here
+    return bascikWorker.fetch(request, env, ctx);
+  },
+};
+```
 
 ## Legacy Cloudflare Pages target
 
