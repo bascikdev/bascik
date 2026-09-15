@@ -55,9 +55,10 @@ Commands can be run per-package or across the workspace from the repository root
 yarn unit:all
 
 # Package-specific unit tests (single run)
-yarn pkg:unit       # @bascik/bascik
-yarn create:unit    # create-bascik
-yarn ext:unit       # bascik-vscode
+yarn pkg:unit         # @bascik/bascik
+yarn create:unit      # create-bascik
+yarn ext:unit         # bascik-vscode
+yarn adapter:cf:unit  # @bascik/adapter-cloudflare
 
 # Interactive watch mode (pkg)
 yarn pkg:test
@@ -66,7 +67,8 @@ yarn pkg:test
 yarn pkg:coverage
 yarn create:coverage
 yarn ext:coverage
-yarn coverage:all   # update coverage across all packages
+yarn adapter:cf:coverage
+yarn coverage:all     # update coverage across all packages
 
 # Benchmarks
 yarn pkg:bench

@@ -2,7 +2,18 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   pipeline: {
-    watchPaths: ['scripts/', 'content/', 'src/lib/', 'src/css/', '../pkg/test-coverage.json', '../pkg/e2e-test-coverage.json'],
+    watchPaths: [
+      'scripts/',
+      'content/',
+      'src/lib/',
+      'src/css/',
+      '../pkg/test-coverage.json',
+      '../pkg/e2e-test-coverage.json',
+      '../create/test-coverage.json',
+      '../extensions/vscode-bascik/test-coverage.json',
+      '../adapters/cloudflare/test-coverage.json',
+      'test-coverage.json',
+    ],
     exec: [
       {
         script: 'scripts/generate-search-index.ts',
