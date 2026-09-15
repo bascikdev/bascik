@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Client Script Production Fixture</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 32px 24px;
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+    }
+
+    .desc {
+      color: #aaa;
+      font-size: 0.85rem;
+      max-width: 560px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Client script survives <code>bascik --server</code></h1>
+  <!--
+    Regression fixture for the production server. Two traits reproduce the
+    original report: an ordinary inline client script, and page content that
+    happens to mention the dev SSE path. A content-sniffing strip used to
+    remove every script from the first `<script` to that mention.
+  -->
+  <p class="desc">
+    Development servers expose <code>/bascik-live-reload</code>; production
+    output keeps ordinary client scripts and drops only the injected dev
+    client.
+  </p>
+  <button type="button" id="counter" data-testid="client-script-counter">Count: 0</button>
+
+  <script>
+    (function () {
+      var n = 0;
+      var button = document.getElementById('counter');
+      button.addEventListener('click', function () {
+        n += 1;
+        button.textContent = 'Count: ' + n;
+      });
+    })();
+  </script>
+</body>
+
+</html>

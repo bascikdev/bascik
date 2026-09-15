@@ -25,6 +25,7 @@ import { mem } from "./mem.ts";
 import { BascikConfig } from "./config.ts";
 import { serverSidecarRegistry, type SidecarLoadResult } from "./server-sidecar.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
+import { LIVE_RELOAD_SCRIPT_ATTR, stripLiveReloadScript } from "./live-reload.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -101,9 +102,15 @@ const loadDistIntoMemory = async (): Promise<void> => {
         const relativePagePath = `pages${distRelative}`;
 
         let rawString = await readFile(absPath, "utf8");
-        // Defense in depth: runtime strip any live-reload script if present
-        if (rawString.includes("/bascik-live-reload")) {
-          rawString = rawString.replace(/<script[^>]*>[\s\S]*?bascik-live-reload[\s\S]*?<\/script>/gi, "");
+        // Defense in depth: a `bascik --build` never injects the dev
+        // live-reload client, but a dist/ produced by a dev session could.
+        // Identify that script ONLY by its own `data-bascik-live-reload` open
+        // tag. Never sniff page content for the SSE path: a page may mention
+        // `/bascik-live-reload` in prose, a code sample, or an ordinary client
+        // script, and a content-based match starting at the first `<script`
+        // used to swallow every client script up to that mention.
+        if (rawString.includes(LIVE_RELOAD_SCRIPT_ATTR)) {
+          rawString = stripLiveReloadScript(rawString);
         }
         const buffer = Buffer.from(rawString, "utf8");
 

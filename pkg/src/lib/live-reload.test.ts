@@ -1,11 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
-import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import {
+  LIVE_RELOAD_SCRIPT,
+  LIVE_RELOAD_SCRIPT_ATTR,
+  getLiveReloadScript,
+  stripLiveReloadScript,
+} from "./live-reload.ts";
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
 
 describe("LIVE_RELOAD_SCRIPT", () => {
-  it("contains script tag wrapper", () => {
-    expect(LIVE_RELOAD_SCRIPT).toContain("<script>");
+  it("contains script tag wrapper marked with the owned attribute", () => {
+    expect(LIVE_RELOAD_SCRIPT).toContain(`<script ${LIVE_RELOAD_SCRIPT_ATTR}>`);
     expect(LIVE_RELOAD_SCRIPT).toContain("</script>");
+    expect(LIVE_RELOAD_SCRIPT_ATTR).toBe("data-bascik-live-reload");
   });
 
   it("contains banner DOM creation logic and element ID", () => {
@@ -71,7 +77,7 @@ describe("LIVE_RELOAD_SCRIPT", () => {
     };
 
     const scriptCode = LIVE_RELOAD_SCRIPT
-      .replace("<script>", "")
+      .replace(`<script ${LIVE_RELOAD_SCRIPT_ATTR}>`, "")
       .replace("</script>", "");
 
     const runScript = new Function("window", "document", "EventSource", scriptCode);
@@ -144,7 +150,7 @@ describe("LIVE_RELOAD_SCRIPT", () => {
     };
 
     const scriptCode = LIVE_RELOAD_SCRIPT
-      .replace("<script>", "")
+      .replace(`<script ${LIVE_RELOAD_SCRIPT_ATTR}>`, "")
       .replace("</script>", "");
 
     const runScript = new Function("window", "document", "EventSource", scriptCode);
@@ -171,6 +177,34 @@ describe("LIVE_RELOAD_SCRIPT", () => {
     // Generation 3 arrives -> triggers reload
     es.onmessage({ data: "reload 3" });
     expect(reloadCalls).toBe(2);
+  });
+});
+
+describe("stripLiveReloadScript", () => {
+  it("removes only the injected script and never crosses into neighboring scripts", () => {
+    const html =
+      `<script>window.a = 1</script>` +
+      getLiveReloadScript("/sub/bascik-live-reload").trim() +
+      `<script>window.b = 2</script>`;
+    expect(stripLiveReloadScript(html)).toBe(`<script>window.a = 1</script><script>window.b = 2</script>`);
+  });
+
+  it("leaves pages untouched when the SSE path appears in prose or client code", () => {
+    const html =
+      `<script>console.log("first")</script>` +
+      `<p>See <code>/bascik-live-reload</code> and bascik-live-reload-banner.</p>` +
+      `<script>new EventSource("/bascik-live-reload")</script>`;
+    expect(stripLiveReloadScript(html)).toBe(html);
+  });
+
+  it("does not treat data-bascik-live-reload-* variants as the injected script", () => {
+    const html = `<script data-bascik-live-reload-note="x">window.c = 3</script>`;
+    expect(stripLiveReloadScript(html)).toBe(html);
+  });
+
+  it("handles regex replacement tokens in surrounding content", () => {
+    const html = `<p>$& $1 $\`</p>${getLiveReloadScript().trim()}<p>$'</p>`;
+    expect(stripLiveReloadScript(html)).toBe("<p>$& $1 $`</p><p>$'</p>");
   });
 });
 

@@ -125,7 +125,7 @@ Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik 
 - **Build Error Overlay:** The `SseManager` owns exactly one `build-error` subscription on the event bus and routes a located failure (file, line, column) to every live client exactly once, so N connections never produce N broadcasts. Errors clear on subsequent successful builds. Because production has no SSE bus or browser overlay, this channel never leaks into `--build` or `--server` output.
 - **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
 - **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
-- **Production Guard:** Stripped completely from `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth.
+- **Production Guard:** Never injected into `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth. The injected `<script>` carries a `data-bascik-live-reload` attribute, and the production strip removes only elements whose own open tag carries that attribute. It never identifies the script by scanning page content for `/bascik-live-reload`, so ordinary client scripts, prose, and code samples that mention the SSE path are served unchanged.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 

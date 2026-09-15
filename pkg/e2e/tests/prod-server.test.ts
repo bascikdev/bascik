@@ -47,6 +47,31 @@ test.describe('Production Server (`bascik --server`) Engine', () => {
     await expect(banner).not.toBeAttached();
   });
 
+  test('preserves ordinary inline client scripts from dist/ (only the dev client is absent)', async ({ page, request }) => {
+    // Regression: the production startup strip used to match from the FIRST
+    // `<script` in the document to the first `</script>` after any mention of
+    // `/bascik-live-reload`, so a page whose prose mentioned the SSE path was
+    // served with zero client scripts even though dist/ contained them.
+    const distHtml = await readFile(join(e2eDir, 'dist/client-script-prod.html'), 'utf8');
+    const distScriptCount = distHtml.match(/<script\b/g)?.length ?? 0;
+    expect(distScriptCount).toBeGreaterThanOrEqual(1);
+
+    const res = await request.get('/client-script-prod');
+    expect(res.status()).toBe(200);
+    const served = await res.text();
+    expect(served.match(/<script\b/g)?.length ?? 0).toBe(distScriptCount);
+    expect(served).toContain('/bascik-live-reload</code>');
+    expect(served).not.toContain('data-bascik-live-reload');
+    expect(served).not.toContain('EventSource');
+
+    // The script must also execute in the browser.
+    await page.goto('/client-script-prod');
+    const counter = page.getByTestId('client-script-counter');
+    await expect(counter).toHaveText('Count: 0');
+    await counter.click();
+    await expect(counter).toHaveText('Count: 1');
+  });
+
   test('does not clean the existing build output on server startup', async ({ request }) => {
     const outputBeforeRequest = await readFile(scopeTestOutputPath, 'utf8');
     const response = await request.get('/scope-test');
