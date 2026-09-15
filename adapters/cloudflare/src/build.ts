@@ -7,7 +7,7 @@
 import { pageAliasesFor, type AdapterBuildContext, type AdapterBuildResult } from "@bascik/bascik/adapter";
 import { resolve, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, copyFile, writeFile, readFile } from "node:fs/promises";
+import { mkdir, copyFile, writeFile } from "node:fs/promises";
 import {
   CLOUDFLARE_COMPATIBILITY_DATE,
   CLOUDFLARE_COMPATIBILITY_FLAGS,
@@ -15,6 +15,7 @@ import {
   classifyNodeBuiltin,
   formatUnsupportedImport,
 } from "./compat.js";
+import { resolveWorkerName } from "./config.js";
 import { build as esbuildBuild } from "esbuild";
 
 export { pageAliasesFor };
@@ -220,66 +221,23 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     workerPath = join(outDir, "worker.js");
     await writeFile(workerPath, workerCode, "utf8");
 
-    // Derive worker name in priority order:
-    // 1. Environment variables (e.g. CI, Cloudflare Workers Builds, or user env)
-    // 2. Authored wrangler.json / wrangler.jsonc / wrangler.toml in project root
+    // Discover authored user config and resolve worker name in priority order:
+    // 1. Environment variables (CLOUDFLARE_WORKER_NAME, WORKER_NAME, CF_PAGES_PROJECT_NAME)
+    // 2. Authored wrangler.jsonc / wrangler.json / wrangler.toml in project root
     // 3. Project package.json "name"
     // 4. Fallback to "bascik-site"
-    let workerName =
-      process.env.CLOUDFLARE_WORKER_NAME ||
-      process.env.WORKER_NAME ||
-      process.env.CF_PAGES_PROJECT_NAME;
+    const { workerName, discoveredConfig } = await resolveWorkerName(projectRoot);
 
-    if (!workerName) {
-      for (const configName of ["wrangler.jsonc", "wrangler.json"]) {
-        try {
-          const raw = await readFile(join(projectRoot, configName), "utf8");
-          const parsed = JSON.parse(raw) as { name?: string };
-          if (parsed.name && typeof parsed.name === "string") {
-            workerName = parsed.name.trim();
-            break;
-          }
-        } catch {
-          // Continue if file doesn't exist or isn't strict JSON
-        }
-      }
-    }
-
-    if (!workerName) {
-      try {
-        const raw = await readFile(join(projectRoot, "wrangler.toml"), "utf8");
-        const match = raw.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
-        if (match?.[1]) {
-          workerName = match[1].trim();
-        }
-      } catch {
-        // Fall back if wrangler.toml doesn't exist
-      }
-    }
-
-    if (!workerName) {
-      try {
-        const pkgJsonRaw = await readFile(join(projectRoot, "package.json"), "utf8");
-        const pkgJson = JSON.parse(pkgJsonRaw) as { name?: string };
-        if (pkgJson.name && typeof pkgJson.name === "string") {
-          // Worker names cannot contain npm scopes like "@scope/"
-          workerName = pkgJson.name.replace(/^@[^/]+\//, "").trim();
-        }
-      } catch {
-        // Fall back if package.json is missing or invalid
-      }
-    }
-
-    if (!workerName) {
-      workerName = "bascik-site";
-    }
+    const authoredFlags = Array.isArray(discoveredConfig?.values?.compatibility_flags)
+      ? discoveredConfig.values.compatibility_flags.filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+      : [];
 
     const wrangler = {
       $schema: "node_modules/wrangler/config-schema.json",
       name: workerName,
       main: "worker.js",
-      compatibility_date: CLOUDFLARE_COMPATIBILITY_DATE,
-      compatibility_flags: [...CLOUDFLARE_COMPATIBILITY_FLAGS],
+      compatibility_date: (discoveredConfig?.values?.compatibility_date as string | undefined) ?? CLOUDFLARE_COMPATIBILITY_DATE,
+      compatibility_flags: [...new Set([...authoredFlags, ...CLOUDFLARE_COMPATIBILITY_FLAGS])],
       assets: {
         directory: "./public",
         binding: "ASSETS",

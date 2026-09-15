@@ -16,11 +16,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "cover": "yarn coverage",
+    "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
     "prepack": "cp ../../LICENSE LICENSE",
     "prepare": "tsc -p tsconfig.build.json",
+    "test:ci": "vitest run",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
-    "test:ci": "vitest run",
+    "update-coverage": "yarn coverage",
     "e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "dependencies": {
@@ -33,6 +36,7 @@
     "@bascik/bascik": "workspace:*",
     "@playwright/test": "^1.58.2",
     "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "miniflare": "4.20260730.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

@@ -1,5 +1,8 @@
 # @bascik/adapter-cloudflare
 
+[![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fadapters%2Fcloudflare%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/test-coverage.json)
+[![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fadapters%2Fcloudflare%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/adapters/cloudflare/test-coverage.json)
+
 Cloudflare Workers with Static Assets and Cloudflare Pages hosting adapter for [Bascik](https://bascik.dev).
 
 ## Overview

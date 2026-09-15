@@ -1,188 +1,62 @@
 # Custom Adapters
 
-Author custom deployment adapters to target any serverless platform, edge runtime, container orchestrator, or static hosting provider using Bascik's hosting adapter contract (`@bascik/bascik/adapter`).
+Author custom deployment adapters to package Bascik builds for any serverless platform, edge runtime, container orchestrator, or custom hosting environment.
 
-## What adapters do
+Bascik provides an open hosting adapter contract (`@bascik/bascik/adapter`) and portable runtime (`@bascik/bascik/runtime`). By writing an adapter, you can take a standard `bascik --build`, inspect the site graph, and generate production-ready deployment bundles for platforms like AWS Lambda, Fastly Compute, Deno Deploy, or custom Node containers.
 
-A hosting adapter packages Bascik's build output for a specific host or cloud platform. Running `bascik --build --target <adapter>` performs a complete static build in `dist/` and then passes the compiled site metadata to the adapter.
+This guide walks through creating your first custom adapter from scratch as a step-by-step tutorial, then provides a complete API reference for the adapter interfaces and site graph.
 
-The adapter writes platform-specific configuration and compiled entry points into `dist/.bascik/<target>/`:
+---
 
-- **Public static assets:** copied or linked into `dist/.bascik/<target>/public/` for CDN edge distribution;
-- **Serverless functions or edge scripts:** bundled JavaScript handlers containing compiled `data-bascik-server` scripts, `data-bascik-stream` scripts, API routes, and page templates;
-- **Platform configuration:** routing manifests, function descriptors, or manifests (e.g. `_routes.json`, `wrangler.jsonc`, or platform-specific YAML/JSON manifests).
+## Tutorial: Build a minimal custom adapter
 
-## Target resolution
+In this tutorial, you will create a custom adapter that bundles a Bascik site into a self-contained Node HTTP server with its static assets placed alongside. This demonstrates the core workflow: reading the site graph, preparing public files, emitting a runtime entrypoint, and running the build.
 
-The `--target` flag accepts three kinds of targets:
+### Step 1: Create the adapter file
 
-1. **Official target names:** shorthand names such as `cloudflare-pages` or `cloudflare-workers` that resolve to `@bascik/adapter-cloudflare`;
-2. **Npm package names:** any installed adapter package (e.g. `npm install --save-dev my-bascik-adapter` followed by `bascik --build --target my-bascik-adapter`);
-3. **Local script files:** relative or absolute file paths to an adapter script (e.g. `bascik --build --target ./adapters/aws.ts`).
-
-```sh
-# Local custom adapter script
-bascik --build --target ./adapters/aws-lambda.ts
-
-# Published custom adapter package
-bascik --build --target @acme/adapter-fastly
-```
-
-Target resolution loads the default ESM export from the adapter module.
-
-## The adapter contract
-
-Export a default `HostingAdapter` object using the `defineAdapter` helper from `@bascik/bascik/adapter`:
+Create a new file in your project at `adapters/custom-node.ts`:
 
 ```ts
-// adapters/aws-lambda.ts
-import { defineAdapter, type HostingAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
 
 export default defineAdapter({
-  name: 'aws-lambda',
+  name: 'custom-node',
   async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
-    context.log('Building AWS Lambda serverless bundle...');
-
-    // Read context.graph and write deployment artifacts to context.outDir
-    // ...
+    context.log('Building custom Node deployment bundle...');
 
     return {
-      publicDir: 'dist/.bascik/aws-lambda/public',
-      notes: ['Lambda handler written to dist/.bascik/aws-lambda/index.mjs'],
+      publicDir: 'dist/.bascik/custom-node/public',
+      notes: ['Custom adapter finished successfully.'],
     };
   },
 });
 ```
 
-### `HostingAdapter` interface
+Key points:
+- The adapter module exports a default object defined with `defineAdapter`.
+- The `name` string identifies your target and determines its default output folder inside `dist/.bascik/<target>/`.
+- The `build` function receives an `AdapterBuildContext` with paths, logger, and the full site graph.
 
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `name` | `string` | Unique identifier for the adapter, used in diagnostic logs and output directory paths. |
-| `build` | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async function executed at the end of `bascik --build`. |
+### Step 2: Separate public static assets
 
-### `AdapterBuildContext` reference
+Production deployments generally serve pure static files directly from object storage or a CDN, bypassing serverless compute. Bascik provides the list of all static assets in `context.graph.publicFiles`.
 
-The `context` object passed to `build()` contains read-only build metadata and output path assignments:
-
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `graph` | `SiteGraph` | Complete graph of compiled pages, jobs, API routes, and public files. |
-| `distDir` | `string` | Absolute path to the read-only static build folder (`dist/`). |
-| `outDir` | `string` | Absolute path assigned to this adapter output (`dist/.bascik/<target>/`). Adapters must write all generated files inside this directory. |
-| `projectRoot` | `string` | Absolute path to the project root directory containing `package.json`. |
-| `variant` | `string \| undefined` | Optional variant string specified by official targets (e.g. `'pages'` or `'workers'`). |
-| `runtimeEntry` | `string` | Resolved file path to `@bascik/bascik/runtime` containing portable request execution helpers. |
-| `log` | `(message: string) => void` | Logger function for reporting build progress to standard output. |
-
-### `AdapterBuildResult` reference
-
-The `build()` method must return an object describing the emitted artifacts:
+Update `adapters/custom-node.ts` to copy these assets into the adapter's output directory:
 
 ```ts
-export interface AdapterBuildResult {
-  /** Optional path to the primary generated worker/handler bundle. */
-  workerPath?: string;
-  /** Relative or absolute path to the directory containing public static files. */
-  publicDir: string;
-  /** Total size in bytes of the generated serverless bundle. */
-  bundleBytes?: number;
-  /** Informational notes or post-build warnings printed to the CLI. */
-  notes?: string[];
-}
-```
-
-## Understanding `SiteGraph`
-
-The `context.graph` object provides everything needed to route and execute per-request code:
-
-```ts
-export interface SiteGraph {
-  base: string; // configured site base path (default '/')
-  release: string; // deterministic release ID hash for this build
-  scriptTimeoutMs: number; // configured timeout for server scripts
-  apiTimeoutMs: number; // configured timeout for API route handlers
-  onServerScriptError: 'error' | 'warn' | 'ignore';
-  publicFiles: string[]; // dist-relative paths of all static assets
-  pages: Record<string, SiteGraphPage>; // dynamic pages keyed by canonical route path
-  apiRoutes: SiteGraphApiRoute[]; // sorted list of API route handlers
-  custom500?: string; // path to custom 500.html template if authored
-  importRoot: string; // import root path for module resolution
-}
-```
-
-### Page structure (`SiteGraphPage`)
-
-Pages with request-time scripts (`data-bascik-server` or `data-bascik-stream`) are included in `graph.pages`:
-
-```ts
-export interface SiteGraphPage {
-  path: string; // e.g. '/dashboard' or '/products/:id'
-  is404: boolean; // whether this is the 404 page template
-  segments: DistPageSegment[]; // ordered template chunks (static HTML vs script placeholders)
-  jobs: Record<string, SiteGraphJob>; // Map of job ID to script metadata
-}
-```
-
-### API routes (`SiteGraphApiRoute`)
-
-```ts
-export interface SiteGraphApiRoute {
-  path: string; // e.g. '/api/users' or '/api/users/:id'
-  filePath: string; // absolute path to compiled handler module
-  paramNames: string[]; // extracted path parameter names
-  isDynamic: boolean; // true if route contains path parameters
-}
-```
-
-## Executing request-time code (`@bascik/bascik/runtime`)
-
-Adapters bundle `@bascik/bascik/runtime` into the platform's function entry point. The portable runtime handles request parsing, route matching, API dispatch, server script execution, and response streaming.
-
-### Standard Request/Response model
-
-Handlers take standard Web `Request` objects and return standard Web `Response` objects. To process an incoming HTTP request in your adapter's generated handler:
-
-```ts
-import { handleRequest } from '@bascik/bascik/runtime';
-
-export async function processFetch(request: Request, platformEnv: Record<string, unknown>): Promise<Response> {
-  const context = {
-    params: {},
-    remoteIp: request.headers.get('x-forwarded-for') ?? '127.0.0.1',
-    platform: {
-      name: 'my-custom-platform',
-      env: platformEnv,
-    },
-  };
-
-  // Pass request, route graph, and execution context to the runtime
-  return handleRequest(request, siteGraph, context);
-}
-```
-
-If the requested path matches a static asset in `graph.publicFiles`, return the asset from your platform's static file store or CDN. If the path matches a page with request-time scripts or an API route, pass the request to `handleRequest`.
-
-## Step-by-step custom adapter example
-
-Below is a complete, minimal adapter script that generates a standalone Node server bundle for custom container environments:
-
-```ts
-// adapters/custom-node.ts
-import { mkdir, writeFile, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { defineAdapter, type HostingAdapter, type AdapterBuildContext } from '@bascik/bascik/adapter';
+import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
 
 export default defineAdapter({
   name: 'custom-node',
-  async build(context: AdapterBuildContext) {
+  async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
     const { graph, outDir, distDir, log } = context;
     const publicDir = join(outDir, 'public');
 
-    log('Creating output directories...');
+    log('Preparing public static files...');
     await mkdir(publicDir, { recursive: true });
 
-    log('Copying static assets to public output directory...');
     for (const relFile of graph.publicFiles) {
       const src = join(distDir, relFile);
       const dest = join(publicDir, relFile);
@@ -190,14 +64,359 @@ export default defineAdapter({
       await copyFile(src, dest);
     }
 
-    log('Generating server entry file...');
-    const serverCode = `
-import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+    return {
+      publicDir,
+      notes: [`Copied ${graph.publicFiles.length} static assets to public output directory.`],
+    };
+  },
+});
+```
+
+Notice that we copy files from `context.distDir` to `join(context.outDir, 'public')`. Always write files inside `context.outDir`; treat `context.distDir` as read-only.
+
+### Step 3: Emit the runtime server entrypoint
+
+When a site contains dynamic pages (`data-bascik-server`, `data-bascik-stream`) or API routes, requests must be handled by `@bascik/bascik/runtime`.
+
+The runtime provides `handleRequest(webRequest, graph, context)` which accepts standard web `Request` objects and returns standard web `Response` objects.
+
+Add the entrypoint generation to `adapters/custom-node.ts`:
+
+```ts
+import { mkdir, copyFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+
+export default defineAdapter({
+  name: 'custom-node',
+  async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
+    const { graph, outDir, distDir, log } = context;
+    const publicDir = join(outDir, 'public');
+
+    log('Preparing public static files...');
+    await mkdir(publicDir, { recursive: true });
+
+    for (const relFile of graph.publicFiles) {
+      const src = join(distDir, relFile);
+      const dest = join(publicDir, relFile);
+      await mkdir(join(dest, '..'), { recursive: true });
+      await copyFile(src, dest);
+    }
+
+    log('Emitting runtime server script...');
+    const serverCode = `import { createServer } from 'node:http';
 import { handleRequest } from '@bascik/bascik/runtime';
 
 const graph = ${JSON.stringify(graph, null, 2)};
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', \`http://\${req.headers.host ?? 'localhost'}\`);
+
+  // Convert Node incoming request to standard Web Request
+  const webReq = new Request(url, {
+    method: req.method,
+    headers: req.headers as Record<string, string>,
+  });
+
+  // Execute request against Bascik runtime
+  const webRes = await handleRequest(webReq, graph, {
+    params: {},
+    remoteIp: req.socket.remoteAddress ?? '127.0.0.1',
+    platform: { name: 'custom-node' },
+  });
+
+  // Send response back through Node HTTP
+  res.statusCode = webRes.status;
+  webRes.headers.forEach((val, key) => res.setHeader(key, val));
+
+  if (webRes.body) {
+    const reader = webRes.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+  }
+  res.end();
+});
+
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+server.listen(port, () => {
+  console.log(\`Server listening on http://localhost:\${port}\`);
+});
+`;
+
+    const workerPath = join(outDir, 'server.mjs');
+    await writeFile(workerPath, serverCode, 'utf8');
+
+    return {
+      workerPath,
+      publicDir,
+      notes: [
+        `Server bundle written to ${workerPath}`,
+        `Public assets written to ${publicDir}`,
+      ],
+    };
+  },
+});
+```
+
+### Step 4: Run the build with your custom adapter
+
+You can point the `--target` flag directly to your local TypeScript file. Bascik runs on Node 24 and natively executes the TypeScript adapter without extra build configuration:
+
+```sh
+bascik --build --target ./adapters/custom-node.ts
+```
+
+When the build finishes, inspect the output in `dist/.bascik/custom-node/`:
+
+```text
+dist/.bascik/custom-node/
+  public/
+    styles.css
+    logo.svg
+  server.mjs
+```
+
+### Step 5: Test the output
+
+Run your generated server with Node to verify dynamic rendering and streaming:
+
+```sh
+node dist/.bascik/custom-node/server.mjs
+```
+
+Open `http://localhost:3000` in your browser. All dynamic pages render through the runtime handler, and stream script chunks flush progressively as they resolve.
+
+---
+
+## Target resolution
+
+The `--target` flag resolves in three ways:
+
+1. **Local file paths:** relative or absolute path to a script file (e.g. `bascik --build --target ./adapters/custom-node.ts`).
+2. **Official target names:** shorthand aliases like `cloudflare` or `cloudflare-workers` that map to official adapters like `@bascik/adapter-cloudflare`.
+3. **Npm package names:** any third-party adapter installed in your project:
+   ```sh
+   npm install --save-dev bascik-adapter-fastly
+   bascik --build --target bascik-adapter-fastly
+   ```
+
+Bascik dynamically imports the resolved module and reads its default export.
+
+---
+
+## Packaging and publishing adapters
+
+To share your adapter with other developers or use it across multiple repositories, publish it as an npm package.
+
+### Package layout
+
+```text
+my-adapter/
+  package.json
+  src/
+    index.ts
+  README.md
+```
+
+### Exporting the adapter
+
+In your package entrypoint (`src/index.ts`), export the adapter as the default export:
+
+```ts
+import { defineAdapter, type AdapterBuildContext, type AdapterBuildResult } from '@bascik/bascik/adapter';
+
+export interface MyAdapterOptions {
+  memoryMb?: number;
+  region?: string;
+}
+
+export function createAdapter(options: MyAdapterOptions = {}) {
+  return defineAdapter({
+    name: 'my-cloud',
+    async build(context: AdapterBuildContext): Promise<AdapterBuildResult> {
+      context.log(`Building with ${options.memoryMb ?? 128}MB memory in ${options.region ?? 'auto'}...`);
+      // Build platform bundles...
+      return {
+        publicDir: `${context.outDir}/public`,
+      };
+    },
+  });
+}
+
+// Default export used when invoked via CLI: bascik --build --target my-adapter
+export default createAdapter();
+```
+
+Users can either pass the package name via CLI:
+
+```sh
+bascik --build --target my-adapter
+```
+
+Or configure it with options in their `bascik.config.ts`:
+
+```ts
+import { defineConfig } from '@bascik/bascik';
+import { createAdapter } from 'my-adapter';
+
+export default defineConfig({
+  // Configuration options
+});
+```
+
+---
+
+## Architecture and best practices
+
+Follow these principles when authoring adapters:
+
+1. **Filesystem isolation:** Write all generated files inside `context.outDir` (`dist/.bascik/<target>/`). Never mutate `dist/` directly, and never write into `src/`.
+2. **CDN-first routing:** Pure static pages and assets in `graph.publicFiles` should be served directly by the platform CDN or object storage. Route only API endpoints and dynamic page routes to serverless compute.
+3. **Template encapsulation:** Pages containing `data-bascik-server` or `data-bascik-stream` are excluded from `public/`. Their templates live in `graph.pages`. If a static layer route accidentally matches them, it produces a 404 rather than leaking unrendered placeholder tags.
+4. **Error handling:** Respect `graph.onServerScriptError` and provide a fallback response using `graph.custom500` if present when an unhandled runtime error occurs.
+
+---
+
+## Reference: Adapter API
+
+### `HostingAdapter` interface
+
+```ts
+export interface HostingAdapter {
+  name: string;
+  build(context: AdapterBuildContext): Promise<AdapterBuildResult>;
+}
+
+export function defineAdapter(adapter: HostingAdapter): HostingAdapter;
+```
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `name` | `string` | Unique identifier for the adapter, used in diagnostic logs and output paths. |
+| `build` | `(context: AdapterBuildContext) => Promise<AdapterBuildResult>` | Async hook called after static build completes. |
+
+### `AdapterBuildContext`
+
+The build context provides read-only information about the project, paths, and compiled site graph:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `graph` | `SiteGraph` | Complete metadata graph of compiled pages, jobs, API routes, and public files. |
+| `distDir` | `string` | Absolute path to the read-only static build folder (`dist/`). |
+| `outDir` | `string` | Assigned output directory (`dist/.bascik/<target>/`). Write all artifacts here. |
+| `projectRoot` | `string` | Absolute path to the root directory containing `package.json`. |
+| `variant` | `string \| undefined` | Optional variant string specified by the caller or target mapping. |
+| `runtimeEntry` | `string` | File path to `@bascik/bascik/runtime` for bundlers that resolve ESM modules. |
+| `log` | `(message: string) => void` | Logging utility for emitting CLI build status lines. |
+
+### `AdapterBuildResult`
+
+```ts
+export interface AdapterBuildResult {
+  /** Path to primary generated handler or worker bundle. */
+  workerPath?: string;
+  /** Directory containing static files to deploy to static storage or CDN. */
+  publicDir: string;
+  /** Size in bytes of the generated worker bundle. */
+  bundleBytes?: number;
+  /** Informational notes or post-build instructions printed to stdout. */
+  notes?: string[];
+}
+```
+
+---
+
+## Reference: `SiteGraph`
+
+The `SiteGraph` contains all metadata needed to route requests, execute server scripts, and stream responses:
+
+```ts
+export interface SiteGraph {
+  base: string; // Configured site base path (default '/')
+  release: string; // Deterministic release ID hash for the build
+  scriptTimeoutMs: number; // Configured timeout for server scripts
+  apiTimeoutMs: number; // Configured timeout for API routes
+  onServerScriptError: 'error' | 'warn' | 'ignore';
+  publicFiles: string[]; // Relative paths of all static assets in dist/
+  pages: Record<string, SiteGraphPage>; // Dynamic pages keyed by route path
+  apiRoutes: SiteGraphApiRoute[]; // Sorted list of API route handlers
+  custom500?: string; // Content or path of custom 500.html template if present
+  importRoot: string; // Absolute path to project source import root
+}
+```
+
+### `SiteGraphPage`
+
+Dynamic pages with `data-bascik-server` or `data-bascik-stream` scripts:
+
+```ts
+export interface SiteGraphPage {
+  path: string; // Route path, e.g. '/dashboard' or '/products/:id'
+  is404: boolean; // True if this template serves custom 404s
+  segments: DistPageSegment[]; // Interleaved static HTML chunks and script markers
+  jobs: Record<string, SiteGraphJob>; // Map of job ID to script metadata
+}
+
+export interface DistPageSegment {
+  kind: 'static' | 'script';
+  text?: string; // HTML markup for static segment
+  id?: string; // Job ID for script segment
+}
+```
+
+### `SiteGraphJob`
+
+Describes an individual request-time script execution:
+
+```ts
+export interface SiteGraphJob {
+  id: string; // Unique job ID within the page
+  mode: 'server' | 'stream'; // Blocking server script vs streaming chunk script
+  source:
+    | { kind: 'module'; path: string }
+    | { kind: 'inline'; code: string; stagedPath: string };
+  owner: string; // Authoring source location for diagnostic traces
+}
+```
+
+### `SiteGraphApiRoute`
+
+Describes a discovered serverless API endpoint:
+
+```ts
+export interface SiteGraphApiRoute {
+  path: string; // URL route path, e.g. '/api/users/:id'
+  filePath: string; // Absolute path to compiled handler file
+  paramNames: string[]; // List of dynamic path parameters
+  isDynamic: boolean; // True if route contains parameterized segments
+}
+```
+
+---
+
+## Reference: Portable Runtime (`@bascik/bascik/runtime`)
+
+Adapters bundle `@bascik/bascik/runtime` into their function entry points. The runtime handles routing, parameter extraction, script execution, error trapping, and chunk streaming:
+
+```ts
+import { handleRequest } from '@bascik/bascik/runtime';
+
+const response = await handleRequest(request, graph, {
+  params: {},
+  remoteIp: request.headers.get('x-forwarded-for') ?? '127.0.0.1',
+  platform: {
+    name: 'my-platform',
+    env: process.env,
+  },
+});
+```
+
+The runtime accepts standard Web `Request` objects and returns standard Web `Response` objects (with `ReadableStream` bodies for streaming pages), making it compatible with Cloudflare Workers, Fastly Compute, Deno, Bun, and Node 18+.
+
+> **Next:** Inspect the [Cloudflare Adapter](/deployment/cloudflare) guide for a production example with asset routing and Wrangler configuration, or return to [Deployment Overview](/deployment).
 const publicDir = join(import.meta.dirname, 'public');
 
 const server = createServer(async (req, res) => {

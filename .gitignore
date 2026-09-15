@@ -89,6 +89,6 @@ docs/.wrangler
 .yarn/install-state.gz
 .wrangler
 .playwright-mcp/
-
+.headroom/
 
 bascik-prompts/
