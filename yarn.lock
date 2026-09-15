@@ -130,6 +130,7 @@ __metadata:
     "@bascik/bascik": "workspace:*"
     "@playwright/test": "npm:^1.58.2"
     "@types/node": "npm:^24.0.0"
+    "@vitest/coverage-v8": "npm:^4.1.10"
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
     typescript: "npm:^7.0.2"
