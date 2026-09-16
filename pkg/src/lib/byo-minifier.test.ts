@@ -304,4 +304,68 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
     warnSpy.mockRestore();
     (BascikConfig as any).onMinifyError = "error";
   });
+
+  it("preserves line comments and syntax in <head> components when stripTypeScriptTypes is configured as minify.js", async () => {
+    (BascikConfig.minify as any).html = true;
+    (BascikConfig.minify as any).css = true;
+    (BascikConfig.minify as any).js = (code: string) => stripTypeScriptTypes(code);
+
+    const pageHtml = `<!DOCTYPE html><html><head>
+      <site-head-comp></site-head-comp>
+    </head><body>
+      <div id="box">Main</div>
+    </body></html>`;
+    vi.mocked(readFile).mockResolvedValue(pageHtml);
+
+    const componentList = {
+      "site-head-comp": {
+        fileName: "src/components/site-head-comp/site-head-comp.html",
+        fileContent: `
+          <meta name="description" content="test">
+          <script>
+            // Line comment at the top of head script
+            function trackPageView(url: string): boolean {
+              // Inner line comment inside function
+              return Boolean(url);
+            }
+            trackPageView(window.location.href);
+          </script>
+        `,
+      },
+    };
+
+    const result = await transpilePage("src/pages/index.html", componentList);
+    expect(result).not.toBeNull();
+    const html = result!.distHtml;
+
+    expect(html).toContain("trackPageView");
+    expect(html).not.toContain(": string");
+    expect(html).not.toContain(": boolean");
+    // Verify closing IIFE boundary and sourceURL separation
+    expect(html).not.toContain("})(); //# sourceURL");
+  });
+
+  it("handles untyped script in <head> with line comments without swallowing statements when minification is enabled", async () => {
+    (BascikConfig.minify as any).html = true;
+    (BascikConfig.minify as any).css = true;
+    (BascikConfig.minify as any).js = false;
+
+    const pageHtml = `<!DOCTYPE html><html><head>
+      <script>
+        // First comment
+        const firstVar = 1;
+        // Second comment
+        const secondVar = 2;
+      </script>
+    </head><body><p>Hello</p></body></html>`;
+    vi.mocked(readFile).mockResolvedValue(pageHtml);
+
+    const result = await transpilePage("src/pages/index.html", {});
+    expect(result).not.toBeNull();
+    const html = result!.distHtml;
+
+    // The script must preserve newlines so comments do not swallow const statements
+    expect(html).toMatch(/const firstVar\s*=\s*1;/);
+    expect(html).toMatch(/const secondVar\s*=\s*2;/);
+  });
 });

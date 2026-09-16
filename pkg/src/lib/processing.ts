@@ -1485,7 +1485,19 @@ export const transpilePage = async (
       newHead += transpiledHead.slice(lastIndex);
       transpiledHead = newHead;
     }
-    transpiledHead = transpiledHead.replace(/\n/g, " ").replace(/\s\s+/g, " ");
+  }
+
+  if (isMinifyHtml) {
+    try {
+      transpiledHead = minifyHtml(transpiledHead);
+    } catch (err) {
+      const behavior = BascikConfig.onMinifyError ?? "error";
+      if (behavior === "error") {
+        console.error(`[bascik] HTML minification failed for head in "${relativePagePath}":`, err);
+        throw err;
+      }
+      console.warn(`[bascik] HTML minification failed for head in "${relativePagePath}", proceeding unminified:`, err);
+    }
   }
 
   if (!BascikConfig.isBuild) {
