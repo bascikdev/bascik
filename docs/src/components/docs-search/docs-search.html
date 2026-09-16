@@ -33,16 +33,17 @@
   // into one IIFE so minification can rename consistently across the whole block.
   import { readFile } from 'node:fs/promises';
   import { existsSync } from 'node:fs';
+  import { stripTypeScriptTypes } from 'node:module';
   import { join, resolve } from 'node:path';
   const base = existsSync(resolve(process.cwd(), 'src/components/docs-search'))
     ? resolve(process.cwd(), 'src/components/docs-search')
     : resolve(process.cwd(), 'docs/src/components/docs-search');
   const logic = await readFile(join(base, 'search-logic.ts'), 'utf8');
   const dom = await readFile(join(base, 'docs-search-dom.js'), 'utf8');
-  const fns = logic
+  // Node's strip-only mode erases the types and the interface; the export
+  // keywords go because both files are concatenated into one classic IIFE.
+  const fns = stripTypeScriptTypes(logic)
     .replace(/^\/\*\*[\s\S]*?\r?\n\r?\n/m, '')   // strip file-level JSDoc
-    .replace(/^export interface[\s\S]*?\r?\n\}/m, '') // strip SearchEntry interface
-    .replace(/:\s*(?:string\s*\|\s*null\s*\|\s*undefined|string(?:\[\])?|number|SearchEntry(?:\[\])?|Record<[^>]+>)/g, '') // strip TS types
     .replace(/^export function /gm, 'function ')
     .replace(/^export const /gm, 'var ');
   console.log('<script>\n(function () {\n' + fns.trim() + '\n\n' + dom.trim() + '\n})();\n</scr' + 'ipt>');

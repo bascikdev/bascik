@@ -7,6 +7,7 @@ import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
+import { transformTypeScriptScriptTags, TypeScriptTransformError } from "./typescript.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -235,6 +236,10 @@ export const listComponents = async (): Promise<ComponentList> => {
           getComponentScripts(fileName, componentScriptFileNames),
         ]);
       } catch (e) {
+        // A companion `.ts` that cannot be transformed is an authoring error in
+        // the user's source, not an I/O hiccup; surface it instead of shipping
+        // the component without its script.
+        if (e instanceof TypeScriptTransformError) throw e;
         console.warn("warning: Failed to process %s", fileName, e);
         return {};
       }
@@ -292,6 +297,11 @@ export const listComponents = async (): Promise<ComponentList> => {
           },
         );
       }
+      // Inline `<script type="text/typescript">` blocks become ordinary
+      // JavaScript here, before HTML minification hoists scripts and before
+      // page-time scoping and optional `minify.js`. Ordinary `<script>` blocks
+      // are left alone; TypeScript syntax in one is diagnosed, never rewritten.
+      resolvedContent = transformTypeScriptScriptTags(resolvedContent, fileName);
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
       const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");

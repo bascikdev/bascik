@@ -90,6 +90,7 @@ import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
+import { isTypeScriptFile, stripBrowserTypeScript } from "./typescript.ts";
 import {
   addElementClassesInHtml,
   addIdClassesInHtml,
@@ -923,19 +924,28 @@ export const getComponentScripts = async (
   });
 
   for (const scriptPath of matchingScriptFiles) {
+    let code: string;
     try {
-      const code = (await readFile(scriptPath)).toString();
-      const relPath = relative(process.cwd(), scriptPath).replace(/\\/g, "/");
-      const baseName = basename(scriptPath);
-      const info: ComponentScriptInfo = { relPath, code };
-
-      scriptMap.set(baseName, info);
-      scriptMap.set(`./${baseName}`, info);
-      scriptMap.set(relPath, info);
-
+      code = (await readFile(scriptPath)).toString();
     } catch (err) {
       console.warn("warning: Failed to read script for %s", scriptPath, err);
+      continue;
     }
+    const relPath = relative(process.cwd(), scriptPath).replace(/\\/g, "/");
+    // Referenced `.ts` browser scripts are transformed here, before scoping
+    // and before any optional `minify.js` step, so raw TypeScript never
+    // reaches the browser and the minifier only ever sees valid JavaScript.
+    // Strip errors are authoring errors and must fail the component loudly,
+    // not degrade to a missing script.
+    if (isTypeScriptFile(scriptPath)) {
+      code = stripBrowserTypeScript(code, relPath);
+    }
+    const baseName = basename(scriptPath);
+    const info: ComponentScriptInfo = { relPath, code };
+
+    scriptMap.set(baseName, info);
+    scriptMap.set(`./${baseName}`, info);
+    scriptMap.set(relPath, info);
   }
 
   return {

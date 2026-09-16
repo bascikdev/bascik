@@ -529,23 +529,19 @@ Given two instances of `<my-card>` on the same page:
 
 Using the `id`-based pattern with `getElementById()` is recommended because it gives you per-instance JS isolation while keeping `deduplicateCss: true` for minimal CSS payload.
 
-### TypeScript in Component Scripts & BYOMinifier
+### TypeScript in Component Scripts
 
-Bascik ships vanilla JavaScript to the browser. If a project uses TypeScript inside component `<script>` blocks, type annotations must be stripped before output is served. Bascik's **BYOMinifier (Bring Your Own Minifier)** feature allows wiring Node 22.18+'s built-in `stripTypeScriptTypes` into the `minify.js` hook:
+Bascik ships vanilla JavaScript to the browser and strips browser TypeScript automatically on two supported paths. No configuration is required and `minify.js` is not involved.
 
-```ts
-// bascik.config.ts (Illustrative example for projects using TypeScript in component script blocks)
-import { stripTypeScriptTypes } from 'node:module';
-import { defineConfig } from '@bascik/bascik/config';
+* **Default: companion `.ts` file.** `<script src="counter.ts"></script>` inside a component inlines `counter.ts` with its erasable types stripped. Line structure is preserved so `//# sourceURL` line numbers match the `.ts` source.
+* **Inline opt-in:** `<script type="text/typescript">...</script>` in a page or component is stripped and emitted as an ordinary `<script>` (the `type` attribute is removed).
+* **Ordinary `<script>` is JavaScript.** Browsers do not run TypeScript in an unmarked block, so Bascik never rewrites it. If it can positively identify erasable TypeScript there, the build logs a warning naming the file and the two fixes above. Do not put TypeScript annotations in an unmarked `<script>`.
 
-export const build = defineConfig({
-  minify: {
-    js: (js) => stripTypeScriptTypes(js),
-  },
-});
-```
+Pipeline order is fixed: TypeScript strip, then scoping (IIFE, selector rewriting, `//# sourceURL`), then optional `minify.js`. A `minify.js` function (built-in or custom such as esbuild with `loader: 'js'`) therefore always receives valid JavaScript.
 
-Component scripts can then use TypeScript annotations freely. Bascik's scoping pipeline runs first (IIFE wrapping, selector rewriting), then `minify.js` strips the types. **Erasable syntax only:** `stripTypeScriptTypes` removes type annotations, interfaces, `as` casts, and `!` non-null assertions. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) requires a separate compile step. Note that this configuration is only needed when component script blocks contain TypeScript syntax.
+**Erasable syntax only** (Node 22.18+ strip-only mode): annotations, interfaces, type aliases, `as` casts, `!` assertions, `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the file path. Use `as const` objects instead of `enum`, or compile with tsc/esbuild first.
+
+Wiring `stripTypeScriptTypes` into `minify.js` is legacy guidance. It still works as a BYOMinifier but is unnecessary.
 
 ### Debugging Component Scripts & Virtual Source Files
 
@@ -1205,7 +1201,7 @@ When creating or modifying `bascik.config.ts`:
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
 * **Use `base` for subdirectory deployments:** Set a literal path prefix such as `base: '/docs/'`. Do not include a query, fragment, percent escape, backslash, or dot segment, and do not use a full URL. Bascik does not rewrite paths assembled inside JavaScript; use the build-time `BASCIK_BASE` value for those paths.
 
-**`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild, terser, or `stripTypeScriptTypes`:
+**`minify.js`:** `true` (default) strips comments and collapses whitespace; it does not mangle identifiers. Pass a custom async function to plug in esbuild or terser. The function always receives valid JavaScript (browser TypeScript on supported paths is stripped first) and Bascik re-attaches its own `//# sourceURL` directive on a fresh line after the function returns, so minifiers that drop comments are safe:
 
 ```ts
 import { transform } from 'esbuild';

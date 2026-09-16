@@ -312,6 +312,73 @@ describe("listComponents – companion scripts", () => {
     expect(result["my-btn"].fileContent).not.toContain("test");
     expect(result["my-btn"].fileContent).not.toContain("spec");
   });
+
+  it("strips TypeScript from a referenced .ts companion script without any minify.js configuration", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/demo-counter/demo-counter.html",
+      "src/components/demo-counter/demo-counter.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<span id="count">0</span><script src="demo-counter.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from(
+        "const count = document.getElementById('count') as HTMLElement;\nlet n: number = 0;\ninterface Tick { at: number }\ncount.textContent = String(n);\n",
+      ));
+
+    const result = await listComponents();
+    const html = result["demo-counter"].fileContent as string;
+
+    expect(html).not.toContain("as HTMLElement");
+    expect(html).not.toContain(": number");
+    expect(html).not.toContain("interface Tick");
+    expect(html).toContain("document.getElementById('count')");
+    expect(html).toContain('data-bascik-source="src/components/demo-counter/demo-counter.ts"');
+    // The stripped script is plain JavaScript, so no type attribute is added.
+    expect(html).not.toContain("text/typescript");
+  });
+
+  it("leaves a referenced .js companion script byte-for-byte untouched", async () => {
+    const js = "const n = 0; // plain\nconsole.log(n < 1, n > -1);\n";
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/plain-comp/plain-comp.html",
+      "src/components/plain-comp/plain-comp.js",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="plain-comp.js"></script>'))
+      .mockResolvedValueOnce(Buffer.from(js));
+
+    const result = await listComponents();
+    expect(result["plain-comp"].fileContent).toContain(js);
+  });
+
+  it("strips types from an inline <script type=\"text/typescript\"> in a component and leaves an ordinary inline script alone", async () => {
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp/mixed-comp.html"]);
+    mockReadFile.mockResolvedValueOnce(Buffer.from(
+      '<div id="box"></div>\n' +
+      '<script type="text/typescript">\n  const box = document.getElementById("box") as HTMLElement;\n  let hits: number = 0;\n  box.textContent = String(hits);\n</script>\n' +
+      "<script>\n  const plain = 1;\n  console.log(plain);\n</script>\n",
+    ));
+
+    const result = await listComponents();
+    const html = result["mixed-comp"].fileContent as string;
+
+    expect(html).not.toContain("text/typescript");
+    expect(html).not.toContain("as HTMLElement");
+    expect(html).not.toContain(": number");
+    expect(html).toContain('document.getElementById("box")');
+    expect(html).toContain("const plain = 1;");
+  });
+
+  it("fails the component with file context when a .ts companion uses non-erasable syntax", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/enum-comp/enum-comp.html",
+      "src/components/enum-comp/enum-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="enum-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"));
+
+    await expect(listComponents()).rejects.toThrow(/enum-comp\.ts[\s\S]*enum/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -62,7 +62,7 @@ import {
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -121,6 +121,7 @@ const annotateComponentScriptSources = (html: string, sourceFile: string): strin
 
 import { isJavaScriptScript } from "./script-types.ts";
 import { minifyJs } from "./js-minifier.ts";
+import { transformTypeScriptScriptTags } from "./typescript.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
@@ -261,6 +262,39 @@ const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => 
   };
 };
 
+/** Project-relative, forward-slash path for user-facing diagnostics. */
+const relativePagePathForDiagnostics = (pagePath: string): string =>
+  (resolve(pagePath).startsWith(process.cwd()) ? relative(process.cwd(), pagePath) : pagePath).replace(/\\/g, "/");
+
+/**
+ * Trailing `//# sourceURL=...` directive appended by `namespaceScriptTags`.
+ * Anchored to the final line so a directive-looking string inside the code
+ * body is never mistaken for the real one.
+ */
+const TRAILING_SOURCE_URL_RE = /(?:^|\n)[ \t]*(\/\/# sourceURL=[^\n]*?)[ \t]*$/;
+
+/**
+ * Split a script body into the code the minifier should see and the
+ * `//# sourceURL` directive Bascik owns. Minifiers (the built-in one, esbuild,
+ * terser, `stripTypeScriptTypes` on a one-line result) legitimately drop or
+ * re-flow comments, so the directive must never be handed to them and must be
+ * re-attached on its own line afterwards. A directive glued onto the same line
+ * as `})();` turns the rest of the line into a comment and breaks the script.
+ */
+export const splitTrailingSourceUrl = (code: string): { code: string; sourceUrl: string | null } => {
+  const m = TRAILING_SOURCE_URL_RE.exec(code);
+  if (!m) return { code, sourceUrl: null };
+  return { code: code.slice(0, m.index), sourceUrl: m[1] };
+};
+
+/** Re-attach a directive so it always starts on a fresh line. */
+export const appendSourceUrl = (code: string, sourceUrl: string | null): string => {
+  if (!sourceUrl) return code;
+  const trimmed = code.replace(/[ \t]+$/, "");
+  const separator = trimmed.endsWith("\n") ? "" : "\n";
+  return `${trimmed}${separator}${sourceUrl}`;
+};
+
 /**
  * Minify the content of every inline `<script>` tag in `html` (excluding
  * external scripts and non-JS types such as application/ld+json).
@@ -270,24 +304,26 @@ const minifyScriptTagsInHtml = async (
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
   const regex = /(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi;
-  const ops: Array<{ index: number; len: number; open: string; code: string; close: string }> = [];
+  const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {
-    const [full, open, code, close] = m as unknown as [string, string, string, string];
+    const [full, open, body, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
     if (/\bsrc\s*=/i.test(open)) continue;
-    ops.push({ index: m.index, len: full.length, open, code, close });
+    const { code, sourceUrl } = splitTrailingSourceUrl(body);
+    ops.push({ index: m.index, len: full.length, open, code, sourceUrl, close });
   }
   if (!ops.length) return html;
   const minified = await Promise.all(ops.map(({ code }) => minifyFn(code)));
   let result = html;
   for (let i = ops.length - 1; i >= 0; i--) {
-    const { index, len, open, close } = ops[i];
-    result = result.slice(0, index) + `${open}${minified[i]}${close}` + result.slice(index + len);
+    const { index, len, open, sourceUrl, close } = ops[i];
+    const body = appendSourceUrl(minified[i], sourceUrl);
+    result = result.slice(0, index) + `${open}${body}${close}` + result.slice(index + len);
   }
   return result;
 };
@@ -1339,6 +1375,14 @@ export const transpilePage = async (
     await recordMissingScriptDeps(rawHtml, pagePath);
     throw error;
   }
+
+  // Page-authored browser TypeScript. Runs on the page's own markup (after
+  // build scripts, whose generated HTML may also carry marked scripts) and
+  // before component expansion, so component scripts, which were already
+  // transformed and diagnosed in `listComponents`, are not re-inspected here.
+  // This is the same pass in dev and build: TypeScript strip first, then
+  // scoping, then optional `minify.js`.
+  htmlWithBuildOutput = transformTypeScriptScriptTags(htmlWithBuildOutput, relativePagePathForDiagnostics(pagePath));
 
   // Do NOT minify before component resolution. Minification runs after transpilation
   // so that whitespace-sensitive content (e.g. code inside resolved <pre> blocks
