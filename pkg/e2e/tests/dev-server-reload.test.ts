@@ -1069,5 +1069,52 @@ test.describe('Dev Server Cold Start & Boot Loading Screen', () => {
       child.kill();
     }
   });
+
+  // Prompt 146: dev server SSE shutdown hang
+  // In dev mode, HTML pages connect the injected live-reload EventSource to /bascik-live-reload.
+  // When SIGINT is received, the SSE manager's shutdown handler must terminate active SSE responses
+  // so the server does not hang waiting on open sockets until the drain timeout.
+  // Note: curl alone cannot exercise browser reconnect logic; a real browser tab with EventSource is required.
+  test('shuts down cleanly on SIGINT in under 1500ms with an open browser tab connected to live reload', async ({ page }) => {
+    const entryPath = join(pkgDir, 'bin/bascik.js');
+    const port = '9993';
+    const baseUrl = `http://localhost:${port}`;
+    const child = spawn(process.execPath, [entryPath], {
+      cwd: e2eDir,
+      env: { ...process.env, PORT: port },
+    });
+
+    let serverReady = false;
+    child.stdout?.on('data', (data) => {
+      if (data.toString('utf8').includes('Server running at')) {
+        serverReady = true;
+      }
+    });
+
+    try {
+      await expect.poll(() => serverReady, { timeout: 20000 }).toBe(true);
+
+      // Open a real page in the browser that connects the injected live-reload EventSource
+      await page.goto(`${baseUrl}/server-scripts-resilience-test.html`);
+      await expect(page.getByTestId('resilience-before')).toBeVisible({ timeout: 15000 });
+
+      // Send SIGINT and verify clean exit in under 1500ms
+      const startTime = Date.now();
+      const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+        child.once('exit', (code, signal) => resolve({ code, signal }));
+      });
+
+      child.kill('SIGINT');
+      const { code } = await exitPromise;
+      const durationMs = Date.now() - startTime;
+
+      expect(code).toBe(0);
+      expect(durationMs).toBeLessThan(1500);
+    } finally {
+      if (child.exitCode === null) {
+        child.kill('SIGKILL');
+      }
+    }
+  });
 });
 

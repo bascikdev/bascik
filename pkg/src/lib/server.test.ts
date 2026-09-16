@@ -3048,4 +3048,31 @@ describe("Server-owned RateLimiter lifecycle", () => {
     await runShutdownHandlers();
     expect(limiter.isTimerActive()).toBe(false);
   });
+
+  it("shutdown handlers clean up active SSE manager and disconnect clients", async () => {
+    const { getSseManager, resetSseManager } = await import("./server.ts");
+    const { runShutdownHandlers } = await import("./events.ts");
+    resetSseManager();
+
+    const manager = getSseManager();
+    const mockRes: any = {
+      destroyed: false,
+      write: vi.fn(() => true),
+      end: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    manager.addClient(mockRes);
+    expect(manager.activeClientCount).toBe(1);
+
+    await runShutdownHandlers();
+    expect(mockRes.close).toHaveBeenCalled();
+    expect(manager.activeClientCount).toBe(0);
+
+    // Repeated call to getSseManager returns new manager or re-initializes without leaking duplicate registrations
+    const manager2 = getSseManager();
+    expect(manager2).toBeDefined();
+    resetSseManager();
+  });
 });

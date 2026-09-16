@@ -59,6 +59,9 @@ let activeSseManager: SseManager | null = null;
 export const getSseManager = (): SseManager => {
   if (!activeSseManager) {
     activeSseManager = new SseManager();
+    registerShutdownHandler(() => {
+      resetSseManager();
+    });
   }
   return activeSseManager;
 };
