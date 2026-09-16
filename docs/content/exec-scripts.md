@@ -86,7 +86,7 @@ Each exec entry in `pipeline.exec` accepts:
 
 ### Watching source inputs
 
-`exec.watch` selects which scripts rerun after a matching source edit. That edit owns one phase-ordered rebuild cycle: matching pre scripts finish, parallel scripts start alongside associated page compilation, then matching post scripts run after compilation and its disk writes finish. Completion itself never queues a second compilation. Do not configure `watchPaths` for generated outputs.
+`pipeline.exec[].watch` selects which scripts rerun after a matching source edit. That edit owns one phase-ordered rebuild cycle: matching pre scripts finish, parallel scripts start alongside associated page compilation, then matching post scripts run after compilation and its disk writes finish. Completion itself never queues a second compilation. Do not configure `pipeline.watchPaths` for generated outputs.
 
 This illustrative configuration generates a catalog before compilation and observes its source inputs for subsequent updates:
 
@@ -118,7 +118,7 @@ Known source dependents rebuild once per cycle. If an external source input or w
 
 ## The Output Rule: Write to `dist/`, Not `src/`
 
-> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated artifacts directly to the output directory (`dist/`), never into source files or any watched files or directories. This includes pre, post, and parallel scripts. Do not add generated outputs to `watchPaths` or `exec.watch`. There is no `outputs` option.
+> **The Lifecycle Output Rule:** Scripts executed by `pipeline.exec` must write generated artifacts directly to the output directory (`dist/`), never into source files or any watched files or directories. This includes pre, post, and parallel scripts. Do not add generated outputs to `pipeline.watchPaths` or `pipeline.exec[].watch`. There is no `outputs` option.
 
 The coordinated watcher excludes the output directory, including when a broad source pattern would otherwise cover it. Bascik cannot safely distinguish a child process writing a source file from a user editing that same file. It does not suppress edits using time windows, rewrite counts, or script-path exclusions. Accidental writes to watched sources can therefore loop; fix the script's destination rather than relying on loop detection.
 
@@ -126,9 +126,9 @@ The coordinated watcher excludes the output directory, including when a broad so
 
 When running `bascik` in development mode:
 
-1. A single source observer combines pages, components, `watchPaths`, and exec source patterns when watched exec entries exist.
+1. A single source observer combines pages, components, `pipeline.watchPaths`, and exec source patterns when watched exec entries exist.
 2. Matching scripts run in their configured phases around one associated compilation batch. Pre and post scripts run sequentially in configuration order.
-3. A page edit does not rerun scripts whose watch patterns do not match. An exec-only source edit still rebuilds its associated pages; duplicating that source in `watchPaths` is unnecessary.
+3. A page edit does not rerun scripts whose watch patterns do not match. An exec-only source edit still rebuilds its associated pages; duplicating that source in `pipeline.watchPaths` is unnecessary.
 4. Edits arriving during pre, compilation, or post are retained for a following cycle. Failed-cycle paths are retained for retry when another source edit arrives, not retried endlessly without an edit.
 5. Successful compilation reloads are held until post succeeds. Pre, compilation, or post failure reports a build-error without a success reload for that cycle.
 
@@ -144,7 +144,7 @@ In a one-shot build, parallel scripts genuinely run alongside compilation. Post 
 
 ### Overlapping watches share one cycle
 
-Listing a source in both `pipeline.watchPaths` and `exec.watch`, or watching a page source with exec, does not create independent rebuilds. The same edit selects matching scripts and affected pages once, preserving pre and post ordering. No generated output watcher or completion-driven second pass is needed.
+Listing a source in both `pipeline.watchPaths` and `pipeline.exec[].watch`, or watching a page source with exec, does not create independent rebuilds. The same edit selects matching scripts and affected pages once, preserving pre and post ordering. No generated output watcher or completion-driven second pass is needed.
 
 ## Example: Generating a Search Index
 

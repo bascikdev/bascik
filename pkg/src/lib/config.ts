@@ -163,6 +163,7 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
   },
   scripts: {
     cache: { enabled: true },
+    typescript: true,
     onBuildScriptError: "error",
     onRoutesScriptError: "error",
     onServerScriptError: "error",

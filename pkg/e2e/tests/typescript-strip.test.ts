@@ -2,10 +2,13 @@
  * Prompt 148: browser TypeScript transformation and the sourceURL boundary.
  *
  * Runs in every e2e lane (static build, dev server, HTTP/1.1 and HTTP/2
- * production servers). The build lanes go through the e2e config's esbuild
- * `minify.js` (loader 'js'), which rejects TypeScript, so a passing page also
- * proves the strip ran before minification. The dev lane runs with minify.js
- * off, so it proves the strip is not a minifier side effect.
+ * production servers). The e2e config sets `scripts.typescript` to esbuild
+ * (loader 'ts'), so this also covers the bring-your-own compiler path; the
+ * `ts-compiler-test` component uses `enum` and cannot build any other way.
+ * The build lanes then go through the config's esbuild `minify.js` (loader
+ * 'js'), which rejects TypeScript, so a passing page also proves the
+ * transform ran before minification. The dev lane runs with minify.js off,
+ * so it proves the transform is not a minifier side effect.
  */
 import { expect, test } from '@playwright/test';
 
@@ -32,6 +35,11 @@ test.describe('browser TypeScript is stripped on supported paths', () => {
 
     await expect(page.getByTestId('ts-page-out')).toHaveText('page-typescript-ran:2');
 
+    // ts-compiler-test uses `enum`, which only compiles through the e2e
+    // config's custom scripts.typescript (esbuild). Proves the BYO compiler
+    // path runs on the main thread and in worker threads (pipeline.workers).
+    await expect(page.getByTestId('ts-compiler-out')).toHaveText('custom-compiler-ran:fast');
+
     expect(pageErrors, pageErrors.map((e) => e.message).join('\n')).toHaveLength(0);
   });
 
@@ -47,6 +55,8 @@ test.describe('browser TypeScript is stripped on supported paths', () => {
     expect(html).not.toContain('Tick[]');
     expect(html).not.toContain('Tick | undefined');
     expect(html).not.toContain('first!');
+    expect(html).not.toContain('enum Mode');
+    expect(html).not.toContain(': Mode');
 
     // A directive glued to the end of the closing IIFE line comments out the
     // rest of that line and breaks the script.

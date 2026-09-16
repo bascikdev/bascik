@@ -1382,7 +1382,7 @@ export const transpilePage = async (
   // transformed and diagnosed in `listComponents`, are not re-inspected here.
   // This is the same pass in dev and build: TypeScript strip first, then
   // scoping, then optional `minify.js`.
-  htmlWithBuildOutput = transformTypeScriptScriptTags(htmlWithBuildOutput, relativePagePathForDiagnostics(pagePath));
+  htmlWithBuildOutput = await transformTypeScriptScriptTags(htmlWithBuildOutput, relativePagePathForDiagnostics(pagePath));
 
   // Do NOT minify before component resolution. Minification runs after transpilation
   // so that whitespace-sensitive content (e.g. code inside resolved <pre> blocks

@@ -212,17 +212,19 @@ export const store = reactive({ cart: [] });
 
 [Tailwind CSS](https://tailwindcss.com) is a utility-first CSS framework. Because Tailwind's utility classes are global by design, you need to tell Bascik not to scope class attributes, otherwise Bascik renames `class="flex gap-4"` to `class="bascik__my-comp__flex bascik__my-comp__gap-4"`, which Tailwind's CSS will never match.
 
-Set `scopeAttribute.class` to `false` in `bascik.config.ts`:
+Set `scoping.attributes.class` to `false` in `bascik.config.ts`:
 
 ```ts
 // bascik.config.ts
-export default {
-  scopeAttribute: {
-    class: false, // let Tailwind utility classes pass through unchanged
-    id: true,
-    name: true,
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scoping: {
+    attributes: {
+      class: false, // let Tailwind utility classes pass through unchanged
+    },
   },
-};
+});
 ```
 
 Then include Tailwind via CDN in your head component or page `<head>`. The CDN script runs in the browser and generates CSS for whichever utility class names it finds in the DOM:

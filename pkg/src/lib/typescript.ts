@@ -17,14 +17,20 @@
  *
  * This transformation is a separate concern from `minify.js`. It runs first,
  * so the optional JavaScript minifier (built-in or BYOMinifier) always
- * receives already-valid JavaScript. Node's `stripTypeScriptTypes` (22.18+)
- * is used in strip-only mode, which is line-preserving, so `//# sourceURL`
- * line numbers stay accurate.
+ * receives already-valid JavaScript.
+ *
+ * Compiler selection is `scripts.typescript` (see `TypeScriptCompilerOption`):
+ * `true` (default) uses Node's `stripTypeScriptTypes` (22.18+) in strip-only
+ * mode, which is line-preserving so `//# sourceURL` line numbers stay
+ * accurate; `false` leaves both paths untouched for projects that compile
+ * elsewhere; a function is a bring-your-own compiler (esbuild, swc, tsc).
  */
 
 import { stripTypeScriptTypes } from "node:module";
+import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
+import type { TypeScriptCompileContext, TypeScriptCompilerOption } from "./types.ts";
 
 export const TYPESCRIPT_SCRIPT_TYPE = "text/typescript";
 
@@ -110,6 +116,74 @@ export const stripBrowserTypeScript = (code: string, sourceLabel?: string): stri
   }
 };
 
+/** Resolve `scripts.typescript`, defaulting to the built-in strip. */
+const resolveCompilerOption = (): TypeScriptCompilerOption => {
+  const option = BascikConfig.scripts?.typescript;
+  return option === undefined ? true : option;
+};
+
+/** True when Bascik will transform browser TypeScript at all. */
+export const isBrowserTypeScriptEnabled = (): boolean => resolveCompilerOption() !== false;
+
+/**
+ * Parse check for compiler output. `import`/`export` are not allowed in a
+ * `Function` body, so module-shaped output is accepted on the strength of the
+ * compiler having returned a string at all; everything else must parse.
+ */
+const isParseableJavaScript = (code: string): boolean => {
+  try {
+    new Function(code);
+    return true;
+  } catch {
+    return /^\s*(?:import|export)\b/m.test(code);
+  }
+};
+
+/**
+ * Transform browser TypeScript according to `scripts.typescript`.
+ *
+ * - `true`: Node strip-only mode via `stripBrowserTypeScript`.
+ * - `false`: returns `code` unchanged. Callers that rewrite markup (removing
+ *   the `type` attribute) must check `isBrowserTypeScriptEnabled()` first.
+ * - function: called with `(code, context)`; must return a string of plain
+ *   JavaScript. A throw or non-JavaScript result becomes a
+ *   `TypeScriptTransformError` naming `context.sourcePath`, so a broken
+ *   compiler fails the build instead of shipping bad output.
+ */
+export const transformBrowserTypeScript = async (
+  code: string,
+  context: TypeScriptCompileContext,
+): Promise<string> => {
+  const option = resolveCompilerOption();
+  if (option === false) return code;
+  if (option === true) return stripBrowserTypeScript(code, context.sourcePath);
+
+  let output: unknown;
+  try {
+    output = await option(code, context);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new TypeScriptTransformError(
+      `[bascik] scripts.typescript compiler failed in "${context.sourcePath}": ${detail}`,
+      { cause: err },
+    );
+  }
+  if (typeof output !== "string") {
+    throw new TypeScriptTransformError(
+      `[bascik] scripts.typescript compiler must return a string of JavaScript for "${context.sourcePath}", ` +
+      `received ${output === null ? "null" : typeof output}.`,
+    );
+  }
+  if (!isParseableJavaScript(output)) {
+    throw new TypeScriptTransformError(
+      `[bascik] TypeScript transformation failed in "${context.sourcePath}": ` +
+      `the scripts.typescript compiler did not return valid JavaScript. ` +
+      `The function must emit plain JavaScript (for example esbuild with loader: 'ts').`,
+    );
+  }
+  return output;
+};
+
 /**
  * Positive identification of erasable TypeScript syntax in a script body that
  * was NOT marked as TypeScript. Returns true only when the code is not valid
@@ -150,44 +224,58 @@ const withoutTypeAttribute = (openTag: string): string => {
 
 /**
  * Transform every inline `<script type="text/typescript">` in `html` into an
- * ordinary `<script>` containing JavaScript. Ordinary inline scripts are left
+ * ordinary `<script>` containing JavaScript, using the configured compiler.
+ * When `scripts.typescript` is `false` marked blocks are left exactly as
+ * authored, `type` attribute included. Ordinary inline scripts are always left
  * byte-for-byte untouched; when one contains identifiable TypeScript syntax a
  * single warning names the file and the fix.
  *
  * External (`src=`), directive, module, and non-JavaScript scripts are never
  * inspected.
  */
-export const transformTypeScriptScriptTags = (
+export const transformTypeScriptScriptTags = async (
   html: string,
   sourceFile: string,
   options: { diagnose?: boolean } = {},
-): string => {
+): Promise<string> => {
   if (!/<script\b/i.test(html)) return html;
   const diagnose = options.diagnose ?? true;
   // Strip-only passes (no diagnostics) have nothing to do unless a marked
   // TypeScript script is present; skip the per-tag work in that case.
   if (!diagnose && !/text\/typescript/i.test(html)) return html;
-  return html.replace(SCRIPT_TAG_RE, (match, open: string, body: string, close: string) => {
-    if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
-    if (/\bsrc\s*=/i.test(open)) return match;
+  const transformEnabled = isBrowserTypeScriptEnabled();
+
+  const ops: Array<{ index: number; len: number; open: string; body: string; close: string }> = [];
+  for (const m of html.matchAll(SCRIPT_TAG_RE)) {
+    const [full, open, body, close] = m as unknown as [string, string, string, string];
+    if (DIRECTIVE_SCRIPT_RE.test(open)) continue;
+    if (/\bsrc\s*=/i.test(open)) continue;
 
     if (isTypeScriptScriptTag(open)) {
-      const stripped = stripBrowserTypeScript(body, sourceFile);
-      return `${withoutTypeAttribute(open)}${stripped}${close}`;
+      if (transformEnabled) ops.push({ index: m.index ?? 0, len: full.length, open, body, close });
+      continue;
     }
 
-    if (!diagnose) return match;
+    if (!diagnose) continue;
     const type = getScriptType(open);
-    if (type === undefined || type === "text/javascript") {
-      if (looksLikeTypeScript(body)) {
-        console.warn(
-          `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
-          `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
-          `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
-          `or move it to a companion .ts file referenced with <script src="name.ts">.`,
-        );
-      }
+    if ((type === undefined || type === "text/javascript") && looksLikeTypeScript(body)) {
+      console.warn(
+        `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
+        `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
+        `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
+        `or move it to a companion .ts file referenced with <script src="name.ts">.`,
+      );
     }
-    return match;
-  });
+  }
+  if (!ops.length) return html;
+
+  const compiled = await Promise.all(
+    ops.map(({ body }) => transformBrowserTypeScript(body, { sourcePath: sourceFile, kind: "inline" })),
+  );
+  let result = html;
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const { index, len, open, close } = ops[i];
+    result = result.slice(0, index) + `${withoutTypeAttribute(open)}${compiled[i]}${close}` + result.slice(index + len);
+  }
+  return result;
 };

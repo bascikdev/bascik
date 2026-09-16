@@ -20,6 +20,7 @@ vi.mock("./config.js", () => ({
       preserve: [],
     },
     minify: { html: false, css: false, js: false, identifiers: false },
+    scripts: { typescript: true },
   },
 }));
 
@@ -366,6 +367,44 @@ describe("listComponents – companion scripts", () => {
     expect(html).not.toContain(": number");
     expect(html).toContain('document.getElementById("box")');
     expect(html).toContain("const plain = 1;");
+  });
+
+  it("passes a .ts companion through a custom scripts.typescript compiler with its source path", async () => {
+    const compiler = vi.fn(async (code: string) => code.replace(/: number/g, "") + "\n// via-custom-compiler");
+    (BascikConfig as any).scripts.typescript = compiler;
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/custom-comp/custom-comp.html",
+      "src/components/custom-comp/custom-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="custom-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
+
+    const result = await listComponents();
+    (BascikConfig as any).scripts.typescript = true;
+
+    expect(compiler).toHaveBeenCalledWith("let n: number = 1;\n", {
+      sourcePath: "src/components/custom-comp/custom-comp.ts",
+      kind: "companion",
+    });
+    expect(result["custom-comp"].fileContent).toContain("// via-custom-compiler");
+    expect(result["custom-comp"].fileContent).not.toContain(": number");
+  });
+
+  it("inlines a .ts companion as-is when scripts.typescript is false", async () => {
+    (BascikConfig as any).scripts.typescript = false;
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/raw-comp/raw-comp.html",
+      "src/components/raw-comp/raw-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="raw-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
+
+    const result = await listComponents();
+    (BascikConfig as any).scripts.typescript = true;
+
+    expect(result["raw-comp"].fileContent).toContain("let n: number = 1;");
   });
 
   it("fails the component with file context when a .ts companion uses non-erasable syntax", async () => {

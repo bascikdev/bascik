@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  BASCIK_CONFIG,
   E2E_APP_SPEC,
   FEAT_CARD_CSS,
   FEAT_CARD_HTML,
@@ -132,12 +131,6 @@ describe("E2E_APP_SPEC", () => {
     expect(E2E_APP_SPEC).toContain("navigates pages and checks titles");
     expect(E2E_APP_SPEC).toContain("counter component increments and decrements count");
     expect(E2E_APP_SPEC).toContain("mobile navigation toggle expands and collapses menu");
-  });
-});
-
-describe("BASCIK_CONFIG", () => {
-  it("contains a link to the docs", () => {
-    expect(BASCIK_CONFIG).toContain("bascik.dev/configuration");
   });
 });
 
@@ -390,9 +383,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 28 expected files", async () => {
+  it("writes all 27 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(28);
+    expect(mockWriteFile.mock.calls.length).toBe(27);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -412,7 +405,7 @@ describe("scaffold", () => {
   it("writes root config files", async () => {
     await scaffold("my-app", "/tmp");
     expect(writtenTo("package.json")).toBeDefined();
-    expect(writtenTo("bascik.config.ts")).toBeDefined();
+    expect(writtenTo("bascik.config.ts")).toBeUndefined();
     expect(writtenTo("vite.config.js")).toBeDefined();
     expect(writtenTo(".gitignore")).toBeDefined();
     expect(writtenTo(".hintrc")).toBeUndefined();

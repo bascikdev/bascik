@@ -2,6 +2,7 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   pipeline: {
+    workers: true,
     watchPaths: [
       'scripts/',
       'content/',

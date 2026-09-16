@@ -32,6 +32,7 @@ vi.mock("./config.js", () => ({
     minify: { html: false, css: false, js: false, identifiers: false },
     assets: { inlineStyles: false, exclude: [] },
     directory: { pages: "src/pages", components: ["src/components"], out: "dist" },
+    scripts: { typescript: true },
   },
 }));
 
@@ -67,6 +68,42 @@ describe("browser TypeScript pipeline", () => {
     (BascikConfig as any).isBuild = true;
     (BascikConfig as any).minify = { html: false, css: false, js: false, identifiers: false };
     (BascikConfig as any).onMinifyError = "error";
+    (BascikConfig as any).scripts = { typescript: true };
+  });
+
+  it("compiles a page-level marked block with esbuild via scripts.typescript, downleveling and handling enum", async () => {
+    (BascikConfig as any).scripts.typescript = async (code: string, { sourcePath }: { sourcePath: string }) =>
+      (await transform(code, { loader: "ts", target: "es2017", sourcefile: sourcePath })).code;
+    (BascikConfig as any).minify = { html: true, css: true, js: true, identifiers: false };
+    vi.mocked(readFile).mockResolvedValue(`<!DOCTYPE html><html><head></head><body>
+      <p>hi</p>
+      <script type="text/typescript">
+        enum Mode { Fast, Slow }
+        const pick = (m: Mode): string => m === Mode.Fast ? 'fast' : 'slow';
+        const v = document.querySelector('p')?.textContent ?? pick(Mode.Fast);
+        console.log(v);
+      </script>
+    </body></html>`);
+
+    const result = await transpilePage("src/pages/index.html", {});
+    const html = result!.distHtml;
+
+    expect(html).not.toContain("text/typescript");
+    expect(html).not.toContain("enum Mode");
+    expect(html).not.toContain("?."); // downleveled by target es2017
+    expect(html).not.toContain("??");
+    expect(html).toContain("console.log(");
+    assertAllInlineScriptsParse(html);
+  });
+
+  it("ships a marked block untouched when scripts.typescript is false", async () => {
+    (BascikConfig as any).scripts.typescript = false;
+    vi.mocked(readFile).mockResolvedValue(`<!DOCTYPE html><html><head></head><body>
+      <script type="text/typescript">let n: number = 1;</script>
+    </body></html>`);
+
+    const result = await transpilePage("src/pages/index.html", {});
+    expect(result!.distHtml).toContain('<script type="text/typescript">let n: number = 1;</script>');
   });
 
   afterEach(() => {

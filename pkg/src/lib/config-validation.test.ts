@@ -132,6 +132,22 @@ describe("scripts.timeout", () => {
   });
 });
 
+describe("scripts.typescript", () => {
+  it("is a known key that accepts true, false, or a function", () => {
+    expect(validateConfigShape({ scripts: { typescript: true } })).toHaveLength(0);
+    expect(validateConfigShape({ scripts: { typescript: false } })).toHaveLength(0);
+    expect(validateConfigShape({ scripts: { typescript: async (code: string) => code } })).toHaveLength(0);
+  });
+
+  it("rejects a string or object value", () => {
+    const errors = validateConfigShape({ scripts: { typescript: "esbuild" as any } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("scripts.typescript");
+    expect(errors[0].message).toMatch(/true, false, or a function/);
+    expect(validateConfigShape({ scripts: { typescript: {} as any } })).toHaveLength(1);
+  });
+});
+
 describe("scripts.importRoot", () => {
   const missingFs = {
     existsSync: () => false,

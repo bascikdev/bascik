@@ -447,7 +447,7 @@ name   →  bascik__<componentName>__<instanceId>__<originalName>
 
 ### Multiple Script Blocks
 Component templates can contain multiple `<script>` tags. Bascik processes each script tag according to its attributes:
-* **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scopeScriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
+* **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scoping.scriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
 * **Build scripts (`<script data-bascik-build>`):** Executed during build or dev time in Node.js to generate dynamic markup.
 * **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js.
 * **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or JavaScript minification.
@@ -476,11 +476,11 @@ Because class names are scoped to the component **name** (not per-instance), `qu
 </script>
 ```
 
-**Escape hatch:** Set `deduplicateCss: false` in `bascik.config.ts` to switch to per-instance class scoping. By default, all instances of the same component share identical scoped class names so Bascik emits one shared `<style>` block per component. With `deduplicateCss: false`, class selectors become unique per instance (like IDs), but Bascik emits a separate `<style>` block for each component instance.
+**Escape hatch:** Set `scoping.deduplicateCss` to `false` in `bascik.config.ts` to switch to per-instance class scoping. By default, all instances of the same component share identical scoped class names so Bascik emits one shared `<style>` block per component. With `scoping.deduplicateCss: false`, class selectors become unique per instance (like IDs), but Bascik emits a separate `<style>` block for each component instance.
 
 ### `deduplicateCss` Trade-Off Comparison
 
-Setting `deduplicateCss` in `bascik.config.ts` controls whether class names are scoped per component type or per component instance.
+Setting `scoping.deduplicateCss` in `bascik.config.ts` controls whether class names are scoped per component type or per component instance.
 
 | Feature or Aspect | `deduplicateCss: true` (Default) | `deduplicateCss: false` |
 |---|---|---|
@@ -539,9 +539,26 @@ Bascik ships vanilla JavaScript to the browser and strips browser TypeScript aut
 
 Pipeline order is fixed: TypeScript strip, then scoping (IIFE, selector rewriting, `//# sourceURL`), then optional `minify.js`. A `minify.js` function (built-in or custom such as esbuild with `loader: 'js'`) therefore always receives valid JavaScript.
 
-**Erasable syntax only** (Node 22.18+ strip-only mode): annotations, interfaces, type aliases, `as` casts, `!` assertions, `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the file path. Use `as const` objects instead of `enum`, or compile with tsc/esbuild first.
+**Default compiler is erasable syntax only** (Node 22.18+ strip-only mode): annotations, interfaces, type aliases, `as` casts, `!` assertions, `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the file path. Prefer `as const` objects over `enum`.
 
-Wiring `stripTypeScriptTypes` into `minify.js` is legacy guidance. It still works as a BYOMinifier but is unnecessary.
+**Compiler selection: `scripts.typescript`** (`true` default | `false` | function). Set a function to bring your own compiler when a project needs `enum`, decorators, an older browser `target`, or the same toolchain it uses elsewhere. It receives `(code, { sourcePath, kind })` where `kind` is `'companion'` or `'inline'`, must return plain JavaScript, and runs at the same pipeline point (before scoping and `minify.js`), including inside worker threads. Set `false` only when another tool has already compiled the files Bascik reads; marked blocks then pass through untouched, `type` attribute included.
+
+```ts
+// bascik.config.ts (illustrative: esbuild as the browser TypeScript compiler)
+import { transform } from 'esbuild';
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scripts: {
+    typescript: async (code, { sourcePath }) =>
+      (await transform(code, { loader: 'ts', target: 'es2020', sourcefile: sourcePath })).code,
+  },
+});
+```
+
+This option is browser-only. Build, routes, server, and API route `.ts` files are executed by Node directly; Node handles their TypeScript (pass `--experimental-transform-types` via `NODE_OPTIONS` for non-erasable syntax there).
+
+Never configure `minify.js` merely to strip TypeScript. Bascik performs supported browser TypeScript stripping automatically before the minifier hook. Add a custom `minify.js` function only when the project requires non-default JavaScript minification.
 
 ### Debugging Component Scripts & Virtual Source Files
 
@@ -667,7 +684,7 @@ This is the same prop value with a different destination, not templating or vari
 ## 7. Attribute Inheritance & Tags
 
 ### Attribute Inheritance
-Non-`data-bascik-*` attributes on a usage tag are merged onto the component's root element when `inheritAttributes` is `true` (the default). `id` is forwarded too unless the template root already defines its own `id`. Class names are appended, not replaced.
+Non-`data-bascik-*` attributes on a usage tag are merged onto the component's root element when `scoping.inheritAttributes` is `true` (the default). `id` is forwarded too unless the template root already defines its own `id`. Class names are appended, not replaced.
 
 If a component template contains multiple root elements, inherited attributes are merged onto the first root HTML element in the component template.
 
@@ -684,7 +701,7 @@ If a component template contains multiple root elements, inherited attributes ar
 </nav>
 ```
 
-Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance: `inheritAttributes: false` in `bascik.config.ts`.
+Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance, set `scoping.inheritAttributes` to `false` in `bascik.config.ts`.
 
 ### Internal Masking vs. Preserving Element Contents
 
@@ -778,6 +795,8 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 ```ts
 // bascik.config.ts
+import { defineConfig } from '@bascik/bascik/config';
+
 export default defineConfig({
   scripts: {
     cache: {
@@ -794,7 +813,7 @@ export default defineConfig({
 rm -rf node_modules/.cache/bascik/script-cache
 ```
 
-With `useWorkers: true`, multiple workers share the same cache directory. Workers that independently miss the same key both spawn a child process; last write wins with identical content. This is a minor inefficiency on a cold first build only.
+With `pipeline.workers: true`, multiple workers share the same cache directory. Workers that independently miss the same key both spawn a child process; last write wins with identical content. This is a minor inefficiency on a cold first build only.
 
 ### Rendering and Styling Markdown
 
@@ -1029,7 +1048,7 @@ Rules & Gotchas:
 
 ## 9. Configuration (`bascik.config.ts`)
 
-Bascik is **zero-config by default**. You do NOT need a `bascik.config.ts` file unless you are customizing settings (like `generate.sitemapLastmod`, custom `exec` build scripts, or production `build` minification overrides).
+Bascik is **zero-config by default**. Start without `bascik.config.ts`. Create one only after identifying a concrete requirement that differs from built-in behavior, such as `generate.sitemapLastmod`, an existing custom `exec` build script, or a non-default production minification override. `bascik --build` and `bascik --server` already enable HTML, CSS, JavaScript, and identifier minification.
 
 Use `bascik.config.ts` (preferred) or `bascik.config.js` (takes precedence if both exist). Import `defineConfig` for full editor autocomplete and inline docs.
 
@@ -1049,9 +1068,9 @@ Bascik validates the config before anything reads it and reports every problem t
 
 The value must be an absolute `http` or `https` URL. Bascik loads `./.env` automatically (silently skipped when absent); `--env-file <path>` is repeatable with later files winning, and a missing explicit file is an error. A real environment variable always beats a file value. When `generate.sitemap` or `generate.robots` is enabled (both default to `true`) and no source provides the URL, the build fails with a message showing all three ways to set it.
 
-### Minimal Configuration Example (Recommended)
+### Create a Config Only for a Non-Default Requirement
 
-When creating or editing `bascik.config.ts`, only include options that differ from built-in defaults:
+Do not create `bascik.config.ts` preemptively. When a verified non-default requirement makes one necessary, include only that setting:
 
 ```ts
 // bascik.config.ts (minimal example)
@@ -1059,16 +1078,6 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   generate: { sitemapLastmod: true },
-});
-
-// Applied only during `bascik --build` and `bascik --server`.
-export const build = defineConfig({
-  minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
-  },
 });
 ```
 
@@ -1133,6 +1142,7 @@ export default defineConfig({
   },
   scripts: {
     cache: { enabled: true },
+    typescript: true,
     onBuildScriptError: 'error',
     onRoutesScriptError: 'error',
     onServerScriptError: 'error',
@@ -1162,16 +1172,6 @@ export default defineConfig({
   },
   base: '/',
 });
-
-// Applied only during `bascik --build` and `bascik --server`.
-export const build = defineConfig({
-  minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
-  },
-});
 ```
 
 > **Reverse Proxy & CDN Note (`trustProxy`):** When deploying `bascik --server` behind a CDN or load balancer, set `http.trustProxy: true` in `bascik.config.ts`. This ensures per-IP rate limiting and HSTS headers accurately resolve the client from `X-Forwarded-For` and `X-Forwarded-Proto`. Do not enable `trustProxy` if the server is exposed directly to the Internet without a reverse proxy.
@@ -1187,17 +1187,17 @@ export const build = defineConfig({
 ### Agent Guidelines for Configuration
 
 When creating or modifying `bascik.config.ts`:
-* **Do not create defaults-only config files:** Bascik is zero-config by default. Only create `bascik.config.ts` when a project requires non-default settings (such as `generate` toggles, custom `exec` scripts, or custom minifiers). If a config file would only restate defaults, omit the file entirely.
-* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scopeScriptBlocks: true`, `inheritAttributes: true`, `deduplicateCss: true`, `watch: []`, or empty `devServer`/`prodServer` blocks. Bascik already defaults to these settings. Only include options that differ from defaults (e.g. custom `exec` scripts or `build` minification rules).
+* **Do not create a config without a verified need:** Bascik is zero-config by default. Before creating `bascik.config.ts`, identify the exact requested behavior and verify that it differs from a built-in default. If no such requirement exists, omit the file entirely.
+* **Keep `bascik.config.ts` minimal:** Do NOT add redundant default options like `directory: { pages: 'src/pages', components: 'src/components' }`, `scoping.scriptBlocks: true`, `scoping.inheritAttributes: true`, `scoping.deduplicateCss: true`, `pipeline.watchPaths: []`, or empty `pipeline.exec` arrays. Never add an all-`true` production minification block because `bascik --build` and `bascik --server` already apply those values. Include only options that differ from defaults.
 * **Monorepo layout:** `directory.pages`, `directory.components`, and `scripts.importRoot` are three independent directories that never need a common parent. `directory.components` accepts `string | string[]`; every listed root is scanned, watched, and known to `--check`, and roots may point outside the project (for example `components: ['../../shared/components', 'src/components']` with `scripts: { importRoot: '../../shared/scripts' }`) so several Bascik sites in one repository share components and script helpers with no copying while each keeps private components. Component names must be unique across ALL roots (filename-derived tags; duplicates are a build error, never shadowed), roots may not be nested inside one another, and duplicate roots (including via symlink) are rejected. `bascik add` copies into the first listed root. See `/how-to/monorepos`.
 * **Package.json `"type": "module"` and NPM scripts:** When initializing or configuring a Bascik project, ensure `package.json` specifies `"type": "module"` (since `bascik.config.ts` uses ES module imports) and includes standard npm scripts (`"dev": "bascik"`, `"build": "bascik --build"`, `"check": "bascik --check"`).
 * **Proactively decompose shared layout components:** When creating or migrating a site, identify repeating layout sections (especially shared `<head>` tags such as `<site-head>`, site headers, and footers) and extract them into reusable components.
 * **Prefer self-closing void syntax for components without slots:** Use self-closing void syntax (`<site-head />`, `<site-nav />`, `<site-footer />`) for any component tag that does not enclose inner slot content.
-* **Do NOT invent non-existent `exec` scripts:** `exec` is only for executing existing custom pre-build script files. If no custom script file exists in the workspace, leave `exec` as an empty array `[]` or omit it.
-* **Array Replacement in `build`:** Array properties like `exec`, `watch`, and `inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.exec`, include all scripts that should run in production builds.
-* **Write artifacts to `dist/`:** Lifecycle scripts must write generated artifacts only to the output directory, never source files or watched paths. Never configure `watchPaths` or `exec.watch` for generated outputs. There is no `outputs` option. Exec receives `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`. Use `pre` for required generated dependencies, not `parallel`.
-* **Source-owned exec phases:** `exec.watch` selects matching scripts after a source edit. One cycle coalesces overlap with pages, components, and `watchPaths`: pre finishes before compilation, parallel starts alongside it, post starts after compilation and disk writes. Known source dependents rebuild once; unknown external dependencies conservatively rebuild all pages without rerunning unmatched scripts. Exec-only inputs need no duplicate `watchPaths`. Completion never queues another compile or reload. Edits during work are retained; failed paths retry on the next source edit. Pre/compile/post failures discard success reloads. Dev parallel stays nonblocking and reports every failure; build joins parallel and compilation/post before success. Never suppress watched script edits as presumed self-writes. Bascik cannot safely identify source-writing loops. `scripts.importRoot` and `assets.inlineStyles` do not add compilation watches.
-* **Stick to recommended defaults:** Preserve `deduplicateCss: true`, `scopeScriptBlocks: true`, and `inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS.
+* **Do NOT invent non-existent `pipeline.exec` scripts:** `pipeline.exec` is only for executing existing custom lifecycle script files. If no custom script file exists in the workspace, omit it.
+* **Array Replacement in `build`:** Array properties like `pipeline.exec`, `pipeline.watchPaths`, and `assets.inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.pipeline.exec`, include all scripts that should run in production builds.
+* **Write artifacts to `dist/`:** Lifecycle scripts must write generated artifacts only to the output directory, never source files or watched paths. Never configure `pipeline.watchPaths` or `pipeline.exec[].watch` for generated outputs. There is no `outputs` option. Exec receives `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`. Use `pre` for required generated dependencies, not `parallel`.
+* **Source-owned exec phases:** `pipeline.exec[].watch` selects matching scripts after a source edit. One cycle coalesces overlap with pages, components, and `pipeline.watchPaths`: pre finishes before compilation, parallel starts alongside it, post starts after compilation and disk writes. Known source dependents rebuild once; unknown external dependencies conservatively rebuild all pages without rerunning unmatched scripts. Exec-only inputs need no duplicate `pipeline.watchPaths`. Completion never queues another compile or reload. Edits during work are retained; failed paths retry on the next source edit. Pre/compile/post failures discard success reloads. Dev parallel stays nonblocking and reports every failure; build joins parallel and compilation/post before success. Never suppress watched script edits as presumed self-writes. Bascik cannot safely identify source-writing loops. `scripts.importRoot` and `assets.inlineStyles` do not add compilation watches.
+* **Stick to recommended defaults without restating them:** Preserve `scoping.deduplicateCss: true`, `scoping.scriptBlocks: true`, and `scoping.inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS. Do not write these values into a config just to preserve them.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
 * **Use `base` for subdirectory deployments:** Set a literal path prefix such as `base: '/docs/'`. Do not include a query, fragment, percent escape, backslash, or dot segment, and do not use a full URL. Bascik does not rewrite paths assembled inside JavaScript; use the build-time `BASCIK_BASE` value for those paths.
 
@@ -1205,6 +1205,8 @@ When creating or modifying `bascik.config.ts`:
 
 ```ts
 import { transform } from 'esbuild';
+import { defineConfig } from '@bascik/bascik/config';
+
 export const build = defineConfig({
   minify: {
     js: async (js) => (await transform(js, { minify: true, loader: 'js' })).code,
@@ -1230,7 +1232,7 @@ src/
 ### Static Assets and Subdirectories
 * **One Publish Tree:** Put images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets under `directory.pages`. Colocate them with a route or use shared subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with relative structure preserved.
 * **Project-Specific Exclusions:** `assets.exclude` adds glob exclusions matched relative to `directory.pages`. Keep tests and source-only helpers outside the publish tree.
-* **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified at build time when `minify.css` / `minify.js` are enabled in `bascik.config.ts`. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can also be assigned to `minify.css` and `minify.js`.
+* **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified by `bascik --build` and `bascik --server`; no config is required. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can be assigned to `minify.css` and `minify.js` only when a project needs non-default processing.
 * **Built-In Deny-List:** Dotfiles, dot-directories, `node_modules`, `.html`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test/spec files, and inlined stylesheets never copy. This deny-list always applies, including when `assets.exclude` is configured.
 * **External Copying:** When assets must come from a separate source tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
@@ -1254,7 +1256,7 @@ npm create bascik@latest my-site -y
 
 This scaffolds the project, installs dependencies, and starts the dev server in one shot. You're live at **http://localhost:8080**. Pass a different name to use it as both the directory name and the site title. Omit the name to be prompted for one (defaulting to `bascik-app`). Drop `-y` to step through the install and dev server prompts manually.
 
-The scaffold creates a complete starter site: pages, components, global CSS, `bascik.config.ts`, `.gitignore`, and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. When the dev server stops, the CLI prints a reminder:
+The scaffold creates a complete starter site: pages, components, global CSS, `.gitignore`, and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. It omits `bascik.config.ts` because the starter uses Bascik's built-in defaults. When the dev server stops, the CLI prints a reminder:
 
 ```
 To start again:  cd my-site && npm run dev
@@ -1377,7 +1379,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-On startup, Bascik cleans `directory.out` before pre-phase lifecycle scripts run, then computes the full component list and global styles **once** and transpiles all pages. By default pages transpile sequentially on the main thread; setting `useWorkers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `useWorkers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli and Gzip compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, Bascik stores each page in memory first, then writes its compiled HTML to `dist/` asynchronously. Serving never waits for that disk write.
+On startup, Bascik cleans `directory.out` before pre-phase lifecycle scripts run, then computes the full component list and global styles **once** and transpiles all pages. By default pages transpile sequentially on the main thread; setting `pipeline.workers: true` in `bascik.config.ts` distributes them across a pool of CPU-core worker threads instead. Worker startup has a fixed cost (each worker loads the transpiler's module graph independently), so `pipeline.workers` is opt-in and best suited to larger sites or CPU-heavy per-page work, small sites are usually faster with the sequential default. Brotli and Gzip compression for each page runs in the background after storage and does not block the page from being marked ready or served; the server falls back to serving uncompressed content for any request that arrives before compression finishes. The server becomes ready as soon as memory is populated. In dev mode, Bascik stores each page in memory first, then writes its compiled HTML to `dist/` asynchronously. Serving never waits for that disk write.
 
 #### 2. Watching for File Changes (Watch Mode)
 While the dev server is active, Bascik watches your file system and incrementally updates your build as files are added, updated, or removed:
@@ -1554,13 +1556,15 @@ Tailwind utility classes are global by design. Bascik's class scoping would rena
 
 **Required config:** disable class scoping in `bascik.config.ts`:
 ```ts
-export default {
-  scopeAttribute: {
-    class: false, // let Tailwind utility classes pass through unchanged
-    id: true,
-    name: true,
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scoping: {
+    attributes: {
+      class: false, // let Tailwind utility classes pass through unchanged
+    },
   },
-};
+});
 ```
 
 Include Tailwind via CDN (development) or Tailwind CLI (production):
@@ -1747,9 +1751,9 @@ To debug interactive client component scripts in Google Chrome or Microsoft Edge
 
 Browser component scripts are IIFE-based and not directly importable. The recommended pattern for testing complex client-side logic:
 
-1. **Extract pure functions** (no DOM, no `fetch`) into a sibling TypeScript `.ts` module that exports them, e.g. `search-logic.ts` alongside `docs-search.html`.
-2. **Combine at build time**: use a `<script data-bascik-build>` to read both the TypeScript logic module and a DOM-wiring `.js` file, strip type annotations and `export` keywords from the module, and output a single `<script>` containing one IIFE with all functions inside it. This keeps esbuild minification working correctly with no cross-script boundary renames.
-3. **Test the module with Vitest**: import the `.ts` file directly in a `*.test.ts` file. No browser or DOM required for pure function tests.
+1. **Extract pure functions** (no DOM, no `fetch`) into a sibling TypeScript `.ts` file, such as `search-logic.ts` alongside `docs-search.html`.
+2. **Reference the companion directly** with `<script src="search-logic.ts"></script>`. Bascik strips erasable TypeScript before scoping and JavaScript minification, so do not add a build script or `minify.js` hook for type stripping.
+3. **Test the module with Vitest**: import the `.ts` file directly in a `*.test.ts` file. No browser or DOM is required for pure function tests.
 
 **What to test vs. skip:** DOM wiring (adding event listeners, toggling visibility) is low value to test because it depends on the compiled output. Pure data functions (parsing, scoring, formatting) are high value. Extract those into a `.ts` module and test them with Vitest. Configure Vitest in `vite.config.ts`:
 
@@ -1823,7 +1827,7 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 * **CSS deduplication:** When a component appears multiple times on a page, Bascik emits a single `<style>` block regardless of instance count.
 * **HTML minification:** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>` blocks is left intact.
 * **Script minification:** `minify.js` is `true` by default, stripping comments and whitespace.
-* **Inline styles:** Set `inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request.
+* **Inline styles:** Set `assets.inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request.
 
 ### Performance Patterns for Developers
 * **Responsive Images (`srcset`):** Avoid sending oversized images. Use `srcset` density or width descriptors, and always include explicit `width` and `height` attributes to prevent Cumulative Layout Shift (CLS).

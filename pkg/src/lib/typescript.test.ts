@@ -1,12 +1,92 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { BascikConfig } from "./config.ts";
 import {
   isTypeScriptScriptTag,
   isTypeScriptFile,
   stripBrowserTypeScript,
   transformTypeScriptScriptTags,
+  transformBrowserTypeScript,
   looksLikeTypeScript,
   TYPESCRIPT_SCRIPT_TYPE,
+  TypeScriptTransformError,
 } from "./typescript.ts";
+
+vi.mock("./config.js", () => ({
+  BascikConfig: {
+    scripts: { typescript: true },
+  },
+}));
+
+beforeEach(() => {
+  (BascikConfig.scripts as { typescript: unknown }).typescript = true;
+});
+
+describe("scripts.typescript compiler selection (transformBrowserTypeScript)", () => {
+  const source = "const el = document.getElementById('x') as HTMLElement;\nlet n: number = 0;";
+
+  it("defaults to Node strip-only mode when the key is true or absent", async () => {
+    const out = await transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" });
+    expect(out).not.toContain(": number");
+    expect(out).not.toContain("as HTMLElement");
+    (BascikConfig.scripts as { typescript?: unknown }).typescript = undefined;
+    const outDefault = await transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" });
+    expect(outDefault).toBe(out);
+  });
+
+  it("returns the input untouched when scripts.typescript is false (user compiles elsewhere)", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = false;
+    const out = await transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" });
+    expect(out).toBe(source);
+  });
+
+  it("delegates to a custom compiler function with source path and kind", async () => {
+    const compiler = vi.fn(async (code: string) => code.replace(/: number/g, "").replace(/ as HTMLElement/g, "") + "\n// compiled");
+    (BascikConfig.scripts as { typescript: unknown }).typescript = compiler;
+    const out = await transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" });
+    expect(compiler).toHaveBeenCalledWith(source, { sourcePath: "src/components/x/x.ts", kind: "companion" });
+    expect(out).toContain("// compiled");
+    expect(out).not.toContain(": number");
+  });
+
+  it("accepts a synchronous custom compiler", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = (code: string) => code.replace(/: number/g, "").replace(/ as HTMLElement/g, "");
+    const out = await transformBrowserTypeScript(source, { sourcePath: "x.ts", kind: "inline" });
+    expect(out).not.toContain(": number");
+  });
+
+  it("fails with file context when a custom compiler throws", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = async () => {
+      throw new Error("esbuild: Unexpected token");
+    };
+    await expect(
+      transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" }),
+    ).rejects.toThrow(TypeScriptTransformError);
+    await expect(
+      transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" }),
+    ).rejects.toThrow(/src\/components\/x\/x\.ts[\s\S]*esbuild: Unexpected token/);
+  });
+
+  it("fails with file context when a custom compiler returns non-JavaScript", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = async (code: string) => code; // leaves TS in place
+    await expect(
+      transformBrowserTypeScript(source, { sourcePath: "src/components/x/x.ts", kind: "companion" }),
+    ).rejects.toThrow(/src\/components\/x\/x\.ts[\s\S]*did not return valid JavaScript/);
+  });
+
+  it("fails when a custom compiler returns a non-string", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = async () => ({ code: "x" });
+    await expect(
+      transformBrowserTypeScript(source, { sourcePath: "x.ts", kind: "companion" }),
+    ).rejects.toThrow(/must return a string/);
+  });
+
+  it("does not run the parse check on module-shaped output (import/export are valid there)", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = async () => "import { a } from './a.js';\nexport const b = a;";
+    await expect(
+      transformBrowserTypeScript("import { a } from './a.ts';\nexport const b: number = a;", { sourcePath: "x.ts", kind: "companion" }),
+    ).resolves.toContain("export const b = a;");
+  });
+});
 
 describe("isTypeScriptFile", () => {
   it("recognizes .ts and .mts browser script files", () => {
@@ -122,23 +202,23 @@ describe("transformTypeScriptScriptTags", () => {
     vi.restoreAllMocks();
   });
 
-  it("strips types from inline type=\"text/typescript\" scripts and rewrites the type", () => {
+  it("strips types from inline type=\"text/typescript\" scripts and rewrites the type", async () => {
     const html = '<div></div><script type="text/typescript">\n  let n: number = 1;\n  console.log(n);\n</script>';
-    const out = transformTypeScriptScriptTags(html, "src/pages/index.html");
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(out).not.toContain("text/typescript");
     expect(out).not.toContain(": number");
     expect(out).toContain("console.log(n);");
     expect(out).toMatch(/<script>\n\s*let n\s+= 1;/);
   });
 
-  it("keeps other attributes and orders them without the type attribute", () => {
+  it("keeps other attributes and orders them without the type attribute", async () => {
     const html = '<script defer type="text/typescript" data-foo="1">let a: string = "";</script>';
-    const out = transformTypeScriptScriptTags(html, "src/pages/index.html");
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(out).toMatch(/<script defer data-foo="1">/);
     expect(out).not.toContain(": string");
   });
 
-  it("leaves ordinary inline scripts, module scripts, external scripts, JSON, and directive scripts untouched", () => {
+  it("leaves ordinary inline scripts, module scripts, external scripts, JSON, and directive scripts untouched", async () => {
     const html = [
       "<script>let a: number = 1;</script>",
       '<script type="module">let b: number = 2;</script>',
@@ -148,15 +228,15 @@ describe("transformTypeScriptScriptTags", () => {
       '<script data-bascik-server>const c: number = 3;</script>',
     ].join("\n");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const out = transformTypeScriptScriptTags(html, "src/pages/index.html");
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(out).toBe(html);
     warn.mockRestore();
   });
 
-  it("warns once per unmarked inline script that contains TypeScript syntax and does not change it", () => {
+  it("warns once per unmarked inline script that contains TypeScript syntax and does not change it", async () => {
     const html = "<script>\nlet a: number = 1;\n</script>\n<script>\nconst ok = 1;\n</script>";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const out = transformTypeScriptScriptTags(html, "src/components/demo/demo.html");
+    const out = await transformTypeScriptScriptTags(html, "src/components/demo/demo.html");
     expect(out).toBe(html);
     expect(warn).toHaveBeenCalledTimes(1);
     const message = String(warn.mock.calls[0][0]);
@@ -165,22 +245,43 @@ describe("transformTypeScriptScriptTags", () => {
     expect(message).toMatch(/TypeScript/);
   });
 
-  it("does not warn for ordinary inline JavaScript", () => {
+  it("does not warn for ordinary inline JavaScript", async () => {
     const html = "<script>\nconst a = b ? c : d;\nconst o = { k: 1 };\n</script>";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    transformTypeScriptScriptTags(html, "src/pages/index.html");
+    await transformTypeScriptScriptTags(html, "src/pages/index.html");
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("throws with file context when a marked TypeScript script uses non-erasable syntax", () => {
+  it("throws with file context when a marked TypeScript script uses non-erasable syntax", async () => {
     const html = '<script type="text/typescript">enum E { A }</script>';
-    expect(() => transformTypeScriptScriptTags(html, "src/pages/index.html")).toThrow(/src\/pages\/index\.html/);
+    await expect(transformTypeScriptScriptTags(html, "src/pages/index.html")).rejects.toThrow(/src\/pages\/index\.html/);
   });
 
-  it("is safe against $-tokens in the script body", () => {
+  it("is safe against $-tokens in the script body", async () => {
     const body = "const s = 'a$1$&$`$$'; let n: number = 1; console.log(s, n);";
-    const out = transformTypeScriptScriptTags(`<script type="text/typescript">${body}</script>`, "p.html");
+    const out = await transformTypeScriptScriptTags(`<script type="text/typescript">${body}</script>`, "p.html");
     expect(out).toContain("'a$1$&$`$$'");
     expect(out).not.toContain(": number");
+  });
+
+  it("leaves marked TypeScript blocks untouched, including the type attribute, when scripts.typescript is false", async () => {
+    (BascikConfig.scripts as { typescript: unknown }).typescript = false;
+    const html = '<script type="text/typescript">let n: number = 1;</script>\n<script>let m: number = 2;</script>';
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
+    expect(out).toBe(html);
+    // The unmarked-script diagnostic is independent of compiler selection.
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes marked inline blocks through a custom compiler with kind 'inline'", async () => {
+    const compiler = vi.fn(async (code: string) => code.replace(/: number/g, ""));
+    (BascikConfig.scripts as { typescript: unknown }).typescript = compiler;
+    const out = await transformTypeScriptScriptTags(
+      '<script type="text/typescript">let n: number = 1;</script>',
+      "src/components/demo/demo.html",
+    );
+    expect(compiler).toHaveBeenCalledWith("let n: number = 1;", { sourcePath: "src/components/demo/demo.html", kind: "inline" });
+    expect(out).toBe("<script>let n = 1;</script>");
   });
 });

@@ -27,6 +27,14 @@ export default defineConfig({
     onBuildScriptError: 'warn',
     onRoutesScriptError: 'warn',
     onServerScriptError: 'warn',
+    // Bring-your-own browser TypeScript compiler (prompt 148 follow-on).
+    // esbuild with loader 'ts' handles non-erasable syntax (enum) that Node's
+    // default strip-only mode rejects; ts-compiler-test depends on that.
+    // Runs in worker threads too, which is why it lives in the config file.
+    typescript: async (code, { sourcePath }) => {
+      const result = await transform(code, { loader: 'ts', target: 'es2020', sourcefile: sourcePath });
+      return result.code;
+    },
   },
   assets: {
     inlineStyles: ['src/css/inlined-global.css'],

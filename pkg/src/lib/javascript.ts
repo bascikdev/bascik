@@ -90,7 +90,7 @@ import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
-import { isTypeScriptFile, stripBrowserTypeScript } from "./typescript.ts";
+import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
 import {
   addElementClassesInHtml,
   addIdClassesInHtml,
@@ -935,10 +935,12 @@ export const getComponentScripts = async (
     // Referenced `.ts` browser scripts are transformed here, before scoping
     // and before any optional `minify.js` step, so raw TypeScript never
     // reaches the browser and the minifier only ever sees valid JavaScript.
-    // Strip errors are authoring errors and must fail the component loudly,
-    // not degrade to a missing script.
+    // The compiler is `scripts.typescript` (Node strip by default, a custom
+    // function, or `false` to leave the file as authored). Transform errors
+    // are authoring errors and must fail the component loudly, not degrade
+    // to a missing script.
     if (isTypeScriptFile(scriptPath)) {
-      code = stripBrowserTypeScript(code, relPath);
+      code = await transformBrowserTypeScript(code, { sourcePath: relPath, kind: "companion" });
     }
     const baseName = basename(scriptPath);
     const info: ComponentScriptInfo = { relPath, code };

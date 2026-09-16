@@ -301,7 +301,7 @@ export const listComponents = async (): Promise<ComponentList> => {
       // JavaScript here, before HTML minification hoists scripts and before
       // page-time scoping and optional `minify.js`. Ordinary `<script>` blocks
       // are left alone; TypeScript syntax in one is diagnosed, never rewritten.
-      resolvedContent = transformTypeScriptScriptTags(resolvedContent, fileName);
+      resolvedContent = await transformTypeScriptScriptTags(resolvedContent, fileName);
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
       const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
