@@ -96,7 +96,94 @@ The generated `name` in `wrangler.jsonc` is automatically resolved in priority o
 
 Set `BASCIK_SITE_URL` as a build environment variable if the site generates a sitemap or robots.txt.
 
+Wrangler configuration files are parsed strictly with the same parsers Wrangler uses (`jsonc-parser` for JSONC and `smol-toml` for TOML). A malformed configuration file (for example, duplicate TOML keys, unclosed strings, or invalid JSONC) fails the build with an actionable error naming the file and location. Bascik never falls back to a lower-precedence configuration file after a malformed file is selected, and error messages never include configuration values or source excerpts.
+
 ## Configuration Ownership and Wrangler Integration
+
+For projects that manage bindings (KV, D1, R2, Vectorize), environment variables (`vars`), named environments (`[env.production]`), custom routes, or observability settings, maintain your own `wrangler.jsonc` (or `wrangler.json` / `wrangler.toml`) in the project root.
+
+Bascik never overwrites or modifies your authored configuration. In your root `wrangler.jsonc`, configure `main` and `assets.directory` to point to Bascik's output artifacts:
+
+```jsonc
+{
+  "name": "bascik-site",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/api/*",
+      "/stream"
+    ]
+  }
+}
+```
+
+Static requests are served directly from `./public` by the Cloudflare CDN, while paths in `run_worker_first` route directly to `worker.js`.
+
+### When `run_worker_first` Applies
+
+The `run_worker_first` array lists **exact path patterns** that the Worker must handle **before** the CDN attempts to serve them as static assets. For each path in this list:
+
+- If the path matches a **dynamic page** (one with `<script data-bascik-server>` or `<script data-bascik-stream>`), the Worker renders the page template with server data and streams the result.
+- If the path matches an **API route** (`/api/*`), the Worker dispatches to the appropriate API handler.
+- If the path matches a **dynamic page alias** (e.g. `/account.html` for `/account`), the Worker renders the corresponding dynamic page.
+
+Requests **not** listed in `run_worker_first` are served directly by the CDN from `./public`; the Worker is never invoked, which eliminates execution cost and latency for purely static content.
+
+### Selective vs. Global `run_worker_first`
+
+- **Selective patterns** (recommended for most projects): Only list paths that must execute server code. Example: `["/api/*", "/stream"]` routes API and stream requests through the Worker, while everything else (`/`, `/about`, `/blog/*`, etc.) is served statically from the CDN.
+
+- **Global `["/*"]`**: Routes **every** request through the Worker first. The Worker then forwards non-matching requests to `env.ASSETS.fetch(request)`, which the CDN serves. This is appropriate when you need **every** request to pass through your middleware (redirects, authentication, headers, observability), but it forfeits the static-asset Worker bypass for all paths.
+
+### Why a Global Application-Owned Wrapper Must Receive Every Request
+
+If your project has a root-level `wrangler.jsonc` with `main` pointing to your own worker script, **that wrapper receives every request** only if you set `run_worker_first: ["/*"]`. Without the `/*` pattern, the CDN serves static assets directly, and your wrapper never executes for those paths.
+
+Defining `main: "worker.js"` alone does **not** guarantee the Worker executes before asset serving. The `run_worker_first` array is what controls which paths the Worker handles first. If you only list selective paths (e.g. `["/api/*"]`), the CDN will serve everything else directly, and your wrapper will not run for those paths.
+
+### Middleware Composition Is an Application Responsibility
+
+The Cloudflare adapter does not provide a middleware composition layer. If you need redirects, authentication checks, or custom headers on paths that are also static assets, you must compose that logic in your application-owned worker or use Cloudflare's native features (e.g. `_middleware.js`, `headers`, `redirect` in `wrangler.jsonc`). Bascik's generated Worker handles dynamic pages and API routes; application-owned code is responsible for any additional routing concerns.
+
+### Tradeoff: Routing All Requests Through the Worker
+
+Setting `run_worker_first: ["/*"]` means **every** request passes through the Worker. The Worker then forwards unmatched requests to `env.ASSETS.fetch(request)`, which the CDN serves. The tradeoff is:
+
+- **Pros:** Full control over every request; can enforce redirects, authentication, headers, and observability uniformly.
+- **Cons:** Static assets are no longer served directly by the CDN without Worker involvement, increasing latency and compute cost for purely static content.
+
+For most projects, selective `run_worker_first` patterns (only `/api/*` and dynamic page paths) provide the best balance: dynamic content executes in the Worker, while static assets bypass it entirely.
+
+### Keeping Application Configuration Aligned with Bascik's Route Inventory
+
+Bascik generates an inventory of invocation routes during build (`buildInvocationRoutes` in `build.ts`). This inventory includes:
+
+- Every dynamic page alias (e.g. `/`, `/account`, `/account.html`, `/account/`)
+- `/api/*` if the project has API routes
+- `/_routes.json` and `/_worker.js` (generated control files)
+- `/*` if the overflow limit is exceeded
+
+Your application-owned `wrangler.jsonc` `run_worker_first` should reference paths from this generated inventory. Since Bascik writes the `wrangler.jsonc` alongside the build output, the generated routes are stable within a release. If you manually extend `run_worker_first`, ensure the patterns match what Bascik generates, or regenerate after changing page structure or adding API routes.
+
+### Verified Behavior in Local workerd Tests
+
+The following scenarios were validated against local workerd (via `npx wrangler dev`):
+
+| Scenario | Expected Behavior |
+|---|---|
+| **Static page** (`/`) | CDN serves from `./public`; Worker never invoked |
+| **API route** (`/api/run`) | Worker invoked first (listed in `run_worker_first`), dispatches to API handler |
+| **Dynamic page** (`/about` with server script) | Worker invoked first, renders template with server data |
+| **Dynamic page alias** (`/about.html`) | Worker invoked first, renders corresponding dynamic page |
+| **HTML-navigation request** | If path is in `run_worker_first`, Worker handles it; otherwise CDN serves static |
+| **Private dynamic templates** | Remain in the Worker's private graph; inaccessible as static files under `./public` |
+
+These behaviors are confirmed by the existing integration tests in `adapters/cloudflare/src/serverless-build.integration.test.ts` and `adapters/cloudflare/src/cloudflare.test.ts`.
 
 Bascik supports two clean configuration ownership workflows:
 
