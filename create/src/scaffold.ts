@@ -77,10 +77,6 @@ export const VSCODE_LAUNCH_JSON = JSON.stringify(
   2,
 ) + "\n";
 
-export const BASCIK_CONFIG = `// Bascik works out of the box — no config required.
-// Full reference: https://bascik.dev/configuration
-`;
-
 export const VITE_CONFIG = `import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -864,7 +860,6 @@ export async function scaffold(
   await Promise.all([
     // Root
     writeFile(join(root, "package.json"), PACKAGE_JSON(projectName), "utf8"),
-    writeFile(join(root, "bascik.config.ts"), BASCIK_CONFIG, "utf8"),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
     writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),

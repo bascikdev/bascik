@@ -319,16 +319,20 @@ Bascik supports standard CSS `@import` statements in component CSS (`.css` files
 
 ## Toggling Scoping
 
-All scoping can be controlled in [`bascik.config.ts`](/configuration):
+Attribute scoping can be controlled in [`bascik.config.ts`](/configuration). The following is an illustrative reference showing the defaults, so do not add it unless a project needs to disable one of these options:
 
-```js
-export default {
-  scopeAttribute: {
-    class: true, // scope class names
-    id: true,    // scope id attributes
-    name: true,  // scope name attributes
+```ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scoping: {
+    attributes: {
+      class: true, // scope class names
+      id: true,    // scope id attributes
+      name: true,  // scope name attributes
+    },
   },
-};
+});
 ```
 
 > **MDN reference.** Scoped CSS changes how selectors are rewritten at build time, but the CSS you write is still normal CSS. Use [MDN's CSS reference](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference) as the primary source for selectors, at-rules, and properties.
@@ -364,17 +368,21 @@ Avoid this anti-pattern:
 </script>
 ```
 
-By default, all instances of the same component share identical scoped class names so Bascik can emit a single `<style>` block per component, regardless of how many times it appears on the page. If you genuinely need class selectors to be unique per instance (for example, to use `querySelector` safely across multiple instances), set `deduplicateCss: false`:
+By default, all instances of the same component share identical scoped class names so Bascik can emit a single `<style>` block per component, regardless of how many times it appears on the page. If you genuinely need class selectors to be unique per instance (for example, to use `querySelector` safely across multiple instances), set `scoping.deduplicateCss` to `false`:
 
-```js
-export default {
-  deduplicateCss: false, // each instance gets its own unique class names
-};
+```ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scoping: {
+    deduplicateCss: false, // each instance gets its own unique class names
+  },
+});
 ```
 
 ### `deduplicateCss` Trade-Off Comparison
 
-Setting `deduplicateCss` in `bascik.config.ts` controls whether class names are scoped per component type or per component instance.
+Setting `scoping.deduplicateCss` in `bascik.config.ts` controls whether class names are scoped per component type or per component instance.
 
 > **Go deeper.** To understand how Bascik collects, scopes, and compiles CSS blocks at the parser level, check out the [CSS Deduplication internals guide](/internals/scoping-system#css-deduplication).
 

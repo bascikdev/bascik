@@ -145,6 +145,7 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
     ...process.env,
     BASCIK_BUILD: BascikConfig.isBuild ? '1' : '0',
     BASCIK_PAGES_DIR: pagesDir,
+    BASCIK_OUT_DIR: resolve(process.cwd(), BascikConfig.directory?.out ?? 'dist'),
     BASCIK_BASE: BascikConfig.base ?? '/',
     ...(siteUrl ? { BASCIK_SITE_URL: siteUrl } : {}),
     ...(entryObj.env ?? {}),

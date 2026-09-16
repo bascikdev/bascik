@@ -214,7 +214,7 @@ In `bascik --build`, `parallel` lifecycle scripts are spawned concurrently and j
 
 When a component `.html` file includes a `<script src="counter.ts"></script>` tag pointing to a local file in its component directory, Bascik resolves and inlines that script at build time.
 
-It automatically wraps the script in an isolated IIFE, rewrites DOM selector calls for scoping, and attaches DevTools `//# sourceURL` directives mapping directly back to your source `.ts`/`.js` file.
+A `.ts` or `.mts` companion is stripped to JavaScript first (erasable syntax only, no configuration needed). Bascik then wraps the script in an isolated IIFE, rewrites DOM selector calls for scoping, runs any `minify.js` step, and attaches a DevTools `//# sourceURL` directive on its own final line, mapping directly back to your source `.ts`/`.js` file. Inline blocks can opt in with `<script type="text/typescript">`; an ordinary unmarked `<script>` stays JavaScript, and Bascik warns when it finds TypeScript syntax there.
 
 Unreferenced local files are ignored so Node build/server helpers are never accidentally bundled into client code. External `<script src="...">` links pointing to CDNs or global assets are left untouched and passed through to the page output.
 
@@ -241,7 +241,7 @@ The following files are **excluded** from static asset copying:
 - **Test files**: any file matching `*.test.*` or `*.spec.*` (such as `styles.test.ts` or `api.spec.js`).
 - **Hidden paths**: any dotfile or file inside a dot-directory.
 - **Dependencies**: any file inside a `node_modules` directory.
-- **Inlined stylesheets**: global CSS files configured in `inlineStyles` (injected directly into page `<head>` blocks).
+- **Inlined stylesheets**: global CSS files configured in `assets.inlineStyles` (injected directly into page `<head>` blocks).
 - **Component directory files**: everything in `src/components/` is source-only and never copied directly to `dist/`.
 
 `assets.exclude` adds project-specific glob exclusions matched relative to `directory.pages`. The built-in exclusions always apply.
@@ -374,7 +374,7 @@ Common causes:
 
 - **A typo in a key name**, such as `directroy:` or `minfy:`. Unknown keys are rejected, with a "did you mean" suggestion when the key is a near miss of a real option.
 - **A value of the wrong type or range**, such as `http.port: 70000` or `scripts.timeout: 0`.
-- **A path that does not exist**, such as an `exec` script, a `watchPaths` entry, or a TLS certificate file.
+- **A path that does not exist**, such as a `pipeline.exec[].script`, a `pipeline.watchPaths` entry, or a TLS certificate file.
 - **An invalid `BASCIK_SITE_URL`**, which must be an absolute `http` or `https` URL.
 
 Fix each listed key and re-run. See [Configuration validation](/configuration#configuration-validation).

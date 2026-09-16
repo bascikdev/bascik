@@ -18,7 +18,7 @@ Open Source → JS in the counter demo to see ordinary event listeners and `getE
 
 Component templates can contain multiple `<script>` tags. Bascik processes each script tag according to its attributes:
 
-- **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scopeScriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
+- **Client scripts:** Standard JavaScript blocks are each wrapped in an isolated IIFE `(function() { ... })();` when `scoping.scriptBlocks` is enabled. If you include multiple client `<script>` tags in a single component, each runs in its own IIFE so local variables do not collide.
 - **Local script files (`<script src="counter.ts">`):** References to local `.ts`, `.js`, or `.mjs` files inside the component's directory are resolved and inlined at build time, then scoped and wrapped as client scripts.
 - **Build scripts (`<script data-bascik-build>`):** Executed during build/dev time in Node.js to generate dynamic markup. Can also use `src="..."` to run a local script file.
 - **Server scripts (`<script data-bascik-server>`):** Executed on the server at request time in Node.js. Can also use `src="..."` to run a local script file.
@@ -213,37 +213,47 @@ Script tags with a `type` other than `text/javascript` are left completely untou
 </script>
 ```
 
-> **Tip:** Disable JS scoping entirely with `scopeScriptBlocks: false` in [bascik.config.ts](/configuration).
+> **Tip:** Disable JS scoping entirely by setting `scoping.scriptBlocks` to `false` in [bascik.config.ts](/configuration).
 
-## TypeScript in Component Scripts & BYOMinifier
+## TypeScript in Component Scripts
 
-Bascik ships vanilla JavaScript to the browser, so TypeScript in component `<script>` blocks must be stripped before the output is served. Thanks to Bascik's **BYOMinifier (Bring Your Own Minifier)** feature, you can wire Node 22.18+'s native `stripTypeScriptTypes` directly into the `minify.js` hook, and every inline script body gets its types erased automatically:
+Bascik ships vanilla JavaScript to the browser and never emits raw TypeScript on either of its two supported browser TypeScript paths. No configuration is required.
 
-```ts
-// bascik.config.ts
-import { stripTypeScriptTypes } from 'node:module';
-import { defineConfig } from '@bascik/bascik/config';
-
-export const build = defineConfig({
-  minify: {
-    js: (js) => stripTypeScriptTypes(js),
-  },
-});
-```
-
-Component scripts can then use TypeScript annotations freely:
+**Companion `.ts` files (the default).** Reference a `.ts` or `.mts` file from the component and Bascik strips the types when it inlines the script:
 
 ```html
-<script>
+<span id="count">0</span>
+<script src="counter.ts"></script>
+```
+
+```ts
+// src/components/counter/counter.ts
+const count = document.getElementById('count') as HTMLElement;
+let n: number = 0;
+count.addEventListener('click', () => { n++; count.textContent = String(n); });
+```
+
+**Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
+
+```html
+<script type="text/typescript">
   const count = document.getElementById('count') as HTMLElement;
   let n: number = 0;
-  count.addEventListener('click', () => { n++; count.textContent = String(n); });
+  count.textContent = String(n);
 </script>
 ```
 
-Bascik's scoping pipeline runs first (IIFE wrapping, selector rewriting), then `minify.js` strips the types. Scoped identifiers survive the process untouched because type annotations don't overlap with class names or selector strings.
+**Ordinary `<script>` blocks are JavaScript.** Browsers do not execute TypeScript in an unmarked `<script>`, so Bascik leaves those blocks byte-for-byte on the JavaScript path and never changes their meaning. When it can positively identify erasable TypeScript syntax in one, the build logs a warning that names the file and points to the two supported paths above. Valid JavaScript is never rewritten or warned about.
 
-> **Erasable syntax only.** `stripTypeScriptTypes` removes annotations, interfaces, type aliases, `as` casts, and `!` non-null assertions. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) requires a separate compile step with `tsc` or `esbuild` before the HTML is processed by Bascik.
+The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source.
+
+> **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 22.18+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
+
+**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
+
+**Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
+
+> **`minify.js` is not a TypeScript transform.** Never configure `minify.js` merely to strip TypeScript. Bascik strips supported browser TypeScript automatically before this hook runs, so a `minify.js` function always receives plain JavaScript. Add a custom `minify.js` function only when the project requires non-default JavaScript minification.
 
 ## How Scoping Works
 

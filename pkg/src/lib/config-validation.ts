@@ -84,6 +84,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   pipeline: { watchPaths: null, exec: null, workers: null },
   scripts: {
     cache: { enabled: null, include: null, exclude: null },
+    typescript: null,
     onBuildScriptError: null,
     onRoutesScriptError: null,
     onServerScriptError: null,
@@ -427,6 +428,13 @@ export const validateConfigShape = (
       if (value !== undefined && !VALID_SCRIPT_ERROR_VALUES.has(value as string)) {
         push(`scripts.${key}`, value, `expected ${SCRIPT_ERROR_ACTIONS}`);
       }
+    }
+    if (
+      scripts.typescript !== undefined &&
+      typeof scripts.typescript !== "boolean" &&
+      typeof scripts.typescript !== "function"
+    ) {
+      push("scripts.typescript", scripts.typescript, "expected true, false, or a function");
     }
     // importRoot is read-only and may legitimately resolve outside the project
     // root (monorepo shared scripts), so there is deliberately no escape check

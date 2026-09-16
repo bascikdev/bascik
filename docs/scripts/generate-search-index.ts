@@ -108,6 +108,6 @@ for (const { section, pages } of NAV) {
   }
 }
 
-const outPath = join(docsDir, 'dist/assets/search-index.json');
+const outPath = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets/search-index.json');
 await mkdir(dirname(outPath), { recursive: true });
 await writeFile(outPath, JSON.stringify(entries));

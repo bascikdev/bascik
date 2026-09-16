@@ -62,6 +62,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html` and `src/components/`, ensures `.gitignore` includes `dist/` and `node_modules/.cache/bascik/`, and patches `package.json` with `"type": "module"` (when absent), an `@bascik/bascik` dependency, and dev/build scripts. |
 | `javascript.ts` | The scoping transforms: `prefixElementAttribute` (rewrites HTML attributes, JS DOM selectors, and CSS) and `namespaceScriptTags` (wraps scripts in IIFEs with `sourceURL` annotations and line positioning). |
 | `js-minifier.ts` | Lightweight, built-in JavaScript minifier that strips comments and collapses safe whitespace without breaking statement boundaries (ASI). |
+| `typescript.ts` | Browser TypeScript boundary. Strips erasable types from referenced `.ts`/`.mts` companions (called from `getComponentScripts`) and from inline `type="text/typescript"` blocks (called from `listComponents` for components and `transpilePage` for pages), always before scoping and `minify.js`. Diagnoses TypeScript syntax in unmarked `<script>` blocks without rewriting them. Uses Node's `stripTypeScriptTypes` in strip-only mode. |
 | `live-reload.ts` | Injected client-side script that establishes an EventSource connection to the dev server to reload pages when they are updated. |
 | `manifest.ts` | Collects written file metadata (forward-slash path, SHA-256 hash, byte size) as writes occur and writes `dist/.bascik/manifest.json` when `generate.manifest` is enabled. Populated only on the main thread (see Artifact Accounting Ownership); workers never record. |
 | `mem.ts` | In-memory page store. Stores brotli-compressed page buffers keyed by HTTP path, and maintains a reverse index mapping each component name to the set of pages that use it. |
@@ -107,9 +108,11 @@ index.ts
         ├── watch.ts
         │     └── processing.ts
         │           ├── components.ts ← file-system.ts
+        │           │     └── typescript.ts
         │           ├── javascript.ts
         │           │     ├── styles.ts
-        │           │     └── names.ts
+        │           │     ├── names.ts
+        │           │     └── typescript.ts
         │           ├── styles.ts
         │           ├── html-minifier.ts, css-minifier.ts, js-minifier.ts
         │           ├── build-scripts.ts
@@ -150,9 +153,9 @@ For package distribution, the source code in `pkg/src/` is compiled by `tsc` usi
 
 ### CPU-aware worker pool (opt-in)
 
-When `useWorkers: true` is set in `bascik.config.ts` (default `false`), `processAllPages()` creates `Math.min(os.cpus().length, pageCount)` worker threads via `worker-pool.ts` instead of transpiling sequentially on the main thread. Each worker is initialized once with the pre-computed `componentList` and `globalStylesHtml`, then reused for every page assigned to it. The main thread dispatches page jobs through the pool's task queue and collects results to apply side effects (memory storage, event emission) after all workers complete. Each result's HTML arrives as a transferred `Uint8Array` rather than a cloned string; the main thread wraps it in a `Buffer` view and forwards those bytes directly to the in-memory page store and the disk writer without decoding.
+When `pipeline.workers: true` is set in `bascik.config.ts` (default `false`), `processAllPages()` creates `Math.min(os.cpus().length, pageCount)` worker threads via `worker-pool.ts` instead of transpiling sequentially on the main thread. Each worker is initialized once with the pre-computed `componentList` and `globalStylesHtml`, then reused for every page assigned to it. The main thread dispatches page jobs through the pool's task queue and collects results to apply side effects (memory storage, event emission) after all workers complete. Each result's HTML arrives as a transferred `Uint8Array` rather than a cloned string; the main thread wraps it in a `Buffer` view and forwards those bytes directly to the in-memory page store and the disk writer without decoding.
 
-Spinning up the pool has a fixed cost, each worker loads the transpiler's module graph independently before it can process its first page. This pays for itself on larger sites with CPU-heavy per-page work, but for small sites (or sites whose slow parts are I/O-bound, like `<script data-bascik-build>` blocks) sequential transpilation on the main thread is often faster overall. See the [`useWorkers`](/configuration#useworkers) config option.
+Spinning up the pool has a fixed cost, each worker loads the transpiler's module graph independently before it can process its first page. This pays for itself on larger sites with CPU-heavy per-page work, but for small sites (or sites whose slow parts are I/O-bound, like `<script data-bascik-build>` blocks) sequential transpilation on the main thread is often faster overall. See the [`pipeline.workers`](/configuration#pipelineworkers) config option.
 
 ### Memory-first dev serving
 

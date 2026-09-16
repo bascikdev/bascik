@@ -2,7 +2,8 @@
  * Pure search logic — no DOM dependencies, importable in Node for testing.
  *
  * The docs-search component inlines these functions at build time (via a
- * <script data-bascik-build> that strips TypeScript types and export keywords).
+ * <script data-bascik-build> that strips types with Node's stripTypeScriptTypes and
+ * removes the export keywords).
  * Any change here is automatically reflected in the browser bundle on the next build.
  */
 

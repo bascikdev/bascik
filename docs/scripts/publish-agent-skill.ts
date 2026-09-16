@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = join(docsDir, 'src/pages/assets/SKILL.md');
-const output = join(docsDir, 'dist/assets/SKILL.md');
+const output = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets/SKILL.md');
 
 const authored = await readFile(source);
 if (authored.length === 0) throw new Error(`publish-agent-skill: ${source} is empty`);

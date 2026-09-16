@@ -199,8 +199,40 @@ export type ScopableConfig = boolean | {
   exclude?: string[];
 };
 
+/**
+ * Context passed to a custom `scripts.typescript` compiler.
+ * `kind` is `"companion"` for a referenced `.ts`/`.mts` file (then
+ * `sourcePath` is that file) or `"inline"` for a `type="text/typescript"`
+ * block (then `sourcePath` is the page or component `.html` that contains it).
+ */
+export interface TypeScriptCompileContext {
+  sourcePath: string;
+  kind: "companion" | "inline";
+}
+
+/**
+ * Compiler for browser TypeScript on the two supported paths (referenced
+ * `.ts`/`.mts` companions and inline `type="text/typescript"` blocks).
+ * `true` (default) uses Node's built-in strip-only mode (erasable syntax
+ * only, line-preserving). `false` disables the transform so a project can
+ * compile elsewhere. A function receives the TypeScript source and must
+ * return plain JavaScript; it runs before scoping and before `minify.js`.
+ *
+ * ```ts
+ * scripts: {
+ *   typescript: async (code, { sourcePath }) =>
+ *     (await transform(code, { loader: 'ts', target: 'es2020', sourcefile: sourcePath })).code,
+ * }
+ * ```
+ */
+export type TypeScriptCompilerOption =
+  | boolean
+  | ((code: string, context: TypeScriptCompileContext) => string | Promise<string>);
+
 export interface ScriptsOptions {
   cache: ScopableOptions;
+  /** See {@link TypeScriptCompilerOption}. Default `true`. */
+  typescript: TypeScriptCompilerOption;
   onBuildScriptError: "warn" | "error";
   onRoutesScriptError: "warn" | "error";
   onServerScriptError: "warn" | "error";
@@ -301,6 +333,7 @@ export type UserConfig = {
   };
   scripts?: {
     cache?: ScopableConfig;
+    typescript?: TypeScriptCompilerOption;
     onBuildScriptError?: "error" | "warn" | "ignore";
     onRoutesScriptError?: "error" | "warn" | "ignore";
     onServerScriptError?: "error" | "warn" | "ignore";

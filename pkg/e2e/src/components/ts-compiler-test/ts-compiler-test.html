@@ -1,0 +1,8 @@
+<!-- Exercises a bring-your-own scripts.typescript compiler (esbuild in the
+     e2e config). The companion below uses a TypeScript enum, which Node's
+     default strip-only mode rejects, so this component can only build when
+     the custom compiler is the one running. -->
+<div class="ts-compiler">
+  <span id="mode-out" data-testid="ts-compiler-out">pending</span>
+  <script src="ts-compiler-test.ts"></script>
+</div>

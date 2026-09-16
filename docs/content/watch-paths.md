@@ -35,7 +35,7 @@ Bascik automatically monitors standard project locations without requiring confi
 | `pipeline.watchPaths` | User-defined | Extra content directories, JSON fixtures, external assets. |
 | `pipeline.exec[].watch` | Source inputs | Selects matching lifecycle scripts and rebuilds associated pages in one phase-ordered cycle. |
 
-Add shared build helpers and inlined stylesheets outside the source directories to `watchPaths`, unless an exec source watch already covers them. `scripts.importRoot` and `assets.inlineStyles` do not implicitly opt them into compilation watching. A dependency graph entry selects affected pages after an observed source change, but does not create a watcher.
+Add shared build helpers and inlined stylesheets outside the source directories to `pipeline.watchPaths`, unless an exec source watch already covers them. `scripts.importRoot` and `assets.inlineStyles` do not implicitly opt them into compilation watching. A dependency graph entry selects affected pages after an observed source change, but does not create a watcher.
 
 ## Glob Patterns & Path Syntax
 
@@ -55,7 +55,7 @@ pipeline: {
 
 ### Overlapping Paths
 
-Listing a source in both `pipeline.watchPaths` and `exec.watch` creates one phase-ordered rebuild, not independent actions. Matching pre scripts finish before compilation; parallel starts alongside compilation; post starts after compilation and disk writes complete. Only matching scripts rerun. Exec-only source edits can rebuild associated pages without duplicate `watchPaths` entries. See [Exec Scripts](/exec-scripts#watching-source-inputs).
+Listing a source in both `pipeline.watchPaths` and `pipeline.exec[].watch` creates one phase-ordered rebuild, not independent actions. Matching pre scripts finish before compilation; parallel starts alongside compilation; post starts after compilation and disk writes complete. Only matching scripts rerun. Exec-only source edits can rebuild associated pages without duplicate `pipeline.watchPaths` entries. See [Exec Scripts](/exec-scripts#watching-source-inputs).
 
 Never watch generated outputs, including individual files such as `dist/catalog.json`. Exec scripts must write artifacts only to the output directory, not sources or watched paths. Completion and output writes do not trigger compilation. Bascik does not hide legitimate edits using self-write or loop-suppression heuristics.
 
@@ -63,7 +63,7 @@ Never watch generated outputs, including individual files such as `dist/catalog.
 
 When you run `bascik` or `npm run dev`:
 
-1. **Watcher Initialization:** With watched exec entries, one source observer covers pages, components, `watchPaths`, and exec input patterns. Runtime-module invalidation remains separate.
+1. **Watcher Initialization:** With watched exec entries, one source observer covers pages, components, `pipeline.watchPaths`, and exec input patterns. Runtime-module invalidation remains separate.
 2. **Change Detection:** On an observed add, change, or deletion, Bascik identifies dependent pages.
 3. **Phase Ordering:** Matching pre scripts finish before dependency-content memoization is invalidated. Result caching stays enabled and rechecks dependency bytes. Parallel starts alongside compilation.
 4. **Selective Re-Transpile:** Known dependents rebuild. An extra watch path with no known dependents falls back to all pages.

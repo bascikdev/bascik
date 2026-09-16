@@ -1,6 +1,6 @@
 # Configuration
 
-Bascik is **completely zero configuration** by default. You do not need a config file of any kind to start building. Running `bascik` or `bascik --build` works immediately right out of the box, resolving components, scoping CSS and JS, minifying files, and managing routing using sensible, production ready defaults.
+Bascik is **completely zero configuration** by default. You do not need a config file of any kind to start building. Running `bascik` or `bascik --build` works immediately right out of the box, resolving components, scoping CSS and JS, applying production minification when building or serving, and managing routing using sensible defaults.
 
 However, Bascik is also **highly configurable** for both development and production. Rather than forcing a single architectural opinion on your project, Bascik is designed to put control directly in your hands. Whenever a technical choice involves trade-offs, Bascik exposes fine-grained preferences so you can tailor the build pipeline to your exact workflow.
 
@@ -44,9 +44,9 @@ Configuration errors in bascik.config.ts
 
 Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:` or `directroy:` fails loudly instead of being silently ignored. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
 
-## Minimal Configuration Example (Recommended)
+## Create a Config Only for a Non-Default Requirement
 
-Because Bascik is zero-config, you only need to specify settings that differ from built-in defaults. Keep your `bascik.config.ts` clean and minimal:
+Start without `bascik.config.ts`. Create one only after identifying a concrete requirement that differs from Bascik's built-in behavior. When a config is necessary, include only the non-default setting:
 
 ```ts
 // bascik.config.ts (minimal example)
@@ -55,17 +55,9 @@ import { defineConfig } from '@bascik/bascik/config';
 export default defineConfig({
   generate: { sitemapLastmod: true },
 });
-
-// Production build overrides (applied only during `bascik --build` and `bascik --server`)
-export const build = defineConfig({
-  minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
-  },
-});
 ```
+
+Do not create a config merely to enable production minification. `bascik --build` and `bascik --server` already enable HTML, CSS, JavaScript, and identifier minification.
 
 ## Configuration Precedence
 
@@ -195,15 +187,6 @@ export default defineConfig({
   },
   base: '/',
 });
-
-export const build = defineConfig({
-  minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
-  },
-});
 ```
 
 ## The Power of Preference
@@ -211,9 +194,9 @@ export const build = defineConfig({
 Here are just a few ways Bascik puts architectural choices back in your hands:
 
 - **Style Deduplication (`scoping.deduplicateCss`):** Choose between clean, single-definition scoped stylesheets for optimal payload sizes, or individual per-instance styling for seamless local script querying.
-- **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently. You can even plug in your own custom async minifiers (like esbuild or terser) or configure Node's built-in type stripper for native TypeScript compilation.
+- **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently, or plug in your own custom async minifiers (like esbuild or terser). TypeScript in referenced `.ts` companions and `type="text/typescript"` blocks is stripped automatically before minification, so no minifier configuration is needed for it.
 - **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
-- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects.
+- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
 - **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
 - **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
 
@@ -324,7 +307,7 @@ Configure minification toggles for HTML, CSS, and JS outputs. All three default 
 
 `minify.html: false` disables HTML minification for both page templates and component templates. Component whitespace and script placement remain as authored when it is off.
 
-Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, terser, or Node's built-in TypeScript type stripper:
+Bascik supports **BYOMinifier (Bring Your Own Minifier)**: both `css` and `js` accept custom async-capable minifier or transformer functions. Plug in PostCSS with Autoprefixer, LightningCSS, esbuild, or terser. A `minify.js` function always receives valid JavaScript: browser TypeScript on the supported paths (`.ts` companions, `type="text/typescript"` blocks) is stripped before this hook runs, and Bascik holds back its `//# sourceURL` directive and re-attaches it on its own line after the function returns.
 
 ```ts
 // bascik.config.ts
@@ -335,7 +318,6 @@ import { transform } from 'esbuild';
 
 export const build = defineConfig({
   minify: {
-    html: true,
     css: async (css) => {
       const result = await postcss([autoprefixer]).process(css, { from: undefined });
       return result.css;
@@ -399,11 +381,11 @@ pipeline: {
       watch: ['content/'],           // re-run on changes in dev mode
     },
   ],
-  workers: false,                    // enable multi-threaded worker pool
+  workers: false,                    // enable multi-threaded worker pool (defaults to false; dev advises true on large multi-core workloads)
 }
 ```
 
-`exec.watch` selects scripts after matching source edits. Pages, components, `watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
+`pipeline.exec[].watch` selects scripts after matching source edits. Pages, components, `pipeline.watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `pipeline.watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
 
 ### `scripts`
 
@@ -412,6 +394,7 @@ Script execution configuration and error handling.
 ```ts
 scripts: {
   cache: { enabled: true },     // cache build script output
+  typescript: true,             // browser TS compiler: true | false | function
   onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
   onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
   onServerScriptError: 'error', // 'error' | 'warn' | 'ignore'
@@ -419,6 +402,33 @@ scripts: {
   importRoot: 'src',            // directory that @/ and / resolve against
 }
 ```
+
+#### `scripts.typescript`
+
+Selects the compiler for browser TypeScript on the two supported paths: referenced `.ts`/`.mts` companion scripts and inline `<script type="text/typescript">` blocks. It runs before scoping and before `minify.js`, in dev and build alike, on the main thread and in worker threads.
+
+- `true` (default): Node's built-in strip-only mode (Node 22.18+). Erasable syntax only; line structure is preserved so `//# sourceURL` line numbers match the source. No dependencies.
+- `false`: Bascik does not transform browser TypeScript. Marked blocks and `.ts` companions are emitted exactly as authored, `type` attribute included. Use this when another tool has already compiled the output that Bascik reads.
+- A function `(code, { sourcePath, kind }) => string | Promise<string>`: bring your own compiler. `kind` is `'companion'` (then `sourcePath` is the `.ts` file) or `'inline'` (then `sourcePath` is the `.html` file containing the block). The function must return plain JavaScript; a throw or non-JavaScript result fails the build with the source path. Use this for non-erasable syntax (`enum`, parameter properties, decorators), for downleveling to an older browser target, or to run the same compiler you use elsewhere.
+
+```ts
+// bascik.config.ts (illustrative: esbuild as the browser TypeScript compiler)
+import { defineConfig } from '@bascik/bascik/config';
+import { transform } from 'esbuild';
+
+export default defineConfig({
+  scripts: {
+    typescript: async (code, { sourcePath }) => {
+      const result = await transform(code, { loader: 'ts', target: 'es2020', sourcefile: sourcePath });
+      return result.code;
+    },
+  },
+});
+```
+
+This option covers browser scripts only. Build, routes, server, and API route files are executed by Node directly, so their TypeScript is handled by Node itself; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
+
+Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 
 #### `scripts.onServerScriptError`
 
@@ -504,10 +514,7 @@ export const dev = defineConfig({
 
 export const build = defineConfig({
   minify: {
-    html: true,
-    css: true,
-    js: true,
-    identifiers: true,
+    identifiers: false,
   },
 });
 

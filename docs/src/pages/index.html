@@ -652,7 +652,7 @@
           class="install-command hero-quickstart"><code>npm create bascik@latest</code><button class="install-copy-btn" type="button" aria-label="Copy" title="Copy"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copy-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></button></pre>
         <ul class="hero-stats">
           <li><strong>0 kB</strong> framework JS added</li>
-          <li><strong>59 pages</strong> transpiled in ~1.4s</li>
+          <li><strong>78 pages</strong> transpiled in ~1.4s</li>
           <li><a href="/performance"><strong>Lighthouse 100s</strong> out of the box</a></li>
           <li><strong>Use what you know</strong>: vanilla HTML, CSS, JS</li>
         </ul>
@@ -717,9 +717,10 @@
         <p class="section-label">Build Performance</p>
         <h2 class="section-heading">Sub-second build speeds. Industry-leading performance.</h2>
         <p class="section-sub">Bascik transpiles and scopes entire static websites in milliseconds. Pure component
-          scoping executes in under 0.2ms per page. This documentation website is a prime real-world example: across 59
+          scoping executes in under 0.2ms per page. This documentation website is a prime real-world example: across 78
           pages executing over 500 custom Node.js build scripts to render Markdown and extract code blocks, the entire
-          site compiles in just <b class="highlight-text">1.4 seconds.</b></p>
+          site transpiles for dev startup in about <b class="highlight-text">1.4 seconds</b> with a warm cache and
+          workers enabled on multi-core hardware.</p>
         <div class="speed-grid">
           <div class="speed-terminal">
             <div class="speed-terminal-bar">
@@ -740,9 +741,9 @@
 
           <div class="speed-metrics">
             <div class="metric-card">
-              <div class="metric-number">1.42s</div>
-              <div class="metric-label">59 full pages transpiled with 500+ build scripts, Markdown rendering, and
-                component scoping (warm cache)</div>
+              <div class="metric-number">1.39s</div>
+              <div class="metric-label">78 full pages transpiled with 500+ build scripts, Markdown rendering, and
+                component scoping (warm cache, workers enabled on multi-core hardware)</div>
             </div>
             <div class="metric-card">
               <div class="metric-number">&lt; 0.2ms</div>
@@ -755,10 +756,11 @@
           </div>
 
           <p class="speed-note">
-            <strong>Warm vs. Cold Startup Note:</strong> The ~1.4s build time above reflects a warm start with SHA-256
+            <strong>Warm vs. Cold Startup Note:</strong> The ~1.4s dev startup transpile time above reflects a warm
+            start with workers enabled on multi-core hardware and SHA-256
             build script output caching enabled. On a fresh cold start (or after clearing
             <code>node_modules/.cache/bascik</code>), Bascik runs each uncached build script in its own isolated
-            child process bounded by a concurrency-aware semaphore, compiling all 59 pages and 500+ Markdown scripts in
+            child process bounded by a concurrency-aware semaphore, compiling all 78 pages and 500+ Markdown scripts in
             ~3.8s on an M1 MacBook Air. Once cached, subsequent restarts and live-reload edits compile in milliseconds.
           </p>
         </div>

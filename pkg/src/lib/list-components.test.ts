@@ -20,6 +20,7 @@ vi.mock("./config.js", () => ({
       preserve: [],
     },
     minify: { html: false, css: false, js: false, identifiers: false },
+    scripts: { typescript: true },
   },
 }));
 
@@ -46,6 +47,7 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
+import { TypeScriptTransformError } from "./typescript.ts";
 
 const mockDeepReadDirFlat = deepReadDirFlat as ReturnType<typeof vi.fn>;
 const mockExecuteBuildScripts = executeBuildScripts as ReturnType<typeof vi.fn>;
@@ -311,6 +313,156 @@ describe("listComponents – companion scripts", () => {
     expect(result["my-btn"]).toBeDefined();
     expect(result["my-btn"].fileContent).not.toContain("test");
     expect(result["my-btn"].fileContent).not.toContain("spec");
+  });
+
+  it("strips TypeScript from a referenced .ts companion script without any minify.js configuration", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/demo-counter/demo-counter.html",
+      "src/components/demo-counter/demo-counter.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<span id="count">0</span><script src="demo-counter.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from(
+        "const count = document.getElementById('count') as HTMLElement;\nlet n: number = 0;\ninterface Tick { at: number }\ncount.textContent = String(n);\n",
+      ));
+
+    const result = await listComponents();
+    const html = result["demo-counter"].fileContent as string;
+
+    expect(html).not.toContain("as HTMLElement");
+    expect(html).not.toContain(": number");
+    expect(html).not.toContain("interface Tick");
+    expect(html).toContain("document.getElementById('count')");
+    expect(html).toContain('data-bascik-source="src/components/demo-counter/demo-counter.ts"');
+    // The stripped script is plain JavaScript, so no type attribute is added.
+    expect(html).not.toContain("text/typescript");
+  });
+
+  it("leaves a referenced .js companion script byte-for-byte untouched", async () => {
+    const js = "const n = 0; // plain\nconsole.log(n < 1, n > -1);\n";
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/plain-comp/plain-comp.html",
+      "src/components/plain-comp/plain-comp.js",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="plain-comp.js"></script>'))
+      .mockResolvedValueOnce(Buffer.from(js));
+
+    const result = await listComponents();
+    expect(result["plain-comp"].fileContent).toContain(js);
+  });
+
+  it("strips types from an inline <script type=\"text/typescript\"> in a component and leaves an ordinary inline script alone", async () => {
+    mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp/mixed-comp.html"]);
+    mockReadFile.mockResolvedValueOnce(Buffer.from(
+      '<div id="box"></div>\n' +
+      '<script type="text/typescript">\n  const box = document.getElementById("box") as HTMLElement;\n  let hits: number = 0;\n  box.textContent = String(hits);\n</script>\n' +
+      "<script>\n  const plain = 1;\n  console.log(plain);\n</script>\n",
+    ));
+
+    const result = await listComponents();
+    const html = result["mixed-comp"].fileContent as string;
+
+    expect(html).not.toContain("text/typescript");
+    expect(html).not.toContain("as HTMLElement");
+    expect(html).not.toContain(": number");
+    expect(html).toContain('document.getElementById("box")');
+    expect(html).toContain("const plain = 1;");
+  });
+
+  it("passes a .ts companion through a custom scripts.typescript compiler with its source path", async () => {
+    const compiler = vi.fn(async (code: string) => code.replace(/: number/g, "") + "\n// via-custom-compiler");
+    (BascikConfig as any).scripts.typescript = compiler;
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/custom-comp/custom-comp.html",
+      "src/components/custom-comp/custom-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="custom-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
+
+    const result = await listComponents();
+    (BascikConfig as any).scripts.typescript = true;
+
+    expect(compiler).toHaveBeenCalledWith("let n: number = 1;\n", {
+      sourcePath: "src/components/custom-comp/custom-comp.ts",
+      kind: "companion",
+    });
+    expect(result["custom-comp"].fileContent).toContain("// via-custom-compiler");
+    expect(result["custom-comp"].fileContent).not.toContain(": number");
+  });
+
+  it("inlines a .ts companion as-is when scripts.typescript is false", async () => {
+    (BascikConfig as any).scripts.typescript = false;
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/raw-comp/raw-comp.html",
+      "src/components/raw-comp/raw-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="raw-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("let n: number = 1;\n"));
+
+    const result = await listComponents();
+    (BascikConfig as any).scripts.typescript = true;
+
+    expect(result["raw-comp"].fileContent).toContain("let n: number = 1;");
+  });
+
+  it("fails the component with file context when a .ts companion uses non-erasable syntax", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/enum-comp/enum-comp.html",
+      "src/components/enum-comp/enum-comp.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="enum-comp.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"));
+
+    await expect(listComponents()).rejects.toThrow(/enum-comp\.ts[\s\S]*enum/i);
+  });
+
+  it("fails a .ts companion with an actionable diagnostic when it uses import/export but the <script> tag isn't type=\"module\"", async () => {
+    // The stripped output is still module-shaped, and this <script src> has no
+    // type="module", so it would be silently wrapped in a classic IIFE and
+    // throw a SyntaxError in the browser. Fail the build instead, at the same
+    // point the enum non-erasable-syntax error already fails it.
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="module-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from(
+        "import { message } from './helper.ts';\nconsole.log(message);\n",
+      ));
+
+    await expect(listComponents()).rejects.toThrow(/module-widget\.ts[\s\S]*import\/export/i);
+  });
+
+  it("fails a .ts companion with an actionable diagnostic when it uses a bare export declaration", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/exporting-widget/exporting-widget.html",
+      "src/components/exporting-widget/exporting-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="exporting-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("export const n: number = 1;\nconsole.log(n);\n"));
+
+    await expect(listComponents()).rejects.toThrow(TypeScriptTransformError);
+  });
+
+  it("allows a .ts companion with import/export when the referencing <script> tag is type=\"module\"", async () => {
+    // A native ES module script is never wrapped in an IIFE, so module syntax
+    // in its companion is safe and must be left alone.
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script type="module" src="module-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("export const n = 1;\nconsole.log(n);\n"));
+
+    const result = await listComponents();
+    expect(result["module-widget"].fileContent).toContain("export const n = 1;");
   });
 });
 

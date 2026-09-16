@@ -337,6 +337,45 @@ export const hasDynamicImportExpression = (source: string): boolean => {
 };
 
 /**
+ * True when `source` contains a static `import` or `export` declaration, the
+ * two syntax forms that are only legal in an ES module and throw a
+ * `SyntaxError` if they land in a classic (non-`type="module"`) `<script>`.
+ * Bascik does not bundle or rewrite module graphs (see `scripts.typescript`
+ * doc comment above): this check exists only to fail fast, with an actionable
+ * message, instead of shipping a script that breaks at parse time in the
+ * browser.
+ *
+ * Excluded on purpose, because they are valid in a classic script:
+ * - Dynamic `import(...)` calls (`import(name)`, `await import('./a.js')`).
+ * - `import.meta`.
+ * - Member access or a call named `import`/`export` (`obj.export()`).
+ * - An object literal property key named `export` (`{ export: 1 }`).
+ * - Any `import`/`export` text inside a string, comment, or regex literal;
+ *   the tokenizer already excludes those from producing identifier tokens.
+ */
+export const hasStaticModuleSyntax = (source: string): boolean => {
+  const tokens = tokenizeJavaScript(source);
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.type !== "identifier") continue;
+    if (token.value !== "import" && token.value !== "export") continue;
+    if (tokens[index - 1]?.value === ".") continue;
+
+    const next = tokens[index + 1];
+    if (token.value === "import") {
+      if (next?.value === ".") continue; // import.meta
+      if (next?.value === "(") continue; // dynamic import(...) call
+      return true;
+    }
+    // token.value === "export"
+    if (next?.value === ":") continue; // object literal property key
+    if (next?.value === "(") continue; // a call, never a real export form
+    return true;
+  }
+  return false;
+};
+
+/**
  * How a module specifier (or a script tag `src=` value) is resolved by Bascik.
  *
  * - `relative`: `./` or `../`, resolved against the containing file's directory.

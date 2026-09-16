@@ -35,6 +35,12 @@ export default defineConfig({
   },
 });
 
+export const dev = defineConfig({
+  pipeline: {
+    workers: true,
+  },
+});
+
 export const build = defineConfig({
   pipeline: {
     exec: [

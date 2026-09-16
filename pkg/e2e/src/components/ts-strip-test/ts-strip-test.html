@@ -1,0 +1,22 @@
+<!-- Prompt 148: browser TypeScript must never reach the browser on the two
+     supported paths (referenced .ts companion, inline block marked with the
+     TypeScript MIME type), while an ordinary unmarked script block stays on
+     the JavaScript path. The e2e config's minify.js is esbuild with loader
+     'js', which rejects TypeScript, so a successful production build proves
+     the strip ran first. The dev lane asserts the emitted HTML directly, so
+     this comment must not spell out the MIME type or any TS syntax. -->
+<div class="ts-strip">
+  <span id="companion-out" data-testid="ts-companion-out">pending</span>
+  <span id="inline-out" data-testid="ts-inline-out">pending</span>
+  <span id="plain-out" data-testid="ts-plain-out">pending</span>
+  <script src="ts-strip-test.ts"></script>
+  <script type="text/typescript">
+    const inlineOut = document.getElementById("inline-out") as HTMLElement;
+    let inlineHits: number = 0;
+    inlineOut.textContent = `inline-typescript-ran:${++inlineHits}`;
+  </script>
+  <script>
+    const plainOut = document.getElementById("plain-out");
+    plainOut.textContent = "plain-javascript-ran";
+  </script>
+</div>

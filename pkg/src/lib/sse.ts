@@ -212,6 +212,9 @@ export class SseManager {
     if (this.destroyed) return;
     for (const client of this.clients.values()) {
       try { client.res.off("drain", client.drainListener); } catch { }
+      // Use res.close() unconditionally on shutdown destroy so that the
+      // underlying transport (HTTP/1.1 keep-alive socket or HTTP/2 stream)
+      // is immediately terminated rather than lingering until idle timeout.
       try { client.res.close(); } catch { }
     }
     this.clients.clear();

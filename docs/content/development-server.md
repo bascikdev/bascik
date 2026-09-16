@@ -18,7 +18,7 @@ When started, Bascik:
 1. Loads your project configuration from `bascik.config.ts`.
 2. Cleans the output directory (`dist/`) to remove stale artifacts.
 3. Transpiles all pages and components into memory and disk.
-4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `watchPaths`.
+4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
 5. Starts an HTTP development server with live reload on port 8080.
 
 ## CLI Flags

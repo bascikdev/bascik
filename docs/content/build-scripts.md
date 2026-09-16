@@ -344,7 +344,7 @@ rm -rf node_modules/.cache/bascik/script-cache
 
 - **When to use build scripts:** Use build scripts when content lives in a file or API outside HTML source (Markdown, JSON, CSV, remote endpoints), when repeating transformations across pages, or when markup should be static. Prefer vanilla hardcoded HTML when content is short, stable, and self-contained.
 - **No streaming:** The full stdout of a build script is collected before injection. For streaming HTML chunks at request time, see [Stream Scripts](/stream-scripts).
-- **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Files outside all of those need a restart or a `watchPaths` entry (see [Watch Paths](/watch-paths)).
+- **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Files outside all of those need a restart or a `pipeline.watchPaths` entry (see [Watch Paths](/watch-paths)).
 - **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`.
 - **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
 

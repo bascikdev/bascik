@@ -26,7 +26,7 @@ Bascik's performance story starts before any of the techniques on this page. The
 
 **Maximum Brotli compression.** Under `bascik --server` and `bascik --build`, pages are compressed using maximum Brotli quality (`BROTLI_MAX_QUALITY = 11`), delivering optimal payload sizes for production delivery. Compressible static assets (CSS, JavaScript, SVG, JSON) up to 2 MiB are compressed on demand by negotiation; already-compressed formats (images, video, WOFF2) and assets above 2 MiB are served as-is. Large assets are streamed from disk rather than buffered, so a burst of requests for a big file does not multiply its size in server memory.
 
-**Inline styles.** Set `inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request for that file entirely. Pair it with `minify.css: true` to minify the injected CSS at build time. When enforcing a strict Content Security Policy, enable `generate.cspHashes: true` to obtain exact SHA-256 hashes for all inlined styles and scripts without resorting to `'unsafe-inline'`.
+**Inline styles.** Set `assets.inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request for that file entirely. Production builds minify the injected CSS automatically. When enforcing a strict Content Security Policy, enable `generate.cspHashes: true` to obtain exact SHA-256 hashes for all inlined styles and scripts without resorting to `'unsafe-inline'`.
 
 ### Precompressed assets
 
@@ -640,18 +640,16 @@ The `onload` trick converts the preloaded asset into a live stylesheet the momen
 
 Keep inlined critical CSS to the minimum needed for above-the-fold visibility, typically 1–5 KB of minified CSS covering the header, hero section, and primary navigation.
 
-> **Bascik tip.** If your global stylesheet is small (under ~15 KB), skip the split entirely, set `inlineStyles` in your config and Bascik handles it automatically. Zero render-blocking requests, no FOUC, and production builds minify the injected CSS when `minify.css` is true:
+> **Bascik tip.** If your global stylesheet is small (under ~15 KB), skip the split entirely, set `assets.inlineStyles` in your config and Bascik handles it automatically. Zero render-blocking requests, no FOUC, and production builds minify the injected CSS automatically:
 >
 > ```ts
 > // bascik.config.ts
 > import { defineConfig } from '@bascik/bascik/config';
 >
 > export default defineConfig({
->   inlineStyles: ['src/css/styles.css'],
-> });
->
-> export const build = defineConfig({
->   minify: { css: true },
+>   assets: {
+>     inlineStyles: ['src/css/styles.css'],
+>   },
 > });
 > ```
 >
@@ -674,7 +672,6 @@ import { transform } from 'esbuild';
 
 export const build = defineConfig({
   minify: {
-    css: true,
     js: async (js) => {
       const result = await transform(js, { minify: true, loader: 'js' });
       return result.code;

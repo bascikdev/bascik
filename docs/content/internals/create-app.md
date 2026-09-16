@@ -18,7 +18,6 @@ Running `npx create-bascik <name>` writes this structure:
 ```text
 <name>/
   package.json
-  bascik.config.ts
   vite.config.js
   .gitignore
   .vscode/

@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const {
@@ -91,19 +92,20 @@ vi.mock("./events.js", () => ({
   registerShutdownHandler: mockRegisterShutdownHandler,
 }));
 vi.mock("./config.js", () => ({
-  BascikConfig: { pipeline: { exec: undefined } },
+  BascikConfig: { pipeline: { exec: undefined }, directory: { out: undefined, pages: undefined, components: undefined } },
 }));
 
 import { BascikConfig } from "./config.ts";
 import { runScript, runExecPhase, startExecParallel, startExecDev, execShutdownHandler, getActiveExecChildrenCount, resetActiveExecChildrenForTests } from "./exec.ts";
 import { type FrameworkClock } from "./clock.ts";
 
-const cfg = BascikConfig as { pipeline: { exec: typeof BascikConfig.pipeline.exec } };
+const cfg = BascikConfig as { pipeline: { exec: typeof BascikConfig.pipeline.exec }; directory: { out?: string; pages?: string; components?: string[] } };
 
 beforeEach(() => {
   resetMocks();
   resetActiveExecChildrenForTests();
   cfg.pipeline.exec = undefined;
+  cfg.directory = { out: undefined, pages: undefined, components: undefined };
 });
 
 afterEach(() => {
@@ -347,6 +349,44 @@ describe("startExecDev", () => {
           CUSTOM_VAR: "custom_val",
           BASCIK_BASE: "/",
           BASCIK_PAGES_DIR: expect.any(String),
+          BASCIK_OUT_DIR: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    { label: "default dist", configuredOut: undefined, expectedOut: resolve(process.cwd(), "dist") },
+    { label: "relative path", configuredOut: "custom-output", expectedOut: resolve(process.cwd(), "custom-output") },
+    { label: "absolute path", configuredOut: resolve(process.cwd(), "abs-output"), expectedOut: resolve(process.cwd(), "abs-output") },
+  ])("resolves BASCIK_OUT_DIR with $label ($configuredOut)", async ({ configuredOut, expectedOut }) => {
+    cfg.directory.out = configuredOut;
+    cfg.pipeline.exec = [{ script: "scripts/test-out.ts" }];
+    await runExecPhase("pre");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      ["scripts/test-out.ts"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          BASCIK_OUT_DIR: expectedOut,
+        }),
+      }),
+    );
+  });
+
+  it("resolves BASCIK_OUT_DIR to project root output even when exec entry specifies a custom cwd", async () => {
+    cfg.directory.out = "custom-output";
+    cfg.pipeline.exec = [{ script: "scripts/test-out.ts", cwd: "sub-package" }];
+    await runExecPhase("pre");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      ["scripts/test-out.ts"],
+      expect.objectContaining({
+        cwd: resolve(process.cwd(), "sub-package"),
+        env: expect.objectContaining({
+          BASCIK_OUT_DIR: resolve(process.cwd(), "custom-output"),
         }),
       }),
     );

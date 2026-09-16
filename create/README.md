@@ -30,10 +30,11 @@ my-site/
 ├── src/
 │   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter
 │   └── pages/                      ← index.html, about.html, contact.html, 404.html, css/styles.css
-├── bascik.config.ts
 ├── package.json
 └── .gitignore
 ```
+
+The starter does not include `bascik.config.ts` because it uses Bascik's built-in defaults. Add a config only when the project needs non-default behavior.
 
 After scaffolding:
 

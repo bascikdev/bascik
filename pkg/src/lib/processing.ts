@@ -62,7 +62,7 @@ import {
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 import { cpus } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   listPages,
@@ -121,6 +121,7 @@ const annotateComponentScriptSources = (html: string, sourceFile: string): strin
 
 import { isJavaScriptScript } from "./script-types.ts";
 import { minifyJs } from "./js-minifier.ts";
+import { transformTypeScriptScriptTags } from "./typescript.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
 import { executeBuildScripts, collectAllScriptDeps } from "./build-scripts.ts";
@@ -261,6 +262,39 @@ const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => 
   };
 };
 
+/** Project-relative, forward-slash path for user-facing diagnostics. */
+const relativePagePathForDiagnostics = (pagePath: string): string =>
+  (resolve(pagePath).startsWith(process.cwd()) ? relative(process.cwd(), pagePath) : pagePath).replace(/\\/g, "/");
+
+/**
+ * Trailing `//# sourceURL=...` directive appended by `namespaceScriptTags`.
+ * Anchored to the final line so a directive-looking string inside the code
+ * body is never mistaken for the real one.
+ */
+const TRAILING_SOURCE_URL_RE = /(?:^|\n)[ \t]*(\/\/# sourceURL=[^\n]*?)[ \t]*$/;
+
+/**
+ * Split a script body into the code the minifier should see and the
+ * `//# sourceURL` directive Bascik owns. Minifiers (the built-in one, esbuild,
+ * terser, `stripTypeScriptTypes` on a one-line result) legitimately drop or
+ * re-flow comments, so the directive must never be handed to them and must be
+ * re-attached on its own line afterwards. A directive glued onto the same line
+ * as `})();` turns the rest of the line into a comment and breaks the script.
+ */
+export const splitTrailingSourceUrl = (code: string): { code: string; sourceUrl: string | null } => {
+  const m = TRAILING_SOURCE_URL_RE.exec(code);
+  if (!m) return { code, sourceUrl: null };
+  return { code: code.slice(0, m.index), sourceUrl: m[1] };
+};
+
+/** Re-attach a directive so it always starts on a fresh line. */
+export const appendSourceUrl = (code: string, sourceUrl: string | null): string => {
+  if (!sourceUrl) return code;
+  const trimmed = code.replace(/[ \t]+$/, "");
+  const separator = trimmed.endsWith("\n") ? "" : "\n";
+  return `${trimmed}${separator}${sourceUrl}`;
+};
+
 /**
  * Minify the content of every inline `<script>` tag in `html` (excluding
  * external scripts and non-JS types such as application/ld+json).
@@ -270,24 +304,26 @@ const minifyScriptTagsInHtml = async (
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
   const regex = /(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi;
-  const ops: Array<{ index: number; len: number; open: string; code: string; close: string }> = [];
+  const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {
-    const [full, open, code, close] = m as unknown as [string, string, string, string];
+    const [full, open, body, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
     if (/\bsrc\s*=/i.test(open)) continue;
-    ops.push({ index: m.index, len: full.length, open, code, close });
+    const { code, sourceUrl } = splitTrailingSourceUrl(body);
+    ops.push({ index: m.index, len: full.length, open, code, sourceUrl, close });
   }
   if (!ops.length) return html;
   const minified = await Promise.all(ops.map(({ code }) => minifyFn(code)));
   let result = html;
   for (let i = ops.length - 1; i >= 0; i--) {
-    const { index, len, open, close } = ops[i];
-    result = result.slice(0, index) + `${open}${minified[i]}${close}` + result.slice(index + len);
+    const { index, len, open, sourceUrl, close } = ops[i];
+    const body = appendSourceUrl(minified[i], sourceUrl);
+    result = result.slice(0, index) + `${open}${body}${close}` + result.slice(index + len);
   }
   return result;
 };
@@ -1215,6 +1251,18 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${formatDuration(elapsed)}`,
   );
 
+  if (
+    !useWorkers &&
+    !BascikConfig.isBuild &&
+    elapsed >= 2000 &&
+    allJobs.length >= 20 &&
+    cpus().length >= 4
+  ) {
+    console.log(
+      `💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`,
+    );
+  }
+
   return relativePaths;
 };
 
@@ -1302,13 +1350,24 @@ export const transpilePage = async (
   preCleanedHtml?: string,
   options?: { deferDiskWrite?: boolean },
 ): Promise<TranspilePageResult | null> => {
-  const start = performance.now();
+  let workMs = 0;
+  let seg = performance.now();
+  const pause = () => {
+    workMs += performance.now() - seg;
+  };
+  const resume = () => {
+    seg = performance.now();
+  };
+
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
     : getRelativePath(pagePath, "pages");
 
   if (!componentList) {
-    componentList = await listComponents();
+    const pending = listComponents();
+    pause();
+    componentList = await pending;
+    resume();
   }
 
   // Execute <script data-bascik-build> blocks first so that the generated HTML
@@ -1318,9 +1377,16 @@ export const transpilePage = async (
     rawHtml = preCleanedHtml;
   } else {
     try {
-      rawHtml = (await readFile(pagePath)).toString();
+      const pendingRead = readFile(pagePath);
+      pause();
+      const fileBuf = await pendingRead;
+      resume();
+      rawHtml = fileBuf.toString();
       if (isDynamicRoute(pagePath)) {
-        const routesResult = await executeRoutesScript(rawHtml, pagePath);
+        const pendingRoutes = executeRoutesScript(rawHtml, pagePath);
+        pause();
+        const routesResult = await pendingRoutes;
+        resume();
         rawHtml = routesResult.cleanedHtml;
       }
     } catch (err) {
@@ -1331,14 +1397,31 @@ export const transpilePage = async (
 
   let htmlWithBuildOutput: string;
   try {
-    htmlWithBuildOutput = await executeBuildScripts(rawHtml, pagePath, route);
+    const pendingBuild = executeBuildScripts(rawHtml, pagePath, route);
+    pause();
+    htmlWithBuildOutput = await pendingBuild;
+    resume();
   } catch (error) {
     // A failed build may still have attempted to import helpers that do not
     // exist yet. Record those attempted dependencies so the import-root
     // watcher can rebuild this page the moment the missing helper appears.
-    await recordMissingScriptDeps(rawHtml, pagePath);
+    const pendingMissing = recordMissingScriptDeps(rawHtml, pagePath);
+    pause();
+    await pendingMissing;
+    resume();
     throw error;
   }
+
+  // Page-authored browser TypeScript. Runs on the page's own markup (after
+  // build scripts, whose generated HTML may also carry marked scripts) and
+  // before component expansion, so component scripts, which were already
+  // transformed and diagnosed in `listComponents`, are not re-inspected here.
+  // This is the same pass in dev and build: TypeScript strip first, then
+  // scoping, then optional `minify.js`.
+  const pendingTs = transformTypeScriptScriptTags(htmlWithBuildOutput, relativePagePathForDiagnostics(pagePath));
+  pause();
+  htmlWithBuildOutput = await pendingTs;
+  resume();
 
   // Do NOT minify before component resolution. Minification runs after transpilation
   // so that whitespace-sensitive content (e.g. code inside resolved <pre> blocks
@@ -1372,9 +1455,12 @@ export const transpilePage = async (
   let bodyPasses = 0;
   while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
-    transpiledHtmlBody = await executeBuildScripts(transpiledHtmlBody, pagePath, route, {
+    const pendingBodyBuild = executeBuildScripts(transpiledHtmlBody, pagePath, route, {
       pageFile: pagePath,
     });
+    pause();
+    transpiledHtmlBody = await pendingBodyBuild;
+    resume();
     const nextPass = recursivelyTranspile(
       transpiledHtmlBody,
       componentList,
@@ -1397,9 +1483,12 @@ export const transpilePage = async (
   let headPasses = 0;
   while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
     headPasses++;
-    transpiledHeadContent = await executeBuildScripts(transpiledHeadContent, pagePath, route, {
+    const pendingHeadBuild = executeBuildScripts(transpiledHeadContent, pagePath, route, {
       pageFile: pagePath,
     });
+    pause();
+    transpiledHeadContent = await pendingHeadBuild;
+    resume();
     const nextPassHead = recursivelyTranspile(
       transpiledHeadContent,
       componentList,
@@ -1444,7 +1533,10 @@ export const transpilePage = async (
   // Read and inline any global stylesheets configured via `inlineStyles`.
   // Global styles are injected before component styles so component rules win.
   if (globalStylesHtml === undefined) {
-    globalStylesHtml = await resolveInlineStylesHtml();
+    const pendingGlobalStyles = resolveInlineStylesHtml();
+    pause();
+    globalStylesHtml = await pendingGlobalStyles;
+    resume();
   }
 
   // Component scoping finalizes ID references first. Base paths then leave
@@ -1457,7 +1549,15 @@ export const transpilePage = async (
   const cssMinifier = resolveCssMinifier();
   const isMinifyHtml = BascikConfig.minify?.html ?? false;
 
-  const formattedComponentCss = cssMinifier ? await cssMinifier(componentCss) : componentCss;
+  let formattedComponentCss: string;
+  if (cssMinifier) {
+    const pendingCompCss = cssMinifier(componentCss);
+    pause();
+    formattedComponentCss = await pendingCompCss;
+    resume();
+  } else {
+    formattedComponentCss = componentCss;
+  }
 
   const componentStyleBlock = formattedComponentCss
     ? `\n    <style>\n    ${formattedComponentCss}\n    </style>`
@@ -1478,7 +1578,10 @@ export const transpilePage = async (
       let lastIndex = 0;
       for (const m of matches) {
         newHead += transpiledHead.slice(lastIndex, m.index);
-        const minifiedCss = await cssMinifier(m.css);
+        const pendingInlineCss = cssMinifier(m.css);
+        pause();
+        const minifiedCss = await pendingInlineCss;
+        resume();
         newHead += `<style>${minifiedCss}</style>`;
         lastIndex = m.index + m.full.length;
       }
@@ -1522,8 +1625,15 @@ export const transpilePage = async (
   // Minify inline <script> content when configured.
   const jsMinifier = resolveScriptMinifier();
   if (jsMinifier) {
-    transpiledHtmlBody = await minifyScriptTagsInHtml(transpiledHtmlBody, jsMinifier);
-    transpiledHead = await minifyScriptTagsInHtml(transpiledHead, jsMinifier);
+    const pendingBodyJs = minifyScriptTagsInHtml(transpiledHtmlBody, jsMinifier);
+    pause();
+    transpiledHtmlBody = await pendingBodyJs;
+    resume();
+
+    const pendingHeadJs = minifyScriptTagsInHtml(transpiledHead, jsMinifier);
+    pause();
+    transpiledHead = await pendingHeadJs;
+    resume();
   }
 
   const replacements = [
@@ -1554,19 +1664,30 @@ export const transpilePage = async (
 
   const allUsedComponents = [...usedComponents, ...headUsedComponents];
 
-  const fileDependencies = await collectAllScriptDeps(rawHtml, pagePath);
+  const pendingDeps = collectAllScriptDeps(rawHtml, pagePath);
+  pause();
+  const fileDependencies = await pendingDeps;
+  resume();
+
   // Even on a "successful" transpile the page may reference a helper that does
   // not yet exist (e.g. the harness swallows the import failure). Track it so
   // creating the helper rebuilds the page; replace the page's prior set so
   // deps the page no longer references are reclaimed.
-  await recordMissingScriptDeps(rawHtml, pagePath);
+  const pendingMissingDeps = recordMissingScriptDeps(rawHtml, pagePath);
+  pause();
+  await pendingMissingDeps;
+  resume();
+
   for (const comp of allUsedComponents) {
     const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
     if (compContent) {
       const componentSourcePath = comp.fileName
         ? resolve(process.cwd(), comp.fileName)
         : undefined;
-      const compDeps = await collectAllScriptDeps(compContent, componentSourcePath);
+      const pendingCompDeps = collectAllScriptDeps(compContent, componentSourcePath);
+      pause();
+      const compDeps = await pendingCompDeps;
+      resume();
       for (const dep of compDeps) {
         if (!fileDependencies.includes(dep)) {
           fileDependencies.push(dep);
@@ -1576,19 +1697,23 @@ export const transpilePage = async (
   }
 
   if (BascikConfig.isBuild && !options?.deferDiskWrite) {
-    await writeTranspiledPage({
+    const pendingWrite = writeTranspiledPage({
       relativePagePath,
       absolutePagePath: pagePath,
       distHtml,
       cspHashes,
     });
+    pause();
+    await pendingWrite;
+    resume();
   }
+
+  pause();
 
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
-      const elapsed = performance.now() - start;
-      console.log(`transpiled: ${relativePagePath} in ${formatDuration(elapsed)}`);
+      console.log(`transpiled: ${relativePagePath} in ${formatDuration(workMs)}`);
     }
   }
 

@@ -162,7 +162,16 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return {
+    ...actual,
+    cpus: vi.fn().mockImplementation(() => actual.cpus()),
+  };
+});
+
 import { readFile } from "node:fs/promises";
+import { cpus } from "node:os";
 import { mem } from "./mem.ts";
 import { invalidateComponentListCache } from "./components.ts";
 import { listPages } from "./file-system.ts";
@@ -1085,6 +1094,87 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(callSequence).toContain("store:pages/getting-started.html");
     expect(callSequence).toContain("emit:pages/getting-started.html");
   });
+
+  it("reports per-page duration for work done rather than queue wait time across batch", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      const pageWorkMs = 25;
+      (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+        // Spin synchronously for pageWorkMs to simulate CPU work per page
+        const until = performance.now() + pageWorkMs;
+        while (performance.now() < until) {
+          // busy spin
+        }
+        return "<html><body>test</body></html>";
+      });
+
+      const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
+      const batchStart = performance.now();
+      await processPageBatch(pages, {});
+      const batchWallTime = performance.now() - batchStart;
+
+      const transpiledLogs = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((msg): msg is string => typeof msg === "string" && msg.startsWith("transpiled:"));
+
+      expect(transpiledLogs).toHaveLength(3);
+
+      let reportedSum = 0;
+      const reportedDurations: number[] = [];
+      for (const logLine of transpiledLogs) {
+        const match = logLine.match(/in\s+(\d+(?:\.\d+)?)(ms|s)/);
+        expect(match).not.toBeNull();
+        const rawVal = parseFloat(match![1]);
+        const unit = match![2];
+        const ms = unit === "s" ? rawVal * 1000 : rawVal;
+        reportedSum += ms;
+        reportedDurations.push(ms);
+        // Each page does ~25ms of work.
+        // Under the old staircase measurement, the 3rd page would report ~75ms (> 60ms).
+        expect(ms).toBeLessThan(60);
+      }
+
+      // Check sum of reported durations does not exceed batch wall time by more than 5%
+      expect(reportedSum).toBeLessThanOrEqual(batchWallTime * 1.05);
+
+      // Bound individual outliers (max <= 5 * median)
+      const sorted = [...reportedDurations].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      expect(median).toBeGreaterThan(0);
+      const max = sorted[sorted.length - 1];
+      expect(max).toBeLessThanOrEqual(5 * median);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("overlaps async child-process work across pages in processPageBatch", async () => {
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    const originalExecute = (executeBuildScripts as ReturnType<typeof vi.fn>).getMockImplementation();
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(async (html: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return html;
+    });
+
+    try {
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue("<html><body>test</body></html>");
+      const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
+      const start = performance.now();
+      await processPageBatch(pages, {});
+      const elapsed = performance.now() - start;
+
+      // With concurrent dispatch, 3 pages waiting 100ms finish concurrently in < 200ms.
+      // Under serial dispatch, they take ~300ms.
+      expect(elapsed).toBeLessThan(200);
+    } finally {
+      if (originalExecute) {
+        (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(originalExecute);
+      } else {
+        (executeBuildScripts as ReturnType<typeof vi.fn>).mockReset();
+      }
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1997,6 +2087,171 @@ describe("processAllPages – build mode sitemap", () => {
     expect(message).toContain("Build failed with 4 page errors");
     for (const page of pages) expect(message).toContain(page);
     expect(terminate).toHaveBeenCalledOnce();
+  });
+
+  it("emits diagnostic advisory at exact boundaries: elapsed=2000, jobs=20, cpus>=4", async () => {
+    (cpus as ReturnType<typeof vi.fn>).mockReturnValue([
+      {} as any, {} as any, {} as any, {} as any // 4 cores
+    ]);
+    const pages = Array.from({ length: 20 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 2000 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      await processAllPages({ useWorkers: false });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+
+      expect(diagnosticLine).toBeDefined();
+      expect(diagnosticLine).toContain("pipeline.workers: true");
+    } finally {
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("suppresses the diagnostic advisory at boundary: cpus < 4", async () => {
+    (cpus as ReturnType<typeof vi.fn>).mockReturnValue([
+      {} as any, {} as any, {} as any // 3 cores (< 4)
+    ]);
+    const pages = Array.from({ length: 20 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 2500 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      await processAllPages({ useWorkers: false });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+      expect(diagnosticLine).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("suppresses the diagnostic advisory when useWorkers is true", async () => {
+    const pages = Array.from({ length: 20 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 2500 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      await processAllPages({ useWorkers: true });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+      expect(diagnosticLine).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("suppresses the diagnostic advisory in build mode", async () => {
+    const pages = Array.from({ length: 20 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 2500 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = true;
+      await processAllPages({ useWorkers: false });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+      expect(diagnosticLine).toBeUndefined();
+    } finally {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("suppresses the diagnostic advisory at boundary: elapsed=1999 (under 2000ms)", async () => {
+    const pages = Array.from({ length: 20 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 1999 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      await processAllPages({ useWorkers: false });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+      expect(diagnosticLine).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it("suppresses the diagnostic advisory at boundary: jobs=19 (under 20)", async () => {
+    const pages = Array.from({ length: 19 }, (_, i) => `src/pages/page-${i}.html`);
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
+    let callCount = 0;
+    nowSpy.mockImplementation(() => {
+      callCount++;
+      return callCount > 1 ? 2500 : 0;
+    });
+
+    try {
+      (BascikConfig as Record<string, unknown>).isBuild = false;
+      await processAllPages({ useWorkers: false });
+
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      const diagnosticLine = logs.find((l) => l.includes("💡 Boot transpilation took"));
+      expect(diagnosticLine).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
 });
 

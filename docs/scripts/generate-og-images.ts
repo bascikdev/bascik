@@ -27,7 +27,7 @@ import { NAV } from '../src/lib/nav.ts';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
 const fontsDir = join(docsDir, 'fonts');
-const distOgDir = join(docsDir, 'dist', 'assets', 'og');
+const distOgDir = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets', 'og');
 
 // Custom font paths for resvg
 const fontPaths = [
