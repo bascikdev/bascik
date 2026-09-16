@@ -9,7 +9,7 @@ transpiled: pages/cli.html in 0.5ms
 transpiled: pages/license.html in 0.3ms
 transpiled: pages/getting-started.html in 0.6ms
 ...
-✓ 59 pages transpiled in 1.42s
+✓ 78 pages transpiled in 1.39s
 Server running at http://localhost:8080
 ```
 

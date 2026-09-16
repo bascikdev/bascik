@@ -138,7 +138,7 @@ Bascik solves this with open-page priority batching (`partitionByOpenPages` in `
 3. **Immediate reload emission:** The dev server transpiles all `openPages` first, commits them into `MemoryStore`, and emits the `"transpiled"` event immediately. Connected browser tabs reload in milliseconds.
 4. **Background completion:** Once the active tabs have been updated, the remaining pages are transpiled and cached in the background.
 
-This prioritization operates identically whether running on the main thread or across multi-threaded workers via `WorkerPool` (`pipeline.workers: true`).
+This prioritization operates identically whether running on the main thread or across multi-threaded workers via `WorkerPool` (`pipeline.workers: true`). In single-threaded execution, per-page durations approximate synchronous page work by excluding time parked at Bascik's explicit await boundaries. They are not total CPU-time measurements and exclude asynchronous callee continuations that run while a page is paused. In dev mode, transpiling at least 20 page jobs in 2.0s or longer on a machine with 4 or more CPU cores emits an advisory suggesting `pipeline.workers: true`. This does not change configuration automatically.
 
 Lifecycle publication scopes preserve compilation priority but defer reload delivery through post. Both main-thread and worker results join their disk writes before post scripts inspect `dist/`.
 

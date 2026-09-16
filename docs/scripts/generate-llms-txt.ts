@@ -20,7 +20,7 @@ import { NAV } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
-const outputFile = join(docsDir, 'dist', 'llms.txt');
+const outputFile = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'llms.txt');
 const siteUrl = 'https://bascik.dev';
 
 function stripMd(text: string): string {

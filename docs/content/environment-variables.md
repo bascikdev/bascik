@@ -12,7 +12,8 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 | `BASCIK_SOURCE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the file currently executing the script (points to the component template in components, or the page file in pages). |
 | `BASCIK_PAGE_FILE` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the top-level HTML page shell currently being compiled. Always points to the page shell even when inside nested components. |
 | `BASCIK_SITE_URL` | `data-bascik-build`, `data-bascik-routes` | The site URL resolved from `--site-url`, the `BASCIK_SITE_URL` environment variable, or a `.env` file (e.g. `https://bascik.dev`). Absent when unset, never an empty string. |
-| `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes` | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
+| `BASCIK_PAGES_DIR` | `data-bascik-build`, `data-bascik-routes`, exec scripts | Absolute filesystem path to the configured pages directory (`directory.pages`, defaults to `<root>/src/pages`). |
+| `BASCIK_OUT_DIR` | Exec scripts | Absolute filesystem path to the configured output directory (`directory.out`, defaults to `<root>/dist`). |
 | `BASCIK_ROUTE` | `data-bascik-build` (dynamic routes) | JSON string of `{ params, data }` for the current route instance in parameterized page templates like `[slug].html`. |
 | `BASCIK_BUILD` | All build scripts, worker threads, and exec scripts | `"1"` when running static compilation (`bascik --build`), `"0"` during local development (`bascik`). |
 | `BASCIK_SERVER` | Server scripts and worker threads | `"1"` when running the production server (`bascik --server`), `"0"` otherwise.  |
