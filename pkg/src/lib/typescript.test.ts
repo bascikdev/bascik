@@ -7,6 +7,7 @@ import {
   transformTypeScriptScriptTags,
   transformBrowserTypeScript,
   looksLikeTypeScript,
+  hasStaticModuleSyntax,
   TYPESCRIPT_SCRIPT_TYPE,
   TypeScriptTransformError,
 } from "./typescript.ts";
@@ -197,6 +198,41 @@ describe("looksLikeTypeScript", () => {
   });
 });
 
+describe("hasStaticModuleSyntax", () => {
+  it("detects top-level import declarations", () => {
+    expect(hasStaticModuleSyntax("import { a } from './a.js';\nconsole.log(a);")).toBe(true);
+    expect(hasStaticModuleSyntax("import * as ns from './a.js';")).toBe(true);
+    expect(hasStaticModuleSyntax("import def from './a.js';")).toBe(true);
+    expect(hasStaticModuleSyntax("import './side-effect.js';")).toBe(true);
+  });
+
+  it("detects export declarations of every shape", () => {
+    expect(hasStaticModuleSyntax("export const x = 1;")).toBe(true);
+    expect(hasStaticModuleSyntax("export function f() {}")).toBe(true);
+    expect(hasStaticModuleSyntax("export default 1;")).toBe(true);
+    expect(hasStaticModuleSyntax("const x = 1;\nexport { x };")).toBe(true);
+  });
+
+  it("returns false for ordinary classic script code, including tricky lookalikes", () => {
+    expect(hasStaticModuleSyntax("const a = 1; console.log(a);")).toBe(false);
+    expect(hasStaticModuleSyntax("")).toBe(false);
+    // `import`/`export` inside a string, comment, or regex literal are not syntax.
+    expect(hasStaticModuleSyntax("const s = 'export const x = 1';")).toBe(false);
+    expect(hasStaticModuleSyntax("// export const x = 1;\nconst y = 1;")).toBe(false);
+    expect(hasStaticModuleSyntax("const re = /export/;")).toBe(false);
+    // `import.meta` and a member/property named `import`/`export` are not declarations.
+    expect(hasStaticModuleSyntax("console.log(import.meta.url);")).toBe(false);
+    expect(hasStaticModuleSyntax("obj.export();")).toBe(false);
+    expect(hasStaticModuleSyntax("const o = { export: 1 };")).toBe(false);
+  });
+
+  it("does not treat dynamic import() as static module syntax", () => {
+    // Dynamic import() is a valid expression in a classic script; only the
+    // static declaration forms are unsupported there.
+    expect(hasStaticModuleSyntax("const m = await import('./a.js');")).toBe(false);
+  });
+});
+
 describe("transformTypeScriptScriptTags", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -255,6 +291,21 @@ describe("transformTypeScriptScriptTags", () => {
   it("throws with file context when a marked TypeScript script uses non-erasable syntax", async () => {
     const html = '<script type="text/typescript">enum E { A }</script>';
     await expect(transformTypeScriptScriptTags(html, "src/pages/index.html")).rejects.toThrow(/src\/pages\/index\.html/);
+  });
+
+  it("throws an actionable diagnostic when a text/typescript block contains import/export, since it always becomes a classic script", async () => {
+    const html = '<script type="text/typescript">import { helper } from "./helper.ts";\nhelper();</script>';
+    await expect(transformTypeScriptScriptTags(html, "src/components/widget/widget.html")).rejects.toThrow(
+      TypeScriptTransformError,
+    );
+    await expect(transformTypeScriptScriptTags(html, "src/components/widget/widget.html")).rejects.toThrow(
+      /src\/components\/widget\/widget\.html[\s\S]*import\/export/i,
+    );
+  });
+
+  it("throws for a bare export declaration in a text/typescript block", async () => {
+    const html = '<script type="text/typescript">export const n: number = 1;</script>';
+    await expect(transformTypeScriptScriptTags(html, "src/pages/index.html")).rejects.toThrow(TypeScriptTransformError);
   });
 
   it("is safe against $-tokens in the script body", async () => {

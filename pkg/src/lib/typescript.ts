@@ -30,7 +30,10 @@ import { stripTypeScriptTypes } from "node:module";
 import { BascikConfig } from "./config.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 import { getScriptType } from "./script-types.ts";
+import { hasStaticModuleSyntax } from "./module-specifiers.ts";
 import type { TypeScriptCompileContext, TypeScriptCompilerOption } from "./types.ts";
+
+export { hasStaticModuleSyntax };
 
 export const TYPESCRIPT_SCRIPT_TYPE = "text/typescript";
 
@@ -223,6 +226,24 @@ const withoutTypeAttribute = (openTag: string): string => {
 };
 
 /**
+ * Both browser TypeScript paths (companion `.ts`, inline `text/typescript`)
+ * always land in a classic `<script>` unless the tag is explicitly
+ * `type="module"`. Bascik intentionally does not bundle module graphs (that
+ * is a job for esbuild, swc, or a browser-native `type="module"` script), so
+ * static `import`/`export` surviving the strip is an authoring error, not
+ * something to silently rewrite.
+ */
+const throwModuleSyntaxError = (sourcePath: string): never => {
+  throw new TypeScriptTransformError(
+    `[bascik] TypeScript transformation failed in "${sourcePath}": ` +
+    `the script contains a static import/export declaration, which is only valid in an ES module. ` +
+    `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
+    `Mark the <script> tag type="module" (native ES modules are never wrapped), or bundle this file with ` +
+    `esbuild, swc, or another tool first so it has no import/export left.`,
+  );
+};
+
+/**
  * Transform every inline `<script type="text/typescript">` in `html` into an
  * ordinary `<script>` containing JavaScript, using the configured compiler.
  * When `scripts.typescript` is `false` marked blocks are left exactly as
@@ -272,6 +293,13 @@ export const transformTypeScriptScriptTags = async (
   const compiled = await Promise.all(
     ops.map(({ body }) => transformBrowserTypeScript(body, { sourcePath: sourceFile, kind: "inline" })),
   );
+  // A `type="text/typescript"` block always comes out as a classic script
+  // (the `type` attribute is removed below), so static `import`/`export`
+  // syntax in the compiled output would throw a SyntaxError in the browser.
+  // Fail the build with an actionable message instead of shipping that.
+  for (let i = 0; i < compiled.length; i++) {
+    if (hasStaticModuleSyntax(compiled[i])) throwModuleSyntaxError(sourceFile);
+  }
   let result = html;
   for (let i = ops.length - 1; i >= 0; i--) {
     const { index, len, open, close } = ops[i];

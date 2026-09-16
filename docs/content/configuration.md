@@ -428,6 +428,8 @@ export default defineConfig({
 
 This option covers browser scripts only. Build, routes, server, and API route files are executed by Node directly, so their TypeScript is handled by Node itself; pass Node flags such as `--experimental-transform-types` through `NODE_OPTIONS` if those files need more than erasable syntax. The unmarked-`<script>` TypeScript diagnostic is independent of this setting and always runs.
 
+Regardless of which compiler runs, if the resulting JavaScript still contains a static `import`/`export` declaration and the target `<script>` tag isn't `type="module"`, the build fails fast rather than emitting a classic-script IIFE that would throw a SyntaxError in the browser. Mark the tag `type="module"`, or have your compiler (or a bundler step beforehand) resolve the module graph so no `import`/`export` remains. See [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
+
 #### `scripts.onServerScriptError`
 
 Controls error handling for both `data-bascik-server` and `data-bascik-stream` scripts (`'error'`, `'warn'`, or `'ignore'`).

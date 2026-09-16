@@ -47,6 +47,7 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
+import { TypeScriptTransformError } from "./typescript.ts";
 
 const mockDeepReadDirFlat = deepReadDirFlat as ReturnType<typeof vi.fn>;
 const mockExecuteBuildScripts = executeBuildScripts as ReturnType<typeof vi.fn>;
@@ -417,6 +418,51 @@ describe("listComponents – companion scripts", () => {
       .mockResolvedValueOnce(Buffer.from("enum Mode { A, B }\nconsole.log(Mode.A);\n"));
 
     await expect(listComponents()).rejects.toThrow(/enum-comp\.ts[\s\S]*enum/i);
+  });
+
+  it("fails a .ts companion with an actionable diagnostic when it uses import/export but the <script> tag isn't type=\"module\"", async () => {
+    // The stripped output is still module-shaped, and this <script src> has no
+    // type="module", so it would be silently wrapped in a classic IIFE and
+    // throw a SyntaxError in the browser. Fail the build instead, at the same
+    // point the enum non-erasable-syntax error already fails it.
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="module-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from(
+        "import { message } from './helper.ts';\nconsole.log(message);\n",
+      ));
+
+    await expect(listComponents()).rejects.toThrow(/module-widget\.ts[\s\S]*import\/export/i);
+  });
+
+  it("fails a .ts companion with an actionable diagnostic when it uses a bare export declaration", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/exporting-widget/exporting-widget.html",
+      "src/components/exporting-widget/exporting-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="exporting-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("export const n: number = 1;\nconsole.log(n);\n"));
+
+    await expect(listComponents()).rejects.toThrow(TypeScriptTransformError);
+  });
+
+  it("allows a .ts companion with import/export when the referencing <script> tag is type=\"module\"", async () => {
+    // A native ES module script is never wrapped in an IIFE, so module syntax
+    // in its companion is safe and must be left alone.
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/module-widget/module-widget.html",
+      "src/components/module-widget/module-widget.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script type="module" src="module-widget.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("export const n = 1;\nconsole.log(n);\n"));
+
+    const result = await listComponents();
+    expect(result["module-widget"].fileContent).toContain("export const n = 1;");
   });
 });
 

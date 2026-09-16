@@ -7,7 +7,8 @@ import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
-import { transformTypeScriptScriptTags, TypeScriptTransformError } from "./typescript.ts";
+import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
+import { getScriptType } from "./script-types.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -291,6 +292,20 @@ export const listComponents = async (): Promise<ComponentList> => {
             if (scriptInfo) {
               const otherAttrs = `${preSrc}${postSrc}`.replace(/\s+/g, " ").trim();
               const attrStr = otherAttrs ? ` ${otherAttrs}` : "";
+              // A companion script inlined here becomes a classic <script>
+              // and is later wrapped in an IIFE unless the referencing tag is
+              // type="module" (native ES modules are never wrapped). Static
+              // import/export surviving the TypeScript strip would otherwise
+              // throw a SyntaxError in the browser; fail the build instead.
+              if (getScriptType(`<script${attrStr}>`) !== "module" && hasStaticModuleSyntax(scriptInfo.code)) {
+                throw new TypeScriptTransformError(
+                  `[bascik] TypeScript transformation failed in "${scriptInfo.relPath}": ` +
+                  `the script contains a static import/export declaration, which is only valid in an ES module. ` +
+                  `Bascik would otherwise wrap this in a classic script IIFE and it would throw a SyntaxError in the browser. ` +
+                  `Mark the referencing <script src="${srcVal}"> tag type="module" (native ES modules are never wrapped), ` +
+                  `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
+                );
+              }
               return `<script${attrStr} data-bascik-source="${scriptInfo.relPath}">\n${scriptInfo.code}\n</script>`;
             }
             return match;
