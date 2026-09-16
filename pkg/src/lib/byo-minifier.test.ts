@@ -6,12 +6,18 @@ import postcss from "postcss";
 import autoprefixer from "autoprefixer";
 import { BascikConfig } from "./config.ts";
 import { transpilePage } from "./processing.ts";
+import { minifyHtml } from "./html-minifier.ts";
 
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
   writeFile: vi.fn(async () => { }),
   mkdir: vi.fn(async () => { }),
 }));
+
+vi.mock("./html-minifier.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./html-minifier.ts")>();
+  return { ...actual, minifyHtml: vi.fn(actual.minifyHtml) };
+});
 
 vi.mock("./config.js", () => ({
   shouldLog: vi.fn(() => true),
@@ -367,5 +373,37 @@ describe("BYOMinifier (Bring Your Own Minifier) – real library integrations", 
     // The script must preserve newlines so comments do not swallow const statements
     expect(html).toMatch(/const firstVar\s*=\s*1;/);
     expect(html).toMatch(/const secondVar\s*=\s*2;/);
+  });
+
+  it("logs a warning and proceeds with an unminified head when head HTML minification fails and onMinifyError is 'warn'", async () => {
+    (BascikConfig as any).onMinifyError = "warn";
+    (BascikConfig.minify as any).html = true;
+
+    const mockedMinifyHtml = vi.mocked(minifyHtml);
+    mockedMinifyHtml.mockImplementationOnce(() => {
+      throw new Error("HTML Syntax Error");
+    });
+
+    const pageHtml = `<!DOCTYPE html><html><head>
+      <meta name="description" content="test">
+    </head><body>
+      <p>Hello</p>
+    </body></html>`;
+    vi.mocked(readFile).mockResolvedValue(pageHtml);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    const result = await transpilePage("src/pages/index.html", {});
+    expect(result).not.toBeNull();
+    // The head still contains the unminified meta tag rather than failing the build.
+    expect(result!.distHtml).toContain('<meta name="description" content="test">');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("HTML minification failed for head"),
+      expect.any(Error)
+    );
+
+    warnSpy.mockRestore();
+    mockedMinifyHtml.mockRestore();
+    (BascikConfig as any).onMinifyError = "error";
   });
 });

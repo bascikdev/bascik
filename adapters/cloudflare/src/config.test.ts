@@ -355,6 +355,21 @@ describe("parseToml", () => {
     );
   });
 
+  it("rejects duplicate keys and tables without disclosing secret canaries in the error", () => {
+    const canary = "THIS_IS_A_SECRET_CANARY_98765_WXYZ";
+    const dupKeyToml = `name = "a"\nname = "` + canary + `"`;
+    expect(() => parseToml(dupKeyToml, "wrangler.toml")).toThrowError(
+      /\[bascik\] Failed to parse wrangler\.toml/,
+    );
+    expect(errorMessageFrom(() => parseToml(dupKeyToml, "wrangler.toml"))).not.toContain(canary);
+
+    const dupTableToml = `[vars]\na = "` + canary + `"\n[vars]\nb = 2`;
+    expect(() => parseToml(dupTableToml, "wrangler.toml")).toThrowError(
+      /\[bascik\] Failed to parse wrangler\.toml/,
+    );
+    expect(errorMessageFrom(() => parseToml(dupTableToml, "wrangler.toml"))).not.toContain(canary);
+  });
+
   it("rejects malformed values", () => {
     for (const bad of [`a = `, `[env."staging`, `x = "unterminated`]) {
       expect(() => parseToml(bad, "wrangler.toml")).toThrowError(

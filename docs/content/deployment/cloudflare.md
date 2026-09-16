@@ -132,7 +132,7 @@ The `run_worker_first` array lists **exact path patterns** that the Worker must 
 - If the path matches an **API route** (`/api/*`), the Worker dispatches to the appropriate API handler.
 - If the path matches a **dynamic page alias** (e.g. `/account.html` for `/account`), the Worker renders the corresponding dynamic page.
 
-Requests **not** listed in `run_worker_first` are served directly by the CDN from `./public` — the Worker is never invoked, which eliminates execution cost and latency for purely static content.
+Requests **not** listed in `run_worker_first` are served directly by the CDN from `./public`; the Worker is never invoked, which eliminates execution cost and latency for purely static content.
 
 ### Selective vs. Global `run_worker_first`
 
