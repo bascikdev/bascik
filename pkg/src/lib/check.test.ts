@@ -92,6 +92,21 @@ describe("extractCustomTags", () => {
       '<code class="demo"><example-tag></example-tag></code><used-tag></used-tag>';
     expect([...extractCustomTags(html)]).toEqual(["used-tag"]);
   });
+
+  it("blanks content inside tags matching a preserve wildcard", () => {
+    const scoping = (BascikConfig as any).scoping;
+    const original = scoping.preserve;
+    scoping.preserve = ["vendor-*"];
+    try {
+      // The preserved tag's own open tag is still scanned (same as exact-name
+      // preserve today); only its inner content is blanked.
+      const html =
+        '<vendor-widget><example-tag></example-tag></vendor-widget><used-tag></used-tag>';
+      expect([...extractCustomTags(html)]).toEqual(["vendor-widget", "used-tag"]);
+    } finally {
+      scoping.preserve = original;
+    }
+  });
 });
 
 describe("checkProject", () => {

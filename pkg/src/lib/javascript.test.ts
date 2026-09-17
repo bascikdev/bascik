@@ -152,6 +152,20 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
     );
   });
 
+  it("uses the same preservation path for a configured wildcard pattern", () => {
+    let component = makeComponent(
+      '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner"></span></vendor-widget>' +
+      '<p id="outer" name="outer" class="outer"></p>',
+    );
+    component = prefixElementAttribute(component, "id", "test1234", true, ["vendor-*"]);
+    component = prefixElementAttribute(component, "name", "test1234", true, ["vendor-*"]);
+    component = prefixElementAttribute(component, "class", "test1234", true, ["vendor-*"]);
+    expect(component.fileContent).toBe(
+      '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner"></span></vendor-widget>' +
+      `<p id="${scope("outer")}" name="${scope("outer")}" class="${scopeClass("outer")}"></p>`,
+    );
+  });
+
   it("keeps radio names shared within an instance and distinct between instances", () => {
     const source = '<input type="radio" name="plan"><input type="radio" name="plan">';
     const first = prefixElementAttribute(makeComponent(source), "name", "first123");

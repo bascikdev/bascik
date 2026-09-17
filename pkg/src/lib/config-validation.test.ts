@@ -577,6 +577,35 @@ describe("scoping.preserve and assets.exclude", () => {
     ).toHaveLength(0);
   });
 
+  it("accepts wildcard patterns in preserve entries", () => {
+    expect(validateConfigShape({ scoping: { preserve: ["vendor-*"] } })).toHaveLength(0);
+    expect(validateConfigShape({ scoping: { preserve: ["*-widget"] } })).toHaveLength(0);
+    expect(validateConfigShape({ scoping: { preserve: ["*"] } })).toHaveLength(0);
+    expect(validateConfigShape({ scoping: { preserve: ["code", "vendor-*"] } })).toHaveLength(0);
+  });
+
+  it("still rejects malformed preserve entries alongside wildcards", () => {
+    expect(validateConfigShape({ scoping: { preserve: ["div span"] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: [""] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: ["ven dor"] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: ["a".repeat(51)] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: [42 as any] } })).toHaveLength(1);
+  });
+
+  it("holds an entry without * to the plausible tag name rule", () => {
+    const errors = validateConfigShape({ scoping: { preserve: ["vendor-*", "1bad"] } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("scoping.preserve[1]");
+    expect(errors[0].value).toBe("1bad");
+  });
+
+  it("rejects wildcard entries with characters outside [a-zA-Z0-9-*]", () => {
+    expect(validateConfigShape({ scoping: { preserve: ["vendor_*"] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: ["vendor-?"] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: ["vendor-[ab]"] } })).toHaveLength(1);
+    expect(validateConfigShape({ scoping: { preserve: [`vendor-${"*".repeat(60)}`] } })).toHaveLength(1);
+  });
+
   it("rejects invalid exclude glob entries", () => {
     expect(validateConfigShape({ assets: { exclude: [""] } })).toHaveLength(1);
     expect(validateConfigShape({ assets: { exclude: [42 as any] } })).toHaveLength(1);

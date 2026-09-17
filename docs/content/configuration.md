@@ -297,6 +297,16 @@ An array of HTML element names whose `id`, `name`, and `class` attributes, conte
 
 Defaults to `['code']`.
 
+Entries can be exact tag names or wildcard patterns. A `*` matches any run of tag-name characters, so `preserve: ['vendor-*']` preserves every tag whose name starts with `vendor-`, `['*-widget']` matches a suffix, and `['*']` preserves every tag. Wildcards use the exact same semantics as exact names.
+
+```ts
+export default defineConfig({
+  scoping: {
+    preserve: ['code', 'vendor-*'],
+  },
+});
+```
+
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
 
 For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. See [Preserve Scoping](/preserve).

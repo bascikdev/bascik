@@ -164,6 +164,11 @@ export interface ScopingOptions {
   scriptBlocks: boolean;
   inheritAttributes: boolean;
   attributes: ScopingAttributesOptions;
+  /**
+   * Tag names whose `id`, `name`, and `class` attributes, contents, and
+   * descendants stay unscoped. Entries are exact tag names or `*` wildcard
+   * patterns (for example `vendor-*`); both use the same semantics.
+   */
   preserve: string[];
   deduplicateCss: boolean;
 }

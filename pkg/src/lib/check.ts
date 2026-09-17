@@ -103,9 +103,11 @@ export const suggestComponentName = (tag: string, knownComponents: Iterable<stri
  * configured in `scoping.preserve` (defaults to `["code"]`).
  */
 const stripElementContents = (html: string): string => {
+  // Keep entries that satisfy the scoping.preserve validation rule (tag names
+  // and `*` wildcard patterns) and drop anything else.
   const extra = (BascikConfig.scoping?.preserve ?? [])
-    .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
-    .filter(Boolean);
+    .map((t) => String(t))
+    .filter((t) => /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/.test(t) || /^(?=.*\*)[a-zA-Z0-9-*]{1,50}$/.test(t));
   const protectedTags = ["script", "style", "textarea", ...extra];
   return maskElementContents(html, protectedTags);
 };
