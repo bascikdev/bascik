@@ -22,8 +22,9 @@
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeAll } from "vitest";
 import { mkdtemp, readFile, writeFile, rm, access } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
@@ -33,10 +34,14 @@ import { scaffold } from "./scaffold.ts";
 
 const execFileAsync = promisify(execFile);
 
-// Resolve package CLI binary path
+// Resolve package CLI binary path and dist entry point
 const PKG_CLI = resolve(
   fileURLToPath(import.meta.url),
   "../../../pkg/bin/bascik.js",
+);
+const PKG_DIST_INDEX = resolve(
+  fileURLToPath(import.meta.url),
+  "../../../pkg/dist/index.js",
 );
 
 const tempDirs: string[] = [];
@@ -87,6 +92,15 @@ async function runBascikBuild(projectDir: string, extraArgs: string[] = []): Pro
 }
 
 describe("scaffold-to-compiler integration", () => {
+  beforeAll(() => {
+    if (!existsSync(PKG_DIST_INDEX)) {
+      throw new Error(
+        `[scaffold.integration.test] Required artifact missing: ${PKG_DIST_INDEX}. ` +
+          "Run `yarn pkg:build` before running create-bascik integration tests.",
+      );
+    }
+  });
+
   it("scaffolds and compiles a new project with real compiler and full artifact verification", async () => {
     const parentDir = await createTempDir("default");
     const projectName = "test-site";

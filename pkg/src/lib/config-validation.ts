@@ -177,12 +177,12 @@ const VALID_SCRIPT_ERROR_VALUES = new Set(["warn", "error", "ignore"]);
 const VALID_MINIFY_ERROR_VALUES = new Set(["warn", "error"]);
 const VALID_LOG_LEVELS = new Set(["silent", "error", "warn", "info", "debug"]);
 
-const PLAUSIBLE_TAG_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/;
+export const PLAUSIBLE_TAG_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/;
 /**
  * A preserve wildcard: 1 to 50 characters from [a-zA-Z0-9-*] containing at
  * least one `*`. `*` is the only metacharacter; consecutive `*` behave as one.
  */
-const PRESERVE_WILDCARD_PATTERN = /^(?=.*\*)[a-zA-Z0-9-*]{1,50}$/;
+export const PRESERVE_WILDCARD_PATTERN = /^(?=.*\*)[a-zA-Z0-9-*]{1,50}$/;
 const PLAUSIBLE_HOSTNAME = /^[a-zA-Z0-9._:-]+$/;
 
 /** A "valid glob" here: a non-empty string with balanced square brackets. */

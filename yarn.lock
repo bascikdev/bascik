@@ -168,6 +168,9 @@ __metadata:
     vitest: "npm:^4.1.10"
     web-features: "npm:^3.36.0"
     webidl2: "npm:^24.5.0"
+  dependenciesMeta:
+    chokidar:
+      optional: true
   bin:
     bascik: bin/bascik.js
   languageName: unknown
