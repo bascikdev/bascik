@@ -340,7 +340,7 @@
     /* ── Pillars ── */
     .pillars-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 20px;
     }
 
@@ -563,6 +563,10 @@
       .docs-grid {
         grid-template-columns: repeat(2, 1fr);
       }
+
+      .pillars-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
     @media (max-width: 480px) {
@@ -652,6 +656,7 @@
           class="install-command hero-quickstart"><code>npm create bascik@latest</code><button class="install-copy-btn" type="button" aria-label="Copy" title="Copy"><svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg class="copy-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></button></pre>
         <ul class="hero-stats">
           <li><strong>0 kB</strong> framework JS added</li>
+          <li><strong>Zero prod deps</strong> (single dev dep)</li>
           <li><strong>78 pages</strong> transpiled in ~1.4s</li>
           <li><a href="/performance"><strong>Lighthouse 100s</strong> out of the box</a></li>
           <li><strong>Use what you know</strong>: vanilla HTML, CSS, JS</li>
@@ -863,6 +868,11 @@
             <h3>Works instantly</h3>
             <p>No bundler setups, complex configs, or transpiler chains. Run <code>bascik</code> and start building
               instantly with standard Node.js.</p>
+          </div>
+          <div class="pillar">
+            <div class="pillar-label">Zero Dependencies</div>
+            <h3>Lean in production</h3>
+            <p>Zero production dependencies at build and server runtime. A single optional dependency (<code>chokidar</code>) powers local dev file watching.</p>
           </div>
           <div class="pillar">
             <div class="pillar-label">Zero Learning Curve</div>

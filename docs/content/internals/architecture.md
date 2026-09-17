@@ -135,9 +135,9 @@ index.ts
 
 `BascikConfig` is initialized once at startup via `config.ts` and frozen with `Object.freeze()`. Every module imports this singleton directly. There is no dependency injection, configuration is a module-level constant that is immutable at runtime.
 
-### No runtime framework
+### Zero production dependencies
 
-Bascik has a single runtime dependency: [chokidar](https://github.com/paulmillr/chokidar) for file watching. Everything else uses Node.js built-ins (`node:fs`, `node:http2`, `node:crypto`, `node:zlib`). This keeps the install footprint minimal and eliminates version-conflict surface area for users.
+Bascik has zero mandatory production dependencies. Everything at production runtime (`bascik --server`) and static build time (`bascik --build`) uses Node.js built-ins (`node:fs`, `node:http2`, `node:crypto`, `node:zlib`). [chokidar](https://github.com/paulmillr/chokidar) is an optional dependency loaded lazily and used solely by the local development server for file watching. This keeps the production install footprint minimal, enables zero-dependency container deployments (via `--omit=optional`), and eliminates version-conflict surface area for users.
 
 ### Avoiding ASTs and browser emulation
 

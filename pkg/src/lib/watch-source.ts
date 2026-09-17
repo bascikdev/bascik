@@ -1,5 +1,5 @@
-import chokidar from 'chokidar';
 import { basename, resolve, sep } from 'node:path';
+import { loadChokidar } from './dev-watcher.ts';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { createSourceCycle } from './source-cycle.ts';
@@ -91,6 +91,7 @@ export const watchSourceCycles = async (
     deferred.clear();
   };
   eventEmitter.once('boot-done', onBoot);
+  const chokidar = await loadChokidar();
   const watcher = chokidar.watch([...new Set([
     pagesRoot, ...componentRoots, ...watchPaths.map(sourceWatchRoot), ...execPatterns.map(sourceWatchRoot),
   ])], {

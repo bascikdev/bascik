@@ -39,7 +39,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
+  "dependencies": {},
+  "optionalDependencies": {
     "chokidar": "^5.0.0"
   },
   "devDependencies": {

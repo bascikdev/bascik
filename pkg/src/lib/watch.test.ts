@@ -750,6 +750,7 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
       .mockImplementationOnce(() => deferredWatcher);
 
     const watchPromise = watchFiles();
+    await new Promise((r) => setTimeout(r, 0));
 
     // ready has not fired yet — initialScanDone is still false
     captured["add"]?.("/new-page.html");
@@ -785,6 +786,7 @@ describe("watchFiles – add before ready (initialScanDone = false)", () => {
       .mockImplementation(() => simpleWatcher);
 
     const watchPromise = watchFiles({ bootCompile });
+    await new Promise((r) => setTimeout(r, 0));
 
     expect(bootCompile).not.toHaveBeenCalled();
     await captured["ready"]?.();
