@@ -14,7 +14,9 @@
  *    response and never sends a second header set.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { apiRouteRegistry } from "./server-api.ts";
+import { EventEmitter, getEventListeners } from "node:events";
+import { apiRouteRegistry, streamApiResponse } from "./server-api.ts";
+import { createResponseSink } from "./response-sink.ts";
 import { scriptRegistry } from "./script-registry.ts";
 import { createRequestHandler, type BascikRequest, type BascikResponse } from "./server.ts";
 
@@ -782,5 +784,150 @@ describe("prompt 110: real loopback slow-reader/reset and resource baseline", ()
     } finally {
       client.close();
     }
+  });
+
+  describe("packet R1: reader repetition on synthetic transport profiling boundary bridge", () => {
+    /** Helper to assert unlocked reader and zero baseline listeners on synthetic transport */
+    const assertBoundarySettled = (
+      body: ReadableStream<Uint8Array>,
+      emitter: EventEmitter,
+      aborted: AbortController,
+      context?: string,
+    ): void => {
+      const prefix = context ? `${context}: ` : "";
+      expect(body.locked, `${prefix}expected reader to be unlocked`).toBe(false);
+      expect(emitter.listenerCount("drain"), `${prefix}retained "drain" listener`).toBe(0);
+      expect(emitter.listenerCount("close"), `${prefix}retained "close" listener`).toBe(0);
+      expect(getEventListeners(aborted.signal, "abort").length, `${prefix}retained abort listener`).toBe(0);
+    };
+
+    it("ownership oracle: rejects retained reader lock (negative control)", () => {
+      const body = new ReadableStream<Uint8Array>();
+      const emitter = new EventEmitter();
+      const aborted = new AbortController();
+      const testReader = body.getReader();
+
+      try {
+        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(/expected reader to be unlocked/);
+      } finally {
+        testReader.releaseLock();
+        assertBoundarySettled(body, emitter, aborted);
+      }
+    });
+
+    it("ownership oracle: rejects retained listener (negative control)", () => {
+      const body = new ReadableStream<Uint8Array>();
+      const emitter = new EventEmitter();
+      const aborted = new AbortController();
+
+      const testListener = () => {};
+      emitter.on("drain", testListener);
+      try {
+        expect(() => assertBoundarySettled(body, emitter, aborted)).toThrow(/retained "drain" listener/);
+      } finally {
+        emitter.off("drain", testListener);
+        assertBoundarySettled(body, emitter, aborted);
+      }
+    });
+
+    it.each(["drain", "cancel"] as const)(
+      "100 reader cycles on profiling boundary bridge release lock, listeners, and match exact bytes (%s)",
+      async (kind) => {
+        const disconnect = kind === "cancel";
+        for (let cycle = 0; cycle < 100; cycle++) {
+          const label = `kind=${kind} cycle=${cycle}`;
+          const emitter = new EventEmitter();
+          const written = Promise.withResolvers<void>();
+          const aborted = new AbortController();
+          const bytes: Buffer[] = [];
+          let pulls = 0;
+          let cancels = 0;
+          let ended = false;
+          let destroyed = false;
+
+          // Synthetic transport fixture matching profiling boundary bridge (pkg/bench/profile-boundaries.ts)
+          const response: BascikResponse = {
+            headersSent: false,
+            get destroyed() {
+              return destroyed;
+            },
+            writable: emitter as unknown as NodeJS.WritableStream,
+            respond() {},
+            write(chunk) {
+              bytes.push(Buffer.isBuffer(chunk) ? Buffer.from(chunk) : Buffer.from(chunk, "utf8"));
+              written.resolve();
+              return false; // Force backpressure so drain is exercised
+            },
+            end() {
+              ended = true;
+            },
+            close() {
+              destroyed = true;
+              emitter.emit("close");
+            },
+            on(event, listener) {
+              emitter.on(event, listener);
+            },
+            off(event, listener) {
+              emitter.off(event, listener);
+            },
+          };
+
+          const body = new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                pulls++;
+                if (pulls === 1) controller.enqueue(Buffer.from("exact"));
+                else controller.close();
+              },
+              cancel() {
+                cancels++;
+              },
+            },
+            { highWaterMark: 0 },
+          );
+
+          const sink = createResponseSink(response, aborted);
+          let streamPromise: Promise<void> | undefined;
+
+          try {
+            streamPromise = streamApiResponse(body, 200, {}, {}, response, aborted, sink);
+
+            // written.resolve() fires during write(); write() returning false immediately
+            // registers the "drain" listener inside sink.write() synchronously before
+            // resolving written.promise in the microtask queue.
+            await written.promise;
+
+            expect(pulls, `${label}: pulls`).toBe(1);
+            expect(emitter.listenerCount("drain"), `${label}: expected drain listener before resolution`).toBe(1);
+
+            if (disconnect) {
+              response.close();
+            } else {
+              emitter.emit("drain");
+            }
+
+            await streamPromise;
+
+            expect(ended, `${label}: ended`).toBe(!disconnect);
+            expect(cancels, `${label}: cancels`).toBe(Number(disconnect));
+            expect(Buffer.concat(bytes).toString("utf8"), `${label}: exact bytes`).toBe("exact");
+            assertBoundarySettled(body, emitter, aborted, label);
+          } finally {
+            if (emitter.listenerCount("drain") > 0) {
+              emitter.emit("drain");
+            }
+            if (!destroyed) {
+              response.close();
+            }
+            try {
+              await streamPromise;
+            } finally {
+              sink.dispose();
+            }
+          }
+        }
+      },
+    );
   });
 });
