@@ -14,7 +14,7 @@ export default defineConfig({
     components: ['src/components', 'shared-components'],
   },
   scoping: {
-    preserve: ['pre', 'code'],
+    preserve: ['pre', 'code', 'vendor-*'],
   },
   pipeline: {
     watchPaths: ['src/content/', 'src/lib/', 'src/css/'],

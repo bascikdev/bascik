@@ -25,7 +25,12 @@ import { getHttpPath } from "./paths.ts";
 import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
 import { config as userConfig, modeOverrides } from "./userConfig.ts";
-import { validateUserConfig, type ConfigValidationError } from "./config-validation.ts";
+import {
+  validateUserConfig,
+  type ConfigValidationError,
+  PLAUSIBLE_TAG_NAME,
+  PRESERVE_WILDCARD_PATTERN,
+} from "./config-validation.ts";
 import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
 import type { ComponentList } from "./types.ts";
 
@@ -103,9 +108,11 @@ export const suggestComponentName = (tag: string, knownComponents: Iterable<stri
  * configured in `scoping.preserve` (defaults to `["code"]`).
  */
 const stripElementContents = (html: string): string => {
+  // Keep entries that satisfy the scoping.preserve validation rule (tag names
+  // and `*` wildcard patterns) and drop anything else.
   const extra = (BascikConfig.scoping?.preserve ?? [])
-    .map((t) => String(t).replace(/[^a-zA-Z0-9-]/g, ""))
-    .filter(Boolean);
+    .map((t) => String(t))
+    .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t));
   const protectedTags = ["script", "style", "textarea", ...extra];
   return maskElementContents(html, protectedTags);
 };

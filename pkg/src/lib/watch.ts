@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import chokidar from "chokidar";
 import type { Stats } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { FSWatcher } from "chokidar";
+import { loadChokidar } from "./dev-watcher.ts";
 import {
   pageProcessing,
   processAllPages,
@@ -71,8 +72,9 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         : `[bascik] module invalidated: ${changed}`,
     );
   };
-  const watchers: ReturnType<typeof chokidar.watch>[] = [];
-  const w = <T extends ReturnType<typeof chokidar.watch>>(watcher: T) => { watchers.push(watcher); return watcher; };
+  const chokidar = await loadChokidar();
+  const watchers: FSWatcher[] = [];
+  const w = <T extends FSWatcher>(watcher: T) => { watchers.push(watcher); return watcher; };
   registerShutdownHandler(() => Promise.all(watchers.map(watcher => watcher.close())).then(() => { }));
 
   const watchOptions: NonNullable<Parameters<typeof chokidar.watch>[1]> = {

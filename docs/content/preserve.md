@@ -63,4 +63,18 @@ export default defineConfig({
 
 Configured tags use the same behavior as a bare directive. Their `id`, `name`, and `class` attributes, contents, and descendants remain unscoped. The default is `['code']`.
 
+Entries can also be wildcard patterns, which is useful for preserving an entire family of third-party web components at once. A `*` matches any run of tag-name characters:
+
+```ts
+export default defineConfig({
+  scoping: {
+    preserve: ['vendor-*', '*-widget'],
+  },
+});
+```
+
+`vendor-*` preserves every tag whose name starts with `vendor-`, `*-widget` matches a suffix, and a bare `*` preserves every tag. A wildcard-matched tag behaves exactly like an exact-name entry.
+
+Preserve affects attribute and content scoping only. It does not change component resolution: a component tag inside a preserved element still expands.
+
 Preserve scopes are inherited and nesting only widens. A descendant can add preserved attribute types, but it cannot re-enable scoping disabled by an ancestor.

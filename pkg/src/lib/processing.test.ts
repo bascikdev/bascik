@@ -2518,6 +2518,39 @@ describe("transpilePage – inline component <style> extraction & deduplication"
     expect(bodyMatch![1]).not.toContain("<style>");
   });
 
+  it("preserves attributes inside a component subtree matching a preserve wildcard", async () => {
+    (BascikConfig as any).isBuild = true;
+    (BascikConfig as any).scoping = {
+      scriptBlocks: true,
+      inheritAttributes: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      preserve: ["vendor-*"],
+    };
+    const pageHtml = "<!DOCTYPE html><html><head></head><body><comp-vendor></comp-vendor></body></html>";
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);
+
+    const componentList = {
+      "comp-vendor": {
+        fileName: "components/comp-vendor.html",
+        fileContent:
+          '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" class="inner">x</span></vendor-widget>' +
+          '<p id="outer" class="outer">y</p>',
+      },
+    };
+
+    const result = await transpilePage(PAGE_PATH, componentList);
+    expect(result).not.toBeNull();
+    const body = result!.distHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)![1];
+
+    // Vendor subtree stays literal
+    expect(body).toContain('<vendor-widget id="keep" name="keep" class="keep">');
+    expect(body).toContain('<span id="inner" class="inner">');
+    // Sibling outside the preserved subtree scopes normally
+    expect(body).toContain('bascik__comp-vendor__');
+    expect(body).not.toContain('<p id="outer"');
+  });
+
   it("preserves literal <style> tags inside code blocks in components", async () => {
     const pageHtml = "<!DOCTYPE html><html><head></head><body><comp-code-demo></comp-code-demo></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(pageHtml);

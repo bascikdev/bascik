@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createContentShield,
   maskElementContents,
+  shieldElementContents,
   shieldPreservedAttribute,
   __shieldStatsForTests,
 } from "./shielding.ts";
@@ -67,6 +68,90 @@ describe("shieldPreservedAttribute fast path (prompt 83)", () => {
   });
 });
 
+describe("shieldPreservedAttribute wildcard patterns", () => {
+  const scans = (html: string, attribute: "id" | "name" | "class", preservedTags: string[]) => {
+    __shieldStatsForTests.reset();
+    const result = shieldPreservedAttribute(html, attribute, preservedTags);
+    return { result, tagScans: __shieldStatsForTests.tagScans, hidden: __shieldStatsForTests.hiddenValues };
+  };
+
+  it("preserves id, name, and class on a prefix-matched tag and its descendants", () => {
+    const html = `<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner">x</span></vendor-widget><p id="scope-me" name="scope-me" class="scope-me">y</p>`;
+    for (const attribute of ["id", "name", "class"] as const) {
+      const { result } = scans(html, attribute, ["vendor-*"]);
+      expect(result.restore(result.html)).toBe(html);
+      // The vendor subtree opening tags are hidden; the sibling <p> is not.
+      expect(result.html).toContain(`${attribute}="scope-me"`);
+      expect(result.html).not.toContain(`<vendor-widget`);
+      expect(result.html).not.toContain(`<span ${attribute}="inner"`);
+    }
+  });
+
+  it("matches a suffix pattern", () => {
+    const html = `<acme-widget id="keep" class="keep">x</acme-widget><acme-panel id="scope-me">y</acme-panel>`;
+    const { result } = scans(html, "id", ["*-widget"]);
+    expect(result.restore(result.html)).toBe(html);
+    expect(result.html).not.toContain(`<acme-widget`);
+    expect(result.html).toContain(`<acme-panel id="scope-me">`);
+  });
+
+  it("a bare * preserves every tag", () => {
+    const html = `<div id="a" class="a"><span id="b" name="b">x</span></div>`;
+    for (const attribute of ["id", "name", "class"] as const) {
+      const { result } = scans(html, attribute, ["*"]);
+      expect(result.restore(result.html)).toBe(html);
+      expect(result.html).not.toContain(`<div`);
+      expect(result.html).not.toContain(`<span`);
+    }
+  });
+
+  it("mixes exact names and patterns", () => {
+    const html = `<code id="c">x</code><vendor-widget id="v">y</vendor-widget><p id="p">z</p>`;
+    const { result } = scans(html, "id", ["code", "vendor-*"]);
+    expect(result.restore(result.html)).toBe(html);
+    expect(result.html).not.toContain(`<code`);
+    expect(result.html).not.toContain(`<vendor-widget`);
+    expect(result.html).toContain(`<p id="p">`);
+  });
+
+  it("matches case-insensitively", () => {
+    const html = `<vendor-widget id="keep" class="keep">x</vendor-widget>`;
+    const { result } = scans(html, "id", ["VENDOR-*"]);
+    expect(result.restore(result.html)).toBe(html);
+    expect(result.html).not.toContain(`<vendor-widget`);
+  });
+
+  it("keeps literal attributes on a void element under a bare * without breaking frame pairing", () => {
+    const html = `<div id="a"><img id="pic" class="pic"><span id="b">x</span></div>`;
+    const { result } = scans(html, "id", ["*"]);
+    expect(result.restore(result.html)).toBe(html);
+    expect(result.html).not.toContain(`<img`);
+    expect(result.html).not.toContain(`<span`);
+  });
+
+  it("skips the tag scan when no candidate prefix is present for a prefix glob", () => {
+    const plain = `<div class="card" id="root"><p class="body">Hello</p></div>`;
+    const { result, tagScans, hidden } = scans(plain, "id", ["vendor-*"]);
+    expect(tagScans).toBe(0);
+    expect(hidden).toBe(0);
+    expect(result.html).toBe(plain);
+  });
+
+  it("scans when the literal prefix of a prefix glob is present", () => {
+    const html = `<div><vendor-widget id="keep">x</vendor-widget></div>`;
+    const { result, tagScans } = scans(html, "id", ["vendor-*"]);
+    expect(tagScans).toBeGreaterThan(0);
+    expect(result.restore(result.html)).toBe(html);
+  });
+
+  it("forces the scan for a pattern with no literal prefix", () => {
+    const plain = `<div class="card" id="root"><p class="body">Hello</p></div>`;
+    const { result, tagScans } = scans(plain, "id", ["*-widget"]);
+    expect(tagScans).toBeGreaterThan(0);
+    expect(result.html).toBe(plain);
+  });
+});
+
 describe("createContentShield", () => {
   it("restores nested shields without caller-managed ordering", () => {
     const shield = createContentShield("<pre><code>inner</code></pre>");
@@ -97,5 +182,48 @@ describe("maskElementContents", () => {
     expect(masked).not.toContain("<my-card>");
     expect(masked).toContain("<script>");
     expect(masked).toContain("<p>keep</p>");
+  });
+
+  it("masks content of tags matching a wildcard pattern", () => {
+    const html = "<vendor-widget>X</vendor-widget><p>keep</p>";
+    const masked = maskElementContents(html, ["vendor-*"]);
+    expect(masked).toHaveLength(html.length);
+    expect(masked).not.toContain(">X<");
+    expect(masked).toContain("<vendor-widget>");
+    expect(masked).toContain("<p>keep</p>");
+  });
+
+  it("masks content for suffix and bare-star patterns", () => {
+    const suffix = maskElementContents("<acme-widget>X</acme-widget><acme-panel>Y</acme-panel>", ["*-widget"]);
+    expect(suffix).not.toContain(">X<");
+    expect(suffix).toContain(">Y<");
+    const star = maskElementContents("<div>X</div>", ["*"]);
+    expect(star).not.toContain(">X<");
+  });
+
+  it("produces byte-identical output for exact entries", () => {
+    const html = "<code>A</code><pre>B</pre><p>C</p>";
+    expect(maskElementContents(html, ["code", "pre"])).toBe(
+      "<code> </code><pre> </pre><p>C</p>",
+    );
+  });
+});
+
+describe("shieldElementContents wildcard patterns", () => {
+  it("shields and restores content of tags matching a wildcard pattern", () => {
+    const html = "<vendor-widget><b>bold</b></vendor-widget><p>keep</p>";
+    const { html: shielded, restore } = shieldElementContents(html, ["vendor-*"]);
+    expect(shielded).not.toContain("<b>bold</b>");
+    expect(shielded).toContain("<p>keep</p>");
+    expect(restore(shielded)).toBe(html);
+  });
+
+  it("produces byte-identical output for exact entries", () => {
+    const html = "<code>A</code><pre>B</pre><p>C</p>";
+    const first = shieldElementContents(html, ["code", "pre"]);
+    expect(first.restore(first.html)).toBe(html);
+    expect(first.html).toContain("<p>C</p>");
+    expect(first.html).not.toContain(">A<");
+    expect(first.html).not.toContain(">B<");
   });
 });
