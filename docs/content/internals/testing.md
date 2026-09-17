@@ -1,6 +1,18 @@
 # Testing Internals
 
-Bascik has two separate test suites: **unit tests** (Vitest) that verify individual library modules, and **end-to-end tests** (Playwright) that build and browser-test the full transpilation pipeline against a fixture site.
+Bascik organizes verification across three distinct levels: **unit tests** that verify isolated functions and modules, **integration tests** that exercise real process boundaries, compilers, and cross-subsystem compositions, and **end-to-end tests** (Playwright) that build and browser-test the full transpilation pipeline against a live server.
+
+## Testing Levels and Architecture
+
+The codebase distinguishes test runners from testing levels:
+
+- **Unit tests (Vitest):** Run with `yarn unit:all` or per-workspace commands. Verify isolated functions, AST manipulation, and CSS scoping transforms using deterministic inputs and minimal mocks where isolation is required.
+- **Integration tests (Vitest):** Also executed via `yarn unit:all` and per-package `unit` commands. Rather than isolating units, these exercise real subsystems collaborating across real boundaries. Key examples include real CLI child-process builds (`worker-serial-parity.test.ts`), real worker thread lifecycles (`worker-pool.real.test.ts`), real dev server module invalidation (`dev-module-reload.integration.test.ts`), real project scaffolding to compiler execution (`scaffold.integration.test.ts`), and serverless runtime parity (`serverless-parity.integration.test.ts`).
+- **End-to-end tests (Playwright):** Run via `yarn pkg:e2e`, `yarn pkg:e2e:dev`, or `yarn pkg:e2e:prod`. These boot actual servers (static file server, live dev server with SSE, HTTP/1.1 cleartext, or HTTP/2 TLS production server) and navigate headless browsers to verify real DOM rendering, script execution, and user interaction.
+
+### The Real versus Mocked Boundary Rule
+
+Integration tests in Bascik follow an explicit boundary contract: they do not mock away the primary boundary being verified. When testing worker thread lifecycle, real Node.js `worker_threads` run. When testing targeted-build persistence, real child processes invoke `bascik --build` against isolated disk fixtures. When testing scaffold output, the real `scaffold()` creates directory structures and files, and the real compiler parses and builds them into emitted artifacts. Mocks are reserved for external environment control (such as clock injection or network limits) rather than internal subsystem borders.
 
 ## Exec Lifecycle Boundaries
 

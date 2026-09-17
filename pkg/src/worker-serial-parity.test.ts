@@ -207,4 +207,35 @@ describe("manifest integrity", () => {
       await cleanupFixture(root);
     }
   }, 60000);
+
+  it("fails the build cleanly and reports page errors when a worker encounters invalid page syntax", async () => {
+    const root = fixtureRoot("worker-fail");
+    await writeParityFixture(root);
+    // Write an invalid build script in a worker-compiled page
+    await writeFixtureFile(
+      root,
+      "src/pages/broken.html",
+      `<!DOCTYPE html><html><head><title>Broken</title></head><body>
+      <script data-bascik-build>const bad = (;;</script>
+      </body></html>`,
+    );
+    try {
+      await writeWorkersConfig(root, true);
+      let runResult: { stdout: string; stderr: string } | undefined;
+      let buildFailed = false;
+      try {
+        runResult = await runBuild(root);
+      } catch (err: unknown) {
+        buildFailed = true;
+        const execErr = err as { stdout?: string; stderr?: string };
+        runResult = { stdout: execErr.stdout ?? "", stderr: execErr.stderr ?? "" };
+      }
+
+      expect(buildFailed).toBe(true);
+      const output = `${runResult?.stdout ?? ""}\n${runResult?.stderr ?? ""}`;
+      expect(output).toMatch(/broken\.html|Build failed with \d+ page error/);
+    } finally {
+      await cleanupFixture(root);
+    }
+  }, 60000);
 });
