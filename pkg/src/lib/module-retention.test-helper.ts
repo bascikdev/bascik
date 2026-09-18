@@ -567,7 +567,7 @@ export interface BuildDependencyOptions {
   smokeCycles: 2;
   measuredRevisions: 100;
   /** Internal negative control: held-dispatch blocks sampling before the first measured batch. */
-  testMode?: "negative-dispatch" | "negative-control";
+  testMode?: "negative-dispatch" | "negative-control" | "held-compilation-regression";
 }
 
 export interface DevModuleDeletionRecoveryOptions {
@@ -1942,6 +1942,27 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       await checkpoint("batch-2", staticAssetOptions.measuredRevisions, true);
     } else if (buildDepOptions) {
+      if (buildDepOptions.testMode === "held-compilation-regression") {
+        await command("hold-next-build-dep-callback");
+        const path = join(project, "src/lib/build-helper.ts");
+        const generation = 1;
+        await command("arm", { path, kind: "build-dependency-lifecycle", generation, watchEvent: "unlink" });
+        await unlink(path);
+        try {
+          // Await the actual watchPaths compilation callback entering its held gate. This is an
+          // explicit callback-entry acknowledgment, not a timing probe.
+          const entry = await command<{ entered: boolean; completionResolved: boolean }>("await-build-dep-callback-entry");
+          assert.equal(entry.entered, true, "actual watchPaths compilation callback must enter the held gate");
+          // The defective subject resolves completion from the "all" watcher handler before the
+          // held compilation callback settles. This is the premature-acknowledgment regression.
+          assert.equal(entry.completionResolved, false, "completion cannot advance while actual compilation callback is held");
+        } finally {
+          await command("release-held-build-dep-callback");
+        }
+        await command("completed", { generation });
+        await stopSubject();
+        return checkpoints;
+      }
       if (buildDepOptions.testMode === "negative-dispatch") {
         await command("hold-next-dispatch");
         await requestAll(0, 0);

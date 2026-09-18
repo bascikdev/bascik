@@ -50,9 +50,40 @@ for (const codec of ["gzip", "brotliCompress"] as const) {
     }]);
   }) as typeof original;
 }
+let holdBuildDepCallback = false;
+let heldBuildDepGate: {
+  entered: ReturnType<typeof Promise.withResolvers<void>>;
+  release: ReturnType<typeof Promise.withResolvers<void>>;
+} | undefined;
+
+async function enterHeldBuildDepGate(event: string): Promise<void> {
+  if (!holdBuildDepCallback || !heldBuildDepGate) return;
+  if (armed && armed.expectedWatchEvent !== event) return;
+  heldBuildDepGate.entered.resolve();
+  await heldBuildDepGate.release.promise;
+}
+
 const originalWatch = chokidar.watch;
 chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
   const watcher = originalWatch(...args);
+  const watchPathsTarget = args[0];
+  const isWatchPaths = (Array.isArray(watchPathsTarget) ? watchPathsTarget : [watchPathsTarget])
+    .some(p => typeof p === "string" && resolve(p) === resolve("src/lib/build-helper.ts"));
+
+  if (isWatchPaths && buildDepEnabled) {
+    const origOn = watcher.on;
+    watcher.on = function(this: ReturnType<typeof originalWatch>, event: string, listener: (...lArgs: unknown[]) => unknown) {
+      if (["add", "change", "unlink"].includes(event)) {
+        const wrappedListener = async (...lArgs: unknown[]) => {
+          await enterHeldBuildDepGate(event);
+          return Reflect.apply(listener, this, lArgs);
+        };
+        return Reflect.apply(origOn, this, [event, wrappedListener]) as ReturnType<typeof originalWatch>;
+      }
+      return Reflect.apply(origOn, this, [event, listener]) as ReturnType<typeof originalWatch>;
+    } as typeof watcher.on;
+  }
+
   if (devModuleEnabled) {
     const watcherId = watcherReadiness.length;
     const originalClose = watcher.close;
@@ -89,9 +120,9 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
           if (!observation.publications.includes("build-error")) {
             observation.publications.push("build-error");
           }
-          armed.completion.resolve();
+          resolveArmedCompletion();
         } else if (observation.publications.includes("transpiled")) {
-          armed.completion.resolve();
+          resolveArmedCompletion();
         }
       }
       return;
@@ -118,7 +149,7 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
           // Only actual compilation publications acknowledge this operation.
         } else if (devModuleApiEnabled) {
           if (observation.publications.includes("api-route-changed")) {
-            armed.completion.resolve();
+            resolveArmedCompletion();
           }
         }
       }
@@ -155,9 +186,17 @@ let armed: {
   kind: string;
   publications: number;
   completion: ReturnType<typeof Promise.withResolvers<void>>;
+  completionResolved: boolean;
   asset?: InlinePageObservation;
   expectedWatchEvent?: string;
 } | undefined;
+
+/** Resolve the armed operation's completion exactly once, recording that it resolved. */
+function resolveArmedCompletion(): void {
+  if (!armed || armed.completionResolved) return;
+  armed.completionResolved = true;
+  armed.completion.resolve();
+}
 let assetGeneration = 0;
 let assetPublications = 0;
 let apiRoutePublications = 0;
@@ -450,7 +489,7 @@ scriptRegistry.invalidate = function(specifier) {
   if (devModuleExternalEnabled && armed && resolve(specifier) === armed.path) {
     process.send!({ externalStage: { ...armed.asset, stage: "invalidation", advanced } });
   }
-  if (advanced && armed?.kind === "module" && resolve(specifier) === armed.path) armed.completion.resolve();
+  if (advanced && armed?.kind === "module" && resolve(specifier) === armed.path) resolveArmedCompletion();
   return advanced;
 };
 eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
@@ -464,7 +503,7 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
       armed.asset.publications.push("transpiled");
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
     return;
   }
@@ -479,7 +518,7 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
       assert(!armed.asset.publications.includes(publication), "one publication per page per source cycle");
       armed.asset.publications.push(publication);
       armed.asset.publications.sort();
-      if (armed.asset.publications.length === expectedPaths.length) armed.completion.resolve();
+      if (armed.asset.publications.length === expectedPaths.length) resolveArmedCompletion();
       return;
     }
     assert(armed.asset, "dev-module publication requires armed operation");
@@ -492,13 +531,13 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
       armed.asset.publications.push("transpiled");
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
     return;
   }
   if (armed?.kind === "page" || armed?.kind === "component") {
     armed.publications--;
-    if (armed.publications === 0) armed.completion.resolve();
+    if (armed.publications === 0) resolveArmedCompletion();
   }
 });
 eventEmitter.on("asset-changed", () => {
@@ -508,7 +547,7 @@ eventEmitter.on("asset-changed", () => {
   assert.equal(armed.asset.publications.length, 0, "one asset publication per operation");
   armed.asset.publications.push("asset-changed");
   assetPublications++;
-  armed.completion.resolve();
+  resolveArmedCompletion();
 });
 eventEmitter.on("api-route-changed", (event: { path: string; type?: string; }) => {
   if (staticAssetEnabled) process.send!({ error: `Unexpected API change for static asset: ${event.path}` });
@@ -522,10 +561,10 @@ eventEmitter.on("api-route-changed", (event: { path: string; type?: string; }) =
     apiRoutePublications++;
     // watch.ts emits this only after invalidateFile has awaited the route-table reload.
     process.send!({ apiStage: { ...armed.asset, stage: "reload" } });
-    armed.completion.resolve();
+    resolveArmedCompletion();
     return;
   }
-  if (armed?.kind === "api" && resolve(event.path) === armed.path) armed.completion.resolve();
+  if (armed?.kind === "api" && resolve(event.path) === armed.path) resolveArmedCompletion();
 });
 eventEmitter.on("build-error", error => {
   if (buildDepEnabled && armed?.kind === "build-dependency-lifecycle" && armed.expectedWatchEvent === "unlink") {
@@ -534,7 +573,7 @@ eventEmitter.on("build-error", error => {
       armed.asset.publications.push("build-error");
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
     return;
   }
@@ -546,7 +585,7 @@ eventEmitter.on("build-error", error => {
       armed.asset.publications.push("build-error");
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
     return;
   }
@@ -566,7 +605,7 @@ eventEmitter.on("watch-path-processed", () => {
       }
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
   }
   if (devModuleEnabled && !devModuleInlineEnabled && !devModuleExternalEnabled && armed?.kind === "dev-module-lifecycle") {
@@ -581,7 +620,7 @@ eventEmitter.on("watch-path-processed", () => {
       }
     }
     if (armed.asset.watchEvent) {
-      armed.completion.resolve();
+      resolveArmedCompletion();
     }
   }
 });
@@ -813,7 +852,7 @@ process.on("message", async (message: {
     } else if (message.action === "arm") {
       assert(!armed, "only one source observation may be armed");
       observePlans();
-      armed = { path: resolve(message.path), kind: message.kind, publications: message.publications, completion: Promise.withResolvers<void>() };
+      armed = { path: resolve(message.path), kind: message.kind, publications: message.publications, completion: Promise.withResolvers<void>(), completionResolved: false };
       if (message.kind === "asset-lifecycle") {
         assert(staticAssetEnabled, "asset lifecycle requires its fixture");
         assert.equal(armed.path, resolve("src/pages/asset.txt"), "exact asset source path");
@@ -879,6 +918,21 @@ process.on("message", async (message: {
       }
     } else if (message.action === "sample") {
       result = await sample(message.phase, message.completed, message.snapshot, message.expectPending);
+    } else if (message.action === "hold-next-build-dep-callback") {
+      holdBuildDepCallback = true;
+      heldBuildDepGate = {
+        entered: Promise.withResolvers<void>(),
+        release: Promise.withResolvers<void>(),
+      };
+      result = { armed: true };
+    } else if (message.action === "await-build-dep-callback-entry") {
+      assert(heldBuildDepGate, "await-build-dep-callback-entry requires an armed gate");
+      await heldBuildDepGate.entered.promise;
+      result = { entered: true, completionResolved: armed?.completionResolved ?? false };
+    } else if (message.action === "release-held-build-dep-callback") {
+      holdBuildDepCallback = false;
+      heldBuildDepGate?.release.resolve();
+      result = { released: true };
     } else if (message.action === "hold-next-dispatch") {
       boundary.hold("dispatch");
       result = { armed: true };

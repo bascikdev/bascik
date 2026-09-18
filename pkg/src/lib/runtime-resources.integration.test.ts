@@ -985,6 +985,19 @@ describe("packet R6: local build dependency lifecycle", () => {
     );
   }, 30_000);
 
+  it("held watchPaths compilation callback blocks completion and advance (held-owner regression)", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+    retentionReportDirectories.push(directory);
+    await runRetentionExperiment(
+      directory,
+      false,
+      2,
+      "dev",
+      false,
+      { input: "build-dependency", smokeCycles: 2, measuredRevisions: 100, testMode: "held-compilation-regression" },
+    );
+  }, 30_000);
+
   it("build-dependency oracle negative control FIRST actual uncaught intended ownership/altered byte failure", async () => {
     const expected = {
       path: "/fixture/src/lib/build-helper.ts",
