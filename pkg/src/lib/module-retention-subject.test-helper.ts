@@ -28,6 +28,10 @@ const fixedFailedImport = faultFlag === "fixed-failed-import";
 const cancellationEnabled = beforeHeaders || afterPrefix || rejectAfterAbort;
 const staticAssetEnabled = faultFlag === "static-asset";
 const buildDepEnabled = faultFlag === "build-dependency";
+const devModuleInlineEnabled = faultFlag === "dev-module-inline";
+const devModuleExternalEnabled = faultFlag === "dev-module-external";
+const devModuleApiEnabled = faultFlag === "dev-module-api";
+const devModuleEnabled = devModuleInlineEnabled || devModuleExternalEnabled || devModuleApiEnabled;
 process.argv = process.argv.slice(0, 2);
 if (mode !== "dev") process.argv.push("--server");
 assert(process.send && global.gc, "retention subject requires IPC and child-only --expose-gc");
@@ -68,18 +72,51 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
         process.send!({ error: `Unexpected build-dependency watch event: ${event} ${path}, generation ${observation.generation}` });
         return;
       }
-    observation.watchEvent = event;
-    if (armed?.kind === "build-dependency-lifecycle") {
-      if (armed.expectedWatchEvent === "unlink") {
-        if (!observation.publications.includes("build-error")) {
-          observation.publications.push("build-error");
+      observation.watchEvent = event;
+      if (armed?.kind === "build-dependency-lifecycle") {
+        if (armed.expectedWatchEvent === "unlink") {
+          if (!observation.publications.includes("build-error")) {
+            observation.publications.push("build-error");
+          }
+          armed.completion.resolve();
+        } else if (observation.publications.includes("transpiled")) {
+          armed.completion.resolve();
         }
-        armed.completion.resolve();
-      } else if (observation.publications.includes("transpiled")) {
-        armed.completion.resolve();
       }
+      return;
     }
-    return;
+    if (devModuleEnabled) {
+      if (!observation || resolve(path) !== observation.path) return;
+      if (observation.watchEvent) {
+        if (observation.watchEvent === event) return;
+        process.send!({ error: `Unexpected dev-module watch event: ${event} ${path}, generation ${observation.generation}` });
+        return;
+      }
+      if (event !== armed!.expectedWatchEvent) {
+        process.send!({ error: `Unexpected dev-module watch event: ${event} ${path}, generation ${observation.generation}` });
+        return;
+      }
+      observation.watchEvent = event;
+      if (armed?.kind === "dev-module-lifecycle") {
+        if (devModuleInlineEnabled) {
+          // Source-cycle publications follow joined disk writes and post scripts.
+          // On unlink, the surviving external page acknowledges the same cycle.
+        } else if (devModuleExternalEnabled) {
+          if (armed.expectedWatchEvent === "unlink") {
+            if (!observation.publications.includes("build-error")) {
+              observation.publications.push("build-error");
+            }
+            armed.completion.resolve();
+          } else if (observation.publications.includes("transpiled")) {
+            armed.completion.resolve();
+          }
+        } else if (devModuleApiEnabled) {
+          if (armed.expectedWatchEvent === "unlink" || observation.publications.includes("api-route-changed")) {
+            armed.completion.resolve();
+          }
+        }
+      }
+      return;
     }
     if (!observation || resolve(path) !== observation.path) return;
     if (observation.watchEvent || event !== armed!.expectedWatchEvent) {
@@ -316,7 +353,7 @@ if (mode === "http2") {
       createServer: true,
     };
   };
-} else if (mode === "http1" || staticAssetEnabled || buildDepEnabled) {
+} else if (mode === "http1" || staticAssetEnabled || buildDepEnabled || devModuleEnabled) {
   const origCreateServer = http.createServer;
   let capturedHttp1On: typeof net.Server.prototype.on | undefined;
   let capturedHttp1AddListener: typeof net.Server.prototype.addListener | undefined;
@@ -418,6 +455,29 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
     }
     return;
   }
+  if (devModuleEnabled && armed?.kind === "dev-module-lifecycle") {
+    if (devModuleInlineEnabled) {
+      assert(armed.asset, "inline publication requires armed operation");
+      assert.equal(armed.asset.watchEvent, armed.expectedWatchEvent, "inline publication follows watcher acknowledgment");
+      const expectedPaths = armed.expectedWatchEvent === "unlink" ? ["pages/external.html"]
+        : armed.expectedWatchEvent === "add" ? ["pages/external.html", "pages/inline.html"] : ["pages/inline.html"];
+      assert(event?.relativePagePath && expectedPaths.includes(event.relativePagePath), "exact source-cycle publication path");
+      const publication = `transpiled:${event.relativePagePath}`;
+      assert(!armed.asset.publications.includes(publication), "one publication per page per source cycle");
+      armed.asset.publications.push(publication);
+      armed.asset.publications.sort();
+      if (armed.asset.publications.length === expectedPaths.length) armed.completion.resolve();
+      return;
+    }
+    assert(armed.asset, "dev-module publication requires armed operation");
+    if (!armed.asset.publications.includes("transpiled")) {
+      armed.asset.publications.push("transpiled");
+    }
+    if (armed.asset.watchEvent) {
+      armed.completion.resolve();
+    }
+    return;
+  }
   if (armed?.kind === "page" || armed?.kind === "component") {
     armed.publications--;
     if (armed.publications === 0) armed.completion.resolve();
@@ -434,6 +494,16 @@ eventEmitter.on("asset-changed", () => {
 });
 eventEmitter.on("api-route-changed", (event: { path: string; }) => {
   if (staticAssetEnabled) process.send!({ error: `Unexpected API change for static asset: ${event.path}` });
+  if (devModuleEnabled && armed?.kind === "dev-module-lifecycle" && devModuleApiEnabled) {
+    assert(armed.asset, "dev-module API publication requires armed operation");
+    if (!armed.asset.publications.includes("api-route-changed")) {
+      armed.asset.publications.push("api-route-changed");
+    }
+    if (armed.asset.watchEvent) {
+      armed.completion.resolve();
+    }
+    return;
+  }
   if (armed?.kind === "api" && resolve(event.path) === armed.path) armed.completion.resolve();
 });
 eventEmitter.on("build-error", error => {
@@ -447,14 +517,39 @@ eventEmitter.on("build-error", error => {
     }
     return;
   }
+  if (devModuleEnabled && armed?.kind === "dev-module-lifecycle" && devModuleExternalEnabled && armed.expectedWatchEvent === "unlink") {
+    assert(armed.asset, "dev-module build-error publication requires armed operation");
+    if (!armed.asset.publications.includes("build-error")) {
+      armed.asset.publications.push("build-error");
+    }
+    if (armed.asset.watchEvent) {
+      armed.completion.resolve();
+    }
+    return;
+  }
   process.send!({ error: JSON.stringify(error) });
 });
-eventEmitter.on("watch-path-processed", (event?: { path?: string }) => {
+eventEmitter.on("watch-path-processed", () => {
   publications++;
   if (buildDepEnabled && armed?.kind === "build-dependency-lifecycle") {
     assert(armed.asset, "build-dependency publication requires armed operation");
     if (armed.expectedWatchEvent === "unlink") {
       if (!armed.asset.publications.includes("build-error")) {
+        armed.asset.publications.push("build-error");
+      }
+    } else {
+      if (!armed.asset.publications.includes("transpiled")) {
+        armed.asset.publications.push("transpiled");
+      }
+    }
+    if (armed.asset.watchEvent) {
+      armed.completion.resolve();
+    }
+  }
+  if (devModuleEnabled && !devModuleInlineEnabled && armed?.kind === "dev-module-lifecycle") {
+    assert(armed.asset, "dev-module watch-path-processed publication requires armed operation");
+    if (armed.expectedWatchEvent === "unlink") {
+      if (devModuleExternalEnabled && !armed.asset.publications.includes("build-error")) {
         armed.asset.publications.push("build-error");
       }
     } else {
@@ -519,7 +614,7 @@ if (cancellationEnabled) {
           if (gate.readerCanceled || (res as any).destroyed) {
             cancellationCounts.midBody!.suffixWrites++;
           }
-          return origWrite!(chunk, ...writeArgs);
+          return Reflect.apply(origWrite!, res, [chunk, ...writeArgs]);
         } as typeof res.write;
       }
     }
@@ -578,7 +673,7 @@ async function sample(
   await Promise.all([...pendingCompression]);
 
   assert.equal(activeRequests, 0, "sample requires settled request handlers");
-  if (staticAssetEnabled) {
+  if (staticAssetEnabled || devModuleInlineEnabled) {
     assert.equal(armed, undefined, "asset sample requires completed observation");
   }
   boundary.assertSettled();
@@ -641,6 +736,20 @@ async function sample(
         pending: Number(Boolean(armed)),
       },
     } : {}),
+    ...(devModuleEnabled ? {
+      devModuleLifecycle: {
+        observationGeneration: assetGeneration,
+        publications,
+        liveTargetPaths: devModuleInlineEnabled
+          ? (await readdir("src/pages")).filter(file => file === "inline.html").map(file => resolve("src/pages", file))
+          : devModuleExternalEnabled
+            ? (await readdir("src/lib")).filter(file => file === "helper.mjs").map(file => resolve("src/lib", file))
+            : (await readdir("api")).filter(file => file === "helper.mjs").map(file => resolve("api", file)),
+        pages: mem.pages().length,
+        listeners: ["build-error", "asset-changed", "transpiled", "api-route-changed"].map(event => eventEmitter.listenerCount(event)),
+        pending: Number(Boolean(armed)),
+      },
+    } : {}),
   };
   for (const references of [requestRefs, requestClosureRefs, loadRefs]) {
     for (let index = references.length - 1; index >= 0; index--) if (!references[index].deref()) references.splice(index, 1);
@@ -694,9 +803,20 @@ process.on("message", async (message: {
         assert.equal(message.generation, ++assetGeneration, "monotonic build-dependency observation generation");
         armed.asset = { path: armed.path, generation: message.generation, watchEvent: "", publications: [] };
         armed.expectedWatchEvent = message.watchEvent;
+      } else if (message.kind === "dev-module-lifecycle") {
+        assert(devModuleEnabled, "dev-module lifecycle requires its fixture");
+        const expectedPath = devModuleInlineEnabled
+          ? resolve("src/pages/inline.html")
+          : devModuleExternalEnabled
+            ? resolve("src/lib/helper.mjs")
+            : resolve("api/helper.mjs");
+        assert.equal(armed.path, expectedPath, "exact dev-module source path");
+        assert.equal(message.generation, ++assetGeneration, "monotonic dev-module observation generation");
+        armed.asset = { path: armed.path, generation: message.generation, watchEvent: "", publications: [] };
+        armed.expectedWatchEvent = message.watchEvent;
       }
     } else if (message.action === "asset-idle") {
-      assert(staticAssetEnabled || buildDepEnabled, "asset/dependency idle requires its fixture");
+      assert(staticAssetEnabled || buildDepEnabled || devModuleEnabled, "asset/dependency/dev-module idle requires its fixture");
       await boundary.join();
     } else if (message.action === "completed") {
       assert(armed, "edit must be armed");
@@ -708,6 +828,19 @@ process.on("message", async (message: {
           if (buildDepEnabled) {
             const expectedPub = armed.expectedWatchEvent === "unlink" ? ["build-error"] : ["transpiled"];
             assert.deepEqual(armed.asset.publications, expectedPub, "completed build-dependency publication");
+          } else if (devModuleEnabled) {
+            if (devModuleInlineEnabled) {
+              const expectedPub = armed.expectedWatchEvent === "unlink" ? ["transpiled:pages/external.html"]
+                : armed.expectedWatchEvent === "add" ? ["transpiled:pages/external.html", "transpiled:pages/inline.html"]
+                  : ["transpiled:pages/inline.html"];
+              assert.deepEqual(armed.asset.publications, expectedPub, "completed dev-module inline publication");
+            } else if (devModuleExternalEnabled) {
+              const expectedPub = armed.expectedWatchEvent === "unlink" ? ["build-error"] : ["transpiled"];
+              assert.deepEqual(armed.asset.publications, expectedPub, "completed dev-module external publication");
+            } else if (devModuleApiEnabled) {
+              const expectedPub = armed.expectedWatchEvent === "unlink" ? [] : ["api-route-changed"];
+              assert.deepEqual(armed.asset.publications, expectedPub, "completed dev-module API publication");
+            }
           } else {
             assert.deepEqual(armed.asset.publications, ["asset-changed"], "completed asset publication");
           }

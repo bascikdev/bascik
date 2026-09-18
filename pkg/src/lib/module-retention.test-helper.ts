@@ -13,6 +13,7 @@ import { execute } from "../../bench/profile-runner.ts";
 import { createFixtureTrust, http2Request } from "../../bench/profile-tls.ts";
 import type { ScriptRegistry } from "./script-registry.ts";
 import { analyzeRetentionHeap } from "./module-retention-heap.test-helper.ts";
+import { getLiveReloadScript } from "./live-reload.ts";
 
 export function registryEntries(registry: ScriptRegistry): Map<string, unknown> {
   const cache: unknown = Reflect.get(registry, "cache");
@@ -62,6 +63,14 @@ export interface RetentionCheckpoint {
     observationGeneration: number;
     publications: number;
     liveHelperPaths: string[];
+    pages: number;
+    listeners: number[];
+    pending: number;
+  };
+  devModuleLifecycle?: {
+    observationGeneration: number;
+    publications: number;
+    liveTargetPaths: string[];
     pages: number;
     listeners: number[];
     pending: number;
@@ -561,6 +570,14 @@ export interface BuildDependencyOptions {
   testMode?: "negative-dispatch" | "negative-control";
 }
 
+export interface DevModuleDeletionRecoveryOptions {
+  input: "dev-module-inline" | "dev-module-external" | "dev-module-api";
+  smokeCycles: 2;
+  measuredRevisions: 100;
+  /** Internal negative control: held-dispatch blocks sampling before the first measured batch. */
+  testMode?: "negative-dispatch";
+}
+
 export interface InlinePageObservation {
   path: string;
   generation: number;
@@ -581,6 +598,14 @@ const assetSource = (revision: number) => Buffer.concat([Buffer.from(`asset-${St
 const requestObservation = 'function retentionRequestClosure129() { return request.url; } globalThis[Symbol.for("bascik.retention.observe")](request, context, retentionRequestClosure129);';
 export const inlineSource = (revision: number, generation: number) => `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-${generation}</p><script data-bascik-server>export default function retentionInline129(request, context) { ${requestObservation} return "inline-${revision}:" + new URL(request.url).searchParams.get("request"); }</script></body></html>`;
 
+// Independent fixture expectations, never derived from a received page or disk output.
+const expectedInlineOutput = (revision: number, request?: string) => {
+  const content = request === undefined
+    ? '<script type="text/bascik-server" data-bascik-server-id="server_script_70616765732f696e6c696e652e68746d6c3a3a31"></script>'
+    : `inline-${revision}:${request}`;
+  return Buffer.from(`<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-${revision}</p>${content}${getLiveReloadScript()}</body></html>`);
+};
+
 // Literal fixture markup: the `<script>` tags are constant authored HTML, not interpolated values. The two write
 // sites below carry an exact-rule exception because the analyzer taints the destination path, not the HTML.
 const externalPageSource = '<!DOCTYPE html><html><head></head><body><script data-bascik-server src="../lib/handler.mjs"></script></body></html>';
@@ -594,9 +619,10 @@ export const retentionHelperPaths = (realistic: boolean): string[] => realistic
   }).flat()
   : ["src/lib/helper.mjs", "api/helper.mjs"];
 
-export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | AfterPrefixCancellationOptions | RejectAfterAbortCancellationOptions | FixedFailedImportOptions | StaticAssetOptions | BuildDependencyOptions): Promise<RetentionCheckpoint[]> {
+export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | AfterPrefixCancellationOptions | RejectAfterAbortCancellationOptions | FixedFailedImportOptions | StaticAssetOptions | BuildDependencyOptions | DevModuleDeletionRecoveryOptions): Promise<RetentionCheckpoint[]> {
   const staticAssetOptions = options && "input" in options && options.input === "static-asset" ? options : undefined;
   const buildDepOptions = options && "input" in options && options.input === "build-dependency" ? options : undefined;
+  const devModuleOptions = options && "input" in options && (options.input === "dev-module-inline" || options.input === "dev-module-external" || options.input === "dev-module-api") ? options : undefined;
   const fixedProductionBatch = options && "warmupRequests" in options ? options : undefined;
   const beforeHeadersCancellation = options && "fault" in options && options.fault === "cancel-before-headers" ? options : undefined;
   const afterPrefixCancellation = options && "fault" in options && options.fault === "cancel-after-exact-prefix" ? options : undefined;
@@ -604,6 +630,11 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   const fixedFailedImportFault = options && "fault" in options && options.fault === "fixed-failed-import" ? options : undefined;
   assert(Number.isInteger(generations) && generations >= 2 && generations <= 100 && generations % 2 === 0, "generations must be even, 2..100");
   assert(mode === "dev" || !changing, "production captures require stable source");
+  if (devModuleOptions) {
+    assert(mode === "dev" && !realistic, "dev module deletion/recovery requires the small dev fixture");
+    assert.equal(devModuleOptions.smokeCycles, 2, "dev module deletion/recovery requires exactly 2 smoke cycles");
+    assert.equal(devModuleOptions.measuredRevisions, 100, "dev module deletion/recovery requires exactly 100 measured revisions");
+  }
   if (staticAssetOptions) {
     assert(mode === "dev" && !realistic, "asset lifecycle requires the small dev fixture");
     assert.equal(staticAssetOptions.smokeCycles, 2, "asset lifecycle requires exactly 2 smoke cycles");
@@ -817,7 +848,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   const environment = cleanGeneratorEnvironment(process.env);
   for (const key of Object.keys(environment)) if (key.startsWith("BASCIK_") || key.startsWith("VITEST") || key === "NODE_ENV") delete environment[key];
   if (mode !== "dev") await execute([process.execPath, fileURLToPath(new URL("../transpile.ts", import.meta.url)), "--build"], project, join(directory, "build"), environment);
-  const faultFlag = beforeHeadersCancellation ? "before-headers" : afterPrefixCancellation ? "after-prefix" : rejectAfterAbortCancellation ? "reject-after-abort" : fixedFailedImportFault ? "fixed-failed-import" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : "false";
+  const faultFlag = beforeHeadersCancellation ? "before-headers" : afterPrefixCancellation ? "after-prefix" : rejectAfterAbortCancellation ? "reject-after-abort" : fixedFailedImportFault ? "fixed-failed-import" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : devModuleOptions ? devModuleOptions.input : "false";
   const child = fork(fileURLToPath(new URL("./module-retention-subject.test-helper.ts", import.meta.url)), [directory, mode, String(realistic), faultFlag], {
     cwd: project, execArgv: ["--expose-gc"], env: environment, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -945,6 +976,9 @@ export default function retentionShared129(request, context) { ${requestObservat
     const text = response.text;
     assert(text.includes(`${label}-${revision}:${request}`), `${label} completed response: ${text}`);
     if (label === "inline") assert(text.includes(`generation-${generation}</p>`), "published page generation");
+    if (devModuleOptions?.input === "dev-module-inline" && label === "inline") {
+      assert.deepEqual(response.bytes, expectedInlineOutput(revision, request), "inline exact request bytes");
+    }
     if (fixedProductionBatch) {
       const marker = `${label}-${revision}:${request}`;
       const expected = label === "api" ? marker : `<!DOCTYPE html><html><head></head><body>${label === "inline" ? `<p data-testid="generation">generation-${generation}</p>` : ""}${marker}</body></html>`;
@@ -970,7 +1004,14 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       return;
     }
-    for (const [path, label] of fixedRoutes) await requestOne(path, label, revision, generation);
+    for (const [path, label] of fixedRoutes) {
+      const isTarget = devModuleOptions
+        ? (label === "inline" && devModuleOptions.input === "dev-module-inline") ||
+        (label === "src" && devModuleOptions.input === "dev-module-external") ||
+        (label === "api" && devModuleOptions.input === "dev-module-api")
+        : true;
+      await requestOne(path, label, isTarget ? revision : 0, isTarget ? generation : 0);
+    }
   }
   async function requestFixedBatch(count: number): Promise<void> {
     for (let index = 0; index < count; index++) {
@@ -984,7 +1025,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   }
   async function stopSubject(): Promise<void> {
     const reply = await command<{ restored: { destroySSL: boolean; createSecureServer: boolean; createServer: boolean; } }>("stop");
-    if (fixedProductionBatch || beforeHeadersCancellation || staticAssetOptions || buildDepOptions) assert.deepEqual(reply.restored, { destroySSL: true, createSecureServer: true, createServer: true });
+    if (fixedProductionBatch || beforeHeadersCancellation || staticAssetOptions || buildDepOptions || devModuleOptions) assert.deepEqual(reply.restored, { destroySSL: true, createSecureServer: true, createServer: true });
     assert.equal(await bounded(Promise.race([exited.promise, cancellation.promise]), 10_000, "shutdown"), 0, "retention child shutdown");
   }
   async function edit(path: string, source: string, kind: string) {
@@ -1051,6 +1092,83 @@ export default function retentionShared129(request, context) { ${requestObservat
     await verifyBuildDep(expectRevision, watchEvent === "unlink");
     if (watchEvent !== "unlink") {
       await requestAll(0, 0);
+    }
+    await command("asset-idle");
+    pending.assertIdle();
+  }
+  const devModuleObservations: InlinePageObservation[] = [];
+  async function verifyDevModule(revision: number, deleted = false) {
+    if (devModuleOptions?.input === "dev-module-inline") {
+      const response = await readResponse("/inline?request=test-inline");
+      if (deleted) {
+        assert.equal(response.status, 404, "deleted inline page HTTP status");
+        assert.deepEqual(response.bytes, Buffer.from("Not Found"), "deleted inline page exact response bytes");
+        await assert.rejects(readFile(join(project, "dist/inline.html")), { code: "ENOENT" }, "deleted inline page dist output");
+      } else {
+        assert.equal(response.status, 200, "inline page HTTP status");
+        assert.deepEqual(response.bytes, expectedInlineOutput(revision, "test-inline"), "inline exact response bytes");
+        assert.deepEqual(await readFile(join(project, "dist/inline.html")), expectedInlineOutput(revision), "inline exact disk bytes");
+      }
+    } else if (devModuleOptions?.input === "dev-module-external") {
+      const response = await readResponse("/external?request=test-external");
+      if (deleted) {
+        // Build error on external helper deletion: dev server serves last successful page or build error
+        assert.equal(response.status, 200, "deleted external helper HTTP status");
+        assert(response.text.includes("src-"), "previous build served during external helper error");
+      } else {
+        assert.equal(response.status, 200, "external helper HTTP status");
+        assert(response.text.includes(`src-${revision}:test-external`), `external helper response: got ${response.text}`);
+      }
+    } else if (devModuleOptions?.input === "dev-module-api") {
+      const response = await readResponse("/api/probe?request=test-api");
+      if (deleted) {
+        assert.equal(response.status, 404, "deleted API helper HTTP status");
+      } else {
+        assert.equal(response.status, 200, "API helper HTTP status");
+        assert.equal(response.text, `api-${revision}:test-api`, `API helper exact response`);
+      }
+    }
+  }
+  async function devModuleTransition(watchEvent: "change" | "unlink" | "add", revision: number, expectRevision = revision) {
+    const isInline = devModuleOptions?.input === "dev-module-inline";
+    const isExternal = devModuleOptions?.input === "dev-module-external";
+    const path = isInline
+      ? join(project, "src/pages/inline.html")
+      : isExternal
+        ? join(project, "src/lib/helper.mjs")
+        : join(project, "api/helper.mjs");
+    const generation = devModuleObservations.length + 1;
+    const expectedPub = isInline
+      ? watchEvent === "unlink" ? ["transpiled:pages/external.html"]
+        : watchEvent === "add" ? ["transpiled:pages/external.html", "transpiled:pages/inline.html"]
+          : ["transpiled:pages/inline.html"]
+      : watchEvent === "unlink"
+        ? (isExternal ? ["build-error"] : [])
+        : (devModuleOptions?.input === "dev-module-api" ? ["api-route-changed"] : ["transpiled"]);
+    const expected = { path, generation, watchEvent, publications: expectedPub };
+    await command("arm", { path, kind: "dev-module-lifecycle", generation, watchEvent });
+    if (watchEvent === "unlink") {
+      await unlink(path);
+    } else if (isInline) {
+      await writeFile(path, inlineSource(revision, revision));
+    } else {
+      await writeFile(path, `export const revision = ${revision};`);
+    }
+    const observation = await command<InlinePageObservation>("completed", { generation });
+    assertInlinePublication(observation, expected);
+    devModuleObservations.push(observation);
+    await writeFile(join(directory, "dev-module-observations.json"), JSON.stringify(devModuleObservations, null, 2), { mode: 0o600 });
+    await verifyDevModule(expectRevision, watchEvent === "unlink");
+    if (isInline && watchEvent === "unlink") {
+      await requestOne("/external", "src", 0, 0);
+      await requestOne("/api/probe", "api", 0, 0);
+    }
+    if (watchEvent !== "unlink") {
+      if (isInline) {
+        await requestAll(expectRevision, expectRevision);
+      } else {
+        await requestAll(0, 0);
+      }
     }
     await command("asset-idle");
     pending.assertIdle();
@@ -1641,6 +1759,76 @@ export default function retentionShared129(request, context) { ${requestObservat
         assert.deepEqual(await readFile(join(project, "src/lib/build-helper.ts"), "utf8"), "export const buildNumber = 0;", "restore original authored build helper bytes");
       }
       await checkpoint("batch-2", buildDepOptions.measuredRevisions, true);
+    } else if (devModuleOptions) {
+      if (devModuleOptions.testMode === "negative-dispatch") {
+        await command("hold-next-dispatch");
+        await requestAll(0, 0);
+        const blockedReport = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
+          "sample",
+          { expectPending: ["dispatch"] },
+        );
+        assert.deepEqual(blockedReport, { blocked: "dispatch", pending: { dispatch: 1, transport: 0, tls: 0 } });
+        await command("release-held-dispatch");
+        const cleanSample = await command<RetentionCheckpoint>("sample", { phase: "clean", completed: 0, snapshot: false });
+        assert.deepEqual(cleanSample.pending, { dispatch: 0, transport: 0, tls: 0 });
+        await stopSubject();
+        return checkpoints;
+      }
+      const restoreBytes = () => {
+        if (devModuleOptions.input === "dev-module-inline") return inlineSource(0, 0);
+        return "export const revision = 0;";
+      };
+      const targetFilePath = () => {
+        if (devModuleOptions.input === "dev-module-inline") return join(project, "src/pages/inline.html");
+        if (devModuleOptions.input === "dev-module-external") return join(project, "src/lib/helper.mjs");
+        return join(project, "api/helper.mjs");
+      };
+      const smokeCycles = devModuleOptions.smokeCycles;
+      for (let cycle = 0; cycle < smokeCycles; cycle++) {
+        await devModuleTransition("change", devModuleOptions.input === "dev-module-inline" ? -(cycle + 1) : 0);
+        await devModuleTransition("unlink", 0);
+        await devModuleTransition("add", 0);
+        await devModuleTransition("change", 0);
+        assert.deepEqual(await readFile(targetFilePath(), "utf8"), restoreBytes(), "restore original authored dev module bytes");
+      }
+      for (let warmup = 0; warmup < 10; warmup++) await requestAll(0, 0);
+      await verifyDevModule(0);
+      await command("prime");
+
+      const warmupJoined = await command<RetentionCheckpoint>("sample", { phase: "warmup-join", completed: 0, snapshot: false });
+      assert.deepEqual(warmupJoined.pending, { dispatch: 0, transport: 0, tls: 0 });
+
+      await command("hold-next-dispatch");
+      await requestAll(0, 0);
+      const blockedDispatch = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
+        "sample",
+        { expectPending: ["dispatch"] },
+      );
+      assert.deepEqual(blockedDispatch, { blocked: "dispatch", pending: { dispatch: 1, transport: 0, tls: 0 } });
+      await command("release-held-dispatch");
+
+      const settledClean = await command<RetentionCheckpoint>("sample", { phase: "settled-clean", completed: 0, snapshot: false });
+      assert.deepEqual(settledClean.pending, { dispatch: 0, transport: 0, tls: 0 });
+
+      await checkpoint("baseline", 0, true);
+      assert.deepEqual(checkpoints[0].pending, { dispatch: 0, transport: 0, tls: 0 });
+      const half = devModuleOptions.measuredRevisions / 2;
+      for (let revision = 1; revision <= half; revision++) {
+        await devModuleTransition("change", changing ? revision : 0, changing ? revision : 0);
+        await devModuleTransition("unlink", 0, 0);
+        await devModuleTransition("add", 0, 0);
+        await devModuleTransition("change", 0, 0);
+        assert.deepEqual(await readFile(targetFilePath(), "utf8"), restoreBytes(), "restore original authored dev module bytes");
+      }
+      await checkpoint("batch-1", half);
+      for (let revision = half + 1; revision <= devModuleOptions.measuredRevisions; revision++) {
+        await devModuleTransition("change", changing ? revision : 0, changing ? revision : 0);
+        await devModuleTransition("unlink", 0, 0);
+        await devModuleTransition("add", 0, 0);
+        await devModuleTransition("change", 0, 0);
+        assert.deepEqual(await readFile(targetFilePath(), "utf8"), restoreBytes(), "restore original authored dev module bytes");
+      }
+      await checkpoint("batch-2", devModuleOptions.measuredRevisions, true);
     } else {
       for (let warmup = 0; warmup < 10; warmup++) await requestAll(0, 0);
       await command("prime");
@@ -1672,7 +1860,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       await checkpoint("batch-2", generations, true);
     }
-    if (!fixedProductionBatch && !beforeHeadersCancellation && !afterPrefixCancellation && !rejectAfterAbortCancellation && !fixedFailedImportFault && !staticAssetOptions && !buildDepOptions) {
+    if (!fixedProductionBatch && !beforeHeadersCancellation && !afterPrefixCancellation && !rejectAfterAbortCancellation && !fixedFailedImportFault && !staticAssetOptions && !buildDepOptions && !devModuleOptions) {
       if (realistic && mode === "dev") {
         inlineRevision = 0;
         pageGeneration = 0;
@@ -1696,14 +1884,12 @@ export default function retentionShared129(request, context) { ${requestObservat
     await writeFile(join(directory, "heaps.json"), JSON.stringify(heaps, null, 2), { mode: 0o600 });
     const snapshotNames = (fixedProductionBatch || beforeHeadersCancellation || afterPrefixCancellation || rejectAfterAbortCancellation || fixedFailedImportFault)
       ? ["baseline.heapsnapshot", "batch-2.heapsnapshot"]
-      : ["priming.heapsnapshot", "baseline.heapsnapshot", "batch-2.heapsnapshot", "reverted.heapsnapshot", "cleared.heapsnapshot"];
+      : (staticAssetOptions || buildDepOptions || devModuleOptions)
+        ? ["priming.heapsnapshot", "baseline.heapsnapshot", "batch-2.heapsnapshot"]
+        : ["priming.heapsnapshot", "baseline.heapsnapshot", "batch-2.heapsnapshot", "reverted.heapsnapshot", "cleared.heapsnapshot"];
     for (const name of [...snapshotNames, "heaps.json", "checkpoints.json"]) {
-      try {
-        const bytes = await readFile(join(directory, name));
-        artifacts.push({ path: join(directory, name), bytes: bytes.length, sha256: digest(bytes) });
-      } catch {
-        // Optional snapshots for dev churn smoke
-      }
+      const bytes = await readFile(join(directory, name));
+      artifacts.push({ path: join(directory, name), bytes: bytes.length, sha256: digest(bytes) });
     }
   } finally {
     clearTimeout(experimentDeadline);

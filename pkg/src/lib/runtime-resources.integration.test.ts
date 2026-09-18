@@ -659,6 +659,57 @@ describe("packet R5: dev module churn stage oracle", () => {
     }
   });
 
+  it("dev module deletion/recovery (inline page): 2 smoke then 100 revisions split 50+50 with edit delete recreate restore", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+    retentionReportDirectories.push(directory);
+    const checkpoints = await runRetentionExperiment(
+      directory,
+      true,
+      2,
+      "dev",
+      false,
+      { input: "dev-module-inline", smokeCycles: 2, measuredRevisions: 100 },
+    );
+    expect(checkpoints.map(c => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+    expect(checkpoints[0].completed).toBe(0);
+    expect(checkpoints[1].completed).toBe(50);
+    expect(checkpoints[2].completed).toBe(100);
+
+    for (const checkpoint of checkpoints) {
+      expect(checkpoint).toMatchObject({
+        pages: 2,
+        plans: 2,
+        cache: 2,
+        graph: 4,
+        inlineLoads: 1,
+        liveRequests: 0,
+        liveRequestClosures: 0,
+        stalePlans: 0,
+        activeRequests: 0,
+        pendingCompression: 0,
+        pending: { dispatch: 0, transport: 0, tls: 0 },
+      });
+      expect(checkpoint.fileVersions).toEqual([0, 0, 0, 0]);
+      expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      expect(checkpoint.staleInlineLoads).toBe(0);
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
+      for (const owner of ["sidecar", "dependencyEdges"] as const) {
+        expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
+      }
+    }
+
+    assertMeasuredBatchDeltas(checkpoints.map(c => c.devModuleLifecycle!.observationGeneration), 50 * 4);
+    // Each cycle publishes one edit, one surviving page after deletion,
+    // both pages after recreation, and one restored-page edit. Boot adds two.
+    assertMeasuredBatchDeltas(checkpoints.map(c => c.devModuleLifecycle!.publications), 50 * 5);
+    expect(checkpoints[2].devModuleLifecycle).toMatchObject({
+      observationGeneration: (2 + 100) * 4,
+      publications: 2 + (2 + 100) * 5,
+      pending: 0,
+    });
+  }, 180_000);
+
 });
 
 describe("packet R6: static asset lifecycle", () => {
