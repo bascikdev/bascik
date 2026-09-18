@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mkdir, readFile, rm, writeFile, stat } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   cleanupFixture,
@@ -392,5 +392,164 @@ describe("packet B1: metamorphic build artifact comparison and ordering", () => 
         await cleanupFixture(root);
       }
     });
+  });
+
+  // ── Packet B2: Local Dependency and Final-History Equivalence ─────────────
+  describe("packet B2: local dependency and final-history equivalence", () => {
+    describe("step 1: history equivalence oracle and negative controls", () => {
+      it("oracle rejects when warm targeted inventory diverges from fresh build inventory (negative control)", () => {
+        const fresh: EmittedInventory = {
+          files: {
+            "index.html": { hash: "fresh-sha256", size: 250 },
+            "about.html": { hash: "about-sha256", size: 180 },
+          },
+          csp: {},
+          sidecar: {},
+        };
+        const staleWarm: EmittedInventory = {
+          files: {
+            "index.html": { hash: "stale-warm-sha256", size: 250 }, // diverged from fresh
+            "about.html": { hash: "about-sha256", size: 180 },
+          },
+          csp: {},
+          sidecar: {},
+        };
+
+        expect(() => {
+          assertInventoriesMatch(staleWarm, fresh, "warm vs fresh equivalence check");
+        }).toThrow(/hash mismatch on index.html/);
+      });
+    });
+
+    it("churn cycle (edit -> delete/fail -> recreate/recover) preserves equivalence with fresh full build", async () => {
+      const warmRoot = fixtureRoot("b2-warm");
+      const freshRoot = fixtureRoot("b2-fresh");
+
+      /** Setup common files for both roots */
+      const setupFixture = async (root: string, bContent: string) => {
+        await createFixtureDirs(root);
+        await mkdir(join(root, "src/lib"), { recursive: true });
+
+        await writeFixtureFile(
+          root,
+          "bascik.config.js",
+          `module.exports = {
+  directory: { components: ["src/components"] },
+  pipeline: { workers: false },
+  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+  minify: { identifiers: false },
+};`,
+        );
+
+        // Helper B: local dependency (also imports crypto from Node package library)
+        await writeFixtureFile(root, "src/lib/b.ts", bContent);
+
+        // Helper A: local dependency importing B via relative path and alias, with safe circular function hook
+        await writeFixtureFile(
+          root,
+          "src/lib/a.ts",
+          `import { getValueB, circularFromB } from "./b.ts";
+export const getValueA = () => "from-A:" + getValueB();
+export const circularFromA = () => "from-A-circle";
+`,
+        );
+
+        // Page with data-bascik-build script importing A, outputting literal replacement tokens ($1, $2, $&, $\`)
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!DOCTYPE html><html><head><title>B2 Entry</title></head><body>
+  <div data-testid="output">
+    <script data-bascik-build>
+      import { getValueA } from '@/lib/a.ts';
+      // Emit special replacement tokens: $1, $2, $&, $\`, plus SQL placeholder syntax
+      console.log("<p>" + getValueA() + " tokens: $1 $2 $& $\` $param1: " + JSON.stringify({ tag: "<div>html</div>" }) + "</p>");
+    </script>
+  </div>
+  </body></html>`,
+        );
+
+        // Untouched sibling page
+        await writeFixtureFile(
+          root,
+          "src/pages/untouched.html",
+          `<!DOCTYPE html><html><head><title>Untouched</title></head><body><h1>Untouched Page</h1></body></html>`,
+        );
+      };
+
+      const bInitial = `import { createHash } from "node:crypto";
+export const getValueB = () => "initial-B:" + createHash("sha256").update("b1").digest("hex").slice(0, 6);
+export const circularFromB = () => "circle-B";
+`;
+
+      const bEdited = `import { createHash } from "node:crypto";
+export const getValueB = () => "edited-B:" + createHash("sha256").update("b2").digest("hex").slice(0, 6);
+export const circularFromB = () => "circle-B-edited";
+`;
+
+      const bFinal = `import { createHash } from "node:crypto";
+export const getValueB = () => "final-recovered-B:" + createHash("sha256").update("b-final").digest("hex").slice(0, 8);
+export const circularFromB = () => "circle-B-final";
+`;
+
+      try {
+        // ── 1. Initial full build of warm root ──
+        await setupFixture(warmRoot, bInitial);
+        const initialRun = await runRealBuild({ projectRoot: warmRoot });
+        expect(initialRun.stdout).toContain("Build complete");
+
+        // ── 2. Edit b.ts and run targeted build on index.html ──
+        await writeFixtureFile(warmRoot, "src/lib/b.ts", bEdited);
+        const targetedEditRun = await runRealBuild({
+          projectRoot: warmRoot,
+          args: ["--only", "index.html"],
+        });
+        expect(targetedEditRun.stdout).toContain("Build complete");
+        const afterEditFiles = await readEmittedFiles(join(warmRoot, "dist"));
+        expect(afterEditFiles["index.html"].toString("utf8")).toContain("edited-B");
+
+        // ── 3. Delete b.ts and run targeted build -> must fail closed ──
+        await rm(join(warmRoot, "src/lib/b.ts"));
+        let deleteFailed = false;
+        try {
+          await runRealBuild({
+            projectRoot: warmRoot,
+            args: ["--only", "index.html"],
+          });
+        } catch {
+          deleteFailed = true;
+        }
+        expect(deleteFailed, "targeted build must fail closed when dependency is deleted").toBe(true);
+
+        // ── 4. Recreate b.ts with final authored state and recover ──
+        await writeFixtureFile(warmRoot, "src/lib/b.ts", bFinal);
+        const recoverRun = await runRealBuild({
+          projectRoot: warmRoot,
+          args: ["--only", "index.html"],
+        });
+        expect(recoverRun.stdout).toContain("Build complete");
+
+        const warmFinalFiles = await readEmittedFiles(join(warmRoot, "dist"));
+        const warmFinalInventory = toInventory(warmFinalFiles);
+
+        // ── 5. Stand up clean twin root at the exact same final state and run fresh full build ──
+        await setupFixture(freshRoot, bFinal);
+        const freshRun = await runRealBuild({ projectRoot: freshRoot });
+        expect(freshRun.stdout).toContain("Build complete");
+
+        const freshFinalFiles = await readEmittedFiles(join(freshRoot, "dist"));
+        const freshFinalInventory = toInventory(freshFinalFiles);
+
+        // ── 6. Assert equivalence between warm churn history and fresh full build ──
+        assertInventoriesMatch(warmFinalInventory, freshFinalInventory, "warm churn history vs fresh full build");
+
+        // Both roots must independently satisfy manifest hash and size correspondence
+        await assertManifestCorrespondence(warmRoot, warmFinalFiles);
+        await assertManifestCorrespondence(freshRoot, freshFinalFiles);
+      } finally {
+        await cleanupFixture(warmRoot);
+        await cleanupFixture(freshRoot);
+      }
+    }, 60_000);
   });
 });
