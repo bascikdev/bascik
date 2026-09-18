@@ -616,7 +616,7 @@ async function sample(
     pending: boundary.pending(),
     resources: process.getActiveResourcesInfo().sort(),
     fileVersions: filePaths.map(path => scriptRegistry.generationOf(resolve(path))), memory,
-    ...(beforeHeaders ? { cancellation: { ...cancellationCounts } } : {}),
+    ...(cancellationEnabled ? { cancellation: { ...cancellationCounts, midBody: cancellationCounts.midBody ? { ...cancellationCounts.midBody } : undefined } } : {}),
     ...(staticAssetEnabled ? {
       assetLifecycle: {
         observationGeneration: assetGeneration,
@@ -781,12 +781,6 @@ process.on("message", async (message: {
       // If afterPrefix, also wait for the producer to settle.
       if (afterPrefix) {
         await gate.producer!.promise;
-        const midBody = cancellationCounts.midBody!;
-        midBody.dispatchSettled = cancellationCounts.dispatchSettled;
-        midBody.transportSettled = cancellationCounts.transportSettled + 1; // including this transport
-        assert(gate.body, "missing authored body");
-        midBody.lockedBodies = Number(gate.body.locked);
-        midBody.prefix = Buffer.concat(gate.bytes || []).toString("utf8");
       }
       await gate.dispatch.promise;
       await gate.closed.promise;
@@ -795,6 +789,9 @@ process.on("message", async (message: {
       if (afterPrefix && cancellationCounts.midBody) {
         cancellationCounts.midBody.transportSettled = cancellationCounts.transportSettled;
         cancellationCounts.midBody.dispatchSettled = cancellationCounts.dispatchSettled;
+        assert(gate.body, "missing authored body");
+        cancellationCounts.midBody.lockedBodies = Number(gate.body.locked);
+        cancellationCounts.midBody.prefix = Buffer.concat(gate.bytes || []).toString("utf8");
       }
       cancellationCounts.pending--;
       cancellationGate = undefined;
