@@ -102,4 +102,106 @@ describe("profiling boundary controls", () => {
       reader.releaseLock();
     }
   });
+
+  describe("packet R6: exec, permit, worker, and SSE repeated boundary controls", () => {
+    it("negative control: rejects leaked permit and unreleased listener on repeated execution", async () => {
+      const { Semaphore } = await import("./script-runner.ts");
+      const sem = new Semaphore(1);
+      await sem.acquire();
+      expect(sem.getActiveCount()).toBe(1);
+
+      // Leaked permit oracle rejection
+      expect(() => {
+        expect(sem.getActiveCount()).toBe(0);
+      }).toThrow();
+      sem.release();
+      expect(sem.getActiveCount()).toBe(0);
+
+      // Unreleased drain listener oracle rejection
+      const { SseManager } = await import("./sse.ts");
+      const sse = new SseManager({ heartbeatIntervalMs: 10_000 });
+      const emitter = new (await import("node:events")).EventEmitter();
+      const mockRes: any = {
+        headersSent: false,
+        destroyed: false,
+        writableEnded: false,
+        write: () => true,
+        end: () => {},
+        on: (event: string, listener: any) => emitter.on(event, listener),
+        off: (event: string, listener: any) => emitter.off(event, listener),
+      };
+      const client = sse.addClient(mockRes);
+      expect(emitter.listenerCount("drain")).toBe(1);
+      expect(() => {
+        expect(emitter.listenerCount("drain")).toBe(0);
+      }).toThrow();
+      sse.removeClient(client!.id);
+      expect(emitter.listenerCount("drain")).toBe(0);
+      sse.destroy();
+    });
+
+    it("settles 100 repeated permit and SSE boundary cycles without resource or listener accumulation", async () => {
+      const { Semaphore } = await import("./script-runner.ts");
+      const { SseManager } = await import("./sse.ts");
+      const { EventEmitter } = await import("node:events");
+      const { createResourceProbe, validateResourceBoundary } = await import("../../bench/profile-workload.ts");
+
+      const probe = createResourceProbe();
+      const baseline = probe.snapshot();
+
+      const sem = new Semaphore(2);
+      const sse = new SseManager({ heartbeatIntervalMs: 60_000 });
+
+      // 100 repeated permit acquisition and release cycles
+      for (let i = 0; i < 100; i++) {
+        await sem.acquire();
+        expect(sem.getActiveCount()).toBe(1);
+        sem.release();
+        expect(sem.getActiveCount()).toBe(0);
+      }
+
+      // 100 repeated SSE client connection, backpressure drain, and removal cycles
+      for (let i = 0; i < 100; i++) {
+        const emitter = new EventEmitter();
+        const mockRes: any = {
+          headersSent: false,
+          destroyed: false,
+          writableEnded: false,
+          write: () => {
+            return false; // force backpressure drain listener state
+          },
+          end: () => {},
+          close: () => {},
+          on: (event: string, listener: any) => emitter.on(event, listener),
+          off: (event: string, listener: any) => emitter.off(event, listener),
+        };
+
+        const client = sse.addClient(mockRes);
+        expect(client).toBeDefined();
+        expect(emitter.listenerCount("drain")).toBe(1);
+
+        // Send a frame to exercise write backpressure
+        sse.send(client!, `data: message-${i}\n\n`);
+
+        // Emit drain to resolve backpressure
+        emitter.emit("drain");
+
+        // Remove client cleanly
+        sse.removeClient(client!.id);
+        expect(sse.activeClientCount).toBe(0);
+        expect(emitter.listenerCount("drain")).toBe(0);
+      }
+
+      sse.destroy();
+      expect(sse.activeClientCount).toBe(0);
+
+      // Allow GC / microtask turn for unreferenced timer/object cleanup
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Validate zero async handle / descriptor leaks against baseline
+      const finalSnapshot = probe.snapshot();
+      validateResourceBoundary(baseline, finalSnapshot);
+      probe.close();
+    });
+  });
 });
