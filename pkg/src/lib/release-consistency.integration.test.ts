@@ -15,10 +15,15 @@
  *   verifier; production readiness is not assumed to check those artifacts.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdir, symlink } from "node:fs/promises";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { spawn, type ChildProcess } from "node:child_process";
+import { mkdir, symlink, writeFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import http from "node:http";
+import https from "node:https";
+import http2 from "node:http2";
 import {
   cleanupFixture,
   createFixtureDirs,
@@ -30,6 +35,8 @@ import {
   writeWorkersConfig,
 } from "./build-fixtures.ts";
 import { computePageCspHashes } from "./csp-hashes.ts";
+
+const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "../index.ts");
 
 // ─── Verifier (test-owned, static) ───────────────────────────────────────────
 
@@ -426,5 +433,551 @@ describe("packet L1: cross-artifact release candidate verifier", () => {
         await cleanupFixture(rootB);
       }
     });
+  });
+});
+
+// ─── L2: rejected candidate, activation, drain, rollback ────────────────────
+
+let l2PortCounter = 10800 + (process.pid % 100);
+const nextL2Port = (): number => l2PortCounter++;
+
+interface RunningProdChild {
+  child: ChildProcess;
+  port: number;
+  url: string;
+  output: () => string;
+  exitPromise: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+}
+
+/**
+ * Spawn a real production child (`bascik --server`) against a built fixture.
+ * Waits for the "Server running at" line before resolving. The child is the
+ * test's responsibility to terminate; callers must kill it in `finally`.
+ */
+const spawnProdChild = async (
+  root: string,
+  options: { tls?: boolean } = {},
+): Promise<RunningProdChild> => {
+  const port = nextL2Port();
+  const child = spawn(process.execPath, [PKG_ENTRY, "--server"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      BASCIK_SERVER_PORT: String(port),
+      BASCIK_BUILD: "0",
+      BASCIK_SERVER: "1",
+      VITEST: "",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let output = "";
+  const onData = (d: Buffer) => {
+    output += d.toString();
+  };
+  child.stdout?.on("data", onData);
+  child.stderr?.on("data", onData);
+
+  const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolveExit) => {
+      child.once("exit", (code, signal) => resolveExit({ code, signal }));
+    },
+  );
+
+  await new Promise<void>((res, rej) => {
+    const timer = setTimeout(() => {
+      rej(new Error(`Prod server failed to boot within 15s. Output:\n${output}`));
+    }, 15000);
+    const check = () => {
+      if (output.includes("Server running at")) {
+        clearTimeout(timer);
+        res();
+      } else if (child.exitCode !== null) {
+        clearTimeout(timer);
+        rej(new Error(`Prod server exited early with code ${child.exitCode}. Output:\n${output}`));
+      } else {
+        setTimeout(check, 50);
+      }
+    };
+    check();
+  });
+
+  const scheme = options.tls ? "https" : "http";
+  return { child, port, url: `${scheme}://localhost:${port}`, output: () => output, exitPromise };
+};
+
+/** Poll `/_health/ready` until it returns the expected status (200 ready, 503 otherwise). */
+const waitForHealth = async (
+  url: string,
+  expectedStatus: number,
+  _tls: boolean,
+  timeoutMs = 15000,
+): Promise<void> => {
+  const start = Date.now();
+  const target = new URL(url);
+  const isHttps = target.protocol === "https:";
+  const client = isHttps ? https : http;
+  while (Date.now() - start < timeoutMs) {
+    const status = await new Promise<number>((resolveStatus) => {
+      const req = client.request(
+        {
+          host: target.hostname,
+          port: target.port,
+          path: "/_health/ready",
+          method: "GET",
+          rejectUnauthorized: false,
+        } as http.RequestOptions,
+        (res) => {
+          res.resume();
+          resolveStatus(res.statusCode ?? 0);
+        },
+      );
+      req.on("error", () => resolveStatus(0));
+      req.end();
+    });
+    if (status === expectedStatus) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`Health check on ${url} never reached status ${expectedStatus}`);
+};
+
+/** HTTP/1.1 GET helper returning status + body. */
+const httpGet = (url: string, path: string): Promise<{ status: number; body: string }> =>
+  new Promise((resolveReq, reject) => {
+    const target = new URL(url);
+    const req = http.request(
+      { host: target.hostname, port: target.port, path, method: "GET" },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c as Buffer));
+        res.on("end", () =>
+          resolveReq({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+
+/** True HTTP/2 GET helper returning status + body. */
+const http2Get = (url: string, path: string): Promise<{ status: number; body: string }> =>
+  new Promise((resolveReq, reject) => {
+    const target = new URL(url);
+    const client = http2.connect(`https://${target.hostname}:${target.port}`, {
+      rejectUnauthorized: false,
+    });
+    client.on("error", reject);
+    const req = client.request({ ":path": path, ":method": "GET" });
+    const chunks: Buffer[] = [];
+    req.on("response", (headers) => {
+      req.on("data", (c) => chunks.push(c as Buffer));
+      req.on("end", () => {
+        client.close();
+        resolveReq({ status: Number(headers[":status"] ?? 0), body: Buffer.concat(chunks).toString("utf8") });
+      });
+    });
+    req.on("error", (err) => {
+      client.close();
+      reject(err);
+    });
+    req.end();
+  });
+
+/**
+ * A release fixture whose buffered server script blocks on a gate file. The
+ * test writes/removes `<root>/gate` to hold or release an accepted request.
+ * The gate is test-owned: the child reads it from disk, so no IPC is needed.
+ */
+const writeGatedReleaseFixture = async (root: string): Promise<void> => {
+  await createFixtureDirs(root);
+  await writeWorkersConfig(root, true);
+  await mkdir(join(root, "src/api"), { recursive: true });
+  await mkdir(join(root, "node_modules/local-dep"), { recursive: true });
+  await writeFixtureFile(
+    root,
+    "src/components/card.html",
+    `<article class="card"><slot></slot></article>`,
+  );
+  await writeFixtureFile(root, "src/api/hello.ts", "export const GET = () => new Response('hi');");
+  await writeFixtureFile(root, "node_modules/local-dep/index.js", "module.exports = 1;");
+  await writeFixtureFile(
+    root,
+    "node_modules/local-dep/package.json",
+    JSON.stringify({ name: "local-dep", version: "1.0.0" }),
+  );
+  await symlink(join(root, "src/components/card.html"), join(root, "linked-card.html"));
+  await writeFixtureFile(
+    root,
+    "src/pages/index.html",
+    `<!DOCTYPE html><html><head><title>Gated</title></head><body>
+  <h1 data-testid="gated">Gated release</h1>
+  <script data-bascik-server>
+  import { readFile } from "node:fs/promises";
+  import { join } from "node:path";
+  export default async () => {
+    while (true) {
+      try {
+        const gate = await readFile(join(process.cwd(), "gate"), "utf8");
+        return gate.trim();
+      } catch {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+  };
+  </script>
+  </body></html>`,
+  );
+};
+
+/** Build a release and return its emitted inventory. */
+const buildRelease = async (root: string): Promise<Record<string, Buffer>> => {
+  const result = await runRealBuild({ projectRoot: root });
+  expect(result.stdout).toContain("Build complete");
+  return readEmittedFiles(join(root, "dist"));
+};
+
+describe("packet L2: rejected candidate, activation, drain, rollback", () => {
+  const children: RunningProdChild[] = [];
+
+  const track = (c: RunningProdChild): RunningProdChild => {
+    children.push(c);
+    return c;
+  };
+
+  afterEach(async () => {
+    for (const c of children) {
+      if (c.child.exitCode === null) {
+        c.child.kill("SIGKILL");
+        await c.exitPromise;
+      }
+    }
+    children.length = 0;
+  });
+
+  describe("step 1: rejected candidate and admission failure", () => {
+    it("keeps A serving while B fails verification and is never routed to", async () => {
+      const rootA = fixtureRoot("l2-reject-a");
+      const rootB = fixtureRoot("l2-reject-b");
+      try {
+        await writeGatedReleaseFixture(rootA);
+        await writeGatedReleaseFixture(rootB);
+        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        await writeFile(join(rootB, "gate"), "B-RELEASED", "utf8");
+        const emittedA = await buildRelease(rootA);
+        const emittedB = await buildRelease(rootB);
+
+        // B is a bad candidate: corrupt a manifest hash so the verifier rejects it.
+        const manifest = JSON.parse(emittedB[".bascik/manifest.json"].toString("utf8"));
+        const firstRel = Object.keys(manifest.files)[0];
+        manifest.files[firstRel].hash = "deadbeef";
+        emittedB[".bascik/manifest.json"] = Buffer.from(JSON.stringify(manifest), "utf8");
+        const verdict = verifyReleaseCandidate(makeCandidate(rootB, emittedB));
+        expect(verdict.ok).toBe(false);
+        expect(verdict.failures.join("\n")).toMatch(/manifest hash mismatch/);
+
+        // A is valid and serves.
+        const verdictA = verifyReleaseCandidate(makeCandidate(rootA, emittedA));
+        expect(verdictA.ok).toBe(true);
+
+        const a = track(await spawnProdChild(rootA));
+        await waitForHealth(a.url, 200, false);
+        const res = await httpGet(a.url, "/");
+        expect(res.status).toBe(200);
+        expect(res.body).toContain("Gated release");
+
+        // The test-owned router never routes to B because B failed verification.
+        expect(verdict.ok).toBe(false);
+      } finally {
+        await cleanupFixture(rootA);
+        await cleanupFixture(rootB);
+      }
+    }, 30000);
+
+    it("rejects a candidate at admission: B's child exits before binding, A stays healthy", async () => {
+      const rootA = fixtureRoot("l2-admit-a");
+      const rootB = fixtureRoot("l2-admit-b");
+      try {
+        await writeGatedReleaseFixture(rootA);
+        await writeGatedReleaseFixture(rootB);
+        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        await buildRelease(rootA);
+        await buildRelease(rootB);
+
+        // Corrupt B's sidecar so production admission rejects it before binding.
+        const sidecarPath = join(rootB, "dist", ".bascik", "server-scripts.json");
+        await writeFile(sidecarPath, "{corrupt", "utf8");
+
+        const a = track(await spawnProdChild(rootA));
+        await waitForHealth(a.url, 200, false);
+
+        // B's child must fail to boot (admission rejects before the socket binds).
+        const b = spawn(process.execPath, [PKG_ENTRY, "--server"], {
+          cwd: rootB,
+          env: {
+            ...process.env,
+            BASCIK_SERVER_PORT: String(nextL2Port()),
+            BASCIK_BUILD: "0",
+            BASCIK_SERVER: "1",
+            VITEST: "",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let bOutput = "";
+        b.stdout?.on("data", (d) => (bOutput += d.toString()));
+        b.stderr?.on("data", (d) => (bOutput += d.toString()));
+        const bExit = await Promise.race([
+          new Promise<number | null>((r) => b.once("exit", (code) => r(code))),
+          new Promise<number | null>((r) => setTimeout(() => r(null), 10000)),
+        ]);
+        if (bExit === null) {
+          b.kill("SIGKILL");
+          throw new Error(`B child did not exit on corrupt sidecar. Output:\n${bOutput}`);
+        }
+        expect(bExit).not.toBe(0);
+        expect(bOutput).toMatch(/Failed to load server scripts sidecar/);
+
+        // A remains healthy after B's admission failure.
+        const res = await httpGet(a.url, "/");
+        expect(res.status).toBe(200);
+        expect(res.body).toContain("Gated release");
+      } finally {
+        await cleanupFixture(rootA);
+        await cleanupFixture(rootB);
+      }
+    }, 30000);
+  });
+
+  describe("step 2: HTTP/1.1 activation, drain, rollback", () => {
+    it("holds an accepted A request, drains A, releases it, then routes to validated B", async () => {
+      const rootA = fixtureRoot("l2-drain-a");
+      const rootB = fixtureRoot("l2-drain-b");
+      try {
+        await writeGatedReleaseFixture(rootA);
+        await writeGatedReleaseFixture(rootB);
+        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        await writeFile(join(rootB, "gate"), "B-RESPONSE", "utf8");
+        await buildRelease(rootA);
+        await buildRelease(rootB);
+
+        const a = track(await spawnProdChild(rootA));
+        await waitForHealth(a.url, 200, false);
+
+        // Hold the gate closed so an accepted A request blocks.
+        await rm(join(rootA, "gate"), { force: true });
+        const heldReq = httpGet(a.url, "/");
+        await new Promise((r) => setTimeout(r, 300));
+
+        // Initiate drain on A. The child must observe drain entry while the
+        // accepted request is still held. After SIGTERM the server stops
+        // accepting new connections, so readiness is observed via the child's
+        // drain entry (the "shutting down gracefully" line) rather than a fresh
+        // health poll, which would be refused by server.close().
+        a.child.kill("SIGTERM");
+        await new Promise<void>((resolveDrain) => {
+          const start = Date.now();
+          const check = () => {
+            if (a.output().includes("shutting down gracefully")) {
+              resolveDrain();
+            } else if (Date.now() - start > 10000) {
+              throw new Error(`A never entered drain. Output:\n${a.output()}`);
+            } else {
+              setTimeout(check, 50);
+            }
+          };
+          check();
+        });
+
+        // The accepted request is still held while A is draining.
+        let heldSettled = false;
+        void heldReq.then(() => {
+          heldSettled = true;
+        });
+        await new Promise((r) => setTimeout(r, 200));
+        expect(heldSettled).toBe(false);
+
+        // Release the gate; the held request completes with the exact response.
+        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        const held = await heldReq;
+        expect(held.status).toBe(200);
+        expect(held.body).toContain("A-RESPONSE");
+
+        // A exits cleanly after drain.
+        const { code } = await a.exitPromise;
+        expect(code).toBe(0);
+
+        // Route to validated B only after readiness.
+        const b = track(await spawnProdChild(rootB));
+        await waitForHealth(b.url, 200, false);
+        const resB = await httpGet(b.url, "/");
+        expect(resB.status).toBe(200);
+        expect(resB.body).toContain("B-RESPONSE");
+      } finally {
+        await cleanupFixture(rootA);
+        await cleanupFixture(rootB);
+      }
+    }, 30000);
+
+    it("rolls back to a validated A process after B is rejected", async () => {
+      const rootA = fixtureRoot("l2-rollback-a");
+      const rootB = fixtureRoot("l2-rollback-b");
+      try {
+        await writeGatedReleaseFixture(rootA);
+        await writeGatedReleaseFixture(rootB);
+        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        await writeFile(join(rootB, "gate"), "B-RESPONSE", "utf8");
+        await buildRelease(rootA);
+        await buildRelease(rootB);
+
+        const a = track(await spawnProdChild(rootA));
+        await waitForHealth(a.url, 200, false);
+
+        // B fails verification; the router keeps A.
+        const emittedB = await readEmittedFiles(join(rootB, "dist"));
+        const manifest = JSON.parse(emittedB[".bascik/manifest.json"].toString("utf8"));
+        const firstRel = Object.keys(manifest.files)[0];
+        manifest.files[firstRel].hash = "deadbeef";
+        emittedB[".bascik/manifest.json"] = Buffer.from(JSON.stringify(manifest), "utf8");
+        const verdict = verifyReleaseCandidate(makeCandidate(rootB, emittedB));
+        expect(verdict.ok).toBe(false);
+
+        // A still answers (rollback = reuse the validated A process).
+        const res = await httpGet(a.url, "/");
+        expect(res.status).toBe(200);
+        expect(res.body).toContain("A-RESPONSE");
+      } finally {
+        await cleanupFixture(rootA);
+        await cleanupFixture(rootB);
+      }
+    }, 30000);
+  });
+
+  describe("step 3: true HTTP/2 activation, drain, rollback", () => {
+    it("drains an HTTP/2 child and routes to a validated B over true HTTP/2", async () => {
+      const rootA = fixtureRoot("l2-h2-a");
+      const rootB = fixtureRoot("l2-h2-b");
+      try {
+        await writeGatedReleaseFixture(rootA);
+        await writeGatedReleaseFixture(rootB);
+        await writeFile(join(rootA, "gate"), "A-H2", "utf8");
+        await writeFile(join(rootB, "gate"), "B-H2", "utf8");
+        await buildRelease(rootA);
+        await buildRelease(rootB);
+
+        // Enable TLS so the production child negotiates true HTTP/2.
+        await writeFixtureFile(
+          rootA,
+          "bascik.config.js",
+          `module.exports = {
+  directory: { components: ["src/components"] },
+  pipeline: { workers: true },
+  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+  minify: { identifiers: false },
+  http: { tls: { enabled: true } },
+};`,
+        );
+        await writeFixtureFile(
+          rootB,
+          "bascik.config.js",
+          `module.exports = {
+  directory: { components: ["src/components"] },
+  pipeline: { workers: true },
+  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+  minify: { identifiers: false },
+  http: { tls: { enabled: true } },
+};`,
+        );
+        await buildRelease(rootA);
+        await buildRelease(rootB);
+
+        const a = track(await spawnProdChild(rootA, { tls: true }));
+        await waitForHealth(a.url, 200, true);
+
+        // Hold the gate closed so an accepted A request blocks.
+        await rm(join(rootA, "gate"), { force: true });
+        const heldReq = http2Get(a.url, "/");
+        await new Promise((r) => setTimeout(r, 300));
+
+        // Initiate drain on A. The child must observe drain entry while the
+        // accepted request is still held. After SIGTERM the server stops
+        // accepting new connections, so readiness is observed via the child's
+        // drain entry rather than a fresh health poll.
+        a.child.kill("SIGTERM");
+        await new Promise<void>((resolveDrain) => {
+          const start = Date.now();
+          const check = () => {
+            if (a.output().includes("shutting down gracefully")) {
+              resolveDrain();
+            } else if (Date.now() - start > 10000) {
+              throw new Error(`A never entered drain. Output:\n${a.output()}`);
+            } else {
+              setTimeout(check, 50);
+            }
+          };
+          check();
+        });
+
+        // The accepted request is still held while A is draining.
+        let heldSettled = false;
+        void heldReq.then(() => {
+          heldSettled = true;
+        });
+        await new Promise((r) => setTimeout(r, 200));
+        expect(heldSettled).toBe(false);
+
+        await writeFile(join(rootA, "gate"), "A-H2", "utf8");
+        const held = await heldReq;
+        expect(held.status).toBe(200);
+        expect(held.body).toContain("A-H2");
+
+        const { code } = await a.exitPromise;
+        expect(code).toBe(0);
+
+        // Route to validated B over true HTTP/2.
+        const b = track(await spawnProdChild(rootB, { tls: true }));
+        await waitForHealth(b.url, 200, true);
+        const resB = await http2Get(b.url, "/");
+        expect(resB.status).toBe(200);
+        expect(resB.body).toContain("B-H2");
+      } finally {
+        await cleanupFixture(rootA);
+        await cleanupFixture(rootB);
+      }
+    }, 30000);
+  });
+
+  describe("step 4: staging vs post-rename failure (partial-publication contract)", () => {
+    it("a staging failure leaves the previous valid artifact set untouched", async () => {
+      const root = fixtureRoot("l2-stage-fail");
+      try {
+        await writeGatedReleaseFixture(root);
+        await buildRelease(root);
+        const priorManifest = await readEmittedFiles(join(root, "dist"));
+
+        // Force a staging failure: make the .bascik dir read-only so the temp
+        // sibling write fails before any rename.
+        if (process.platform !== "win32") {
+          await (await import("node:fs/promises")).chmod(join(root, "dist", ".bascik"), 0o500);
+        }
+        let threw = false;
+        try {
+          await buildRelease(root);
+        } catch {
+          threw = true;
+        } finally {
+          if (process.platform !== "win32") {
+            await (await import("node:fs/promises")).chmod(join(root, "dist", ".bascik"), 0o700);
+          }
+        }
+        expect(threw).toBe(true);
+
+        // The prior valid artifact set is untouched (partial-publication contract).
+        const after = await readEmittedFiles(join(root, "dist"));
+        expect(after[".bascik/manifest.json"].toString("utf8")).toBe(
+          priorManifest[".bascik/manifest.json"].toString("utf8"),
+        );
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 30000);
   });
 });
