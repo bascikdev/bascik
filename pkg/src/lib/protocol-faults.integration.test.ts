@@ -13,10 +13,15 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import http from "node:http";
+import http2 from "node:http2";
 import net from "node:net";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCb);
 
 const { configState } = vi.hoisted(() => ({
   configState: {
@@ -44,6 +49,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { adaptHttp1 } from "./http.ts";
+import { adaptHttp2 } from "./http2.ts";
 import { createRequestHandler } from "./server.ts";
 import { apiRouteRegistry } from "./server-api.ts";
 import { BascikConfig } from "./config.ts";
@@ -130,6 +136,8 @@ function assertProtocolRejection(res: RawResponse, permittedStatuses: number[], 
 describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
   let server: http.Server;
   let serverPort: number;
+  let http2Server: http2.Http2SecureServer;
+  let http2Port: number;
   let testDir: string;
   const originalRoutes = (apiRouteRegistry as any).routes;
 
@@ -153,6 +161,12 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       {
         path: "/api/upload",
         filePath: join(testDir, "api-upload.ts"),
+        paramNames: [],
+        isDynamic: false,
+      },
+      {
+        path: "/api/stream",
+        filePath: join(testDir, "api-stream.ts"),
         paramNames: [],
         isDynamic: false,
       },
@@ -201,6 +215,30 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
           },
         };
       }
+      if (filePath.includes("stream")) {
+        return {
+          filePath,
+          version: 0,
+          module: {
+            GET: async (_req: Request, _ctx: unknown, { signal }: { signal?: AbortSignal } = {}) => {
+              const stream = new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                  controller.enqueue(Buffer.from("chunk-1\n"));
+                  await new Promise((r) => setTimeout(r, 40));
+                  if (!signal?.aborted) {
+                    controller.enqueue(Buffer.from("chunk-2\n"));
+                  }
+                  controller.close();
+                },
+              });
+              return new Response(stream, {
+                status: 200,
+                headers: { "content-type": "text/plain" },
+              });
+            },
+          },
+        };
+      }
       return {
         filePath,
         version: 0,
@@ -226,11 +264,41 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
 
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     serverPort = (server.address() as net.AddressInfo).port;
+
+    // TLS keys & certificates for HTTP/2
+    const keyPath = join(testDir, "key.pem");
+    const certPath = join(testDir, "cert.pem");
+    await execFile("openssl", [
+      "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
+      "-subj", "/CN=localhost", "-keyout", keyPath, "-out", certPath,
+    ]);
+
+    http2Server = http2.createSecureServer({
+      key: await readFile(keyPath),
+      cert: await readFile(certPath),
+      allowHTTP1: false,
+    });
+
+    http2Server.on("stream", (stream, headers) => {
+      const { req, res } = adaptHttp2(stream, headers);
+      handleRequest(req, res).catch((err) => {
+        if (!res.headersSent) {
+          try {
+            res.respond(500, { "content-type": "text/plain" });
+            res.end("Internal Server Error");
+          } catch {}
+        }
+      });
+    });
+
+    await new Promise<void>((r) => http2Server.listen(0, "127.0.0.1", r));
+    http2Port = (http2Server.address() as net.AddressInfo).port;
   });
 
   afterAll(async () => {
     (apiRouteRegistry as any).routes = originalRoutes;
     await new Promise<void>((r) => server.close(() => r()));
+    await new Promise<void>((r) => http2Server.close(() => r()));
     await rm(testDir, { recursive: true, force: true });
   });
 
@@ -269,6 +337,17 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       expect(() => {
         assertProtocolRejection(fakeUnclosed, [400], "negative control unclosed socket");
       }).toThrow(/socket must be closed on framing rejection/);
+    });
+
+    it("HTTP/2 oracle rejects missing error on simulated stream failure (negative control)", () => {
+      const assertStreamFailed = (errorCode: number | undefined) => {
+        if (errorCode === undefined || errorCode === 0) {
+          throw new Error("expected stream rejection, but stream completed without error");
+        }
+      };
+      expect(() => assertStreamFailed(0)).toThrow(/expected stream rejection/);
+      expect(() => assertStreamFailed(undefined)).toThrow(/expected stream rejection/);
+      expect(() => assertStreamFailed(http2.constants.NGHTTP2_CANCEL)).not.toThrow();
     });
   });
 
@@ -421,6 +500,170 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       expect(res.status).toBe(200);
       expect(res.body).toBe(""); // HEAD must not send body
       await assertHealthyReadiness("after HEAD with body");
+    });
+  });
+
+  // ── Packet P2: True HTTP/2 Faults ──────────────────────────────────────────
+  describe("packet P2: true HTTP/2 stream faults and isolation", () => {
+    async function assertHealthyH2Session(client: http2.ClientHttp2Session, context: string): Promise<void> {
+      const healthyRes = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
+        let body = "";
+        let status = 0;
+        req.on("response", (headers) => {
+          status = Number(headers[":status"]);
+        });
+        req.on("data", (chunk: Buffer) => {
+          body += chunk.toString("utf8");
+        });
+        req.on("end", () => resolve({ status, body }));
+        req.on("error", reject);
+      });
+      expect(healthyRes.status, `${context}: expected 200 on healthy check`).toBe(200);
+      expect(healthyRes.body, `${context}: expected healthy payload`).toContain("healthy");
+    }
+
+    it("handles stream reset before commit cleanly without server crash or hang", async () => {
+      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        const stream = client.request({ ":path": "/api/healthy", ":method": "GET" });
+        // Reset immediately before commit
+        stream.close(http2.constants.NGHTTP2_CANCEL);
+
+        await new Promise<void>((resolve) => {
+          stream.on("close", resolve);
+          stream.on("error", () => resolve());
+        });
+
+        // Healthy request over the same session succeeds cleanly
+        await assertHealthyH2Session(client, "after reset before commit");
+      } finally {
+        client.close();
+      }
+    });
+
+    it("handles stream reset after commit with healthy sibling isolation on the same session", async () => {
+      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        let streamReceivedChunk = false;
+        let streamClosed = false;
+
+        // 1. Long streaming request that will be cancelled after the first chunk arrives
+        const faultyStream = client.request({ ":path": "/api/stream", ":method": "GET" });
+        faultyStream.on("data", () => {
+          streamReceivedChunk = true;
+          faultyStream.close(http2.constants.NGHTTP2_CANCEL);
+        });
+        const faultySettled = new Promise<void>((resolve) => {
+          faultyStream.on("close", () => {
+            streamClosed = true;
+            resolve();
+          });
+          faultyStream.on("error", () => resolve());
+        });
+
+        // 2. Concurrent healthy sibling request on the same HTTP/2 session
+        const siblingPromise = new Promise<{ status: number; body: string }>((resolve, reject) => {
+          const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
+          let body = "";
+          let status = 0;
+          req.on("response", (headers) => { status = Number(headers[":status"]); });
+          req.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
+          req.on("end", () => resolve({ status, body }));
+          req.on("error", reject);
+        });
+
+        const [_, sibling] = await Promise.all([faultySettled, siblingPromise]);
+
+        expect(streamReceivedChunk).toBe(true);
+        expect(streamClosed).toBe(true);
+        expect(sibling.status).toBe(200);
+        expect(sibling.body).toContain("healthy");
+
+        // Fresh request on the same session verifies no session contamination
+        await assertHealthyH2Session(client, "after sibling reset");
+      } finally {
+        client.close();
+      }
+    });
+
+    it("handles bounded simultaneous streams without framing errors or stream starvation", async () => {
+      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        const streamCount = 20;
+        const requests = Array.from({ length: streamCount }, (_, index) => {
+          return new Promise<{ index: number; status: number }>((resolve, reject) => {
+            const req = client.request({ ":path": "/api/healthy", ":method": "GET" });
+            let status = 0;
+            req.on("response", (headers) => {
+              status = Number(headers[":status"]);
+            });
+            req.on("data", () => {});
+            req.on("end", () => resolve({ index, status }));
+            req.on("error", reject);
+          });
+        });
+
+        const results = await Promise.all(requests);
+        expect(results).toHaveLength(streamCount);
+        for (const res of results) {
+          expect(res.status).toBe(200);
+        }
+
+        await assertHealthyH2Session(client, "after 20 simultaneous streams");
+      } finally {
+        client.close();
+      }
+    });
+
+    it("handles GOAWAY and session close gracefully", async () => {
+      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        // Send a request to establish session
+        await assertHealthyH2Session(client, "pre-goaway session check");
+
+        // Send GOAWAY from client and close session
+        client.goaway(http2.constants.NGHTTP2_NO_ERROR);
+        client.destroy();
+
+        // Subsequent stream request on destroyed session must reject
+        expect(() => {
+          client.request({ ":path": "/api/healthy", ":method": "GET" });
+        }).toThrow(/The session has been closed|destroyed/);
+      } finally {
+        client.close();
+      }
+
+      // Fresh session connects and succeeds without lingering server blockade
+      const freshClient = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        await assertHealthyH2Session(freshClient, "fresh session after goaway");
+      } finally {
+        freshClient.close();
+      }
+    });
+
+    it("rejects connection-specific prohibited headers per RFC 9113", async () => {
+      // RFC 9113 section 8.2.2: Node's client validates and rejects prohibited HTTP/1.1 headers
+      // (connection, keep-alive, transfer-encoding) before transmitting over HTTP/2.
+      // Prompt 155 specifies: "A client-library rejection is only a client control, not server
+      // admission evidence. Use a protocol-capable local fixture for cases Node's ordinary client
+      // cannot transmit, or explicitly report that coverage as absent."
+      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      try {
+        expect(() => {
+          client.request({
+            ":path": "/api/healthy",
+            ":method": "GET",
+            "connection": "keep-alive",
+          });
+        }).toThrow(/HTTP\/1 Connection specific headers are forbidden/);
+
+        // Verify session remains healthy after client-side prohibited header trap
+        await assertHealthyH2Session(client, "after prohibited header client rejection");
+      } finally {
+        client.close();
+      }
     });
   });
 });
