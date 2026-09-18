@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertCanceledBeforeHeaders,
+  assertCanceledAfterPrefix,
   assertDevChurnStages,
   assertInlinePublication,
   assertMeasuredBatchDeltas,
@@ -271,6 +272,105 @@ describe("packet R3 row: cancel before headers", () => {
         expect(checkpoint.cancellation).toBeDefined();
         assertCanceledBeforeHeaders(checkpoint.cancellation!, cancelCount);
         expect(checkpoint.cancellation).toMatchObject({
+          healthy: healthyCount,
+          errors: 0,
+          pending: 0,
+        });
+
+        expect(checkpoint).toMatchObject({
+          pages: 2,
+          plans: 2,
+          cache: 2,
+          graph: 0,
+          liveRequests: 0,
+          liveRequestClosures: 0,
+          stalePlans: 0,
+          publications: 0,
+          activeRequests: 0,
+          pendingCompression: 0,
+          pending: { dispatch: 0, transport: 0, tls: 0 },
+          staleInlineLoads: 0,
+        });
+        expect(checkpoint.fileVersions).toEqual([0, 0, 0, 0]);
+        expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      }
+    },
+    180_000,
+  );
+});
+
+describe("packet R3 row: cancel after exact prefix", () => {
+  it.each([
+    ["readerCanceled", 0, "missing reader cancel acknowledgment"],
+    ["producerSettled", 0, "missing producer settlement acknowledgment"],
+    ["writerSettled", 0, "missing writer settlement acknowledgment"],
+    ["dispatchSettled", 0, "missing server dispatch settlement acknowledgment"],
+    ["transportSettled", 0, "missing causal transport cleanup acknowledgment"],
+    ["prefix", "wrong", "exact authored prefix"],
+    ["suffixWrites", 1, "suffix after abort"],
+    ["lockedBodies", 1, "retained body lock"],
+    ["ownedListeners", 1, "retained response listeners"],
+  ] as const)("oracle rejects %s fault (negative control)", (field, value, message) => {
+    const observation = {
+      readerCanceled: 1,
+      producerSettled: 1,
+      writerSettled: 1,
+      dispatchSettled: 1,
+      transportSettled: 1,
+      prefix: "retention-prefix\n",
+      suffixWrites: 0,
+      lockedBodies: 0,
+      ownedListeners: 0,
+    };
+    expect(() => assertCanceledAfterPrefix({ ...observation, [field]: value }, 1)).toThrow(message);
+    assertCanceledAfterPrefix(observation, 1);
+  });
+
+  it.each(["http1", "http2"] as const)(
+    "cancel after exact prefix %s: held-cleanup negative control",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "cancel-after-exact-prefix", smokeCycles: 10, measuredCycles: 100, testMode: "negative-dispatch" },
+      );
+    },
+    30_000,
+  );
+
+  it.each(["http1", "http2"] as const)(
+    "cancel after exact prefix %s: 10 smoke then 100 measured cycles",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      const checkpoints = await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "cancel-after-exact-prefix", smokeCycles: 10, measuredCycles: 100 },
+      );
+
+      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
+
+      for (const [index, checkpoint] of checkpoints.entries()) {
+        const cancelCount = index === 0 ? 10 : index === 1 ? 60 : 110;
+        const healthyCount = cancelCount;
+
+        expect(checkpoint.cancellation).toBeDefined();
+        expect(checkpoint.cancellation!.midBody).toBeDefined();
+        assertCanceledAfterPrefix(checkpoint.cancellation!.midBody!, cancelCount);
+        expect(checkpoint.cancellation).toMatchObject({
+          entered: cancelCount,
+          aborted: cancelCount,
+          headersSent: true,
           healthy: healthyCount,
           errors: 0,
           pending: 0,

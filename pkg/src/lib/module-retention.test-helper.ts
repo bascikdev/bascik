@@ -96,6 +96,8 @@ export interface CancellationObservation {
   errors: number;
   /** Count of outstanding IPC gates (must be 0 at sample time). */
   pending: number;
+  /** Row 2 cancel-after-prefix detailed stream & writer metrics. */
+  midBody?: MidBodyCancellationObservation;
 }
 
 export function compareRetentionTrends(stable: RetentionCheckpoint[], changing: RetentionCheckpoint[]) {
@@ -301,6 +303,33 @@ export function assertCanceledBeforeHeaders(
   assert.equal(observation.transportSettled, expected, "missing causal transport cleanup acknowledgment");
 }
 
+export interface MidBodyCancellationObservation {
+  readerCanceled: number;
+  producerSettled: number;
+  writerSettled: number;
+  dispatchSettled: number;
+  transportSettled: number;
+  prefix: string;
+  suffixWrites: number;
+  lockedBodies: number;
+  ownedListeners: number;
+}
+
+export function assertCanceledAfterPrefix(
+  observation: MidBodyCancellationObservation,
+  expected: number,
+): void {
+  assert.equal(observation.readerCanceled, expected, "missing reader cancel acknowledgment");
+  assert.equal(observation.producerSettled, expected, "missing producer settlement acknowledgment");
+  assert.equal(observation.writerSettled, expected, "missing writer settlement acknowledgment");
+  assert.equal(observation.dispatchSettled, expected, "missing server dispatch settlement acknowledgment");
+  assert.equal(observation.transportSettled, expected, "missing causal transport cleanup acknowledgment");
+  assert.equal(observation.prefix, "retention-prefix\n", "exact authored prefix");
+  assert.equal(observation.suffixWrites, 0, "suffix after abort");
+  assert.equal(observation.lockedBodies, 0, "retained body lock");
+  assert.equal(observation.ownedListeners, 0, "retained response listeners");
+}
+
 /**
  * The existing child command lifecycle, shared with deterministic failure controls (packet R2).
  */
@@ -461,6 +490,14 @@ export interface BeforeHeadersCancellationOptions {
   testMode?: "negative-dispatch";
 }
 
+export interface AfterPrefixCancellationOptions {
+  fault: "cancel-after-exact-prefix";
+  smokeCycles: 10;
+  measuredCycles: 100;
+  /** Internal negative control: held-dispatch blocks sampling before the first measured batch. */
+  testMode?: "negative-dispatch";
+}
+
 export interface StaticAssetOptions {
   input: "static-asset";
   smokeCycles: 2;
@@ -510,11 +547,12 @@ export const retentionHelperPaths = (realistic: boolean): string[] => realistic
   }).flat()
   : ["src/lib/helper.mjs", "api/helper.mjs"];
 
-export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | StaticAssetOptions | BuildDependencyOptions): Promise<RetentionCheckpoint[]> {
+export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | AfterPrefixCancellationOptions | StaticAssetOptions | BuildDependencyOptions): Promise<RetentionCheckpoint[]> {
   const staticAssetOptions = options && "input" in options && options.input === "static-asset" ? options : undefined;
   const buildDepOptions = options && "input" in options && options.input === "build-dependency" ? options : undefined;
   const fixedProductionBatch = options && "warmupRequests" in options ? options : undefined;
   const beforeHeadersCancellation = options && "fault" in options && options.fault === "cancel-before-headers" ? options : undefined;
+  const afterPrefixCancellation = options && "fault" in options && options.fault === "cancel-after-exact-prefix" ? options : undefined;
   assert(Number.isInteger(generations) && generations >= 2 && generations <= 100 && generations % 2 === 0, "generations must be even, 2..100");
   assert(mode === "dev" || !changing, "production captures require stable source");
   if (staticAssetOptions) {
@@ -532,6 +570,12 @@ export async function runRetentionExperiment(directory: string, changing: boolea
     assert(!realistic, "cancel-before-headers fault requires small fixed production source");
     assert.equal(beforeHeadersCancellation.smokeCycles, 10, "cancel-before-headers requires exactly 10 smoke cycles");
     assert.equal(beforeHeadersCancellation.measuredCycles, 100, "cancel-before-headers requires exactly 100 measured cycles");
+  }
+  if (afterPrefixCancellation) {
+    assert(mode !== "dev", "cancel-after-exact-prefix fault requires production mode");
+    assert(!realistic, "cancel-after-exact-prefix fault requires small fixed production source");
+    assert.equal(afterPrefixCancellation.smokeCycles, 10, "cancel-after-exact-prefix requires exactly 10 smoke cycles");
+    assert.equal(afterPrefixCancellation.measuredCycles, 100, "cancel-after-exact-prefix requires exactly 100 measured cycles");
   }
   if (fixedProductionBatch) {
     assert(mode !== "dev", "fixed production batch options are production-only; dev is not yet supported");
@@ -588,15 +632,63 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   if (beforeHeadersCancellation) {
     // The fault API handler calls the child-installed cancel global on entry so the parent can
     // gate the abort precisely. It never sends headers; it returns only after abort is observed.
+    // Notice that standard Bascik API routes receive (request, context, { signal }) as their 3 arguments!
     // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the JS is a literal constant
-    await writeFile(join(project, "api/fault.mjs"), `export async function GET(request, _context) {
+    await writeFile(join(project, "api/fault.mjs"), `export async function GET(request, _context, { signal }) {
   const cancel = globalThis[Symbol.for("bascik.retention.cancel")];
   const token = new URL(request.url).searchParams.get("cancel");
   if (!cancel || !token) return new Response("no-cancel-token", { status: 400 });
   cancel("entered", token);
-  await new Promise(resolve => request.signal.addEventListener("abort", resolve, { once: true }));
-  cancel("aborted", token);
+  try {
+    const abortSignal = signal || request.signal;
+    if (abortSignal.aborted) {
+      cancel("aborted", token);
+    } else {
+      await new Promise(resolve => abortSignal.addEventListener("abort", resolve, { once: true }));
+      cancel("aborted", token);
+    }
+  } finally {
+    cancel("settled", token);
+  }
   return new Response(null, { status: 499 });
+}`);
+  }
+  if (afterPrefixCancellation) {
+    // R3 row 2: cancel-after-exact-prefix.
+    // Authored streaming handler yields exact prefix chunk, awaits pull-pending gate,
+    // and settles producer and reader cleanly on client abort.
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the JS is a literal constant
+    await writeFile(join(project, "api/fault-prefix.mjs"), `export async function GET(request, _context, { signal }) {
+  const cancel = globalThis[Symbol.for("bascik.retention.cancel")];
+  const token = new URL(request.url).searchParams.get("cancel");
+  if (!cancel || !token) return new Response("no-cancel-token", { status: 400 });
+  const gate = Promise.withResolvers();
+  let first = true;
+  let canceled = false;
+  const body = new ReadableStream({
+    async pull(controller) {
+      if (first) {
+        first = false;
+        controller.enqueue(new TextEncoder().encode("retention-prefix\\n"));
+        return;
+      }
+      cancel("pull-pending", token);
+      await gate.promise;
+      if (!canceled) {
+        controller.enqueue(new TextEncoder().encode("forbidden-suffix"));
+        controller.close();
+      }
+      cancel("producer-settled", token);
+    },
+    cancel() {
+      canceled = true;
+      gate.resolve();
+      cancel("reader-canceled", token);
+    }
+  }, { highWaterMark: 0 });
+  cancel("body", token, body);
+  cancel("entered", token);
+  return new Response(body);
 }`);
   }
 
@@ -631,7 +723,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   const environment = cleanGeneratorEnvironment(process.env);
   for (const key of Object.keys(environment)) if (key.startsWith("BASCIK_") || key.startsWith("VITEST") || key === "NODE_ENV") delete environment[key];
   if (mode !== "dev") await execute([process.execPath, fileURLToPath(new URL("../transpile.ts", import.meta.url)), "--build"], project, join(directory, "build"), environment);
-  const faultFlag = beforeHeadersCancellation ? "before-headers" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : "false";
+  const faultFlag = beforeHeadersCancellation ? "before-headers" : afterPrefixCancellation ? "after-prefix" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : "false";
   const child = fork(fileURLToPath(new URL("./module-retention-subject.test-helper.ts", import.meta.url)), [directory, mode, String(realistic), faultFlag], {
     cwd: project, execArgv: ["--expose-gc"], env: environment, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -1014,8 +1106,12 @@ export default function retentionShared129(request, context) { ${requestObservat
           assert.equal(entry.headersSent, false, "child entry requires uncommitted headers");
           // Abort the client transport now that entry is confirmed.
           closing = true;
-          if (session) (client as http2.ClientHttp2Stream).close(http2.constants.NGHTTP2_CANCEL);
-          else (client as http.ClientRequest).destroy();
+          if (session) {
+            (client as http2.ClientHttp2Stream).close(http2.constants.NGHTTP2_CANCEL);
+            session.destroy();
+          } else {
+            (client as http.ClientRequest).destroy();
+          }
           // Wait for IPC settlement (dispatch + transport acknowledged) before proceeding.
           const settled = await Promise.race([
             command<{ cancellation: CancellationObservation }>("cancel-settled", { token }),
@@ -1042,7 +1138,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       // Held-dispatch negative control for R3 (mirrors R2 warmup control).
       if (beforeHeadersCancellation.testMode === "negative-dispatch") {
         await command("hold-next-dispatch");
-        await faultCycle();
+        await requestOne("/api/probe", "api", 0, 0);
         const blockedReport = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
           "sample",
           { expectPending: ["dispatch"] },
@@ -1064,6 +1160,136 @@ export default function retentionShared129(request, context) { ${requestObservat
       await checkpoint("batch-1", 0);
       // 50 more measured cycles, then final sample.
       for (let cycle = 0; cycle < beforeHeadersCancellation.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-2", 0, true);
+    } else if (afterPrefixCancellation) {
+      // R3 row 2: cancel-after-exact-prefix fault cycles.
+      // Each cycle: arm gate, send fault request, receive exact prefix chunk, await pull-pending,
+      // client aborts, verify no forbidden-suffix received, verify reader and producer settlement,
+      // and send one healthy request to confirm recovery.
+      let cancelCount = 0;
+      const expectedPrefix = Buffer.from("retention-prefix\n");
+
+      async function faultCycle(): Promise<void> {
+        const token = String(cancelCount);
+        await command("cancel-arm", { token });
+        const entered = command<{ headersSent: boolean }>("cancel-entered", { token });
+        void entered.catch(() => {});
+        const clientClosed = Promise.withResolvers<void>();
+        const sessionClosed = Promise.withResolvers<void>();
+        const transportFailed = Promise.withResolvers<never>();
+        void transportFailed.promise.catch(() => {});
+        const prefixReceived = Promise.withResolvers<void>();
+        const chunks: Buffer[] = [];
+        let closing = false;
+        const path = `/api/fault-prefix?cancel=${token}`;
+        const session = mode === "http2" ? http2.connect(origin, { ca: fixtureCa }) : undefined;
+        session?.once("error", (err: Error) => { if (!closing) transportFailed.reject(err); });
+        session?.once("close", () => sessionClosed.resolve());
+
+        const receive = (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+          const bytes = Buffer.concat(chunks);
+          if (!bytes.equals(expectedPrefix.subarray(0, bytes.length))) {
+            transportFailed.reject(new Error("canceled after prefix received incorrect prefix or suffix"));
+          } else if (bytes.length === expectedPrefix.length) {
+            prefixReceived.resolve();
+          }
+        };
+
+        const client = session
+          ? session.request({ ":path": path })
+          : http.request(`${origin}${path}`, { agent: false });
+        client.once("error", (err: NodeJS.ErrnoException) => {
+          if (!(closing && mode === "http1" && err.code === "ECONNRESET")) transportFailed.reject(err);
+        });
+
+        if (session) {
+          client.once("response", (headers: http2.IncomingHttpHeaders & http2.IncomingHttpStatusHeader) => {
+            if (headers[":status"] !== 200) transportFailed.reject(new Error("after-prefix HTTP/2 status must be 200"));
+          });
+          client.on("data", receive);
+        } else {
+          client.once("response", (res: http.IncomingMessage) => {
+            if (res.statusCode !== 200) transportFailed.reject(new Error("after-prefix HTTP/1.1 status must be 200"));
+            res.on("data", receive);
+            res.once("error", (err: NodeJS.ErrnoException) => {
+              if (!(closing && err.code === "ECONNRESET")) transportFailed.reject(err);
+            });
+          });
+        }
+        client.once("close", () => clientClosed.resolve());
+        client.end();
+
+        try {
+          const entry = await Promise.race([entered, transportFailed.promise]);
+          assert.equal(entry.headersSent, false, "child entry precedes headers commit");
+          await bounded(Promise.race([prefixReceived.promise, transportFailed.promise]), 10_000, "exact authored prefix");
+          // Confirm reader is blocked on its next pull before disconnecting
+          await command("cancel-pull-pending", { token });
+          assert.deepEqual(Buffer.concat(chunks), expectedPrefix, "exact authored prefix before closing");
+
+          closing = true;
+          if (session) {
+            (client as http2.ClientHttp2Stream).close(http2.constants.NGHTTP2_CANCEL);
+            session.destroy();
+          } else {
+            (client as http.ClientRequest).destroy();
+          }
+
+          const settled = await Promise.race([
+            command<{ cancellation: CancellationObservation }>("cancel-settled", { token }),
+            transportFailed.promise,
+          ]);
+
+          assert.equal(settled.cancellation.entered, cancelCount + 1, "cancel-settled entry count");
+          assert.equal(settled.cancellation.aborted, cancelCount + 1, "cancel-settled abort count");
+          assert.equal(settled.cancellation.headersSent, true, "cancel-settled headers committed");
+          assert(settled.cancellation.midBody, "missing midBody observation");
+          assert.equal(settled.cancellation.midBody.readerCanceled, cancelCount + 1, "reader cancel count");
+          assert.equal(settled.cancellation.midBody.producerSettled, cancelCount + 1, "producer settled count");
+          assert.equal(settled.cancellation.midBody.writerSettled, cancelCount + 1, "writer settled count");
+          assert.equal(settled.cancellation.midBody.suffixWrites, 0, "no suffix writes");
+
+          await Promise.race([clientClosed.promise, transportFailed.promise]);
+          assert.deepEqual(Buffer.concat(chunks), expectedPrefix, "exact authored prefix with no suffix");
+          cancelCount++;
+        } finally {
+          closing = true;
+          (client as http.ClientRequest).destroy();
+          session?.destroy();
+          try { await bounded(clientClosed.promise, 5_000, "cancel client close"); }
+          finally { if (session) await bounded(sessionClosed.promise, 5_000, "cancel session close"); }
+        }
+
+        // Healthy request after each cancel cycle
+        await requestOne("/api/probe", "api", 0, 0);
+        await command("cancel-healthy");
+        pending.assertIdle();
+      }
+
+      if (afterPrefixCancellation.testMode === "negative-dispatch") {
+        await command("hold-next-dispatch");
+        await requestOne("/api/probe", "api", 0, 0);
+        const blockedReport = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
+          "sample",
+          { expectPending: ["dispatch"] },
+        );
+        assert.deepEqual(blockedReport, { blocked: "dispatch", pending: { dispatch: 1, transport: 0, tls: 0 } });
+        await command("release-held-dispatch");
+        const cleanSample = await command<RetentionCheckpoint>("sample", { phase: "clean", completed: 0, snapshot: false });
+        assert.deepEqual(cleanSample.pending, { dispatch: 0, transport: 0, tls: 0 });
+        await stopSubject();
+        return checkpoints;
+      }
+
+      for (let cycle = 0; cycle < afterPrefixCancellation.smokeCycles; cycle++) await faultCycle();
+      await checkpoint("baseline", 0, true);
+      assert.deepEqual(checkpoints[0].pending, { dispatch: 0, transport: 0, tls: 0 });
+
+      for (let cycle = 0; cycle < afterPrefixCancellation.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-1", 0);
+
+      for (let cycle = 0; cycle < afterPrefixCancellation.measuredCycles / 2; cycle++) await faultCycle();
       await checkpoint("batch-2", 0, true);
     } else if (staticAssetOptions) {
       if (staticAssetOptions.testMode === "negative-dispatch") {
@@ -1224,7 +1450,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       await checkpoint("batch-2", generations, true);
     }
-    if (!fixedProductionBatch && !beforeHeadersCancellation && !staticAssetOptions && !buildDepOptions) {
+    if (!fixedProductionBatch && !beforeHeadersCancellation && !afterPrefixCancellation && !staticAssetOptions && !buildDepOptions) {
       if (realistic && mode === "dev") {
         inlineRevision = 0;
         pageGeneration = 0;
@@ -1246,7 +1472,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       heaps.push({ phase: checkpoint.phase, ...analyzeRetentionHeap(JSON.parse(await readFile(checkpoint.snapshot, "utf8")), project) });
     }
     await writeFile(join(directory, "heaps.json"), JSON.stringify(heaps, null, 2), { mode: 0o600 });
-    const snapshotNames = (fixedProductionBatch || beforeHeadersCancellation)
+    const snapshotNames = (fixedProductionBatch || beforeHeadersCancellation || afterPrefixCancellation)
       ? ["baseline.heapsnapshot", "batch-2.heapsnapshot"]
       : ["priming.heapsnapshot", "baseline.heapsnapshot", "batch-2.heapsnapshot", "reverted.heapsnapshot", "cleared.heapsnapshot"];
     for (const name of [...snapshotNames, "heaps.json", "checkpoints.json"]) {

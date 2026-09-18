@@ -22,6 +22,8 @@ import zlib from "node:zlib";
 const [directory, mode, realisticFlag, faultFlag] = process.argv.slice(2);
 const realistic = realisticFlag === "true";
 const beforeHeaders = faultFlag === "before-headers";
+const afterPrefix = faultFlag === "after-prefix";
+const cancellationEnabled = beforeHeaders || afterPrefix;
 const staticAssetEnabled = faultFlag === "static-asset";
 const buildDepEnabled = faultFlag === "build-dependency";
 process.argv = process.argv.slice(0, 2);
@@ -114,17 +116,35 @@ let armed: {
 let assetGeneration = 0;
 let assetPublications = 0;
 
-// Cancel-before-headers (R3 row 1) tracking. Only active when beforeHeaders === true.
+// Cancel fault tracking (R3 rows 1 & 2).
 const cancellationCounts: import("./module-retention.test-helper.ts").CancellationObservation = {
   entered: 0, aborted: 0, settled: 0, dispatchSettled: 0, transportSettled: 0,
   headersSent: false, healthy: 0, errors: 0, pending: 0,
 };
+if (afterPrefix) {
+  cancellationCounts.midBody = {
+    readerCanceled: 0,
+    producerSettled: 0,
+    writerSettled: 0,
+    dispatchSettled: 0,
+    transportSettled: 0,
+    prefix: "",
+    suffixWrites: 0,
+    lockedBodies: 0,
+    ownedListeners: 0,
+  };
+}
 // Current active cancellation gate, set by "cancel-arm" action.
 let cancellationGate: {
   token: string;
   entered: ReturnType<typeof Promise.withResolvers<{ headersSent: boolean }>>;
   dispatch: ReturnType<typeof Promise.withResolvers<void>>;
   closed: ReturnType<typeof Promise.withResolvers<void>>;
+  pullPending?: ReturnType<typeof Promise.withResolvers<void>>;
+  producer?: ReturnType<typeof Promise.withResolvers<void>>;
+  body?: ReadableStream<Uint8Array>;
+  readerCanceled?: boolean;
+  bytes?: Buffer[];
 } | undefined;
 
 // Transport & Dispatch tracking according to verified architecture
@@ -446,9 +466,9 @@ eventEmitter.on("watch-path-processed", (event?: { path?: string }) => {
   }
 });
 
-if (beforeHeaders) {
-  // Install the cancel entry global called by api/fault.mjs.
-  Reflect.set(globalThis, Symbol.for("bascik.retention.cancel"), (event: "entered" | "aborted", token: string) => {
+if (cancellationEnabled) {
+  // Install the cancel entry global called by api/fault.mjs and api/fault-prefix.mjs.
+  Reflect.set(globalThis, Symbol.for("bascik.retention.cancel"), (event: "entered" | "aborted" | "settled" | "body" | "pull-pending" | "reader-canceled" | "producer-settled", token: string, body?: ReadableStream<Uint8Array>) => {
     assert(cancellationGate && cancellationGate.token === token, `authored cancellation token mismatch: expected ${cancellationGate?.token ?? "none"}, got ${token}`);
     if (event === "entered") {
       cancellationCounts.entered++;
@@ -456,6 +476,23 @@ if (beforeHeaders) {
       cancellationGate.entered.resolve({ headersSent: false });
     } else if (event === "aborted") {
       cancellationCounts.aborted++;
+    } else if (event === "settled") {
+      cancellationCounts.settled++;
+    } else if (event === "body") {
+      assert(afterPrefix && body instanceof ReadableStream, "real authored body required for after-prefix");
+      cancellationGate.body = body;
+    } else if (event === "pull-pending") {
+      cancellationGate.pullPending?.resolve();
+    } else if (event === "reader-canceled") {
+      assert(afterPrefix && cancellationCounts.midBody, "reader canceled requires afterPrefix");
+      assert(!cancellationGate.readerCanceled, "reader canceled more than once");
+      cancellationGate.readerCanceled = true;
+      cancellationCounts.aborted++;
+      cancellationCounts.midBody.readerCanceled++;
+    } else if (event === "producer-settled") {
+      assert(afterPrefix && cancellationCounts.midBody, "producer settled requires afterPrefix");
+      cancellationCounts.midBody.producerSettled++;
+      cancellationGate.producer?.resolve();
     }
   });
 
@@ -465,11 +502,24 @@ if (beforeHeaders) {
   // dispatch settlement and response closure for the fault gate.
   const origDispatch = apiRouteRegistry.dispatch.bind(apiRouteRegistry);
   apiRouteRegistry.dispatch = async function(req, res, match, secHeaders) {
-    const isFault = typeof req.path === "string" && req.path.startsWith("/api/fault");
+    const isFault = typeof req.path === "string" && (req.path.startsWith("/api/fault"));
     const gate = isFault ? cancellationGate : undefined;
 
+    let origWrite: typeof res.write | undefined;
     if (gate) {
       res.on("close", () => gate.closed.resolve());
+      if (afterPrefix) {
+        gate.bytes = [];
+        origWrite = res.write.bind(res);
+        res.write = function(chunk: any, ...writeArgs: any[]): boolean {
+          const bytes = Buffer.from(chunk);
+          gate.bytes!.push(bytes);
+          if (gate.readerCanceled || (res as any).destroyed) {
+            cancellationCounts.midBody!.suffixWrites++;
+          }
+          return origWrite!(chunk, ...writeArgs);
+        } as typeof res.write;
+      }
     }
 
     const dispatchWork = origDispatch(req, res, match, secHeaders);
@@ -485,6 +535,10 @@ if (beforeHeaders) {
       throw error;
     } finally {
       if (gate) {
+        if (afterPrefix && origWrite) {
+          cancellationCounts.midBody!.writerSettled++;
+          res.write = origWrite;
+        }
         cancellationCounts.dispatchSettled++;
         cancellationCounts.headersSent ||= res.headersSent;
         gate.dispatch.resolve();
@@ -696,36 +750,57 @@ process.on("message", async (message: {
       await foreignResolver.promise;
       result = { injected: true };
     } else if (message.action === "cancel-arm") {
-      assert(beforeHeaders, "cancel-arm requires before-headers mode");
+      assert(cancellationEnabled, "cancel-arm requires cancellation mode");
       assert(!cancellationGate, "cancel-arm: previous gate not yet settled");
       cancellationGate = {
         token: message.token as string,
         entered: Promise.withResolvers<{ headersSent: boolean }>(),
         dispatch: Promise.withResolvers<void>(),
         closed: Promise.withResolvers<void>(),
+        ...(afterPrefix ? {
+          pullPending: Promise.withResolvers<void>(),
+          producer: Promise.withResolvers<void>(),
+        } : {}),
       };
       cancellationCounts.pending++;
       result = { armed: true };
+    } else if (message.action === "cancel-pull-pending") {
+      assert(afterPrefix, "cancel-pull-pending requires afterPrefix mode");
+      assert(cancellationGate && cancellationGate.token === (message.token as string), "cancel-pull-pending: token mismatch");
+      await cancellationGate.pullPending!.promise;
+      result = { pullPending: true };
     } else if (message.action === "cancel-entered") {
-      assert(beforeHeaders, "cancel-entered requires before-headers mode");
+      assert(cancellationEnabled, "cancel-entered requires cancellation mode");
       assert(cancellationGate && cancellationGate.token === (message.token as string), "cancel-entered: gate token mismatch");
       result = await cancellationGate.entered.promise;
     } else if (message.action === "cancel-settled") {
-      assert(beforeHeaders, "cancel-settled requires before-headers mode");
+      assert(cancellationEnabled, "cancel-settled requires cancellation mode");
       const gate = cancellationGate;
       assert(gate && gate.token === (message.token as string), "cancel-settled: gate token mismatch");
       // Wait for: (1) dispatch finally ran, (2) response closed, (3) all boundary transports settled.
-      // boundary.join() covers both the dispatch owner (tracked above) and all transport/tls owners
-      // registered by the server-level connection/secureConnection hooks.
+      // If afterPrefix, also wait for the producer to settle.
+      if (afterPrefix) {
+        await gate.producer!.promise;
+        const midBody = cancellationCounts.midBody!;
+        midBody.dispatchSettled = cancellationCounts.dispatchSettled;
+        midBody.transportSettled = cancellationCounts.transportSettled + 1; // including this transport
+        assert(gate.body, "missing authored body");
+        midBody.lockedBodies = Number(gate.body.locked);
+        midBody.prefix = Buffer.concat(gate.bytes || []).toString("utf8");
+      }
       await gate.dispatch.promise;
       await gate.closed.promise;
       await boundary.join();
       cancellationCounts.transportSettled++;
+      if (afterPrefix && cancellationCounts.midBody) {
+        cancellationCounts.midBody.transportSettled = cancellationCounts.transportSettled;
+        cancellationCounts.midBody.dispatchSettled = cancellationCounts.dispatchSettled;
+      }
       cancellationCounts.pending--;
       cancellationGate = undefined;
       result = { cancellation: { ...cancellationCounts } };
     } else if (message.action === "cancel-healthy") {
-      assert(beforeHeaders, "cancel-healthy requires before-headers mode");
+      assert(cancellationEnabled, "cancel-healthy requires cancellation mode");
       cancellationCounts.healthy++;
       result = { healthy: cancellationCounts.healthy };
     } else if (message.action === "clear") {
@@ -757,7 +832,7 @@ try {
     const { startProdServer } = await import("./server-prod.ts");
     await startProdServer();
   }
-  assert.equal(apiRouteRegistry.getRoutes().length, realistic ? 4 : beforeHeaders ? 3 : 2, "fixture API route count");
+  assert.equal(apiRouteRegistry.getRoutes().length, realistic ? 4 : cancellationEnabled ? 3 : 2, "fixture API route count");
   process.send!({ ready: true });
 } catch (error) {
   restoreHooks?.();
