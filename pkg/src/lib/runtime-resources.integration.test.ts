@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -17,6 +17,7 @@ import {
   RetentionSettlement,
   type DevChurnStage,
   type DevChurnStageObservation,
+  type RetentionCheckpoint,
 } from "./module-retention.test-helper.ts";
 
 const retentionReportDirectories: string[] = [];
@@ -561,6 +562,155 @@ describe("packet R3 row: fixed failed import", () => {
 });
 
 describe("packet R5: dev module churn stage oracle", () => {
+  async function assertDevRowSettlement(directory: string, checkpoints: RetentionCheckpoint[]) {
+    expect(checkpoints.map(checkpoint => checkpoint.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+    expect(checkpoints.map(checkpoint => checkpoint.completed)).toEqual([0, 50, 100]);
+    assertMeasuredBatchDeltas(checkpoints.map(checkpoint => checkpoint.completed), 50);
+    for (const checkpoint of checkpoints) {
+      expect(checkpoint).toMatchObject({
+        activeRequests: 0, liveRequests: 0, liveRequestClosures: 0,
+        stalePlans: 0, staleInlineLoads: 0, pendingCompression: 0,
+        pending: { dispatch: 0, transport: 0, tls: 0 }, devModuleLifecycle: { pending: 0 },
+      });
+      for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges", "inlineLoads"] as const) {
+        expect(checkpoint[owner], `${checkpoint.phase}: ${owner}`).toBe(checkpoints[0][owner]);
+      }
+      expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toHaveLength(1);
+      expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
+    }
+    const shutdown = JSON.parse(await readFile(join(directory, "shutdown.json"), "utf8")) as {
+      watchers: number; closedWatchers: number[];
+    };
+    expect(shutdown.watchers).toBeGreaterThan(0);
+    expect(shutdown.closedWatchers).toEqual(Array.from({ length: shutdown.watchers }, (_, index) => index));
+    expect(shutdown).toMatchObject({
+      connected: false, exitCode: 0, signalCode: null,
+      restored: { destroySSL: true, createSecureServer: true, createServer: true },
+    });
+  }
+
+  it("API route publication oracle rejects missing unlink acknowledgment", () => {
+    const expected = { path: "/fixture/api/probe.mjs", generation: 1, watchEvent: "unlink", publications: ["api-route-changed"] };
+    expect(() => assertInlinePublication({ ...expected, publications: [] }, expected)).toThrow("missing inline publication/recovery acknowledgment");
+    assertInlinePublication(expected, expected);
+  });
+
+  it("dev module deletion/recovery (API route): 2 smoke then 100 revisions split 50+50 with JSON and stream recovery", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+    retentionReportDirectories.push(directory);
+    const checkpoints = await runRetentionExperiment(directory, true, 2, "dev", false, {
+      input: "dev-module-api", smokeCycles: 2, measuredRevisions: 100,
+    });
+    await assertDevRowSettlement(directory, checkpoints);
+    const path = join(await realpath(directory), "project/api/probe.mjs");
+    expect(checkpoints.map(checkpoint => checkpoint.completed)).toEqual([0, 50, 100]);
+    expect(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle?.observationGeneration)).toEqual([8, 58, 108]);
+    expect(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle?.publications)).toEqual([8, 58, 108]);
+    assertMeasuredBatchDeltas(checkpoints.map(checkpoint => checkpoint.devModuleLifecycle!.publications), 50);
+    for (const checkpoint of checkpoints) {
+      expect(checkpoint).toMatchObject({
+        activeRequests: 0, liveRequests: 0, liveRequestClosures: 0, stalePlans: 0,
+        staleInlineLoads: 0, pendingCompression: 0, pending: { dispatch: 0, transport: 0, tls: 0 },
+        devModuleLifecycle: { pending: 0, liveTargetPaths: [path] },
+      });
+      expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+      expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges", "inlineLoads", "publications"] as const) {
+        expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
+      }
+    }
+    const stages = JSON.parse(await readFile(join(directory, "api-stages.json"), "utf8")) as {
+      observation: DevChurnStageObservation; held?: DevChurnStage; revision: number; deleted: boolean;
+    }[];
+    expect(stages).toHaveLength(110);
+    expect(stages.slice(0, 6).map(stage => stage.held)).toEqual(["watcher", "invalidation", "reload", "request", "transport", "ipc"]);
+    expect(stages.slice(8, 108).map(stage => stage.revision)).toEqual(Array.from({ length: 100 }, (_, index) => index + 1));
+    for (const [index, stage] of stages.entries()) assertDevChurnStages(stage.observation, { path, generation: index + 1 });
+    const observations = JSON.parse(await readFile(join(directory, "dev-module-observations.json"), "utf8")) as {
+      path: string; generation: number; watchEvent: string; publications: string[];
+    }[];
+    expect(observations).toHaveLength(110);
+    expect(observations.filter(observation => observation.watchEvent === "unlink")).toHaveLength(3);
+    for (const [index, observation] of observations.entries()) {
+      const watchEvent = index < 8 ? ["change", "unlink", "add", "change"][index % 4]
+        : index < 108 ? "change" : index === 108 ? "unlink" : "add";
+      assertInlinePublication(observation, { path, generation: index + 1, watchEvent, publications: ["api-route-changed"] });
+    }
+    expect(stages.slice(-2).map(stage => ({ revision: stage.revision, deleted: stage.deleted }))).toEqual([
+      { revision: 0, deleted: true }, { revision: 0, deleted: false },
+    ]);
+  }, 180_000);
+
+  it("external helper publication oracle rejects missing error acknowledgment", () => {
+    const expected = { path: "/fixture/src/lib/helper.mjs", generation: 1, watchEvent: "unlink", publications: ["build-error"] };
+    expect(() => assertInlinePublication({ ...expected, publications: [] }, expected)).toThrow("missing inline publication/recovery acknowledgment");
+    assertInlinePublication(expected, expected);
+  });
+
+  it(
+    "dev module deletion/recovery (external src helper): 2 smoke cycles then 100 revisions split 50+50 and deletion recovery",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      const checkpoints = await runRetentionExperiment(directory, true, 2, "dev", false, {
+        input: "dev-module-external",
+        smokeCycles: 2,
+        measuredRevisions: 100,
+      });
+      await assertDevRowSettlement(directory, checkpoints);
+      expect(checkpoints.map((checkpoint) => checkpoint.completed)).toEqual([0, 50, 100]);
+      expect(checkpoints.map((checkpoint) => checkpoint.devModuleLifecycle?.observationGeneration)).toEqual([8, 58, 108]);
+      assertMeasuredBatchDeltas(
+        checkpoints.map((checkpoint) => checkpoint.publications),
+        50,
+      );
+      for (const checkpoint of checkpoints) {
+        expect(checkpoint.pending).toEqual({ dispatch: 0, transport: 0, tls: 0 });
+        expect(checkpoint.devModuleLifecycle?.pending).toBe(0);
+        expect(checkpoint.devModuleLifecycle?.liveTargetPaths).toEqual(checkpoints[0].devModuleLifecycle?.liveTargetPaths);
+        expect(checkpoint.devModuleLifecycle?.listeners).toEqual(checkpoints[0].devModuleLifecycle?.listeners);
+        expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+        for (const owner of ["pages", "plans", "cache", "graph", "sidecar", "dependencyEdges"] as const) {
+          expect(checkpoint[owner]).toBe(checkpoints[0][owner]);
+        }
+        expect(checkpoint).toMatchObject({
+          activeRequests: 0,
+          liveRequests: 0,
+          liveRequestClosures: 0,
+          stalePlans: 0,
+          pendingCompression: 0,
+        });
+      }
+      const stages = JSON.parse(await readFile(join(directory, "external-stages.json"), "utf8")) as {
+        observation: DevChurnStageObservation;
+        held?: DevChurnStage;
+      }[];
+      expect(stages).toHaveLength(110);
+      expect(stages.slice(0, 6).map((stage) => stage.held)).toEqual([
+        "watcher",
+        "invalidation",
+        "reload",
+        "request",
+        "transport",
+        "ipc",
+      ]);
+      for (const [index, stage] of stages.entries()) {
+        assertDevChurnStages(stage.observation, { path: stages[0].observation.path, generation: index + 1 });
+      }
+      const publications = JSON.parse(await readFile(join(directory, "dev-module-observations.json"), "utf8")) as {
+        watchEvent: string;
+        publications: string[];
+      }[];
+      expect(publications.filter((event) => event.watchEvent === "unlink")).toHaveLength(3);
+      expect(publications.slice(-2)).toMatchObject([
+        { watchEvent: "unlink", publications: ["build-error"] },
+        { watchEvent: "add", publications: ["transpiled"] },
+      ]);
+    },
+    180_000,
+  );
   const fullObservation: DevChurnStageObservation = {
     path: "/project/src/pages/inline.html",
     generation: 1,
@@ -670,6 +820,7 @@ describe("packet R5: dev module churn stage oracle", () => {
       false,
       { input: "dev-module-inline", smokeCycles: 2, measuredRevisions: 100 },
     );
+    await assertDevRowSettlement(directory, checkpoints);
     expect(checkpoints.map(c => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
     expect(checkpoints[0].completed).toBe(0);
     expect(checkpoints[1].completed).toBe(50);

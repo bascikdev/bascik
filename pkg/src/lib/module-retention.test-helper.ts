@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fork, execFileSync } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, writeFileSync } from "node:fs";
 import { mkdir, readdir, writeFile, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -598,6 +598,21 @@ const assetSource = (revision: number) => Buffer.concat([Buffer.from(`asset-${St
 const requestObservation = 'function retentionRequestClosure129() { return request.url; } globalThis[Symbol.for("bascik.retention.observe")](request, context, retentionRequestClosure129);';
 export const inlineSource = (revision: number, generation: number) => `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-${generation}</p><script data-bascik-server>export default function retentionInline129(request, context) { ${requestObservation} return "inline-${revision}:" + new URL(request.url).searchParams.get("request"); }</script></body></html>`;
 
+const apiRouteSource = (revision: number) => `import { revision as helper } from "./helper.mjs";
+export function GET(request, context) {
+  ${requestObservation}
+  const params = new URL(request.url).searchParams;
+  const payload = { revision: ${revision}, helper, request: params.get("request") };
+  if (params.get("format") === "json") return Response.json(payload);
+  const chunks = ["api-" + payload.revision + ":", payload.request + ":helper-" + helper + "\\n", "complete\\n"];
+  return new Response(new ReadableStream({
+    pull(controller) {
+      if (chunks.length) controller.enqueue(new TextEncoder().encode(chunks.shift()));
+      else controller.close();
+    }
+  }), { headers: { "content-type": "text/plain; charset=utf-8" } });
+}`;
+
 // Independent fixture expectations, never derived from a received page or disk output.
 const expectedInlineOutput = (revision: number, request?: string) => {
   const content = request === undefined
@@ -623,6 +638,8 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   const staticAssetOptions = options && "input" in options && options.input === "static-asset" ? options : undefined;
   const buildDepOptions = options && "input" in options && options.input === "build-dependency" ? options : undefined;
   const devModuleOptions = options && "input" in options && (options.input === "dev-module-inline" || options.input === "dev-module-external" || options.input === "dev-module-api") ? options : undefined;
+  const externalHelper = devModuleOptions?.input === "dev-module-external";
+  const apiRoute = devModuleOptions?.input === "dev-module-api";
   const fixedProductionBatch = options && "warmupRequests" in options ? options : undefined;
   const beforeHeadersCancellation = options && "fault" in options && options.fault === "cancel-before-headers" ? options : undefined;
   const afterPrefixCancellation = options && "fault" in options && options.fault === "cancel-after-exact-prefix" ? options : undefined;
@@ -704,6 +721,7 @@ export async function runRetentionExperiment(directory: string, changing: boolea
     pipeline: {
       workers: false,
       ...(buildDepOptions ? { watchPaths: ["src/lib/build-helper.ts"] } : {}),
+      ...(externalHelper ? { watchPaths: ["src/lib"] } : {}),
       exec: buildDepOptions ? [] : [{ script: "scripts/post.mjs", phase: "post", watch: ["src/pages/**/*.html", "src/components/**/*.html"] }],
     },
     minify: false, http: { hostname: "127.0.0.1", port, tls: trust ? { enabled: true, keyFile: "tls/server-key.pem", certFile: "tls/server.pem" } : { enabled: false }, rateLimit: false },
@@ -718,8 +736,11 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   }
   if (staticAssetOptions) await writeFile(join(project, "src/pages/asset.txt"), assetSource(0));
   await writeFile(join(project, "src/pages/external.html"), externalPageSource); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the HTML is a literal constant
+  if (externalHelper) await writeFile(join(project, "src/pages/external.html"), '<!DOCTYPE html><html><head></head><body><script data-bascik-build>import { revision } from "@/lib/helper.mjs"; console.log("src-" + revision);</script></body></html>');
   await writeFile(join(project, "src/lib/handler.mjs"), `import {revision} from "./helper.mjs"; export default function retentionSrc129(request, context) { ${requestObservation} return "src-" + revision + ":" + new URL(request.url).searchParams.get("request"); }`);
   await writeFile(join(project, "api/probe.mjs"), `import {revision} from "./helper.mjs"; export function GET(request, context) { ${requestObservation} return new Response("api-" + revision + ":" + new URL(request.url).searchParams.get("request")); }`);
+  const originalApiRoute = apiRouteSource(0);
+  if (apiRoute) await writeFile(join(project, "api/probe.mjs"), originalApiRoute);
   for (const path of ["src/lib/helper.mjs", "api/helper.mjs"]) await writeFile(join(project, path), 'export const revision = 0;');
   if (beforeHeadersCancellation) {
     // The fault API handler calls the child-installed cancel global on entry so the parent can
@@ -860,14 +881,36 @@ export default function retentionShared129(request, context) { ${requestObservat
   const ready = Promise.withResolvers<void>();
   const exited = Promise.withResolvers<number | null>();
   const closed = Promise.withResolvers<void>();
+  const disconnected = Promise.withResolvers<void>();
+  const closedWatchers: number[] = [];
   const logClosed = Promise.withResolvers<void>();
   const cancellation = Promise.withResolvers<never>();
   const requests = new AbortController();
   let failure: Error | undefined;
+  let externalWorkSettled = false;
+  let apiWorkSettled = false;
+  let apiStageWaiters: {
+    path: string;
+    generation: number;
+    watcher: ReturnType<typeof Promise.withResolvers<void>>;
+    invalidation: ReturnType<typeof Promise.withResolvers<void>>;
+    reload: ReturnType<typeof Promise.withResolvers<void>>;
+  } | undefined;
+  let externalStageWaiters: {
+    path: string;
+    generation: number;
+    watcher: ReturnType<typeof Promise.withResolvers<void>>;
+    invalidation: ReturnType<typeof Promise.withResolvers<void>>;
+  } | undefined;
   void ready.promise.catch(() => {});
   void cancellation.promise.catch(() => {});
   const fail = (error: Error) => {
     failure ??= error;
+    if (externalHelper && !externalWorkSettled) requests.abort(failure);
+    if (apiRoute && !apiWorkSettled) requests.abort(failure);
+    for (const stage of ["watcher", "invalidation", "reload"] as const) apiStageWaiters?.[stage].reject(failure);
+    externalStageWaiters?.watcher.reject(failure);
+    externalStageWaiters?.invalidation.reject(failure);
     ready.reject(failure);
     pending.fail(failure);
   };
@@ -883,12 +926,30 @@ export default function retentionShared129(request, context) { ${requestObservat
     fail(new Error(`retention child closed: ${code}`));
   };
   const onLogClose = () => logClosed.resolve();
+  const onDisconnect = () => disconnected.resolve();
   child.on("error", onError);
   child.once("exit", onExit);
   child.once("close", onClose);
+  child.once("disconnect", onDisconnect);
   log.on("error", fail);
   log.once("close", onLogClose);
-  const onMessage = (message: { id?: number; ready?: boolean; error?: string; result?: unknown; }) => {
+  const onMessage = (message: { id?: number; ready?: boolean; error?: string; result?: unknown; watcherClosed?: number; externalStage?: InlinePageObservation & { stage: string }; apiStage?: InlinePageObservation & { stage: "watcher" | "invalidation" | "reload" }; }) => {
+    if (message.watcherClosed !== undefined) closedWatchers.push(message.watcherClosed);
+    if (message.apiStage) {
+      const stage = message.apiStage;
+      writeFileSync(join(directory, "api-stage.json"), JSON.stringify(stage, null, 2), { mode: 0o600 });
+      if (apiStageWaiters && stage.path === apiStageWaiters.path && stage.generation === apiStageWaiters.generation) {
+        apiStageWaiters[stage.stage].resolve();
+      }
+    }
+    if (message.externalStage) {
+      const stage = message.externalStage;
+      writeFileSync(join(directory, "external-stage.json"), JSON.stringify(stage, null, 2), { mode: 0o600 });
+      if (externalStageWaiters && stage.path === externalStageWaiters.path && stage.generation === externalStageWaiters.generation) {
+        if (stage.stage === "watcher") externalStageWaiters.watcher.resolve();
+        if (stage.stage === "invalidation") externalStageWaiters.invalidation.resolve();
+      }
+    }
     if (message.ready) ready.resolve();
     if (message.error && message.id === undefined) fail(new Error(message.error));
     pending.reply(message);
@@ -971,8 +1032,16 @@ export default function retentionShared129(request, context) { ${requestObservat
   const fixedRoutes: [string, string][] = [["/inline", "inline"], ["/external", "src"], ["/api/probe", "api"]];
   async function requestOne(path: string, label: string, revision: number, generation: number, query = "") {
     const request = String(requestCount++);
+    if (apiRoute && label === "api") {
+      await verifyApiRoute(revision, request);
+      return;
+    }
     const response = await readResponse(`${path}?request=${request}${query}`);
     assert.equal(response.status, 200, `${label} status`);
+    if (externalHelper && label === "src") {
+      assert.deepEqual(response.bytes, expectedExternalOutput(revision), "external helper exact request bytes");
+      return;
+    }
     const text = response.text;
     assert(text.includes(`${label}-${revision}:${request}`), `${label} completed response: ${text}`);
     if (label === "inline") assert(text.includes(`generation-${generation}</p>`), "published page generation");
@@ -1024,9 +1093,23 @@ export default function retentionShared129(request, context) { ${requestObservat
     await writeFile(join(directory, "checkpoints.json"), JSON.stringify({ node: process.version, mode, changing, generations, checkpoints }, null, 2), { mode: 0o600 });
   }
   async function stopSubject(): Promise<void> {
-    const reply = await command<{ restored: { destroySSL: boolean; createSecureServer: boolean; createServer: boolean; } }>("stop");
+    pending.assertIdle();
+    const reply = await command<{ restored: { destroySSL: boolean; createSecureServer: boolean; createServer: boolean; }; watchers: number }>("stop");
     if (fixedProductionBatch || beforeHeadersCancellation || staticAssetOptions || buildDepOptions || devModuleOptions) assert.deepEqual(reply.restored, { destroySSL: true, createSecureServer: true, createServer: true });
     assert.equal(await bounded(Promise.race([exited.promise, cancellation.promise]), 10_000, "shutdown"), 0, "retention child shutdown");
+    if (devModuleOptions) {
+      await bounded(Promise.all([closed.promise, disconnected.promise]), 1000, "child close and IPC disconnect");
+      assert(reply.watchers > 0, "dev fixture must own watchers");
+      assert.deepEqual(closedWatchers.sort((a, b) => a - b), Array.from({ length: reply.watchers }, (_, index) => index), "every watcher must finish closing exactly once");
+      assert.equal(child.connected, false, "child IPC must disconnect without parent intervention");
+      assert.equal(child.exitCode, 0, "child must exit cleanly before fallback cleanup");
+      assert.equal(child.signalCode, null, "child must not require signal termination");
+      pending.assertIdle();
+      await writeFile(join(directory, "shutdown.json"), JSON.stringify({
+        watchers: reply.watchers, closedWatchers, connected: child.connected,
+        exitCode: child.exitCode, signalCode: child.signalCode, restored: reply.restored,
+      }, null, 2), { mode: 0o600 });
+    }
   }
   async function edit(path: string, source: string, kind: string) {
     await command("arm", { path, kind, publications: kind === "component" ? 20 : 1 });
@@ -1097,6 +1180,92 @@ export default function retentionShared129(request, context) { ${requestObservat
     pending.assertIdle();
   }
   const devModuleObservations: InlinePageObservation[] = [];
+  const apiStageObservations: { observation: DevChurnStageObservation; held?: DevChurnStage; revision: number; deleted: boolean; }[] = [];
+  async function verifyApiRoute(revision: number, request: string, deleted = false) {
+    for (const format of ["json", "stream"] as const) {
+      const response = await fetch(`${origin}/api/probe?request=${encodeURIComponent(request)}&format=${format}`, {
+        signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]),
+        headers: { connection: "close" },
+      });
+      const bytes = Buffer.from(await response.arrayBuffer());
+      assert.equal(response.status, deleted ? 404 : 200, `API ${format} exact status`);
+      if (deleted) {
+        assert.deepEqual(bytes, Buffer.from("Not Found"), `deleted API ${format} exact bytes`);
+      } else {
+        assert.equal(response.headers.get("content-type"), format === "json" ? "application/json" : "text/plain; charset=utf-8");
+        const expected = format === "json"
+          ? JSON.stringify({ revision, helper: 0, request })
+          : `api-${revision}:${request}:helper-0\ncomplete\n`;
+        assert.deepEqual(bytes, Buffer.from(expected), `API ${format} exact revision/request bytes`);
+      }
+    }
+  }
+  async function apiRouteTransition(watchEvent: "change" | "unlink" | "add", revision: number) {
+    const path = join(project, "api/probe.mjs");
+    const generation = devModuleObservations.length + 1;
+    const oracle = new DevStageOracle(path, generation);
+    const stages: DevChurnStage[] = ["watcher", "invalidation", "reload", "request", "transport", "ipc"];
+    const held = stages[generation - 1];
+    apiStageWaiters = { path, generation, watcher: Promise.withResolvers<void>(), invalidation: Promise.withResolvers<void>(), reload: Promise.withResolvers<void>() };
+    const diagnose = (stage: string) => writeFileSync(join(directory, "api-stage.json"), JSON.stringify({
+      path, generation, watchEvent, revision, stage, pending: oracle.pending(),
+    }, null, 2), { mode: 0o600 });
+    if (held) oracle.hold(held);
+    for (const stage of ["watcher", "invalidation", "reload"] as const) oracle.track(stage, apiStageWaiters[stage].promise);
+    try {
+      diagnose("arm");
+      await command("arm", { path, kind: "dev-module-lifecycle", generation, watchEvent });
+      if (watchEvent === "unlink") await unlink(path);
+      else await writeFile(path, revision === 0 ? originalApiRoute : apiRouteSource(revision));
+      const completion = command<InlinePageObservation>("completed", { generation });
+      oracle.track("ipc", completion);
+      diagnose("completed IPC pending");
+      const observation = await completion;
+      assertInlinePublication(observation, { path, generation, watchEvent, publications: ["api-route-changed"] });
+      devModuleObservations.push(observation);
+      await writeFile(join(directory, "dev-module-observations.json"), JSON.stringify(devModuleObservations, null, 2), { mode: 0o600 });
+      const verification = (async () => {
+        // First requests after the route-table acknowledgment, with no polling or warmup.
+        await verifyApiRoute(revision, `generation-${generation}`, watchEvent === "unlink");
+        if (watchEvent === "unlink") await assert.rejects(readFile(path), { code: "ENOENT" });
+        else assert.equal(await readFile(path, "utf8"), revision === 0 ? originalApiRoute : apiRouteSource(revision));
+        const inline = await readResponse("/inline?request=healthy-api");
+        assert.equal(inline.status, 200);
+        assert.deepEqual(inline.bytes, expectedInlineOutput(0, "healthy-api"));
+        const external = await readResponse("/external?request=healthy-api");
+        assert.equal(external.status, 200);
+        assert.deepEqual(external.bytes, Buffer.from(`<!DOCTYPE html><html><head></head><body>src-0:healthy-api${getLiveReloadScript()}</body></html>`));
+      })();
+      oracle.track("request", verification);
+      diagnose("request pending");
+      await verification;
+      const transport = command("asset-idle");
+      oracle.track("transport", transport);
+      diagnose("transport pending");
+      await transport;
+      pending.assertIdle();
+      if (held) {
+        await bounded(oracle.entered(held), 10_000, `API ${held} hold`);
+        await bounded(oracle.join(held), 10_000, `API other stages while holding ${held}`);
+        assert.throws(() => oracle.assertSettled(), new RegExp(`sample requires settled ${held} acknowledgments`));
+        assert.equal(oracle.pending()[held], 1);
+        oracle.release(held);
+      }
+      await bounded(oracle.join(), 10_000, "API stage settlement");
+      oracle.assertSettled();
+      diagnose("settled");
+      apiStageObservations.push({ observation: oracle.observation(), held, revision, deleted: watchEvent === "unlink" });
+      await writeFile(join(directory, "api-stages.json"), JSON.stringify(apiStageObservations, null, 2), { mode: 0o600 });
+    } finally {
+      oracle.releaseAll();
+      for (const stage of ["watcher", "invalidation", "reload"] as const) apiStageWaiters[stage].reject(new Error("API observation ended before stage acknowledgment"));
+      apiStageWaiters = undefined;
+    }
+  }
+  const externalStageObservations: { observation: DevChurnStageObservation; held?: DevChurnStage; sseGeneration?: number; }[] = [];
+  let lastExternalSseGeneration = 0;
+  const expectedExternalOutput = (revision: number) => Buffer.from(`<!DOCTYPE html><html><head></head><body>src-${revision}\n${getLiveReloadScript()}</body></html>`);
+  let externalPublishedRevision = 0;
   async function verifyDevModule(revision: number, deleted = false) {
     if (devModuleOptions?.input === "dev-module-inline") {
       const response = await readResponse("/inline?request=test-inline");
@@ -1111,25 +1280,17 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
     } else if (devModuleOptions?.input === "dev-module-external") {
       const response = await readResponse("/external?request=test-external");
-      if (deleted) {
-        // Build error on external helper deletion: dev server serves last successful page or build error
-        assert.equal(response.status, 200, "deleted external helper HTTP status");
-        assert(response.text.includes("src-"), "previous build served during external helper error");
-      } else {
-        assert.equal(response.status, 200, "external helper HTTP status");
-        assert(response.text.includes(`src-${revision}:test-external`), `external helper response: got ${response.text}`);
-      }
+      assert.equal(response.status, 200, "external helper page HTTP status");
+      const expected = expectedExternalOutput(deleted ? externalPublishedRevision : revision);
+      assert.deepEqual(response.bytes, expected, "external helper exact response bytes");
+      assert.deepEqual(await readFile(join(project, "dist/external.html")), expected, "external helper exact disk bytes");
+      if (!deleted) externalPublishedRevision = revision;
     } else if (devModuleOptions?.input === "dev-module-api") {
-      const response = await readResponse("/api/probe?request=test-api");
-      if (deleted) {
-        assert.equal(response.status, 404, "deleted API helper HTTP status");
-      } else {
-        assert.equal(response.status, 200, "API helper HTTP status");
-        assert.equal(response.text, `api-${revision}:test-api`, `API helper exact response`);
-      }
+      await verifyApiRoute(revision, "test-api", deleted);
     }
   }
   async function devModuleTransition(watchEvent: "change" | "unlink" | "add", revision: number, expectRevision = revision) {
+    if (apiRoute) return apiRouteTransition(watchEvent, expectRevision);
     const isInline = devModuleOptions?.input === "dev-module-inline";
     const isExternal = devModuleOptions?.input === "dev-module-external";
     const path = isInline
@@ -1146,32 +1307,117 @@ export default function retentionShared129(request, context) { ${requestObservat
         ? (isExternal ? ["build-error"] : [])
         : (devModuleOptions?.input === "dev-module-api" ? ["api-route-changed"] : ["transpiled"]);
     const expected = { path, generation, watchEvent, publications: expectedPub };
-    await command("arm", { path, kind: "dev-module-lifecycle", generation, watchEvent });
-    if (watchEvent === "unlink") {
-      await unlink(path);
-    } else if (isInline) {
-      await writeFile(path, inlineSource(revision, revision));
-    } else {
-      await writeFile(path, `export const revision = ${revision};`);
+    const stages: DevChurnStage[] = ["watcher", "invalidation", "reload", "request", "transport", "ipc"];
+    const oracle = isExternal ? new DevStageOracle(path, generation) : undefined;
+    const held = isExternal ? stages[generation - 1] : undefined;
+    if (oracle) {
+      externalStageWaiters = { path, generation, watcher: Promise.withResolvers<void>(), invalidation: Promise.withResolvers<void>() };
+      if (held) oracle.hold(held);
+      oracle.track("watcher", externalStageWaiters.watcher.promise);
+      oracle.track("invalidation", externalStageWaiters.invalidation.promise);
     }
-    const observation = await command<InlinePageObservation>("completed", { generation });
-    assertInlinePublication(observation, expected);
-    devModuleObservations.push(observation);
-    await writeFile(join(directory, "dev-module-observations.json"), JSON.stringify(devModuleObservations, null, 2), { mode: 0o600 });
-    await verifyDevModule(expectRevision, watchEvent === "unlink");
-    if (isInline && watchEvent === "unlink") {
-      await requestOne("/external", "src", 0, 0);
-      await requestOne("/api/probe", "api", 0, 0);
-    }
-    if (watchEvent !== "unlink") {
-      if (isInline) {
-        await requestAll(expectRevision, expectRevision);
-      } else {
-        await requestAll(0, 0);
+    try {
+      await command("arm", { path, kind: "dev-module-lifecycle", generation, watchEvent });
+      const sse = isExternal ? await fetch(`${origin}/bascik-live-reload`, {
+        signal: AbortSignal.any([requests.signal, AbortSignal.timeout(10_000)]),
+        headers: { referer: `${origin}/external`, connection: "close" },
+      }) : undefined;
+      const reader = sse?.body?.getReader();
+      let sseBuffer = "";
+      const nextFrame = async () => {
+        assert(reader, "external helper SSE reader");
+        while (!sseBuffer.includes("\n\n")) {
+          const chunk = await reader.read();
+          assert(!chunk.done, "external helper SSE ended before publication");
+          sseBuffer += Buffer.from(chunk.value).toString("utf8");
+          assert(sseBuffer.length < 64 * 1024, "bounded external helper SSE frame");
+        }
+        const index = sseBuffer.indexOf("\n\n");
+        const frame = sseBuffer.slice(0, index);
+        sseBuffer = sseBuffer.slice(index + 2);
+        return frame;
+      };
+      try {
+        if (reader) {
+          assert.equal(sse!.status, 200, "external helper SSE admission");
+          assert.equal(await nextFrame(), "data: connected", "SSE armed before helper mutation");
+        }
+        if (watchEvent === "unlink") {
+          await unlink(path);
+        } else if (isInline) {
+          await writeFile(path, inlineSource(revision, revision));
+        } else {
+          await writeFile(path, `export const revision = ${revision};`);
+        }
+        const completion = command<InlinePageObservation>("completed", { generation });
+        oracle?.track("ipc", completion);
+        const observation = await completion;
+        assertInlinePublication(observation, expected);
+        if (reader) {
+          const publication = (async () => {
+            // SSE comment heartbeats carry no application event. Consume protocol
+            // framing, not a retry of a failed publication assertion.
+            let frame = await nextFrame();
+            while (frame.startsWith(":")) frame = await nextFrame();
+            if (watchEvent === "unlink") {
+              assert(frame.startsWith("event: build-error\ndata: "), "actual SSE build error publication");
+              const error = JSON.parse(frame.slice("event: build-error\ndata: ".length));
+              assert(error.message.includes("helper.mjs"), "SSE error identifies missing helper");
+            } else {
+              assert.match(frame, /^data: reload \d+$/, "actual SSE recovery publication");
+              const actualGeneration = Number(frame.slice("data: reload ".length));
+              assert.equal(actualGeneration, lastExternalSseGeneration + 1, "exact external SSE publication generation");
+              lastExternalSseGeneration = actualGeneration;
+            }
+          })();
+          oracle?.track("reload", publication);
+          await publication;
+        }
+        devModuleObservations.push(observation);
+        await writeFile(join(directory, "dev-module-observations.json"), JSON.stringify(devModuleObservations, null, 2), { mode: 0o600 });
+        const requestVerification = verifyDevModule(expectRevision, watchEvent === "unlink");
+        oracle?.track("request", requestVerification);
+        await requestVerification;
+        if (isInline && watchEvent === "unlink") {
+          await requestOne("/external", "src", 0, 0);
+          await requestOne("/api/probe", "api", 0, 0);
+        }
+        if (watchEvent !== "unlink") {
+          if (isInline) {
+            await requestAll(expectRevision, expectRevision);
+          } else {
+            await requestAll(isExternal ? expectRevision : 0, isExternal ? expectRevision : 0);
+          }
+        }
+      } finally {
+        if (reader) {
+          await reader.cancel();
+          reader.releaseLock();
+        }
       }
+      const transport = command("asset-idle");
+      oracle?.track("transport", transport);
+      await transport;
+      pending.assertIdle();
+      if (oracle) {
+        if (held) {
+          await oracle.entered(held);
+          await oracle.join(held);
+          assert.throws(() => oracle.assertSettled(), new RegExp(`sample requires settled ${held} acknowledgments`));
+          assert.equal(oracle.pending()[held], 1, "held actual external owner acknowledgment");
+          oracle.release(held);
+        }
+        await oracle.join();
+        oracle.assertSettled();
+        const observation = oracle.observation();
+        assertDevChurnStages(observation, { path, generation });
+        externalStageObservations.push({ observation, held, sseGeneration: watchEvent === "unlink" ? undefined : lastExternalSseGeneration });
+        await writeFile(join(directory, "external-stages.json"), JSON.stringify(externalStageObservations, null, 2), { mode: 0o600 });
+      }
+    } finally {
+      oracle?.releaseAll();
+      externalStageWaiters = undefined;
     }
-    await command("asset-idle");
-    pending.assertIdle();
   }
   try {
     await ready.promise;
@@ -1776,16 +2022,17 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       const restoreBytes = () => {
         if (devModuleOptions.input === "dev-module-inline") return inlineSource(0, 0);
+        if (apiRoute) return originalApiRoute;
         return "export const revision = 0;";
       };
       const targetFilePath = () => {
         if (devModuleOptions.input === "dev-module-inline") return join(project, "src/pages/inline.html");
         if (devModuleOptions.input === "dev-module-external") return join(project, "src/lib/helper.mjs");
-        return join(project, "api/helper.mjs");
+        return join(project, "api/probe.mjs");
       };
       const smokeCycles = devModuleOptions.smokeCycles;
       for (let cycle = 0; cycle < smokeCycles; cycle++) {
-        await devModuleTransition("change", devModuleOptions.input === "dev-module-inline" ? -(cycle + 1) : 0);
+        await devModuleTransition("change", -(cycle + 1));
         await devModuleTransition("unlink", 0);
         await devModuleTransition("add", 0);
         await devModuleTransition("change", 0);
@@ -1815,6 +2062,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       const half = devModuleOptions.measuredRevisions / 2;
       for (let revision = 1; revision <= half; revision++) {
         await devModuleTransition("change", changing ? revision : 0, changing ? revision : 0);
+        if (externalHelper || apiRoute) continue;
         await devModuleTransition("unlink", 0, 0);
         await devModuleTransition("add", 0, 0);
         await devModuleTransition("change", 0, 0);
@@ -1823,12 +2071,20 @@ export default function retentionShared129(request, context) { ${requestObservat
       await checkpoint("batch-1", half);
       for (let revision = half + 1; revision <= devModuleOptions.measuredRevisions; revision++) {
         await devModuleTransition("change", changing ? revision : 0, changing ? revision : 0);
+        if (externalHelper || apiRoute) continue;
         await devModuleTransition("unlink", 0, 0);
         await devModuleTransition("add", 0, 0);
         await devModuleTransition("change", 0, 0);
         assert.deepEqual(await readFile(targetFilePath(), "utf8"), restoreBytes(), "restore original authored dev module bytes");
       }
       await checkpoint("batch-2", devModuleOptions.measuredRevisions, true);
+      if (externalHelper || apiRoute) {
+        await devModuleTransition("unlink", 0);
+        await devModuleTransition("add", 0);
+        assert.equal(await readFile(targetFilePath(), "utf8"), restoreBytes(), "restored dev module authored bytes");
+        if (externalHelper) externalWorkSettled = true;
+        if (apiRoute) apiWorkSettled = true;
+      }
     } else {
       for (let warmup = 0; warmup < 10; warmup++) await requestAll(0, 0);
       await command("prime");
@@ -1903,6 +2159,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       child.off("error", onError);
       child.off("exit", onExit);
       child.off("close", onClose);
+      child.off("disconnect", onDisconnect);
       if (child.connected) child.disconnect();
       child.stdout!.unpipe(log); child.stderr!.unpipe(log);
       child.stdout!.destroy(); child.stderr!.destroy();

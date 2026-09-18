@@ -53,6 +53,17 @@ for (const codec of ["gzip", "brotliCompress"] as const) {
 const originalWatch = chokidar.watch;
 chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
   const watcher = originalWatch(...args);
+  if (devModuleEnabled) {
+    const watcherId = watcherReadiness.length;
+    const originalClose = watcher.close;
+    watcher.close = async () => {
+      await originalClose.call(watcher);
+      // Acknowledge completion, not merely invocation, of the real shutdown owner.
+      await new Promise<void>((resolve, reject) => {
+        process.send!({ watcherClosed: watcherId }, error => error ? reject(error) : resolve());
+      });
+    };
+  }
   watcherReadiness.push(new Promise<void>((ready, reject) => { watcher.once("ready", ready); watcher.once("error", reject); }));
   watcher.on("all", (event, path) => {
     const observation = armed?.asset;
@@ -97,21 +108,16 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
         return;
       }
       observation.watchEvent = event;
+      if (devModuleExternalEnabled) process.send!({ externalStage: { ...observation, stage: "watcher", action: armed?.kind } });
+      if (devModuleApiEnabled) process.send!({ apiStage: { ...observation, stage: "watcher" } });
       if (armed?.kind === "dev-module-lifecycle") {
         if (devModuleInlineEnabled) {
           // Source-cycle publications follow joined disk writes and post scripts.
           // On unlink, the surviving external page acknowledges the same cycle.
         } else if (devModuleExternalEnabled) {
-          if (armed.expectedWatchEvent === "unlink") {
-            if (!observation.publications.includes("build-error")) {
-              observation.publications.push("build-error");
-            }
-            armed.completion.resolve();
-          } else if (observation.publications.includes("transpiled")) {
-            armed.completion.resolve();
-          }
+          // Only actual compilation publications acknowledge this operation.
         } else if (devModuleApiEnabled) {
-          if (armed.expectedWatchEvent === "unlink" || observation.publications.includes("api-route-changed")) {
+          if (observation.publications.includes("api-route-changed")) {
             armed.completion.resolve();
           }
         }
@@ -154,6 +160,7 @@ let armed: {
 } | undefined;
 let assetGeneration = 0;
 let assetPublications = 0;
+let apiRoutePublications = 0;
 
 // Cancel fault tracking (R3 rows 1 & 2).
 const cancellationCounts: import("./module-retention.test-helper.ts").CancellationObservation = {
@@ -437,6 +444,12 @@ scriptRegistry.load = function(...args: Parameters<typeof load>) {
 const invalidate = scriptRegistry.invalidate;
 scriptRegistry.invalidate = function(specifier) {
   const advanced = invalidate.call(this, specifier);
+  if (devModuleApiEnabled && armed && resolve(specifier) === armed.path) {
+    process.send!({ apiStage: { ...armed.asset, stage: "invalidation", advanced } });
+  }
+  if (devModuleExternalEnabled && armed && resolve(specifier) === armed.path) {
+    process.send!({ externalStage: { ...armed.asset, stage: "invalidation", advanced } });
+  }
   if (advanced && armed?.kind === "module" && resolve(specifier) === armed.path) armed.completion.resolve();
   return advanced;
 };
@@ -470,6 +483,11 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
       return;
     }
     assert(armed.asset, "dev-module publication requires armed operation");
+    if (devModuleExternalEnabled) {
+      assert.equal(event?.relativePagePath, "pages/external.html", "exact external helper publication path");
+      assert.notEqual(armed.expectedWatchEvent, "unlink", "deleted helper cannot publish success");
+      process.send!({ externalStage: { ...armed.asset, stage: "publication", page: event.relativePagePath } });
+    }
     if (!armed.asset.publications.includes("transpiled")) {
       armed.asset.publications.push("transpiled");
     }
@@ -492,16 +510,19 @@ eventEmitter.on("asset-changed", () => {
   assetPublications++;
   armed.completion.resolve();
 });
-eventEmitter.on("api-route-changed", (event: { path: string; }) => {
+eventEmitter.on("api-route-changed", (event: { path: string; type?: string; }) => {
   if (staticAssetEnabled) process.send!({ error: `Unexpected API change for static asset: ${event.path}` });
   if (devModuleEnabled && armed?.kind === "dev-module-lifecycle" && devModuleApiEnabled) {
     assert(armed.asset, "dev-module API publication requires armed operation");
-    if (!armed.asset.publications.includes("api-route-changed")) {
-      armed.asset.publications.push("api-route-changed");
-    }
-    if (armed.asset.watchEvent) {
-      armed.completion.resolve();
-    }
+    assert.equal(resolve(event.path), armed.path, "exact API publication path");
+    assert.equal(event.type, armed.expectedWatchEvent, "exact API publication event");
+    assert.equal(armed.asset.watchEvent, armed.expectedWatchEvent, "API publication follows watcher input");
+    assert.equal(armed.asset.publications.length, 0, "one API publication per operation");
+    armed.asset.publications.push("api-route-changed");
+    apiRoutePublications++;
+    // watch.ts emits this only after invalidateFile has awaited the route-table reload.
+    process.send!({ apiStage: { ...armed.asset, stage: "reload" } });
+    armed.completion.resolve();
     return;
   }
   if (armed?.kind === "api" && resolve(event.path) === armed.path) armed.completion.resolve();
@@ -519,6 +540,8 @@ eventEmitter.on("build-error", error => {
   }
   if (devModuleEnabled && armed?.kind === "dev-module-lifecycle" && devModuleExternalEnabled && armed.expectedWatchEvent === "unlink") {
     assert(armed.asset, "dev-module build-error publication requires armed operation");
+    assert(JSON.stringify(error).includes("helper.mjs"), "external failure identifies the missing helper");
+    process.send!({ externalStage: { ...armed.asset, stage: "build-error", error } });
     if (!armed.asset.publications.includes("build-error")) {
       armed.asset.publications.push("build-error");
     }
@@ -546,7 +569,7 @@ eventEmitter.on("watch-path-processed", () => {
       armed.completion.resolve();
     }
   }
-  if (devModuleEnabled && !devModuleInlineEnabled && armed?.kind === "dev-module-lifecycle") {
+  if (devModuleEnabled && !devModuleInlineEnabled && !devModuleExternalEnabled && armed?.kind === "dev-module-lifecycle") {
     assert(armed.asset, "dev-module watch-path-processed publication requires armed operation");
     if (armed.expectedWatchEvent === "unlink") {
       if (devModuleExternalEnabled && !armed.asset.publications.includes("build-error")) {
@@ -673,7 +696,7 @@ async function sample(
   await Promise.all([...pendingCompression]);
 
   assert.equal(activeRequests, 0, "sample requires settled request handlers");
-  if (staticAssetEnabled || devModuleInlineEnabled) {
+  if (staticAssetEnabled || devModuleInlineEnabled || devModuleApiEnabled) {
     assert.equal(armed, undefined, "asset sample requires completed observation");
   }
   boundary.assertSettled();
@@ -739,12 +762,12 @@ async function sample(
     ...(devModuleEnabled ? {
       devModuleLifecycle: {
         observationGeneration: assetGeneration,
-        publications,
+        publications: devModuleApiEnabled ? apiRoutePublications : publications,
         liveTargetPaths: devModuleInlineEnabled
           ? (await readdir("src/pages")).filter(file => file === "inline.html").map(file => resolve("src/pages", file))
           : devModuleExternalEnabled
             ? (await readdir("src/lib")).filter(file => file === "helper.mjs").map(file => resolve("src/lib", file))
-            : (await readdir("api")).filter(file => file === "helper.mjs").map(file => resolve("api", file)),
+            : (await readdir("api")).filter(file => file === "probe.mjs").map(file => resolve("api", file)),
         pages: mem.pages().length,
         listeners: ["build-error", "asset-changed", "transpiled", "api-route-changed"].map(event => eventEmitter.listenerCount(event)),
         pending: Number(Boolean(armed)),
@@ -809,7 +832,7 @@ process.on("message", async (message: {
           ? resolve("src/pages/inline.html")
           : devModuleExternalEnabled
             ? resolve("src/lib/helper.mjs")
-            : resolve("api/helper.mjs");
+            : resolve("api/probe.mjs");
         assert.equal(armed.path, expectedPath, "exact dev-module source path");
         assert.equal(message.generation, ++assetGeneration, "monotonic dev-module observation generation");
         armed.asset = { path: armed.path, generation: message.generation, watchEvent: "", publications: [] };
@@ -838,7 +861,7 @@ process.on("message", async (message: {
               const expectedPub = armed.expectedWatchEvent === "unlink" ? ["build-error"] : ["transpiled"];
               assert.deepEqual(armed.asset.publications, expectedPub, "completed dev-module external publication");
             } else if (devModuleApiEnabled) {
-              const expectedPub = armed.expectedWatchEvent === "unlink" ? [] : ["api-route-changed"];
+              const expectedPub = ["api-route-changed"];
               assert.deepEqual(armed.asset.publications, expectedPub, "completed dev-module API publication");
             }
           } else {
@@ -947,7 +970,7 @@ process.on("message", async (message: {
         createSecureServer: true,
         createServer: true,
       };
-      process.send!({ id: message.id, result: { restored: restorationReport } });
+      process.send!({ id: message.id, result: { restored: restorationReport, watchers: watcherReadiness.length } });
       process.kill(process.pid, "SIGTERM");
       return;
     } else throw new Error(`Unknown retention action: ${message.action}`);
