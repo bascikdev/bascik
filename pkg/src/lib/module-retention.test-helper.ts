@@ -330,6 +330,37 @@ export function assertCanceledAfterPrefix(
   assert.equal(observation.ownedListeners, 0, "retained response listeners");
 }
 
+export function assertRejectedAfterAbort(
+  observation: { entered: number; aborted: number; settled: number; dispatchSettled: number; transportSettled: number; headersSent: boolean },
+  expected: number,
+): void {
+  assert.equal(observation.entered, expected, "handler entry acknowledgments");
+  assert.equal(observation.headersSent, false, "headers must remain uncommitted on rejection after abort");
+  assert.equal(observation.aborted, expected, "missing handler abort acknowledgment");
+  assert.equal(observation.settled, expected, "missing invocation settlement acknowledgment");
+  assert.equal(observation.dispatchSettled, expected, "missing server dispatch settlement acknowledgment");
+  assert.equal(observation.transportSettled, expected, "missing causal transport cleanup acknowledgment");
+}
+
+export interface FixedFailedImportObservation {
+  faultAttempts: number;
+  faultErrors: number;
+  recoveredRequests: number;
+  dispatchSettled: number;
+  transportSettled: number;
+}
+
+export function assertFixedFailedImport(
+  observation: FixedFailedImportObservation,
+  expected: { faults: number; recovered: number },
+): void {
+  assert.equal(observation.faultAttempts, expected.faults, "fault attempt acknowledgments");
+  assert.equal(observation.faultErrors, expected.faults, "fault 500 error responses");
+  assert.equal(observation.recoveredRequests, expected.recovered, "recovered healthy responses");
+  assert.equal(observation.dispatchSettled, expected.faults + expected.recovered, "dispatch settlement acknowledgments");
+  assert.equal(observation.transportSettled, expected.faults + expected.recovered, "transport cleanup acknowledgments");
+}
+
 /**
  * The existing child command lifecycle, shared with deterministic failure controls (packet R2).
  */
@@ -498,6 +529,22 @@ export interface AfterPrefixCancellationOptions {
   testMode?: "negative-dispatch";
 }
 
+export interface RejectAfterAbortCancellationOptions {
+  fault: "reject-after-acknowledged-abort";
+  smokeCycles: 10;
+  measuredCycles: 100;
+  /** Internal negative control: held-dispatch blocks sampling before the first measured batch. */
+  testMode?: "negative-dispatch";
+}
+
+export interface FixedFailedImportOptions {
+  fault: "fixed-failed-import";
+  smokeCycles: 10;
+  measuredCycles: 100;
+  /** Internal negative control: held-dispatch blocks sampling before the first measured batch. */
+  testMode?: "negative-dispatch";
+}
+
 export interface StaticAssetOptions {
   input: "static-asset";
   smokeCycles: 2;
@@ -547,12 +594,14 @@ export const retentionHelperPaths = (realistic: boolean): string[] => realistic
   }).flat()
   : ["src/lib/helper.mjs", "api/helper.mjs"];
 
-export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | AfterPrefixCancellationOptions | StaticAssetOptions | BuildDependencyOptions): Promise<RetentionCheckpoint[]> {
+export async function runRetentionExperiment(directory: string, changing: boolean, generations: number, mode: "dev" | "http1" | "http2" = "dev", realistic = false, options?: FixedProductionBatchOptions | BeforeHeadersCancellationOptions | AfterPrefixCancellationOptions | RejectAfterAbortCancellationOptions | FixedFailedImportOptions | StaticAssetOptions | BuildDependencyOptions): Promise<RetentionCheckpoint[]> {
   const staticAssetOptions = options && "input" in options && options.input === "static-asset" ? options : undefined;
   const buildDepOptions = options && "input" in options && options.input === "build-dependency" ? options : undefined;
   const fixedProductionBatch = options && "warmupRequests" in options ? options : undefined;
   const beforeHeadersCancellation = options && "fault" in options && options.fault === "cancel-before-headers" ? options : undefined;
   const afterPrefixCancellation = options && "fault" in options && options.fault === "cancel-after-exact-prefix" ? options : undefined;
+  const rejectAfterAbortCancellation = options && "fault" in options && options.fault === "reject-after-acknowledged-abort" ? options : undefined;
+  const fixedFailedImportFault = options && "fault" in options && options.fault === "fixed-failed-import" ? options : undefined;
   assert(Number.isInteger(generations) && generations >= 2 && generations <= 100 && generations % 2 === 0, "generations must be even, 2..100");
   assert(mode === "dev" || !changing, "production captures require stable source");
   if (staticAssetOptions) {
@@ -576,6 +625,18 @@ export async function runRetentionExperiment(directory: string, changing: boolea
     assert(!realistic, "cancel-after-exact-prefix fault requires small fixed production source");
     assert.equal(afterPrefixCancellation.smokeCycles, 10, "cancel-after-exact-prefix requires exactly 10 smoke cycles");
     assert.equal(afterPrefixCancellation.measuredCycles, 100, "cancel-after-exact-prefix requires exactly 100 measured cycles");
+  }
+  if (rejectAfterAbortCancellation) {
+    assert(mode !== "dev", "reject-after-acknowledged-abort fault requires production mode");
+    assert(!realistic, "reject-after-acknowledged-abort fault requires small fixed production source");
+    assert.equal(rejectAfterAbortCancellation.smokeCycles, 10, "reject-after-acknowledged-abort requires exactly 10 smoke cycles");
+    assert.equal(rejectAfterAbortCancellation.measuredCycles, 100, "reject-after-acknowledged-abort requires exactly 100 measured cycles");
+  }
+  if (fixedFailedImportFault) {
+    assert(mode !== "dev", "fixed-failed-import fault requires production mode");
+    assert(!realistic, "fixed-failed-import fault requires small fixed production source");
+    assert.equal(fixedFailedImportFault.smokeCycles, 10, "fixed-failed-import requires exactly 10 smoke cycles");
+    assert.equal(fixedFailedImportFault.measuredCycles, 100, "fixed-failed-import requires exactly 100 measured cycles");
   }
   if (fixedProductionBatch) {
     assert(mode !== "dev", "fixed production batch options are production-only; dev is not yet supported");
@@ -691,6 +752,39 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   return new Response(body);
 }`);
   }
+  if (rejectAfterAbortCancellation) {
+    // R3 row 3: reject after acknowledged abort.
+    // Authored handler calls cancel global on entry, awaits abort, and rejects with exact Error.
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the JS is a literal constant
+    await writeFile(join(project, "api/fault-reject.mjs"), `export async function GET(request, _context, { signal }) {
+  const cancel = globalThis[Symbol.for("bascik.retention.cancel")];
+  const token = new URL(request.url).searchParams.get("cancel");
+  if (!cancel || !token) return new Response("no-cancel-token", { status: 400 });
+  cancel("entered", token);
+  const abortSignal = signal || request.signal;
+  if (!abortSignal.aborted) {
+    await new Promise(resolve => abortSignal.addEventListener("abort", resolve, { once: true }));
+  }
+  cancel("aborted", token);
+  cancel("settled", token);
+  throw new Error("acknowledged-abort-rejection");
+}`);
+  }
+  if (fixedFailedImportFault) {
+    // R3 row 4: fixed failed import.
+    // Dynamic import route importing target helper. If broken, it catches or fails with 500.
+    // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the JS is a literal constant
+    await writeFile(join(project, "api/fault-import.mjs"), `export async function GET(request) {
+  const url = new URL(request.url);
+  const fixed = url.searchParams.get("fixed") === "true";
+  try {
+    const mod = await import(fixed ? "./probe.mjs" : "./missing-helper-nonexistent.mjs");
+    return new Response("imported-ok");
+  } catch (error) {
+    return new Response("import-failed: " + (error && error.message), { status: 500 });
+  }
+}`);
+  }
 
   const helperPaths = retentionHelperPaths(realistic);
   const revisions = Array<number>(10).fill(0);
@@ -723,7 +817,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   const environment = cleanGeneratorEnvironment(process.env);
   for (const key of Object.keys(environment)) if (key.startsWith("BASCIK_") || key.startsWith("VITEST") || key === "NODE_ENV") delete environment[key];
   if (mode !== "dev") await execute([process.execPath, fileURLToPath(new URL("../transpile.ts", import.meta.url)), "--build"], project, join(directory, "build"), environment);
-  const faultFlag = beforeHeadersCancellation ? "before-headers" : afterPrefixCancellation ? "after-prefix" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : "false";
+  const faultFlag = beforeHeadersCancellation ? "before-headers" : afterPrefixCancellation ? "after-prefix" : rejectAfterAbortCancellation ? "reject-after-abort" : fixedFailedImportFault ? "fixed-failed-import" : staticAssetOptions ? "static-asset" : buildDepOptions ? "build-dependency" : "false";
   const child = fork(fileURLToPath(new URL("./module-retention-subject.test-helper.ts", import.meta.url)), [directory, mode, String(realistic), faultFlag], {
     cwd: project, execArgv: ["--expose-gc"], env: environment, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -1291,6 +1385,134 @@ export default function retentionShared129(request, context) { ${requestObservat
 
       for (let cycle = 0; cycle < afterPrefixCancellation.measuredCycles / 2; cycle++) await faultCycle();
       await checkpoint("batch-2", 0, true);
+    } else if (rejectAfterAbortCancellation) {
+      // R3 row 3: reject after acknowledged abort fault cycles.
+      // Each cycle: arm gate, send fault request, client aborts on handler entry,
+      // handler observes abort and throws exact Error, server terminates with no uncommitted headers.
+      // Follow with healthy request to prove server recovery.
+      let cancelCount = 0;
+      async function faultCycle(): Promise<void> {
+        const token = String(cancelCount);
+        await command("cancel-arm", { token });
+        const entered = command<{ headersSent: boolean }>("cancel-entered", { token });
+        void entered.catch(() => {});
+        const clientClosed = Promise.withResolvers<void>();
+        const sessionClosed = Promise.withResolvers<void>();
+        const transportFailed = Promise.withResolvers<never>();
+        void transportFailed.promise.catch(() => {});
+        let closing = false;
+        const path = `/api/fault-reject?cancel=${token}`;
+        const session = mode === "http2" ? http2.connect(origin, { ca: fixtureCa }) : undefined;
+        session?.once("error", (err: Error) => { if (!closing) transportFailed.reject(err); });
+        session?.once("close", () => sessionClosed.resolve());
+        const client = session
+          ? session.request({ ":path": path })
+          : http.request(`${origin}${path}`, { agent: false });
+        client.once("error", (err: NodeJS.ErrnoException) => {
+          if (!(closing && mode === "http1" && err.code === "ECONNRESET")) transportFailed.reject(err);
+        });
+        client.once("response", () => transportFailed.reject(new Error("reject-after-abort received unexpected response")));
+        client.once("close", () => clientClosed.resolve());
+        client.end();
+        try {
+          const entry = await Promise.race([entered, transportFailed.promise]);
+          assert.equal(entry.headersSent, false, "child entry requires uncommitted headers");
+          closing = true;
+          if (session) {
+            (client as http2.ClientHttp2Stream).close(http2.constants.NGHTTP2_CANCEL);
+            session.destroy();
+          } else {
+            (client as http.ClientRequest).destroy();
+          }
+          const settled = await Promise.race([
+            command<{ cancellation: CancellationObservation }>("cancel-settled", { token }),
+            transportFailed.promise,
+          ]);
+          assert.equal(settled.cancellation.entered, cancelCount + 1, "cancel-settled entry count");
+          assert.equal(settled.cancellation.aborted, cancelCount + 1, "cancel-settled abort count");
+          assert.equal(settled.cancellation.headersSent, false, "cancel-settled headers uncommitted");
+          await Promise.race([clientClosed.promise, transportFailed.promise]);
+          cancelCount++;
+        } finally {
+          closing = true;
+          (client as http.ClientRequest).destroy();
+          session?.destroy();
+          try { await bounded(clientClosed.promise, 5_000, "cancel client close"); }
+          finally { if (session) await bounded(sessionClosed.promise, 5_000, "cancel session close"); }
+        }
+        await requestOne("/api/probe", "api", 0, 0);
+        await command("cancel-healthy");
+        pending.assertIdle();
+      }
+
+      if (rejectAfterAbortCancellation.testMode === "negative-dispatch") {
+        await command("hold-next-dispatch");
+        await requestOne("/api/probe", "api", 0, 0);
+        const blockedReport = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
+          "sample",
+          { expectPending: ["dispatch"] },
+        );
+        assert.deepEqual(blockedReport, { blocked: "dispatch", pending: { dispatch: 1, transport: 0, tls: 0 } });
+        await command("release-held-dispatch");
+        const cleanSample = await command<RetentionCheckpoint>("sample", { phase: "clean", completed: 0, snapshot: false });
+        assert.deepEqual(cleanSample.pending, { dispatch: 0, transport: 0, tls: 0 });
+        await stopSubject();
+        return checkpoints;
+      }
+
+      for (let cycle = 0; cycle < rejectAfterAbortCancellation.smokeCycles; cycle++) await faultCycle();
+      await checkpoint("baseline", 0, true);
+      assert.deepEqual(checkpoints[0].pending, { dispatch: 0, transport: 0, tls: 0 });
+
+      for (let cycle = 0; cycle < rejectAfterAbortCancellation.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-1", 0);
+
+      for (let cycle = 0; cycle < rejectAfterAbortCancellation.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-2", 0, true);
+    } else if (fixedFailedImportFault) {
+      // R3 row 4: fixed failed import fault cycles.
+      // Send fault request -> receives 500 error response.
+      // Followed by healthy fixed request -> receives 200 response.
+      let faultAttempts = 0;
+      async function faultCycle(): Promise<void> {
+        // Fault request to broken import
+        const request = String(requestCount++);
+        const res1 = await readResponse(`/api/fault-import?request=${request}`);
+        assert.equal(res1.status, 500, "failed import returns 500");
+        faultAttempts++;
+        // Recovered request to fixed route
+        const res2 = await readResponse(`/api/fault-import?fixed=true&request=${request}`);
+        assert.equal(res2.status, 200, "fixed import returns 200");
+        assert(res2.text.includes("imported-ok"), "fixed import returns expected payload");
+        // Also exercise probe route so healthy request cache expectations remain consistent
+        await requestOne("/api/probe", "api", 0, 0);
+        pending.assertIdle();
+      }
+
+      if (fixedFailedImportFault.testMode === "negative-dispatch") {
+        await command("hold-next-dispatch");
+        await requestOne("/api/probe", "api", 0, 0);
+        const blockedReport = await command<{ blocked: string; pending: { dispatch: number; transport: number; tls: number } }>(
+          "sample",
+          { expectPending: ["dispatch"] },
+        );
+        assert.deepEqual(blockedReport, { blocked: "dispatch", pending: { dispatch: 1, transport: 0, tls: 0 } });
+        await command("release-held-dispatch");
+        const cleanSample = await command<RetentionCheckpoint>("sample", { phase: "clean", completed: 0, snapshot: false });
+        assert.deepEqual(cleanSample.pending, { dispatch: 0, transport: 0, tls: 0 });
+        await stopSubject();
+        return checkpoints;
+      }
+
+      for (let cycle = 0; cycle < fixedFailedImportFault.smokeCycles; cycle++) await faultCycle();
+      await checkpoint("baseline", 0, true);
+      assert.deepEqual(checkpoints[0].pending, { dispatch: 0, transport: 0, tls: 0 });
+
+      for (let cycle = 0; cycle < fixedFailedImportFault.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-1", 0);
+
+      for (let cycle = 0; cycle < fixedFailedImportFault.measuredCycles / 2; cycle++) await faultCycle();
+      await checkpoint("batch-2", 0, true);
     } else if (staticAssetOptions) {
       if (staticAssetOptions.testMode === "negative-dispatch") {
         await command("hold-next-dispatch");
@@ -1450,7 +1672,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       }
       await checkpoint("batch-2", generations, true);
     }
-    if (!fixedProductionBatch && !beforeHeadersCancellation && !afterPrefixCancellation && !staticAssetOptions && !buildDepOptions) {
+    if (!fixedProductionBatch && !beforeHeadersCancellation && !afterPrefixCancellation && !rejectAfterAbortCancellation && !fixedFailedImportFault && !staticAssetOptions && !buildDepOptions) {
       if (realistic && mode === "dev") {
         inlineRevision = 0;
         pageGeneration = 0;
@@ -1472,7 +1694,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       heaps.push({ phase: checkpoint.phase, ...analyzeRetentionHeap(JSON.parse(await readFile(checkpoint.snapshot, "utf8")), project) });
     }
     await writeFile(join(directory, "heaps.json"), JSON.stringify(heaps, null, 2), { mode: 0o600 });
-    const snapshotNames = (fixedProductionBatch || beforeHeadersCancellation || afterPrefixCancellation)
+    const snapshotNames = (fixedProductionBatch || beforeHeadersCancellation || afterPrefixCancellation || rejectAfterAbortCancellation || fixedFailedImportFault)
       ? ["baseline.heapsnapshot", "batch-2.heapsnapshot"]
       : ["priming.heapsnapshot", "baseline.heapsnapshot", "batch-2.heapsnapshot", "reverted.heapsnapshot", "cleared.heapsnapshot"];
     for (const name of [...snapshotNames, "heaps.json", "checkpoints.json"]) {

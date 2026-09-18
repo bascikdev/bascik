@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
   assertCanceledBeforeHeaders,
   assertCanceledAfterPrefix,
+  assertRejectedAfterAbort,
+  assertFixedFailedImport,
   assertDevChurnStages,
   assertInlinePublication,
   assertMeasuredBatchDeltas,
@@ -376,6 +378,166 @@ describe("packet R3 row: cancel after exact prefix", () => {
           pending: 0,
         });
 
+        expect(checkpoint).toMatchObject({
+          pages: 2,
+          plans: 2,
+          cache: 2,
+          graph: 0,
+          liveRequests: 0,
+          liveRequestClosures: 0,
+          stalePlans: 0,
+          publications: 0,
+          activeRequests: 0,
+          pendingCompression: 0,
+          pending: { dispatch: 0, transport: 0, tls: 0 },
+          staleInlineLoads: 0,
+        });
+        expect(checkpoint.fileVersions).toEqual([0, 0, 0, 0]);
+        expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      }
+    },
+    180_000,
+  );
+});
+
+describe("packet R3 row: reject after acknowledged abort", () => {
+  it.each(["aborted", "settled", "dispatchSettled", "transportSettled"] as const)(
+    "oracle rejects missing %s acknowledgment (negative control)",
+    (field) => {
+      const base = { entered: 1, aborted: 1, settled: 1, dispatchSettled: 1, transportSettled: 1, headersSent: false };
+      const bad = { ...base, [field]: 0 };
+      expect(() => assertRejectedAfterAbort(bad, 1)).toThrow(/missing .* acknowledgment/);
+      assertRejectedAfterAbort(base, 1);
+    },
+  );
+
+  it("oracle rejects headersSent true (negative control)", () => {
+    const bad = { entered: 1, aborted: 1, settled: 1, dispatchSettled: 1, transportSettled: 1, headersSent: true };
+    expect(() => assertRejectedAfterAbort(bad, 1)).toThrow(/headers must remain uncommitted/);
+  });
+
+  it("oracle rejects mismatched entered count (negative control)", () => {
+    const bad = { entered: 2, aborted: 1, settled: 1, dispatchSettled: 1, transportSettled: 1, headersSent: false };
+    expect(() => assertRejectedAfterAbort(bad, 1)).toThrow(/handler entry acknowledgments/);
+  });
+
+  it.each(["http1", "http2"] as const)(
+    "reject after acknowledged abort %s: held-cleanup negative control",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "reject-after-acknowledged-abort", smokeCycles: 10, measuredCycles: 100, testMode: "negative-dispatch" },
+      );
+    },
+    30_000,
+  );
+
+  it.each(["http1", "http2"] as const)(
+    "reject after acknowledged abort %s: 10 smoke then 100 measured cycles",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      const checkpoints = await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "reject-after-acknowledged-abort", smokeCycles: 10, measuredCycles: 100 },
+      );
+
+      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
+
+      for (const [index, checkpoint] of checkpoints.entries()) {
+        const cancelCount = index === 0 ? 10 : index === 1 ? 60 : 110;
+        const healthyCount = cancelCount;
+
+        expect(checkpoint.cancellation).toBeDefined();
+        assertRejectedAfterAbort(checkpoint.cancellation!, cancelCount);
+        expect(checkpoint.cancellation).toMatchObject({
+          healthy: healthyCount,
+          errors: 0,
+          pending: 0,
+        });
+
+        expect(checkpoint).toMatchObject({
+          pages: 2,
+          plans: 2,
+          cache: 2,
+          graph: 0,
+          liveRequests: 0,
+          liveRequestClosures: 0,
+          stalePlans: 0,
+          publications: 0,
+          activeRequests: 0,
+          pendingCompression: 0,
+          pending: { dispatch: 0, transport: 0, tls: 0 },
+          staleInlineLoads: 0,
+        });
+        expect(checkpoint.fileVersions).toEqual([0, 0, 0, 0]);
+        expect(checkpoint.resources).toEqual(checkpoints[0].resources);
+      }
+    },
+    180_000,
+  );
+});
+
+describe("packet R3 row: fixed failed import", () => {
+  it.each([
+    ["faultAttempts", 0, "fault attempt acknowledgments"],
+    ["faultErrors", 0, "fault 500 error responses"],
+    ["recoveredRequests", 0, "recovered healthy responses"],
+    ["dispatchSettled", 0, "dispatch settlement acknowledgments"],
+    ["transportSettled", 0, "transport cleanup acknowledgments"],
+  ] as const)("oracle rejects missing %s acknowledgment (negative control)", (field, value, message) => {
+    const base = { faultAttempts: 1, faultErrors: 1, recoveredRequests: 1, dispatchSettled: 2, transportSettled: 2 };
+    const bad = { ...base, [field]: value };
+    expect(() => assertFixedFailedImport(bad, { faults: 1, recovered: 1 })).toThrow(message);
+    assertFixedFailedImport(base, { faults: 1, recovered: 1 });
+  });
+
+  it.each(["http1", "http2"] as const)(
+    "fixed failed import %s: held-cleanup negative control",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "fixed-failed-import", smokeCycles: 10, measuredCycles: 100, testMode: "negative-dispatch" },
+      );
+    },
+    30_000,
+  );
+
+  it.each(["http1", "http2"] as const)(
+    "fixed failed import %s: 10 smoke then 100 measured cycles",
+    async (mode) => {
+      const directory = await mkdtemp(join(tmpdir(), "bascik-retention-test-"));
+      retentionReportDirectories.push(directory);
+      const checkpoints = await runRetentionExperiment(
+        directory,
+        false,
+        2,
+        mode,
+        false,
+        { fault: "fixed-failed-import", smokeCycles: 10, measuredCycles: 100 },
+      );
+
+      expect(checkpoints.map((c) => c.phase)).toEqual(["baseline", "batch-1", "batch-2"]);
+      expect(checkpoints.every((c) => c.mode === mode)).toBe(true);
+
+      for (const checkpoint of checkpoints) {
         expect(checkpoint).toMatchObject({
           pages: 2,
           plans: 2,

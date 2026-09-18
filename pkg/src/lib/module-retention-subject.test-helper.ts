@@ -23,7 +23,9 @@ const [directory, mode, realisticFlag, faultFlag] = process.argv.slice(2);
 const realistic = realisticFlag === "true";
 const beforeHeaders = faultFlag === "before-headers";
 const afterPrefix = faultFlag === "after-prefix";
-const cancellationEnabled = beforeHeaders || afterPrefix;
+const rejectAfterAbort = faultFlag === "reject-after-abort";
+const fixedFailedImport = faultFlag === "fixed-failed-import";
+const cancellationEnabled = beforeHeaders || afterPrefix || rejectAfterAbort;
 const staticAssetEnabled = faultFlag === "static-asset";
 const buildDepEnabled = faultFlag === "build-dependency";
 process.argv = process.argv.slice(0, 2);
@@ -378,7 +380,7 @@ const invoke = scriptRegistry.invoke;
 scriptRegistry.invoke = async function <Result>(...args: Parameters<typeof invoke>) {
   activeRequests++;
   // For before-headers fault mode: detect fault-route invocations by specifier.
-  const isFaultInvocation = beforeHeaders && typeof args[0] === "string" && args[0].includes("fault");
+  const isFaultInvocation = (beforeHeaders || rejectAfterAbort) && typeof args[0] === "string" && args[0].includes("fault");
   try { return await invoke.call(this, ...args) as import("./script-registry.ts").ScriptExecutionResult<Result>; }
   finally {
     activeRequests--;
@@ -829,7 +831,7 @@ try {
     const { startProdServer } = await import("./server-prod.ts");
     await startProdServer();
   }
-  assert.equal(apiRouteRegistry.getRoutes().length, realistic ? 4 : cancellationEnabled ? 3 : 2, "fixture API route count");
+  assert.equal(apiRouteRegistry.getRoutes().length, realistic ? 4 : (cancellationEnabled || fixedFailedImport) ? 3 : 2, "fixture API route count");
   process.send!({ ready: true });
 } catch (error) {
   restoreHooks?.();
