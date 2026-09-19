@@ -1,129 +1,79 @@
-# Bascik VS Code Extension
+# Bascik for Visual Studio Code
 
-Editor companion for [Bascik](https://bascik.dev) projects. Provides component tag navigation and scoping compatibility warnings.
+Build Bascik sites with faster navigation and earlier feedback. The official extension understands component boundaries, project configuration, scoped CSS and JavaScript, server-rendered output, streams, and API routes, so common mistakes surface in the editor instead of during a build or browser test.
 
-## Features
+## Why Install It?
 
-- **Component navigation:** command-click a custom tag (e.g. `<my-card>`) to jump to the matching component file in `src/components`.
-- **Script import navigation:** command-click `./`, `../`, and `@/` specifiers in `data-bascik-build`, `data-bascik-routes`, and `data-bascik-server` scripts to navigate directly to local files.
-- **Scoping diagnostics:** warns on CSS selectors and JavaScript patterns that Bascik's scoping engine cannot handle safely. The warning set is generated from the [Scoping Compatibility](https://bascik.dev/compatibility) matrix and stays in sync automatically.
-- **Server script diagnostics:** validates server and stream script contracts (`export default` handler, import hygiene) and identifies structural HTML/JS/CSS injection sinks (`href`, `onclick`, unquoted attributes, inline `<script>`, styles, and unescaped request text).
+- **Move through components instantly.** Cmd/Ctrl-click a custom element to open its source, or hover to inspect its props, slots, source path, styles, and scripts.
+- **Complete component usage in context.** Suggest project component tags, inferred prop attributes, and named slots, with paired tag snippets for components that accept default content.
+- **Document component contracts.** Add an optional leading `@bascik` comment to describe a component and the props and slots inferred from its markup.
+- **Catch scoping leaks early.** Get focused CSS and JavaScript warnings for patterns Bascik cannot safely rewrite.
+- **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server and stream scripts.
+- **Validate component contracts.** Find unclosed tags, conflicting directives, invalid preserve values, broken ID references, and unsupplied prop bindings as you type.
+- **Check API routes before runtime.** Catch unrecognized method exports, incompatible return annotations, missing handlers, and unguarded JSON parsing.
+- **Start with zero configuration.** Standard Bascik projects work immediately, while custom paths, nested projects, and multi-root workspaces are detected automatically.
 
-## Local development
+## Component IntelliSense
 
-```sh
-cd extensions/vscode-bascik
-npm run compile   # generates compatibility-rules.json then runs tsc
-npm run watch     # recompiles on save
+Type a partial opening tag to see matching project components in IntelliSense. Suggestions follow the current project's configured component roots and remain isolated across nested projects and multi-root workspaces.
+
+Components with a default slot complete as paired opening and closing tags. Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
+
+Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including its description, inferred props, named and default slots, source location, and included styles or scripts. Component tag suggestions display the same contract before insertion.
+
+## Optional Component Descriptions
+
+Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-text`, and `data-bascik-html`, and infers named or default slots from `data-bascik-slot`.
+
+Add a leading metadata header to enrich that inferred contract:
+
+```html
+<!-- @bascik
+Displays a person's identity and available actions.
+@prop role - The person's role or job title.
+@slot actions - Controls displayed after the profile details.
+@slot default - The primary profile content.
+-->
+<article data-bascik-attr-aria-label="role">
+  <div data-bascik-slot></div>
+  <footer data-bascik-slot="actions"></footer>
+</article>
 ```
 
-Open `extensions/vscode-bascik/` as the workspace root in VS Code and press **F5** to launch an Extension Development Host with the extension loaded.
+The header must precede markup, styles, and scripts. It can describe only members inferred from markup, not declare new ones. Descriptions appear in hover and completion details and are rendered as literal text. Duplicate annotations and annotations for undeclared members produce warnings, including while the component has unsaved edits.
 
-## Testing
+## Navigation and Editor Intelligence
 
-The extension uses `@vscode/test-cli` and `@vscode/test-electron` to run integration tests inside an Extension Development Host instance.
+Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and server scripts, including script `src` attributes. Dedicated highlighting makes Bascik attributes easy to recognize alongside standard HTML.
 
-### Running tests
+## Diagnostics That Understand Bascik
 
-From the repository root:
+The extension reports high-signal problems in the editor and Problems panel:
 
-```sh
-yarn ext:typecheck   # TypeScript type check
-yarn ext:unit        # Vitest unit tests
-yarn ext:e2e         # VS Code extension host integration tests
-yarn ext:coverage    # Vitest unit tests with coverage report
-```
+- component naming and unclosed custom elements
+- conflicting build, routes, server, and stream directives
+- leading-slash imports and mixed inline or companion styles
+- invalid preserve tokens, external form names, ID references, and prop bindings
+- duplicate or undeclared component metadata annotations
+- standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
+- runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Or from the extension directory:
+Server and stream scripts receive additional contract and interpolation-sink checks. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks.
 
-```sh
-cd extensions/vscode-bascik
-npm run typecheck
-npm run unit
-npm test             # integration tests
-```
+## Nested Projects and Custom Configuration
 
-### Test structure
+The extension reads `directory.components` and `scripts.importRoot` from `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It discovers configs recursively, assigns each file to its closest enclosing Bascik project, and keeps nested projects and separate workspace folders isolated.
 
-- **Unit tests** (`src/test/rules.test.ts`): verify CSS and JS scoping compatibility rule matching logic.
-- **Integration tests** (`src/test/extension.test.ts`): verify extension activation, component definition provider navigation, and diagnostics generation inside a real VS Code environment using the `test-fixtures/sample-workspace` fixture.
-- **Test configuration** (`.vscode-test.cjs`): configures test files, workspace fixtures, and Mocha settings.
+Projects without a config use Bascik's defaults: `src/components` for components and `src` for the `@/` import root. Config, component, and HTML changes refresh automatically without restarting VS Code.
 
-For more details on VS Code extension testing architecture, see the [VS Code Extension Testing documentation](https://code.visualstudio.com/api/working-with-extensions/testing-extension).
+## Get Started
 
-## Implementation
+1. Open the Extensions view in VS Code.
+2. Search for **Bascik**.
+3. Install the official extension and open a Bascik project.
 
-The extension uses:
+Read the [complete VS Code extension guide](https://bascik.dev/tools/vscode-extension) for every navigation feature, diagnostic, limitation, and local development step.
 
-- the VS Code `DefinitionProvider` API for component tag navigation
-- the `DiagnosticCollection` API for inline warnings in HTML, CSS, and JS files
-- a workspace scan of `src/components` to build a component-name to file map
+## Contributing
 
-The `precompile` script runs `docs/scripts/generate-compatibility-rules.ts` before `tsc`, so `src/compatibility-rules.json` is always regenerated from the compatibility docs before the TypeScript compiles.
-
-## Publishing to the VS Code Marketplace
-
-### Prerequisites
-
-1. Create a publisher on the [Visual Studio Marketplace publisher management page](https://marketplace.visualstudio.com/manage).
-2. Generate a Personal Access Token (PAT) in Azure DevOps with the **Marketplace (Manage)** scope.
-3. Install `vsce`:
-
-   ```sh
-   npm install -g @vscode/vsce
-   ```
-
-### First-time setup
-
-Add a `publisher` field to `package.json` matching the publisher name you created:
-
-```json
-"publisher": "your-publisher-name"
-```
-
-### Package and publish
-
-Build the extension and create a `.vsix` bundle:
-
-```sh
-cd extensions/vscode-bascik
-npm run compile
-vsce package
-```
-
-This produces a file like `bascik-vscode-0.1.0.vsix`. Inspect it locally before publishing:
-
-```sh
-code --install-extension bascik-vscode-0.1.0.vsix
-```
-
-When ready, publish:
-
-```sh
-vsce publish
-```
-
-`vsce` will prompt for your PAT on the first run. To skip the prompt, pass it directly:
-
-```sh
-vsce publish --pat <your-pat>
-```
-
-### Bumping the version
-
-Update `version` in `package.json` before each release. `vsce publish` also accepts a version bump shorthand:
-
-```sh
-vsce publish patch   # 0.1.0 → 0.1.1
-vsce publish minor   # 0.1.0 → 0.2.0
-vsce publish major   # 0.1.0 → 1.0.0
-```
-
-This writes the new version back to `package.json` and tags the release.
-
-### Pre-publish checklist
-
-- [ ] `compatibility-rules.json` is current (`npm run compile` regenerates it)
-- [ ] `version` in `package.json` is bumped
-- [ ] `publisher` field is set in `package.json`
-- [ ] `.vsix` installs and works correctly in a clean VS Code window
+From the Bascik repository root, use `yarn ext:compile` to compile the extension, `yarn ext:unit` for Vitest unit tests, and `yarn ext:e2e` for extension-host integration tests. Open `extensions/vscode-bascik` in VS Code and press F5 to launch an Extension Development Host.

@@ -334,6 +334,30 @@ export default defineConfig({
 });
 ```
 
+### Declaring environment inputs
+
+Environment variables are not part of the cache key by default, so a script that reads `process.env` would otherwise reuse stale cached output when the variable changes. Declare the exact variable names you read in `scripts.cache.environment` to fold their resolved values into the cache key:
+
+```ts
+// bascik.config.ts
+import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  scripts: {
+    cache: {
+      enabled: true,
+      environment: ['MY_FEATURE_FLAG', 'API_BASE_URL'],
+    },
+  },
+});
+```
+
+When a declared variable's value changes, the cache key changes and the script re-runs. Unchanged values reuse the cached output. Only exact names are supported; globs are not. The resolved value reflects the same precedence as the rest of Bascik: a real shell environment variable beats a `.env` file value, and a later `--env-file` beats an earlier one.
+
+Values are hashed into the key and never persisted or displayed, so it is safe to declare secrets. Missing and empty are distinct: a variable that is unset produces a different key than one set to an empty string. Declaration order does not matter; the key is deterministic.
+
+When `scripts.cache.environment` is configured, Bascik warns about statically visible `process.env.NAME` reads that are not declared, so you can catch a variable you forgot to add. The warning is advisory only and never fails the build. It does not fire when the declaration is absent, so existing projects see no new noise.
+
 To clear the cache manually:
 
 ```sh

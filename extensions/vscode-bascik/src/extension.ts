@@ -1,21 +1,158 @@
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
 import { analyzeApiRouteSource } from './api-rules';
 import { findModuleSpecifiers } from './module-specifiers';
 import { analyzeServerScriptSource } from './server-script-rules';
+import {
+  analyzeComponentSource,
+  type ComponentMetadata,
+} from './component-metadata';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
-  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button', 'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'picture', 'pre', 'progress', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'search', 'section', 'select', 'slot', 'small', 'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr'
+  'a',
+  'abbr',
+  'address',
+  'area',
+  'article',
+  'aside',
+  'audio',
+  'b',
+  'base',
+  'bdi',
+  'bdo',
+  'blockquote',
+  'body',
+  'br',
+  'button',
+  'canvas',
+  'caption',
+  'cite',
+  'code',
+  'col',
+  'colgroup',
+  'data',
+  'datalist',
+  'dd',
+  'del',
+  'details',
+  'dfn',
+  'dialog',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'embed',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'header',
+  'hgroup',
+  'hr',
+  'html',
+  'i',
+  'iframe',
+  'img',
+  'input',
+  'ins',
+  'kbd',
+  'label',
+  'legend',
+  'li',
+  'link',
+  'main',
+  'map',
+  'mark',
+  'meta',
+  'meter',
+  'nav',
+  'noscript',
+  'object',
+  'ol',
+  'optgroup',
+  'option',
+  'output',
+  'p',
+  'picture',
+  'pre',
+  'progress',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'script',
+  'search',
+  'section',
+  'select',
+  'slot',
+  'small',
+  'source',
+  'span',
+  'strong',
+  'style',
+  'sub',
+  'summary',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'template',
+  'textarea',
+  'tfoot',
+  'th',
+  'thead',
+  'time',
+  'title',
+  'tr',
+  'track',
+  'u',
+  'ul',
+  'var',
+  'video',
+  'wbr',
 ]);
 
 function normalizeComponentName(name: string): string {
-  return name.replace(/\\/g, '/').split('/').pop()?.replace(/\.html$/i, '').toLowerCase() ?? '';
+  return (
+    name
+      .replace(/\\/g, '/')
+      .split('/')
+      .pop()
+      ?.replace(/\.html$/i, '')
+      .toLowerCase() ?? ''
+  );
 }
 
-const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
+const CONFIG_FILE_CANDIDATES = [
+  'bascik.config.ts',
+  'bascik.config.js',
+  'bascik.config.mjs',
+];
 const DEFAULT_COMPONENT_ROOTS = ['src/components'];
+const DEFAULT_IMPORT_ROOT = 'src';
+
+interface ProjectSnapshot {
+  componentRoots: string[];
+  componentMap: Map<string, string>;
+  componentMetadata: Map<string, ComponentMetadata>;
+  importRoot: string;
+  htmlUsageByFile: Map<string, string>;
+}
+
+type ProjectChangeKind = 'config' | 'components' | 'html';
 
 /**
  * Read `directory.components` from the workspace's bascik.config file.
@@ -26,76 +163,68 @@ const DEFAULT_COMPONENT_ROOTS = ['src/components'];
  * may point outside it (monorepo shared components). Falls back to the runtime
  * default `['src/components']` when the config is missing or unparseable.
  */
-function readComponentRoots(workspaceRoot: string): string[] {
-  for (const candidate of CONFIG_FILE_CANDIDATES) {
-    const configPath = path.join(workspaceRoot, candidate);
-    if (!fs.existsSync(configPath)) continue;
-    try {
-      const source = fs.readFileSync(configPath, 'utf8');
-      const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
-      if (match?.[1]) {
-        const literals = Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (m) => m[1]);
-        if (literals.length > 0) return literals;
-      }
-    } catch {
-      // unreadable config: fall through to the default
-    }
-    break;
-  }
-  return DEFAULT_COMPONENT_ROOTS;
+function parseComponentRoots(source: string | undefined): string[] {
+  if (!source) return DEFAULT_COMPONENT_ROOTS;
+  const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
+  if (!match?.[1]) return DEFAULT_COMPONENT_ROOTS;
+  const literals = Array.from(
+    match[1].matchAll(/['"]([^'"]+)['"]/g),
+    (item) => item[1],
+  );
+  return literals.length > 0 ? literals : DEFAULT_COMPONENT_ROOTS;
 }
 
-/** Absolute, forward-slash component roots for the workspace. */
-function resolveComponentRoots(workspaceRoot: string): string[] {
-  return readComponentRoots(workspaceRoot).map((root) =>
+function parseImportRoot(source: string | undefined): string {
+  return (
+    /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source ?? '')?.[1] ??
+    DEFAULT_IMPORT_ROOT
+  );
+}
+
+async function readConfigSource(
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  for (const candidate of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(workspaceRoot, candidate);
+    try {
+      return await fsPromises.readFile(configPath, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
+    }
+  }
+  return undefined;
+}
+
+function resolveComponentRoots(
+  workspaceRoot: string,
+  configuredRoots: string[],
+): string[] {
+  return configuredRoots.map((root) =>
     path.resolve(workspaceRoot, root).replace(/\\/g, '/').replace(/\/+$/, ''),
   );
 }
 
-/** True when `fsPath` is inside any configured component root of its workspace. */
-function isInsideComponentRoot(fsPath: string): boolean {
+function isInsideComponentRoots(fsPath: string, roots: string[]): boolean {
   const normalized = fsPath.replace(/\\/g, '/');
-  const workspaceRoot = getWorkspaceRoot();
-  const roots = workspaceRoot
-    ? resolveComponentRoots(workspaceRoot)
-    : DEFAULT_COMPONENT_ROOTS.map((root) => `/${root}`);
-  return roots.some((root) =>
-    workspaceRoot
-      ? normalized === root || normalized.startsWith(`${root}/`)
-      : normalized.includes(`${root}/`),
+  return roots.some(
+    (root) => normalized === root || normalized.startsWith(`${root}/`),
   );
 }
 
-function findComponentMap(workspaceRoot: string): Map<string, string> {
-  const components = new Map<string, string>();
-  const stack = resolveComponentRoots(workspaceRoot).filter((dir) => fs.existsSync(dir));
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || !fs.existsSync(current)) continue;
-
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.html')) {
-        const name = normalizeComponentName(fullPath);
-        if (name) {
-          components.set(name, fullPath);
-        }
-      }
-    }
-  }
-
-  return components;
-}
-
-function findHtmlFiles(workspaceRoot: string): string[] {
+async function findHtmlFiles(roots: string[]): Promise<string[]> {
   const files: string[] = [];
-  const stack = [path.join(workspaceRoot, 'src')];
+  const stack = [...roots].reverse();
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current || !fs.existsSync(current)) continue;
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+    if (!current) continue;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fsPromises.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(fullPath);
@@ -107,35 +236,374 @@ function findHtmlFiles(workspaceRoot: string): string[] {
   return files;
 }
 
-function componentUsageSuppliesProp(
-  workspaceRoot: string,
+async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnapshot> {
+  const configSource = await readConfigSource(workspaceRoot);
+  const componentRoots = resolveComponentRoots(
+    workspaceRoot,
+    parseComponentRoots(configSource),
+  );
+  const componentFiles = await findHtmlFiles(componentRoots);
+  const componentMap = new Map<string, string>();
+  for (const filePath of componentFiles) {
+    const name = normalizeComponentName(filePath);
+    if (name) componentMap.set(name, filePath);
+  }
+  const componentMetadata = new Map<string, ComponentMetadata>();
+  await Promise.all(
+    Array.from(componentMap, async ([name, filePath]) => {
+      try {
+        const source = await fsPromises.readFile(filePath, 'utf8');
+        componentMetadata.set(
+          name,
+          analyzeComponentSource(source, {
+            hasCompanionStyles: fs.existsSync(
+              filePath.replace(/\.html$/i, '.css'),
+            ),
+          }),
+        );
+      } catch {
+        // The component watcher invalidates files changed during this scan.
+      }
+    }),
+  );
+
+  const htmlUsageByFile = new Map<string, string>();
+  const usageFiles = await findHtmlFiles([path.join(workspaceRoot, 'src')]);
+  await Promise.all(
+    usageFiles.map(async (filePath) => {
+      try {
+        htmlUsageByFile.set(
+          filePath,
+          await fsPromises.readFile(filePath, 'utf8'),
+        );
+      } catch {
+        // The watcher will invalidate a file that changes during this scan.
+      }
+    }),
+  );
+
+  return {
+    componentRoots,
+    componentMap,
+    componentMetadata,
+    importRoot: path.resolve(workspaceRoot, parseImportRoot(configSource)),
+    htmlUsageByFile,
+  };
+}
+
+function htmlSuppliesComponentProp(
+  html: string,
   componentName: string,
   propName: string,
 ): boolean {
-  const escapedComponentName = componentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedComponentName = componentName.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&',
+  );
   const escapedPropName = propName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const usageRegex = new RegExp(
     `<${escapedComponentName}(?![\\w-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
     'gi',
   );
-  const propRegex = new RegExp(`\\sdata-bascik-prop-${escapedPropName}\\s*=`, 'i');
-  return findHtmlFiles(workspaceRoot).some((filePath) => {
-    const html = fs.readFileSync(filePath, 'utf8');
-    return Array.from(html.matchAll(usageRegex)).some((match) => propRegex.test(match[0]));
-  });
+  const propRegex = new RegExp(
+    `\\sdata-bascik-prop-${escapedPropName}\\s*=`,
+    'i',
+  );
+  return Array.from(html.matchAll(usageRegex)).some((match) =>
+    propRegex.test(match[0]),
+  );
 }
 
-function getWorkspaceRoot(): string | undefined {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  return folder?.uri.fsPath;
+class ProjectState implements vscode.Disposable {
+  private snapshotPromise: Promise<ProjectSnapshot> | undefined;
+  private generation = 0;
+  private disposed = false;
+  private readonly staticWatchers: vscode.FileSystemWatcher[] = [];
+  private componentWatchers: vscode.FileSystemWatcher[] = [];
+
+  constructor(
+    readonly folder: vscode.WorkspaceFolder,
+    readonly projectRoot: string,
+    private readonly onChange: (
+      state: ProjectState,
+      kind: ProjectChangeKind,
+    ) => void,
+  ) {
+    const htmlWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(projectRoot, 'src/**/*.html'),
+    );
+    this.listen(htmlWatcher, 'html');
+    this.staticWatchers.push(htmlWatcher);
+  }
+
+  async getSnapshot(): Promise<ProjectSnapshot> {
+    if (!this.snapshotPromise) {
+      const generation = this.generation;
+      const pending = buildSnapshot(this.projectRoot).then((snapshot) => {
+        if (this.disposed) return snapshot;
+        if (generation !== this.generation) return this.getSnapshot();
+        this.replaceComponentWatchers(snapshot.componentRoots);
+        return snapshot;
+      });
+      this.snapshotPromise = pending;
+    }
+    return this.snapshotPromise;
+  }
+
+  invalidate(kind: ProjectChangeKind): void {
+    this.generation++;
+    this.snapshotPromise = undefined;
+    if (kind === 'config') this.replaceComponentWatchers([]);
+    this.onChange(this, kind);
+  }
+
+  componentUsageSuppliesProp(
+    snapshot: ProjectSnapshot,
+    componentName: string,
+    propName: string,
+  ): boolean {
+    const openHtmlDocuments = vscode.workspace.textDocuments.filter(
+      (document) =>
+        document.languageId === 'html' &&
+        document.uri.scheme === 'file' &&
+        isPathInside(document.uri.fsPath, this.projectRoot),
+    );
+    const openPaths = new Set(
+      openHtmlDocuments
+        .filter((document) => document.uri.scheme === 'file')
+        .map((document) => document.uri.fsPath),
+    );
+    return (
+      openHtmlDocuments.some((document) =>
+        htmlSuppliesComponentProp(document.getText(), componentName, propName),
+      ) ||
+      Array.from(snapshot.htmlUsageByFile).some(
+        ([filePath, html]) =>
+          !openPaths.has(filePath) &&
+          htmlSuppliesComponentProp(html, componentName, propName),
+      )
+    );
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.generation++;
+    this.snapshotPromise = undefined;
+    this.replaceComponentWatchers([]);
+    for (const watcher of this.staticWatchers) watcher.dispose();
+  }
+
+  private listen(
+    watcher: vscode.FileSystemWatcher,
+    kind: ProjectChangeKind,
+  ): void {
+    watcher.onDidCreate(() => this.invalidate(kind));
+    watcher.onDidChange(() => this.invalidate(kind));
+    watcher.onDidDelete(() => this.invalidate(kind));
+  }
+
+  private replaceComponentWatchers(roots: string[]): void {
+    for (const watcher of this.componentWatchers) watcher.dispose();
+    this.componentWatchers = roots.map((root) => {
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(root, '**/*.html'),
+      );
+      this.listen(watcher, 'components');
+      return watcher;
+    });
+  }
+}
+
+class ProjectStateManager implements vscode.Disposable {
+  private readonly states = new Map<string, ProjectState>();
+  private readonly workspaceFoldersListener: vscode.Disposable;
+  private readonly configWatchers = new Map<string, vscode.FileSystemWatcher>();
+
+  constructor(
+    private readonly onChange: (
+      state: ProjectState,
+      kind: ProjectChangeKind,
+    ) => void,
+    private readonly onRemove: (state: ProjectState) => void,
+  ) {
+    for (const folder of vscode.workspace.workspaceFolders ?? [])
+      this.add(folder);
+    this.workspaceFoldersListener =
+      vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+        for (const folder of event.removed) this.remove(folder);
+        for (const folder of event.added) this.add(folder);
+      });
+  }
+
+  get(document: vscode.TextDocument): ProjectState | undefined {
+    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (!folder || document.uri.scheme !== 'file') return undefined;
+    this.discoverEnclosingProject(document.uri.fsPath, folder);
+    return this.closestState(document.uri.fsPath, folder);
+  }
+
+  dispose(): void {
+    this.workspaceFoldersListener.dispose();
+    for (const watcher of this.configWatchers.values()) watcher.dispose();
+    this.configWatchers.clear();
+    for (const state of this.states.values()) state.dispose();
+    this.states.clear();
+  }
+
+  private add(folder: vscode.WorkspaceFolder): void {
+    this.addProject(folder, folder.uri.fsPath);
+    const folderKey = folder.uri.toString();
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(folder, '**/bascik.config.{ts,js,mjs}'),
+    );
+    watcher.onDidCreate((uri) => this.configCreated(folder, uri));
+    watcher.onDidChange((uri) => this.configChanged(folder, uri));
+    watcher.onDidDelete((uri) => this.configDeleted(folder, uri));
+    this.configWatchers.set(folderKey, watcher);
+
+    void vscode.workspace
+      .findFiles(
+        new vscode.RelativePattern(folder, '**/bascik.config.{ts,js,mjs}'),
+        new vscode.RelativePattern(folder, '**/{node_modules,dist,.git}/**'),
+      )
+      .then((uris) => {
+        if (this.configWatchers.get(folderKey) !== watcher) return;
+        for (const uri of uris)
+          this.addProject(folder, path.dirname(uri.fsPath));
+      });
+  }
+
+  private remove(folder: vscode.WorkspaceFolder): void {
+    const folderKey = folder.uri.toString();
+    this.configWatchers.get(folderKey)?.dispose();
+    this.configWatchers.delete(folderKey);
+    for (const [key, state] of this.states) {
+      if (state.folder.uri.toString() !== folderKey) continue;
+      this.onRemove(state);
+      state.dispose();
+      this.states.delete(key);
+    }
+  }
+
+  private addProject(
+    folder: vscode.WorkspaceFolder,
+    projectRoot: string,
+  ): ProjectState {
+    const normalizedRoot = path.resolve(projectRoot);
+    const key = projectStateKey(folder, normalizedRoot);
+    let state = this.states.get(key);
+    if (!state) {
+      state = new ProjectState(folder, normalizedRoot, this.onChange);
+      this.states.set(key, state);
+    }
+    return state;
+  }
+
+  private closestState(
+    fsPath: string,
+    folder: vscode.WorkspaceFolder,
+  ): ProjectState | undefined {
+    let closest: ProjectState | undefined;
+    for (const state of this.states.values()) {
+      if (state.folder.uri.toString() !== folder.uri.toString()) continue;
+      if (!isPathInside(fsPath, state.projectRoot)) continue;
+      if (!closest || state.projectRoot.length > closest.projectRoot.length)
+        closest = state;
+    }
+    return closest;
+  }
+
+  private discoverEnclosingProject(
+    fsPath: string,
+    folder: vscode.WorkspaceFolder,
+  ): void {
+    const workspaceRoot = path.resolve(folder.uri.fsPath);
+    let directory = path.dirname(path.resolve(fsPath));
+    while (isPathInside(directory, workspaceRoot)) {
+      if (
+        !isExcludedProjectPath(directory, workspaceRoot) &&
+        CONFIG_FILE_CANDIDATES.some((candidate) =>
+          fs.existsSync(path.join(directory, candidate)),
+        )
+      ) {
+        this.addProject(folder, directory);
+        return;
+      }
+      if (directory === workspaceRoot) return;
+      const parent = path.dirname(directory);
+      if (parent === directory) return;
+      directory = parent;
+    }
+  }
+
+  private configCreated(folder: vscode.WorkspaceFolder, uri: vscode.Uri): void {
+    if (isExcludedProjectPath(uri.fsPath, folder.uri.fsPath)) return;
+    this.addProject(folder, path.dirname(uri.fsPath)).invalidate('config');
+  }
+
+  private configChanged(folder: vscode.WorkspaceFolder, uri: vscode.Uri): void {
+    if (isExcludedProjectPath(uri.fsPath, folder.uri.fsPath)) return;
+    this.addProject(folder, path.dirname(uri.fsPath)).invalidate('config');
+  }
+
+  private configDeleted(folder: vscode.WorkspaceFolder, uri: vscode.Uri): void {
+    if (isExcludedProjectPath(uri.fsPath, folder.uri.fsPath)) return;
+    const projectRoot = path.dirname(uri.fsPath);
+    if (
+      CONFIG_FILE_CANDIDATES.some((candidate) =>
+        fs.existsSync(path.join(projectRoot, candidate)),
+      )
+    ) {
+      this.addProject(folder, projectRoot).invalidate('config');
+      return;
+    }
+    if (path.resolve(projectRoot) === path.resolve(folder.uri.fsPath)) {
+      this.addProject(folder, projectRoot).invalidate('config');
+      return;
+    }
+    const key = projectStateKey(folder, projectRoot);
+    const state = this.states.get(key);
+    if (!state) return;
+    this.onRemove(state);
+    state.dispose();
+    this.states.delete(key);
+    this.closestState(projectRoot, folder)?.invalidate('config');
+  }
+}
+
+function isPathInside(fsPath: string, root: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(fsPath));
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+function projectStateKey(
+  folder: vscode.WorkspaceFolder,
+  projectRoot: string,
+): string {
+  return `${folder.uri.toString()}\0${path.resolve(projectRoot)}`;
+}
+
+function isExcludedProjectPath(fsPath: string, workspaceRoot: string): boolean {
+  const relativeParts = path
+    .relative(path.resolve(workspaceRoot), path.resolve(fsPath))
+    .split(path.sep);
+  return relativeParts.some(
+    (part) => part === 'node_modules' || part === 'dist' || part === '.git',
+  );
 }
 
 class ComponentDefinitionProvider implements vscode.DefinitionProvider {
+  constructor(private readonly projects: ProjectStateManager) {}
+
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
+    if (document.languageId !== 'html') return undefined;
     const range = document.getWordRangeAtPosition(position, /[A-Za-z0-9-]+/);
     if (!range) {
       return undefined;
@@ -146,49 +614,319 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
       return undefined;
     }
 
-    const root = getWorkspaceRoot();
-    if (!root) {
-      return undefined;
-    }
-
-    const componentMap = findComponentMap(root);
-    const tagName = word.toLowerCase();
-    const file = componentMap.get(tagName);
-    if (!file || !fs.existsSync(file)) {
-      return undefined;
-    }
-
-    return new vscode.Location(vscode.Uri.file(file), new vscode.Position(0, 0));
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+    return project.getSnapshot().then((snapshot) => {
+      if (_token.isCancellationRequested) return undefined;
+      const file = snapshot.componentMap.get(word.toLowerCase());
+      return file
+        ? new vscode.Location(vscode.Uri.file(file), new vscode.Position(0, 0))
+        : undefined;
+    });
   }
 }
 
-const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+class ComponentCompletionItemProvider
+  implements vscode.CompletionItemProvider
+{
+  constructor(private readonly projects: ProjectStateManager) {}
 
-const DEFAULT_IMPORT_ROOT = 'src';
+  provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.CompletionItem[]> {
+    if (document.languageId !== 'html') return undefined;
 
-/**
- * Read `scripts.importRoot` from the workspace's bascik.config file.
- *
- * The extension cannot execute a TypeScript config file, so this is a
- * best-effort regex read (`importRoot: '...'`) with a fallback to the runtime
- * default `src`. It mirrors `pkg/src/lib/import-root.ts`: the value is relative
- * to the project root and may point outside it (monorepo shared scripts).
- */
-function readImportRoot(workspaceRoot: string): string {
-  for (const candidate of CONFIG_FILE_CANDIDATES) {
-    const configPath = path.join(workspaceRoot, candidate);
-    if (!fs.existsSync(configPath)) continue;
-    try {
-      const source = fs.readFileSync(configPath, 'utf8');
-      const match = /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source);
-      if (match?.[1]) return match[1];
-    } catch {
-      // unreadable config: fall through to the default
+    const offset = document.offsetAt(position);
+    const maskedSource = maskHtmlRawTextContents(document.getText()).replace(
+      /<!--[\s\S]*?(?:-->|$)/g,
+      (comment) => ' '.repeat(comment.length),
+    );
+    const sourceBeforeCursor = maskedSource.slice(0, offset);
+    const tagMatch = /<([A-Za-z][\w-]*)?$/.exec(sourceBeforeCursor);
+    if (!tagMatch) {
+      const openTagMatch = /<([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*$/.exec(
+        sourceBeforeCursor,
+      );
+      if (!openTagMatch) return undefined;
+      const project = this.projects.get(document);
+      if (!project) return undefined;
+      return project.getSnapshot().then((snapshot) => {
+        if (token.isCancellationRequested) return undefined;
+        const currentTagName = openTagMatch[1].toLowerCase();
+        const openTagText = openTagMatch[0];
+        const currentTagStart = offset - openTagText.length;
+        const currentComponentMetadata =
+          snapshot.componentMetadata.get(currentTagName);
+        if (currentComponentMetadata) {
+          return createPropCompletionItems(
+            document,
+            position,
+            openTagText,
+            currentComponentMetadata,
+          );
+        }
+
+        const parentComponentName = findNearestParentComponent(
+          maskedSource.slice(0, currentTagStart),
+          snapshot.componentMap,
+        );
+        if (!parentComponentName) return undefined;
+        const parentMetadata = snapshot.componentMetadata.get(
+          parentComponentName,
+        );
+        if (!parentMetadata) return undefined;
+        return createSlotCompletionItems(
+          document,
+          position,
+          openTagText,
+          parentMetadata,
+        );
+      });
     }
-    break;
+    const tagStart = offset - tagMatch[0].length;
+    const sourceBeforeTag = sourceBeforeCursor.slice(0, tagStart);
+    const previousTagStart = sourceBeforeTag.lastIndexOf('<');
+    const previousTagEnd = sourceBeforeTag.lastIndexOf('>');
+    if (previousTagStart > previousTagEnd) return undefined;
+
+    const prefix = (tagMatch[1] ?? '').toLowerCase();
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+
+    const start = document.positionAt(offset - prefix.length);
+    const existingNameRange = document.getWordRangeAtPosition(
+      position,
+      /[A-Za-z][\w-]*/,
+    );
+    const replacementRange = new vscode.Range(
+      start,
+      existingNameRange?.start.isEqual(start)
+        ? existingNameRange.end
+        : position,
+    );
+
+    return project.getSnapshot().then((snapshot) => {
+      if (token.isCancellationRequested) return undefined;
+      return Array.from(snapshot.componentMap)
+        .filter(([componentName]) => componentName.startsWith(prefix))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([componentName, componentPath]) => {
+          const metadata = snapshot.componentMetadata.get(componentName);
+          const item = new vscode.CompletionItem(
+            componentName,
+            vscode.CompletionItemKind.Class,
+          );
+          if (metadata?.defaultSlot) {
+            item.range = new vscode.Range(
+              document.positionAt(tagStart),
+              replacementRange.end,
+            );
+            item.insertText = new vscode.SnippetString(
+              `<${componentName}>$0</${componentName}>`,
+            );
+          } else {
+            item.textEdit = vscode.TextEdit.replace(
+              replacementRange,
+              componentName,
+            );
+          }
+          item.filterText = componentName;
+          item.detail = 'Bascik component';
+          const relativePath = path
+            .relative(project.projectRoot, componentPath)
+            .replace(/\\/g, '/');
+          item.documentation = createComponentDocumentation(
+            relativePath,
+            metadata,
+          );
+          return item;
+        });
+    });
   }
-  return DEFAULT_IMPORT_ROOT;
 }
+
+function completionReplacementRange(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): vscode.Range {
+  const offset = document.offsetAt(position);
+  const prefix = /[^\s<>"'=]*$/.exec(document.getText().slice(0, offset))?.[0] ?? '';
+  return new vscode.Range(document.positionAt(offset - prefix.length), position);
+}
+
+function createPropCompletionItems(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  openTagText: string,
+  metadata: ComponentMetadata,
+): vscode.CompletionItem[] {
+  const range = completionReplacementRange(document, position);
+  return metadata.props
+    .filter(
+      ({ name }) =>
+        !new RegExp(`\\bdata-bascik-prop-${escapeRegExp(name)}\\s*=`, 'i').test(
+          openTagText,
+        ),
+    )
+    .map((prop) => {
+      const attribute = `data-bascik-prop-${prop.name}`;
+      const item = new vscode.CompletionItem(
+        attribute,
+        vscode.CompletionItemKind.Property,
+      );
+      item.range = range;
+      item.insertText = new vscode.SnippetString(`${attribute}="$1"`);
+      item.detail = 'Bascik component prop';
+      if (prop.description) {
+        const documentation = new vscode.MarkdownString();
+        documentation.appendText(prop.description);
+        item.documentation = documentation;
+      }
+      return item;
+    });
+}
+
+function createSlotCompletionItems(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  openTagText: string,
+  metadata: ComponentMetadata,
+): vscode.CompletionItem[] {
+  if (/\bdata-bascik-slot(?:\s*=|\s|\/?>|$)/i.test(openTagText)) return [];
+  const range = completionReplacementRange(document, position);
+  return metadata.slots.map((slot) => {
+    const item = new vscode.CompletionItem(
+      `data-bascik-slot="${slot.name}"`,
+      vscode.CompletionItemKind.Property,
+    );
+    item.range = range;
+    item.insertText = `data-bascik-slot="${slot.name}"`;
+    item.filterText = `data-bascik-slot ${slot.name}`;
+    item.detail = 'Bascik named slot';
+    if (slot.description) {
+      const documentation = new vscode.MarkdownString();
+      documentation.appendText(slot.description);
+      item.documentation = documentation;
+    }
+    return item;
+  });
+}
+
+function findNearestParentComponent(
+  source: string,
+  componentMap: Map<string, string>,
+): string | undefined {
+  const stack: string[] = [];
+  const tagRegex = /<\/?([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/g;
+  for (const match of source.matchAll(tagRegex)) {
+    const name = match[1].toLowerCase();
+    if (match[0].startsWith('</')) {
+      const matchingIndex = stack.lastIndexOf(name);
+      if (matchingIndex >= 0) stack.splice(matchingIndex);
+    } else if (!/\/\s*>$/.test(match[0])) {
+      stack.push(name);
+    }
+  }
+  return stack.reverse().find((name) => componentMap.has(name));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function createComponentDocumentation(
+  relativePath: string,
+  metadata: ComponentMetadata | undefined,
+): vscode.MarkdownString {
+  const documentation = new vscode.MarkdownString();
+  if (metadata?.description) {
+    documentation.appendText(metadata.description);
+    documentation.appendMarkdown('\n\n');
+  }
+  documentation.appendMarkdown(`Bascik component from \`${relativePath}\`.`);
+  if (metadata) {
+    documentation.appendMarkdown('\n\n');
+    appendMetadataMembers(documentation, 'Props', metadata.props);
+    appendMetadataMembers(documentation, 'Slots', [
+      ...metadata.slots,
+      ...(metadata.defaultSlot ? [metadata.defaultSlot] : []),
+    ]);
+  }
+  return documentation;
+}
+
+class ComponentHoverProvider implements vscode.HoverProvider {
+  constructor(private readonly projects: ProjectStateManager) {}
+
+  provideHover(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.Hover> {
+    const range = document.getWordRangeAtPosition(position, /[A-Za-z0-9-]+/);
+    if (!range) return undefined;
+    const componentName = document.getText(range).toLowerCase();
+    if (!componentName || BUILT_IN_HTML_ELEMENTS.has(componentName))
+      return undefined;
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+
+    return project.getSnapshot().then((snapshot) => {
+      if (token.isCancellationRequested) return undefined;
+      const componentPath = snapshot.componentMap.get(componentName);
+      if (!componentPath) return undefined;
+      const metadata = snapshot.componentMetadata.get(componentName);
+      if (!metadata) return undefined;
+      const relativePath = path
+        .relative(project.projectRoot, componentPath)
+        .replace(/\\/g, '/');
+      const details = new vscode.MarkdownString();
+      details.appendMarkdown(`### \`<${componentName}>\`\n\n`);
+      if (metadata.description) {
+        details.appendText(metadata.description);
+        details.appendMarkdown('\n\n');
+      }
+      details.appendMarkdown(
+        `**Source:** [\`${relativePath}\`](${vscode.Uri.file(componentPath).toString()})\n\n`,
+      );
+      appendMetadataMembers(details, 'Props', metadata.props);
+      appendMetadataMembers(details, 'Slots', [
+        ...metadata.slots,
+        ...(metadata.defaultSlot ? [metadata.defaultSlot] : []),
+      ]);
+      const features = [
+        metadata.hasStyles ? 'styles' : '',
+        metadata.hasScripts ? 'scripts' : '',
+      ].filter(Boolean);
+      if (features.length > 0)
+        details.appendMarkdown(`**Includes:** ${features.join(', ')}`);
+      return new vscode.Hover(details, range);
+    });
+  }
+}
+
+function appendMetadataMembers(
+  markdown: vscode.MarkdownString,
+  label: string,
+  members: ComponentMetadata['props'],
+): void {
+  if (members.length === 0) return;
+  markdown.appendMarkdown(`**${label}:**\n\n`);
+  for (const member of members) {
+    markdown.appendMarkdown(`- \`${member.name}\``);
+    if (member.description) {
+      markdown.appendMarkdown(': ');
+      markdown.appendText(member.description);
+    }
+    markdown.appendMarkdown('\n');
+  }
+  markdown.appendMarkdown('\n');
+}
+
+const SCRIPT_BLOCK_RE =
+  /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
 
 /**
  * Resolve a script specifier or `src=` value the way Bascik's runtime does
@@ -204,8 +942,10 @@ function resolveScriptTarget(
   importRootAbs: string,
   kind: 'specifier' | 'src',
 ): string | undefined {
-  if (value.startsWith('./') || value.startsWith('../')) return path.resolve(documentDir, value);
-  if (value.startsWith('@/')) return path.resolve(importRootAbs, value.slice(2));
+  if (value.startsWith('./') || value.startsWith('../'))
+    return path.resolve(documentDir, value);
+  if (value.startsWith('@/'))
+    return path.resolve(importRootAbs, value.slice(2));
   if (value.startsWith('/')) return undefined;
   if (kind === 'src') {
     if (/^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
@@ -241,7 +981,12 @@ function collectLeadingSlashDiagnostics(
   blockStart: number,
   attrs: Map<string, string | true>,
 ): vscode.Diagnostic[] {
-  if (!attrs.has('data-bascik-build') && !attrs.has('data-bascik-server') && !attrs.has('data-bascik-routes') && !attrs.has('data-bascik-stream')) {
+  if (
+    !attrs.has('data-bascik-build') &&
+    !attrs.has('data-bascik-server') &&
+    !attrs.has('data-bascik-routes') &&
+    !attrs.has('data-bascik-stream')
+  ) {
     return [];
   }
   const out: vscode.Diagnostic[] = [];
@@ -256,11 +1001,14 @@ function collectLeadingSlashDiagnostics(
     out.push(diag);
   };
 
-  const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(openTag);
+  const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(
+    openTag,
+  );
   if (srcMatch) {
     const srcValue = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3] ?? '';
     if (srcValue.startsWith('/')) {
-      const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
+      const valueStart =
+        blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
       push(valueStart, valueStart + srcValue.length, srcValue);
     }
   }
@@ -272,12 +1020,13 @@ function collectLeadingSlashDiagnostics(
   return out;
 }
 
-function parseScriptOpenTagAttributes(openTag: string): Map<string, string | true> {
+function parseScriptOpenTagAttributes(
+  openTag: string,
+): Map<string, string | true> {
   const attrs = new Map<string, string | true>();
-  const insideTag = openTag
-    .replace(/^<script\b/i, '')
-    .replace(/>$/, '');
-  const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  const insideTag = openTag.replace(/^<script\b/i, '').replace(/>$/, '');
+  const attrRe =
+    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
   let match: RegExpExecArray | null;
   while ((match = attrRe.exec(insideTag)) !== null) {
     const name = match[1]?.toLowerCase();
@@ -289,6 +1038,8 @@ function parseScriptOpenTagAttributes(openTag: string): Map<string, string | tru
 }
 
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
+  constructor(private readonly projects: ProjectStateManager) {}
+
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -298,6 +1049,19 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       return undefined;
     }
 
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+    return project.getSnapshot().then((snapshot) => {
+      if (_token.isCancellationRequested) return undefined;
+      return this.provideFromSnapshot(document, position, snapshot);
+    });
+  }
+
+  private provideFromSnapshot(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    snapshot: ProjectSnapshot,
+  ): vscode.Definition | undefined {
     const text = document.getText();
     const offset = document.offsetAt(position);
 
@@ -312,39 +1076,59 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       if (offset < blockStart || offset > blockEnd) continue;
 
       const attrs = parseScriptOpenTagAttributes(openTag);
-      if (!attrs.has('data-bascik-build') &&
+      if (
+        !attrs.has('data-bascik-build') &&
         !attrs.has('data-bascik-server') &&
-        !attrs.has('data-bascik-routes')) {
+        !attrs.has('data-bascik-routes')
+      ) {
         return undefined;
       }
 
       const baseDir = path.dirname(document.uri.fsPath);
-      const workspaceRoot = getWorkspaceRoot();
-      const importRootAbs = workspaceRoot
-        ? path.resolve(workspaceRoot, readImportRoot(workspaceRoot))
-        : path.resolve(baseDir, DEFAULT_IMPORT_ROOT);
+      const importRootAbs = snapshot.importRoot;
 
       // Cursor inside the open tag: check for the src attribute value.
       if (offset >= blockStart && offset <= openTagEnd) {
-        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(openTag);
+        const srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(
+          openTag,
+        );
         if (!srcMatch) return undefined;
         const srcValue = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3] ?? '';
         if (!srcValue) return undefined;
-        const valueStart = blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
+        const valueStart =
+          blockStart + (srcMatch.index ?? 0) + srcMatch[0].indexOf(srcValue);
         const valueEnd = valueStart + srcValue.length;
         if (offset < valueStart || offset > valueEnd) return undefined;
-        const resolved = resolveScriptTarget(srcValue, baseDir, importRootAbs, 'src');
+        const resolved = resolveScriptTarget(
+          srcValue,
+          baseDir,
+          importRootAbs,
+          'src',
+        );
         if (!resolved || !fs.existsSync(resolved)) return undefined;
-        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+        return new vscode.Location(
+          vscode.Uri.file(resolved),
+          new vscode.Position(0, 0),
+        );
       }
 
       // Cursor inside the script body: inspect lexical ESM specifiers only.
       const bodyOffset = offset - openTagEnd;
-      for (const { start, end, value: specifier } of findModuleSpecifiers(scriptBody)) {
+      for (const { start, end, value: specifier } of findModuleSpecifiers(
+        scriptBody,
+      )) {
         if (bodyOffset < start || bodyOffset > end) continue;
-        const resolved = resolveScriptTarget(specifier, baseDir, importRootAbs, 'specifier');
+        const resolved = resolveScriptTarget(
+          specifier,
+          baseDir,
+          importRootAbs,
+          'specifier',
+        );
         if (!resolved || !fs.existsSync(resolved)) return undefined;
-        return new vscode.Location(vscode.Uri.file(resolved), new vscode.Position(0, 0));
+        return new vscode.Location(
+          vscode.Uri.file(resolved),
+          new vscode.Position(0, 0),
+        );
       }
 
       return undefined;
@@ -359,9 +1143,9 @@ function findMatchingClose(
   tagName: string,
   contentStart: number,
 ): number {
-  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const openRe = new RegExp(`<${tn}[\\s>]`, "gi");
-  const closeRe = new RegExp(`<\\/${tn}>`, "gi");
+  const tn = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const openRe = new RegExp(`<${tn}[\\s>]`, 'gi');
+  const closeRe = new RegExp(`<\\/${tn}>`, 'gi');
   let depth = 1;
   let pos = contentStart;
   while (pos < html.length) {
@@ -406,23 +1190,40 @@ function findMatchingClose(
 function maskHtmlRawTextContents(html: string): string {
   return html.replace(
     /(<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
-    (_match, openTag: string, _tagName: string, content: string, closeTag: string) =>
-      `${openTag}${' '.repeat(content.length)}${closeTag}`,
+    (
+      _match,
+      openTag: string,
+      _tagName: string,
+      content: string,
+      closeTag: string,
+    ) => `${openTag}${' '.repeat(content.length)}${closeTag}`,
   );
 }
 
-function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Diagnostic[] {
+async function createDiagnosticsForDocument(
+  document: vscode.TextDocument,
+  projects: ProjectStateManager,
+): Promise<vscode.Diagnostic[]> {
   const { languageId } = document;
 
-  if (languageId !== 'css' && languageId !== 'javascript' && languageId !== 'typescript' && languageId !== 'html') {
+  if (
+    languageId !== 'css' &&
+    languageId !== 'javascript' &&
+    languageId !== 'typescript' &&
+    languageId !== 'html'
+  ) {
     return [];
   }
 
   const text = document.getText();
   const diagnostics: vscode.Diagnostic[] = [];
+  const project = projects.get(document);
+  const snapshot = project ? await project.getSnapshot() : undefined;
   const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
   const isComponentDocument =
-    document.uri.scheme === 'file' && isInsideComponentRoot(normalizedDocumentPath);
+    document.uri.scheme === 'file' &&
+    snapshot !== undefined &&
+    isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots);
   const isApiRouteDocument =
     document.uri.scheme === 'file' &&
     normalizedDocumentPath.includes('/src/api/') &&
@@ -431,13 +1232,19 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   if (isApiRouteDocument) {
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
-      const severity =
-        diag.severity === 'error'
-          ? vscode.DiagnosticSeverity.Error
-          : vscode.DiagnosticSeverity.Warning;
+      let severity = vscode.DiagnosticSeverity.Warning;
+      if (diag.severity === 'error') {
+        severity = vscode.DiagnosticSeverity.Error;
+      } else if (diag.severity === 'info') {
+        severity = vscode.DiagnosticSeverity.Information;
+      }
       const start = new vscode.Position(0, 0);
       const end = new vscode.Position(0, Math.min(text.length, 10));
-      const vdiag = new vscode.Diagnostic(new vscode.Range(start, end), diag.message, severity);
+      const vdiag = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        diag.message,
+        severity,
+      );
       vdiag.source = 'bascik';
       diagnostics.push(vdiag);
     }
@@ -447,10 +1254,13 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   // hyphenated per WHATWG HTML §4.13
   if (languageId === 'html' && document.uri.scheme === 'file') {
     const fsPath = document.uri.fsPath.replace(/\\/g, '/');
-    if (isInsideComponentRoot(fsPath)) {
+    if (snapshot && isInsideComponentRoots(fsPath, snapshot.componentRoots)) {
       const fileName = path.basename(fsPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, '').toLowerCase();
-      if (!nameWithoutExt.includes('-') && !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)) {
+      if (
+        !nameWithoutExt.includes('-') &&
+        !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)
+      ) {
         const start = new vscode.Position(0, 0);
         const end = new vscode.Position(0, Math.min(text.length, 10));
         const diag = new vscode.Diagnostic(
@@ -464,14 +1274,22 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     }
   }
 
-  const addCompatibilityDiagnostics = (sourceText: string, kind: 'css' | 'js', offset: number) => {
+  const addCompatibilityDiagnostics = (
+    sourceText: string,
+    kind: 'css' | 'js',
+    offset: number,
+  ) => {
     for (const rule of matchCompatibilityRules(sourceText, kind)) {
-      const flags = rule.regex.flags.includes('g') ? rule.regex.flags : `${rule.regex.flags}g`;
+      const flags = rule.regex.flags.includes('g')
+        ? rule.regex.flags
+        : `${rule.regex.flags}g`;
       const regex = new RegExp(rule.regex.source, flags);
       const match = regex.exec(sourceText);
       if (!match || typeof match.index !== 'number') continue;
       const start = document.positionAt(offset + match.index);
-      const end = document.positionAt(offset + match.index + Math.max(match[0].length, 1));
+      const end = document.positionAt(
+        offset + match.index + Math.max(match[0].length, 1),
+      );
       const diag = new vscode.Diagnostic(
         new vscode.Range(start, end),
         `${rule.message} ${rule.suggestion}`,
@@ -487,36 +1305,73 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     const typeValue = attrs.get('type');
     if (!typeValue || typeValue === true) return true;
     const normalized = String(typeValue).trim().toLowerCase();
-    return normalized === 'module'
-      || normalized === 'text/javascript'
-      || normalized === 'application/javascript'
-      || normalized === 'text/ecmascript'
-      || normalized === 'application/ecmascript';
+    return (
+      normalized === 'module' ||
+      normalized === 'text/javascript' ||
+      normalized === 'application/javascript' ||
+      normalized === 'text/ecmascript' ||
+      normalized === 'application/ecmascript'
+    );
   };
 
   // Fresh instance: SCRIPT_BLOCK_RE is a global (`g`) regex shared with the
   // definition provider, and a stale lastIndex would silently skip blocks.
-  const scriptBlockRe = new RegExp(SCRIPT_BLOCK_RE.source, SCRIPT_BLOCK_RE.flags);
-  const styleBlockRe = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
+  const scriptBlockRe = new RegExp(
+    SCRIPT_BLOCK_RE.source,
+    SCRIPT_BLOCK_RE.flags,
+  );
+  const styleBlockRe =
+    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
 
   if (languageId === 'html') {
     if (isComponentDocument) {
-      const referenceScanText = maskHtmlRawTextContents(text)
-        .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => ' '.repeat(comment.length));
+      const metadata = analyzeComponentSource(text, {
+        hasCompanionStyles:
+          document.uri.scheme === 'file' &&
+          fs.existsSync(document.uri.fsPath.replace(/\.html$/i, '.css')),
+      });
+      for (const metadataDiagnostic of metadata.diagnostics) {
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(
+            document.positionAt(metadataDiagnostic.start),
+            document.positionAt(metadataDiagnostic.end),
+          ),
+          metadataDiagnostic.message,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diagnostic.source = 'bascik';
+        diagnostic.code = metadataDiagnostic.code;
+        diagnostics.push(diagnostic);
+      }
+
+      const referenceScanText = maskHtmlRawTextContents(text).replace(
+        /<!--[\s\S]*?(?:-->|$)/g,
+        (comment) => ' '.repeat(comment.length),
+      );
       const declaredIds = new Set(
-        Array.from(referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi))
+        Array.from(
+          referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi),
+        )
           .map((match) => match[1] ?? match[2])
           .filter((id): id is string => Boolean(id)),
       );
-      const idReferenceAttributeRegex = /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+      const idReferenceAttributeRegex =
+        /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
       let idReferenceMatch: RegExpExecArray | null;
-      while ((idReferenceMatch = idReferenceAttributeRegex.exec(referenceScanText)) !== null) {
+      while (
+        (idReferenceMatch =
+          idReferenceAttributeRegex.exec(referenceScanText)) !== null
+      ) {
         const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? '';
         for (const id of value.trim().split(/\s+/).filter(Boolean)) {
           if (declaredIds.has(id)) continue;
           const valueOffset = idReferenceMatch[0].indexOf(id);
-          const start = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0));
-          const end = document.positionAt(idReferenceMatch.index + Math.max(valueOffset, 0) + id.length);
+          const start = document.positionAt(
+            idReferenceMatch.index + Math.max(valueOffset, 0),
+          );
+          const end = document.positionAt(
+            idReferenceMatch.index + Math.max(valueOffset, 0) + id.length,
+          );
           const diagnostic = new vscode.Diagnostic(
             new vscode.Range(start, end),
             `ID reference "${id}" is not declared in this component and will be left unscoped.`,
@@ -528,12 +1383,19 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       }
       const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)')/gi;
       let fragmentReferenceMatch: RegExpExecArray | null;
-      while ((fragmentReferenceMatch = fragmentReferenceRegex.exec(referenceScanText)) !== null) {
+      while (
+        (fragmentReferenceMatch =
+          fragmentReferenceRegex.exec(referenceScanText)) !== null
+      ) {
         const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2];
         if (!id || declaredIds.has(id)) continue;
         const idOffset = fragmentReferenceMatch[0].indexOf(id);
-        const start = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0));
-        const end = document.positionAt(fragmentReferenceMatch.index + Math.max(idOffset, 0) + id.length);
+        const start = document.positionAt(
+          fragmentReferenceMatch.index + Math.max(idOffset, 0),
+        );
+        const end = document.positionAt(
+          fragmentReferenceMatch.index + Math.max(idOffset, 0) + id.length,
+        );
         const diagnostic = new vscode.Diagnostic(
           new vscode.Range(start, end),
           `ID reference "${id}" is not declared in this component and will be left unscoped.`,
@@ -544,16 +1406,26 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       }
     }
 
-    const preserveDirectiveRegex = /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
+    const preserveDirectiveRegex =
+      /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
     let preserveMatch: RegExpExecArray | null;
     while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {
       if (preserveMatch[1] === undefined) continue;
       const value = preserveMatch[2] ?? preserveMatch[3] ?? '';
       for (const preserveToken of value.trim().split(/\s+/).filter(Boolean)) {
-        if (preserveToken === 'id' || preserveToken === 'name' || preserveToken === 'class') continue;
+        if (
+          preserveToken === 'id' ||
+          preserveToken === 'name' ||
+          preserveToken === 'class'
+        )
+          continue;
         const tokenOffset = preserveMatch[0].indexOf(preserveToken);
-        const start = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0));
-        const end = document.positionAt(preserveMatch.index + Math.max(tokenOffset, 0) + preserveToken.length);
+        const start = document.positionAt(
+          preserveMatch.index + Math.max(tokenOffset, 0),
+        );
+        const end = document.positionAt(
+          preserveMatch.index + Math.max(tokenOffset, 0) + preserveToken.length,
+        );
         const diagnostic = new vscode.Diagnostic(
           new vscode.Range(start, end),
           `Unknown data-bascik-preserve token "${preserveToken}". Valid tokens are id, name, and class.`,
@@ -566,15 +1438,25 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
 
     const formOpenTagRegex = /<form\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
     let formMatch: RegExpExecArray | null;
-    while (isComponentDocument && (formMatch = formOpenTagRegex.exec(text)) !== null) {
-      const actionMatch = formMatch[0].match(/\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    while (
+      isComponentDocument &&
+      (formMatch = formOpenTagRegex.exec(text)) !== null
+    ) {
+      const actionMatch = formMatch[0].match(
+        /\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i,
+      );
       const action = actionMatch?.[1] ?? actionMatch?.[2];
       if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
-      const preserveMatch = formMatch[0].match(/\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i);
-      const preservesName = preserveMatch !== null && (
-        preserveMatch[1] === undefined ||
-        (preserveMatch[1] ?? preserveMatch[2] ?? '').trim().split(/\s+/).includes('name')
+      const preserveMatch = formMatch[0].match(
+        /\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i,
       );
+      const preservesName =
+        preserveMatch !== null &&
+        (preserveMatch[1] === undefined ||
+          (preserveMatch[1] ?? preserveMatch[2] ?? '')
+            .trim()
+            .split(/\s+/)
+            .includes('name'));
       if (preservesName) continue;
       const start = document.positionAt(formMatch.index);
       const end = document.positionAt(formMatch.index + formMatch[0].length);
@@ -587,20 +1469,22 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       diagnostics.push(diagnostic);
     }
 
-    const workspaceRoot = getWorkspaceRoot();
-    if (
-      workspaceRoot &&
-      isComponentDocument
-    ) {
+    if (project && snapshot && isComponentDocument) {
       const componentName = normalizeComponentName(document.uri.fsPath);
-      const directiveRegex = /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi;
+      const directiveRegex =
+        /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi;
       let directiveMatch: RegExpExecArray | null;
       while ((directiveMatch = directiveRegex.exec(text)) !== null) {
         const targetName = directiveMatch[1];
         const propName = directiveMatch[2] ?? directiveMatch[3];
-        if (componentUsageSuppliesProp(workspaceRoot, componentName, propName)) continue;
+        if (
+          project.componentUsageSuppliesProp(snapshot, componentName, propName)
+        )
+          continue;
         const start = document.positionAt(directiveMatch.index);
-        const end = document.positionAt(directiveMatch.index + directiveMatch[0].length);
+        const end = document.positionAt(
+          directiveMatch.index + directiveMatch[0].length,
+        );
         const diagnostic = new vscode.Diagnostic(
           new vscode.Range(start, end),
           `data-bascik-attr-${targetName} references prop "${propName}", but no <${componentName}> usage supplies data-bascik-prop-${propName}.`,
@@ -653,7 +1537,9 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
           }
 
           const start = document.positionAt(scriptMatch.index ?? 0);
-          const end = document.positionAt((scriptMatch.index ?? 0) + openTag.length);
+          const end = document.positionAt(
+            (scriptMatch.index ?? 0) + openTag.length,
+          );
           const diag = new vscode.Diagnostic(
             new vscode.Range(start, end),
             message,
@@ -681,7 +1567,11 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
           } else if (sd.severity === 'info') {
             severity = vscode.DiagnosticSeverity.Information;
           }
-          const diag = new vscode.Diagnostic(new vscode.Range(start, end), sd.message, severity);
+          const diag = new vscode.Diagnostic(
+            new vscode.Range(start, end),
+            sd.message,
+            severity,
+          );
           diag.source = 'bascik';
           diag.code = sd.code;
           diagnostics.push(diag);
@@ -689,7 +1579,13 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       }
 
       diagnostics.push(
-        ...collectLeadingSlashDiagnostics(document, openTag, scriptBody, scriptMatch.index ?? 0, attrs),
+        ...collectLeadingSlashDiagnostics(
+          document,
+          openTag,
+          scriptBody,
+          scriptMatch.index ?? 0,
+          attrs,
+        ),
       );
       if (isJavaScriptScriptTag(openTag)) {
         addCompatibilityDiagnostics(scriptBody, 'js', scriptBodyOffset);
@@ -697,9 +1593,10 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
     }
 
     let styleMatch: RegExpExecArray | null;
-    const hasCompanionCss = document.uri.scheme === 'file'
-      && document.uri.fsPath.toLowerCase().endsWith('.html')
-      && fs.existsSync(document.uri.fsPath.replace(/\.html$/i, '.css'));
+    const hasCompanionCss =
+      document.uri.scheme === 'file' &&
+      document.uri.fsPath.toLowerCase().endsWith('.html') &&
+      fs.existsSync(document.uri.fsPath.replace(/\.html$/i, '.css'));
 
     const maskedText = text
       .replace(
@@ -709,16 +1606,20 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       )
       .replace(
         /<!--([\s\S]*?)-->/g,
-        (_m, content: string) => '<!--' + ' '.repeat(content.length) + '-->'
+        (_m, content: string) => '<!--' + ' '.repeat(content.length) + '-->',
       );
 
-    const root = getWorkspaceRoot();
-    const componentMap = root ? findComponentMap(root) : new Map<string, string>();
+    const componentMap = snapshot?.componentMap ?? new Map<string, string>();
     const componentNames = Array.from(componentMap.keys());
     if (componentNames.length > 0) {
       componentNames.sort((a, b) => b.length - a.length);
-      const escapedNames = componentNames.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      const componentTagRe = new RegExp(`<(${escapedNames.join('|')})\\b`, 'gi');
+      const escapedNames = componentNames.map((name) =>
+        name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      );
+      const componentTagRe = new RegExp(
+        `<(${escapedNames.join('|')})\\b`,
+        'gi',
+      );
       let compMatch: RegExpExecArray | null;
       while ((compMatch = componentTagRe.exec(maskedText)) !== null) {
         const tagStartIndex = compMatch.index;
@@ -743,7 +1644,11 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
           const openTagText = maskedText.slice(tagStartIndex, openTagEndIndex);
           const isSelfClosing = /\/\s*>$/.test(openTagText);
           if (!isSelfClosing) {
-            const closeIndex = findMatchingClose(maskedText, tagName, openTagEndIndex);
+            const closeIndex = findMatchingClose(
+              maskedText,
+              tagName,
+              openTagEndIndex,
+            );
             if (closeIndex === -1) {
               const start = document.positionAt(tagStartIndex);
               const end = document.positionAt(openTagEndIndex);
@@ -794,45 +1699,121 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const definitionProvider = new ComponentDefinitionProvider();
+  const diagnostics = vscode.languages.createDiagnosticCollection('bascik');
+  const refreshTimers = new Map<string, NodeJS.Timeout>();
+  let projects: ProjectStateManager;
+
+  const refreshDiagnostics = async (
+    document: vscode.TextDocument | undefined,
+  ) => {
+    if (!document) return;
+    const workspaceFolderKey = vscode.workspace
+      .getWorkspaceFolder(document.uri)
+      ?.uri.toString();
+    const project = projects.get(document);
+    const version = document.version;
+    const items = await createDiagnosticsForDocument(document, projects);
+    const currentWorkspaceFolderKey = vscode.workspace
+      .getWorkspaceFolder(document.uri)
+      ?.uri.toString();
+    if (
+      document.version === version &&
+      (!workspaceFolderKey ||
+        currentWorkspaceFolderKey === workspaceFolderKey) &&
+      projects.get(document) === project
+    ) {
+      diagnostics.set(document.uri, items);
+    }
+  };
+
+  const scheduleProjectDiagnostics = (
+    state: ProjectState,
+    kind: ProjectChangeKind,
+  ) => {
+    const key = projectStateKey(state.folder, state.projectRoot);
+    const previous = refreshTimers.get(key);
+    if (previous) clearTimeout(previous);
+    refreshTimers.set(
+      key,
+      setTimeout(() => {
+        refreshTimers.delete(key);
+        for (const document of vscode.workspace.textDocuments) {
+          if (projects.get(document) !== state) continue;
+          if (kind === 'html' && document.languageId !== 'html') continue;
+          void refreshDiagnostics(document);
+        }
+      }, 50),
+    );
+  };
+
+  projects = new ProjectStateManager(scheduleProjectDiagnostics, (state) => {
+    const key = projectStateKey(state.folder, state.projectRoot);
+    const timer = refreshTimers.get(key);
+    if (timer) clearTimeout(timer);
+    refreshTimers.delete(key);
+    for (const [uri] of diagnostics) {
+      if (uri.scheme !== 'file') continue;
+      if (isPathInside(uri.fsPath, state.projectRoot)) {
+        diagnostics.delete(uri);
+      }
+    }
+  });
+  context.subscriptions.push(projects, diagnostics, {
+    dispose: () => {
+      for (const timer of refreshTimers.values()) clearTimeout(timer);
+      refreshTimers.clear();
+    },
+  });
+
+  const definitionProvider = new ComponentDefinitionProvider(projects);
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
-      [{ language: 'html' }, { language: 'javascript' }, { language: 'typescript' }, { language: 'css' }],
+      [{ language: 'html' }],
       definitionProvider,
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      [{ language: 'html' }],
+      new ComponentHoverProvider(projects),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      [{ language: 'html' }],
+      new ComponentCompletionItemProvider(projects),
+      '<',
+      ' ',
     ),
   );
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
       [{ language: 'html' }],
-      new ScriptImportDefinitionProvider(),
+      new ScriptImportDefinitionProvider(projects),
     ),
   );
 
-  const diagnostics = vscode.languages.createDiagnosticCollection('bascik');
-  context.subscriptions.push(diagnostics);
-
-  const refreshDiagnostics = (document: vscode.TextDocument | undefined) => {
-    if (!document) return;
-    const items = createDiagnosticsForDocument(document);
-    diagnostics.set(document.uri, items);
-  };
-
   for (const document of vscode.workspace.textDocuments) {
-    refreshDiagnostics(document);
+    void refreshDiagnostics(document);
   }
 
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(refreshDiagnostics),
+    vscode.workspace.onDidOpenTextDocument(
+      (document) => void refreshDiagnostics(document),
+    ),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      refreshDiagnostics(event.document);
+      void refreshDiagnostics(event.document);
       if (event.document.languageId === 'html') {
-        for (const document of vscode.workspace.textDocuments) {
-          if (document !== event.document && document.languageId === 'html') {
-            refreshDiagnostics(document);
-          }
-        }
+        projects.get(event.document)?.invalidate('html');
       }
+    }),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      diagnostics.delete(document.uri);
+      if (document.languageId === 'html')
+        projects.get(document)?.invalidate('html');
     }),
   );
 }

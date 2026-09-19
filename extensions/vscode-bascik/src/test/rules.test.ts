@@ -5,15 +5,27 @@ import { matchCompatibilityRules } from '../rules';
 import { analyzeApiRouteSource } from '../api-rules';
 
 suite('Bascik HTML Grammar', () => {
-  test('highlights prop attribute directives with hyphenated targets', () => {
-    const grammarPath = path.resolve(__dirname, '../../syntaxes/bascik-html.tmLanguage.json');
+  test('matches every supported highlighted directive', () => {
+    const grammarPath = path.resolve(
+      __dirname,
+      '../../syntaxes/bascik-html.tmLanguage.json',
+    );
     const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf8')) as {
       patterns: Array<{ match: string }>;
     };
     const directivePattern = new RegExp(grammar.patterns[0].match);
     assert.ok(directivePattern.test('data-bascik-attr-aria-label'));
     assert.ok(directivePattern.test('data-bascik-attr-data-foo'));
-    assert.ok(directivePattern.test('data-bascik-preserve'));
+    for (const directive of [
+      'data-bascik-prop-label',
+      'data-bascik-slot',
+      'data-bascik-build',
+      'data-bascik-routes',
+      'data-bascik-server',
+      'data-bascik-preserve',
+    ]) {
+      assert.ok(directivePattern.test(directive), directive);
+    }
   });
 });
 
@@ -37,6 +49,22 @@ suite('Compatibility Rules Suite', () => {
       assert.ok(!matches.some((r) => r.id === 'css-import'));
     });
 
+    test('does not flag attribute selectors anchored by a class', () => {
+      const matches = matchCompatibilityRules(
+        '.card[data-state] { color: red; }',
+        'css',
+      );
+      assert.ok(!matches.some((r) => r.id === 'css-attribute-selector'));
+    });
+
+    test('does not flag class names inside selector pseudo-classes', () => {
+      const matches = matchCompatibilityRules(
+        ':is(.btn, .link) { color: blue; }',
+        'css',
+      );
+      assert.ok(!matches.some((r) => r.id === 'css-is-element-names'));
+    });
+
     test('returns empty array for clean CSS', () => {
       const css = '.card { font-size: 16px; color: #333; }';
       const matches = matchCompatibilityRules(css, 'css');
@@ -57,8 +85,20 @@ suite('Compatibility Rules Suite', () => {
       assert.ok(matches.some((r) => r.id === 'js-attribute-selector'));
     });
 
+    test('detects attribute selector querySelectorAll', () => {
+      const js = 'document.querySelectorAll("[data-active]");';
+      const matches = matchCompatibilityRules(js, 'js');
+      assert.ok(matches.some((r) => r.id === 'js-attribute-selector'));
+    });
+
     test('detects template-literal class names', () => {
       const js = 'el.className = `btn ${active ? "active" : ""}`;';
+      const matches = matchCompatibilityRules(js, 'js');
+      assert.ok(matches.some((r) => r.id === 'js-template-classname'));
+    });
+
+    test('detects template-literal classList replacements', () => {
+      const js = 'element.classList.replace(oldName, `card-${state}`);';
       const matches = matchCompatibilityRules(js, 'js');
       assert.ok(matches.some((r) => r.id === 'js-template-classname'));
     });
