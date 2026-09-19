@@ -989,10 +989,12 @@ async function createDiagnosticsForDocument(
   if (isApiRouteDocument) {
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
-      const severity =
-        diag.severity === 'error'
-          ? vscode.DiagnosticSeverity.Error
-          : vscode.DiagnosticSeverity.Warning;
+      let severity = vscode.DiagnosticSeverity.Warning;
+      if (diag.severity === 'error') {
+        severity = vscode.DiagnosticSeverity.Error;
+      } else if (diag.severity === 'info') {
+        severity = vscode.DiagnosticSeverity.Information;
+      }
       const start = new vscode.Position(0, 0);
       const end = new vscode.Position(0, Math.min(text.length, 10));
       const vdiag = new vscode.Diagnostic(

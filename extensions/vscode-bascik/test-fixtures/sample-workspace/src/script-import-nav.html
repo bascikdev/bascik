@@ -17,6 +17,11 @@
     console.log(await serverHelper());
   </script>
 
+  <script data-bascik-build>
+    import { helperFn as parentHelper } from '../src/lib/nav-helper.ts';
+    console.log(await parentHelper());
+  </script>
+
   <script data-bascik-build src="./lib/nav-helper.ts"></script>
 
   <script data-bascik-server src="./lib/nav-helper.ts"></script>
@@ -56,6 +61,13 @@
   <script>
     import { helperFn as clientHelper } from './lib/nav-helper.ts';
     console.log(clientHelper);
+  </script>
+
+  <script src="./lib/nav-helper.ts"></script>
+
+  <script>
+    import { helperFn as clientAliasHelper } from '@/lib/nav-helper.ts';
+    console.log(clientAliasHelper);
   </script>
 </body>
 
