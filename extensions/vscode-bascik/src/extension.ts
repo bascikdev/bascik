@@ -6,6 +6,10 @@ import { matchCompatibilityRules } from './rules';
 import { analyzeApiRouteSource } from './api-rules';
 import { findModuleSpecifiers } from './module-specifiers';
 import { analyzeServerScriptSource } from './server-script-rules';
+import {
+  analyzeComponentSource,
+  type ComponentMetadata,
+} from './component-metadata';
 
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a',
@@ -143,6 +147,7 @@ const DEFAULT_IMPORT_ROOT = 'src';
 interface ProjectSnapshot {
   componentRoots: string[];
   componentMap: Map<string, string>;
+  componentMetadata: Map<string, ComponentMetadata>;
   importRoot: string;
   htmlUsageByFile: Map<string, string>;
 }
@@ -243,6 +248,24 @@ async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnapshot> {
     const name = normalizeComponentName(filePath);
     if (name) componentMap.set(name, filePath);
   }
+  const componentMetadata = new Map<string, ComponentMetadata>();
+  await Promise.all(
+    Array.from(componentMap, async ([name, filePath]) => {
+      try {
+        const source = await fsPromises.readFile(filePath, 'utf8');
+        componentMetadata.set(
+          name,
+          analyzeComponentSource(source, {
+            hasCompanionStyles: fs.existsSync(
+              filePath.replace(/\.html$/i, '.css'),
+            ),
+          }),
+        );
+      } catch {
+        // The component watcher invalidates files changed during this scan.
+      }
+    }),
+  );
 
   const htmlUsageByFile = new Map<string, string>();
   const usageFiles = await findHtmlFiles([path.join(workspaceRoot, 'src')]);
@@ -262,6 +285,7 @@ async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnapshot> {
   return {
     componentRoots,
     componentMap,
+    componentMetadata,
     importRoot: path.resolve(workspaceRoot, parseImportRoot(configSource)),
     htmlUsageByFile,
   };
@@ -621,7 +645,46 @@ class ComponentCompletionItemProvider
     );
     const sourceBeforeCursor = maskedSource.slice(0, offset);
     const tagMatch = /<([A-Za-z][\w-]*)?$/.exec(sourceBeforeCursor);
-    if (!tagMatch) return undefined;
+    if (!tagMatch) {
+      const openTagMatch = /<([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*$/.exec(
+        sourceBeforeCursor,
+      );
+      if (!openTagMatch) return undefined;
+      const project = this.projects.get(document);
+      if (!project) return undefined;
+      return project.getSnapshot().then((snapshot) => {
+        if (token.isCancellationRequested) return undefined;
+        const currentTagName = openTagMatch[1].toLowerCase();
+        const openTagText = openTagMatch[0];
+        const currentTagStart = offset - openTagText.length;
+        const currentComponentMetadata =
+          snapshot.componentMetadata.get(currentTagName);
+        if (currentComponentMetadata) {
+          return createPropCompletionItems(
+            document,
+            position,
+            openTagText,
+            currentComponentMetadata,
+          );
+        }
+
+        const parentComponentName = findNearestParentComponent(
+          maskedSource.slice(0, currentTagStart),
+          snapshot.componentMap,
+        );
+        if (!parentComponentName) return undefined;
+        const parentMetadata = snapshot.componentMetadata.get(
+          parentComponentName,
+        );
+        if (!parentMetadata) return undefined;
+        return createSlotCompletionItems(
+          document,
+          position,
+          openTagText,
+          parentMetadata,
+        );
+      });
+    }
     const tagStart = offset - tagMatch[0].length;
     const sourceBeforeTag = sourceBeforeCursor.slice(0, tagStart);
     const previousTagStart = sourceBeforeTag.lastIndexOf('<');
@@ -650,26 +713,148 @@ class ComponentCompletionItemProvider
         .filter(([componentName]) => componentName.startsWith(prefix))
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([componentName, componentPath]) => {
+          const metadata = snapshot.componentMetadata.get(componentName);
           const item = new vscode.CompletionItem(
             componentName,
             vscode.CompletionItemKind.Class,
           );
-          item.textEdit = vscode.TextEdit.replace(
-            replacementRange,
-            componentName,
-          );
+          if (metadata?.defaultSlot) {
+            item.range = new vscode.Range(
+              document.positionAt(tagStart),
+              replacementRange.end,
+            );
+            item.insertText = new vscode.SnippetString(
+              `<${componentName}>$0</${componentName}>`,
+            );
+          } else {
+            item.textEdit = vscode.TextEdit.replace(
+              replacementRange,
+              componentName,
+            );
+          }
           item.filterText = componentName;
           item.detail = 'Bascik component';
           const relativePath = path
             .relative(project.projectRoot, componentPath)
             .replace(/\\/g, '/');
-          item.documentation = new vscode.MarkdownString(
-            `Bascik component from \`${relativePath}\`.`,
+          item.documentation = createComponentDocumentation(
+            relativePath,
+            metadata,
           );
           return item;
         });
     });
   }
+}
+
+function completionReplacementRange(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): vscode.Range {
+  const offset = document.offsetAt(position);
+  const prefix = /[^\s<>"'=]*$/.exec(document.getText().slice(0, offset))?.[0] ?? '';
+  return new vscode.Range(document.positionAt(offset - prefix.length), position);
+}
+
+function createPropCompletionItems(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  openTagText: string,
+  metadata: ComponentMetadata,
+): vscode.CompletionItem[] {
+  const range = completionReplacementRange(document, position);
+  return metadata.props
+    .filter(
+      ({ name }) =>
+        !new RegExp(`\\bdata-bascik-prop-${escapeRegExp(name)}\\s*=`, 'i').test(
+          openTagText,
+        ),
+    )
+    .map((prop) => {
+      const attribute = `data-bascik-prop-${prop.name}`;
+      const item = new vscode.CompletionItem(
+        attribute,
+        vscode.CompletionItemKind.Property,
+      );
+      item.range = range;
+      item.insertText = new vscode.SnippetString(`${attribute}="$1"`);
+      item.detail = 'Bascik component prop';
+      if (prop.description) {
+        const documentation = new vscode.MarkdownString();
+        documentation.appendText(prop.description);
+        item.documentation = documentation;
+      }
+      return item;
+    });
+}
+
+function createSlotCompletionItems(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  openTagText: string,
+  metadata: ComponentMetadata,
+): vscode.CompletionItem[] {
+  if (/\bdata-bascik-slot(?:\s*=|\s|\/?>|$)/i.test(openTagText)) return [];
+  const range = completionReplacementRange(document, position);
+  return metadata.slots.map((slot) => {
+    const item = new vscode.CompletionItem(
+      `data-bascik-slot="${slot.name}"`,
+      vscode.CompletionItemKind.Property,
+    );
+    item.range = range;
+    item.insertText = `data-bascik-slot="${slot.name}"`;
+    item.filterText = `data-bascik-slot ${slot.name}`;
+    item.detail = 'Bascik named slot';
+    if (slot.description) {
+      const documentation = new vscode.MarkdownString();
+      documentation.appendText(slot.description);
+      item.documentation = documentation;
+    }
+    return item;
+  });
+}
+
+function findNearestParentComponent(
+  source: string,
+  componentMap: Map<string, string>,
+): string | undefined {
+  const stack: string[] = [];
+  const tagRegex = /<\/?([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/g;
+  for (const match of source.matchAll(tagRegex)) {
+    const name = match[1].toLowerCase();
+    if (match[0].startsWith('</')) {
+      const matchingIndex = stack.lastIndexOf(name);
+      if (matchingIndex >= 0) stack.splice(matchingIndex);
+    } else if (!/\/\s*>$/.test(match[0])) {
+      stack.push(name);
+    }
+  }
+  return stack.reverse().find((name) => componentMap.has(name));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function createComponentDocumentation(
+  relativePath: string,
+  metadata: ComponentMetadata | undefined,
+): vscode.MarkdownString {
+  const documentation = new vscode.MarkdownString();
+  if (metadata?.description) {
+    documentation.appendText(metadata.description);
+    documentation.appendMarkdown('\n\n');
+  }
+  documentation.appendMarkdown(`Bascik component from \`${relativePath}\`.`);
+  if (metadata) {
+    documentation.appendMarkdown('\n\n');
+    appendMetadataMembers(documentation, 'Props', metadata.props);
+    appendMetadataMembers(documentation, 'Slots', [
+      ...metadata.slots,
+      ...(metadata.defaultSlot ? [metadata.defaultSlot] : []),
+    ]);
+  }
+  return documentation;
 }
 
 class ComponentHoverProvider implements vscode.HoverProvider {
@@ -688,68 +873,56 @@ class ComponentHoverProvider implements vscode.HoverProvider {
     const project = this.projects.get(document);
     if (!project) return undefined;
 
-    return project.getSnapshot().then(async (snapshot) => {
+    return project.getSnapshot().then((snapshot) => {
       if (token.isCancellationRequested) return undefined;
       const componentPath = snapshot.componentMap.get(componentName);
       if (!componentPath) return undefined;
-      let source: string;
-      try {
-        source = await fsPromises.readFile(componentPath, 'utf8');
-      } catch {
-        return undefined;
-      }
-      if (token.isCancellationRequested) return undefined;
-
-      const props = uniqueMatches(source, /data-bascik-prop-([\w-]+)/gi);
-      for (const prop of uniqueMatches(
-        source,
-        /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*["']([\w-]+)["']/gi,
-      )) {
-        if (!props.includes(prop)) props.push(prop);
-      }
-      const slots = uniqueMatches(
-        source,
-        /data-bascik-slot\s*=\s*["']([^"']+)["']/gi,
-      );
+      const metadata = snapshot.componentMetadata.get(componentName);
+      if (!metadata) return undefined;
       const relativePath = path
         .relative(project.projectRoot, componentPath)
         .replace(/\\/g, '/');
       const details = new vscode.MarkdownString();
       details.appendMarkdown(`### \`<${componentName}>\`\n\n`);
+      if (metadata.description) {
+        details.appendText(metadata.description);
+        details.appendMarkdown('\n\n');
+      }
       details.appendMarkdown(
         `**Source:** [\`${relativePath}\`](${vscode.Uri.file(componentPath).toString()})\n\n`,
       );
-      if (props.length > 0) {
-        details.appendMarkdown(
-          `**Props:** ${props.map((prop) => `\`${prop}\``).join(', ')}\n\n`,
-        );
-      }
-      if (slots.length > 0) {
-        details.appendMarkdown(
-          `**Slots:** ${slots.map((slot) => `\`${slot}\``).join(', ')}\n\n`,
-        );
-      }
+      appendMetadataMembers(details, 'Props', metadata.props);
+      appendMetadataMembers(details, 'Slots', [
+        ...metadata.slots,
+        ...(metadata.defaultSlot ? [metadata.defaultSlot] : []),
+      ]);
       const features = [
-        /<style\b/i.test(source) ||
-        fs.existsSync(componentPath.replace(/\.html$/i, '.css'))
-          ? 'styles'
-          : '',
-        /<script\b/i.test(source) ? 'scripts' : '',
+        metadata.hasStyles ? 'styles' : '',
+        metadata.hasScripts ? 'scripts' : '',
       ].filter(Boolean);
       if (features.length > 0)
         details.appendMarkdown(`**Includes:** ${features.join(', ')}`);
-      details.isTrusted = true;
       return new vscode.Hover(details, range);
     });
   }
 }
 
-function uniqueMatches(source: string, regex: RegExp): string[] {
-  return Array.from(
-    new Set(
-      Array.from(source.matchAll(regex), (match) => match[1]).filter(Boolean),
-    ),
-  );
+function appendMetadataMembers(
+  markdown: vscode.MarkdownString,
+  label: string,
+  members: ComponentMetadata['props'],
+): void {
+  if (members.length === 0) return;
+  markdown.appendMarkdown(`**${label}:**\n\n`);
+  for (const member of members) {
+    markdown.appendMarkdown(`- \`${member.name}\``);
+    if (member.description) {
+      markdown.appendMarkdown(': ');
+      markdown.appendText(member.description);
+    }
+    markdown.appendMarkdown('\n');
+  }
+  markdown.appendMarkdown('\n');
 }
 
 const SCRIPT_BLOCK_RE =
@@ -1152,6 +1325,25 @@ async function createDiagnosticsForDocument(
 
   if (languageId === 'html') {
     if (isComponentDocument) {
+      const metadata = analyzeComponentSource(text, {
+        hasCompanionStyles:
+          document.uri.scheme === 'file' &&
+          fs.existsSync(document.uri.fsPath.replace(/\.html$/i, '.css')),
+      });
+      for (const metadataDiagnostic of metadata.diagnostics) {
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(
+            document.positionAt(metadataDiagnostic.start),
+            document.positionAt(metadataDiagnostic.end),
+          ),
+          metadataDiagnostic.message,
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diagnostic.source = 'bascik';
+        diagnostic.code = metadataDiagnostic.code;
+        diagnostics.push(diagnostic);
+      }
+
       const referenceScanText = maskHtmlRawTextContents(text).replace(
         /<!--[\s\S]*?(?:-->|$)/g,
         (comment) => ' '.repeat(comment.length),
@@ -1593,6 +1785,7 @@ export function activate(context: vscode.ExtensionContext): void {
       [{ language: 'html' }],
       new ComponentCompletionItemProvider(projects),
       '<',
+      ' ',
     ),
   );
 

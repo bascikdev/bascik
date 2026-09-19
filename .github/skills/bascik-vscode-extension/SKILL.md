@@ -15,6 +15,7 @@ The `extensions/vscode-bascik` package provides editor support for Bascik, inclu
 extensions/vscode-bascik/
 ├── src/
 │   ├── extension.ts              # Extension activation, provider registration, & diagnostics wiring
+│   ├── component-metadata.ts     # Pure component contract and optional header metadata analyzer
 │   ├── rules.ts                  # Diagnostic rules engine for scoping compatibility checks
 │   ├── server-script-rules.ts    # Pure analyzer for server and stream script contract & injection sinks
 │   ├── compatibility-rules.json  # Declarative rule definitions matching compatibility.md
@@ -48,7 +49,20 @@ The server-script diagnostic analyzer provides fast, pure-logic diagnostics for 
 
 ---
 
-## 4. Development & Type Checking
+## 4. Component Metadata (`component-metadata.ts`)
+
+Component IntelliSense uses one pure analyzer for props, slots, styles, scripts, descriptions, and annotation diagnostics.
+
+* **Markup Is Authoritative:** Infer props and slots from component markup. A leading `<!-- @bascik ... -->` header can add descriptions only to inferred members. It cannot declare new props or slots.
+* **Header Placement:** The metadata header may follow a BOM, whitespace, and ordinary comments, but must precede markup, style, and script nodes.
+* **Snapshot Cache:** Read and analyze component files while building a project snapshot. Hover and completion providers consume that cache so project ownership, nested-project selection, watcher invalidation, and multi-root isolation remain consistent.
+* **Unsaved Diagnostics:** Analyze the current document text for duplicate and undeclared header annotations. Map analyzer offsets with `document.positionAt()` so warnings underline the exact annotation.
+* **Safe Rendering:** Add authored prose with `MarkdownString.appendText()`. Do not trust or render metadata as raw Markdown.
+* **Provider Reuse:** Use the cached contract for hover, component documentation, prop completion, named-slot completion, and default-slot-aware paired snippets. Do not duplicate inference logic in providers.
+
+---
+
+## 5. Development & Type Checking
 
 To compile and typecheck the extension:
 
@@ -62,7 +76,7 @@ yarn --cwd extensions/vscode-bascik test
 
 ---
 
-## 4. Extension Packaging & Pre-Release
+## 6. Extension Packaging & Pre-Release
 
 * Do not mutate package version manually without updating changelogs.
 * Ensure all test fixtures in `test-fixtures/sample-workspace` reflect valid component structures.

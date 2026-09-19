@@ -125,6 +125,10 @@ function bascikCompletionLabels(completions: vscode.CompletionList): string[] {
     );
 }
 
+function completionLabel(item: vscode.CompletionItem): string {
+  return typeof item.label === 'string' ? item.label : item.label.label;
+}
+
 suite('Extension Integration Suite', () => {
   suiteSetup(async () => {
     const ext = getBascikExtension();
@@ -343,7 +347,14 @@ suite('Extension Integration Suite', () => {
       for (const prop of ['heading', 'description', 'label', 'content']) {
         assert.ok(markdown.includes(`\`${prop}\``), markdown);
       }
-      assert.ok(markdown.includes('**Slots:** `actions`'), markdown);
+      assert.ok(
+        markdown.includes('Nested&nbsp;widget&nbsp;documentation'),
+        markdown,
+      );
+      assert.ok(markdown.includes('<unsafe\\>'), markdown);
+      assert.ok(markdown.includes('Main&nbsp;widget&nbsp;heading.'), markdown);
+      assert.ok(markdown.includes('`actions`'), markdown);
+      assert.ok(markdown.includes('`default`'), markdown);
       assert.ok(markdown.includes('**Includes:** styles, scripts'), markdown);
     });
 
@@ -416,6 +427,70 @@ suite('Extension Integration Suite', () => {
       assert.ok(labels.includes('nested-widget'));
       assert.ok(labels.includes('conflict-card'));
       assert.ok(!labels.includes('my-button'));
+    });
+
+    test('uses metadata documentation and a paired default-slot snippet', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'nested-project/src/pages/index.html',
+        '<nested-',
+      );
+      const item = completions.items.find(
+        (candidate) => completionLabel(candidate) === 'nested-widget',
+      );
+      assert.ok(item);
+      const documentation =
+        typeof item.documentation === 'string'
+          ? item.documentation
+          : item.documentation?.value;
+      assert.ok(
+        documentation?.includes('Nested&nbsp;widget&nbsp;documentation'),
+      );
+      assert.ok(documentation?.includes('<unsafe\\>'));
+      assert.ok(documentation?.includes('Main&nbsp;widget&nbsp;heading.'));
+      assert.ok(item.insertText instanceof vscode.SnippetString);
+      assert.strictEqual(
+        item.insertText.value,
+        '<nested-widget>$0</nested-widget>',
+      );
+    });
+
+    test('suggests inferred props inside a component opening tag', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'nested-project/src/pages/index.html',
+        '<nested-widget ',
+      );
+      const labels = completions.items.map(completionLabel);
+      for (const prop of ['heading', 'description', 'label', 'content']) {
+        assert.ok(labels.includes(`data-bascik-prop-${prop}`), labels.join(', '));
+      }
+    });
+
+    test('does not suggest props already present on the opening tag', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'nested-project/src/pages/index.html',
+        '<nested-widget data-bascik-prop-heading="Example" ',
+      );
+      assert.ok(
+        !completions.items
+          .map(completionLabel)
+          .includes('data-bascik-prop-heading'),
+      );
+    });
+
+    test('suggests named slots inside a component body', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'nested-project/src/pages/index.html',
+        '<nested-widget>\n  <div ',
+      );
+      assert.ok(
+        completions.items
+          .map(completionLabel)
+          .includes('data-bascik-slot="actions"'),
+      );
     });
 
     test('isolates suggestions between workspace folders', async () => {
@@ -1234,6 +1309,73 @@ suite('Extension Integration Suite', () => {
   });
 
   suite('Diagnostics', () => {
+    test('reports metadata annotation diagnostics from the unsaved component buffer', async () => {
+      const workspaceFolder = getWorkspaceFolder('primary');
+      const componentUri = vscode.Uri.file(
+        path.join(
+          workspaceFolder.uri.fsPath,
+          'nested-project',
+          'src',
+          'components',
+          'nested-widget.html',
+        ),
+      );
+      const document = await vscode.workspace.openTextDocument(componentUri);
+      const originalText = document.getText();
+      const replacement = originalText.replace(
+        '@prop heading - Main widget heading.',
+        '@prop heading - Main widget heading.\n@prop heading - Duplicate.\n@slot missing - Missing slot.',
+      );
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        componentUri,
+        new vscode.Range(
+          document.positionAt(0),
+          document.positionAt(originalText.length),
+        ),
+        replacement,
+      );
+      assert.ok(await vscode.workspace.applyEdit(edit));
+      try {
+        await waitFor(() => {
+          const codes = vscode.languages
+            .getDiagnostics(componentUri)
+            .map((diagnostic) => diagnostic.code);
+          return (
+            codes.includes('component-metadata-duplicate-annotation') &&
+            codes.includes('component-metadata-undeclared-annotation')
+          );
+        }, 'Metadata annotation diagnostics should be published');
+
+        const diagnostics = vscode.languages.getDiagnostics(componentUri);
+        assert.ok(
+          diagnostics
+            .filter(
+              (diagnostic) =>
+                diagnostic.code ===
+                  'component-metadata-duplicate-annotation' ||
+                diagnostic.code ===
+                  'component-metadata-undeclared-annotation',
+            )
+            .every(
+              (diagnostic) =>
+                diagnostic.severity === vscode.DiagnosticSeverity.Warning,
+            ),
+        );
+      } finally {
+        const restore = new vscode.WorkspaceEdit();
+        restore.replace(
+          componentUri,
+          new vscode.Range(
+            document.positionAt(0),
+            document.positionAt(document.getText().length),
+          ),
+          originalText,
+        );
+        assert.ok(await vscode.workspace.applyEdit(restore));
+      }
+    });
+
     test('reports info when an ID reference is not declared in the component', async () => {
       const workspaceFolder = getWorkspaceFolder('primary');
       const componentUri = vscode.Uri.file(

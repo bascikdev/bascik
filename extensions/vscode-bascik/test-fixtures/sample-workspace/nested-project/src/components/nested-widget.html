@@ -1,3 +1,10 @@
+<!-- @bascik
+Nested widget documentation with <unsafe> markup kept as text.
+@prop heading - Main widget heading.
+@prop description - Accessible widget description.
+@slot actions - Action controls displayed below the content.
+@slot default - Main widget content.
+-->
 <style>
   .widget {
     display: block;
@@ -6,6 +13,7 @@
 
 <section class="widget" data-bascik-prop-heading data-bascik-attr-aria-label="description" data-bascik-text="label"
   data-bascik-html="content">
+  <div data-bascik-slot></div>
   <div data-bascik-slot="actions"></div>
 </section>
 
