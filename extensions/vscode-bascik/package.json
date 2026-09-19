@@ -3,6 +3,7 @@
   "displayName": "Bascik",
   "publisher": "bascik",
   "description": "VS Code support for Bascik component tags and scoping compatibility warnings.",
+  "icon": "icon.png",
   "version": "0.1.0",
   "license": "MIT",
   "repository": {
