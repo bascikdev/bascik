@@ -72,6 +72,59 @@ function hoverMarkdown(hover: vscode.Hover): string {
     .join('\n');
 }
 
+async function completionsInFile(
+  folderName: string,
+  relativePath: string,
+  content: string,
+  cursorOffset = content.length,
+): Promise<vscode.CompletionList> {
+  const folder = getWorkspaceFolder(folderName);
+  const document = await vscode.workspace.openTextDocument(
+    vscode.Uri.file(path.join(folder.uri.fsPath, relativePath)),
+  );
+  const originalContent = document.getText();
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(
+    document.uri,
+    new vscode.Range(
+      document.positionAt(0),
+      document.positionAt(document.getText().length),
+    ),
+    content,
+  );
+  assert.ok(await vscode.workspace.applyEdit(edit), 'Fixture edit should apply');
+  try {
+    return await vscode.commands.executeCommand<vscode.CompletionList>(
+      'vscode.executeCompletionItemProvider',
+      document.uri,
+      document.positionAt(cursorOffset),
+      '<',
+    );
+  } finally {
+    const restore = new vscode.WorkspaceEdit();
+    restore.replace(
+      document.uri,
+      new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length),
+      ),
+      originalContent,
+    );
+    assert.ok(
+      await vscode.workspace.applyEdit(restore),
+      'Fixture restore should apply',
+    );
+  }
+}
+
+function bascikCompletionLabels(completions: vscode.CompletionList): string[] {
+  return completions.items
+    .filter((item) => item.detail === 'Bascik component')
+    .map((item) =>
+      typeof item.label === 'string' ? item.label : item.label.label,
+    );
+}
+
 suite('Extension Integration Suite', () => {
   suiteSetup(async () => {
     const ext = getBascikExtension();
@@ -327,6 +380,80 @@ suite('Extension Integration Suite', () => {
         'The Bascik component provider should not describe built-in elements',
       );
     });
+  });
+
+  suite('ComponentCompletionItemProvider', () => {
+    test('suggests components matching a partial opening tag', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<my-',
+      );
+      assert.deepStrictEqual(bascikCompletionLabels(completions), [
+        'my-button',
+        'my-card',
+      ]);
+    });
+
+    test('includes components from every configured root', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<shared-',
+      );
+      assert.ok(
+        bascikCompletionLabels(completions).includes('shared-pill'),
+      );
+    });
+
+    test('uses the closest nested project component index', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'nested-project/src/pages/index.html',
+        '<',
+      );
+      const labels = bascikCompletionLabels(completions);
+      assert.ok(labels.includes('nested-widget'));
+      assert.ok(labels.includes('conflict-card'));
+      assert.ok(!labels.includes('my-button'));
+    });
+
+    test('isolates suggestions between workspace folders', async () => {
+      const primary = bascikCompletionLabels(
+        await completionsInFile(
+          'primary',
+          'src/component-nav.html',
+          '<shared-',
+        ),
+      );
+      const secondary = bascikCompletionLabels(
+        await completionsInFile(
+          'secondary',
+          'src/component-nav.html',
+          '<shared-',
+        ),
+      );
+      assert.ok(primary.includes('shared-pill'));
+      assert.ok(!secondary.includes('shared-pill'));
+    });
+
+    for (const [context, cursorOffset] of [
+      ['<div data-value="<my-">', 21],
+      ['</my-', 5],
+      ['<!-- <my- -->', 9],
+      ['<script>const value = "<my-";</script>', 27],
+      ['<style>.example { content: "<my-"; }</style>', 31],
+    ] as const) {
+      test(`does not suggest components in invalid context: ${context}`, async () => {
+        const completions = await completionsInFile(
+          'primary',
+          'src/component-nav.html',
+          context,
+          cursorOffset,
+        );
+        assert.deepStrictEqual(bascikCompletionLabels(completions), []);
+      });
+    }
   });
 
   suite('Script Import Definitions', () => {

@@ -602,6 +602,76 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
   }
 }
 
+class ComponentCompletionItemProvider
+  implements vscode.CompletionItemProvider
+{
+  constructor(private readonly projects: ProjectStateManager) {}
+
+  provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.CompletionItem[]> {
+    if (document.languageId !== 'html') return undefined;
+
+    const offset = document.offsetAt(position);
+    const maskedSource = maskHtmlRawTextContents(document.getText()).replace(
+      /<!--[\s\S]*?(?:-->|$)/g,
+      (comment) => ' '.repeat(comment.length),
+    );
+    const sourceBeforeCursor = maskedSource.slice(0, offset);
+    const tagMatch = /<([A-Za-z][\w-]*)?$/.exec(sourceBeforeCursor);
+    if (!tagMatch) return undefined;
+    const tagStart = offset - tagMatch[0].length;
+    const sourceBeforeTag = sourceBeforeCursor.slice(0, tagStart);
+    const previousTagStart = sourceBeforeTag.lastIndexOf('<');
+    const previousTagEnd = sourceBeforeTag.lastIndexOf('>');
+    if (previousTagStart > previousTagEnd) return undefined;
+
+    const prefix = (tagMatch[1] ?? '').toLowerCase();
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+
+    const start = document.positionAt(offset - prefix.length);
+    const existingNameRange = document.getWordRangeAtPosition(
+      position,
+      /[A-Za-z][\w-]*/,
+    );
+    const replacementRange = new vscode.Range(
+      start,
+      existingNameRange?.start.isEqual(start)
+        ? existingNameRange.end
+        : position,
+    );
+
+    return project.getSnapshot().then((snapshot) => {
+      if (token.isCancellationRequested) return undefined;
+      return Array.from(snapshot.componentMap)
+        .filter(([componentName]) => componentName.startsWith(prefix))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([componentName, componentPath]) => {
+          const item = new vscode.CompletionItem(
+            componentName,
+            vscode.CompletionItemKind.Class,
+          );
+          item.textEdit = vscode.TextEdit.replace(
+            replacementRange,
+            componentName,
+          );
+          item.filterText = componentName;
+          item.detail = 'Bascik component';
+          const relativePath = path
+            .relative(project.projectRoot, componentPath)
+            .replace(/\\/g, '/');
+          item.documentation = new vscode.MarkdownString(
+            `Bascik component from \`${relativePath}\`.`,
+          );
+          return item;
+        });
+    });
+  }
+}
+
 class ComponentHoverProvider implements vscode.HoverProvider {
   constructor(private readonly projects: ProjectStateManager) {}
 
@@ -1515,6 +1585,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerHoverProvider(
       [{ language: 'html' }],
       new ComponentHoverProvider(projects),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      [{ language: 'html' }],
+      new ComponentCompletionItemProvider(projects),
+      '<',
     ),
   );
 

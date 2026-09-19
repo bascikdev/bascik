@@ -5,6 +5,7 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 ## Why Install It?
 
 - **Move through components instantly.** Cmd/Ctrl-click a custom element to open its source, or hover to inspect its props, slots, source path, styles, and scripts.
+- **Complete component tags quickly.** Type a partial opening tag such as `<docs-` to see matching components discovered in the current Bascik project.
 - **Catch scoping leaks early.** Get focused CSS and JavaScript warnings for patterns Bascik cannot safely rewrite.
 - **Protect server-rendered output.** See targeted diagnostics for unsafe interpolation contexts in server and stream scripts.
 - **Validate component contracts.** Find unclosed tags, conflicting directives, invalid preserve values, broken ID references, and unsupplied prop bindings as you type.
@@ -12,6 +13,8 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 - **Start with zero configuration.** Standard Bascik projects work immediately, while custom paths, nested projects, and multi-root workspaces are detected automatically.
 
 ## Navigation and Editor Intelligence
+
+Type a partial opening tag to see matching project components in IntelliSense. Suggestions follow the current project's configured component roots and remain isolated across nested projects and multi-root workspaces.
 
 Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including declared props, named slots, source location, and included styles or scripts.
 

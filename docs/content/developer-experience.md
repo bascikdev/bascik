@@ -55,13 +55,15 @@ When you edit a shared component or a global stylesheet used across many pages, 
 
 ## VS Code Editor Ergonomics
 
-Install the official Bascik extension to get code navigation, component hover details, syntax highlighting, and real-time warnings directly in VS Code:
+Install the official Bascik extension to get  component navigation and suggestions, syntax highlighting, hover details, and real-time warnings directly in VS Code:
 
 ```sh
 # Search for "bascik" in VS Code Extensions (Cmd+Shift+X or Ctrl+Shift+X)
 ```
 
 ### Component Navigation and Hover Details
+
+Start an opening tag to see matching project components in IntelliSense. For example, typing `<user-` suggests discovered components such as `user-card` and `user-badge`. Suggestions follow the closest owning Bascik config, including custom component roots, nested projects, and multi-root workspaces.
 
 Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ctrl` (Windows/Linux), and click to jump straight to the component definition file:
 

@@ -1,12 +1,24 @@
 # VS Code Extension
 
-The official Bascik extension brings component navigation, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It catches component contract, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
+The official Bascik extension brings component navigation, tag suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It catches component contract, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
 
 ## Install the Extension
 
 Install **Bascik** from the VS Code Extensions view by searching for `bascik`, or run **Extensions: Install Extensions** from the Command Palette and select the official extension.
 
 The extension activates automatically for HTML, CSS, JavaScript, and TypeScript files in a workspace. It uses Bascik's standard project layout without requiring editor settings.
+
+## Complete Component Tags
+
+Type a partial opening tag to see matching components from the current Bascik project:
+
+```html
+<docs-
+```
+
+IntelliSense lists discovered names such as `docs-nav`, `docs-sidebar`, and `docs-footer`. Suggestions use `directory.components` from the closest owning Bascik config, including every configured component root. Nested projects and separate workspace folders remain isolated.
+
+Suggestions appear only while typing an opening tag name. They are not offered in closing tags, attributes, HTML comments, scripts, styles, or text areas.
 
 ## Navigate Components and Inspect Their Contracts
 
