@@ -52,7 +52,6 @@ import { adaptHttp1 } from "./http.ts";
 import { adaptHttp2 } from "./http2.ts";
 import { createRequestHandler } from "./server.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import { BascikConfig } from "./config.ts";
 
 interface RawResponse {
   raw: Buffer;
@@ -252,7 +251,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
     const handleRequest = createRequestHandler();
     server = http.createServer((reqMsg, resMsg) => {
       const { req, res } = adaptHttp1(reqMsg, resMsg);
-      handleRequest(req, res).catch((err) => {
+      handleRequest(req, res).catch(() => {
         if (!res.headersSent) {
           try {
             res.respond(500, { "content-type": "text/plain" });
@@ -281,7 +280,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
 
     http2Server.on("stream", (stream, headers) => {
       const { req, res } = adaptHttp2(stream, headers);
-      handleRequest(req, res).catch((err) => {
+      handleRequest(req, res).catch(() => {
         if (!res.headersSent) {
           try {
             res.respond(500, { "content-type": "text/plain" });
@@ -548,7 +547,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
         let streamReceivedChunk = false;
         let streamClosed = false;
 
-        // 1. Long streaming request that will be cancelled after the first chunk arrives
+        // 1. Long streaming request that will be canceled after the first chunk arrives
         const faultyStream = client.request({ ":path": "/api/stream", ":method": "GET" });
         faultyStream.on("data", () => {
           streamReceivedChunk = true;
