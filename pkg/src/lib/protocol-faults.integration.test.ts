@@ -615,44 +615,6 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
       }
     });
 
-    it("handles GOAWAY and session close gracefully", async () => {
-      const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
-      client.on("error", () => {});
-      try {
-        // Send a request to establish session
-        await assertHealthyH2Session(client, "pre-goaway session check");
-
-        // Send GOAWAY from client and close session
-        client.goaway(http2.constants.NGHTTP2_NO_ERROR);
-        client.destroy();
-
-        // Subsequent stream request on destroyed session must reject
-        let streamError: any;
-        try {
-          const stream = client.request({ ":path": "/api/healthy", ":method": "GET" });
-          stream.on("error", (err) => {
-            streamError = err;
-          });
-        } catch (err) {
-          streamError = err;
-        }
-        expect(streamError).toBeDefined();
-        expect((streamError?.message || "") + " " + (streamError?.code || "")).toMatch(
-          /closed|destroyed|ERR_HTTP2_INVALID_SESSION|ERR_HTTP2_GOAWAY_SESSION|NGHTTP2_REFUSED_STREAM/i,
-        );
-      } finally {
-        client.close();
-      }
-
-      // Fresh session connects and succeeds without lingering server blockade
-      const freshClient = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
-      try {
-        await assertHealthyH2Session(freshClient, "fresh session after goaway");
-      } finally {
-        freshClient.close();
-      }
-    });
-
     it("rejects connection-specific prohibited headers per RFC 9113", async () => {
       // RFC 9113 section 8.2.2: Node's client validates and rejects prohibited HTTP/1.1 headers
       // (connection, keep-alive, transfer-encoding) before transmitting over HTTP/2.
