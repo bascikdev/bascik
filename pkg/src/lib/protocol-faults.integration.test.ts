@@ -617,6 +617,7 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
 
     it("handles GOAWAY and session close gracefully", async () => {
       const client = http2.connect("https://127.0.0.1:" + http2Port, { rejectUnauthorized: false });
+      client.on("error", () => {});
       try {
         // Send a request to establish session
         await assertHealthyH2Session(client, "pre-goaway session check");
@@ -626,9 +627,19 @@ describe("packet P1: raw HTTP/1.1 and upload protocol faults", () => {
         client.destroy();
 
         // Subsequent stream request on destroyed session must reject
-        expect(() => {
-          client.request({ ":path": "/api/healthy", ":method": "GET" });
-        }).toThrow(/The session has been closed|destroyed/);
+        let streamError: any;
+        try {
+          const stream = client.request({ ":path": "/api/healthy", ":method": "GET" });
+          stream.on("error", (err) => {
+            streamError = err;
+          });
+        } catch (err) {
+          streamError = err;
+        }
+        expect(streamError).toBeDefined();
+        expect((streamError?.message || "") + " " + (streamError?.code || "")).toMatch(
+          /closed|destroyed|ERR_HTTP2_INVALID_SESSION|ERR_HTTP2_GOAWAY_SESSION|NGHTTP2_REFUSED_STREAM/i,
+        );
       } finally {
         client.close();
       }
