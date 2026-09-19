@@ -4,6 +4,12 @@
   "publisher": "bascik",
   "description": "VS Code support for Bascik component tags and scoping compatibility warnings.",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bascikdev/bascik.git",
+    "directory": "extensions/vscode-bascik"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

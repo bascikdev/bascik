@@ -83,7 +83,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   generate: { sitemap: null, robots: null, sitemapLastmod: null, cspHashes: null, manifest: null },
   pipeline: { watchPaths: null, exec: null, workers: null },
   scripts: {
-    cache: { enabled: null, include: null, exclude: null },
+    cache: { enabled: null, include: null, exclude: null, environment: null },
     typescript: null,
     onBuildScriptError: null,
     onRoutesScriptError: null,

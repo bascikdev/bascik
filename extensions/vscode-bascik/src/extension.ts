@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { matchCompatibilityRules } from './rules';
@@ -16,6 +17,16 @@ function normalizeComponentName(name: string): string {
 
 const CONFIG_FILE_CANDIDATES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
 const DEFAULT_COMPONENT_ROOTS = ['src/components'];
+const DEFAULT_IMPORT_ROOT = 'src';
+
+interface ProjectSnapshot {
+  componentRoots: string[];
+  componentMap: Map<string, string>;
+  importRoot: string;
+  htmlUsageByFile: Map<string, string>;
+}
+
+type ProjectChangeKind = 'config' | 'components' | 'html';
 
 /**
  * Read `directory.components` from the workspace's bascik.config file.
@@ -26,76 +37,55 @@ const DEFAULT_COMPONENT_ROOTS = ['src/components'];
  * may point outside it (monorepo shared components). Falls back to the runtime
  * default `['src/components']` when the config is missing or unparseable.
  */
-function readComponentRoots(workspaceRoot: string): string[] {
-  for (const candidate of CONFIG_FILE_CANDIDATES) {
-    const configPath = path.join(workspaceRoot, candidate);
-    if (!fs.existsSync(configPath)) continue;
-    try {
-      const source = fs.readFileSync(configPath, 'utf8');
-      const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
-      if (match?.[1]) {
-        const literals = Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (m) => m[1]);
-        if (literals.length > 0) return literals;
-      }
-    } catch {
-      // unreadable config: fall through to the default
-    }
-    break;
-  }
-  return DEFAULT_COMPONENT_ROOTS;
+function parseComponentRoots(source: string | undefined): string[] {
+  if (!source) return DEFAULT_COMPONENT_ROOTS;
+  const match = /\bcomponents\s*:\s*(\[[^\]]*\]|['"][^'"]+['"])/.exec(source);
+  if (!match?.[1]) return DEFAULT_COMPONENT_ROOTS;
+  const literals = Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (item) => item[1]);
+  return literals.length > 0 ? literals : DEFAULT_COMPONENT_ROOTS;
 }
 
-/** Absolute, forward-slash component roots for the workspace. */
-function resolveComponentRoots(workspaceRoot: string): string[] {
-  return readComponentRoots(workspaceRoot).map((root) =>
+function parseImportRoot(source: string | undefined): string {
+  return /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source ?? '')?.[1] ?? DEFAULT_IMPORT_ROOT;
+}
+
+async function readConfigSource(workspaceRoot: string): Promise<string | undefined> {
+  for (const candidate of CONFIG_FILE_CANDIDATES) {
+    const configPath = path.join(workspaceRoot, candidate);
+    try {
+      return await fsPromises.readFile(configPath, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
+    }
+  }
+  return undefined;
+}
+
+function resolveComponentRoots(workspaceRoot: string, configuredRoots: string[]): string[] {
+  return configuredRoots.map((root) =>
     path.resolve(workspaceRoot, root).replace(/\\/g, '/').replace(/\/+$/, ''),
   );
 }
 
-/** True when `fsPath` is inside any configured component root of its workspace. */
-function isInsideComponentRoot(fsPath: string): boolean {
+function isInsideComponentRoots(fsPath: string, roots: string[]): boolean {
   const normalized = fsPath.replace(/\\/g, '/');
-  const workspaceRoot = getWorkspaceRoot();
-  const roots = workspaceRoot
-    ? resolveComponentRoots(workspaceRoot)
-    : DEFAULT_COMPONENT_ROOTS.map((root) => `/${root}`);
-  return roots.some((root) =>
-    workspaceRoot
-      ? normalized === root || normalized.startsWith(`${root}/`)
-      : normalized.includes(`${root}/`),
-  );
+  return roots.some((root) => normalized === root || normalized.startsWith(`${root}/`));
 }
 
-function findComponentMap(workspaceRoot: string): Map<string, string> {
-  const components = new Map<string, string>();
-  const stack = resolveComponentRoots(workspaceRoot).filter((dir) => fs.existsSync(dir));
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || !fs.existsSync(current)) continue;
-
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.html')) {
-        const name = normalizeComponentName(fullPath);
-        if (name) {
-          components.set(name, fullPath);
-        }
-      }
-    }
-  }
-
-  return components;
-}
-
-function findHtmlFiles(workspaceRoot: string): string[] {
+async function findHtmlFiles(roots: string[]): Promise<string[]> {
   const files: string[] = [];
-  const stack = [path.join(workspaceRoot, 'src')];
+  const stack = [...roots].reverse();
   while (stack.length > 0) {
     const current = stack.pop();
-    if (!current || !fs.existsSync(current)) continue;
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+    if (!current) continue;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fsPromises.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(fullPath);
@@ -107,8 +97,36 @@ function findHtmlFiles(workspaceRoot: string): string[] {
   return files;
 }
 
-function componentUsageSuppliesProp(
-  workspaceRoot: string,
+async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnapshot> {
+  const configSource = await readConfigSource(workspaceRoot);
+  const componentRoots = resolveComponentRoots(workspaceRoot, parseComponentRoots(configSource));
+  const componentFiles = await findHtmlFiles(componentRoots);
+  const componentMap = new Map<string, string>();
+  for (const filePath of componentFiles) {
+    const name = normalizeComponentName(filePath);
+    if (name) componentMap.set(name, filePath);
+  }
+
+  const htmlUsageByFile = new Map<string, string>();
+  const usageFiles = await findHtmlFiles([path.join(workspaceRoot, 'src')]);
+  await Promise.all(usageFiles.map(async (filePath) => {
+    try {
+      htmlUsageByFile.set(filePath, await fsPromises.readFile(filePath, 'utf8'));
+    } catch {
+      // The watcher will invalidate a file that changes during this scan.
+    }
+  }));
+
+  return {
+    componentRoots,
+    componentMap,
+    importRoot: path.resolve(workspaceRoot, parseImportRoot(configSource)),
+    htmlUsageByFile,
+  };
+}
+
+function htmlSuppliesComponentProp(
+  html: string,
   componentName: string,
   propName: string,
 ): boolean {
@@ -119,23 +137,149 @@ function componentUsageSuppliesProp(
     'gi',
   );
   const propRegex = new RegExp(`\\sdata-bascik-prop-${escapedPropName}\\s*=`, 'i');
-  return findHtmlFiles(workspaceRoot).some((filePath) => {
-    const html = fs.readFileSync(filePath, 'utf8');
-    return Array.from(html.matchAll(usageRegex)).some((match) => propRegex.test(match[0]));
-  });
+  return Array.from(html.matchAll(usageRegex)).some((match) => propRegex.test(match[0]));
 }
 
-function getWorkspaceRoot(): string | undefined {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  return folder?.uri.fsPath;
+class ProjectState implements vscode.Disposable {
+  private snapshotPromise: Promise<ProjectSnapshot> | undefined;
+  private generation = 0;
+  private disposed = false;
+  private readonly staticWatchers: vscode.FileSystemWatcher[] = [];
+  private componentWatchers: vscode.FileSystemWatcher[] = [];
+
+  constructor(
+    readonly folder: vscode.WorkspaceFolder,
+    private readonly onChange: (state: ProjectState, kind: ProjectChangeKind) => void,
+  ) {
+    const configWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(folder, '{bascik.config.ts,bascik.config.js,bascik.config.mjs}'),
+    );
+    this.listen(configWatcher, 'config');
+    this.staticWatchers.push(configWatcher);
+
+    const htmlWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(folder, 'src/**/*.html'),
+    );
+    this.listen(htmlWatcher, 'html');
+    this.staticWatchers.push(htmlWatcher);
+  }
+
+  async getSnapshot(): Promise<ProjectSnapshot> {
+    if (!this.snapshotPromise) {
+      const generation = this.generation;
+      const pending = buildSnapshot(this.folder.uri.fsPath).then((snapshot) => {
+        if (this.disposed) return snapshot;
+        if (generation !== this.generation) return this.getSnapshot();
+        this.replaceComponentWatchers(snapshot.componentRoots);
+        return snapshot;
+      });
+      this.snapshotPromise = pending;
+    }
+    return this.snapshotPromise;
+  }
+
+  invalidate(kind: ProjectChangeKind): void {
+    this.generation++;
+    this.snapshotPromise = undefined;
+    if (kind === 'config') this.replaceComponentWatchers([]);
+    this.onChange(this, kind);
+  }
+
+  componentUsageSuppliesProp(
+    snapshot: ProjectSnapshot,
+    componentName: string,
+    propName: string,
+  ): boolean {
+    const openHtmlDocuments = vscode.workspace.textDocuments.filter((document) =>
+      document.languageId === 'html' &&
+      vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() === this.folder.uri.toString(),
+    );
+    const openPaths = new Set(openHtmlDocuments
+      .filter((document) => document.uri.scheme === 'file')
+      .map((document) => document.uri.fsPath));
+    return openHtmlDocuments.some((document) =>
+      htmlSuppliesComponentProp(document.getText(), componentName, propName),
+    ) || Array.from(snapshot.htmlUsageByFile).some(([filePath, html]) =>
+      !openPaths.has(filePath) && htmlSuppliesComponentProp(html, componentName, propName),
+    );
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.generation++;
+    this.snapshotPromise = undefined;
+    this.replaceComponentWatchers([]);
+    for (const watcher of this.staticWatchers) watcher.dispose();
+  }
+
+  private listen(watcher: vscode.FileSystemWatcher, kind: ProjectChangeKind): void {
+    watcher.onDidCreate(() => this.invalidate(kind));
+    watcher.onDidChange(() => this.invalidate(kind));
+    watcher.onDidDelete(() => this.invalidate(kind));
+  }
+
+  private replaceComponentWatchers(roots: string[]): void {
+    for (const watcher of this.componentWatchers) watcher.dispose();
+    this.componentWatchers = roots.map((root) => {
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(root, '**/*.html'),
+      );
+      this.listen(watcher, 'components');
+      return watcher;
+    });
+  }
+}
+
+class ProjectStateManager implements vscode.Disposable {
+  private readonly states = new Map<string, ProjectState>();
+  private readonly workspaceFoldersListener: vscode.Disposable;
+
+  constructor(
+    private readonly onChange: (state: ProjectState, kind: ProjectChangeKind) => void,
+    private readonly onRemove: (state: ProjectState) => void,
+  ) {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) this.add(folder);
+    this.workspaceFoldersListener = vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+      for (const folder of event.removed) this.remove(folder);
+      for (const folder of event.added) this.add(folder);
+    });
+  }
+
+  get(document: vscode.TextDocument): ProjectState | undefined {
+    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+    return folder ? this.states.get(folder.uri.toString()) : undefined;
+  }
+
+  dispose(): void {
+    this.workspaceFoldersListener.dispose();
+    for (const state of this.states.values()) state.dispose();
+    this.states.clear();
+  }
+
+  private add(folder: vscode.WorkspaceFolder): void {
+    const key = folder.uri.toString();
+    if (!this.states.has(key)) this.states.set(key, new ProjectState(folder, this.onChange));
+  }
+
+  private remove(folder: vscode.WorkspaceFolder): void {
+    const key = folder.uri.toString();
+    const state = this.states.get(key);
+    if (!state) return;
+    this.onRemove(state);
+    state.dispose();
+    this.states.delete(key);
+  }
 }
 
 class ComponentDefinitionProvider implements vscode.DefinitionProvider {
+  constructor(private readonly projects: ProjectStateManager) {}
+
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
+    if (document.languageId !== 'html') return undefined;
     const range = document.getWordRangeAtPosition(position, /[A-Za-z0-9-]+/);
     if (!range) {
       return undefined;
@@ -146,49 +290,19 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
       return undefined;
     }
 
-    const root = getWorkspaceRoot();
-    if (!root) {
-      return undefined;
-    }
-
-    const componentMap = findComponentMap(root);
-    const tagName = word.toLowerCase();
-    const file = componentMap.get(tagName);
-    if (!file || !fs.existsSync(file)) {
-      return undefined;
-    }
-
-    return new vscode.Location(vscode.Uri.file(file), new vscode.Position(0, 0));
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+    return project.getSnapshot().then((snapshot) => {
+      if (_token.isCancellationRequested) return undefined;
+      const file = snapshot.componentMap.get(word.toLowerCase());
+      return file
+        ? new vscode.Location(vscode.Uri.file(file), new vscode.Position(0, 0))
+        : undefined;
+    });
   }
 }
 
 const SCRIPT_BLOCK_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
-
-const DEFAULT_IMPORT_ROOT = 'src';
-
-/**
- * Read `scripts.importRoot` from the workspace's bascik.config file.
- *
- * The extension cannot execute a TypeScript config file, so this is a
- * best-effort regex read (`importRoot: '...'`) with a fallback to the runtime
- * default `src`. It mirrors `pkg/src/lib/import-root.ts`: the value is relative
- * to the project root and may point outside it (monorepo shared scripts).
- */
-function readImportRoot(workspaceRoot: string): string {
-  for (const candidate of CONFIG_FILE_CANDIDATES) {
-    const configPath = path.join(workspaceRoot, candidate);
-    if (!fs.existsSync(configPath)) continue;
-    try {
-      const source = fs.readFileSync(configPath, 'utf8');
-      const match = /importRoot\s*:\s*['"]([^'"]+)['"]/.exec(source);
-      if (match?.[1]) return match[1];
-    } catch {
-      // unreadable config: fall through to the default
-    }
-    break;
-  }
-  return DEFAULT_IMPORT_ROOT;
-}
 
 /**
  * Resolve a script specifier or `src=` value the way Bascik's runtime does
@@ -289,6 +403,8 @@ function parseScriptOpenTagAttributes(openTag: string): Map<string, string | tru
 }
 
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
+  constructor(private readonly projects: ProjectStateManager) {}
+
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -298,6 +414,19 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       return undefined;
     }
 
+    const project = this.projects.get(document);
+    if (!project) return undefined;
+    return project.getSnapshot().then((snapshot) => {
+      if (_token.isCancellationRequested) return undefined;
+      return this.provideFromSnapshot(document, position, snapshot);
+    });
+  }
+
+  private provideFromSnapshot(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    snapshot: ProjectSnapshot,
+  ): vscode.Definition | undefined {
     const text = document.getText();
     const offset = document.offsetAt(position);
 
@@ -319,10 +448,7 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
       }
 
       const baseDir = path.dirname(document.uri.fsPath);
-      const workspaceRoot = getWorkspaceRoot();
-      const importRootAbs = workspaceRoot
-        ? path.resolve(workspaceRoot, readImportRoot(workspaceRoot))
-        : path.resolve(baseDir, DEFAULT_IMPORT_ROOT);
+      const importRootAbs = snapshot.importRoot;
 
       // Cursor inside the open tag: check for the src attribute value.
       if (offset >= blockStart && offset <= openTagEnd) {
@@ -411,7 +537,10 @@ function maskHtmlRawTextContents(html: string): string {
   );
 }
 
-function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Diagnostic[] {
+async function createDiagnosticsForDocument(
+  document: vscode.TextDocument,
+  projects: ProjectStateManager,
+): Promise<vscode.Diagnostic[]> {
   const { languageId } = document;
 
   if (languageId !== 'css' && languageId !== 'javascript' && languageId !== 'typescript' && languageId !== 'html') {
@@ -420,9 +549,13 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
 
   const text = document.getText();
   const diagnostics: vscode.Diagnostic[] = [];
+  const project = projects.get(document);
+  const snapshot = project ? await project.getSnapshot() : undefined;
   const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
   const isComponentDocument =
-    document.uri.scheme === 'file' && isInsideComponentRoot(normalizedDocumentPath);
+    document.uri.scheme === 'file' &&
+    snapshot !== undefined &&
+    isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots);
   const isApiRouteDocument =
     document.uri.scheme === 'file' &&
     normalizedDocumentPath.includes('/src/api/') &&
@@ -447,7 +580,7 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
   // hyphenated per WHATWG HTML §4.13
   if (languageId === 'html' && document.uri.scheme === 'file') {
     const fsPath = document.uri.fsPath.replace(/\\/g, '/');
-    if (isInsideComponentRoot(fsPath)) {
+    if (snapshot && isInsideComponentRoots(fsPath, snapshot.componentRoots)) {
       const fileName = path.basename(fsPath);
       const nameWithoutExt = fileName.replace(/\.html$/i, '').toLowerCase();
       if (!nameWithoutExt.includes('-') && !BUILT_IN_HTML_ELEMENTS.has(nameWithoutExt)) {
@@ -587,9 +720,9 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       diagnostics.push(diagnostic);
     }
 
-    const workspaceRoot = getWorkspaceRoot();
     if (
-      workspaceRoot &&
+      project &&
+      snapshot &&
       isComponentDocument
     ) {
       const componentName = normalizeComponentName(document.uri.fsPath);
@@ -598,7 +731,7 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
       while ((directiveMatch = directiveRegex.exec(text)) !== null) {
         const targetName = directiveMatch[1];
         const propName = directiveMatch[2] ?? directiveMatch[3];
-        if (componentUsageSuppliesProp(workspaceRoot, componentName, propName)) continue;
+        if (project.componentUsageSuppliesProp(snapshot, componentName, propName)) continue;
         const start = document.positionAt(directiveMatch.index);
         const end = document.positionAt(directiveMatch.index + directiveMatch[0].length);
         const diagnostic = new vscode.Diagnostic(
@@ -712,8 +845,7 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
         (_m, content: string) => '<!--' + ' '.repeat(content.length) + '-->'
       );
 
-    const root = getWorkspaceRoot();
-    const componentMap = root ? findComponentMap(root) : new Map<string, string>();
+    const componentMap = snapshot?.componentMap ?? new Map<string, string>();
     const componentNames = Array.from(componentMap.keys());
     if (componentNames.length > 0) {
       componentNames.sort((a, b) => b.length - a.length);
@@ -794,10 +926,62 @@ function createDiagnosticsForDocument(document: vscode.TextDocument): vscode.Dia
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const definitionProvider = new ComponentDefinitionProvider();
+  const diagnostics = vscode.languages.createDiagnosticCollection('bascik');
+  const refreshTimers = new Map<string, NodeJS.Timeout>();
+  let projects: ProjectStateManager;
+
+  const refreshDiagnostics = async (document: vscode.TextDocument | undefined) => {
+    if (!document) return;
+    const workspaceFolderKey = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString();
+    const version = document.version;
+    const items = await createDiagnosticsForDocument(document, projects);
+    const currentWorkspaceFolderKey = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString();
+    if (
+      document.version === version &&
+      (!workspaceFolderKey || currentWorkspaceFolderKey === workspaceFolderKey)
+    ) {
+      diagnostics.set(document.uri, items);
+    }
+  };
+
+  const scheduleProjectDiagnostics = (state: ProjectState, kind: ProjectChangeKind) => {
+    const key = state.folder.uri.toString();
+    const previous = refreshTimers.get(key);
+    if (previous) clearTimeout(previous);
+    refreshTimers.set(key, setTimeout(() => {
+      refreshTimers.delete(key);
+      for (const document of vscode.workspace.textDocuments) {
+        if (vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() !== key) continue;
+        if (kind === 'html' && document.languageId !== 'html') continue;
+        void refreshDiagnostics(document);
+      }
+    }, 50));
+  };
+
+  projects = new ProjectStateManager(scheduleProjectDiagnostics, (state) => {
+    const key = state.folder.uri.toString();
+    const timer = refreshTimers.get(key);
+    if (timer) clearTimeout(timer);
+    refreshTimers.delete(key);
+    for (const [uri] of diagnostics) {
+      if (uri.scheme !== state.folder.uri.scheme) continue;
+      const relative = path.relative(state.folder.uri.fsPath, uri.fsPath);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+        diagnostics.delete(uri);
+      }
+    }
+  });
+  context.subscriptions.push(projects, diagnostics, {
+    dispose: () => {
+      for (const timer of refreshTimers.values()) clearTimeout(timer);
+      refreshTimers.clear();
+    },
+  });
+
+  const definitionProvider = new ComponentDefinitionProvider(projects);
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
-      [{ language: 'html' }, { language: 'javascript' }, { language: 'typescript' }, { language: 'css' }],
+      [{ language: 'html' }],
       definitionProvider,
     ),
   );
@@ -805,34 +989,25 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
       [{ language: 'html' }],
-      new ScriptImportDefinitionProvider(),
+      new ScriptImportDefinitionProvider(projects),
     ),
   );
 
-  const diagnostics = vscode.languages.createDiagnosticCollection('bascik');
-  context.subscriptions.push(diagnostics);
-
-  const refreshDiagnostics = (document: vscode.TextDocument | undefined) => {
-    if (!document) return;
-    const items = createDiagnosticsForDocument(document);
-    diagnostics.set(document.uri, items);
-  };
-
   for (const document of vscode.workspace.textDocuments) {
-    refreshDiagnostics(document);
+    void refreshDiagnostics(document);
   }
 
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(refreshDiagnostics),
+    vscode.workspace.onDidOpenTextDocument((document) => void refreshDiagnostics(document)),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      refreshDiagnostics(event.document);
+      void refreshDiagnostics(event.document);
       if (event.document.languageId === 'html') {
-        for (const document of vscode.workspace.textDocuments) {
-          if (document !== event.document && document.languageId === 'html') {
-            refreshDiagnostics(document);
-          }
-        }
+        projects.get(event.document)?.invalidate('html');
       }
+    }),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      diagnostics.delete(document.uri);
+      if (document.languageId === 'html') projects.get(document)?.invalidate('html');
     }),
   );
 }

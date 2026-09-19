@@ -1,0 +1,13 @@
+.vscode/**
+.vscode-test/**
+.vscode-test.cjs
+bin/**
+coverage/**
+node_modules/**
+src/**
+test-fixtures/**
+dist/test/**
+test-coverage.json
+tsconfig.json
+vite.config.mjs
+*.vsix

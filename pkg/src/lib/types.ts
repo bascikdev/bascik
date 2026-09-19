@@ -196,12 +196,20 @@ export interface ScopableOptions {
   enabled: boolean;
   include?: string[];
   exclude?: string[];
+  /**
+   * Environment variable names whose resolved values are folded into the
+   * build-script cache key. Only exact names are supported. A changed value
+   * invalidates cached build-script output; values are hashed, never persisted.
+   * Only meaningful for `scripts.cache`.
+   */
+  environment?: string[];
 }
 
 export type ScopableConfig = boolean | {
   enabled?: boolean;
   include?: string[];
   exclude?: string[];
+  environment?: string[];
 };
 
 /**

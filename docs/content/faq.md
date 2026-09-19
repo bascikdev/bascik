@@ -120,7 +120,7 @@ The copied files belong to your project and are meant to be customized. When you
 
 ## Why is my build script returning stale data?
 
-The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
+The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.
 
 ## Does Bascik add any JavaScript to my pages?
 

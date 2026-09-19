@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "primary",
+      "path": "sample-workspace"
+    },
+    {
+      "name": "secondary",
+      "path": "secondary-workspace"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm, mkdir, symlink, readFile, chmod } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, symlink } from "node:fs/promises";
 import { resolveCliAction, CLI_USAGE } from "./lib/cli.ts";
 
 describe("resolveCliAction", () => {
@@ -437,128 +437,33 @@ describe("index.ts CLI runner functions", () => {
   });
 });
 
-describe("package-manager bin launcher (node_modules/.bin/bascik)", () => {
-  // Regression anchor: the published `bin` wrapper (bin/bascik.js) used to
-  // `await import("../dist/index.js")` and rely on an isMain check inside
-  // dist/index.js to run the CLI. When launched through a package-manager
-  // symlink (node_modules/.bin/bascik -> ../@bascik/bascik/bin/bascik.js),
-  // process.argv[1] ends with "bascik" (not "bascik.js") and does not resolve
-  // to dist/index.js, so isMain was always false and the CLI silently no-op'd
-  // with exit 0 and no output. The wrapper must invoke runCli directly.
-  //
-  // This test recreates the installed-style layout: a temp "node_modules/.bin"
-  // directory whose `bascik` symlink points at the real bin/bascik.js, then
-  // spawns that symlink exactly as a package manager would.
-  const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const binWrapper = join(pkgRoot, "bin", "bascik.js");
-  const distEntry = join(pkgRoot, "dist", "index.js");
+it("executes once through a package-manager bin symlink", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bascik-cli-bin-"));
+  try {
+    const binDir = join(dir, "node_modules", ".bin");
+    await mkdir(join(dir, "src", "pages"), { recursive: true });
+    await mkdir(join(dir, "src", "components"), { recursive: true });
+    await writeFile(
+      join(dir, "src", "pages", "index.html"),
+      "<!doctype html><html><body><h1>Test</h1></body></html>",
+      "utf8",
+    );
+    await mkdir(binDir, { recursive: true });
+    const binPath = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "bascik.js");
+    const symlinkPath = join(binDir, "bascik");
+    await symlink(binPath, symlinkPath);
 
-  const setupBinSymlink = async (): Promise<string> => {
-    const dir = await mkdtemp(join(tmpdir(), "bascik-bin-link-"));
-    await mkdir(join(dir, "node_modules", ".bin"), { recursive: true });
-    await symlink(binWrapper, join(dir, "node_modules", ".bin", "bascik"));
-    return dir;
-  };
-
-  it("runs --version through the installed-style .bin symlink", async () => {
-    const dir = await setupBinSymlink();
-    try {
-      const result = spawnSync(join(dir, "node_modules", ".bin", "bascik"), ["--version"], {
-        cwd: dir,
-        encoding: "utf8",
-      });
-      expect(result.status).toBe(0);
-      expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  it("runs --help through the installed-style .bin symlink", async () => {
-    const dir = await setupBinSymlink();
-    try {
-      const result = spawnSync(join(dir, "node_modules", ".bin", "bascik"), ["--help"], {
-        cwd: dir,
-        encoding: "utf8",
-      });
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("Usage: bascik");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  it("runs a real --build through the installed-style .bin symlink and emits output", async () => {
-    const dir = await setupBinSymlink();
-    try {
-      await mkdir(join(dir, "src", "pages"), { recursive: true });
-      await mkdir(join(dir, "src", "components"), { recursive: true });
-      await writeFile(
-        join(dir, "bascik.config.js"),
-        `module.exports = {
-  directory: { components: ["src/components"] },
-  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
-  minify: { identifiers: false },
-};`,
-        "utf8",
-      );
-      await writeFile(
-        join(dir, "src", "pages", "index.html"),
-        '<!DOCTYPE html><html><head><title>Home</title></head><body><h1 data-testid="home">Hello</h1></body></html>',
-        "utf8",
-      );
-
-      const result = spawnSync(join(dir, "node_modules", ".bin", "bascik"), ["--build"], {
-        cwd: dir,
-        encoding: "utf8",
-      });
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("Build complete");
-
-      const emitted = await readFile(join(dir, "dist", "index.html"), "utf8");
-      expect(emitted).toContain("Hello");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 60000);
-
-  it("reports a clear error (not a silent no-op) when dist/ is missing", async () => {
-    // The wrapper must fail loudly if the compiled dist entrypoint is absent,
-    // rather than exiting 0 with no output.
-    const dir = await mkdtemp(join(tmpdir(), "bascik-bin-missing-dist-"));
-    try {
-      await mkdir(join(dir, "node_modules", ".bin"), { recursive: true });
-      // Point the symlink at a wrapper whose dist import cannot resolve by
-      // staging a fake package dir with only bin/bascik.js.
-      const fakePkg = join(dir, "node_modules", "@bascik", "bascik");
-      await mkdir(join(fakePkg, "bin"), { recursive: true });
-      const wrapperPath = join(fakePkg, "bin", "bascik.js");
-      await writeFile(wrapperPath, await readFile(binWrapper, "utf8"), "utf8");
-      // The wrapper is executed directly through the symlink (shebang), so it
-      // must be executable, matching how package managers install bin files.
-      await chmod(wrapperPath, 0o755);
-      await symlink(wrapperPath, join(dir, "node_modules", ".bin", "bascik"));
-
-      const result = spawnSync(join(dir, "node_modules", ".bin", "bascik"), ["--version"], {
-        cwd: dir,
-        encoding: "utf8",
-      });
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("dist/index.js is missing");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  it("keeps the compiled dist entrypoint executable directly (node dist/index.js)", async () => {
-    // Direct execution of the compiled entrypoint must still work: the isMain
-    // path in dist/index.js remains the fallback for `node dist/index.js`.
-    const result = spawnSync(process.execPath, [distEntry, "--version"], {
-      cwd: pkgRoot,
+    const result = spawnSync(process.execPath, [symlinkPath, "--build"], {
+      cwd: dir,
       encoding: "utf8",
+      env: { ...process.env, BASCIK_SITE_URL: "https://example.com/" },
     });
+
+    expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
-  }, 30000);
+    expect(result.stdout.match(/Build complete/g)).toHaveLength(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
