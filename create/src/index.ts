@@ -2,10 +2,11 @@
 import { createInterface } from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { parseCliOptions } from "./cli.js";
 import { scaffold, validateProjectName } from "./scaffold.js";
 
 const args = process.argv.slice(2);
-const yesFlag = args.includes("-y") || args.includes("--yes");
+const { yesFlag, noDevFlag } = parseCliOptions(args);
 const nameArg = args.find((a) => !a.startsWith("-"));
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -35,7 +36,7 @@ let shouldDev: boolean;
 
 if (yesFlag) {
   shouldInstall = true;
-  shouldDev = true;
+  shouldDev = !noDevFlag;
 } else {
   const installAnswer = await rl.question("Install dependencies now? (Y/n) ");
   shouldInstall = installAnswer.trim().toLowerCase() !== "n";
