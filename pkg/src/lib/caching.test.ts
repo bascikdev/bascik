@@ -19,6 +19,7 @@ import {
   getStaticDelivery,
   getOpenStreamedAssetHandles,
   makeStreamedAssetEtag,
+  MAX_COMPRESSED_CACHE_ENTRIES,
 } from "./caching.ts";
 
 describe("Prompt 39 - Caching Layer Unit Tests", () => {
@@ -447,5 +448,73 @@ describe("Prompt 107 - Static representation snapshot owner", () => {
     await writeFile(`${p}.br.bmeta`, JSON.stringify({ rawHash: getContentHashEtag(body) }));
     const verified = await getStaticRepresentation(p, "br");
     expect(verified!.buffer.equals(sidecar)).toBe(true);
+  });
+
+  describe("packet R6: supplementary static representation cache FIFO bounds and retention policy", () => {
+    it("supplementary direct cache (not server-stat proof): enforces FIFO bounds with real stat sizes and retains deleted path until eviction", async () => {
+      clearStaticRepresentationCache();
+
+      // Negative control: calibrate missing/retained actual representation entry with same assertion
+      const assertRetainedEntry = (repr: any, expectedText: string) => {
+        expect(repr).not.toBeNull();
+        expect(repr!.buffer.toString()).toBe(expectedText);
+      };
+      expect(() => assertRetainedEntry(null, "expected")).toThrow();
+
+      expect(MAX_COMPRESSED_CACHE_ENTRIES).toBe(200);
+      expect(MAX_CACHED_REPRESENTATION_BYTES).toBe(2 * 1024 * 1024);
+
+      // Create 205 small files on disk with real content
+      const fileCount = MAX_COMPRESSED_CACHE_ENTRIES + 5;
+      const fileStats = new Map<string, { mtimeMs: number; size: number; content: string }>();
+      for (let i = 0; i < fileCount; i++) {
+        const filePath = join(dir, `asset-${i}.txt`);
+        const content = `content-${i}`;
+        await writeFile(filePath, Buffer.from(content));
+        const fileStat = await fsStat(filePath);
+        fileStats.set(filePath, { mtimeMs: fileStat.mtimeMs, size: fileStat.size, content });
+      }
+
+      // Populate cache with first 200 entries using REAL stat mtimeMs and size
+      for (let i = 0; i < MAX_COMPRESSED_CACHE_ENTRIES; i++) {
+        const filePath = join(dir, `asset-${i}.txt`);
+        const { mtimeMs, size, content } = fileStats.get(filePath)!;
+        const repr = await getStaticRepresentation(filePath, "identity", mtimeMs, size);
+        assertRetainedEntry(repr, content);
+      }
+      expect(getCompressedCacheEntriesCount()).toBe(MAX_COMPRESSED_CACHE_ENTRIES);
+
+      // Delete the first file from disk
+      const deletedPath = join(dir, "asset-0.txt");
+      const deletedInfo = fileStats.get(deletedPath)!;
+      await rm(deletedPath);
+
+      // Direct cache observation (not server-stat proof): the representation is retained in memory
+      // before FIFO eviction when accessed directly with previously recorded stat
+      const cachedBeforeEviction = await getStaticRepresentation(deletedPath, "identity", deletedInfo.mtimeMs, deletedInfo.size);
+      assertRetainedEntry(cachedBeforeEviction, "content-0");
+
+      // Bypassing known stat forces a disk re-read/stat, returning null for the deleted file
+      const reStatAfterDelete = await getStaticRepresentation(deletedPath, "identity");
+      expect(reStatAfterDelete).toBeNull();
+
+      // Push 5 more entries to trigger FIFO eviction of the oldest entries (including asset-0.txt)
+      for (let i = MAX_COMPRESSED_CACHE_ENTRIES; i < fileCount; i++) {
+        const filePath = join(dir, `asset-${i}.txt`);
+        const { mtimeMs, size, content } = fileStats.get(filePath)!;
+        const repr = await getStaticRepresentation(filePath, "identity", mtimeMs, size);
+        assertRetainedEntry(repr, content);
+      }
+      expect(getCompressedCacheEntriesCount()).toBe(MAX_COMPRESSED_CACHE_ENTRIES);
+
+      // asset-0.txt was evicted; even with original stat it now misses
+      const afterEviction = await getStaticRepresentation(deletedPath, "identity", deletedInfo.mtimeMs, deletedInfo.size);
+      expect(afterEviction).toBeNull();
+
+      // Shutdown / clear drops all cached representations
+      clearStaticRepresentationCache();
+      expect(getCompressedCacheEntriesCount()).toBe(0);
+      expect(getInFlightCompressionsCount()).toBe(0);
+    });
   });
 });

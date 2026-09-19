@@ -1492,3 +1492,70 @@ describe("cleanStackTrace", () => {
     expect(cleanStackTrace("", "/tmp/file.mjs", "src/file.html", 1)).toBe("");
   });
 });
+
+describe("packet R6: supplementary build script memoization limits and missing dependency recovery (mocked child IO)", () => {
+  it("supplementary memoization and missing dependency tracking with mocked child IO (not actual disk/recovery proof)", async () => {
+    clearBuildScriptCaches();
+
+    // Negative control: calibrate missing/retained output cache entry with same assertion
+    const assertRetainedOutput = (size: number, expected: number) => {
+      expect(size).toBe(expected);
+    };
+    expect(() => assertRetainedOutput(0, 1)).toThrow();
+
+    expect(MAX_IN_MEMORY_SCRIPT_OUTPUTS).toBe(512);
+
+    const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
+    const depPath = "src/lib/dep.txt";
+    let fileExists = false;
+    let fileContent = "";
+
+    mockReadFile.mockImplementation((p: string) => {
+      if (String(p).endsWith(depPath)) {
+        if (!fileExists) return Promise.reject(new Error("ENOENT"));
+        return Promise.resolve(fileContent);
+      }
+      return Promise.reject(new Error("ENOENT"));
+    });
+
+    resolveWith("<p>fallback</p>");
+
+    const tag = `<script data-bascik-build>import { readFileSync } from 'node:fs'; try { console.log(readFileSync('${depPath}', 'utf8')); } catch { console.log('fallback'); }</script>`;
+
+    // 1. First execution with MISSING dependency:
+    // It should fold "MISSING" into the cache key and memoize the result.
+    const res1 = await executeBuildScripts(tag, "src/pages/page.html");
+    expect(res1).toBe("<p>fallback</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    assertRetainedOutput(cacheHooks.outputCacheSize, 1);
+    expect(cacheHooks.reverseIndexKeyCount(depPath)).toBe(1);
+
+    // 2. Second execution with the dependency still missing hits in-memory memo cache
+    const res2 = await executeBuildScripts(tag, "src/pages/page.html");
+    expect(res2).toBe("<p>fallback</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(1); // not called again
+
+    // 3. File is created on disk
+    fileExists = true;
+    fileContent = "real-content";
+
+    // When watcher notifies of change / creation, clearBuildScriptCaches(depPath) is called
+    clearBuildScriptCaches(depPath);
+    assertRetainedOutput(cacheHooks.outputCacheSize, 0);
+    expect(cacheHooks.reverseIndexKeyCount(depPath)).toBe(0);
+
+    // 4. Third execution executes anew with the real content
+    resolveWith("<p>real-content</p>");
+    const res3 = await executeBuildScripts(tag, "src/pages/page.html");
+    expect(res3).toBe("<p>real-content</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    assertRetainedOutput(cacheHooks.outputCacheSize, 1);
+    expect(cacheHooks.reverseIndexKeyCount(depPath)).toBe(1);
+
+    // 5. Full cache clear per source cycle resets everything
+    clearBuildScriptCaches();
+    assertRetainedOutput(cacheHooks.outputCacheSize, 0);
+    expect(cacheHooks.depContentSize).toBe(0);
+    expect(cacheHooks.reverseIndexKeyCount(depPath)).toBe(0);
+  });
+});

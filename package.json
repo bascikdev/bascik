@@ -33,7 +33,7 @@
     "pkg:test:coverage": "yarn workspace @bascik/bascik test:coverage",
     "create:build": "yarn workspace create-bascik build",
     "create:prepack": "yarn workspace create-bascik prepack",
-    "create:test-site": "yarn create:build && node create/dist/index.js my-site -y",
+    "create:test-site": "yarn create:build && node create/dist/index.js my-site -y --no-dev && BASCIK_SITE_URL=https://example.com npm --prefix my-site run build",
     "create:typecheck": "yarn workspace create-bascik typecheck",
     "create:unit": "yarn workspace create-bascik unit",
     "create:coverage": "yarn workspace create-bascik coverage",

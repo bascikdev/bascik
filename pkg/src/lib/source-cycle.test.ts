@@ -5,6 +5,10 @@ import { createSourceCycle } from './source-cycle.ts';
 const gate = () => Promise.withResolvers<void>();
 afterEach(() => vi.useRealTimers());
 
+const assertNoListenerLeak = (target: EventEmitter, expectedBaseline: ReturnType<EventEmitter['rawListeners']>) => {
+  expect(target.rawListeners('build-error')).toEqual(expectedBaseline);
+};
+
 describe('source-owned phase cycles', () => {
   it('retains earlier page reloads when another source edit arrives during compilation', async () => {
     vi.useFakeTimers();
@@ -13,7 +17,8 @@ describe('source-owned phase cycles', () => {
     const reload = vi.fn();
     emitter.on('transpiled', reload);
     let count = 0;
-    const cycle = createSourceCycle({ entries: [], run: vi.fn(), emitter,
+    const cycle = createSourceCycle({
+      entries: [], run: vi.fn(), emitter,
       compile: async (_paths, publish) => {
         publish('transpiled', { relativePagePath: `${++count}.html` });
         if (count === 1) await first.promise;
@@ -136,5 +141,208 @@ describe('source-owned phase cycles', () => {
     await cycle.idle();
     expect(reload).not.toHaveBeenCalled();
     cycle.close();
+  });
+
+  describe('oracle verification and negative controls (R4 step 1)', () => {
+    it('oracle rejects when an extra build-error listener is retained on options.emitter', () => {
+      const emitter = new EventEmitter();
+      const baseline = emitter.rawListeners('build-error');
+      const leak = () => {};
+      emitter.on('build-error', leak);
+      try {
+        expect(() => assertNoListenerLeak(emitter, baseline)).toThrow();
+      } finally {
+        emitter.removeListener('build-error', leak);
+      }
+      assertNoListenerLeak(emitter, baseline);
+    });
+
+    it('oracle detects if a synthetic timer remains un-cleared or active after settlement', () => {
+      vi.useFakeTimers();
+      expect(vi.getTimerCount()).toBe(0);
+      const timer = setTimeout(() => {}, 1000);
+      try {
+        expect(() => {
+          expect(vi.getTimerCount()).toBe(0);
+        }).toThrow();
+      } finally {
+        clearTimeout(timer);
+      }
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('oracle detects mismatched publication counts and paths on simulated dropped events', () => {
+      const pathA = `${process.cwd()}/src/pages/a.html`;
+      const pathB = `${process.cwd()}/src/pages/b.html`;
+      const expectedPaths = [pathA, pathB].sort();
+
+      const emittedPublications: [string, unknown][] = [
+        ['transpiled', { cyclePaths: expectedPaths, attempt: 0 }],
+      ];
+
+      // Negative control: simulated dropped event (fewer publications than expected)
+      const expectedPublicationsAfterAttempt1: [string, unknown][] = [
+        ['transpiled', { cyclePaths: expectedPaths, attempt: 0 }],
+        ['transpiled', { cyclePaths: expectedPaths, attempt: 1 }],
+      ];
+      expect(() => {
+        expect(emittedPublications).toEqual(expectedPublicationsAfterAttempt1);
+      }).toThrow();
+
+      // Negative control: simulated mismatched paths
+      const mismatchedPublications: [string, unknown][] = [
+        ['transpiled', { cyclePaths: [pathA], attempt: 0 }],
+      ];
+      expect(() => {
+        expect(mismatchedPublications).toEqual(emittedPublications);
+      }).toThrow();
+    });
+  });
+
+  it('settles 100 repeated same-two-path cycles with exact publications, paths, baseline listeners, recovery, and zero timers', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const emitter = new EventEmitter();
+    const testErrorListener = vi.fn();
+    emitter.on('build-error', testErrorListener);
+    const baseline = emitter.rawListeners('build-error');
+    expect(baseline).toHaveLength(1);
+    expect(baseline[0]).toBe(testErrorListener);
+
+    const emittedPublications: [string, unknown][] = [];
+    const transpiledListener = (payload: unknown) => {
+      emittedPublications.push(['transpiled', payload]);
+    };
+    emitter.on('transpiled', transpiledListener);
+
+    const pathA = `${process.cwd()}/src/pages/a.html`;
+    const pathB = `${process.cwd()}/src/pages/b.html`;
+    const expectedPaths = [pathA, pathB].sort();
+
+    const makeAttempt = (index: number) => ({
+      index,
+      compile: gate(),
+      post: gate(),
+      parallel: gate(),
+      compileEntered: gate(),
+      postEntered: gate(),
+      postStarted: false,
+      parallelSettled: false,
+    });
+    let current = makeAttempt(0);
+    const parallelTasks: Promise<void>[] = [];
+    const compilePaths: string[][] = [];
+
+    const cycle = createSourceCycle({
+      entries: [
+        {
+          script: 'parallel.ts',
+          phase: 'parallel',
+          watch: ['src/pages/'],
+        },
+        {
+          script: 'post.ts',
+          phase: 'post',
+          watch: ['src/pages/'],
+        },
+      ],
+      run: (entry) => {
+        const state = current;
+        if (entry.phase === 'parallel') {
+          const task = state.parallel.promise.then(() => { state.parallelSettled = true; });
+          parallelTasks.push(task);
+          return task;
+        }
+        if (entry.phase === 'post') {
+          state.postStarted = true;
+          state.postEntered.resolve();
+          return state.post.promise;
+        }
+        throw new Error(`Unexpected source-cycle phase: ${entry.phase}`);
+      },
+      compile: async (paths, publish) => {
+        const state = current;
+        compilePaths.push([...paths].sort());
+        publish('transpiled', { cyclePaths: [...paths].sort(), attempt: state.index });
+        state.compileEntered.resolve();
+        await state.compile.promise;
+      },
+      emitter,
+    });
+
+    const failureIndex = 42;
+    const failure = new Error(`compile failure at attempt ${failureIndex}`);
+    const expectedPublications: [string, unknown][] = [];
+
+    try {
+      for (let attempt = 0; attempt <= 100; attempt++) {
+        current = makeAttempt(attempt);
+
+        if (attempt === failureIndex + 1) {
+          // Only re-enqueue a: recovery must also retain failed path b.
+          cycle.enqueue('src/pages/a.html');
+        } else {
+          cycle.enqueue('src/pages/a.html');
+          cycle.enqueue('src/pages/b.html');
+        }
+
+        await vi.advanceTimersByTimeAsync(50);
+        await current.compileEntered.promise;
+
+        expect(compilePaths).toHaveLength(attempt + 1);
+        expect(compilePaths[attempt]).toEqual(expectedPaths);
+        expect(parallelTasks).toHaveLength(attempt + 1);
+        expect(current.postStarted).toBe(false);
+        expect(emittedPublications).toEqual(expectedPublications);
+
+        if (attempt === failureIndex) {
+          current.compile.reject(failure);
+          await cycle.idle();
+          expect(current.postStarted).toBe(false);
+          expect(testErrorListener.mock.calls).toEqual([[{ message: failure.message, file: undefined }]]);
+          expect(emittedPublications).toEqual(expectedPublications);
+        } else {
+          current.compile.resolve();
+          await current.postEntered.promise;
+          expect(emittedPublications).toEqual(expectedPublications);
+          current.post.resolve();
+          await cycle.idle();
+          expectedPublications.push(['transpiled', { cyclePaths: expectedPaths, attempt }]);
+          expect(emittedPublications).toEqual(expectedPublications);
+        }
+
+        // idle joins compilation/post, not this still-held parallel task.
+        expect(current.parallelSettled).toBe(false);
+        current.parallel.resolve();
+        await Promise.all(parallelTasks);
+        expect(current.parallelSettled).toBe(true);
+        assertNoListenerLeak(emitter, baseline);
+        expect(vi.getTimerCount()).toBe(0);
+      }
+
+      expect(compilePaths).toHaveLength(101);
+      expect(parallelTasks).toHaveLength(101);
+      expect(emittedPublications).toHaveLength(100);
+      expect(testErrorListener.mock.calls).toEqual([[{ message: failure.message, file: undefined }]]);
+      expect(consoleSpy.mock.calls).toEqual([['[bascik] source cycle error:', failure]]);
+
+      // Step 5: Final settlement and leak audit before teardown
+      assertNoListenerLeak(emitter, baseline);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      cycle.close();
+      current.compile.resolve();
+      current.post.resolve();
+      current.parallel.resolve();
+      try {
+        await Promise.all([cycle.idle(), ...parallelTasks]);
+      } finally {
+        emitter.removeListener('build-error', testErrorListener);
+        emitter.removeListener('transpiled', transpiledListener);
+        consoleSpy.mockRestore();
+      }
+      expect(vi.getTimerCount()).toBe(0);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parseCliOptions } from "./cli.js";
 import {
   E2E_APP_SPEC,
   FEAT_CARD_CSS,
@@ -53,6 +54,22 @@ const writtenTo = (suffix: string): string | undefined => {
 
 const allWrittenPaths = (): string[] =>
   mockWriteFile.mock.calls.map((c) => String(c[0]));
+
+describe("parseCliOptions", () => {
+  it("starts development by default for the non-interactive yes mode", () => {
+    expect(parseCliOptions(["my-site", "-y"])).toEqual({
+      yesFlag: true,
+      noDevFlag: false,
+    });
+  });
+
+  it("supports bounded non-interactive scaffolding without changing install behavior", () => {
+    expect(parseCliOptions(["my-site", "--yes", "--no-dev"])).toEqual({
+      yesFlag: true,
+      noDevFlag: true,
+    });
+  });
+});
 
 // ─── validateProjectName ──────────────────────────────────────────────────────
 
