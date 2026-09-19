@@ -55,15 +55,29 @@ When you edit a shared component or a global stylesheet used across many pages, 
 
 ## VS Code Editor Ergonomics
 
-Install the official Bascik extension to get  component navigation and suggestions, syntax highlighting, hover details, and real-time warnings directly in VS Code:
+Install the official Bascik extension to get component, prop, and slot IntelliSense, component navigation, syntax highlighting, rich hover details, and real-time warnings directly in VS Code:
 
 ```sh
 # Search for "bascik" in VS Code Extensions (Cmd+Shift+X or Ctrl+Shift+X)
 ```
 
-### Component Navigation and Hover Details
+### Context-Aware Component IntelliSense
 
-Start an opening tag to see matching project components in IntelliSense. For example, typing `<user-` suggests discovered components such as `user-card` and `user-badge`. Suggestions follow the closest owning Bascik config, including custom component roots, nested projects, and multi-root workspaces.
+Start an opening tag to see matching project components in IntelliSense. For example, typing `<user-` suggests discovered components such as `user-card` and `user-badge`. A component with a default slot completes as paired opening and closing tags with the cursor placed between them.
+
+Inside a component opening tag, IntelliSense suggests props inferred from that component's markup and omits props already supplied. Inside its body, element attributes receive named-slot suggestions from the nearest containing component:
+
+```html
+<user-card data-bascik-prop-role="Lead Engineer">
+  <span data-bascik-slot="name">Sarah Chen</span>
+</user-card>
+```
+
+Component authors can add a leading `@bascik` comment to describe the component and its inferred props and slots. Those descriptions appear in tag, prop, and slot suggestions and in hover details. Markup remains the source of truth, and editor warnings identify duplicate annotations or names that the component does not declare.
+
+Suggestions follow the closest owning Bascik config, including custom component roots, nested projects, and multi-root workspaces.
+
+### Component Navigation and Hover Details
 
 Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ctrl` (Windows/Linux), and click to jump straight to the component definition file:
 
@@ -74,7 +88,7 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
 </user-card>
 ```
 
-Hover without clicking to inspect the component source path, declared props and slots, and included styles or scripts.
+Hover without clicking to inspect the component description, source path, inferred props, named and default slots, member descriptions, and included styles or scripts.
 
 The same gesture works for relative imports, the `@/` import-root alias, and `src="..."` attributes inside build and server scripts:
 

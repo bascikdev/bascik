@@ -1,6 +1,6 @@
 # VS Code Extension
 
-The official Bascik extension brings component navigation, tag suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It catches component contract, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
+The official Bascik extension brings component navigation, context-aware component, prop, and slot suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It infers component contracts from markup and catches component metadata, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
 
 ## Install the Extension
 
@@ -20,6 +20,59 @@ IntelliSense lists discovered names such as `docs-nav`, `docs-sidebar`, and `doc
 
 Suggestions appear only while typing an opening tag name. They are not offered in closing tags, attributes, HTML comments, scripts, styles, or text areas.
 
+When a component exposes a default slot, selecting its suggestion inserts a paired snippet and places the cursor between the tags:
+
+```html
+<user-card></user-card>
+```
+
+Components without a default slot complete only the tag name, so IntelliSense does not imply that child content is accepted.
+
+## Complete Props and Slots in Context
+
+Inside a discovered component's opening tag, IntelliSense suggests every prop inferred from the component markup:
+
+```html
+<user-card data-bascik-prop-role="Lead Engineer">
+```
+
+Selecting a prop inserts `data-bascik-prop-name=""` and places the cursor inside the value. A prop already supplied on that opening tag is omitted from the suggestions.
+
+Inside the component body, start an element opening tag to see its named slots:
+
+```html
+<user-card>
+  <span data-bascik-slot="name">Sarah Chen</span>
+</user-card>
+```
+
+Named-slot suggestions appear only within the nearest containing Bascik component. They are not repeated when the element already has a `data-bascik-slot` attribute. Default slots need no attribute, so they are represented by the paired component snippet rather than an attribute suggestion.
+
+## Describe Inferred Component Contracts
+
+Bascik infers the public contract directly from component markup. Props come from `data-bascik-prop-*` declarations and prop names referenced by `data-bascik-attr-*`, `data-bascik-text`, or `data-bascik-html`. Named and default slots come from `data-bascik-slot` declarations. Inline or companion styles and inline scripts are also detected.
+
+Add an optional leading `@bascik` comment to describe the component and its inferred members:
+
+```html
+<!-- @bascik
+Displays a person's identity and available actions.
+@prop role - The person's role or job title.
+@slot actions - Controls displayed after the profile details.
+@slot default - The primary profile content.
+-->
+<article data-bascik-attr-aria-label="role">
+  <div data-bascik-slot></div>
+  <footer data-bascik-slot="actions"></footer>
+</article>
+```
+
+The comment must appear before component markup, `<style>`, or `<script>` elements. A byte-order mark, whitespace, and ordinary leading comments may precede it.
+
+Markup remains authoritative. An `@prop` or `@slot` line adds a description to a member that the markup already declares, but it cannot create a new prop or slot. Use `@slot default` to describe an inferred default slot. Annotation names are matched case-insensitively.
+
+Descriptions appear in component hover details, component completion documentation, prop suggestions, and named-slot suggestions. Authored text is displayed literally rather than interpreted as Markdown or HTML.
+
 ## Navigate Components and Inspect Their Contracts
 
 Hold Cmd on macOS or Ctrl on Windows and Linux, then click a custom element name to open its component HTML file:
@@ -30,7 +83,7 @@ Hold Cmd on macOS or Ctrl on Windows and Linux, then click a custom element name
 </user-card>
 ```
 
-Hover over the same tag to see its source path, declared props, named slots, and whether the component includes styles or scripts. This gives you the component's public contract without leaving the page you are editing.
+Hover over the same tag to see its source path, inferred props, named and default slots, optional descriptions, and whether the component includes styles or scripts. Component tag suggestions expose the same documentation before insertion. This gives you the component's public contract without leaving the page you are editing.
 
 Component discovery follows `directory.components` in the owning project's `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
@@ -68,8 +121,12 @@ The extension publishes actionable diagnostics in the editor and Problems panel:
 - **Invalid preserve tokens:** Warns when `data-bascik-preserve` contains a value other than `id`, `name`, or `class`.
 - **External form names:** Warns when a form posts to an external URL without `data-bascik-preserve="name"`.
 - **Unsupplied prop bindings:** Warns when a component uses `data-bascik-attr-*` with a prop that no project caller supplies.
+- **Duplicate metadata annotations:** Warns when a leading `@bascik` header documents the same prop or slot more than once. The first annotation supplies the description.
+- **Undeclared metadata annotations:** Warns when an `@prop` or `@slot` annotation does not match a member inferred from the component markup.
 
 Multiple inline `<style>` elements are supported and are not reported as an editor problem.
+
+Metadata annotation warnings use the current unsaved component text, so mistakes appear as you edit without waiting for the file to be saved. Hover and completion contracts refresh from disk when component files change.
 
 ## Audit Server and Stream Scripts
 
