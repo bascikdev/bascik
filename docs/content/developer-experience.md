@@ -55,13 +55,13 @@ When you edit a shared component or a global stylesheet used across many pages, 
 
 ## VS Code Editor Ergonomics
 
-Install the official Bascik extension to get code navigation, autocompletion, and real-time warnings directly in VS Code:
+Install the official Bascik extension to get code navigation, component hover details, syntax highlighting, and real-time warnings directly in VS Code:
 
 ```sh
 # Search for "bascik" in VS Code Extensions (Cmd+Shift+X or Ctrl+Shift+X)
 ```
 
-### Cmd/Ctrl + Click Code Navigation
+### Component Navigation and Hover Details
 
 Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ctrl` (Windows/Linux), and click to jump straight to the component definition file:
 
@@ -71,6 +71,8 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
   <span slot="name">Sarah Chen</span>
 </user-card>
 ```
+
+Hover without clicking to inspect the component source path, declared props and slots, and included styles or scripts.
 
 The same gesture works for relative imports, the `@/` import-root alias, and `src="..."` attributes inside build and server scripts:
 
@@ -84,7 +86,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 <script data-bascik-server src="./scripts/greet.ts"></script>
 ```
 
-Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from `bascik.config.ts` with a best-effort text match, so it follows a custom import root without executing your config.
+Alias imports resolve against `scripts.importRoot` (default `src`). The extension reads that key from the closest owning Bascik config, so nested projects keep their navigation and diagnostics isolated.
 
 ### Structural & Scoping Warnings in the Problems Panel
 
@@ -97,7 +99,7 @@ The extension catches invalid tags or unsafe scoping patterns in real time as yo
 }
 ```
 
-> **Deep Dive:** See setup details and feature guides in [Code Navigation](/tools/vscode-extension#1-code-navigation) and [Structural Warnings](/tools/vscode-extension#2-markup-and-script-structural-warnings).
+> **Deep Dive:** See setup details and the complete capability guide in [VS Code Extension](/tools/vscode-extension).
 
 ## Component Authoring Pleasantries
 

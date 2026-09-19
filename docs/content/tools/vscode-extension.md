@@ -1,141 +1,112 @@
 # VS Code Extension
 
-The Bascik VS Code extension is a lightweight editor companion for the scoping system. It helps you catch the patterns that are easy to write but unsafe to scope, as well as markup structures that might lead to layout or execution surprises.
+The official Bascik extension brings component navigation, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It catches component contract, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
 
-The extension is generated from the compatibility rules in [Scoping Compatibility](/compatibility), so the warning set stays aligned with the documented support matrix instead of drifting over time.
+## Install the Extension
 
-## What it does
+Install **Bascik** from the VS Code Extensions view by searching for `bascik`, or run **Extensions: Install Extensions** from the Command Palette and select the official extension.
 
-### 1. Code Navigation
-- **Go to Definition:** Command-click (or Ctrl-click) any custom component tag (e.g. `<my-component>`) to instantly jump to its definition HTML file in your project.
-- **Go to Definition for Script Imports:** Command-click (or Ctrl-click) a `./`, `../`, or `@/` specifier in a static import, bare import, `export ... from`, dynamic `import()`, or quoted or unquoted `src` attribute inside a `<script data-bascik-build>`, `<script data-bascik-routes>`, or `<script data-bascik-server>` tag to jump straight to an existing file on disk. `@/` resolves against `scripts.importRoot` (read from `bascik.config.ts` by a best-effort text match, default `src`). Bare package specifiers (including `@scope/pkg`), missing targets, import-like text outside JavaScript code, and imports in plain client `<script>` tags are not resolved.
+The extension activates automatically for HTML, CSS, JavaScript, and TypeScript files in a workspace. It uses Bascik's standard project layout without requiring editor settings.
 
-### 2. Markup and Script Structural Warnings
-- **Unclosed Component Tags (Warning):** If a custom component tag is not self-closing and lacks a corresponding closing tag (for example, `<my-card>` without `</my-card>`), the extension flags it. This helps you prevent unintentional self-closing layout collapse.
-- **Conflicting Script Attributes (Error):** Putting both `data-bascik-build` and `data-bascik-server` attributes on the same `<script>` tag is invalid because a script can only execute during the build or at request time, not both. The extension marks this as a high-visibility red error.
-- **Leading-Slash Specifiers (Error):** A specifier or `src` value that starts with a bare `/` (for example `import x from '/lib/x.ts'`) inside a `data-bascik-build`, `data-bascik-routes`, or `data-bascik-server` script is flagged as an error, matching the compiler. A bare slash is ambiguous between the filesystem root and the site root, so Bascik rejects it and the message names both valid rewrites: `@/lib/x.ts` (import root) or `./lib/x.ts` (relative to the file). Plain client `<script>` tags are not affected; a leading slash there is an ordinary site-root URL.
-- **Multiple `<style>` Blocks (Warning):** Warns if a component contains multiple inline `<style>` tags. While Bascik combines them at build time, separating style blocks in a single component file is discouraged for clean maintainability.
-- **Style Coexistence Conflicts (Warning):** Flags if a component has both a companion `.css` file and an inline `<style>` tag, encouraging consistent stylesheet structure within your project.
+## Navigate Components and Inspect Their Contracts
 
-### 3. CSS Scoping Compatibility Warnings
+Hold Cmd on macOS or Ctrl on Windows and Linux, then click a custom element name to open its component HTML file:
 
-- **Global Selector Warnings:** Flags CSS selectors that Bascik's scoping engine cannot isolate. For example, using `[id]` selectors is flagged because they cannot be scoped without DOM wrapping and would apply globally.
-
-### 4. JavaScript Scoping Compatibility Warnings
-
-- **Risky Selector Rewriting Patterns:** Warns on patterns that cannot be reliably rewritten at build time, such as runtime assignments to `el.id` or `el.name`. It directs you to stable alternatives, like querying the scoped element once and operating on its reference directly.
-
-### 5. Server Script Diagnostics
-
-The extension analyzes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks for contract validity and injection sinks:
-
-- **Missing Default Export (`server-script-missing-default-export`, Error):** Requires a default exported function `(request, context, { signal })`.
-- **Bascik Import (`server-script-bascik-import`, Error):** Flags imports from `@bascik/bascik` in server scripts because helpers belong in your project (such as `@/lib/server.ts`).
-- **URL Attribute Sink (`server-script-sink-url-attribute`, Warning):** Flags interpolations inside URL attributes (`href`, `src`, `action`, etc.). HTML entity escaping does not neutralize `javascript:` or `data:` URLs.
-- **Event Handler Sink (`server-script-sink-event-handler`, Warning):** Flags interpolations inside inline event handlers (`onclick`, etc.). Untrusted values should move to `data-*` attributes.
-- **Unquoted Attribute Sink (`server-script-sink-unquoted-attribute`, Warning):** Flags unquoted attribute values where spaces allow attribute breakout.
-- **Inline Script Sink (`server-script-sink-inline-script`, Warning):** Flags interpolations inside inline `<script>` tags where HTML entity escaping is ineffective in JavaScript context.
-- **Style Sink (`server-script-sink-style`, Warning):** Flags interpolations inside `style` attributes or `<style>` blocks.
-- **Unescaped Request Text Sink (`server-script-sink-text-unescaped`, Info):** Flags unescaped request-derived values in HTML body text when not wrapped in an escaping function.
-
-**Severity Policy:**
-- Structural sink misuse (`url-attribute`, `event-handler`, `unquoted-attribute`, `inline-script`, `style`) is flagged as a **Warning** because entity escaping cannot neutralize these contexts, regardless of data origin.
-- Unescaped request text (`text-unescaped`) is flagged as **Info** because the extension cannot see your application's data layer or database safety guarantees.
-
-See the [Server Scripts](/server-scripts) documentation for complete escaping and injection guidance.
-
-The extension does **not** warn on class names that only appear in JavaScript and never in a `class="…"` HTML attribute. Those classes are automatically discovered and scoped by the build pipeline. A `classList.toggle('active')` call is fully supported even if `active` never appears in the component template.
-
-## Install locally
-
-From the repo root:
-
-```sh
-yarn install
-yarn workspace bascik-vscode compile
+```html
+<user-card data-bascik-prop-role="Lead Engineer">
+  <span data-bascik-slot="name">Sarah Chen</span>
+</user-card>
 ```
 
-Then open the `extensions/vscode-bascik/` folder in VS Code and press F5. A `.vscode/launch.json` is already configured there, so VS Code will open an Extension Development Host window with the extension enabled.
+Hover over the same tag to see its source path, declared props, named slots, and whether the component includes styles or scripts. This gives you the component's public contract without leaving the page you are editing.
 
-## Test it locally
+Component discovery follows `directory.components` in the owning project's `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
-In the Extension Development Host window, open a Bascik project or the sample project in `my-site/` and try a few real checks:
+## Navigate Script Imports
 
-1. Open an HTML file with a custom component tag such as `<my-card>`.
-2. Place the cursor on that tag and use Command+Click (or Ctrl+Click) to jump to the matching component file.
-3. Add a known unsupported pattern to a component `.css` file, inline `<style>` block, or `<script>` tag.
-4. Check the Problems panel for a warning.
+Cmd/Ctrl-click relative imports, the `@/` alias, and `src` values in `data-bascik-build`, `data-bascik-routes`, and `data-bascik-server` scripts:
 
-Example unsupported patterns:
+```html
+<script data-bascik-build>
+  import { canonical } from '@/lib/canonical.ts';
+  console.log(await canonical());
+</script>
 
-```css
-[id] {
-  color: red;
-}
+<script data-bascik-server src="./scripts/profile.ts"></script>
 ```
 
-```js
-const panel = document.getElementById("panel");
-panel.id = "other";
-```
+The `@/` alias follows `scripts.importRoot` from the owning Bascik config and defaults to `src`. Relative imports resolve from the current HTML file.
 
-These warnings come from the same rules tracked in [Scoping Compatibility](/compatibility), and they are regenerated into the extension automatically before compile.
+> **Scope.** Import navigation applies to build, routes, and server scripts. Stream-script import navigation is not currently provided.
 
-## Why this is useful
+## Recognize Bascik Markup at a Glance
 
-Bascik is intentionally simple, but its scoping engine has a few sharp edges. The extension helps catch those issues before the build ever runs, which prevents silent breakage and makes the supported patterns easier to follow.
+Dedicated HTML syntax highlighting makes Bascik attributes easier to distinguish from standard markup. It covers prop and attribute bindings, slots, build scripts, route scripts, server scripts, and preserve directives.
 
-## Current feature scope
+## Catch Component and Template Problems
 
-The first pass focuses on high-confidence, high-signal warnings:
+The extension publishes actionable diagnostics in the editor and Problems panel:
 
-- component tag to component file navigation
-- unsupported CSS selector warnings
-- unsupported or risky JavaScript selector patterns
-- links to the compatibility docs for the exact supported rules
+- **Component naming:** Warns when an HTML component filename does not contain the hyphen required for a custom element name.
+- **Unclosed custom elements:** Warns when a non-self-closing component tag has no matching closing tag.
+- **Conflicting script directives:** Reports an error when a script combines more than one of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`.
+- **Leading-slash specifiers:** Reports imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path instead.
+- **Companion style conflicts:** Warns when a component combines an inline `<style>` element with a companion `.css` file.
+- **Unscoped ID references:** Identifies `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component.
+- **Invalid preserve tokens:** Warns when `data-bascik-preserve` contains a value other than `id`, `name`, or `class`.
+- **External form names:** Warns when a form posts to an external URL without `data-bascik-preserve="name"`.
+- **Unsupplied prop bindings:** Warns when a component uses `data-bascik-attr-*` with a prop that no project caller supplies.
 
-This is intentionally narrower than a full linter. The goal is not to replace a CSS or JS checker. The goal is to catch the patterns that Bascik's scoping pass cannot safely handle.
+Multiple inline `<style>` elements are supported and are not reported as an editor problem.
 
-## Example warnings
+## Audit Server and Stream Scripts
 
-### CSS
+Server and stream script diagnostics enforce the runtime contract and flag output contexts that need special handling:
 
-```css
-[id] {
-  color: red;
-}
-```
+- An inline server or stream script must `export default` a handler function.
+- Server and stream scripts must not import `@bascik/bascik`; project helpers should live under your import root instead.
+- Template substitutions in URL attributes, event handlers, unquoted attributes, inline scripts, and CSS contexts receive targeted warnings because normal HTML escaping is not sufficient there.
+- Request-derived values interpolated into text without an apparent escaping function receive an information diagnostic.
 
-This warns because `[id]` selectors are not scoped by Bascik and would apply globally.
+These diagnostics identify risky sinks, but they do not replace application-specific validation, escaping, or authorization. See [Server Scripts](/server-scripts) for complete guidance.
 
-### JavaScript
+## Validate API Routes While You Type
 
-```js
-const panel = document.getElementById("panel");
-panel.id = "other";
-```
+JavaScript and TypeScript files under `src/api/` receive route-specific checks:
 
-This warns because runtime property assignment to `id` is not rewritten by the build pipeline. Prefer querying the scoped element once and operating on its reference instead.
+- HTTP method exports must use recognized uppercase names: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, or `HEAD`.
+- Annotated handlers should return `Response` or `Promise<Response>`; `any` and `unknown` are also accepted when an exact type is unavailable.
+- A route file with no recognized HTTP method export reports an error.
+- A `request.json()` or `req.json()` call outside an apparent `try` block receives an information diagnostic because malformed JSON can otherwise produce an unhandled error.
 
-Class-only operations are not flagged, even when the class only appears in JavaScript:
+## Find Scoping Compatibility Issues Early
 
-```js
-// No warning: JS-only class names are automatically discovered and scoped
-el.classList.toggle('active');
-el.classList.replace('loading', 'ready');
-```
+The extension warns about CSS and JavaScript patterns that Bascik cannot reliably rewrite at build time.
 
-## Recommended pattern
+CSS checks cover:
 
-When the script needs to act on a specific instance, prefer:
+- standalone attribute selectors such as `[data-state]`, which can leak globally unless anchored by a scoped class
+- bare element names inside `:is()`, `:where()`, and `:has()`, which are not converted
 
-```js
-const panel = document.getElementById("panel");
-panel.style.display = "none";
-```
+JavaScript and TypeScript checks cover:
 
-This is stable because the ID is rewritten with a per-instance hash, and the script operates on the actual element reference rather than a string that the compiler cannot rewrite safely.
+- runtime `.id` assignment
+- attribute selectors passed to `querySelector()` or `querySelectorAll()`
+- template-literal class values assigned through `className` or `classList.replace()`
+- runtime custom-property names passed to `style.setProperty('--name', value)`
 
-## Source of truth
+Each warning includes a safer alternative, such as retaining an element reference, using a static scoped class, or anchoring a selector with a class. The checks follow the rules documented in [Scoping Compatibility](/compatibility).
 
-The extension follows the compatibility rules documented in [Scoping Compatibility](/compatibility).
+## Work Across Nested and Multi-Root Projects
+
+The extension discovers Bascik configs recursively inside every VS Code workspace folder. Each config directory is treated as an independent project with its own component roots, import root, component usage index, navigation, hover details, and diagnostics.
+
+When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults.
+
+Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
+
+## Develop the Extension Locally
+
+From the Bascik repository root, compile the extension with `yarn ext:compile`. Open `extensions/vscode-bascik` in VS Code and press F5 to launch an Extension Development Host.
+
+The extension requires VS Code 1.90 or newer. Repository contributors can run its focused tests through the extension scripts in the root `package.json`.

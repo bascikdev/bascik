@@ -2,7 +2,7 @@
   "name": "bascik-vscode",
   "displayName": "Bascik",
   "publisher": "bascik",
-  "description": "VS Code support for Bascik component tags and scoping compatibility warnings.",
+  "description": "Navigate Bascik components and catch scoping, server script, stream, and API route issues as you type.",
   "icon": "icon.png",
   "version": "0.1.0",
   "license": "MIT",
