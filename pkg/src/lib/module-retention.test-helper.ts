@@ -1146,6 +1146,17 @@ export default function retentionShared129(request, context) { ${requestObservat
     pending.assertIdle();
   }
   const depObservations: InlinePageObservation[] = [];
+  // Exact served output for the build-dependency fixture. The data-bascik-build script's
+  // console.log output (with trailing newline) replaces the script tag; the live-reload script
+  // is appended. The data-bascik-server script is NOT executed on disk (inert placeholder), but
+  // IS executed at request time (its output replaces the placeholder). Never derived from a
+  // received page.
+  const expectedBuildDepDiskOutput = (revision: number) => Buffer.from(
+    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}\n</p><script type="text/bascik-server" data-bascik-server-id="server_script_70616765732f696e6c696e652e68746d6c3a3a31"></script>${getLiveReloadScript()}</body></html>`,
+  );
+  const expectedBuildDepHttpOutput = (revision: number) => Buffer.from(
+    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}\n</p>inline-0:test-dep${getLiveReloadScript()}</body></html>`,
+  );
   async function verifyBuildDep(revision: number, deleted = false) {
     const response = await readResponse("/inline?request=test-dep");
     if (deleted) {
@@ -1153,12 +1164,12 @@ export default function retentionShared129(request, context) { ${requestObservat
       // The dev server retains the last successfully transpiled page in mem store,
       // but dist/inline.html is not overwritten.
       assert.equal(response.status, 200, "deleted build-dependency HTTP status (retains previous build in dev mem)");
-      assert(response.text.includes("build-"), "previous build served during build-error");
+      assert.deepEqual(response.bytes, expectedBuildDepHttpOutput(revision), "exact last-good build served during build-error");
     } else {
       assert.equal(response.status, 200, "build-dependency recovery HTTP status");
-      assert(response.text.includes(`build-${revision}`), `build-dependency response includes build-${revision}: got ${response.text}`);
+      assert.deepEqual(response.bytes, expectedBuildDepHttpOutput(revision), "exact build-dependency recovery HTTP bytes");
       const distHtml = await readFile(join(project, "dist/inline.html"), "utf8");
-      assert(distHtml.includes(`build-${revision}`), `disk inline.html includes build-${revision}: got ${distHtml}`);
+      assert.deepEqual(Buffer.from(distHtml), expectedBuildDepDiskOutput(revision), "exact disk inline.html build-dependency bytes");
     }
   }
   async function buildDepTransition(watchEvent: "change" | "unlink" | "add", revision: number, expectRevision = revision) {
@@ -2012,7 +2023,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       const half = buildDepOptions.measuredRevisions / 2;
       for (let revision = 1; revision <= half; revision++) {
         await buildDepTransition("change", changing ? revision : 0, changing ? revision : 0);
-        await buildDepTransition("unlink", 0, 0);
+        await buildDepTransition("unlink", 0, changing ? revision : 0);
         await buildDepTransition("add", changing ? revision : 0, changing ? revision : 0);
         await buildDepTransition("change", 0, 0);
         assert.deepEqual(await readFile(join(project, "src/lib/build-helper.ts"), "utf8"), "export const buildNumber = 0;", "restore original authored build helper bytes");
@@ -2020,7 +2031,7 @@ export default function retentionShared129(request, context) { ${requestObservat
       await checkpoint("batch-1", half);
       for (let revision = half + 1; revision <= buildDepOptions.measuredRevisions; revision++) {
         await buildDepTransition("change", changing ? revision : 0, changing ? revision : 0);
-        await buildDepTransition("unlink", 0, 0);
+        await buildDepTransition("unlink", 0, changing ? revision : 0);
         await buildDepTransition("add", changing ? revision : 0, changing ? revision : 0);
         await buildDepTransition("change", 0, 0);
         assert.deepEqual(await readFile(join(project, "src/lib/build-helper.ts"), "utf8"), "export const buildNumber = 0;", "restore original authored build helper bytes");

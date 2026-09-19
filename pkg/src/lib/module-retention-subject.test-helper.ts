@@ -58,6 +58,9 @@ let heldBuildDepGate: {
 
 async function enterHeldBuildDepGate(event: string): Promise<void> {
   if (!holdBuildDepCallback || !heldBuildDepGate) return;
+  // The held gate discriminates by event only. This is safe for the current
+  // single-path build-dependency fixture (src/lib/build-helper.ts); if the gate
+  // is ever reused for a multi-path fixture, it must also match the canonical path.
   if (armed && armed.expectedWatchEvent !== event) return;
   heldBuildDepGate.entered.resolve();
   await heldBuildDepGate.release.promise;
@@ -75,8 +78,25 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
     watcher.on = function(this: ReturnType<typeof originalWatch>, event: string, listener: (...lArgs: unknown[]) => unknown) {
       if (["add", "change", "unlink"].includes(event)) {
         const wrappedListener = async (...lArgs: unknown[]) => {
+          // Capture immutable operation identity at actual compilation callback entry.
+          const path = lArgs[0];
+          const matchesArmed = armed?.kind === "build-dependency-lifecycle"
+            && armed.expectedWatchEvent === event
+            && typeof path === "string" && resolve(path) === armed.path;
+          const operation = matchesArmed
+            ? { event, path: armed!.path, generation: armed!.asset?.generation }
+            : undefined;
           await enterHeldBuildDepGate(event);
-          return Reflect.apply(listener, this, lArgs);
+          try {
+            return await Reflect.apply(listener, this, lArgs);
+          } finally {
+            // Completion settles only after the real compilation callback settles.
+            if (operation && armed?.kind === "build-dependency-lifecycle"
+                && armed.expectedWatchEvent === operation.event
+                && armed.asset?.generation === operation.generation) {
+              resolveArmedCompletion();
+            }
+          }
         };
         return Reflect.apply(origOn, this, [event, wrappedListener]) as ReturnType<typeof originalWatch>;
       }
@@ -115,16 +135,6 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
         return;
       }
       observation.watchEvent = event;
-      if (armed?.kind === "build-dependency-lifecycle") {
-        if (armed.expectedWatchEvent === "unlink") {
-          if (!observation.publications.includes("build-error")) {
-            observation.publications.push("build-error");
-          }
-          resolveArmedCompletion();
-        } else if (observation.publications.includes("transpiled")) {
-          resolveArmedCompletion();
-        }
-      }
       return;
     }
     if (devModuleEnabled) {
@@ -502,9 +512,6 @@ eventEmitter.on("transpiled", (event?: { relativePagePath?: string }) => {
     if (!armed.asset.publications.includes("transpiled")) {
       armed.asset.publications.push("transpiled");
     }
-    if (armed.asset.watchEvent) {
-      resolveArmedCompletion();
-    }
     return;
   }
   if (devModuleEnabled && armed?.kind === "dev-module-lifecycle") {
@@ -572,9 +579,6 @@ eventEmitter.on("build-error", error => {
     if (!armed.asset.publications.includes("build-error")) {
       armed.asset.publications.push("build-error");
     }
-    if (armed.asset.watchEvent) {
-      resolveArmedCompletion();
-    }
     return;
   }
   if (devModuleEnabled && armed?.kind === "dev-module-lifecycle" && devModuleExternalEnabled && armed.expectedWatchEvent === "unlink") {
@@ -591,22 +595,13 @@ eventEmitter.on("build-error", error => {
   }
   process.send!({ error: JSON.stringify(error) });
 });
-eventEmitter.on("watch-path-processed", () => {
+eventEmitter.on("watch-path-processed", (event?: { path?: string }) => {
   publications++;
   if (buildDepEnabled && armed?.kind === "build-dependency-lifecycle") {
-    assert(armed.asset, "build-dependency publication requires armed operation");
-    if (armed.expectedWatchEvent === "unlink") {
-      if (!armed.asset.publications.includes("build-error")) {
-        armed.asset.publications.push("build-error");
-      }
-    } else {
-      if (!armed.asset.publications.includes("transpiled")) {
-        armed.asset.publications.push("transpiled");
-      }
-    }
-    if (armed.asset.watchEvent) {
-      resolveArmedCompletion();
-    }
+    // Validate the payload without treating it as a substitute publication.
+    assert(armed.asset, "build-dependency watch-path-processed requires armed operation");
+    assert(event?.path && resolve(event.path) === armed.path, "exact build-dependency watch-path-processed path");
+    return;
   }
   if (devModuleEnabled && !devModuleInlineEnabled && !devModuleExternalEnabled && armed?.kind === "dev-module-lifecycle") {
     assert(armed.asset, "dev-module watch-path-processed publication requires armed operation");
