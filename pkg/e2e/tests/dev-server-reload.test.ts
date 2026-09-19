@@ -391,7 +391,13 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     const componentMarker = `component stage ${Date.now()}`;
     const pageMarker = `page final ${Date.now()}`;
 
+    // Subscribe before the component write and wait for its rebuild to publish
+    // before issuing the newer direct page edit. This establishes the intended
+    // source-event order without an arbitrary delay while still allowing the
+    // component-triggered reload/navigation to overlap the direct edit.
+    const componentReload = await subscribeToServerReload('/scope-test');
     await writeFile(componentPath, originalComponentContent + `\n<span data-testid="overlap-comp-marker">${componentMarker}</span>`, 'utf8');
+    await componentReload.reload;
 
     const newest = originalPageContent.replace(
       '<h1>JS Scope Rewriting — Live Test</h1>',

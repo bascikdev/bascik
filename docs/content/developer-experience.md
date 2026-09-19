@@ -84,7 +84,7 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
 ```html
 <!-- Hold Cmd/Ctrl and click <user-card> to open src/components/user-card/user-card.html -->
 <user-card data-bascik-prop-role="Lead Engineer">
-  <span slot="name">Sarah Chen</span>
+  <span data-bascik-slot="name">Sarah Chen</span>
 </user-card>
 ```
 
@@ -159,7 +159,7 @@ Use custom tags anywhere in your pages without `import` statements or component 
 <body>
   <!-- Bascik auto-discovers <user-card> from src/components/user-card/user-card.html -->
   <user-card data-bascik-prop-role="Lead Engineer">
-    <span slot="name">Sarah Chen</span>
+    <span data-bascik-slot="name">Sarah Chen</span>
   </user-card>
 </body>
 </html>
@@ -178,7 +178,7 @@ Compare source template code with what appears when inspecting elements in brows
 **Your Source Code (`src/pages/index.html`):**
 ```html
 <user-card data-bascik-prop-role="Lead Engineer">
-  <span slot="name">Sarah Chen</span>
+  <span data-bascik-slot="name">Sarah Chen</span>
 </user-card>
 ```
 

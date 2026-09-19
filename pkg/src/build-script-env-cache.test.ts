@@ -5,7 +5,6 @@ import {
   createFixtureDirs,
   readDistHtml,
   runRealBuildScriptBuild,
-  writeBuildScriptConfig,
   writeFixtureFile,
 } from "./lib/build-script-isolation.fixtures.ts";
 

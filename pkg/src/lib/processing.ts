@@ -1095,9 +1095,12 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   const componentName = rawFileName.split(".")[0].toLowerCase();
   if (!componentName) return;
   const pagesToTranspile = mem.pagesThisComponentIsUsedOn(componentName);
-  const componentList = await listComponents();
-  const globalStylesHtml = await resolveInlineStylesHtml();
-  await processPageBatch(pagesToTranspile, componentList, globalStylesHtml);
+  // Enter the batch immediately so it claims each affected page generation at
+  // the component event boundary. Loading components and global styles inside
+  // processPageBatch happens only after those claims. Otherwise a newer direct
+  // page event can enqueue while these prerequisites load, then be incorrectly
+  // superseded when this older component rebuild claims its generation late.
+  await processPageBatch(pagesToTranspile);
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
@@ -1271,6 +1274,11 @@ export const pageProcessing = (
   componentList?: ComponentList,
   globalStylesHtml?: string,
 ): Promise<string | undefined> => {
+  // Claim this direct source edit when it is enqueued, before it waits on an
+  // older page write or reads source. A broad component rebuild that was
+  // observed earlier must not claim ownership after this newer page event and
+  // publish stale source over it merely because the direct job was queued.
+  const generation = nextPageGeneration(pagePath);
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   let resolveAvailable!: (relativePagePath: string | undefined) => void;
   let rejectAvailable!: (error: unknown) => void;
@@ -1286,10 +1294,6 @@ export const pageProcessing = (
           resolveAvailable(undefined);
           return undefined;
         }
-        // Claim when this page is about to publish, not when the request was
-        // made. A broad worker rebuild that started earlier captured an older
-        // snapshot; this specific newer edit bumps past it so it supersedes.
-        const generation = nextPageGeneration(pagePath);
         if (isCurrentGeneration(pagePath, generation)) {
           const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies, cspHashes } = result;
           if (!BascikConfig.isBuild) {

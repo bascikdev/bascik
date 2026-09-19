@@ -1572,6 +1572,15 @@ suite('Extension Integration Suite', () => {
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
+      await waitFor(
+        () =>
+          vscode.languages.getDiagnostics(doc.uri).some((diagnostic) =>
+            diagnostic.message.includes(
+              'External form actions require data-bascik-preserve="name"',
+            ),
+          ),
+        'Expected warning for an external form with scoped names',
+      );
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
       const match = diagnostics.find((diagnostic) =>
         diagnostic.message.includes(

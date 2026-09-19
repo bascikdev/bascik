@@ -3334,6 +3334,51 @@ describe("monotonic dev publication & concurrency overlap", () => {
     expect(emitCountAfterBatch).toBe(emitCountAfterDirect);
   });
 
+  it("gives a queued direct page edit ownership over an older broad rebuild", async () => {
+    const eventsModule = await import("./events.ts");
+    let releaseBatchRead!: () => void;
+    const batchReadGate = new Promise<void>((resolveGate) => {
+      releaseBatchRead = resolveGate;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD COMPONENT REBUILD</h1></body></html>";
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW QUEUED PAGE EDIT</h1></body></html>";
+    let indexReadCount = 0;
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async (filePath: string) => {
+      if (!filePath.includes("index.html")) {
+        return "<!DOCTYPE html><html><head></head><body>default</body></html>";
+      }
+      indexReadCount++;
+      if (indexReadCount === 1) {
+        await batchReadGate;
+        return OLD_HTML;
+      }
+      return NEW_HTML;
+    });
+
+    const broadRebuild = processPageBatch([PAGE_ABS], {});
+    await vi.waitFor(() => expect(indexReadCount).toBe(1));
+
+    // The page watcher observes the newer edit while the older component
+    // rebuild is still reading. Ownership must transfer at enqueue time.
+    const directEdit = pageProcessing(PAGE_ABS, {});
+    releaseBatchRead();
+
+    await broadRebuild;
+    await directEdit;
+
+    const storedPages = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([input]) => String(input.pageContent),
+    );
+    expect(storedPages.some((content) => content.includes("OLD COMPONENT REBUILD"))).toBe(false);
+    expect(storedPages.some((content) => content.includes("NEW QUEUED PAGE EDIT"))).toBe(true);
+
+    const transpiledEvents = (eventsModule.eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([event]) => event === "transpiled",
+    );
+    expect(transpiledEvents).toHaveLength(1);
+  });
+
   it("drops a stale batch completion when a newer batch for the same page has published", async () => {
     let releaseBatch1Read!: () => void;
     const batch1ReadGate = new Promise<void>((res) => {
@@ -3445,12 +3490,17 @@ describe("monotonic dev publication & concurrency overlap", () => {
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
 
     let releaseWorkerRun!: () => void;
+    let markWorkerEntered!: () => void;
     const workerRunGate = new Promise<void>((res) => {
       releaseWorkerRun = res;
+    });
+    const workerEntered = new Promise<void>((res) => {
+      markWorkerEntered = res;
     });
 
     (WorkerPool as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
       this.run = vi.fn(async () => {
+        markWorkerEntered();
         await workerRunGate;
         return {
           relativePagePath: "pages/index.html",
@@ -3467,6 +3517,7 @@ describe("monotonic dev publication & concurrency overlap", () => {
 
     // Start processAllPages with worker mode
     const allPagesPromise = processAllPages({ useWorkers: true });
+    await workerEntered;
 
     // While worker is paused, direct pageProcessing runs with newer HTML
     const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW DIRECT OVER WORKER</h1></body></html>";

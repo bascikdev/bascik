@@ -1484,6 +1484,8 @@ describe("scripts.cache.environment", () => {
   };
 
   const runAndGetCacheKey = async (script: string) => {
+    mockWriteFile.mockClear();
+    clearBuildScriptCaches();
     mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
     resolveWith("<p>result</p>");
     await executeBuildScripts(script);
