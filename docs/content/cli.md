@@ -350,6 +350,13 @@ Unused components (1)
 | Unmatched component tag usage | `unmatched-tag` | Warning |
 | Unused component file | `unused-component` | Warning |
 | Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
+| WHATWG HTML5 parse errors in compiled `dist/` HTML files | `dist-html-spec` | Error |
+
+The `dist-html-spec` check requires [parse5](https://parse5.js.org/) — the reference WHATWG HTML5 parser — to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
+
+```sh
+npm install --save-dev parse5
+```
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic (template has a `data-bascik-prop-*` placeholder, no usage appears to supply it) produced noisy false positives across conditional markup and dynamic content injection paths, so it was removed rather than made misleading.
 
@@ -386,6 +393,8 @@ Schema:
   "warnings": 1,
   "pagesChecked": 8,
   "componentsChecked": 12,
+  "distHtmlChecked": 8,
+  "distHtmlSpecHintNeeded": false,
   "findings": [
     {
       "category": "unmatched-tag",
@@ -403,6 +412,8 @@ Schema:
 }
 ```
 
+`distHtmlChecked` is the number of `dist/` HTML files parse5 validated, or `null` when `dist/` does not exist or parse5 is not installed. `distHtmlSpecHintNeeded` is `true` when `dist/` has HTML files but parse5 is absent.
+
 `bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 
 ```sh
@@ -415,6 +426,7 @@ bascik --check && bascik --build
 | --- | --- | --- |
 | **VS Code built-in CSS** | CSS syntax errors in `.css` files | Enabled by default |
 | **[Stylelint](https://stylelint.io)** | CSS syntax errors, invalid properties, custom conventions | `npm install -D stylelint && npx stylelint "**/*.css"` |
+| **[parse5](https://parse5.js.org/)** | WHATWG HTML5 parse errors in compiled `dist/` output | `npm install -D parse5` then `bascik --check` |
 | **[HTMLHint](https://htmlhint.com)** | HTML structure errors in page and component `.html` files | `npm install -D htmlhint && npx htmlhint "src/**/*.html"` |
 | **[Webhint](https://webhint.io)** | Web standards, ARIA accessibility, and cross-browser compatibility | `npm install -D hint && npx hint "src/**/*.html"` (with recommended `.hintrc`) |
 | **[ESLint](https://eslint.org)** | JavaScript syntax and logic errors in `.js` files | `npm install -D eslint && npx eslint "src/**/*.js"` |

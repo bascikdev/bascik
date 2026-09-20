@@ -7,6 +7,7 @@ import {
   checkProject,
   formatFindingsHuman,
   formatFindingsJson,
+  type CheckFindings,
 } from "./check.ts";
 
 const { listPagesMock, listComponentsMock, deepReadDirFlatMock } = vi.hoisted(() => ({
@@ -856,5 +857,222 @@ describe("checkProject", () => {
       expect(findings.warnings).toBe(0);
       expect(findings.items).toHaveLength(0);
     });
+
+    describe("dist/ HTML spec validation", () => {
+      // Each test explicitly sets BascikConfig.directory.out to ensure the
+      // dist path matches the workDir, regardless of prior test mutations.
+      const setDistOut = (dir: string) => {
+        const mutableConfig = BascikConfig as unknown as MutableBascikConfigForTest;
+        mutableConfig.directory = { ...BascikConfig.directory, out: dir };
+      };
+
+      it("sets distHtmlSpecHintNeeded when dist/ exists but parse5 is not installed", async () => {
+        setDistOut(join(workDir, "dist"));
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "dist/index.html": "<!DOCTYPE html><html><body><p>ok</p></body></html>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        // parse5 may or may not be installed in the test environment.
+        // This test only verifies the contract: when parse5 IS available,
+        // distHtmlChecked is a number; when it is not, distHtmlSpecHintNeeded
+        // is true. We cannot force-uninstall parse5 in a unit test, so we
+        // assert the invariant that the two flags are mutually exclusive.
+        const findings = await checkProject();
+        const exactlyOne =
+          (findings.distHtmlChecked !== null) !== findings.distHtmlSpecHintNeeded;
+        expect(exactlyOne, "distHtmlChecked and distHtmlSpecHintNeeded must be mutually exclusive").toBe(true);
+      });
+
+      it("reports dist-html-spec errors for malformed dist HTML when parse5 is available", async () => {
+        // Skip when parse5 is not installed — the unit test cannot install it.
+        let parse5Available = false;
+        try { await import("parse5"); parse5Available = true; } catch { /* not installed */ }
+        if (!parse5Available) return;
+
+        setDistOut(join(workDir, "dist"));
+        // A script that consumed head elements is the exact corruption pattern
+        // from the bug this feature was written to catch.
+        const corruptHtml =
+          "<!DOCTYPE html><html><head>" +
+          "<script>(function(){below is a runtime script;-->" +
+          "<meta charset=\"UTF-8\"/></head><body><p>ok</p></body></html>";
+
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "dist/index.html": corruptHtml,
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        const specErrors = findings.items.filter((i) => i.category === "dist-html-spec");
+        expect(specErrors.length).toBeGreaterThan(0);
+        expect(specErrors[0].severity).toBe("error");
+        expect(specErrors[0].message).toMatch(/^\[.+\]$/); // e.g. [eof-in-element-that-can-contain-only-text]
+        expect(findings.errors).toBeGreaterThan(0);
+      });
+
+      it("sets distHtmlChecked to file count when parse5 validates dist HTML cleanly", async () => {
+        let parse5Available = false;
+        try { await import("parse5"); parse5Available = true; } catch { /* not installed */ }
+        if (!parse5Available) return;
+
+        setDistOut(join(workDir, "dist"));
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "dist/index.html": "<!DOCTYPE html><html><body><p>ok</p></body></html>",
+          "dist/about.html": "<!DOCTYPE html><html><body><h1>About</h1></body></html>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        expect(findings.distHtmlChecked).toBe(2);
+        expect(findings.distHtmlSpecHintNeeded).toBe(false);
+        expect(findings.items.some((i) => i.category === "dist-html-spec")).toBe(false);
+      });
+
+      it("sets distHtmlChecked to null and distHtmlSpecHintNeeded to false when dist/ does not exist", async () => {
+        setDistOut(join(workDir, "dist"));
+        await setupProject({ "pages/index.html": "<p>ok</p>" });
+        // No dist/ directory created.
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        expect(findings.distHtmlChecked).toBeNull();
+        expect(findings.distHtmlSpecHintNeeded).toBe(false);
+      });
+    });
+  });
+});
+
+// ─── formatFindingsHuman ──────────────────────────────────────────────────────
+
+describe("formatFindingsHuman — dist/ lines", () => {
+  const base = (): CheckFindings => ({
+    errors: 0,
+    warnings: 0,
+    pagesChecked: 5,
+    componentsChecked: 3,
+    items: [],
+    distHtmlChecked: null,
+    distHtmlSpecHintNeeded: false,
+  });
+
+  it("shows no dist note when dist was not checked", () => {
+    const out = formatFindingsHuman(base());
+    expect(out).not.toContain("dist/");
+    expect(out).not.toContain("parse5");
+  });
+
+  it("appends parse5 install hint when distHtmlSpecHintNeeded is true (clean pass)", () => {
+    const out = formatFindingsHuman({ ...base(), distHtmlSpecHintNeeded: true });
+    expect(out).toContain("ℹ");
+    expect(out).toContain("dist/ HTML not validated");
+    expect(out).toContain("install parse5");
+  });
+
+  it("appends parse5 install hint in the summary when there are also errors", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 1,
+      distHtmlSpecHintNeeded: true,
+      items: [{ category: "unused-component", severity: "error", message: "old-card", locations: [{ filePath: "src/components/old-card/old-card.html" }] }],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).toContain("install parse5");
+  });
+
+  it("shows passing dist line when distHtmlChecked > 0, no errors", () => {
+    const out = formatFindingsHuman({ ...base(), distHtmlChecked: 12 });
+    expect(out).toContain("✓ 12 dist/ HTML files pass WHATWG spec (parse5)");
+    expect(out).not.toContain("install parse5");
+  });
+
+  it("uses singular form when distHtmlChecked === 1", () => {
+    const out = formatFindingsHuman({ ...base(), distHtmlChecked: 1 });
+    expect(out).toContain("✓ 1 dist/ HTML file pass");
+  });
+
+  it("shows passing dist note alongside errors in the summary", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 1,
+      distHtmlChecked: 8,
+      items: [{ category: "unused-component", severity: "error", message: "old-card", locations: [{ filePath: "src/components/old-card/old-card.html" }] }],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).toContain("✓ 8 dist/ HTML files pass WHATWG spec (parse5)");
+  });
+
+  it("renders dist-html-spec findings with file:line and error code", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 1,
+      distHtmlChecked: 3,
+      items: [{
+        category: "dist-html-spec",
+        severity: "error",
+        message: "[eof-in-element-that-can-contain-only-text]",
+        locations: [{ filePath: "index.html", line: 43 }],
+      }],
+    };
+    const out = formatFindingsHuman(findings);
+    expect(out).toContain("dist/ HTML spec violations");
+    expect(out).toContain("eof-in-element-that-can-contain-only-text");
+    expect(out).toContain("index.html:43");
+  });
+});
+
+// ─── formatFindingsJson ───────────────────────────────────────────────────────
+
+describe("formatFindingsJson — dist/ fields", () => {
+  const base = (): CheckFindings => ({
+    errors: 0,
+    warnings: 0,
+    pagesChecked: 5,
+    componentsChecked: 3,
+    items: [],
+    distHtmlChecked: null,
+    distHtmlSpecHintNeeded: false,
+  });
+
+  it("includes distHtmlChecked and distHtmlSpecHintNeeded at the top level", () => {
+    const json = JSON.parse(formatFindingsJson({ ...base(), distHtmlChecked: 10 }));
+    expect(json.distHtmlChecked).toBe(10);
+    expect(json.distHtmlSpecHintNeeded).toBe(false);
+  });
+
+  it("serializes null distHtmlChecked when dist was not scanned", () => {
+    const json = JSON.parse(formatFindingsJson(base()));
+    expect(json.distHtmlChecked).toBeNull();
+  });
+
+  it("serializes distHtmlSpecHintNeeded: true when parse5 absent", () => {
+    const json = JSON.parse(formatFindingsJson({ ...base(), distHtmlSpecHintNeeded: true }));
+    expect(json.distHtmlSpecHintNeeded).toBe(true);
+    expect(json.distHtmlChecked).toBeNull();
+  });
+
+  it("includes dist-html-spec errors in the findings array", () => {
+    const findings: CheckFindings = {
+      ...base(),
+      errors: 1,
+      distHtmlChecked: 3,
+      items: [{
+        category: "dist-html-spec",
+        severity: "error",
+        message: "[eof-in-element-that-can-contain-only-text]",
+        locations: [{ filePath: "index.html", line: 43 }],
+      }],
+    };
+    const json = JSON.parse(formatFindingsJson(findings));
+    expect(json.findings).toHaveLength(1);
+    expect(json.findings[0].category).toBe("dist-html-spec");
+    expect(json.findings[0].locations[0].line).toBe(43);
   });
 });

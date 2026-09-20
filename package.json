@@ -64,6 +64,7 @@
     "docs:typecheck": "yarn workspace bascik-docs typecheck",
     "docs:unit": "yarn workspace bascik-docs unit",
     "docs:integration": "yarn workspace bascik-docs integration",
+    "pkg:check:e2e": "yarn workspace @bascik/bascik check:e2e",
     "docs:e2e": "yarn workspace bascik-docs e2e",
     "docs:lighthouse": "yarn workspace bascik-docs lighthouse",
     "docs:lighthouse:all": "yarn workspace bascik-docs lighthouse:all",

@@ -35,6 +35,50 @@
   </div>
 </footer>
 <script>
+  function normalizeHashId(raw) {
+    if (!raw) return '';
+    try {
+      raw = decodeURIComponent(raw);
+    } catch (_) { }
+    return raw.replace(/^#/, '').toLowerCase().replace(/&#39;|&apos;/g, "'").replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+  }
+
+  function findTargetElement(hash) {
+    if (!hash) return null;
+    let rawId = hash.startsWith('#') ? hash.slice(1) : hash;
+    try {
+      rawId = decodeURIComponent(rawId);
+    } catch (_) { }
+
+    let el = document.getElementById(rawId);
+    if (el) return el;
+
+    const norm = normalizeHashId(rawId);
+    if (norm) {
+      el = document.getElementById(norm);
+      if (el) return el;
+      const headings = document.querySelectorAll('h1, h2, h3, h4, [id]');
+      for (let i = 0; i < headings.length; i++) {
+        const id = headings[i].id;
+        if (id && normalizeHashId(id) === norm) {
+          return headings[i];
+        }
+      }
+    }
+    return null;
+  }
+
+  function scrollToElement(target, smooth) {
+    if (!target) return;
+    const offset = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')
+    ) || 0;
+    const top = Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset);
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const behavior = (smooth && !prefersReduced) ? 'smooth' : 'auto';
+    window.scrollTo({ top: top, behavior: behavior });
+  }
+
   document.querySelectorAll('h2 .anchor-link, h3 .anchor-link').forEach(function (a) {
     a.addEventListener('click', function (e) {
       // Preserve standard link behaviors (new tab/window, context menu, etc.)
@@ -45,15 +89,9 @@
       const href = a.getAttribute('href') || '';
       history.replaceState(null, '', href);
 
-      const id = href.startsWith('#') ? href.slice(1) : '';
-      const target = id ? document.getElementById(id) : null;
+      const target = findTargetElement(href);
       if (target) {
-        const offset = parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')
-        ) || 0;
-        const top = Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset);
-        const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-        window.scrollTo({ top: top, behavior: behavior });
+        scrollToElement(target, true);
       }
 
       if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') return;
@@ -67,5 +105,26 @@
           // Clipboard may be unavailable (permissions / non-secure context)
         });
     });
+  });
+
+  function handleAutoScroll() {
+    if (!location.hash) return;
+    const target = findTargetElement(location.hash);
+    if (target) {
+      scrollToElement(target, false);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', handleAutoScroll);
+  } else {
+    handleAutoScroll();
+  }
+  window.addEventListener('load', handleAutoScroll);
+  window.addEventListener('hashchange', function () {
+    const target = findTargetElement(location.hash);
+    if (target) {
+      scrollToElement(target, true);
+    }
   });
 </script>

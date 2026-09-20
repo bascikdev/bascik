@@ -162,6 +162,7 @@ __metadata:
     css-tree: "npm:^3.2.1"
     esbuild: "npm:^0.28.2"
     fast-check: "npm:^4.9.0"
+    parse5: "npm:^8.0.1"
     postcss: "npm:^8.5.26"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.1.5"
@@ -170,6 +171,8 @@ __metadata:
     webidl2: "npm:^24.5.0"
   dependenciesMeta:
     chokidar:
+      optional: true
+    parse5:
       optional: true
   bin:
     bascik: bin/bascik.js

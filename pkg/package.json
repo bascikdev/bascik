@@ -40,7 +40,8 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "chokidar": "^5.0.0"
+    "chokidar": "^5.0.0",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
     "0x": "^6.0.0",
@@ -77,6 +78,7 @@
     "test:ci": "vitest run --project unit --coverage.enabled --coverage.reporter='text-summary'",
     "test:coverage": "vitest run --project unit --coverage.enabled",
     "test:all": "yarn unit && yarn integration",
+    "check:e2e": "cd e2e && node ../dist/index.js --check",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts --reporter=line",
     "e2e:dev:exec": "playwright test --config e2e/playwright.dev-exec.config.ts --reporter=line && playwright test --config e2e/playwright.dev-exec-gated.config.ts --reporter=line",

@@ -87,6 +87,7 @@ Bascik does not maintain a hardcoded allowlist of third-party custom element nam
 - API route method/export problems and route collisions
 - Unmatched or unused components
 - Advisory conventions such as component `<style>` placement and `<script>` placement ordering
+- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
 
 Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
 

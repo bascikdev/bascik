@@ -199,6 +199,8 @@ describe("index.ts CLI runner functions", () => {
       pagesChecked: 1,
       componentsChecked: 0,
       items: [],
+      distHtmlChecked: null,
+      distHtmlSpecHintNeeded: false,
     });
     const serveSpy = vi.spyOn(await import("./lib/server-prod.ts"), "startProdServer").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
@@ -305,6 +307,8 @@ describe("index.ts CLI runner functions", () => {
         warnings: 2,
         pagesChecked: 1,
         componentsChecked: 1,
+        distHtmlChecked: null,
+        distHtmlSpecHintNeeded: false,
         items: [
           {
             category: "unmatched-tag",
@@ -326,6 +330,8 @@ describe("index.ts CLI runner functions", () => {
         warnings: 1,
         pagesChecked: 1,
         componentsChecked: 0,
+        distHtmlChecked: null,
+        distHtmlSpecHintNeeded: false,
         items: [
           {
             category: "unmatched-tag",
@@ -349,6 +355,8 @@ describe("index.ts CLI runner functions", () => {
           warnings: 1,
           pagesChecked: 1,
           componentsChecked: 0,
+          distHtmlChecked: null,
+          distHtmlSpecHintNeeded: false,
           items: [
             {
               category: "unmatched-tag",
@@ -381,6 +389,8 @@ describe("index.ts CLI runner functions", () => {
           warnings: 1,
           pagesChecked: 1,
           componentsChecked: 0,
+          distHtmlChecked: null,
+          distHtmlSpecHintNeeded: false,
           items: [
             {
               category: "unmatched-tag",
