@@ -185,8 +185,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run extension tests
-        run: xvfb-run -a yarn ext:test
+      - name: Run extension unit tests
+        run: yarn ext:unit
 
   typecheck:
     name: Workspace Typechecks

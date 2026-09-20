@@ -21,7 +21,7 @@ It executes across three structured stages on Node 24:
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
 - **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, and `adapters/cloudflare/`.
 - **Spelling & Web Standards (`standards`)**: Runs `yarn check:spelling` (codespell) and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `extensions/vscode-bascik` (`xvfb-run -a yarn ext:test`), and `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`).
+- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `extensions/vscode-bascik` (`yarn ext:unit`), and `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`).
 - **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
 
 ### Stage 2: End-to-End Test Matrix (Parallel)
