@@ -6,7 +6,7 @@
  * thread. The worker boundary and the main-thread publishing path are never
  * mocked: the whole point of the parity suite is that identical serial and
  * worker builds publish identical artifact accounting. See
- * `worker-serial-parity.test.ts` and `targeted-build-owned-artifacts.test.ts`
+ * `worker-serial-parity.integration.test.ts` and `targeted-build-owned-artifacts.integration.test.ts`
  * for the consumers.
  */
 

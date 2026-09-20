@@ -6,7 +6,7 @@
  * staged/atomic finalize contract (corrupt/incompatible metadata degrades to
  * the safe additive fallback; a failed commit never breaks the previous valid
  * artifact set). The full CLI integration behavior is covered in
- * `targeted-build-owned-artifacts.test.ts`.
+ * `targeted-build-owned-artifacts.integration.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
