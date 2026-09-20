@@ -1532,12 +1532,16 @@ export const transpilePage = async (
   {
     const unresolved = new Set<string>();
     for (const chunk of [transpiledHtmlBody, transpiledHeadContent]) {
-      // Strip <script>, <style>, and <textarea> content so literal text like
-      // `<my-tag>` inside JSON-LD or demo strings doesn't produce false warnings.
-      const scannable = chunk.replace(
-        /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-        "<$1$2></$1>",
-      );
+      // Strip HTML comments as well as <script>, <style>, and <textarea> content
+      // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
+      // doesn't produce false unresolved component warnings.
+      // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
+      const scannable = chunk
+        .replace(/<!--[\s\S]*?-->/g, () => "")
+        .replace(
+          /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
+          (_match, tag, attrs) => `<${tag}${attrs ?? ""}></${tag}>`,
+        );
       const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {

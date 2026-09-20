@@ -1570,6 +1570,26 @@ describe("transpilePage – unresolved component tag warning", () => {
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-widget>"));
     warnSpy.mockRestore();
   });
+
+  it("does not warn about hyphenated tags inside HTML comments", async () => {
+    const html = [
+      "<!DOCTYPE html><html>",
+      "<head>",
+      "  <!-- <my-commented-tag></my-commented-tag> -->",
+      "</head>",
+      "<body>",
+      "  <!-- <another-commented-tag /> -->",
+      "  <p>Content</p>",
+      "</body>",
+      "</html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    await transpilePage(PAGE_PATH, {});
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-commented-tag>"));
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<another-commented-tag>"));
+    warnSpy.mockRestore();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
