@@ -203,6 +203,32 @@ src/components/
 ### Companion CSS and Script Files
 Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Path resolution is strictly scoped to the component directory or base filename.
 
+### Component Metadata Comments (`<!-- @bascik ... -->`)
+To document a component's public contract and provide rich hover and autocomplete information in editor tooling (such as the Bascik VS Code extension), add an optional leading `@bascik` metadata comment block at the very top of the component file:
+
+```html
+<!-- @bascik
+Interactive demo box with Preview, Source, and Output panes.
+@prop no-preview - Hides the Preview tab and collapses margins.
+@prop file - Monospace file path displayed in the demo meta bar.
+@slot example - Content rendered in the live preview pane.
+@slot source-usage - Usage code snippet shown in the source tab.
+@slot default - Default slot content if an un-named slot is exposed.
+-->
+<div class="demo-box">
+  <span data-bascik-prop-no-preview hidden></span>
+  <div class="demo-meta" data-bascik-prop-file></div>
+  <div data-bascik-slot="example"></div>
+  <div data-bascik-slot="source-usage"></div>
+  <div data-bascik-slot></div>
+</div>
+```
+
+**Metadata rules:**
+- **Placement:** Must be placed before any markup, `<style>`, or `<script>` tags. Whitespace and standard HTML comments may precede it.
+- **Markup is authoritative:** `@prop` and `@slot` annotations enrich inferred members with descriptions; they cannot declare members that do not exist in the markup.
+- **Syntax:** `@prop <name> - <description>` and `@slot <name> - <description>`. Use `@slot default - <description>` for the default slot. Text is rendered literally.
+
 ### Component Decomposition & Shared Head Tags
 When structuring or migrating a site with Bascik, identify repeating HTML structures (especially shared `<head>` markup such as meta charset, viewport, favicons, fonts, Open Graph tags, and global CSS links, as well as site headers/footers) and extract them into reusable components.
 
