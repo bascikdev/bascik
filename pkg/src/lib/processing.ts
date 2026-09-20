@@ -916,6 +916,29 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
   return queued;
 };
 
+/**
+ * Join every queued dev page write for one page.
+ *
+ * The `transpiled` event is published as soon as the page is in the memory
+ * store, before the queued disk write runs. A caller that needs the on-disk
+ * bytes to be final (a test asserting exact `dist/` content, or a shutdown that
+ * must not truncate a write) awaits this rather than assuming publication
+ * implies a finished write. Resolves immediately when nothing is queued.
+ *
+ * A queued write can chain a successor while we await, so drain until the queue
+ * for this page is empty instead of awaiting a single snapshot.
+ */
+export const pageWriteIdle = async (absolutePagePath: string): Promise<void> => {
+  const key = pageGenKey(absolutePagePath);
+  const pendingForPage = (): Promise<unknown>[] =>
+    [...pageProcessingQueues.entries()]
+      .filter(([queuedPath]) => pageGenKey(queuedPath) === key)
+      .map(([, write]) => write);
+  for (let writes = pendingForPage(); writes.length; writes = pendingForPage()) {
+    await Promise.all(writes);
+  }
+};
+
 export const processPageBatch = async (
   pageInputs: (string | PageJob)[],
   componentList?: ComponentList,

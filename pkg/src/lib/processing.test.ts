@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
+import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage, pageWriteIdle } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -1061,6 +1061,25 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue('<html><head></head></html>');
     await expect(withCompilationPublisher(vi.fn(), () => processPageBatch(['src/pages/invalid-phase.html'], {})))
       .rejects.toThrow('validate markup');
+  });
+
+  it("pageWriteIdle joins a queued dev write that publication does not await", async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const writeGate = Promise.withResolvers<void>();
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writeGate.promise);
+    // Publication resolves while the queued disk write is still pending.
+    await processPageBatch(['src/pages/idle.html'], {});
+    let idle = false;
+    const joined = pageWriteIdle('src/pages/idle.html').then(() => { idle = true; });
+    await new Promise((r) => setImmediate(r));
+    expect(idle).toBe(false);
+    writeGate.resolve();
+    await joined;
+    expect(idle).toBe(true);
+  });
+
+  it("pageWriteIdle resolves immediately when no write is queued", async () => {
+    await expect(pageWriteIdle('src/pages/never-written.html')).resolves.toBeUndefined();
   });
 
   it("stores open page in memory and emits transpiled BEFORE rest pages start transpiling", async () => {

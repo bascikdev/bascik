@@ -182,6 +182,7 @@ const { apiRouteRegistry } = await import("./server-api.ts");
 const { moduleKeyForPath } = await import("./module-graph.ts");
 const { serverSidecarRegistry } = await import("./server-sidecar.ts");
 const { getCompressedCacheEntriesCount, getInFlightCompressionsCount, getOpenStreamedAssetHandles } = await import("./caching.ts");
+const { pageWriteIdle } = await import("./processing.ts");
 const requestRefs: WeakRef<object>[] = [];
 const requestClosureRefs: WeakRef<object>[] = [];
 const planRefs: WeakRef<object>[] = [];
@@ -875,6 +876,13 @@ process.on("message", async (message: {
     } else if (message.action === "asset-idle") {
       assert(staticAssetEnabled || buildDepEnabled || devModuleEnabled, "asset/dependency/dev-module idle requires its fixture");
       await boundary.join();
+    } else if (message.action === "page-write-idle") {
+      // Join the queued dev disk write for the page under observation. The
+      // `transpiled` event is published before that write runs, so a caller
+      // asserting exact dist/ bytes must await this first.
+      assert(buildDepEnabled || devModuleInlineEnabled, "page-write-idle requires a page-edit fixture");
+      await pageWriteIdle(resolve("src/pages/inline.html"));
+      result = { idle: true };
     } else if (message.action === "completed") {
       assert(armed, "edit must be armed");
       try {
