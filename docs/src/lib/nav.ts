@@ -57,6 +57,13 @@ export const NAV: NavSection[] = [
     ]
   },
   {
+    section: 'Tooling', pages: [
+      { href: '/tools/linter', label: 'Linter' },
+      { href: '/tools/vscode-extension', label: 'VS Code Extension' },
+      { href: '/tools/agent-skill', label: 'Agent Skill' },
+    ]
+  },
+  {
     section: 'Testing & Debugging', pages: [
       { href: '/testing', label: 'Overview' },
       { href: '/testing/unit-testing', label: 'Unit Testing' },
@@ -76,12 +83,6 @@ export const NAV: NavSection[] = [
       { href: '/deployment/static-hosting', label: 'Static Hosting' },
       { href: '/deployment/cloudflare', label: 'Cloudflare Adapter' },
       { href: '/deployment/custom-adapters', label: 'Custom Adapters' },
-    ]
-  },
-  {
-    section: 'Tooling', pages: [
-      { href: '/tools/vscode-extension', label: 'VS Code Extension' },
-      { href: '/tools/agent-skill', label: 'Agent Skill' },
     ]
   },
   {

@@ -916,6 +916,29 @@ const queueTranspiledPageWrite = (result: PageWriteInput): Promise<void> => {
   return queued;
 };
 
+/**
+ * Join every queued dev page write for one page.
+ *
+ * The `transpiled` event is published as soon as the page is in the memory
+ * store, before the queued disk write runs. A caller that needs the on-disk
+ * bytes to be final (a test asserting exact `dist/` content, or a shutdown that
+ * must not truncate a write) awaits this rather than assuming publication
+ * implies a finished write. Resolves immediately when nothing is queued.
+ *
+ * A queued write can chain a successor while we await, so drain until the queue
+ * for this page is empty instead of awaiting a single snapshot.
+ */
+export const pageWriteIdle = async (absolutePagePath: string): Promise<void> => {
+  const key = pageGenKey(absolutePagePath);
+  const pendingForPage = (): Promise<unknown>[] =>
+    [...pageProcessingQueues.entries()]
+      .filter(([queuedPath]) => pageGenKey(queuedPath) === key)
+      .map(([, write]) => write);
+  for (let writes = pendingForPage(); writes.length; writes = pendingForPage()) {
+    await Promise.all(writes);
+  }
+};
+
 export const processPageBatch = async (
   pageInputs: (string | PageJob)[],
   componentList?: ComponentList,
@@ -1095,9 +1118,12 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
   const componentName = rawFileName.split(".")[0].toLowerCase();
   if (!componentName) return;
   const pagesToTranspile = mem.pagesThisComponentIsUsedOn(componentName);
-  const componentList = await listComponents();
-  const globalStylesHtml = await resolveInlineStylesHtml();
-  await processPageBatch(pagesToTranspile, componentList, globalStylesHtml);
+  // Enter the batch immediately so it claims each affected page generation at
+  // the component event boundary. Loading components and global styles inside
+  // processPageBatch happens only after those claims. Otherwise a newer direct
+  // page event can enqueue while these prerequisites load, then be incorrectly
+  // superseded when this older component rebuild claims its generation late.
+  await processPageBatch(pagesToTranspile);
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
@@ -1271,6 +1297,11 @@ export const pageProcessing = (
   componentList?: ComponentList,
   globalStylesHtml?: string,
 ): Promise<string | undefined> => {
+  // Claim this direct source edit when it is enqueued, before it waits on an
+  // older page write or reads source. A broad component rebuild that was
+  // observed earlier must not claim ownership after this newer page event and
+  // publish stale source over it merely because the direct job was queued.
+  const generation = nextPageGeneration(pagePath);
   const current = pageProcessingQueues.get(pagePath) ?? Promise.resolve();
   let resolveAvailable!: (relativePagePath: string | undefined) => void;
   let rejectAvailable!: (error: unknown) => void;
@@ -1286,10 +1317,6 @@ export const pageProcessing = (
           resolveAvailable(undefined);
           return undefined;
         }
-        // Claim when this page is about to publish, not when the request was
-        // made. A broad worker rebuild that started earlier captured an older
-        // snapshot; this specific newer edit bumps past it so it supersedes.
-        const generation = nextPageGeneration(pagePath);
         if (isCurrentGeneration(pagePath, generation)) {
           const { relativePagePath, absolutePagePath, distHtml, usedComponentsNames, fileDependencies, cspHashes } = result;
           if (!BascikConfig.isBuild) {
@@ -1505,12 +1532,16 @@ export const transpilePage = async (
   {
     const unresolved = new Set<string>();
     for (const chunk of [transpiledHtmlBody, transpiledHeadContent]) {
-      // Strip <script>, <style>, and <textarea> content so literal text like
-      // `<my-tag>` inside JSON-LD or demo strings doesn't produce false warnings.
-      const scannable = chunk.replace(
-        /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-        "<$1$2></$1>",
-      );
+      // Strip HTML comments as well as <script>, <style>, and <textarea> content
+      // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
+      // doesn't produce false unresolved component warnings.
+      // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
+      const scannable = chunk
+        .replace(/<!--[\s\S]*?-->/g, () => "")
+        .replace(
+          /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
+          (_match, tag, attrs) => `<${tag}${attrs ?? ""}></${tag}>`,
+        );
       const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {

@@ -1168,6 +1168,11 @@ export default function retentionShared129(request, context) { ${requestObservat
     } else {
       assert.equal(response.status, 200, "build-dependency recovery HTTP status");
       assert.deepEqual(response.bytes, expectedBuildDepHttpOutput(revision), "exact build-dependency recovery HTTP bytes");
+      // The `transpiled` event is published before the queued dev disk write
+      // runs, so join that write before reading dist/. Otherwise the read can
+      // land inside writeFile's truncate-then-write window and observe a
+      // zero-length file.
+      await command("page-write-idle");
       const distHtml = await readFile(join(project, "dist/inline.html"), "utf8");
       assert.deepEqual(Buffer.from(distHtml), expectedBuildDepDiskOutput(revision), "exact disk inline.html build-dependency bytes");
     }
@@ -1287,6 +1292,9 @@ export default function retentionShared129(request, context) { ${requestObservat
       } else {
         assert.equal(response.status, 200, "inline page HTTP status");
         assert.deepEqual(response.bytes, expectedInlineOutput(revision, "test-inline"), "inline exact response bytes");
+        // Join the queued dev disk write before reading dist/; the `transpiled`
+        // event is published before that write runs.
+        await command("page-write-idle");
         assert.deepEqual(await readFile(join(project, "dist/inline.html")), expectedInlineOutput(revision), "inline exact disk bytes");
       }
     } else if (devModuleOptions?.input === "dev-module-external") {

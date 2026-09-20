@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Scoping Compatibility Test Lab</title>
+
+  <!-- CSS Check 1: Standalone attribute selector (warns because it's unanchored) -->
+  <!-- bascik-ignore -->
+  <style>
+    /* bascik-ignore */
+    [data-state] {
+      color: red;
+    }
+  </style>
+
+  <!-- CSS Check 2: Bare element in :is(), :where(), or :has() (warns because it's not converted) -->
+  <!-- bascik-ignore -->
+  <style>
+    /* bascik-ignore */
+    :is(button, a) {
+      outline: none;
+    }
+  </style>
+</head>
+
+<body>
+  <button id="demo-btn">Click Me</button>
+
+  <script>
+    // JS Check 1: Runtime .id assignment
+    const btn = document.getElementById("demo-btn");
+    // bascik-ignore
+    btn.id = "new-dynamic-id";
+
+    // JS Check 2: Attribute selector in querySelector
+    // bascik-ignore
+    const item = document.querySelector("[data-state='active']");
+
+    // JS Check 3: Template-literal class in classList.replace
+    const state = "open";
+    // bascik-ignore
+    btn.classList.replace("closed", `state-${state}`);
+
+    // JS Check 4: Dynamic custom property name in setProperty
+    // bascik-ignore
+    btn.style.setProperty("--theme-color", "#ff0000");
+  </script>
+</body>
+
+</html>

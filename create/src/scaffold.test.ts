@@ -100,19 +100,21 @@ describe("PACKAGE_JSON", () => {
     expect(() => JSON.parse(PACKAGE_JSON("my-app"))).not.toThrow();
   });
 
-  it('sets type:module, dev, build, test, and e2e scripts', () => {
+  it('sets type:module, dev, build, lint, test, and e2e scripts', () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.type).toBe("module");
     expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.scripts.build).toBe("bascik --build");
+    expect(pkg.scripts.lint).toBe("bascik-language-server --check");
     expect(pkg.scripts.test).toBe("vitest run");
     expect(pkg.scripts["test:watch"]).toBe("vitest");
     expect(pkg.scripts["test:coverage"]).toBe("vitest run --coverage");
     expect(pkg.scripts.e2e).toBe("playwright test --config e2e/playwright.config.ts");
   });
 
-  it("includes vitest, coverage-v8, and playwright in devDependencies", () => {
+  it("includes language-server, vitest, coverage-v8, and playwright in devDependencies", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.devDependencies["@bascik/language-server"]).toBeDefined();
     expect(pkg.devDependencies.vitest).toBeDefined();
     expect(pkg.devDependencies["@vitest/coverage-v8"]).toBeDefined();
     expect(pkg.devDependencies["@playwright/test"]).toBeDefined();
@@ -400,9 +402,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 27 expected files", async () => {
+  it("writes all 28 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(27);
+    expect(mockWriteFile.mock.calls.length).toBe(28);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -427,6 +429,9 @@ describe("scaffold", () => {
     expect(writtenTo(".gitignore")).toBeDefined();
     expect(writtenTo(".hintrc")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
+    const extensionsJson = writtenTo(".vscode/extensions.json");
+    expect(extensionsJson).toBeDefined();
+    expect(JSON.parse(extensionsJson!).recommendations).toContain("bascik.bascik-vscode");
   });
 
   it("writes all four pages", async () => {

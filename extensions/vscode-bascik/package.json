@@ -2,8 +2,15 @@
   "name": "bascik-vscode",
   "displayName": "Bascik",
   "publisher": "bascik",
-  "description": "VS Code support for Bascik component tags and scoping compatibility warnings.",
+  "description": "Navigate Bascik components and catch scoping, server script, stream, and API route issues as you type.",
+  "icon": "icon.png",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bascikdev/bascik.git",
+    "directory": "extensions/vscode-bascik"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -23,6 +30,16 @@
           "text.html.basic"
         ]
       }
+    ],
+    "snippets": [
+      {
+        "language": "typescript",
+        "path": "./snippets/api-routes.json"
+      },
+      {
+        "language": "javascript",
+        "path": "./snippets/api-routes.json"
+      }
     ]
   },
   "scripts": {
@@ -39,6 +56,10 @@
     "coverage": "vitest run --coverage && node bin/update-coverage.ts",
     "cover": "yarn coverage",
     "update-coverage": "vitest run --coverage && node bin/update-coverage.ts"
+  },
+  "dependencies": {
+    "@bascik/language-server": "workspace:^",
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

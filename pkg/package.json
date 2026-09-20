@@ -40,7 +40,8 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "chokidar": "^5.0.0"
+    "chokidar": "^5.0.0",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
     "0x": "^6.0.0",
@@ -69,10 +70,15 @@
     "build": "tsc -p tsconfig.build.json",
     "prepack": "cp ../LICENSE LICENSE",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
-    "unit": "vitest run",
+    "unit": "vitest run --project unit",
+    "unit:watch": "vitest --project unit",
+    "integration": "vitest run --project integration",
+    "integration:watch": "vitest --project integration",
     "test": "vitest",
-    "test:ci": "vitest run --coverage.enabled --coverage.reporter='text-summary'",
-    "test:coverage": "vitest run --coverage.enabled",
+    "test:ci": "vitest run --project unit --coverage.enabled --coverage.reporter='text-summary'",
+    "test:coverage": "vitest run --project unit --coverage.enabled",
+    "test:all": "yarn unit && yarn integration",
+    "check:e2e": "cd e2e && node ../dist/index.js --check",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts --reporter=line",
     "e2e:dev:exec": "playwright test --config e2e/playwright.dev-exec.config.ts --reporter=line && playwright test --config e2e/playwright.dev-exec-gated.config.ts --reporter=line",
@@ -82,7 +88,7 @@
     "e2e:all": "yarn e2e && yarn e2e:dev && yarn e2e:prod",
     "coverage": "yarn update-coverage && yarn update-e2e-coverage",
     "cover": "yarn coverage",
-    "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
+    "update-coverage": "vitest run --project unit --coverage.enabled && node bin/update-coverage.ts",
     "update-e2e-coverage": "node bin/update-e2e-coverage.ts",
     "bench": "vitest bench",
     "dev": "bascik",

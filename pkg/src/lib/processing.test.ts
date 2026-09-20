@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage } from "./processing.ts";
+import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage, pageWriteIdle } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -1063,6 +1063,25 @@ describe("processPageBatch – open page priority & instant reloading", () => {
       .rejects.toThrow('validate markup');
   });
 
+  it("pageWriteIdle joins a queued dev write that publication does not await", async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const writeGate = Promise.withResolvers<void>();
+    (writeFile as ReturnType<typeof vi.fn>).mockReturnValueOnce(writeGate.promise);
+    // Publication resolves while the queued disk write is still pending.
+    await processPageBatch(['src/pages/idle.html'], {});
+    let idle = false;
+    const joined = pageWriteIdle('src/pages/idle.html').then(() => { idle = true; });
+    await new Promise((r) => setImmediate(r));
+    expect(idle).toBe(false);
+    writeGate.resolve();
+    await joined;
+    expect(idle).toBe(true);
+  });
+
+  it("pageWriteIdle resolves immediately when no write is queued", async () => {
+    await expect(pageWriteIdle('src/pages/never-written.html')).resolves.toBeUndefined();
+  });
+
   it("stores open page in memory and emits transpiled BEFORE rest pages start transpiling", async () => {
     (mem as any).openPages = ["/internals/scoping-system"];
     const callSequence: string[] = [];
@@ -1095,24 +1114,33 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(callSequence).toContain("emit:pages/getting-started.html");
   });
 
-  it("reports per-page duration for work done rather than queue wait time across batch", async () => {
+  it("reports only active per-page work time, excluding a shared batch wait", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
 
     try {
-      const pageWorkMs = 25;
-      (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-        // Spin synchronously for pageWorkMs to simulate CPU work per page
-        const until = performance.now() + pageWorkMs;
-        while (performance.now() < until) {
-          // busy spin
-        }
-        return "<html><body>test</body></html>";
+      // Drive the monotonic clock and page reads explicitly. Every page spends
+      // 7 ms in active work before a shared 1-second wait. A real timer would
+      // turn this into a flaky scheduler/coverage test instead of validating
+      // that transpilePage pauses its per-page clock around awaited work.
+      let now = 0;
+      nowSpy.mockImplementation(() => now);
+      const reads = Array.from({ length: 3 }, () => Promise.withResolvers<Buffer>());
+      let readIndex = 0;
+      (readFile as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        now += 7;
+        return reads[readIndex++].promise;
       });
 
       const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
-      const batchStart = performance.now();
-      await processPageBatch(pages, {});
-      const batchWallTime = performance.now() - batchStart;
+      const batch = processPageBatch(pages, {}, "");
+      await vi.waitFor(() => expect(readFile).toHaveBeenCalledTimes(3));
+
+      // All reads are in flight. Advancing the clock by one second simulates
+      // queue/I/O wait which must not appear in any page's work duration.
+      now += 1_000;
+      for (const read of reads) read.resolve(Buffer.from("<html><body>test</body></html>"));
+      await batch;
 
       const transpiledLogs = logSpy.mock.calls
         .map((call) => call[0])
@@ -1120,31 +1148,16 @@ describe("processPageBatch – open page priority & instant reloading", () => {
 
       expect(transpiledLogs).toHaveLength(3);
 
-      let reportedSum = 0;
-      const reportedDurations: number[] = [];
       for (const logLine of transpiledLogs) {
         const match = logLine.match(/in\s+(\d+(?:\.\d+)?)(ms|s)/);
         expect(match).not.toBeNull();
         const rawVal = parseFloat(match![1]);
         const unit = match![2];
         const ms = unit === "s" ? rawVal * 1000 : rawVal;
-        reportedSum += ms;
-        reportedDurations.push(ms);
-        // Each page does ~25ms of work.
-        // Under the old staircase measurement, the 3rd page would report ~75ms (> 60ms).
-        expect(ms).toBeLessThan(60);
+        expect(ms).toBe(7);
       }
-
-      // Check sum of reported durations does not exceed batch wall time by more than 5%
-      expect(reportedSum).toBeLessThanOrEqual(batchWallTime * 1.05);
-
-      // Bound individual outliers (max <= 5 * median)
-      const sorted = [...reportedDurations].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      expect(median).toBeGreaterThan(0);
-      const max = sorted[sorted.length - 1];
-      expect(max).toBeLessThanOrEqual(5 * median);
     } finally {
+      nowSpy.mockRestore();
       logSpy.mockRestore();
     }
   });
@@ -1549,6 +1562,26 @@ describe("transpilePage – unresolved component tag warning", () => {
     await transpilePage(PAGE_PATH, {});
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-card>"));
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-widget>"));
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn about hyphenated tags inside HTML comments", async () => {
+    const html = [
+      "<!DOCTYPE html><html>",
+      "<head>",
+      "  <!-- <my-commented-tag></my-commented-tag> -->",
+      "</head>",
+      "<body>",
+      "  <!-- <another-commented-tag /> -->",
+      "  <p>Content</p>",
+      "</body>",
+      "</html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    await transpilePage(PAGE_PATH, {});
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-commented-tag>"));
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<another-commented-tag>"));
     warnSpy.mockRestore();
   });
 });
@@ -3334,6 +3367,51 @@ describe("monotonic dev publication & concurrency overlap", () => {
     expect(emitCountAfterBatch).toBe(emitCountAfterDirect);
   });
 
+  it("gives a queued direct page edit ownership over an older broad rebuild", async () => {
+    const eventsModule = await import("./events.ts");
+    let releaseBatchRead!: () => void;
+    const batchReadGate = new Promise<void>((resolveGate) => {
+      releaseBatchRead = resolveGate;
+    });
+
+    const OLD_HTML = "<!DOCTYPE html><html><head></head><body><h1>OLD COMPONENT REBUILD</h1></body></html>";
+    const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW QUEUED PAGE EDIT</h1></body></html>";
+    let indexReadCount = 0;
+    (readFile as ReturnType<typeof vi.fn>).mockImplementation(async (filePath: string) => {
+      if (!filePath.includes("index.html")) {
+        return "<!DOCTYPE html><html><head></head><body>default</body></html>";
+      }
+      indexReadCount++;
+      if (indexReadCount === 1) {
+        await batchReadGate;
+        return OLD_HTML;
+      }
+      return NEW_HTML;
+    });
+
+    const broadRebuild = processPageBatch([PAGE_ABS], {});
+    await vi.waitFor(() => expect(indexReadCount).toBe(1));
+
+    // The page watcher observes the newer edit while the older component
+    // rebuild is still reading. Ownership must transfer at enqueue time.
+    const directEdit = pageProcessing(PAGE_ABS, {});
+    releaseBatchRead();
+
+    await broadRebuild;
+    await directEdit;
+
+    const storedPages = (mem.storePage as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([input]) => String(input.pageContent),
+    );
+    expect(storedPages.some((content) => content.includes("OLD COMPONENT REBUILD"))).toBe(false);
+    expect(storedPages.some((content) => content.includes("NEW QUEUED PAGE EDIT"))).toBe(true);
+
+    const transpiledEvents = (eventsModule.eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([event]) => event === "transpiled",
+    );
+    expect(transpiledEvents).toHaveLength(1);
+  });
+
   it("drops a stale batch completion when a newer batch for the same page has published", async () => {
     let releaseBatch1Read!: () => void;
     const batch1ReadGate = new Promise<void>((res) => {
@@ -3445,12 +3523,17 @@ describe("monotonic dev publication & concurrency overlap", () => {
     vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
 
     let releaseWorkerRun!: () => void;
+    let markWorkerEntered!: () => void;
     const workerRunGate = new Promise<void>((res) => {
       releaseWorkerRun = res;
+    });
+    const workerEntered = new Promise<void>((res) => {
+      markWorkerEntered = res;
     });
 
     (WorkerPool as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
       this.run = vi.fn(async () => {
+        markWorkerEntered();
         await workerRunGate;
         return {
           relativePagePath: "pages/index.html",
@@ -3467,6 +3550,7 @@ describe("monotonic dev publication & concurrency overlap", () => {
 
     // Start processAllPages with worker mode
     const allPagesPromise = processAllPages({ useWorkers: true });
+    await workerEntered;
 
     // While worker is paused, direct pageProcessing runs with newer HTML
     const NEW_HTML = "<!DOCTYPE html><html><head></head><body><h1>NEW DIRECT OVER WORKER</h1></body></html>";

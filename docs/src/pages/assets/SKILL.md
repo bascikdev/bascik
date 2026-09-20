@@ -114,7 +114,7 @@ bascik/
 
 The `create/` folder is intentionally separate from `pkg/`. Contributor work in this monorepo uses Yarn 4 with `yarn.lock`, while generated projects intentionally use npm and receive their own `package-lock.json`. That split keeps contributor workflows Yarn-based while preserving the standard npm onboarding flow for generated apps.
 
-The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides command-click component resolution and warnings for patterns that are unsupported or risky under Bascik's scoping model. The rules are generated from the compatibility matrix in `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
+The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides context-aware IntelliSense (component, prop, and slot completions), command-click component navigation, rich hover details, syntax highlighting, and real-time scoping warnings. Linting and language server capabilities are powered by `@bascik/language-server`, which also runs standalone via CLI (`npm run lint` or `npx @bascik/language-server --check`) and implements LSP so it works in Neovim, Helix, Zed, and other editors. The compatibility rules are generated from `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
 
 The generator in `create/src/index.ts` validates input, then calls `create/src/scaffold.ts` to write the project files. The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
 
@@ -202,6 +202,32 @@ src/components/
 
 ### Companion CSS and Script Files
 Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Path resolution is strictly scoped to the component directory or base filename.
+
+### Component Metadata Comments (`<!-- @bascik ... -->`)
+To document a component's public contract and provide rich hover and autocomplete information in editor tooling (such as the Bascik VS Code extension), add an optional leading `@bascik` metadata comment block at the very top of the component file:
+
+```html
+<!-- @bascik
+Interactive demo box with Preview, Source, and Output panes.
+@prop no-preview - Hides the Preview tab and collapses margins.
+@prop file - Monospace file path displayed in the demo meta bar.
+@slot example - Content rendered in the live preview pane.
+@slot source-usage - Usage code snippet shown in the source tab.
+@slot default - Default slot content if an un-named slot is exposed.
+-->
+<div class="demo-box">
+  <span data-bascik-prop-no-preview hidden></span>
+  <div class="demo-meta" data-bascik-prop-file></div>
+  <div data-bascik-slot="example"></div>
+  <div data-bascik-slot="source-usage"></div>
+  <div data-bascik-slot></div>
+</div>
+```
+
+**Metadata rules:**
+- **Placement:** Must be placed before any markup, `<style>`, or `<script>` tags. Whitespace and standard HTML comments may precede it.
+- **Markup is authoritative:** `@prop` and `@slot` annotations enrich inferred members with descriptions; they cannot declare members that do not exist in the markup.
+- **Syntax:** `@prop <name> - <description>` and `@slot <name> - <description>`. Use `@slot default - <description>` for the default slot. Text is rendered literally.
 
 ### Component Decomposition & Shared Head Tags
 When structuring or migrating a site with Bascik, identify repeating HTML structures (especially shared `<head>` markup such as meta charset, viewport, favicons, fonts, Open Graph tags, and global CSS links, as well as site headers/footers) and extract them into reusable components.
@@ -753,7 +779,7 @@ Components work inside `<head>` to organize metadata and shared links:
 * **Importing shared helpers: use `@/` by default.** `import { renderMd } from '@/lib/md-renderer.ts'` resolves against `scripts.importRoot` (default `src`), so the identical import line works from any page or component at any nesting depth. Relative `./` and `../` specifiers still work and resolve against the file that contains the script; use them for helpers that live next to the page or component. Both forms also apply to `data-bascik-server`, `data-bascik-routes`, and the `src="…"` attribute on those tags.
 * **Never use a bare leading `/`.** `import x from '/lib/x.ts'` or `src="/lib/x.ts"` inside a Bascik script is a hard compile error (and a red diagnostic in the VS Code extension), regardless of `onBuildScriptError`. A bare slash is ambiguous between filesystem root and site root. The error names the two valid rewrites: `@/lib/x.ts` (import root) or `./lib/x.ts` (relative). Plain client `<script>` tags are unaffected.
 * **Alias gotchas:** only the exact `@/` prefix is an alias (`@scope/pkg` is a normal package). Aliases are rewritten only inside script blocks; a helper file importing another helper must use `./` or `../`. Add shared build helpers to `pipeline.watchPaths` when outside the pages/components directories. The import-root watcher only invalidates request-time modules, not page compilation caches.
-* Use `console.log()` or `process.stdout.write()` to output HTML.
+* Use `console.log()` or `process.stdout.write()` to output HTML. Build scripts execute as top-level Node.js ESM modules rather than wrapped functions, so top-level `return` is a JavaScript syntax error; output is sent to stdout instead.
 * Build scripts run before component resolution, so their output can contain component tags.
 * Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Output is assembled in document order once all scripts complete. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor.
 * On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'`, `'error'`, or `'ignore'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`. For `data-bascik-stream` scripts, an error cannot produce an HTTP 500 because headers are already committed; the slot is emitted empty, the failure is logged at the configured severity, and the document completes.
@@ -807,6 +833,21 @@ export default defineConfig({
   },
 });
 ```
+
+**Environment variable cache keys (`scripts.cache.environment`):** By default, `process.env` reads are invisible to the cache key. Declare the exact variable names a script reads in `scripts.cache.environment` so their resolved values become part of the key:
+
+```ts
+export default defineConfig({
+  scripts: {
+    cache: {
+      enabled: true,
+      environment: ['MY_FEATURE_FLAG', 'API_BASE_URL'],
+    },
+  },
+});
+```
+
+When a declared variable's value changes, the cache key changes and the script re-runs. Values are hashed into the key and never persisted. Missing vs. empty string produce different keys. Only exact names are supported (no globs). Bascik warns about statically visible `process.env.NAME` reads that are not declared; the warning is advisory and never fails the build.
 
 **To bust the entire cache** (waive cache correctness, e.g. after an unusual external change the identity walk cannot see):
 
@@ -1257,7 +1298,7 @@ npm create bascik@latest my-site -y
 
 This scaffolds the project, installs dependencies, and starts the dev server in one shot. You're live at **http://localhost:8080**. Pass a different name to use it as both the directory name and the site title. Omit the name to be prompted for one (defaulting to `bascik-app`). Drop `-y` to step through the install and dev server prompts manually.
 
-The scaffold creates a complete starter site: pages, components, global CSS, `.gitignore`, and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. It omits `bascik.config.ts` because the starter uses Bascik's built-in defaults. When the dev server stops, the CLI prints a reminder:
+The scaffold creates a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `.vscode/extensions.json` (recommends the official Bascik extension), and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. It includes a `lint` script in `package.json` powered by `@bascik/language-server` (`npm run lint`), and omits `bascik.config.ts` because the starter uses Bascik's built-in defaults. When the dev server stops, the CLI prints a reminder:
 
 ```
 To start again:  cd my-site && npm run dev
@@ -1450,9 +1491,9 @@ Bascik scans project sources and reports:
 
     <model-viewer>     src/pages/gallery.html:42
   ```
-* **Errors (exit code 1):** Config validation failures, missing site URL for sitemap/robots generation, duplicate component names, circular component references, script mode conflicts (`data-bascik-build` + `data-bascik-server` on one tag), duplicate route resolution, API route files missing method handlers, and API route collisions.
+* **Errors (exit code 1):** Config validation failures, missing site URL for sitemap/robots generation, duplicate component names, circular component references, script mode conflicts (`data-bascik-build` + `data-bascik-server` on one tag), duplicate route resolution, API route files missing method handlers, API route collisions, and WHATWG HTML5 parse errors in compiled `dist/` HTML files (requires [parse5](https://parse5.js.org/) as a dev dependency; when parse5 is absent, `--check` prints a one-line install hint and does not fail).
 * **Strict mode:** Pass `--strict` to treat warnings as errors and exit with code `1`.
-* **JSON output:** Pass `--json` to output structured findings for CI integration.
+* **JSON output:** Pass `--json` to output structured findings for CI integration. The JSON schema includes `distHtmlChecked` (number of `dist/` files parse5 validated, or `null`) and `distHtmlSpecHintNeeded` (`true` when parse5 is absent but `dist/` HTML exists).
 * **Success**: Exits with code `0` when no errors are found (or under `--strict` when no errors or warnings).
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic is noisy for real projects and creates speculative warnings.
@@ -1468,6 +1509,7 @@ bascik --check && bascik --build
 |---|---|
 | VS Code built-in CSS | CSS syntax errors (squiggly lines, no install needed) |
 | [Stylelint](https://stylelint.io) | CSS syntax, invalid properties, conventions |
+| [parse5](https://parse5.js.org/) | WHATWG HTML5 parse errors in compiled `dist/` output (`npm install -D parse5` then `bascik --check`) |
 | [HTMLHint](https://htmlhint.com) | HTML structure errors in `.html` files |
 | [ESLint](https://eslint.org) | JS syntax and logic errors in `<script>` blocks |
 
@@ -1747,6 +1789,51 @@ To debug interactive client component scripts in Google Chrome or Microsoft Edge
 2. Select **Launch Chrome** from the Run and Debug panel and press `F5`.
 3. VS Code launches a new Chrome window attached to the debugger.
 4. Set breakpoints directly in your component `.html` files in VS Code, or open Chrome DevTools (`F12`), press `Cmd + P` (or `Ctrl + P`), and open virtual source files like `src/components/my-counter.html`.
+
+### Validating Compiled Output Against the HTML Spec
+
+Install `parse5` (the reference WHATWG HTML5 parser used by jsdom and Playwright) as a dev dependency and add a Vitest test that walks every `dist/**/*.html` file. Use `onParseError` with `sourceCodeLocationInfo: true` to fail on any spec violation with an actionable `file:line:col [error-code]` message:
+
+```ts
+// src/lib/dist-sanity.test.ts
+import { describe, it, expect } from 'vitest';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { parse, type ParserError } from 'parse5';
+
+const DIST_DIR = path.resolve(process.cwd(), 'dist');
+
+async function walk(dir: string, ext: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); }
+  catch { return out; }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walk(full, ext)));
+    else if (entry.isFile() && entry.name.endsWith(ext)) out.push(full);
+  }
+  return out;
+}
+
+describe('dist HTML — WHATWG spec compliance', () => {
+  it('every page is free of parse errors', async () => {
+    const files = await walk(DIST_DIR, '.html');
+    const failures: string[] = [];
+    for (const file of files) {
+      const html = await readFile(file, 'utf-8');
+      const errors: ParserError[] = [];
+      parse(html, { sourceCodeLocationInfo: true, onParseError: (e) => errors.push(e) });
+      for (const err of errors) {
+        failures.push(`${path.relative(DIST_DIR, file)}:${err.startLine}:${err.startCol}  [${err.code}]`);
+      }
+    }
+    expect(failures, failures.join('\n')).toHaveLength(0);
+  });
+});
+```
+
+Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool — hold output to the full spec, not browser recovery behavior.
 
 ### Testing Site Logic in a Bascik Project
 

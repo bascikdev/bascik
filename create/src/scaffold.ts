@@ -22,6 +22,7 @@ export const PACKAGE_JSON = (name: string): string =>
       scripts: {
         dev: "bascik",
         build: "bascik --build",
+        lint: "bascik-language-server --check",
         test: "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
@@ -31,6 +32,7 @@ export const PACKAGE_JSON = (name: string): string =>
         "@bascik/bascik": "file:../pkg",
       },
       devDependencies: {
+        "@bascik/language-server": "^0.1.0",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",
@@ -40,6 +42,16 @@ export const PACKAGE_JSON = (name: string): string =>
     null,
     2,
   ) + "\n";
+
+export const VSCODE_EXTENSIONS_JSON = JSON.stringify(
+  {
+    recommendations: [
+      "bascik.bascik-vscode",
+    ],
+  },
+  null,
+  2,
+) + "\n";
 
 export const VSCODE_LAUNCH_JSON = JSON.stringify(
   {
@@ -863,6 +875,7 @@ export async function scaffold(
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
     writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
+    writeFile(join(root, ".vscode", "extensions.json"), VSCODE_EXTENSIONS_JSON, "utf8"),
     writeFile(join(root, ".github", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),
     writeFile(join(root, ".claude", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),
 

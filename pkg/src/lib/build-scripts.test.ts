@@ -1475,6 +1475,110 @@ describe("build-script output cache", () => {
   });
 });
 
+// ─── scripts.cache.environment ───────────────────────────────────────────────
+
+describe("scripts.cache.environment", () => {
+  const setEnv = (name: string, value: string | undefined) => {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  };
+
+  const runAndGetCacheKey = async (script: string) => {
+    mockWriteFile.mockClear();
+    clearBuildScriptCaches();
+    mockReadFile.mockRejectedValue(new Error("ENOENT")); // always cache miss
+    resolveWith("<p>result</p>");
+    await executeBuildScripts(script);
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    expect(jsonWrite).toBeDefined();
+    return jsonWrite![0] as string;
+  };
+
+  beforeEach(() => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      cache: { enabled: true, environment: ["MY_FEATURE_FLAG"] },
+    };
+  });
+
+  it("a changed declared env value produces a different cache key", async () => {
+    setEnv("MY_FEATURE_FLAG", "on");
+    const key1 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    setEnv("MY_FEATURE_FLAG", "off");
+    const key2 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    expect(key1).not.toEqual(key2);
+  });
+
+  it("an unchanged declared env value reuses the same cache key", async () => {
+    setEnv("MY_FEATURE_FLAG", "stable");
+    const key1 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const key2 = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    expect(key1).toEqual(key2);
+  });
+
+  it("missing and empty declared env values produce different keys", async () => {
+    setEnv("MY_FEATURE_FLAG", undefined);
+    const keyMissing = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    setEnv("MY_FEATURE_FLAG", "");
+    const keyEmpty = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    expect(keyMissing).not.toEqual(keyEmpty);
+  });
+
+  it("two declared vars fold deterministically regardless of declaration order", async () => {
+    (BascikConfig as any).scripts.cache.environment = ["A", "B"];
+    setEnv("A", "1");
+    setEnv("B", "2");
+    const keyAB = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+
+    (BascikConfig as any).scripts.cache.environment = ["B", "A"];
+    const keyBA = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    expect(keyAB).toEqual(keyBA);
+  });
+
+  it("declaring an env var changes the key even when the value is unchanged", async () => {
+    setEnv("MY_FEATURE_FLAG", "same");
+    (BascikConfig as any).scripts.cache.environment = [];
+    const keyNoDecl = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+
+    (BascikConfig as any).scripts.cache.environment = ["MY_FEATURE_FLAG"];
+    const keyDecl = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    expect(keyNoDecl).not.toEqual(keyDecl);
+  });
+
+  it("warns once per undeclared process.env read when environment is configured", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    setEnv("MY_FEATURE_FLAG", "on");
+    resolveWith("<p>result</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>console.log(process.env.UNDECLARED_A, process.env.UNDECLARED_A)</script>",
+    );
+    const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
+    expect(warnings.some((w) => w.includes("process.env.UNDECLARED_A"))).toBe(true);
+    expect(warnings.some((w) => w.includes("process.env.MY_FEATURE_FLAG"))).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when environment is not configured", async () => {
+    (BascikConfig as any).scripts.cache.environment = undefined;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resolveWith("<p>result</p>");
+    await executeBuildScripts(
+      "<script data-bascik-build>console.log(process.env.ANYTHING)</script>",
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("never persists raw env values in the cache entry", async () => {
+    setEnv("MY_FEATURE_FLAG", "super-secret-value");
+    const key = await runAndGetCacheKey("<script data-bascik-build>f()</script>");
+    const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+    const [, content] = jsonWrite as [string, string];
+    expect(content).not.toContain("super-secret-value");
+    expect(key).not.toContain("super-secret-value");
+  });
+});
+
 // ─── cleanStackTrace ─────────────────────────────────────────────────────────
 
 describe("cleanStackTrace", () => {

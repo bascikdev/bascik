@@ -68,13 +68,13 @@ describe('renderPagination', () => {
   });
 
   it('includes section names and labels for prev and next across section transitions', () => {
-    const html = renderPagination('/deployment/custom-adapters');
+    const html = renderPagination('/production-server');
     expect(html).toContain('data-pg="prev"');
     expect(html).toContain('data-pg="next"');
-    expect(html).toContain('<span data-pg-section>Deployment</span>');
-    expect(html).toContain('<span data-pg-label>Cloudflare Adapter</span>');
+    expect(html).toContain('<span data-pg-section>Reference</span>');
+    expect(html).toContain('<span data-pg-label>Development Server</span>');
     expect(html).toContain('<span data-pg-section>Tooling</span>');
-    expect(html).toContain('<span data-pg-label>VS Code Extension</span>');
+    expect(html).toContain('<span data-pg-label>Linter</span>');
   });
 
   it('includes section names within the same section', () => {

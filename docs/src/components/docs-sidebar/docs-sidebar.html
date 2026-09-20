@@ -33,10 +33,33 @@
           var idx = links.findIndex(function (a) { return a.getAttribute('href') === path; });
           if (idx !== -1) {
                links[idx].setAttribute('aria-current', 'page');
-               requestAnimationFrame(function () {
+               function scrollActiveIntoView() {
+                    if (sidebar.clientHeight === 0) return false;
                     var linkTop = links[idx].getBoundingClientRect().top - sidebar.getBoundingClientRect().top + sidebar.scrollTop;
                     sidebar.scrollTop = linkTop - sidebar.clientHeight / 2 + links[idx].offsetHeight / 2;
+                    return true;
+               }
+
+               requestAnimationFrame(function () {
+                    scrollActiveIntoView();
                });
+
+               // Re-scroll when sidebar becomes visible (e.g. resizing from mobile to desktop)
+               if (typeof ResizeObserver === 'function') {
+                    var ro = new ResizeObserver(function () {
+                         if (sidebar.clientHeight > 0) {
+                              scrollActiveIntoView();
+                         }
+                    });
+                    ro.observe(sidebar);
+               } else {
+                    window.addEventListener('resize', function () {
+                         if (sidebar.clientHeight > 0) {
+                              scrollActiveIntoView();
+                         }
+                    });
+               }
+
                var next = links[idx + 1];
                if (next && next.getAttribute('href')) {
                     preload(next.getAttribute('href'));

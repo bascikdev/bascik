@@ -12,8 +12,8 @@
  * into human and JSON formatters.
  */
 
-import { readFile } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { resolve, relative, join } from "node:path";
 import { existsSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
@@ -55,6 +55,53 @@ export interface CheckFindings {
   pagesChecked: number;
   componentsChecked: number;
   items: CheckFinding[];
+  /** Number of dist/ HTML files validated against the WHATWG spec, or null when dist/ does not exist or is empty. */
+  distHtmlChecked: number | null;
+  /** True when dist/ has HTML files but parse5 is not installed. */
+  distHtmlSpecHintNeeded: boolean;
+}
+
+/**
+ * Attempt to load parse5 as an optional dependency.
+ * Returns null silently when parse5 is not installed.
+ */
+async function loadParse5(): Promise<
+  | ((
+      html: string,
+      opts: {
+        sourceCodeLocationInfo: boolean;
+        onParseError: (e: { code: string; startLine?: number; startCol?: number }) => void;
+      },
+    ) => void)
+  | null
+> {
+  try {
+    const mod = (await import("parse5")) as {
+      parse: (html: string, opts: unknown) => void;
+    };
+    return mod.parse;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") return null;
+    throw err;
+  }
+}
+
+/** Recursively collect files with a given extension under a directory. */
+async function walkFiles(dir: string, ext: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walkFiles(full, ext)));
+    else if (entry.isFile() && entry.name.endsWith(ext)) out.push(full);
+  }
+  return out;
 }
 
 const VALID_API_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
@@ -788,6 +835,48 @@ export const checkProject = async (): Promise<CheckFindings> => {
     });
   }
 
+  // ── dist/ HTML spec validation (optional parse5 dep) ─────────────────────
+  // When parse5 is installed, walk every compiled HTML file in dist/ and run
+  // the WHATWG HTML5 parser over it. Any parse error becomes a "dist-html-spec"
+  // finding so the user sees exactly where the output is malformed.
+  // When parse5 is not installed, set a hint flag so the formatter can nudge
+  // the user toward installing it — without failing the check.
+  const distDir = resolve(process.cwd(), BascikConfig.directory?.out ?? "dist");
+  let distHtmlChecked: number | null = null;
+  let distHtmlSpecHintNeeded = false;
+
+  if (existsSync(distDir)) {
+    const distHtmlFiles = await walkFiles(distDir, ".html");
+    if (distHtmlFiles.length > 0) {
+      const parse5Parse = await loadParse5();
+      if (parse5Parse === null) {
+        distHtmlSpecHintNeeded = true;
+      } else {
+        distHtmlChecked = distHtmlFiles.length;
+        for (const file of distHtmlFiles) {
+          let html: string;
+          try {
+            html = await readFile(file, "utf-8");
+          } catch {
+            continue;
+          }
+          const relPath = relative(distDir, file);
+          parse5Parse(html, {
+            sourceCodeLocationInfo: true,
+            onParseError: (err: { code: string; startLine?: number; startCol?: number }) => {
+              items.push({
+                category: "dist-html-spec",
+                severity: "error",
+                message: `[${err.code}]`,
+                locations: [{ filePath: relPath, line: err.startLine }],
+              });
+            },
+          });
+        }
+      }
+    }
+  }
+
   const errors = items.filter((i) => i.severity === "error").length;
   const warnings = items.filter((i) => i.severity === "warning").length;
 
@@ -797,6 +886,8 @@ export const checkProject = async (): Promise<CheckFindings> => {
     pagesChecked: pageList.length,
     componentsChecked: knownComponents.size,
     items,
+    distHtmlChecked,
+    distHtmlSpecHintNeeded,
   };
 };
 
@@ -864,6 +955,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Component scan failures",
     description: "Component discovery failed and needs correction before a reliable check run.",
   },
+  "dist-html-spec": {
+    title: "dist/ HTML spec violations (WHATWG HTML5)",
+    description:
+      "parse5 detected parse errors in compiled HTML files. These represent\n" +
+      "structural defects that a spec-compliant parser would reject. Run\n" +
+      "`bascik --build` again after fixing the underlying source.",
+  },
 };
 
 /**
@@ -882,7 +980,13 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
 
   if (findings.items.length === 0) {
     const warnNote = findings.warnings > 0 ? ` (${findings.warnings} warnings)` : "";
-    return `bascik --check\n\n✓ ${findings.pagesChecked} page${findings.pagesChecked !== 1 ? "s" : ""} and ${findings.componentsChecked} component${findings.componentsChecked !== 1 ? "s" : ""} checked — no errors${warnNote}`;
+    let out = `bascik --check\n\n✓ ${findings.pagesChecked} page${findings.pagesChecked !== 1 ? "s" : ""} and ${findings.componentsChecked} component${findings.componentsChecked !== 1 ? "s" : ""} checked — no errors${warnNote}`;
+    if (findings.distHtmlChecked !== null) {
+      out += `\n✓ ${findings.distHtmlChecked} dist/ HTML file${findings.distHtmlChecked !== 1 ? "s" : ""} pass WHATWG spec (parse5)`;
+    } else if (findings.distHtmlSpecHintNeeded) {
+      out += `\nℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking`;
+    }
+    return out;
   }
 
   for (const [category, items] of grouped.entries()) {
@@ -929,7 +1033,12 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
   }
 
   const symbol = findings.errors > 0 ? "✗" : "✓";
-  const summary = `${symbol} ${findings.errors} error${findings.errors !== 1 ? "s" : ""}, ${findings.warnings} warning${findings.warnings !== 1 ? "s" : ""}`;
+  let summary = `${symbol} ${findings.errors} error${findings.errors !== 1 ? "s" : ""}, ${findings.warnings} warning${findings.warnings !== 1 ? "s" : ""}`;
+  if (findings.distHtmlChecked !== null) {
+    summary += `\n✓ ${findings.distHtmlChecked} dist/ HTML file${findings.distHtmlChecked !== 1 ? "s" : ""} pass WHATWG spec (parse5)`;
+  } else if (findings.distHtmlSpecHintNeeded) {
+    summary += `\nℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking`;
+  }
   sections.push(summary);
 
   return sections.join("\n");
@@ -940,6 +1049,8 @@ export interface CheckJsonOutput {
   warnings: number;
   pagesChecked: number;
   componentsChecked: number;
+  distHtmlChecked: number | null;
+  distHtmlSpecHintNeeded: boolean;
   findings: Array<{
     category: string;
     severity: FindingSeverity;
@@ -958,6 +1069,8 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
     warnings: findings.warnings,
     pagesChecked: findings.pagesChecked,
     componentsChecked: findings.componentsChecked,
+    distHtmlChecked: findings.distHtmlChecked,
+    distHtmlSpecHintNeeded: findings.distHtmlSpecHintNeeded,
     findings: findings.items.map((item) => ({
       category: item.category,
       severity: item.severity,

@@ -1,0 +1,42 @@
+{
+  "Bascik API Route Handler": {
+    "prefix": "bascik-api",
+    "body": [
+      "export const ${1|GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD|} = async (",
+      "  ${2:request}: Request,",
+      "  ${3:context}: { params: Record<string, string>; remoteIp: string }",
+      "): Promise<Response> => {",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik API route handler function with request and context parameters"
+  },
+  "Bascik GET Handler": {
+    "prefix": "bascik-get",
+    "body": [
+      "export const GET = async (",
+      "  ${1:request}: Request,",
+      "  ${2:context}: { params: Record<string, string>; remoteIp: string }",
+      "): Promise<Response> => {",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik GET API route handler"
+  },
+  "Bascik POST Handler": {
+    "prefix": "bascik-post",
+    "body": [
+      "export const POST = async (",
+      "  ${1:request}: Request,",
+      "  ${2:context}: { params: Record<string, string>; remoteIp: string }",
+      "): Promise<Response> => {",
+      "  const ${3:data} = await ${1:request}.json();",
+      "  $0",
+      "  return Response.json({ ok: true });",
+      "};"
+    ],
+    "description": "Bascik POST API route handler with JSON body extraction"
+  }
+}

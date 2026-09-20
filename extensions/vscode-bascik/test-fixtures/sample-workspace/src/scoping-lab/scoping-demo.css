@@ -1,0 +1,9 @@
+/* CSS Check 1: Standalone attribute selector (warns) */
+[data-state] {
+  color: red;
+}
+
+/* CSS Check 2: Bare element in :is() (warns) */
+:is(button, a) {
+  outline: none;
+}

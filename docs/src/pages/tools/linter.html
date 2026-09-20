@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <meta name="description"
+    content="Catch invalid component tags, undeclared props, misplaced directives, and unscoped CSS or JS with the Bascik CLI linter and editor integration." />
+  <title>Linter - Bascik Docs</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <!-- Sidebar -->
+      <docs-sidebar />
+
+      <!-- Content -->
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/tools/linter'));
+        </script>
+
+        <!-- Content rendered from docs/content/tools/linter.md at build time.
+             To update page content, edit the MD file - not this file. -->
+        <script data-bascik-build>
+          import { renderMd } from '@/lib/md-renderer.ts';
+          console.log(await renderMd('./content/tools/linter.md'));
+        </script>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+</body>
+
+</html>

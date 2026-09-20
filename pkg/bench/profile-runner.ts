@@ -17,6 +17,11 @@ import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, summarizeAlloca
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const subject = fileURLToPath(new URL("./profile-subject.ts", import.meta.url));
 const require = createRequire(import.meta.url);
+// CPU-profiler startup can be delayed substantially when a coverage run is
+// executing other test workers. Keep captures bounded, while allowing enough
+// headroom for a profiled HTTP/2 subject to initialize under contention.
+const CAPTURE_DIAGNOSTIC_DELAY_MS = 120_000;
+const CAPTURE_DEADLINE_MS = 150_000;
 async function decodeClinicDataset(tool: string, dataset: string) {
   if (tool === "heapprofiler") {
     const profile = JSON.parse(await readFile(dataset, "utf8"));
@@ -139,8 +144,8 @@ export async function execute(command: string[], cwd: string, directory: string,
   const terminate = () => { process.exitCode = 143; cancel(new CaptureCanceled("capture interrupted by SIGTERM")); };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
-  const diagnosticDeadline = setTimeout(() => journal("capture-pre-deadline", { childPid: child.pid, cpu: process.cpuUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage() }), 90_000);
-  const deadline = setTimeout(() => cancel(new Error(`capture deadline exceeded; private diagnostics: ${directory}`)), 110_000);
+  const diagnosticDeadline = setTimeout(() => journal("capture-pre-deadline", { childPid: child.pid, cpu: process.cpuUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage() }), CAPTURE_DIAGNOSTIC_DELAY_MS);
+  const deadline = setTimeout(() => cancel(new Error(`capture deadline exceeded; private diagnostics: ${directory}`)), CAPTURE_DEADLINE_MS);
   let outcome: { code: number | null; signal: NodeJS.Signals | null } | undefined;
   let failure: Error | undefined;
   let settlementFailure: Error | undefined;

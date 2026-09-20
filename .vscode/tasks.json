@@ -1,0 +1,245 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Rebuild Bascik Extension",
+			"type": "shell",
+			"command": "yarn ext:compile",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Compile Bascik Extension via TSC",
+			"type": "shell",
+			"command": "npx --prefix extensions/vscode-bascik tsc -p extensions/vscode-bascik/tsconfig.json",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Yarn Compile in Extension Dir",
+			"type": "shell",
+			"command": "cd extensions/vscode-bascik && yarn compile",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Check Tooling Path",
+			"type": "shell",
+			"command": "which tsc; yarn --version; node --version",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Run Ext Compile From Root",
+			"type": "shell",
+			"command": "yarn ext:compile",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Workspace Compile",
+			"type": "shell",
+			"command": "yarn workspace bascik-vscode compile",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Compile via Project Node Modules TSC",
+			"type": "shell",
+			"command": "./node_modules/.bin/tsc -p extensions/vscode-bascik/tsconfig.json",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Check Project Node Modules TSC",
+			"type": "shell",
+			"command": "ls -la ./node_modules/.bin/tsc",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Node Run TSC on Extension",
+			"type": "shell",
+			"command": "node ./node_modules/typescript/bin/tsc -p extensions/vscode-bascik/tsconfig.json; echo \"exitcode: $?\"",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "List Files TSC Output",
+			"type": "shell",
+			"command": "node ./node_modules/typescript/bin/tsc -p extensions/vscode-bascik/tsconfig.json --listFilesOnly",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "List Emitted Files From TSC",
+			"type": "shell",
+			"command": "node ./node_modules/typescript/bin/tsc -p extensions/vscode-bascik/tsconfig.json --listEmittedFiles",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check dist extension mtime",
+			"type": "shell",
+			"command": "node -e 'console.log(require(\"fs\").statSync(\"extensions/vscode-bascik/dist/extension.js\").mtime)'",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check top of dist extension js",
+			"type": "shell",
+			"command": "head -n 20 extensions/vscode-bascik/dist/extension.js",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Grep in terminal for script directives",
+			"type": "shell",
+			"command": "grep -n \"createScriptDirectiveCompletionItems\" extensions/vscode-bascik/dist/extension.js; echo \"exitcode: $?\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Grep test output in dist",
+			"type": "shell",
+			"command": "grep -n \"component-demo\" extensions/vscode-bascik/dist/test/extension.test.js; echo \"exitcode: $?\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check Installed Extensions",
+			"type": "shell",
+			"command": "ls -ld ~/.vscode/extensions/*bascik* /Users/collin/.vscode/extensions/*bascik*",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check Installed Extension Contents",
+			"type": "shell",
+			"command": "ls -la /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0; ls -la /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check Installed Extension for Script Directives",
+			"type": "shell",
+			"command": "grep -n \"createScriptDirectiveCompletionItems\" /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js; echo \"exitcode: $?\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check Installed Extension for componentMetadata",
+			"type": "shell",
+			"command": "grep -n \"componentMetadata\" /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js; echo \"exitcode: $?\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Sync Build to Installed Extension",
+			"type": "shell",
+			"command": "cp -rv /Users/collin/github/bascik/extensions/vscode-bascik/dist/* /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify Installed Extension Has New Code",
+			"type": "shell",
+			"command": "grep -n \"createScriptDirectiveCompletionItems\" /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Verify componentMetadata in Installed Extension",
+			"type": "shell",
+			"command": "grep -n \"componentMetadata\" /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check HTML Invalidation in Installed Extension",
+			"type": "shell",
+			"command": "grep -n \"invalidate('html')\" /Users/collin/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js; echo \"exitcode: $?\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check installed extension dist",
+			"type": "shell",
+			"command": "grep -n \"createScriptDirectiveCompletionItems\" ~/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/extension.js",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Sync to installed extension",
+			"type": "shell",
+			"command": "cp -r extensions/vscode-bascik/dist/* ~/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/ && echo \"SYNCED\"",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Simulate tagMatch in head",
+			"type": "shell",
+			"command": "node -e '\nconst text = `<head>\\n  <do\\n  <script data-bascik-build>\\n  import { canonical } from \"@/lib/canonical.ts\";\\n  console.log(await canonical());\\n  </script>`;\nconst offset = text.indexOf(\"<do\") + 3;\nconst sourceBeforeCursor = text.slice(0, offset);\nconsole.log(\"sourceBeforeCursor:\", JSON.stringify(sourceBeforeCursor));\nconst tagMatch = /<([A-Za-z][\\w-]*)?$/.exec(sourceBeforeCursor);\nconsole.log(\"tagMatch:\", tagMatch);\nif (tagMatch) {\n  const tagStart = offset - tagMatch[0].length;\n  const sourceBeforeTag = sourceBeforeCursor.slice(0, tagStart);\n  const previousTagStart = sourceBeforeTag.lastIndexOf(\"<\");\n  const previousTagEnd = sourceBeforeTag.lastIndexOf(\">\");\n  console.log(\"tagStart:\", tagStart, \"previousTagStart:\", previousTagStart, \"previousTagEnd:\", previousTagEnd);\n}\n'",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check matching do components in docs",
+			"type": "shell",
+			"command": "node -e '\nconst fs = require(\"fs\");\nconst path = require(\"path\");\n\nfunction normalizeComponentName(filePath) {\n  return (\n    filePath\n      .replace(/\\\\/g, \"/\")\n      .split(\"/\")\n      .pop()\n      ?.replace(/\\.html$/i, \"\")\n      .toLowerCase() ?? \"\"\n  );\n}\n\nconst dir = \"docs/src/components\";\nfs.readdir(dir, { recursive: true }, (err, files) => {\n  const htmls = files.filter(f => f.endsWith(\".html\"));\n  console.log(\"total htmls:\", htmls.length);\n  const matching = htmls.filter(f => normalizeComponentName(f).startsWith(\"do\"));\n  console.log(\"matching do*:\", matching);\n});\n'",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "List active bascik extension",
+			"type": "shell",
+			"command": "code --list-extensions --show-versions | grep bascik",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Quick test",
+			"type": "shell",
+			"command": "node -e '\nconst fs = require(\"fs\");\nconst path = require(\"path\");\nconst vscode = {\n  workspace: {\n    workspaceFolders: [{ uri: { fsPath: \"/Users/collin/github/bascik\", toString: () => \"file:///Users/collin/github/bascik\" }, name: \"bascik\" }]\n  }\n};\nconsole.log(\"Workspace check ok\");\n'",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Check git diff",
+			"type": "shell",
+			"command": "git diff --check",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Compile and sync extension",
+			"type": "shell",
+			"command": "node ./node_modules/typescript/bin/tsc -p extensions/vscode-bascik/tsconfig.json && cp -r extensions/vscode-bascik/dist/* ~/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/ && echo \"RECOMPILED_AND_SYNCED\"",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Check git diff",
+			"type": "shell",
+			"command": "git diff --check",
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

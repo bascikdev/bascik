@@ -6,7 +6,8 @@
     "create",
     "docs",
     "extensions/vscode-bascik",
-    "adapters/cloudflare"
+    "adapters/cloudflare",
+    "lsp"
   ],
   "engines": {
     "node": ">=22.18.0"
@@ -19,6 +20,10 @@
     "pkg:bench": "yarn workspace @bascik/bascik bench",
     "pkg:typecheck": "yarn workspace @bascik/bascik typecheck",
     "pkg:unit": "yarn workspace @bascik/bascik unit",
+    "pkg:unit:watch": "yarn workspace @bascik/bascik unit:watch",
+    "pkg:integration": "yarn workspace @bascik/bascik integration",
+    "pkg:integration:watch": "yarn workspace @bascik/bascik integration:watch",
+    "pkg:test:all": "yarn workspace @bascik/bascik test:all",
     "pkg:e2e": "yarn workspace @bascik/bascik e2e",
     "pkg:e2e:dev": "yarn workspace @bascik/bascik e2e:dev",
     "pkg:e2e:dev:exec": "yarn workspace @bascik/bascik e2e:dev:exec",
@@ -58,6 +63,8 @@
     "docs:preview": "yarn workspace bascik-docs preview",
     "docs:typecheck": "yarn workspace bascik-docs typecheck",
     "docs:unit": "yarn workspace bascik-docs unit",
+    "docs:integration": "yarn workspace bascik-docs integration",
+    "pkg:check:e2e": "yarn workspace @bascik/bascik check:e2e",
     "docs:e2e": "yarn workspace bascik-docs e2e",
     "docs:lighthouse": "yarn workspace bascik-docs lighthouse",
     "docs:lighthouse:all": "yarn workspace bascik-docs lighthouse:all",
@@ -75,16 +82,24 @@
     "ext:cover": "yarn ext:coverage",
     "ext:test": "yarn workspace bascik-vscode test",
     "ext:update-coverage": "yarn ext:coverage",
+    "lsp:build": "yarn workspace @bascik/language-server build",
+    "lsp:check": "yarn workspace @bascik/language-server build && node lsp/dist/bin.js --check",
+    "lsp:test": "yarn workspace @bascik/language-server test",
+    "lsp:unit": "yarn workspace @bascik/language-server unit",
+    "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
+    "lsp:coverage": "yarn workspace @bascik/language-server coverage",
+    "lsp:cover": "yarn lsp:coverage",
     "check:spelling": "codespell -L teY,directroy,scirpt,erorr,buld,afterAll --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
     "check:all": "yarn check:spelling && yarn check:standards",
-    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck",
-    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit",
+    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn lsp:typecheck",
+    "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit && yarn lsp:unit",
+    "integration:all": "yarn pkg:integration && yarn docs:integration",
     "e2e:all": "yarn pkg:e2e:all && yarn docs:e2e && yarn adapter:cf:e2e",
-    "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage && yarn adapter:cf:coverage",
+    "coverage:all": "yarn pkg:coverage && yarn create:coverage && yarn docs:coverage && yarn ext:coverage && yarn adapter:cf:coverage && yarn lsp:coverage",
     "cover:all": "yarn coverage:all",
     "update-coverage:all": "yarn coverage:all",
-    "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn e2e:all && yarn docs:lighthouse"
+    "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn integration:all && yarn e2e:all && yarn docs:lighthouse"
   }
 }

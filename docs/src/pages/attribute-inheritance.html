@@ -42,14 +42,13 @@
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/attribute-inheritance.md', { to: 'How It Works' }));
-                    console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
+          console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/inherit-demo-card/">
           <div data-bascik-slot="example">
             <inherit-demo-card class="featured-card" id="featured-inheritance" aria-label="Featured inheritance demo"
-              data-testid="inherit-demo">
-            </inherit-demo-card>
+              data-testid="inherit-demo" />
           </div>
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">

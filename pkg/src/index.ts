@@ -157,8 +157,7 @@ export const runCli = async (
 
 const isMain =
   process.argv[1] &&
-  (fileURLToPath(import.meta.url) === resolve(process.argv[1]) ||
-    process.argv[1].endsWith("bascik.js"));
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 
 if (isMain) {
   // Install process-level crash net for unexpected rejections / exceptions.

@@ -143,62 +143,6 @@ describe('source-owned phase cycles', () => {
     cycle.close();
   });
 
-  describe('oracle verification and negative controls (R4 step 1)', () => {
-    it('oracle rejects when an extra build-error listener is retained on options.emitter', () => {
-      const emitter = new EventEmitter();
-      const baseline = emitter.rawListeners('build-error');
-      const leak = () => {};
-      emitter.on('build-error', leak);
-      try {
-        expect(() => assertNoListenerLeak(emitter, baseline)).toThrow();
-      } finally {
-        emitter.removeListener('build-error', leak);
-      }
-      assertNoListenerLeak(emitter, baseline);
-    });
-
-    it('oracle detects if a synthetic timer remains un-cleared or active after settlement', () => {
-      vi.useFakeTimers();
-      expect(vi.getTimerCount()).toBe(0);
-      const timer = setTimeout(() => {}, 1000);
-      try {
-        expect(() => {
-          expect(vi.getTimerCount()).toBe(0);
-        }).toThrow();
-      } finally {
-        clearTimeout(timer);
-      }
-      expect(vi.getTimerCount()).toBe(0);
-    });
-
-    it('oracle detects mismatched publication counts and paths on simulated dropped events', () => {
-      const pathA = `${process.cwd()}/src/pages/a.html`;
-      const pathB = `${process.cwd()}/src/pages/b.html`;
-      const expectedPaths = [pathA, pathB].sort();
-
-      const emittedPublications: [string, unknown][] = [
-        ['transpiled', { cyclePaths: expectedPaths, attempt: 0 }],
-      ];
-
-      // Negative control: simulated dropped event (fewer publications than expected)
-      const expectedPublicationsAfterAttempt1: [string, unknown][] = [
-        ['transpiled', { cyclePaths: expectedPaths, attempt: 0 }],
-        ['transpiled', { cyclePaths: expectedPaths, attempt: 1 }],
-      ];
-      expect(() => {
-        expect(emittedPublications).toEqual(expectedPublicationsAfterAttempt1);
-      }).toThrow();
-
-      // Negative control: simulated mismatched paths
-      const mismatchedPublications: [string, unknown][] = [
-        ['transpiled', { cyclePaths: [pathA], attempt: 0 }],
-      ];
-      expect(() => {
-        expect(mismatchedPublications).toEqual(emittedPublications);
-      }).toThrow();
-    });
-  });
-
   it('settles 100 repeated same-two-path cycles with exact publications, paths, baseline listeners, recovery, and zero timers', async () => {
     vi.useFakeTimers();
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

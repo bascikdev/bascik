@@ -38,6 +38,23 @@ const x = 1;
     expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com"');
   });
 
+  it('generates clean anchor slugs by decoding entities and collapsing hyphens', async () => {
+    const mdContent = `## Why does \`--check\` list my third-party web components?
+
+## Isn't BASIC already a programming language?
+`;
+    const mdFile = join(tempDir, 'slug-test.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile);
+    expect(html).toContain(
+      '<h2 id="why-does-check-list-my-third-party-web-components"><a class="anchor-link" href="#why-does-check-list-my-third-party-web-components">'
+    );
+    expect(html).toContain(
+      '<h2 id="isnt-basic-already-a-programming-language"><a class="anchor-link" href="#isnt-basic-already-a-programming-language">'
+    );
+  });
+
   it('renderMd wraps tables in <doc-table> and adds scope="col" to <th> headers', async () => {
     const mdContent = `| Col 1 | Col 2 |\n| --- | --- |\n| Val 1 | Val 2 |\n`;
     const mdFile = join(tempDir, 'table.md');

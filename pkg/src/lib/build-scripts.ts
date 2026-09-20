@@ -84,13 +84,18 @@ const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   "i",
 );
 
+// Matches a statically visible `process.env.NAME` member read in a build
+// script. Used only to warn when `NAME` is not declared in
+// `scripts.cache.environment`; it is not a substitute for the cache key.
+const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
+
 // ─── Build-script output cache ───────────────────────────────────────────────
 // Caches child-process output on disk, keyed by a SHA-256 hash of the script
 // content plus the content of any local files it references. Subsequent builds
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 9;
+export const SCRIPT_CACHE_VERSION = 10;
 
 export interface ImportRootOptions {
   /** Absolute import root that `@/` specifiers resolve against. */
@@ -337,6 +342,23 @@ export const resolveBuildScriptImports = (
 ): string =>
   rewriteModuleSpecifiers(source, baseDir, { importRoot: options.importRoot ?? getImportRoot() });
 
+/**
+ * Return the names of statically visible `process.env.NAME` reads in `script`
+ * that are NOT declared in `scripts.cache.environment`. Only called when the
+ * environment declaration is configured, so projects that never declare env
+ * inputs get no warning. Never fails a build; the caller warns once per name.
+ */
+export const detectUndeclaredEnvReads = (script: string): string[] => {
+  const declared = new Set(BascikConfig.scripts?.cache?.environment ?? []);
+  if (declared.size === 0) return [];
+  const seen = new Set<string>();
+  for (const match of script.matchAll(PROCESS_ENV_READ_RE)) {
+    const name = match[1];
+    if (!declared.has(name)) seen.add(name);
+  }
+  return [...seen];
+};
+
 const computeScriptCacheKey = async (
   script: string,
   baseDir: string,
@@ -360,6 +382,21 @@ const computeScriptCacheKey = async (
   hash.update(siteUrl);    // BASCIK_SITE_URL  — can affect script output
   hash.update(base);       // BASCIK_BASE      — can affect script output
   hash.update(routeStr);   // BASCIK_ROUTE     — varies per dynamic route
+
+  // Declared environment inputs: fold each variable's name and resolved value
+  // into the key so a changed value invalidates cached output. Values are
+  // hashed, never persisted. Missing and empty are distinct (a missing key
+  // folds a sentinel, an empty string folds its own bytes). Sorted so the key
+  // is deterministic across equivalent declaration orders.
+  const declaredEnv = BascikConfig.scripts?.cache?.environment;
+  if (declaredEnv && declaredEnv.length > 0) {
+    hash.update("ENV"); // explicit marker so env-less keys never collide with env keys
+    for (const name of [...declaredEnv].sort()) {
+      hash.update(name);
+      const value = process.env[name];
+      hash.update(value === undefined ? "\u0000MISSING" : value);
+    }
+  }
 
   const visited = new Set<string>();
   const queue = [...extractScriptDeps(script, baseDir, { importRoot })];
@@ -570,6 +607,18 @@ export const executeBuildScripts = async (
       preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir, { importRoot });
     } catch (err) {
       return annotateLeadingSlash(err);
+    }
+
+    // When `scripts.cache.environment` is configured, warn about statically
+    // visible `process.env.NAME` reads that are not declared. This is advisory
+    // only: it never fails the build, and it only fires when the declaration
+    // is present so existing projects see no new noise (Option A).
+    if (BascikConfig.scripts?.cache?.environment?.length) {
+      for (const name of detectUndeclaredEnvReads(trimmedScript)) {
+        console.warn(
+          `[bascik] warning: build script reads process.env.${name} but "${name}" is not declared in scripts.cache.environment; its value is not part of the cache key.`,
+        );
+      }
     }
 
     // A script whose effective dependency graph static analysis cannot know

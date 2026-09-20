@@ -62,6 +62,12 @@ describe("minifyHtml", () => {
     expect(minifyHtml(html)).toBe(html);
   });
 
+  it("does not extract a script nested inside a pre after another script", () => {
+    const html = '<script type="application/ld+json">{"description":"<!-- remains data"}</script><p>after</p><pre><script data-testid="nested-script">const sample = 1;</script></pre>';
+
+    expect(minifyHtml(html)).toBe(html);
+  });
+
   it("preserves comments inside pre elements", () => {
     const html = "<pre><!-- example --><code>sample</code></pre>";
     expect(minifyHtml(html)).toBe(html);
@@ -138,6 +144,12 @@ describe("minifyHtml", () => {
     const htmlString = '<div><pre class="code-block">  indented\ncode\n</pre></div>';
     const result = minifyHtml(htmlString);
     expect(result).toBe('<div><pre class="code-block">  indented\ncode\n</pre></div>');
+  });
+
+  it("preserves content in every sibling pre element", () => {
+    const htmlString = "<div><pre>first\nblock</pre><pre>second\nblock</pre></div>";
+
+    expect(minifyHtml(htmlString)).toBe(htmlString);
   });
 
   it("preserves content of <pre> and <textarea> elements with multiline or newline attributes", () => {
@@ -224,6 +236,12 @@ describe("minifyHtml", () => {
     expect(minifyHtml(html)).toContain('.a::after { content: "<!-- -->"; }');
   });
 
+  it("preserves a style string after an earlier style block", () => {
+    const html = '<style><!-- .first { color: red; } --></style><p>first</p><style>.second::after { content: "<!-- not a comment -->"; }</style><p>second</p>';
+
+    expect(minifyHtml(html)).toContain('content: "<!-- not a comment -->"');
+  });
+
   it("preserves style raw text across multiple style blocks and script blocks", () => {
     const html =
       "<style><!-- .a { color: red; } --></style>" +
@@ -272,6 +290,37 @@ describe("minifyHtml", () => {
     // must not treat the content as an ordinary comment to strip.
     const html = "<style><!-- .x { color: red; }";
     expect(() => minifyHtml(html)).not.toThrow();
+  });
+
+  it("does not corrupt a script tag when an HTML comment before it mentions <script>", () => {
+    // Regression: a `<script>` reference inside <!-- --> was matched as a real
+    // script opener, causing SCRIPT_TAG_PATTERN to consume everything up to the
+    // real </script> as the "body", corrupting the output with a SyntaxError.
+    const input =
+      "<!-- The inline <script> below runs before first paint -->\n" +
+      "<script>!function(){document.body.className='ready'}()</script>";
+    const result = minifyHtml(input);
+    expect(result).toContain("!function(){document.body.className='ready'}()");
+    expect(result).not.toContain("The inline");
+  });
+
+  it("does not corrupt a script when a multi-line comment mentions <script> and <style>", () => {
+    // Mirrors the exact docs-head.html pattern that triggered the production bug.
+    const input = [
+      "<!--",
+      "  - This component carries no props or slots.",
+      "  - The inline <script> below is a runtime script, not a data-bascik-build or",
+      "    data-bascik-server script. It runs on the client before first paint to",
+      "    apply the saved theme.",
+      "  - Because it lives in <head>, keep it dependency-free and synchronous.",
+      "-->",
+      "<!-- Apply saved theme before first paint to prevent flash -->",
+      "<script>!function(){var t=sessionStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}()</script>",
+    ].join("\n");
+    const result = minifyHtml(input);
+    expect(result).toContain("sessionStorage.getItem('theme')");
+    expect(result).not.toContain("This component carries");
+    expect(result).not.toContain("Apply saved theme");
   });
 
   it("preserves arbitrary CSS raw text inside style elements while still removing outer HTML comments", () => {

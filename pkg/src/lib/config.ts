@@ -50,6 +50,7 @@ export const normalizeScopableOption = (
       enabled: val.enabled ?? defaultEnabled,
       include: val.include,
       exclude: val.exclude,
+      environment: val.environment,
     };
   }
   return { enabled: defaultEnabled };

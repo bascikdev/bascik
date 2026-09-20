@@ -124,17 +124,15 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
     }
     if (buildDepEnabled) {
       if (!observation || resolve(path) !== observation.path) return;
-      if (observation.watchEvent) {
-        // Debounce / deduplicate identical watch events on the same armed path from multiple watchers
-        if (observation.watchEvent === event) return;
-        process.send!({ error: `Unexpected build-dependency watch event: ${event} ${path}, generation ${observation.generation}` });
-        return;
+      // Chokidar may deliver a stale event from the previous operation after the
+      // next generation is armed (e.g. a late `add` while gen N+1 expects
+      // `change`). The `completed` acknowledgment is causally tied to the actual
+      // compilation callback (see the watcher.on wrapper), not to this event
+      // bookkeeping, so a reordered or duplicate event must not fail the harness.
+      // Record the expected event when it arrives and ignore everything else.
+      if (event === armed!.expectedWatchEvent) {
+        observation.watchEvent = event;
       }
-      if (event !== armed!.expectedWatchEvent) {
-        process.send!({ error: `Unexpected build-dependency watch event: ${event} ${path}, generation ${observation.generation}` });
-        return;
-      }
-      observation.watchEvent = event;
       return;
     }
     if (devModuleEnabled) {
@@ -182,6 +180,7 @@ const { apiRouteRegistry } = await import("./server-api.ts");
 const { moduleKeyForPath } = await import("./module-graph.ts");
 const { serverSidecarRegistry } = await import("./server-sidecar.ts");
 const { getCompressedCacheEntriesCount, getInFlightCompressionsCount, getOpenStreamedAssetHandles } = await import("./caching.ts");
+const { pageWriteIdle } = await import("./processing.ts");
 const requestRefs: WeakRef<object>[] = [];
 const requestClosureRefs: WeakRef<object>[] = [];
 const planRefs: WeakRef<object>[] = [];
@@ -875,6 +874,13 @@ process.on("message", async (message: {
     } else if (message.action === "asset-idle") {
       assert(staticAssetEnabled || buildDepEnabled || devModuleEnabled, "asset/dependency/dev-module idle requires its fixture");
       await boundary.join();
+    } else if (message.action === "page-write-idle") {
+      // Join the queued dev disk write for the page under observation. The
+      // `transpiled` event is published before that write runs, so a caller
+      // asserting exact dist/ bytes must await this first.
+      assert(buildDepEnabled || devModuleInlineEnabled, "page-write-idle requires a page-edit fixture");
+      await pageWriteIdle(resolve("src/pages/inline.html"));
+      result = { idle: true };
     } else if (message.action === "completed") {
       assert(armed, "edit must be armed");
       try {

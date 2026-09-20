@@ -1,3 +1,23 @@
+<!-- @bascik
+Shared head markup component. Place inside the head block of a page shell:
+
+  <head>
+    <docs-head />
+    <title>...</title>
+  </head>
+-->
+<!--
+  Bascik-specific behavior:
+  - This component carries no props or slots; it is pure shared head markup.
+  - The inline <script> below is a runtime script, not a data-bascik-build or
+    data-bascik-server script. It runs on the client before first paint to
+    apply the saved theme and prevent a flash of the wrong theme.
+  - Bascik wraps component scripts in an IIFE. This script touches
+    document.documentElement and sessionStorage directly (no getElementById /
+    querySelector calls), so no DOM selector rewriting is needed.
+  - Because it lives in <head>, keep it dependency-free and synchronous so it
+    does not block or defer the critical path.
+-->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#18191b" />
