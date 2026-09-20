@@ -1,7 +1,7 @@
 # Linting
 
 Bascik projects use two complementary linting tools:
-1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules via CLI (`npm run lint` or `npx @bascik/language-server --check`) or in your editor. See the [Linter & Editor Support](/tools/linter) guide.
+1. **Bascik Linter (`@bascik/language-server`)**: Validates component tags, undeclared props, slots, mutually exclusive script directives, and CSS/JS scoping rules via CLI (`npm run lint` or `npx @bascik/language-server --check`) or in your editor. See the [Linter](/tools/linter) guide.
 2. **Web Standards & Accessibility Linter (`webhint`)**: Audits HTML templates for W3C web standards, cross-browser compatibility, and accessibility.
 
 ## Webhint Integration

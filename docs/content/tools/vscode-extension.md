@@ -202,7 +202,7 @@ Multiple inline `<style>` elements are supported and are not reported as an edit
 
 ## Command-Line Linting & Other Editors
 
-If you need to run these diagnostics in continuous integration (CI) or want editor support for Neovim, Zed, or Helix, see the [Linter & Editor Support](/tools/linter) documentation.
+If you need to run these diagnostics in continuous integration (CI) or want editor support for Neovim, Zed, or Helix, see the [Linter](/tools/linter) documentation.
 
 Metadata annotation warnings use the current unsaved component text, so mistakes appear as you edit without waiting for the file to be saved. Hover and completion contracts refresh from disk when component files change.
 

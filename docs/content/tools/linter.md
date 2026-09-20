@@ -1,4 +1,4 @@
-# Linter & Editor Support
+# Linter
 
 Bascik provides official linter and editor tooling to catch invalid markup, unclosed components, undeclared props, misplaced script directives, and CSS/JS scoping errors as you type or in CI.
 
