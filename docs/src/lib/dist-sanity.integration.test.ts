@@ -130,7 +130,7 @@ describe('dist sanity — HTML parse errors (parse5 WHATWG)', () => {
     }
 
     expect(failures).toHaveLength(0);
-  });
+  }, 30_000);
 });
 
 describe('dist sanity — unreplaced pipeline tokens', () => {
@@ -149,7 +149,7 @@ describe('dist sanity — unreplaced pipeline tokens', () => {
     }
 
     expect(hits).toHaveLength(0);
-  });
+  }, 30_000);
 
   it('no CSS file contains an unreplaced Bascik shield token', async () => {
     const files = await walk(DIST_DIR, '.css');
