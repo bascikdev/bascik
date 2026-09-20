@@ -224,6 +224,22 @@
 			"command": "git diff --check",
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Compile and sync extension",
+			"type": "shell",
+			"command": "node ./node_modules/typescript/bin/tsc -p extensions/vscode-bascik/tsconfig.json && cp -r extensions/vscode-bascik/dist/* ~/.vscode/extensions/bascik.bascik-vscode-0.1.0/dist/ && echo \"RECOMPILED_AND_SYNCED\"",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Check git diff",
+			"type": "shell",
+			"command": "git diff --check",
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

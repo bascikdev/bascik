@@ -1099,7 +1099,7 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken,
-  ): vscode.ProviderResult<vscode.Definition> {
+  ): vscode.ProviderResult<vscode.Definition | vscode.LocationLink[]> {
     if (document.languageId !== 'html') {
       return undefined;
     }
@@ -1116,7 +1116,7 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
     snapshot: ProjectSnapshot,
-  ): vscode.Definition | undefined {
+  ): vscode.Definition | vscode.LocationLink[] | undefined {
     const text = document.getText();
     const offset = document.offsetAt(position);
 
@@ -1161,10 +1161,18 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
           'src',
         );
         if (!resolved || !fs.existsSync(resolved)) return undefined;
-        return new vscode.Location(
-          vscode.Uri.file(resolved),
-          new vscode.Position(0, 0),
+        const targetUri = vscode.Uri.file(resolved);
+        const originSelectionRange = new vscode.Range(
+          document.positionAt(valueStart),
+          document.positionAt(valueEnd),
         );
+        return [
+          {
+            originSelectionRange,
+            targetUri,
+            targetRange: new vscode.Range(0, 0, 0, 0),
+          },
+        ];
       }
 
       // Cursor inside the script body: inspect lexical ESM specifiers only.
@@ -1180,10 +1188,18 @@ class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
           'specifier',
         );
         if (!resolved || !fs.existsSync(resolved)) return undefined;
-        return new vscode.Location(
-          vscode.Uri.file(resolved),
-          new vscode.Position(0, 0),
+        const targetUri = vscode.Uri.file(resolved);
+        const originSelectionRange = new vscode.Range(
+          document.positionAt(openTagEnd + start),
+          document.positionAt(openTagEnd + end),
         );
+        return [
+          {
+            originSelectionRange,
+            targetUri,
+            targetRange: new vscode.Range(0, 0, 0, 0),
+          },
+        ];
       }
 
       return undefined;
