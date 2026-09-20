@@ -26,7 +26,11 @@ When a component exposes a default slot, selecting its suggestion inserts a pair
 <user-card></user-card>
 ```
 
-Components without a default slot complete only the tag name, so IntelliSense does not imply that child content is accepted.
+Components without a default slot complete as self-closing void elements:
+
+```html
+<docs-head />
+```
 
 ## Complete Props and Slots in Context
 

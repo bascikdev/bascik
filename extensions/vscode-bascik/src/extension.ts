@@ -721,18 +721,17 @@ class ComponentCompletionItemProvider
             vscode.CompletionItemKind.Class,
           );
           item.sortText = `0_${componentName}`;
+          item.range = new vscode.Range(
+            document.positionAt(tagStart),
+            replacementRange.end,
+          );
           if (metadata?.defaultSlot) {
-            item.range = new vscode.Range(
-              document.positionAt(tagStart),
-              replacementRange.end,
-            );
             item.insertText = new vscode.SnippetString(
               `<${componentName}>$0</${componentName}>`,
             );
           } else {
-            item.textEdit = vscode.TextEdit.replace(
-              replacementRange,
-              componentName,
+            item.insertText = new vscode.SnippetString(
+              `<${componentName} />$0`,
             );
           }
           item.filterText = componentName;

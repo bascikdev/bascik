@@ -456,6 +456,23 @@ suite('Extension Integration Suite', () => {
       );
     });
 
+    test('completes non-slot components as self-closing void elements', async () => {
+      const completions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<my-b',
+      );
+      const item = completions.items.find(
+        (candidate) => completionLabel(candidate) === 'my-button',
+      );
+      assert.ok(item);
+      assert.ok(item.insertText instanceof vscode.SnippetString);
+      assert.strictEqual(
+        item.insertText.value,
+        '<my-button />$0',
+      );
+    });
+
     test('suggests inferred props inside a component opening tag', async () => {
       const completions = await completionsInFile(
         'primary',

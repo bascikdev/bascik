@@ -17,7 +17,7 @@ Build Bascik sites with faster navigation and earlier feedback. The official ext
 
 Type a partial opening tag to see matching project components in IntelliSense. Suggestions follow the current project's configured component roots and remain isolated across nested projects and multi-root workspaces.
 
-Components with a default slot complete as paired opening and closing tags. Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
+Components with a default slot complete as paired opening and closing tags (`<user-card>$0</user-card>`). Components without a default slot complete as self-closing void elements (`<site-nav />$0`). Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
 
 Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution directives: `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`. Once one directive is present, competing directives are suppressed.
 
