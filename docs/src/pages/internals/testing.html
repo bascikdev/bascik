@@ -53,7 +53,7 @@
             };
             console.log(`
               <h1>Testing Internals</h1>
-              <p style="color:var(--text-muted);font-size:.92rem;margin-bottom:1rem">Bascik has two separate test suites: <strong>unit tests</strong> (Vitest) that verify individual library modules, and <strong>end-to-end tests</strong> (Playwright) that build and browser-test the full transpilation pipeline against a fixture site.</p>
+              <p style="color:var(--text-muted);font-size:.92rem;margin-bottom:1rem">Bascik has three separate test suites: <strong>unit tests</strong> (Vitest) that verify individual library modules, <strong>integration tests</strong> (Vitest) that exercise real process, server, and worker boundaries, and <strong>end-to-end tests</strong> (Playwright) that build and browser-test the full transpilation pipeline against a fixture site.</p>
               <h2 id="unit-test-coverage"><a class="anchor-link" href="#unit-test-coverage">Unit Test Coverage</a></h2>
               <p style="color:var(--text-muted);font-size:.92rem;margin-bottom:1rem">Line, function, and branch coverage from the Vitest unit test suite. CLI entry points (<code>index.ts</code>, <code>transpile.ts</code>, <code>page-worker.ts</code>) are excluded. They run only in E2E tests below.</p>
               <doc-table>
