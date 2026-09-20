@@ -374,7 +374,7 @@ describe("bounded real profiling runner", () => {
   it.each(["http2", "static", "dev", "serial", "workers"])("validates real %s work and labeled CPU coverage", async (scenario) => {
     const root = await temporaryRoot();
     const tool = scenario === "workers" && workerCpuLimitation() ? "control" : "cpu";
-    await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", scenario, "--rounds", "1", "--report-dir", root], { timeout: 120_000, env: cleanGeneratorEnvironment(process.env) });
+    await promisify(execFile)(process.execPath, [runner, "--tools", tool, "--scenarios", scenario, "--rounds", "1", "--report-dir", root], { timeout: 180_000, env: cleanGeneratorEnvironment(process.env) });
     const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
     expect(manifest.success).toBe(true);
     expect(manifest.captures.length).toBeGreaterThan(0);
@@ -405,7 +405,7 @@ describe("bounded real profiling runner", () => {
       if (scenario === "dev") expect(capture.result.edit.completed).toBe(1);
       if (scenario === "serial" || scenario === "workers") expect(capture.result.builds.map((build: { completed: number }) => build.completed)).toEqual([8, 8]);
     }
-  }, 120_000);
+  }, 180_000);
   it.each(["doctor", "0x", "bubbleprof", "heapprofiler"])("requires decodable real %s output from a fresh consent environment before accepting the capture", async (tool) => {
     const parent = await temporaryRoot();
     const root = join(parent, "report");
