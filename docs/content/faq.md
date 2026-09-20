@@ -71,6 +71,10 @@ During a build, Bascik emits a warning naming the unresolved tag, and the tag sh
 
 Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
 
+## Why does `--check` list my third-party web components?
+
+Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
+
 ## What does `bascik --check` actually check?
 
 `bascik --check` validates pages, components, config, and API route files in one pass. It reports:
@@ -86,10 +90,6 @@ Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit 
 - WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
 
 Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
-
-## Why does `--check` list my third-party web components?
-
-Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
 
 ## Can I use Bascik with JavaScript libraries like Alpine.js or HTMX?
 

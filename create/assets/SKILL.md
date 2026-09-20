@@ -114,7 +114,7 @@ bascik/
 
 The `create/` folder is intentionally separate from `pkg/`. Contributor work in this monorepo uses Yarn 4 with `yarn.lock`, while generated projects intentionally use npm and receive their own `package-lock.json`. That split keeps contributor workflows Yarn-based while preserving the standard npm onboarding flow for generated apps.
 
-The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides command-click component resolution and warnings for patterns that are unsupported or risky under Bascik's scoping model. The rules are generated from the compatibility matrix in `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
+The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides context-aware IntelliSense (component, prop, and slot completions), command-click component navigation, rich hover details, syntax highlighting, and real-time scoping warnings. Linting and language server capabilities are powered by `@bascik/language-server`, which also runs standalone via CLI (`npm run lint` or `npx @bascik/language-server --check`) and implements LSP so it works in Neovim, Helix, Zed, and other editors. The compatibility rules are generated from `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
 
 The generator in `create/src/index.ts` validates input, then calls `create/src/scaffold.ts` to write the project files. The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
 
@@ -834,6 +834,21 @@ export default defineConfig({
 });
 ```
 
+**Environment variable cache keys (`scripts.cache.environment`):** By default, `process.env` reads are invisible to the cache key. Declare the exact variable names a script reads in `scripts.cache.environment` so their resolved values become part of the key:
+
+```ts
+export default defineConfig({
+  scripts: {
+    cache: {
+      enabled: true,
+      environment: ['MY_FEATURE_FLAG', 'API_BASE_URL'],
+    },
+  },
+});
+```
+
+When a declared variable's value changes, the cache key changes and the script re-runs. Values are hashed into the key and never persisted. Missing vs. empty string produce different keys. Only exact names are supported (no globs). Bascik warns about statically visible `process.env.NAME` reads that are not declared; the warning is advisory and never fails the build.
+
 **To bust the entire cache** (waive cache correctness, e.g. after an unusual external change the identity walk cannot see):
 
 ```sh
@@ -1283,7 +1298,7 @@ npm create bascik@latest my-site -y
 
 This scaffolds the project, installs dependencies, and starts the dev server in one shot. You're live at **http://localhost:8080**. Pass a different name to use it as both the directory name and the site title. Omit the name to be prompted for one (defaulting to `bascik-app`). Drop `-y` to step through the install and dev server prompts manually.
 
-The scaffold creates a complete starter site: pages, components, global CSS, `.gitignore`, and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. It omits `bascik.config.ts` because the starter uses Bascik's built-in defaults. When the dev server stops, the CLI prints a reminder:
+The scaffold creates a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `.vscode/extensions.json` (recommends the official Bascik extension), and AI assistant skills at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`. It includes a `lint` script in `package.json` powered by `@bascik/language-server` (`npm run lint`), and omits `bascik.config.ts` because the starter uses Bascik's built-in defaults. When the dev server stops, the CLI prints a reminder:
 
 ```
 To start again:  cd my-site && npm run dev
@@ -1476,9 +1491,9 @@ Bascik scans project sources and reports:
 
     <model-viewer>     src/pages/gallery.html:42
   ```
-* **Errors (exit code 1):** Config validation failures, missing site URL for sitemap/robots generation, duplicate component names, circular component references, script mode conflicts (`data-bascik-build` + `data-bascik-server` on one tag), duplicate route resolution, API route files missing method handlers, and API route collisions.
+* **Errors (exit code 1):** Config validation failures, missing site URL for sitemap/robots generation, duplicate component names, circular component references, script mode conflicts (`data-bascik-build` + `data-bascik-server` on one tag), duplicate route resolution, API route files missing method handlers, API route collisions, and WHATWG HTML5 parse errors in compiled `dist/` HTML files (requires [parse5](https://parse5.js.org/) as a dev dependency; when parse5 is absent, `--check` prints a one-line install hint and does not fail).
 * **Strict mode:** Pass `--strict` to treat warnings as errors and exit with code `1`.
-* **JSON output:** Pass `--json` to output structured findings for CI integration.
+* **JSON output:** Pass `--json` to output structured findings for CI integration. The JSON schema includes `distHtmlChecked` (number of `dist/` files parse5 validated, or `null`) and `distHtmlSpecHintNeeded` (`true` when parse5 is absent but `dist/` HTML exists).
 * **Success**: Exits with code `0` when no errors are found (or under `--strict` when no errors or warnings).
 
 `missing-required-prop` is intentionally not emitted. The cheap whole-project heuristic is noisy for real projects and creates speculative warnings.
@@ -1494,6 +1509,7 @@ bascik --check && bascik --build
 |---|---|
 | VS Code built-in CSS | CSS syntax errors (squiggly lines, no install needed) |
 | [Stylelint](https://stylelint.io) | CSS syntax, invalid properties, conventions |
+| [parse5](https://parse5.js.org/) | WHATWG HTML5 parse errors in compiled `dist/` output (`npm install -D parse5` then `bascik --check`) |
 | [HTMLHint](https://htmlhint.com) | HTML structure errors in `.html` files |
 | [ESLint](https://eslint.org) | JS syntax and logic errors in `<script>` blocks |
 
