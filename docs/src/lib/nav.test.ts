@@ -74,7 +74,7 @@ describe('renderPagination', () => {
     expect(html).toContain('<span data-pg-section>Deployment</span>');
     expect(html).toContain('<span data-pg-label>Cloudflare Adapter</span>');
     expect(html).toContain('<span data-pg-section>Tooling</span>');
-    expect(html).toContain('<span data-pg-label>VS Code Extension</span>');
+    expect(html).toContain('<span data-pg-label>Linter & Editor Support</span>');
   });
 
   it('includes section names within the same section', () => {
