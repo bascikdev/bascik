@@ -1286,11 +1286,16 @@ async function createDiagnosticsForDocument(
     return [];
   }
 
+  // Ignore test and spec files (e.g., *.test.ts, *.spec.js, *.test.html)
+  const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
+  if (/\.(test|spec)\.[a-z0-9]+$/i.test(normalizedDocumentPath)) {
+    return [];
+  }
+
   const text = document.getText();
   const diagnostics: vscode.Diagnostic[] = [];
   const project = projects.get(document);
   const snapshot = project ? await project.getSnapshot() : undefined;
-  const normalizedDocumentPath = document.uri.fsPath.replace(/\\/g, '/');
   const isComponentDocument =
     document.uri.scheme === 'file' &&
     snapshot !== undefined &&

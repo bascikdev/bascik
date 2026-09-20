@@ -1908,6 +1908,31 @@ suite('Extension Integration Suite', () => {
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
+    test('does not report compatibility warnings in test or spec files', async () => {
+      const folder = getWorkspaceFolder('primary');
+      const testFileUri = vscode.Uri.file(
+        path.join(folder.uri.fsPath, 'src', 'example.test.ts'),
+      );
+      await vscode.workspace.fs.writeFile(
+        testFileUri,
+        Buffer.from('document.querySelector("[data-target]");\nelement.id = "custom";'),
+      );
+      try {
+        const doc = await vscode.workspace.openTextDocument(testFileUri);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+        assert.strictEqual(
+          diagnostics.length,
+          0,
+          'Test and spec files should receive no Bascik scoping diagnostics',
+        );
+      } finally {
+        try {
+          await vscode.workspace.fs.delete(testFileUri);
+        } catch {}
+      }
+    });
+
     test('reports compatibility warning in standalone CSS file', async () => {
       const doc = await vscode.workspace.openTextDocument({
         language: 'css',
