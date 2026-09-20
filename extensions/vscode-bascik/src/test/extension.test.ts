@@ -77,6 +77,7 @@ async function completionsInFile(
   relativePath: string,
   content: string,
   cursorOffset = content.length,
+  triggerCharacter?: string,
 ): Promise<vscode.CompletionList> {
   const folder = getWorkspaceFolder(folderName);
   const document = await vscode.workspace.openTextDocument(
@@ -98,7 +99,7 @@ async function completionsInFile(
       'vscode.executeCompletionItemProvider',
       document.uri,
       document.positionAt(cursorOffset),
-      '<',
+      triggerCharacter,
     );
   } finally {
     const restore = new vscode.WorkspaceEdit();
@@ -510,6 +511,71 @@ suite('Extension Integration Suite', () => {
       );
       assert.ok(primary.includes('shared-pill'));
       assert.ok(!secondary.includes('shared-pill'));
+    });
+
+    test('suggests component-demo and its inferred props on manual completion', async () => {
+      const componentCompletions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<comp',
+        5,
+        undefined,
+      );
+      const labels = bascikCompletionLabels(componentCompletions);
+      assert.ok(labels.includes('component-demo'), `labels: ${labels.join(', ')}`);
+
+      const propCompletions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<component-demo ',
+        16,
+        ' ',
+      );
+      const propLabels = propCompletions.items.map(completionLabel);
+      assert.ok(
+        propLabels.includes('data-bascik-prop-file'),
+        `prop labels: ${propLabels.join(', ')}`,
+      );
+    });
+
+    test('suggests mutually exclusive script directives on <script > tags', async () => {
+      const scriptCompletions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<script ',
+        8,
+        ' ',
+      );
+      const scriptLabels = scriptCompletions.items.map(completionLabel);
+      for (const dir of [
+        'data-bascik-build',
+        'data-bascik-routes',
+        'data-bascik-server',
+        'data-bascik-stream',
+      ]) {
+        assert.ok(scriptLabels.includes(dir), `Expected ${dir} in script completions`);
+      }
+
+      // If one directive exists, none should be suggested
+      const existingCompletions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<script data-bascik-build ',
+        26,
+        ' ',
+      );
+      const existingLabels = existingCompletions.items.map(completionLabel);
+      for (const dir of [
+        'data-bascik-build',
+        'data-bascik-routes',
+        'data-bascik-server',
+        'data-bascik-stream',
+      ]) {
+        assert.ok(
+          !existingLabels.includes(dir),
+          `Did not expect ${dir} when build directive is already present`,
+        );
+      }
     });
 
     for (const [context, cursorOffset] of [

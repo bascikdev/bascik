@@ -657,6 +657,15 @@ class ComponentCompletionItemProvider
         const currentTagName = openTagMatch[1].toLowerCase();
         const openTagText = openTagMatch[0];
         const currentTagStart = offset - openTagText.length;
+
+        if (currentTagName === 'script') {
+          return createScriptDirectiveCompletionItems(
+            document,
+            position,
+            openTagText,
+          );
+        }
+
         const currentComponentMetadata =
           snapshot.componentMetadata.get(currentTagName);
         if (currentComponentMetadata) {
@@ -696,16 +705,7 @@ class ComponentCompletionItemProvider
     if (!project) return undefined;
 
     const start = document.positionAt(offset - prefix.length);
-    const existingNameRange = document.getWordRangeAtPosition(
-      position,
-      /[A-Za-z][\w-]*/,
-    );
-    const replacementRange = new vscode.Range(
-      start,
-      existingNameRange?.start.isEqual(start)
-        ? existingNameRange.end
-        : position,
-    );
+    const replacementRange = new vscode.Range(start, position);
 
     return project.getSnapshot().then((snapshot) => {
       if (token.isCancellationRequested) return undefined;
@@ -718,6 +718,7 @@ class ComponentCompletionItemProvider
             componentName,
             vscode.CompletionItemKind.Class,
           );
+          item.sortText = `0_${componentName}`;
           if (metadata?.defaultSlot) {
             item.range = new vscode.Range(
               document.positionAt(tagStart),
@@ -745,6 +746,58 @@ class ComponentCompletionItemProvider
         });
     });
   }
+}
+
+const SCRIPT_DIRECTIVES = [
+  {
+    name: 'data-bascik-build',
+    detail: 'Bascik build-time script',
+    documentation:
+      'Executes in Node.js at build time. Standard output from console.log() replaces this script tag in the generated HTML.',
+  },
+  {
+    name: 'data-bascik-routes',
+    detail: 'Bascik dynamic routes script',
+    documentation:
+      'Executes in Node.js at build time. Outputs a JSON array of dynamic route parameters to generate multiple pages from a template.',
+  },
+  {
+    name: 'data-bascik-server',
+    detail: 'Bascik server-side request script',
+    documentation:
+      'Executes in Node.js per request on production and dev servers. The default exported handler function replaces this script tag.',
+  },
+  {
+    name: 'data-bascik-stream',
+    detail: 'Bascik server-side streaming script',
+    documentation:
+      'Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.',
+  },
+];
+
+function createScriptDirectiveCompletionItems(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  openTagText: string,
+): vscode.CompletionItem[] {
+  const hasAnyDirective = SCRIPT_DIRECTIVES.some((dir) =>
+    new RegExp(`\\b${dir.name}\\b`, 'i').test(openTagText),
+  );
+  if (hasAnyDirective) return [];
+
+  const range = completionReplacementRange(document, position);
+  return SCRIPT_DIRECTIVES.map((dir) => {
+    const item = new vscode.CompletionItem(
+      dir.name,
+      vscode.CompletionItemKind.Property,
+    );
+    item.range = range;
+    item.insertText = dir.name;
+    item.sortText = `0_${dir.name}`;
+    item.detail = dir.detail;
+    item.documentation = new vscode.MarkdownString(dir.documentation);
+    return item;
+  });
 }
 
 function completionReplacementRange(
@@ -778,6 +831,7 @@ function createPropCompletionItems(
       );
       item.range = range;
       item.insertText = new vscode.SnippetString(`${attribute}="$1"`);
+      item.sortText = `0_${attribute}`;
       item.detail = 'Bascik component prop';
       if (prop.description) {
         const documentation = new vscode.MarkdownString();
@@ -804,6 +858,7 @@ function createSlotCompletionItems(
     item.range = range;
     item.insertText = `data-bascik-slot="${slot.name}"`;
     item.filterText = `data-bascik-slot ${slot.name}`;
+    item.sortText = `0_data-bascik-slot_${slot.name}`;
     item.detail = 'Bascik named slot';
     if (slot.description) {
       const documentation = new vscode.MarkdownString();
@@ -1611,6 +1666,80 @@ async function createDiagnosticsForDocument(
 
     const componentMap = snapshot?.componentMap ?? new Map<string, string>();
     const componentNames = Array.from(componentMap.keys());
+
+    // 1. Diagnose script directives on non-script tags
+    const nonScriptDirectiveRe =
+      /<([A-Za-z][\w-]*)\b([^>]*\b(data-bascik-(?:build|server|routes|stream))\b[^>]*)>/gi;
+    let nonScriptMatch: RegExpExecArray | null;
+    while ((nonScriptMatch = nonScriptDirectiveRe.exec(maskedText)) !== null) {
+      const tagName = nonScriptMatch[1].toLowerCase();
+      if (tagName === 'script') continue;
+      const attrName = nonScriptMatch[3];
+      const matchStart = nonScriptMatch.index;
+      const tagContent = nonScriptMatch[0];
+      const attrOffset = tagContent.indexOf(attrName);
+      const start = document.positionAt(matchStart + attrOffset);
+      const end = document.positionAt(matchStart + attrOffset + attrName.length);
+      const diag = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        `\`${attrName}\` is only valid on <script> tags. It has no effect on <${tagName}>.`,
+        vscode.DiagnosticSeverity.Error,
+      );
+      diag.source = 'bascik';
+      diagnostics.push(diag);
+    }
+
+    // 2. Diagnose data-bascik-slot outside of components, on the component itself, or targeting undeclared slots
+    const slotTagRe =
+      /<([A-Za-z][\w-]*)\b([^>]*\bdata-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?[^>]*)>/gi;
+    let slotMatch: RegExpExecArray | null;
+    while ((slotMatch = slotTagRe.exec(maskedText)) !== null) {
+      const tagOffset = slotMatch.index;
+      const slotName = slotMatch[3] ?? slotMatch[4] ?? slotMatch[5];
+      const parentName = findNearestParentComponent(
+        maskedText.slice(0, tagOffset),
+        componentMap,
+      );
+
+      // Check if this tag is in a component source file defining its own slot
+      const isInsideComponentDefinition = isComponentDocument;
+      if (!parentName && !isInsideComponentDefinition) {
+        const slotAttrOffset = slotMatch[0].indexOf('data-bascik-slot');
+        const start = document.positionAt(tagOffset + slotAttrOffset);
+        const end = document.positionAt(
+          tagOffset + slotAttrOffset + 'data-bascik-slot'.length,
+        );
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(start, end),
+          '`data-bascik-slot` is only valid inside a Bascik component body.',
+          vscode.DiagnosticSeverity.Error,
+        );
+        diag.source = 'bascik';
+        diagnostics.push(diag);
+      } else if (parentName) {
+        const parentMeta = snapshot?.componentMetadata.get(parentName);
+        if (slotName !== undefined && parentMeta) {
+          const declaredSlot = parentMeta.slots.some(
+            (s) => s.name.toLowerCase() === slotName.toLowerCase(),
+          );
+          if (!declaredSlot) {
+            const slotAttrOffset = slotMatch[0].indexOf('data-bascik-slot');
+            const start = document.positionAt(tagOffset + slotAttrOffset);
+            const end = document.positionAt(
+              tagOffset + slotMatch[0].length - (slotMatch[0].endsWith('/>') ? 2 : 1),
+            );
+            const diag = new vscode.Diagnostic(
+              new vscode.Range(start, end),
+              `Component <${parentName}> does not declare slot "${slotName}".`,
+              vscode.DiagnosticSeverity.Error,
+            );
+            diag.source = 'bascik';
+            diagnostics.push(diag);
+          }
+        }
+      }
+    }
+
     if (componentNames.length > 0) {
       componentNames.sort((a, b) => b.length - a.length);
       const escapedNames = componentNames.map((name) =>
@@ -1642,6 +1771,34 @@ async function createDiagnosticsForDocument(
 
         if (openTagEndIndex !== -1) {
           const openTagText = maskedText.slice(tagStartIndex, openTagEndIndex);
+
+          // Diagnose undeclared props on this component usage
+          const compMeta = snapshot?.componentMetadata.get(tagName);
+          if (compMeta) {
+            const propRe = /\b(data-bascik-prop-([\w-]+))\b/gi;
+            let propMatch: RegExpExecArray | null;
+            while ((propMatch = propRe.exec(openTagText)) !== null) {
+              const fullPropAttr = propMatch[1];
+              const propName = propMatch[2];
+              const isDeclared = compMeta.props.some(
+                (p) => p.name.toLowerCase() === propName.toLowerCase(),
+              );
+              if (!isDeclared) {
+                const start = document.positionAt(tagStartIndex + propMatch.index);
+                const end = document.positionAt(
+                  tagStartIndex + propMatch.index + fullPropAttr.length,
+                );
+                const diag = new vscode.Diagnostic(
+                  new vscode.Range(start, end),
+                  `Component <${tagName}> does not declare prop "${propName}".`,
+                  vscode.DiagnosticSeverity.Warning,
+                );
+                diag.source = 'bascik';
+                diagnostics.push(diag);
+              }
+            }
+          }
+
           const isSelfClosing = /\/\s*>$/.test(openTagText);
           if (!isSelfClosing) {
             const closeIndex = findMatchingClose(
@@ -1806,14 +1963,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.workspace.onDidChangeTextDocument((event) => {
       void refreshDiagnostics(event.document);
-      if (event.document.languageId === 'html') {
-        projects.get(event.document)?.invalidate('html');
-      }
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnostics.delete(document.uri);
-      if (document.languageId === 'html')
-        projects.get(document)?.invalidate('html');
     }),
   );
 }

@@ -1,3 +1,31 @@
+<!-- @bascik
+Interactive demo box with Preview, Source, and Output panes and per-language tabs. Used on docs pages to show a live example alongside its source and the scoped build output.
+@prop no-preview - Hides the Preview tab and pane and collapses the demo box margin.
+@prop hide-preview - Alias for no-preview.
+@prop file - Optional file path shown in the demo meta bar.
+@slot example - Content rendered in the Preview pane.
+@slot source-usage - Usage snippet shown in the Source pane Usage tab.
+@slot source-html - HTML snippet shown in the Source pane HTML tab.
+@slot source-css - CSS snippet shown in the Source pane CSS tab.
+@slot source-js - JavaScript snippet shown in the Source pane JS tab.
+@slot code - Fallback catch-all for the Source pane.
+@slot output-html - Scoped HTML output shown in the Output pane HTML tab.
+@slot output-css - Scoped CSS output shown in the Output pane CSS tab.
+@slot output-js - Scoped JavaScript output shown in the Output pane JS tab.
+@slot output - Fallback catch-all for the Output pane.
+-->
+<!--
+  Bascik-specific behavior:
+  - Empty named slots are hidden at runtime via :empty selectors; the demo
+    only shows tabs that have content.
+  - The no-preview marker uses :has() and :not(:empty) to toggle layout and
+    tab visibility without JavaScript.
+  - The CSS relies on modern selectors (:has(), @media (hover: hover)) that
+    Bascik scopes per component; keep them inside this file's <style> block.
+  - Code examples shown in the slots are authored in docs/content/*.md and
+    injected via extractDemoBlock at build time, so they also feed llms.txt
+    and SKILL.md.
+-->
 <div class="demo-box">
   <span class="demo-no-preview-marker" data-bascik-prop-no-preview data-bascik-prop-hide-preview hidden></span>
   <div class="demo-nav">

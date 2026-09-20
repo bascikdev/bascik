@@ -19,7 +19,19 @@ Type a partial opening tag to see matching project components in IntelliSense. S
 
 Components with a default slot complete as paired opening and closing tags. Inside a discovered component's opening tag, IntelliSense suggests inferred `data-bascik-prop-*` attributes and omits props already supplied. Inside its body, start an element opening tag to receive named `data-bascik-slot` suggestions from the nearest containing component.
 
+Inside a `<script>` tag, IntelliSense suggests the mutually exclusive execution directives: `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`. Once one directive is present, competing directives are suppressed.
+
 Cmd/Ctrl-click custom component tags to open their HTML definitions. Hover over a component to see the contract you need at the call site, including its description, inferred props, named and default slots, source location, and included styles or scripts. Component tag suggestions display the same contract before insertion.
+
+### Filtering Generic Word Suggestions
+
+VS Code by default provides word-based completions harvested from other words in the active document. Because VS Code merges those suggestions independently of language extensions, generic words from neighboring elements may appear alongside Bascik completions. To restrict HTML completions to semantic language and Bascik completions only, add the following to your VS Code settings:
+
+```json
+"[html]": {
+  "editor.wordBasedSuggestions": "off"
+}
+```
 
 ## Optional Component Descriptions
 
@@ -52,6 +64,8 @@ The extension reports high-signal problems in the editor and Problems panel:
 
 - component naming and unclosed custom elements
 - conflicting build, routes, server, and stream directives
+- misplaced script directives on non-script elements
+- undeclared component props and misplaced slot attributes
 - leading-slash imports and mixed inline or companion styles
 - invalid preserve tokens, external form names, ID references, and prop bindings
 - duplicate or undeclared component metadata annotations

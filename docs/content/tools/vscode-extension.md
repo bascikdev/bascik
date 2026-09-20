@@ -48,6 +48,27 @@ Inside the component body, start an element opening tag to see its named slots:
 
 Named-slot suggestions appear only within the nearest containing Bascik component. They are not repeated when the element already has a `data-bascik-slot` attribute. Default slots need no attribute, so they are represented by the paired component snippet rather than an attribute suggestion.
 
+## Complete Script Directives
+
+Inside a `<script>` tag, IntelliSense suggests the four mutually exclusive Bascik execution directives:
+
+- `data-bascik-build`
+- `data-bascik-routes`
+- `data-bascik-server`
+- `data-bascik-stream`
+
+Once any one of these directives is present on the tag, competing directives are omitted so conflicting execution modes are prevented before they can be saved.
+
+## Filter Generic Editor Word Suggestions
+
+VS Code by default offers word-based completions derived from surrounding text in the active document. Because VS Code merges these suggestions independently, generic text tokens from nearby tags may appear in the completion list. To limit HTML suggestions to semantic attributes and Bascik completions, disable word-based suggestions for HTML in `settings.json`:
+
+```json
+"[html]": {
+  "editor.wordBasedSuggestions": "off"
+}
+```
+
 ## Describe Inferred Component Contracts
 
 Bascik infers the public contract directly from component markup. Props come from `data-bascik-prop-*` declarations and prop names referenced by `data-bascik-attr-*`, `data-bascik-text`, or `data-bascik-html`. Named and default slots come from `data-bascik-slot` declarations. Inline or companion styles and inline scripts are also detected.
@@ -115,6 +136,9 @@ The extension publishes actionable diagnostics in the editor and Problems panel:
 - **Component naming:** Warns when an HTML component filename does not contain the hyphen required for a custom element name.
 - **Unclosed custom elements:** Warns when a non-self-closing component tag has no matching closing tag.
 - **Conflicting script directives:** Reports an error when a script combines more than one of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream`.
+- **Misplaced script directives:** Reports an error when `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` is placed on an element other than `<script>`.
+- **Undeclared component props:** Warns when a `data-bascik-prop-*` attribute is placed on a custom component tag that does not declare or infer that prop.
+- **Misplaced or undeclared slots:** Reports errors when `data-bascik-slot` is placed on an element outside any parent component, when an assigned slot name does not exist on the containing component, or when a named slot attribute is empty.
 - **Leading-slash specifiers:** Reports imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path instead.
 - **Companion style conflicts:** Warns when a component combines an inline `<style>` element with a companion `.css` file.
 - **Unscoped ID references:** Identifies `for`, `itemref`, ARIA ID references, and `href="#fragment"` values whose target ID is not declared in the component.
