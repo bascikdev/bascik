@@ -274,6 +274,37 @@ describe("minifyHtml", () => {
     expect(() => minifyHtml(html)).not.toThrow();
   });
 
+  it("does not corrupt a script tag when an HTML comment before it mentions <script>", () => {
+    // Regression: a `<script>` reference inside <!-- --> was matched as a real
+    // script opener, causing SCRIPT_TAG_PATTERN to consume everything up to the
+    // real </script> as the "body", corrupting the output with a SyntaxError.
+    const input =
+      "<!-- The inline <script> below runs before first paint -->\n" +
+      "<script>!function(){document.body.className='ready'}()</script>";
+    const result = minifyHtml(input);
+    expect(result).toContain("!function(){document.body.className='ready'}()");
+    expect(result).not.toContain("The inline");
+  });
+
+  it("does not corrupt a script when a multi-line comment mentions <script> and <style>", () => {
+    // Mirrors the exact docs-head.html pattern that triggered the production bug.
+    const input = [
+      "<!--",
+      "  - This component carries no props or slots.",
+      "  - The inline <script> below is a runtime script, not a data-bascik-build or",
+      "    data-bascik-server script. It runs on the client before first paint to",
+      "    apply the saved theme.",
+      "  - Because it lives in <head>, keep it dependency-free and synchronous.",
+      "-->",
+      "<!-- Apply saved theme before first paint to prevent flash -->",
+      "<script>!function(){var t=sessionStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}()</script>",
+    ].join("\n");
+    const result = minifyHtml(input);
+    expect(result).toContain("sessionStorage.getItem('theme')");
+    expect(result).not.toContain("This component carries");
+    expect(result).not.toContain("Apply saved theme");
+  });
+
   it("preserves arbitrary CSS raw text inside style elements while still removing outer HTML comments", () => {
     const cssArb = fc.array(
       fc.constantFrom(

@@ -13,20 +13,111 @@ import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 
 const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
 
+/**
+ * Build a same-length mask of `htmlString` where HTML comments and the bodies
+ * of `<script>` elements are replaced with space characters. The mask is used
+ * purely for locating tag boundaries; all index arithmetic is then applied to
+ * the original string.
+ *
+ * The scan is linear and state-machine-based to handle the ambiguous
+ * interaction between comment openers (`<!--`) and script string literals
+ * (e.g. `const s = "<!--";`) correctly:
+ *   - While inside a `<script>` body, `<!--` is NOT treated as a comment.
+ *   - While inside a comment, `<script` is NOT treated as a tag opener.
+ */
+const buildSensitiveMask = (html: string): string => {
+  if (!html.includes("<")) return html;
+  const chars = html.split("");
+  const n = chars.length;
+  let i = 0;
+  while (i < n) {
+    // HTML comment
+    if (chars[i] === "<" && html.startsWith("!--", i + 1)) {
+      const end = html.indexOf("-->", i + 4);
+      const commentEnd = end === -1 ? n : end + 3;
+      for (let j = i; j < commentEnd; j++) chars[j] = " ";
+      i = commentEnd;
+      continue;
+    }
+    // Opening tag — check for script/pre/textarea/style
+    if (chars[i] === "<") {
+      // Parse tag name
+      let nameStart = i + 1;
+      if (nameStart < n && chars[nameStart] === "/") nameStart++;
+      let nameEnd = nameStart;
+      while (nameEnd < n && /[a-zA-Z0-9-]/.test(chars[nameEnd])) nameEnd++;
+      const tagName = html.slice(nameStart, nameEnd).toLowerCase();
+      if (tagName === "script" || tagName === "pre" || tagName === "textarea" || tagName === "style") {
+        // Find the end of the opening tag (skip attributes, respecting quotes)
+        let j = nameEnd;
+        while (j < n && chars[j] !== ">") {
+          if (chars[j] === '"' || chars[j] === "'") {
+            const q = chars[j];
+            j++;
+            while (j < n && chars[j] !== q) j++;
+          }
+          j++;
+        }
+        const openEnd = j < n ? j + 1 : n; // position after ">"
+        // Find the matching close tag
+        const closeTag = `</${tagName}`;
+        const closeIdx = html.toLowerCase().indexOf(closeTag, openEnd);
+        if (closeIdx === -1) {
+          i = openEnd;
+          continue;
+        }
+        // Blank out from after the open tag's ">" to the start of close tag
+        for (let k = openEnd; k < closeIdx; k++) chars[k] = " ";
+        i = closeIdx;
+        continue;
+      }
+    }
+    i++;
+  }
+  return chars.join("");
+};
+
 const shieldSensitiveContent = (htmlString: string): {
   html: string;
   restore: (value: string) => string;
 } => {
   const shield = createContentShield(htmlString);
-  let html = htmlString.replace(
-    /<(pre|textarea|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
-    (match) => shield.hide(match),
-  );
-  html = html.replace(
-    SCRIPT_TAG_PATTERN,
-    (_match, open: string, body: string, close: string) =>
-      `${open}${shield.hide(body)}${close}`,
-  );
+
+  // Build a mask where comment and raw-text-element bodies are blanked out.
+  // `<script>` or `<style>` references inside comments are invisible to the
+  // regex scan below, and `<!--` inside script string literals is never
+  // mistaken for a comment opener (script bodies are masked before comments).
+  const masked = buildSensitiveMask(htmlString);
+
+  let html = htmlString;
+
+  // Collect ranges to shield from the masked string, apply right-to-left to
+  // the real `html` so that earlier offsets remain valid.
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  // script bodies
+  let scriptMatch: RegExpExecArray | null;
+  const scriptRe = new RegExp(SCRIPT_TAG_PATTERN.source, "gi");
+  while ((scriptMatch = scriptRe.exec(masked)) !== null) {
+    const bodyStart = scriptMatch.index + scriptMatch[1].length;
+    const bodyEnd = bodyStart + scriptMatch[2].length;
+    ranges.push({ start: bodyStart, end: bodyEnd });
+  }
+
+  // pre/textarea/style blocks (whole element)
+  const blockRe = /<(pre|textarea|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi;
+  let blockMatch: RegExpExecArray | null;
+  while ((blockMatch = blockRe.exec(masked)) !== null) {
+    ranges.push({ start: blockMatch.index, end: blockMatch.index + blockMatch[0].length });
+  }
+
+  // Sort descending by start so splicing doesn't shift later offsets.
+  ranges.sort((a, b) => b.start - a.start);
+
+  for (const { start, end } of ranges) {
+    html = html.slice(0, start) + shield.hide(html.slice(start, end)) + html.slice(end);
+  }
+
   return { html, restore: shield.restore };
 };
 
