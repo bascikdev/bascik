@@ -19,9 +19,10 @@ It executes across three structured stages on Node 24:
 ### Stage 1: Static Analysis, Typechecks, Standards & Unit Tests (Parallel)
 
 - **Jelly Static Analysis (`jelly`)**: Object spread and control flow analysis via `@cs-au-dk/jelly` on `pkg/src/index.ts`.
-- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, and `extensions/vscode-bascik/`.
+- **Workspace Typechecks (`typecheck`)**: Runs `yarn typecheck:all` across `pkg/`, `create/`, `docs/`, `extensions/vscode-bascik/`, and `adapters/cloudflare/`.
 - **Spelling & Web Standards (`standards`)**: Runs `yarn check:spelling` (codespell) and `yarn check:standards` (webhint).
-- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), and `extensions/vscode-bascik` (`xvfb-run -a yarn ext:test`).
+- **Unit Test Matrix**: Parallel test execution with coverage across `@bascik/bascik` (`yarn pkg:test:ci`), `create-bascik` (`yarn create:test:ci`), `bascik-docs` (`yarn docs:test`), `extensions/vscode-bascik` (`xvfb-run -a yarn ext:test`), and `@bascik/adapter-cloudflare` (`yarn adapter:cf:test:ci`).
+- **Framework Integration Tests (`integration-pkg`)**: Runs `yarn pkg:integration` in its own job, separate from the fast unit suite, because integration tests spawn real processes, servers, and worker threads.
 
 ### Stage 2: End-to-End Test Matrix (Parallel)
 
@@ -31,6 +32,7 @@ Runs after all Stage 1 jobs pass. Installs Chromium via `playwright install chro
 - **Framework E2E (Dev Server & Dev Exec Lifecycle)**: `yarn pkg:e2e:dev` and `yarn pkg:e2e:dev:exec`
 - **Framework E2E (Production HTTP/1.1 Server)**: `yarn pkg:e2e:prod:http1`
 - **Framework E2E (Production HTTP/2 TLS Server)**: `yarn pkg:e2e:prod:http2`
+- **Cloudflare Adapter E2E (local workerd)**: `yarn adapter:cf:e2e`
 - **Docs Site E2E**: `yarn docs:e2e`
 - **Create Scaffold E2E**: `yarn create:test-site`
 
@@ -42,7 +44,7 @@ All jobs enforce least-privilege with `permissions: contents: read`.
 
 ## Release Workflow
 
-The release workflow (`.github/workflows/release.yml`) triggers on version tags. The two packages are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
+The release workflow (`.github/workflows/release.yml`) triggers on version tags. The two packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
 
 | Package | Tag format | Example |
 | --- | --- | --- |
@@ -63,6 +65,8 @@ jobs:
 ```
 
 Both jobs follow the same steps: install dependencies, run tests, build, then publish.
+
+> **Note.** `@bascik/adapter-cloudflare` is a publishable package (`publishConfig.access: "public"`) but is not currently wired into the release workflow. Publishing it requires adding a matching tag trigger and job.
 
 ## Publishing to npm
 
