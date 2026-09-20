@@ -58,16 +58,16 @@ const buildSensitiveMask = (html: string): string => {
           }
           j++;
         }
-        const openEnd = j < n ? j + 1 : n; // position after ">"
+        const bodyStart = j < n ? j + 1 : n; // position after ">"
         // Find the matching close tag
         const closeTag = `</${tagName}`;
-        const closeIdx = html.toLowerCase().indexOf(closeTag, openEnd);
+        const closeIdx = html.toLowerCase().indexOf(closeTag, bodyStart);
         if (closeIdx === -1) {
-          i = openEnd;
+          i = bodyStart;
           continue;
         }
         // Blank out from after the open tag's ">" to the start of close tag
-        for (let k = openEnd; k < closeIdx; k++) chars[k] = " ";
+        for (let k = bodyStart; k < closeIdx; k++) chars[k] = " ";
         i = closeIdx;
         continue;
       }
