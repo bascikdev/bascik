@@ -62,8 +62,9 @@ Six coverage files feed the testing page (`docs/src/pages/internals/testing.html
 | `docs/test-coverage.json` | `yarn docs:coverage` |
 | `extensions/vscode-bascik/test-coverage.json` | `yarn ext:coverage` |
 | `adapters/cloudflare/test-coverage.json` | `yarn adapter:cf:coverage` |
+| `lsp/test-coverage.json` | `yarn lsp:coverage` |
 
-`yarn coverage:all` regenerates all six. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage.
+`yarn coverage:all` regenerates all seven. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage.
 
 ### SKILL.md Copies
 

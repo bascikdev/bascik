@@ -28,7 +28,11 @@
     "watch": "tsc -watch -p ./tsconfig.json",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "test": "vitest run",
-    "unit": "vitest run"
+    "test:ci": "vitest run",
+    "unit": "vitest run",
+    "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
+    "cover": "yarn coverage",
+    "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts"
   },
   "dependencies": {
     "vscode-languageserver": "^9.0.1",
@@ -36,7 +40,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.6.3",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }

@@ -1774,6 +1774,51 @@ To debug interactive client component scripts in Google Chrome or Microsoft Edge
 3. VS Code launches a new Chrome window attached to the debugger.
 4. Set breakpoints directly in your component `.html` files in VS Code, or open Chrome DevTools (`F12`), press `Cmd + P` (or `Ctrl + P`), and open virtual source files like `src/components/my-counter.html`.
 
+### Validating Compiled Output Against the HTML Spec
+
+Install `parse5` (the reference WHATWG HTML5 parser used by jsdom and Playwright) as a dev dependency and add a Vitest test that walks every `dist/**/*.html` file. Use `onParseError` with `sourceCodeLocationInfo: true` to fail on any spec violation with an actionable `file:line:col [error-code]` message:
+
+```ts
+// src/lib/dist-sanity.test.ts
+import { describe, it, expect } from 'vitest';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { parse, type ParserError } from 'parse5';
+
+const DIST_DIR = path.resolve(process.cwd(), 'dist');
+
+async function walk(dir: string, ext: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); }
+  catch { return out; }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walk(full, ext)));
+    else if (entry.isFile() && entry.name.endsWith(ext)) out.push(full);
+  }
+  return out;
+}
+
+describe('dist HTML — WHATWG spec compliance', () => {
+  it('every page is free of parse errors', async () => {
+    const files = await walk(DIST_DIR, '.html');
+    const failures: string[] = [];
+    for (const file of files) {
+      const html = await readFile(file, 'utf-8');
+      const errors: ParserError[] = [];
+      parse(html, { sourceCodeLocationInfo: true, onParseError: (e) => errors.push(e) });
+      for (const err of errors) {
+        failures.push(`${path.relative(DIST_DIR, file)}:${err.startLine}:${err.startCol}  [${err.code}]`);
+      }
+    }
+    expect(failures, failures.join('\n')).toHaveLength(0);
+  });
+});
+```
+
+Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool — hold output to the full spec, not browser recovery behavior.
+
 ### Testing Site Logic in a Bascik Project
 
 Browser component scripts are IIFE-based and not directly importable. The recommended pattern for testing complex client-side logic:

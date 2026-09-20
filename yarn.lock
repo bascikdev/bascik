@@ -176,12 +176,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@bascik/language-server@workspace:^, @bascik/language-server@workspace:packages/language-server":
+"@bascik/language-server@workspace:^, @bascik/language-server@workspace:lsp":
   version: 0.0.0-use.local
-  resolution: "@bascik/language-server@workspace:packages/language-server"
+  resolution: "@bascik/language-server@workspace:lsp"
   dependencies:
     "@types/node": "npm:^24.0.0"
+    "@vitest/coverage-v8": "npm:^4.1.10"
     typescript: "npm:^5.6.3"
+    vite: "npm:^8.1.5"
     vitest: "npm:^4.1.10"
     vscode-languageserver: "npm:^9.0.1"
     vscode-languageserver-textdocument: "npm:^1.0.12"
