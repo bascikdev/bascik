@@ -46,13 +46,6 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Tooling', pages: [
-      { href: '/tools/linter', label: 'Linter' },
-      { href: '/tools/vscode-extension', label: 'VS Code Extension' },
-      { href: '/tools/agent-skill', label: 'Agent Skill' },
-    ]
-  },
-  {
     section: 'Reference', pages: [
       { href: '/faq', label: 'FAQ' },
       { href: '/configuration', label: 'Configuration' },
@@ -61,6 +54,13 @@ export const NAV: NavSection[] = [
       { href: '/cli', label: 'Command Line Interface (CLI)' },
       { href: '/development-server', label: 'Development Server' },
       { href: '/production-server', label: 'Production Server' },
+    ]
+  },
+  {
+    section: 'Tooling', pages: [
+      { href: '/tools/linter', label: 'Linter' },
+      { href: '/tools/vscode-extension', label: 'VS Code Extension' },
+      { href: '/tools/agent-skill', label: 'Agent Skill' },
     ]
   },
   {

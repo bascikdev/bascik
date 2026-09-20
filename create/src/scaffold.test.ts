@@ -429,7 +429,9 @@ describe("scaffold", () => {
     expect(writtenTo(".gitignore")).toBeDefined();
     expect(writtenTo(".hintrc")).toBeUndefined();
     expect(writtenTo(".vscode/launch.json")).toBeDefined();
-    expect(writtenTo(".vscode/extensions.json")).toBeDefined();
+    const extensionsJson = writtenTo(".vscode/extensions.json");
+    expect(extensionsJson).toBeDefined();
+    expect(JSON.parse(extensionsJson!).recommendations).toContain("bascik.bascik-vscode");
   });
 
   it("writes all four pages", async () => {

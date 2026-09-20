@@ -27,10 +27,13 @@ npm create bascik@latest
 my-site/
 ├── .github/skills/bascik/SKILL.md  ← AI Copilot skill file
 ├── .claude/skills/bascik/SKILL.md  ← Claude skill file
+├── .vscode/
+│   ├── launch.json                 ← Debug launchers for dev server and tests
+│   └── extensions.json             ← Recommends official Bascik extension
 ├── src/
 │   ├── components/                 ← site-meta, site-header, site-footer, feat-card, my-counter
 │   └── pages/                      ← index.html, about.html, contact.html, 404.html, css/styles.css
-├── package.json
+├── package.json                    ← dev, build, lint, test, and e2e scripts
 └── .gitignore
 ```
 
