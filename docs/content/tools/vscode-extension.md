@@ -197,9 +197,3 @@ The extension discovers Bascik configs recursively inside every VS Code workspac
 When projects are nested, the closest enclosing project owns the file. Separate workspace folders remain isolated. A workspace folder with no Bascik config still receives zero-config support with `src/components` and `src` as the defaults.
 
 Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
-
-## Develop the Extension Locally
-
-From the Bascik repository root, compile the extension with `yarn ext:compile`. Open `extensions/vscode-bascik` in VS Code and press F5 to launch an Extension Development Host.
-
-The extension requires VS Code 1.90 or newer. Repository contributors can run its focused tests through the extension scripts in the root `package.json`.

@@ -217,6 +217,13 @@
 			"command": "node -e '\nconst fs = require(\"fs\");\nconst path = require(\"path\");\nconst vscode = {\n  workspace: {\n    workspaceFolders: [{ uri: { fsPath: \"/Users/collin/github/bascik\", toString: () => \"file:///Users/collin/github/bascik\" }, name: \"bascik\" }]\n  }\n};\nconsole.log(\"Workspace check ok\");\n'",
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Check git diff",
+			"type": "shell",
+			"command": "git diff --check",
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

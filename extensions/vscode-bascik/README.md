@@ -88,6 +88,35 @@ Projects without a config use Bascik's defaults: `src/components` for components
 
 Read the [complete VS Code extension guide](https://bascik.dev/tools/vscode-extension) for every navigation feature, diagnostic, limitation, and local development step.
 
-## Contributing
+## Contributing and Local Testing
 
-From the Bascik repository root, use `yarn ext:compile` to compile the extension, `yarn ext:unit` for Vitest unit tests, and `yarn ext:e2e` for extension-host integration tests. Open `extensions/vscode-bascik` in VS Code and press F5 to launch an Extension Development Host.
+### Running in an Extension Development Host (Recommended)
+
+1. Run `yarn ext:compile` from the repository root (or `npm run compile` in `extensions/vscode-bascik`).
+2. Open the `extensions/vscode-bascik` folder in VS Code.
+3. Press **F5** (or open the Run and Debug panel and choose **Run Extension**). This opens a clean Extension Development Host window running your local development build.
+
+### Testing Inside Your Main VS Code Window
+
+If you already have the official extension installed from the marketplace (`~/.vscode/extensions/bascik.bascik-vscode-*`) and want to test local edits directly in your primary editor session:
+
+1. Compile the extension from the repo root:
+
+   ```sh
+   yarn ext:compile
+   ```
+
+2. Copy the compiled `dist/` output into the installed extension's folder:
+
+   ```sh
+   cp -r extensions/vscode-bascik/dist/* ~/.vscode/extensions/bascik.bascik-vscode-*/dist/
+   ```
+
+3. In VS Code, open the Command Palette (`Cmd+Shift+P` on macOS or `Ctrl+Shift+P` on Windows/Linux) and run `Developer: Reload Window`.
+
+### Running Tests
+
+From the repository root:
+
+- `yarn ext:unit` runs fast Vitest unit tests for rules and metadata parsing.
+- `yarn ext:e2e` runs the VS Code extension-host integration test suite.
