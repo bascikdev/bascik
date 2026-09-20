@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts"],
     benchmark: {
       include: ["bench/**/*.bench.ts"],
     },
@@ -13,5 +12,20 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],
     },
+    projects: [
+      {
+        test: {
+          name: "unit",
+          include: ["src/**/*.test.ts"],
+          exclude: ["src/**/*.integration.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "integration",
+          include: ["src/**/*.integration.test.ts"],
+        },
+      },
+    ],
   },
 });

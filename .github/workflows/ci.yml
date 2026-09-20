@@ -64,6 +64,32 @@ jobs:
       - name: Run framework unit tests with coverage
         run: yarn pkg:test:ci
 
+  integration-pkg:
+    name: Framework Integration Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Run framework integration tests
+        run: yarn pkg:integration
+
   unit-create:
     name: Create-Bascik Unit Tests
     runs-on: ubuntu-latest
@@ -224,7 +250,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -254,7 +280,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -287,7 +313,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -317,7 +343,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -347,7 +373,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -377,7 +403,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 
@@ -407,7 +433,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [jelly, unit-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
+    needs: [jelly, unit-pkg, integration-pkg, unit-create, unit-adapter-cloudflare, unit-docs, unit-extension, typecheck, standards]
     steps:
       - uses: actions/checkout@v5
 

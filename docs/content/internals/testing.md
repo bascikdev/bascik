@@ -7,7 +7,7 @@ Bascik organizes verification across three distinct levels: **unit tests** that 
 The codebase distinguishes test runners from testing levels:
 
 - **Unit tests (Vitest):** Run with `yarn unit:all` or per-workspace commands. Verify isolated functions, AST manipulation, and CSS scoping transforms using deterministic inputs and minimal mocks where isolation is required.
-- **Integration tests (Vitest):** Also executed via `yarn unit:all` and per-package `unit` commands. Rather than isolating units, these exercise real subsystems collaborating across real boundaries. Key examples include real CLI child-process builds (`worker-serial-parity.test.ts`), real worker thread lifecycles (`worker-pool.real.test.ts`), real dev server module invalidation (`dev-module-reload.integration.test.ts`), real project scaffolding to compiler execution (`scaffold.integration.test.ts`), and serverless runtime parity (`serverless-parity.integration.test.ts`).
+- **Integration tests (Vitest):** Run separately with `yarn integration:all` or per-package `integration` commands. Rather than isolating units, these exercise real subsystems collaborating across real boundaries. Key examples include real CLI child-process builds (`worker-serial-parity.test.ts`), real worker thread lifecycles (`worker-pool.real.test.ts`), real dev server module invalidation (`dev-module-reload.integration.test.ts`), real project scaffolding to compiler execution (`scaffold.integration.test.ts`), and serverless runtime parity (`serverless-parity.integration.test.ts`).
 - **End-to-end tests (Playwright):** Run via `yarn pkg:e2e`, `yarn pkg:e2e:dev`, or `yarn pkg:e2e:prod`. These boot actual servers (static file server, live dev server with SSE, HTTP/1.1 cleartext, or HTTP/2 TLS production server) and navigate headless browsers to verify real DOM rendering, script execution, and user interaction.
 
 ### The Real versus Mocked Boundary Rule
@@ -73,7 +73,7 @@ yarn ext:unit         # bascik-vscode
 yarn adapter:cf:unit  # @bascik/adapter-cloudflare
 
 # Interactive watch mode (pkg)
-yarn pkg:test
+yarn pkg:unit:watch
 
 # Single run with coverage
 yarn pkg:coverage
@@ -84,6 +84,26 @@ yarn coverage:all     # update coverage across all packages
 
 # Benchmarks
 yarn pkg:bench
+```
+
+## Running Integration Tests
+
+Integration tests spawn real processes, servers, and worker threads and are
+long-running, so they run in their own Vitest project and their own CI job,
+separate from the fast unit suite.
+
+```sh
+# Workspace-wide integration tests
+yarn integration:all
+
+# Package-specific integration tests (single run)
+yarn pkg:integration  # @bascik/bascik
+
+# Interactive watch mode (pkg)
+yarn pkg:integration:watch
+
+# Run both unit and integration suites for the package
+yarn pkg:test:all
 ```
 
 ## Running E2E Tests
@@ -244,12 +264,11 @@ test.describe('my-feature-test page', () => {
 
 ## Test Configuration
 
-Vitest is configured in `pkg/vite.config.js`:
+Vitest is configured in `pkg/vite.config.js` with two projects: `unit` (fast, excludes `*.integration.test.ts`) and `integration` (only `*.integration.test.ts`):
 
 ```js
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts"],
     benchmark: {
       include: ["bench/**/*.bench.ts"],
     },
@@ -257,14 +276,29 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],
       reportsDirectory: "./coverage",
-      include: ["src/**/*.js"],
+      include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],
     },
+    projects: [
+      {
+        test: {
+          name: "unit",
+          include: ["src/**/*.test.ts"],
+          exclude: ["src/**/*.integration.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "integration",
+          include: ["src/**/*.integration.test.ts"],
+        },
+      },
+    ],
   },
 });
 ```
 
-Coverage is collected via V8 and written to `pkg/coverage/`. The CI script uses `text-summary` only. The full HTML report at `coverage/index.html` is useful locally.
+Coverage is collected via V8 and written to `pkg/coverage/`. The CI unit script uses `text-summary` only. The full HTML report at `coverage/index.html` is useful locally.
 
 ## Unit Test Files
 
@@ -367,9 +401,10 @@ The root `package.json` provides aggregated tasks across all projects:
 - `yarn typecheck:all`: runs typechecks across all packages in the workspace
 - `yarn check:all`: runs spelling (`check:spelling`) and web standards (`check:standards`)
 - `yarn unit:all`: runs unit test suites across all packages
+- `yarn integration:all`: runs the long-running integration test suite
 - `yarn e2e:all`: runs Playwright E2E suites across the workspace
 - `yarn coverage:all`: generates and updates coverage reports across all packages
-- `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, and E2E suites in sequence (coverage excluded)
+- `yarn test:all`: runs typechecks, spelling/standards checks, unit tests, integration tests, and E2E suites in sequence (coverage excluded)
 
 ## Contributing a Fix
 
@@ -377,5 +412,6 @@ The root `package.json` provides aggregated tasks across all projects:
 2. Make your changes in `pkg/src/`.
 3. Add or update tests in the paired `*.test.ts` file.
 4. Run `yarn pkg:unit` and ensure all tests pass.
-5. Run `yarn pkg:typecheck` to confirm there are no TypeScript errors.
-6. Open a pull request against `main`.
+5. Run `yarn pkg:integration` if your change touches a real process, server, or worker boundary.
+6. Run `yarn pkg:typecheck` to confirm there are no TypeScript errors.
+7. Open a pull request against `main`.
