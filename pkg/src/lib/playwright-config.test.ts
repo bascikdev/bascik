@@ -14,6 +14,7 @@ const defaultProjectExclusions = (config: typeof staticConfig): string[] => {
 describe('Playwright project test selection', () => {
   it.each([
     [staticConfig, [
+      '**/static-asset-symlinks.test.ts',
       '**/server-scripts.test.ts',
       '**/server-scripts-stream.test.ts',
       '**/api-routes.test.ts',
@@ -34,8 +35,10 @@ describe('Playwright project test selection', () => {
       '**/caching-layer.test.ts',
       '**/dev-exec-lifecycle.test.ts',
       '**/base-serving.test.ts',
+      '**/static-asset-symlinks.test.ts',
     ]],
     [http1Config, [
+      '**/static-asset-symlinks.test.ts',
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
       '**/bascik-add.test.ts',
@@ -44,6 +47,7 @@ describe('Playwright project test selection', () => {
       '**/base-serving.test.ts',
     ]],
     [http2Config, [
+      '**/static-asset-symlinks.test.ts',
       '**/dev-server-reload.test.ts',
       '**/dist-lifecycle.test.ts',
       '**/bascik-add.test.ts',

@@ -36,6 +36,9 @@ export default defineConfig({
 });
 
 export const dev = defineConfig({
+  assets:{
+    symlink: true,
+  },
   pipeline: {
     workers: true,
   },

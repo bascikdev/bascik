@@ -26,6 +26,7 @@ import { BascikConfig } from "./config.ts";
 import { serverSidecarRegistry, type SidecarLoadResult } from "./server-sidecar.ts";
 import { setServerHealthState } from "./server-lifecycle.ts";
 import { LIVE_RELOAD_SCRIPT_ATTR, stripLiveReloadScript } from "./live-reload.ts";
+import { assertProductionBuildState } from "./build-state.ts";
 
 /**
  * Recursively collect every `.html` file path under `dir`.
@@ -52,6 +53,7 @@ const collectHtmlFiles = async (dir: string): Promise<string[]> => {
 const loadDistIntoMemory = async (): Promise<void> => {
   const distDir = resolve(BascikConfig.directory.out);
   const outDirRel = relative(process.cwd(), distDir) || "dist";
+  await assertProductionBuildState("server");
   let htmlFiles: string[];
   try {
     htmlFiles = await collectHtmlFiles(distDir);

@@ -6,6 +6,8 @@ const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const staticTestIgnore = [
+  // Dedicated to the symlink-enabled live-dev fixture.
+  '**/static-asset-symlinks.test.ts',
   '**/server-scripts.test.ts',
   // The static harness (e2e/server.ts) serves files and cannot execute server
   // scripts; the `<script type="text/bascik-server" data-bascik-server-id>`

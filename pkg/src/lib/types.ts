@@ -176,6 +176,11 @@ export interface ScopingOptions {
 export interface AssetsOptions {
   inlineStyles: boolean | string[];
   exclude: string[];
+  /**
+   * In development, link pass-through static assets into the output directory
+   * instead of copying them. Builds always emit regular files.
+   */
+  symlink: boolean;
 }
 
 export interface GenerateOptions {
@@ -337,6 +342,7 @@ export type UserConfig = {
   assets?: {
     inlineStyles?: boolean | string[];
     exclude?: string[];
+    symlink?: boolean;
   };
   generate?: Partial<GenerateOptions>;
   pipeline?: {

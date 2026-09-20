@@ -14,6 +14,7 @@ import { join } from 'node:path';
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
+const symlinkFixtureDir = join(e2eDir, 'symlink-fixture');
 const devServerTestIgnore = [
   // server-scripts.test.ts and server-scripts-stream.test.ts run here on
   // purpose (prompt 68): the dev server shares createRequestHandler with
@@ -40,8 +41,16 @@ export default defineConfig({
     headless: true,
   },
   projects: [
-    { name: 'default', testIgnore: [...devServerTestIgnore, '**/base-serving.test.ts'] },
+    {
+      name: 'default',
+      testIgnore: [...devServerTestIgnore, '**/base-serving.test.ts', '**/static-asset-symlinks.test.ts'],
+    },
     { name: 'base-dev', testMatch: '**/base-serving.test.ts', use: { baseURL: 'http://localhost:9551' } },
+    {
+      name: 'asset-symlink-dev',
+      testMatch: '**/static-asset-symlinks.test.ts',
+      use: { baseURL: 'http://localhost:9663' },
+    },
   ],
   webServer: [{
     // BASCIK_SITE_URL matches the value the build-time configs use so the
@@ -56,6 +65,13 @@ export default defineConfig({
     command: `BASCIK_SERVER_PORT=9551 BASCIK_SITE_URL=http://localhost:9551 node ${pkgDir}/dist/index.js`,
     cwd: baseFixtureDir,
     url: 'http://localhost:9551/sub/',
+    reuseExistingServer: false,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  }, {
+    command: `BASCIK_SERVER_PORT=9663 BASCIK_SITE_URL=http://localhost:9663 node ${pkgDir}/dist/index.js --config ${symlinkFixtureDir}/bascik.config.ts`,
+    cwd: symlinkFixtureDir,
+    url: 'http://localhost:9663/',
     reuseExistingServer: false,
     stdout: 'pipe',
     stderr: 'pipe',

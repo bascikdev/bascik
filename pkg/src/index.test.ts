@@ -260,7 +260,7 @@ describe("index.ts CLI runner functions", () => {
         encoding: "utf8",
       });
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("could not read");
+      expect(result.stderr).toContain("requires a completed production build");
       expect(result.stderr).toContain("bascik --build");
       expect(result.stderr).not.toMatch(/unhandled|Unhandled/);
       expect(result.stderr).not.toMatch(/\n\s+at\s/);

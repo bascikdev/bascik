@@ -142,6 +142,7 @@ export default defineConfig({
   assets: {
     inlineStyles: false,
     exclude: [],
+    symlink: false,    // set true to link unchanged static assets in development
   },
   generate: {
     sitemap: true,
@@ -243,7 +244,7 @@ Rules that apply across all roots:
 - **Duplicate roots are detected by real path**, so a symlink to an already-listed directory is rejected, not scanned twice.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
-`directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers.
+`directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.
 
 The following built-in exclusions always apply:
 
@@ -352,10 +353,13 @@ Asset pipeline configuration.
 assets: {
   inlineStyles: ['src/css/styles.css'], // global stylesheets to inline into <head>
   exclude: ['drafts/**'],               // default: []; page-relative exclusion globs
+  symlink: false,                       // link unchanged page assets in development
 }
 ```
 
 `assets.exclude` patterns match paths relative to `directory.pages` and provide project-specific exclusions. They do not weaken the built-in deny-list, which always applies. Keep tests and source-only helpers outside `directory.pages`. To copy a separate external asset tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
+
+Set `assets.symlink` to `true` to use relative links for unchanged development assets, including images, SVGs, PDFs, fonts, media, JSON, and XML. Bascik still copies assets it transforms, such as minified CSS or JavaScript and rewritten web manifests. Every production build, including a targeted `--only` build, writes regular files. If Windows denies symlink creation, Bascik warns once and falls back to copying.
 
 ### `generate`
 

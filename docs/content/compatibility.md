@@ -35,6 +35,7 @@ Bascik operates as a zero-runtime build-time compiler and HTTP delivery server. 
 | HTTP/1.1 & HTTP/2 Protocols | IETF RFC 9112 / RFC 9113 | Baseline: Widely Available | ALPN negotiation, HTTP/2 multiplexing, pseudo-headers, stream lifecycle |
 | HTTP Semantics & Caching | IETF RFC 9110 / RFC 6797 | Baseline: Widely Available | Strong/weak ETags, conditional 304 responses, Vary, Brotli, HSTS header |
 | MIME Types | IETF RFC 9239 / IANA | Baseline: Widely Available | Current standard `text/javascript; charset=utf-8` media types |
+| Development Static Assets | Node.js filesystem | N/A | Optional relative symlinks for unchanged page assets; builds always emit regular files |
 | Live Reload & Events | WHATWG EventSource | Baseline: Widely Available | Server-Sent Events (SSE) `/bascik-live-reload` endpoint |
 | Sitemaps & Robots | Sitemaps 0.9 / IETF RFC 9309 | Standard Protocols | Canonical XML sitemap and robots exclusion directives |
 | Content Security Policy | W3C CSP Level 3 | Baseline: Widely Available | SHA-256 hash manifests (`dist/.bascik/csp-hashes.json`) for inline scripts and styles; per-request nonces intentionally unsupported for static caching |

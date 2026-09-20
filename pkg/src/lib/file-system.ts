@@ -1,4 +1,4 @@
-import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath } from "node:fs/promises";
+import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath, lstat, symlink, unlink } from "node:fs/promises";
 import { join, dirname, resolve, relative, isAbsolute, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -12,6 +12,27 @@ import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
+
+let warnedSymlinkFallback = false;
+
+/** Remove a destination link before writing, so Node never follows it into a source file. */
+const unlinkDestinationSymlink = async (destPath: string): Promise<void> => {
+  try {
+    if ((await lstat(destPath)).isSymbolicLink()) await unlink(destPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+};
+
+/** Whether this raw asset is untouched by the active pipeline and can be linked in development. */
+const isLinkableAsset = (src: string): boolean => {
+  const isCss = src.endsWith(".css");
+  const isJavaScript = src.endsWith(".js");
+  const isWebManifest = src.endsWith(".webmanifest") || basename(src).toLowerCase() === "manifest.json";
+  if (isCss && ((BascikConfig.minify?.css ?? false) || BascikConfig.base !== "/")) return false;
+  if (isJavaScript && (BascikConfig.minify?.js ?? false)) return false;
+  return !(isWebManifest && BascikConfig.base !== "/");
+};
 
 /**
  * Strip a `<configuredDir>/` marker from a normalized path. Uses the LAST
@@ -136,7 +157,9 @@ export async function copyReplicatePath(
   const writeIfChanged = async (content: string, isMinified = false): Promise<void> => {
     const destHash = createHash("sha256").update(await readFile(destPath).catch(() => "")).digest("hex");
     const contentHash = createHash("sha256").update(content).digest("hex");
-    if (contentHash !== destHash) {
+    const destinationIsSymlink = await lstat(destPath).then(entry => entry.isSymbolicLink()).catch(() => false);
+    if (contentHash !== destHash || destinationIsSymlink) {
+      await unlinkDestinationSymlink(destPath);
       await writeFile(destPath, content);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
         console.log(isMinified ? "copied (minified):" : "copied:", displayRelativePath(src));
@@ -202,10 +225,40 @@ export async function copyReplicatePath(
       // The dest file might not exist, so return null
       calculateFileHash(destPath).catch(() => null),
     ]);
-    if (srcHash !== destHash) {
-      await copyFile(src, destPath);
-      if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log("copied:", displayRelativePath(src));
+    const useSymlink = !BascikConfig.isBuild && BascikConfig.assets?.symlink && isLinkableAsset(src);
+    const destinationIsSymlink = await lstat(destPath).then(entry => entry.isSymbolicLink()).catch(() => false);
+    if (srcHash !== destHash || destinationIsSymlink !== Boolean(useSymlink)) {
+      if (useSymlink) {
+        // `symlink` refuses an existing file, unlike copyFile. Always replace
+        // the destination here; links are dev-only and source edits require no
+        // relinking because the target remains the original source path.
+        await rm(destPath, { force: true });
+        try {
+          await symlink(relative(destDir, src), destPath, "file");
+          if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+            console.log("linked:", displayRelativePath(src));
+          }
+        } catch (error) {
+          // Windows can reject symlink creation when Developer Mode or the
+          // required privilege is unavailable. Copying keeps dev usable.
+          if (!warnedSymlinkFallback) {
+            warnedSymlinkFallback = true;
+            console.warn(
+              "[bascik] could not create static-asset symlinks; copying assets instead. " +
+              "On Windows, enable Developer Mode or grant symlink permission to use assets.symlink.",
+            );
+          }
+          await copyFile(src, destPath);
+          if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+            console.log("copied:", displayRelativePath(src));
+          }
+        }
+      } else {
+        await unlinkDestinationSymlink(destPath);
+        await copyFile(src, destPath);
+        if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
+          console.log("copied:", displayRelativePath(src));
+        }
       }
     }
     // Record at the DESTINATION after a successful copy (or a hash-equal

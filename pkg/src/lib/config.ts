@@ -149,6 +149,7 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
   assets: {
     inlineStyles: false,
     exclude: [],
+    symlink: false,
   },
   generate: {
     sitemap: true,

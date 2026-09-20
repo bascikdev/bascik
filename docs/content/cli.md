@@ -192,6 +192,7 @@ Important rules for targeted builds:
 - A glob that matches zero pages produces an error.
 - **The output directory is not cleaned:** existing pages in `dist/` are preserved so a targeted build does not destroy the rest of your site.
 - **Pages only:** `--only` scopes page transpilation, not static assets. Static assets are still copied and verified.
+- **Production base:** targeted builds require an existing successful full production build. Run `bascik --build` before the first targeted build.
 - **Sitemap and robots:** `sitemap.xml` and `robots.txt` generation is skipped with a warning during targeted builds to prevent delisting pages that were not rebuilt. Run a full `bascik --build` to regenerate whole-site sitemaps.
 - **Owned artifact transactions:** `manifest.json`, `csp-hashes.json`, and `server-scripts.json` are reconciled from a durable source-to-output ownership inventory (`dist/.bascik/ownership.json`). Pages you rebuild are exactly replaced; pages you do not rebuild are retained untouched (for example, an untouched page's server script keeps resolving); outputs a rebuilt page no longer produces (such as a removed dynamic route) are pruned. All of this happens in one staged transaction, so a failed targeted build never corrupts the previous valid artifact set. Rebuilt-only pruning means a source page deleted without a later targeted build is pruned by a full build.
 

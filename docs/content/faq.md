@@ -103,6 +103,20 @@ Yes, by bundling it yourself. Bascik does not rewrite bare specifiers in client-
 
 Probably not. Bascik inlines component CSS and JavaScript, so fingerprinting only matters for images, fonts, and other copied page assets. The production server already sends content-hash `ETag` headers, and `http.cacheControl` tunes per-extension caching with no build step. Fingerprinting is for immutable, far-future caching on a CDN, and it will not improve a Lighthouse score (`uses-long-cache-ttl` is unweighted in Lighthouse 10 and later). See [Asset Fingerprinting](/how-to/asset-fingerprinting).
 
+## How can I speed up development when my site has many static assets?
+
+For a site with many large images, PDFs, fonts, media files, or downloads, enable development asset symlinks:
+
+```ts
+export default defineConfig({
+  assets: { symlink: true }
+});
+```
+
+Bascik then links unchanged assets from `src/pages/` into `dist/` instead of copying their bytes on each development startup. It still copies files that Bascik transforms, such as minified CSS or JavaScript and rewritten web manifests. Production builds always create regular files, never symlinks.
+
+Restart the dev server after changing configuration. Each dev startup clears `dist/`, so previously copied assets are recreated as links. On Windows, if symlink permissions are unavailable, Bascik warns once and falls back to copying. Enable Developer Mode or grant symlink permission to use the faster path.
+
 ## How do I share components between projects?
 
 A components directory is plain files, so sharing means using `bascik add` from an npm package, copying files directly, or using a git submodule. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).

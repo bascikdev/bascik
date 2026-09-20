@@ -87,6 +87,11 @@ describe("production sidecar readiness integration", () => {
     workDir = await mkdtemp(join(tmpdir(), `bascik-prod-readiness-${process.pid}-`));
     distDir = join(workDir, "dist");
     await mkdir(join(distDir, ".bascik"), { recursive: true });
+    await writeFile(
+      join(distDir, ".bascik", "build-state.json"),
+      JSON.stringify({ format: 1, mode: "build", version: "test" }),
+      "utf8",
+    );
     setDistDir(distDir);
     process.chdir(workDir);
     // Isolate the shared store between tests via the public remove API.
@@ -105,6 +110,19 @@ describe("production sidecar readiness integration", () => {
     vi.restoreAllMocks();
     process.chdir(originalCwd);
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("rejects development output before it opens a production listener", async () => {
+    await writeFile(
+      join(distDir, ".bascik", "build-state.json"),
+      JSON.stringify({ format: 1, mode: "development", version: "test" }),
+      "utf8",
+    );
+    const getBound = captureBoundServer();
+
+    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
+    expect(getServerHealthState()).toBe("booting");
+    expect(getBound()).toBeUndefined();
   });
 
   it("rejects an unresolved placeholder + malformed sidecar, never advertising readiness", async () => {
