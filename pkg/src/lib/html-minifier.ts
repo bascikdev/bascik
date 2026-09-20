@@ -43,11 +43,12 @@ const buildSensitiveMask = (html: string): string => {
     if (chars[i] === "<") {
       // Parse tag name
       let nameStart = i + 1;
-      if (nameStart < n && chars[nameStart] === "/") nameStart++;
+      const isClosingTag = nameStart < n && chars[nameStart] === "/";
+      if (isClosingTag) nameStart++;
       let nameEnd = nameStart;
       while (nameEnd < n && /[a-zA-Z0-9-]/.test(chars[nameEnd])) nameEnd++;
       const tagName = html.slice(nameStart, nameEnd).toLowerCase();
-      if (tagName === "script" || tagName === "pre" || tagName === "textarea" || tagName === "style") {
+      if (!isClosingTag && (tagName === "script" || tagName === "pre" || tagName === "textarea" || tagName === "style")) {
         // Find the end of the opening tag (skip attributes, respecting quotes)
         let j = nameEnd;
         while (j < n && chars[j] !== ">") {
@@ -104,11 +105,20 @@ const shieldSensitiveContent = (htmlString: string): {
     ranges.push({ start: bodyStart, end: bodyEnd });
   }
 
-  // pre/textarea/style blocks (whole element)
-  const blockRe = /<(pre|textarea|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi;
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = blockRe.exec(masked)) !== null) {
-    ranges.push({ start: blockMatch.index, end: blockMatch.index + blockMatch[0].length });
+  // Raw-text blocks. Their bodies were blanked in the mask, so locate their
+  // opening and closing tags with an index scan instead of a body-matching
+  // regex. This preserves styles containing `<!-- ... -->` and lets a <pre>
+  // retain a nested script without treating that script as an extractable one.
+  const rawTextTagRe = /<(pre|textarea|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  let rawTextMatch: RegExpExecArray | null;
+  while ((rawTextMatch = rawTextTagRe.exec(masked)) !== null) {
+    const tagName = rawTextMatch[1];
+    const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "gi");
+    closeRe.lastIndex = rawTextTagRe.lastIndex;
+    const closeMatch = closeRe.exec(masked);
+    if (!closeMatch) continue;
+    ranges.push({ start: rawTextMatch.index, end: closeMatch.index + closeMatch[0].length });
+    rawTextTagRe.lastIndex = closeMatch.index + closeMatch[0].length;
   }
 
   // Sort descending by start so splicing doesn't shift later offsets.

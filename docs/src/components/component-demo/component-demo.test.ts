@@ -30,4 +30,22 @@ describe('component-demo component', () => {
     expect(html).toContain('data-bascik-prop-hide-preview');
     expect(html).toContain('.demo-no-preview-marker:not(:empty)');
   });
+
+  it('keeps empty language panes free of whitespace text nodes', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    for (const [kind, language] of [
+      ['source', 'usage'],
+      ['source', 'html'],
+      ['source', 'css'],
+      ['source', 'js'],
+      ['output', 'html'],
+      ['output', 'css'],
+      ['output', 'js'],
+    ]) {
+      expect(html).toContain(
+        `<div class="demo-language-pane" data-language-pane="${language}"><div data-bascik-slot="${kind}-${language}"></div></div>`,
+      );
+    }
+  });
 });

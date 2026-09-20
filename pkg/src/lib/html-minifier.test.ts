@@ -62,6 +62,12 @@ describe("minifyHtml", () => {
     expect(minifyHtml(html)).toBe(html);
   });
 
+  it("does not extract a script nested inside a pre after another script", () => {
+    const html = '<script type="application/ld+json">{"description":"<!-- remains data"}</script><p>after</p><pre><script data-testid="nested-script">const sample = 1;</script></pre>';
+
+    expect(minifyHtml(html)).toBe(html);
+  });
+
   it("preserves comments inside pre elements", () => {
     const html = "<pre><!-- example --><code>sample</code></pre>";
     expect(minifyHtml(html)).toBe(html);
@@ -138,6 +144,12 @@ describe("minifyHtml", () => {
     const htmlString = '<div><pre class="code-block">  indented\ncode\n</pre></div>';
     const result = minifyHtml(htmlString);
     expect(result).toBe('<div><pre class="code-block">  indented\ncode\n</pre></div>');
+  });
+
+  it("preserves content in every sibling pre element", () => {
+    const htmlString = "<div><pre>first\nblock</pre><pre>second\nblock</pre></div>";
+
+    expect(minifyHtml(htmlString)).toBe(htmlString);
   });
 
   it("preserves content of <pre> and <textarea> elements with multiline or newline attributes", () => {
@@ -222,6 +234,12 @@ describe("minifyHtml", () => {
     const html = '<style>.a::after { content: "<!-- -->"; }</style><p>ok</p>';
     // The CSS containing literal comment-like text must not be stripped.
     expect(minifyHtml(html)).toContain('.a::after { content: "<!-- -->"; }');
+  });
+
+  it("preserves a style string after an earlier style block", () => {
+    const html = '<style><!-- .first { color: red; } --></style><p>first</p><style>.second::after { content: "<!-- not a comment -->"; }</style><p>second</p>';
+
+    expect(minifyHtml(html)).toContain('content: "<!-- not a comment -->"');
   });
 
   it("preserves style raw text across multiple style blocks and script blocks", () => {
