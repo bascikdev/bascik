@@ -41,6 +41,7 @@
     "esbuild": "^0.28.2",
     "lighthouse": "^12.4.0",
     "opentype.js": "^2.0.0",
+    "parse5": "^8.0.1",
     "sharp": "^0.35.3",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
