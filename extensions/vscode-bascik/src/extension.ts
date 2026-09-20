@@ -436,10 +436,12 @@ class ProjectStateManager implements vscode.Disposable {
   }
 
   get(document: vscode.TextDocument): ProjectState | undefined {
-    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
-    if (!folder || document.uri.scheme !== 'file') return undefined;
-    this.discoverEnclosingProject(document.uri.fsPath, folder);
-    return this.closestState(document.uri.fsPath, folder);
+    const fsPath = document.uri.fsPath;
+    const folder = vscode.workspace.getWorkspaceFolder(document.uri) ??
+      vscode.workspace.workspaceFolders?.find((f) => isPathInside(fsPath, f.uri.fsPath));
+    if (!folder || !fsPath) return undefined;
+    this.discoverEnclosingProject(fsPath, folder);
+    return this.closestState(fsPath, folder);
   }
 
   dispose(): void {
@@ -1250,9 +1252,12 @@ function findMatchingClose(
           pos = tagEnd;
           continue;
         }
+        depth++;
+        pos = tagEnd;
+      } else {
+        depth++;
+        pos = openMatch.index + openMatch[0].length;
       }
-      depth++;
-      pos = openMatch.index + openMatch[0].length;
     }
   }
   return -1;
@@ -1297,11 +1302,9 @@ async function createDiagnosticsForDocument(
   const project = projects.get(document);
   const snapshot = project ? await project.getSnapshot() : undefined;
   const isComponentDocument =
-    document.uri.scheme === 'file' &&
     snapshot !== undefined &&
     isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots);
   const isApiRouteDocument =
-    document.uri.scheme === 'file' &&
     normalizedDocumentPath.includes('/src/api/') &&
     (languageId === 'typescript' || languageId === 'javascript');
 
@@ -1676,7 +1679,7 @@ async function createDiagnosticsForDocument(
 
     const maskedText = text
       .replace(
-        /(<(code|pre|script|textarea)(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+        /(<(style|textarea|script)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
         (_m, open: string, _tag: string, content: string, close: string) =>
           open + ' '.repeat(content.length) + close,
       )
