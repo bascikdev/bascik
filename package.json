@@ -81,6 +81,7 @@
     "ext:test": "yarn workspace bascik-vscode test",
     "ext:update-coverage": "yarn ext:coverage",
     "lsp:build": "yarn workspace @bascik/language-server build",
+    "lsp:check": "yarn workspace @bascik/language-server build && node packages/language-server/dist/bin.js --check",
     "lsp:test": "yarn workspace @bascik/language-server test",
     "lsp:unit": "yarn workspace @bascik/language-server unit",
     "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
