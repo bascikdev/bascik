@@ -21,6 +21,22 @@ When started, Bascik:
 4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
 5. Starts an HTTP development server with live reload on port 8080.
 
+## Linked Static Assets
+
+For projects with many large static assets, enable development-only asset links instead of copies:
+
+```ts
+export default defineConfig({
+	assets: {
+		symlink: true,
+	},
+});
+```
+
+Bascik links unchanged page assets such as images, SVGs, PDFs, fonts, media, JSON, and XML into `dist/`, then reports `linked:` in the console. Files Bascik transforms, including configured CSS, JavaScript, and web manifest output, continue to be copied. Production builds always emit regular files, never symlinks.
+
+If a Windows environment does not allow symlink creation, Bascik warns once and falls back to copying. Enable Windows Developer Mode or grant symlink permission to use linked assets there.
+
 ## CLI Flags
 
 | Flag | Description | Default |

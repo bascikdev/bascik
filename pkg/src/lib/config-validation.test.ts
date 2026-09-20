@@ -521,6 +521,15 @@ describe("referenced files (fs half)", () => {
   });
 });
 
+describe("asset configuration", () => {
+  it("accepts a boolean assets.symlink setting and rejects other values", () => {
+    expect(validateConfigShape({ assets: { symlink: true } })).toEqual([]);
+    expect(validateConfigShape({ assets: { symlink: "true" } as any })).toContainEqual(
+      expect.objectContaining({ key: "assets.symlink", message: expect.stringContaining("boolean") }),
+    );
+  });
+});
+
 describe("base normalization", () => {
   it("normalizes leading and trailing slashes", () => {
     expect(normalizeBasePath("/sub")).toBe("/sub/");

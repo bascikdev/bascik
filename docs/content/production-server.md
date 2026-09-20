@@ -13,6 +13,7 @@ bascik --server  # launch production HTTP server
 
 The production server is read-only and designed for deployment:
 
+- It requires the completed output marker written by `bascik --build`; development output is rejected.
 - It loads pre-compiled output from `dist/` and never recompiles source files or deletes output.
 - It executes `data-bascik-server` and `data-bascik-stream` scripts in-process per request.
 - It bypasses disk I/O for HTML pages by serving directly from memory.

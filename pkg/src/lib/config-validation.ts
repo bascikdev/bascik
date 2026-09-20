@@ -79,7 +79,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     deduplicateCss: null,
   },
   minify: { html: null, css: null, js: null, identifiers: null },
-  assets: { inlineStyles: null, exclude: null },
+  assets: { inlineStyles: null, exclude: null, symlink: null },
   generate: { sitemap: null, robots: null, sitemapLastmod: null, cspHashes: null, manifest: null },
   pipeline: { watchPaths: null, exec: null, workers: null },
   scripts: {
@@ -527,6 +527,9 @@ export const validateConfigShape = (
           }
         });
       }
+    }
+    if (assets.symlink !== undefined && typeof assets.symlink !== "boolean") {
+      push("assets.symlink", assets.symlink, "expected a boolean");
     }
   }
 

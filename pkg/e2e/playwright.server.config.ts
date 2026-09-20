@@ -16,6 +16,8 @@ const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgDir = join(e2eDir, '..');
 const baseFixtureDir = join(e2eDir, 'base-fixture');
 const prodServerTestIgnore = [
+  // Dedicated to the symlink-enabled live-dev fixture.
+  '**/static-asset-symlinks.test.ts',
   '**/dev-server-reload.test.ts',
   '**/dist-lifecycle.test.ts',
   // bascik add is a build-time authoring command with no runtime behavior;

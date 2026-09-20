@@ -13,6 +13,7 @@ import { finalizeOwnedArtifacts } from "./lib/ownership.ts";
 import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./lib/api-routes.ts";
 import { withCompilationPublisher } from "./lib/compilation-events.ts";
 import { eventEmitter } from "./lib/events.ts";
+import { assertProductionBuildState, writeBuildState } from "./lib/build-state.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -30,6 +31,9 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
   }
   // Targeted builds added by prompt 33 must skip this full output clean.
   const isTargetedBuild = Boolean(BascikConfig.isBuild && BascikConfig.only && BascikConfig.only.length > 0);
+  if (isTargetedBuild) {
+    await assertProductionBuildState("targeted-build");
+  }
   if (!isTargetedBuild) {
     await rm(outputDirectory, { recursive: true, force: true });
   }
@@ -82,6 +86,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
         }
       }
     }
+    await writeBuildState("build", version);
 
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
@@ -114,6 +119,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await runExecPhase("post");
     for (const [event, payload] of publications) eventEmitter.emit(event, payload);
     const version = await readVersion();
+    await writeBuildState("development", version);
     const sidecarPath = await serverSidecarRegistry.writeSidecar(version);
     if (sidecarPath) {
       await manifestCollector.recordFileFromDisk(sidecarPath);

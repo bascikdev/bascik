@@ -16,7 +16,7 @@ import {
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
-import { readdir, rm, copyFile, readFile, writeFile } from "node:fs/promises";
+import { readdir, rm, copyFile, readFile, writeFile, lstat, symlink, unlink } from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
 
@@ -95,6 +95,9 @@ vi.mock("node:fs/promises", () => {
     readFile: vi.fn(),
     writeFile: vi.fn(async () => undefined),
     copyFile: vi.fn(async () => undefined),
+    lstat: vi.fn(async () => ({ isSymbolicLink: () => false })),
+    symlink: vi.fn(async () => undefined),
+    unlink: vi.fn(async () => undefined),
   };
 });
 
@@ -424,6 +427,63 @@ describe("copyReplicatePath", () => {
       });
     } finally {
       (BascikConfig as any).base = "/";
+    }
+  });
+
+  it("links eligible development assets when assets.symlink is enabled", async () => {
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: true };
+    (BascikConfig as any).isBuild = false;
+    vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+
+    try {
+      await copyReplicatePath("pages/images/logo.svg", "dist");
+
+      expect(symlink).toHaveBeenCalledWith(
+        expect.stringMatching(/pages\/images\/logo\.svg$/),
+        resolve("dist/images/logo.svg"),
+        "file",
+      );
+      expect(copyFile).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith("linked:", "pages/images/logo.svg");
+    } finally {
+      (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: false };
+      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+    }
+  });
+
+  it("replaces a destination symlink before copying a production asset", async () => {
+    (BascikConfig as any).isBuild = true;
+    vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => true } as any);
+
+    try {
+      await copyReplicatePath("pages/images/logo.svg", "dist");
+
+      expect(unlink).toHaveBeenCalledWith(resolve("dist/images/logo.svg"));
+      expect(copyFile).toHaveBeenCalledWith("pages/images/logo.svg", resolve("dist/images/logo.svg"));
+    } finally {
+      (BascikConfig as any).isBuild = false;
+      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+    }
+  });
+
+  it("warns once and falls back to copying when symlink creation fails", async () => {
+    (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: true };
+    vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+    vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
+    vi.mocked(symlink).mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EPERM" }));
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    try {
+      await copyReplicatePath("pages/images/fallback.svg", "dist");
+
+      expect(copyFile).toHaveBeenCalledWith("pages/images/fallback.svg", resolve("dist/images/fallback.svg"));
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("could not create static-asset symlinks"));
+    } finally {
+      warning.mockRestore();
+      (BascikConfig as any).assets = { inlineStyles: false, exclude: [], symlink: false };
+      vi.mocked(lstat).mockResolvedValue({ isSymbolicLink: () => false } as any);
     }
   });
 });

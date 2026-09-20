@@ -69,6 +69,7 @@ describe("defaultConfig", () => {
   it("has assets and pipeline options", () => {
     expect(defaultConfig.assets.inlineStyles).toBe(false);
     expect(defaultConfig.assets.exclude).toEqual([]);
+    expect(defaultConfig.assets.symlink).toBe(false);
     expect(defaultConfig.pipeline.watchPaths).toEqual([]);
     expect(defaultConfig.pipeline.workers).toBe(false);
   });

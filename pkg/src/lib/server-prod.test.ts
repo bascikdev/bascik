@@ -54,6 +54,11 @@ describe("startProdServer", () => {
     originalCwd = process.cwd();
     workDir = join(originalCwd, `.server-prod-test-${process.pid}-${Date.now()}`);
     await mkdir(join(workDir, "dist"), { recursive: true });
+    await mkdir(join(workDir, "dist", ".bascik"), { recursive: true });
+    await writeFile(
+      join(workDir, "dist", ".bascik", "build-state.json"),
+      JSON.stringify({ format: 1, mode: "build", version: "test" }),
+    );
     process.chdir(workDir);
   });
 
@@ -64,10 +69,17 @@ describe("startProdServer", () => {
 
   it("throws a helpful error when dist/ does not exist", async () => {
     await rm(join(workDir, "dist"), { recursive: true, force: true });
-    await expect(startProdServer()).rejects.toThrow(
-      /could not read .*dist\/ directory/,
+    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
+    expect(startServerMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects development output before binding a server", async () => {
+    await writeFile(
+      join(workDir, "dist", ".bascik", "build-state.json"),
+      JSON.stringify({ format: 1, mode: "development", version: "test" }),
     );
-    await expect(startProdServer()).rejects.toThrow(/bascik --build/);
+
+    await expect(startProdServer()).rejects.toThrow(/requires a completed production build/);
     expect(startServerMock).not.toHaveBeenCalled();
   });
 
