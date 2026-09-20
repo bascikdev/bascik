@@ -72,7 +72,7 @@ The extension reports high-signal problems in the editor and Problems panel:
 - standalone CSS attribute selectors and bare elements in `:is()`, `:where()`, or `:has()`
 - runtime ID changes, attribute DOM queries, dynamic class templates, and runtime CSS custom-property names
 
-Server and stream scripts receive additional contract and interpolation-sink checks. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks.
+Server and stream scripts receive additional contract and interpolation-sink checks. JavaScript and TypeScript files under `src/api/` receive HTTP method, return type, handler, and JSON parsing checks. Built-in snippets (`bascik-api`, `bascik-get`, `bascik-post`) scaffold typed route handlers with `Request` and `context` arguments.
 
 ## Nested Projects and Custom Configuration
 

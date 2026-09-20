@@ -34,7 +34,15 @@ Output in the compiled HTML (`dist/index.html`):
 </html>
 ```
 
-> **A few rules to know:** Top-level `import` and `await` are supported. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Write output with `console.log()`. Build scripts run during both dev and production builds. Component tags in the output are resolved normally, so your build script can emit `<my-card>` and it will be transpiled.
+> **A few rules to know:** Top-level `import` and `await` are supported. Relative ESM imports resolve from the page, component, or external script file that contains them. Generic local data paths passed to functions such as `readFile('./content/data.json')` remain relative to the project root (`process.cwd()`). Write output with `console.log()` or `process.stdout.write()`. Build scripts run during both dev and production builds. Component tags in the output are resolved normally, so your build script can emit `<my-card>` and it will be transpiled.
+
+### Why console.log() instead of return?
+
+If you are coming from frameworks like Next.js where components or data-fetching functions use `return markup`, using `console.log()` may feel unexpected at first.
+
+Build scripts (`data-bascik-build`) run as top-level Node.js ESM modules rather than functions wrapped in a framework runtime. In standard JavaScript, a top-level `return` outside a function is a `SyntaxError: Illegal return statement`.
+
+Because each build script is executed as a standalone module in its own Node.js process, it communicates by writing directly to standard output (`stdout`). Using `console.log()` (or `process.stdout.write()`) follows standard Node.js module semantics, supports streaming chunks without holding everything in one variable, and requires no proprietary wrapper or compiler transform. In contrast, request-time server scripts (`data-bascik-server`) export a handler function (`export default function(request) { return ... }`), where returning a string is valid JavaScript.
 
 ## Example Patterns
 

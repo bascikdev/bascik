@@ -30,6 +30,16 @@
           "text.html.basic"
         ]
       }
+    ],
+    "snippets": [
+      {
+        "language": "typescript",
+        "path": "./snippets/api-routes.json"
+      },
+      {
+        "language": "javascript",
+        "path": "./snippets/api-routes.json"
+      }
     ]
   },
   "scripts": {

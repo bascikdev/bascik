@@ -118,6 +118,14 @@ The copied files belong to your project and are meant to be customized. When you
 
 **Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
 
+## Why do build scripts use console.log() instead of return?
+
+Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standalone Node.js ECMAScript modules, not as function bodies. In JavaScript, a top-level `return` outside a function is a `SyntaxError`.
+
+Because the script runs in Node.js as an independent process, standard output (`stdout`) is the natural Unix mechanism for returning data to the compiler. Calling `console.log()` or `process.stdout.write()` prints markup or JSON directly to stdout without needing artificial compiler wrappers.
+
+If you prefer returning markup from a function, server scripts (`<script data-bascik-server>`) do exactly that: they export a default request handler function (`export default function(request) { return ... }`). But for build-time and route-generation scripts running at top-level module scope, `console.log()` is standard JavaScript. See [Build Scripts](/build-scripts#why-consolelog-instead-of-return).
+
 ## Why is my build script returning stale data?
 
 The build script cache keys on the script body and its statically scanned local dependencies. It cannot detect runtime dependencies such as network API calls, `readdir` directory reads, or computed file paths, so a script whose output depends on a remote API is served from cache with stale data across builds. Configure `scripts.cache.exclude` in `bascik.config.ts` to exclude that script from caching. If the stale data comes from an environment variable, declare the variable in `scripts.cache.environment` so its value becomes part of the cache key. See [Build Scripts](/build-scripts#script-caching) for the full cache key and invalidation limits.

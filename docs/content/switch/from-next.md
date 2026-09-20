@@ -28,23 +28,25 @@ pages/                           src/pages/
 
 ### Dynamic Routes: [slug].html Templates
 
-In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-build>` block that returns the list of slugs to generate at build time (see [Dynamic Routes](/dynamic-routes)).
+In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that outputs the list of routes to generate at build time using `console.log()` (see [Dynamic Routes](/dynamic-routes)).
 
 ```html
 <!-- src/pages/blog/[slug].html -->
-<script data-bascik-build>
+<script data-bascik-routes>
   import { readdir } from 'node:fs/promises';
   const files = await readdir('./content/posts');
-  const slugs = files.filter(f => f.endsWith('.md')).map(f => f.replace('.md', ''));
-  // Returns array of route params for static page generation
-  return slugs.map(slug => ({ slug }));
+  const routes = files
+    .filter(f => f.endsWith('.md'))
+    .map(f => ({ params: { slug: f.replace('.md', '') } }));
+  console.log(JSON.stringify(routes));
 </script>
 
 <article>
   <script data-bascik-build>
     import { readFile } from 'node:fs/promises';
     import { marked } from 'marked';
-    const md = await readFile(`./content/posts/${context.params.slug}.md`, 'utf8');
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
     console.log(marked(md));
   </script>
 </article>

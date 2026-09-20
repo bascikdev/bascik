@@ -172,6 +172,14 @@ JavaScript and TypeScript files under `src/api/` receive route-specific checks:
 - A route file with no recognized HTTP method export reports an error.
 - A `request.json()` or `req.json()` call outside an apparent `try` block receives an information diagnostic because malformed JSON can otherwise produce an unhandled error.
 
+### API Route Snippets
+
+The extension provides built-in snippets for scaffolding route handlers in TypeScript and JavaScript:
+
+- `bascik-api`: Scaffold an API route handler with an HTTP method picker and pre-typed `request: Request` and `context: { params: Record<string, string>; remoteIp: string }` arguments.
+- `bascik-get`: Quick snippet for a typed `GET` handler.
+- `bascik-post`: Quick snippet for a typed `POST` handler with JSON request body parsing.
+
 ## Find Scoping Compatibility Issues Early
 
 The extension warns about CSS and JavaScript patterns that Bascik cannot reliably rewrite at build time.
