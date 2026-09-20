@@ -1114,24 +1114,33 @@ describe("processPageBatch – open page priority & instant reloading", () => {
     expect(callSequence).toContain("emit:pages/getting-started.html");
   });
 
-  it("reports per-page duration for work done rather than queue wait time across batch", async () => {
+  it("reports only active per-page work time, excluding a shared batch wait", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const nowSpy = vi.spyOn(performance, "now");
 
     try {
-      const pageWorkMs = 25;
-      (readFile as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-        // Spin synchronously for pageWorkMs to simulate CPU work per page
-        const until = performance.now() + pageWorkMs;
-        while (performance.now() < until) {
-          // busy spin
-        }
-        return "<html><body>test</body></html>";
+      // Drive the monotonic clock and page reads explicitly. Every page spends
+      // 7 ms in active work before a shared 1-second wait. A real timer would
+      // turn this into a flaky scheduler/coverage test instead of validating
+      // that transpilePage pauses its per-page clock around awaited work.
+      let now = 0;
+      nowSpy.mockImplementation(() => now);
+      const reads = Array.from({ length: 3 }, () => Promise.withResolvers<Buffer>());
+      let readIndex = 0;
+      (readFile as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        now += 7;
+        return reads[readIndex++].promise;
       });
 
       const pages = ["src/pages/one.html", "src/pages/two.html", "src/pages/three.html"];
-      const batchStart = performance.now();
-      await processPageBatch(pages, {});
-      const batchWallTime = performance.now() - batchStart;
+      const batch = processPageBatch(pages, {}, "");
+      await vi.waitFor(() => expect(readFile).toHaveBeenCalledTimes(3));
+
+      // All reads are in flight. Advancing the clock by one second simulates
+      // queue/I/O wait which must not appear in any page's work duration.
+      now += 1_000;
+      for (const read of reads) read.resolve(Buffer.from("<html><body>test</body></html>"));
+      await batch;
 
       const transpiledLogs = logSpy.mock.calls
         .map((call) => call[0])
@@ -1139,33 +1148,16 @@ describe("processPageBatch – open page priority & instant reloading", () => {
 
       expect(transpiledLogs).toHaveLength(3);
 
-      let reportedSum = 0;
-      const reportedDurations: number[] = [];
       for (const logLine of transpiledLogs) {
         const match = logLine.match(/in\s+(\d+(?:\.\d+)?)(ms|s)/);
         expect(match).not.toBeNull();
         const rawVal = parseFloat(match![1]);
         const unit = match![2];
         const ms = unit === "s" ? rawVal * 1000 : rawVal;
-        reportedSum += ms;
-        reportedDurations.push(ms);
+        expect(ms).toBe(7);
       }
-
-      // Synchronous work serializes on the event loop. The old timestamp shared
-      // by every page made the reported total a staircase ($25 + $50 + $75),
-      // which exceeded the actual batch wall time. Per-page timers report the
-      // same work as the batch, plus scheduler and coverage-instrumentation
-      // overhead, so avoid wall-clock limits on individual measurements.
-      expect(reportedSum).toBeLessThanOrEqual(batchWallTime * 2);
-
-      // A stalled page must not be hidden by aggregate timing. Keep this ratio
-      // broad enough for coverage and concurrent test-worker contention.
-      const sorted = [...reportedDurations].sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length / 2)];
-      expect(median).toBeGreaterThan(0);
-      const max = sorted[sorted.length - 1];
-      expect(max).toBeLessThanOrEqual(10 * median);
     } finally {
+      nowSpy.mockRestore();
       logSpy.mockRestore();
     }
   });
