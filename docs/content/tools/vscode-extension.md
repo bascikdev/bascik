@@ -73,6 +73,50 @@ VS Code by default offers word-based completions derived from surrounding text i
 }
 ```
 
+## Suppress Diagnostics with Ignore Comments
+
+Suppress diagnostics on a line or block using in-file comments:
+
+- **HTML:**
+
+  ```html
+  <!-- bascik-ignore -->
+  <docs-head></docs-head>
+
+  <!-- bascik-disable -->
+  ... code with warnings ...
+  <!-- bascik-enable -->
+  ```
+
+- **JavaScript & TypeScript:**
+
+  ```ts
+  // bascik-ignore
+  btn.id = "custom";
+  ```
+
+- **CSS:**
+
+  ```css
+  /* bascik-ignore */
+  [data-state] { color: red; }
+  ```
+
+## Extension Configuration (`bascik.ext.json` / `bascik.ext.ts`)
+
+Configure extension behavior per project without modifying application config (`bascik.config.ts`) by placing a `bascik.ext.json` or `bascik.ext.ts` file in your project root:
+
+```json
+{
+  "diagnostics": {
+    "enabled": true,
+    "selfClosingComponents": true,
+    "unclosedComponents": true,
+    "disabledRules": ["css-attribute-selector"]
+  }
+}
+```
+
 ## Describe Inferred Component Contracts
 
 Bascik infers the public contract directly from component markup. Props come from `data-bascik-prop-*` declarations and prop names referenced by `data-bascik-attr-*`, `data-bascik-text`, or `data-bascik-html`. Named and default slots come from `data-bascik-slot` declarations. Inline or companion styles and inline scripts are also detected.

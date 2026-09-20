@@ -33,6 +33,50 @@ VS Code by default provides word-based completions harvested from other words in
 }
 ```
 
+### Suppressing Warnings with Comments
+
+You can suppress Bascik warnings for a specific line or block using standard comment syntax:
+
+- **HTML:**
+
+  ```html
+  <!-- bascik-ignore -->
+  <docs-head></docs-head>
+
+  <!-- bascik-disable -->
+  ... code with warnings ...
+  <!-- bascik-enable -->
+  ```
+
+- **JavaScript & TypeScript:**
+
+  ```ts
+  // bascik-ignore
+  btn.id = "custom";
+  ```
+
+- **CSS:**
+
+  ```css
+  /* bascik-ignore */
+  [data-state] { color: red; }
+  ```
+
+### Extension Configuration File
+
+To configure extension diagnostics for your project without coupling them to your application `bascik.config.ts`, add a `bascik.ext.json` (or `bascik.ext.ts` / `.bascikrc.json`) file in your project root:
+
+```json
+{
+  "diagnostics": {
+    "enabled": true,
+    "selfClosingComponents": true,
+    "unclosedComponents": true,
+    "disabledRules": ["css-attribute-selector"]
+  }
+}
+```
+
 ## Optional Component Descriptions
 
 Component markup is the source of truth for props and slots. The extension infers props from `data-bascik-prop-*`, `data-bascik-attr-*`, `data-bascik-text`, and `data-bascik-html`, and infers named or default slots from `data-bascik-slot`.
@@ -63,6 +107,7 @@ Import navigation resolves `./`, `../`, and `@/` paths in build, routes, and ser
 The extension reports high-signal problems in the editor and Problems panel:
 
 - component naming and unclosed custom elements
+- self-closing suggestions and warnings for zero-slot void components (`<docs-head />` vs `<docs-head></docs-head>`)
 - conflicting build, routes, server, and stream directives
 - misplaced script directives on non-script elements
 - undeclared component props and misplaced slot attributes

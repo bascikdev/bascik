@@ -11,6 +11,9 @@ import {
   type ComponentMetadata,
 } from './component-metadata';
 
+import { parseIgnoreDirectives, isDiagnosticIgnored } from './ignore-comments';
+import { loadExtensionConfig } from './config';
+
 const BUILT_IN_HTML_ELEMENTS = new Set([
   'a',
   'abbr',
@@ -436,6 +439,9 @@ class ProjectStateManager implements vscode.Disposable {
   }
 
   get(document: vscode.TextDocument): ProjectState | undefined {
+    // Only real files in the workspace should have project states and diagnostics.
+    // Schemes like 'chat-editing-text-model', 'git', 'output', etc. must not duplicate diagnostics.
+    if (document.uri.scheme !== 'file') return undefined;
     const fsPath = document.uri.fsPath;
     const folder = vscode.workspace.getWorkspaceFolder(document.uri) ??
       vscode.workspace.workspaceFolders?.find((f) => isPathInside(fsPath, f.uri.fsPath));
@@ -1869,7 +1875,23 @@ async function createDiagnosticsForDocument(
                 vscode.DiagnosticSeverity.Warning,
               );
               diag.source = 'bascik';
+              diag.code = 'unclosed-component-tag';
               diagnostics.push(diag);
+            } else if (compMeta) {
+              // Warn when a component with zero slots (no default slot and no named slots) is written as <comp></comp>
+              const hasZeroSlots = !compMeta.defaultSlot && compMeta.slots.length === 0;
+              if (hasZeroSlots) {
+                const start = document.positionAt(tagStartIndex);
+                const end = document.positionAt(closeIndex + `</${tagName}>`.length);
+                const diag = new vscode.Diagnostic(
+                  new vscode.Range(start, end),
+                  `Component <${tagName}> defines no slots and accepts no children. Use self-closing tag <${tagName} /> instead of paired <${tagName}></${tagName}>.`,
+                  vscode.DiagnosticSeverity.Warning,
+                );
+                diag.source = 'bascik';
+                diag.code = 'prefer-self-closing-component';
+                diagnostics.push(diag);
+              }
             }
           }
         }
@@ -1906,7 +1928,30 @@ async function createDiagnosticsForDocument(
     addCompatibilityDiagnostics(text, 'js', 0);
   }
 
-  return diagnostics;
+  // Filter diagnostics by ignore directives (<!-- bascik-ignore -->, // bascik-ignore, /* bascik-ignore */)
+  // and extension config (bascik.ext.json / bascik.ext.ts / .bascikrc.json)
+  const ignoreRanges = parseIgnoreDirectives(text, languageId);
+  const extConfig = project ? loadExtensionConfig(project.projectRoot) : {};
+  const disabledRules = new Set(extConfig.diagnostics?.disabledRules?.map((r) => r.toLowerCase()) ?? []);
+
+  if (extConfig.diagnostics?.enabled === false) {
+    return [];
+  }
+
+  return diagnostics.filter((diag) => {
+    const line = diag.range.start.line;
+    const code = typeof diag.code === 'string' ? diag.code : undefined;
+    if (code && disabledRules.has(code.toLowerCase())) {
+      return false;
+    }
+    if (code === 'prefer-self-closing-component' && extConfig.diagnostics?.selfClosingComponents === false) {
+      return false;
+    }
+    if (code === 'unclosed-component-tag' && extConfig.diagnostics?.unclosedComponents === false) {
+      return false;
+    }
+    return !isDiagnosticIgnored(line, code, ignoreRanges);
+  });
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -1917,7 +1962,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const refreshDiagnostics = async (
     document: vscode.TextDocument | undefined,
   ) => {
-    if (!document) return;
+    if (!document || document.uri.scheme !== 'file') return;
     const workspaceFolderKey = vscode.workspace
       .getWorkspaceFolder(document.uri)
       ?.uri.toString();
