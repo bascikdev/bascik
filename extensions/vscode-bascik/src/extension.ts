@@ -1692,34 +1692,67 @@ async function createDiagnosticsForDocument(
     const componentNames = Array.from(componentMap.keys());
 
     // 1. Diagnose script directives on non-script tags
-    const nonScriptDirectiveRe =
-      /<([A-Za-z][\w-]*)\b([^>]*\b(data-bascik-(?:build|server|routes|stream))\b[^>]*)>/gi;
-    let nonScriptMatch: RegExpExecArray | null;
-    while ((nonScriptMatch = nonScriptDirectiveRe.exec(maskedText)) !== null) {
-      const tagName = nonScriptMatch[1].toLowerCase();
+    // Parse tags and check only actual attribute names, ignoring values inside quotes
+    const elementOpenTagRe = /<([A-Za-z][\w-]*)(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?\/?>/gi;
+    let elementMatch: RegExpExecArray | null;
+    while ((elementMatch = elementOpenTagRe.exec(maskedText)) !== null) {
+      const tagName = elementMatch[1].toLowerCase();
       if (tagName === 'script') continue;
-      const attrName = nonScriptMatch[3];
-      const matchStart = nonScriptMatch.index;
-      const tagContent = nonScriptMatch[0];
-      const attrOffset = tagContent.indexOf(attrName);
-      const start = document.positionAt(matchStart + attrOffset);
-      const end = document.positionAt(matchStart + attrOffset + attrName.length);
-      const diag = new vscode.Diagnostic(
-        new vscode.Range(start, end),
-        `\`${attrName}\` is only valid on <script> tags. It has no effect on <${tagName}>.`,
-        vscode.DiagnosticSeverity.Error,
-      );
-      diag.source = 'bascik';
-      diagnostics.push(diag);
+      const openTag = elementMatch[0];
+      const matchStart = elementMatch.index;
+      const scriptDirectives = new Set([
+        'data-bascik-build',
+        'data-bascik-server',
+        'data-bascik-routes',
+        'data-bascik-stream',
+      ]);
+
+      const insideTag = openTag.replace(/^<[A-Za-z][\w-]*\s*/i, '').replace(/\/?>$/, '');
+      const baseOffset = openTag.length - insideTag.length - (openTag.endsWith('/>') ? 2 : 1);
+      const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+      let attrMatch: RegExpExecArray | null;
+      while ((attrMatch = attrRe.exec(insideTag)) !== null) {
+        const attrName = attrMatch[1].toLowerCase();
+        if (scriptDirectives.has(attrName)) {
+          const start = document.positionAt(matchStart + baseOffset + attrMatch.index);
+          const end = document.positionAt(matchStart + baseOffset + attrMatch.index + attrMatch[1].length);
+          const diag = new vscode.Diagnostic(
+            new vscode.Range(start, end),
+            `\`${attrMatch[1]}\` is only valid on <script> tags. It has no effect on <${tagName}>.`,
+            vscode.DiagnosticSeverity.Error,
+          );
+          diag.source = 'bascik';
+          diagnostics.push(diag);
+        }
+      }
     }
 
     // 2. Diagnose data-bascik-slot outside of components, on the component itself, or targeting undeclared slots
     const slotTagRe =
-      /<([A-Za-z][\w-]*)\b([^>]*\bdata-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?[^>]*)>/gi;
+      /<([A-Za-z][\w-]*)(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?\/?>/gi;
     let slotMatch: RegExpExecArray | null;
     while ((slotMatch = slotTagRe.exec(maskedText)) !== null) {
+      const openTag = slotMatch[0];
+      const matchStart = slotMatch.index;
+      const insideTag = openTag.replace(/^<[A-Za-z][\w-]*\s*/i, '').replace(/\/?>$/, '');
+      const baseOffset = openTag.length - insideTag.length - (openTag.endsWith('/>') ? 2 : 1);
+      const attrRe = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+      let attrMatch: RegExpExecArray | null;
+      let slotAttr: { name: string; value?: string; index: number } | null = null;
+      while ((attrMatch = attrRe.exec(insideTag)) !== null) {
+        if (attrMatch[1].toLowerCase() === 'data-bascik-slot') {
+          slotAttr = {
+            name: attrMatch[1],
+            value: attrMatch[2] ?? attrMatch[3] ?? attrMatch[4],
+            index: attrMatch.index,
+          };
+          break;
+        }
+      }
+      if (!slotAttr) continue;
+
       const tagOffset = slotMatch.index;
-      const slotName = slotMatch[3] ?? slotMatch[4] ?? slotMatch[5];
+      const slotName = slotAttr.value;
       const parentName = findNearestParentComponent(
         maskedText.slice(0, tagOffset),
         componentMap,
@@ -1728,10 +1761,9 @@ async function createDiagnosticsForDocument(
       // Check if this tag is in a component source file defining its own slot
       const isInsideComponentDefinition = isComponentDocument;
       if (!parentName && !isInsideComponentDefinition) {
-        const slotAttrOffset = slotMatch[0].indexOf('data-bascik-slot');
-        const start = document.positionAt(tagOffset + slotAttrOffset);
+        const start = document.positionAt(matchStart + baseOffset + slotAttr.index);
         const end = document.positionAt(
-          tagOffset + slotAttrOffset + 'data-bascik-slot'.length,
+          matchStart + baseOffset + slotAttr.index + slotAttr.name.length,
         );
         const diag = new vscode.Diagnostic(
           new vscode.Range(start, end),
@@ -1747,10 +1779,9 @@ async function createDiagnosticsForDocument(
             (s) => s.name.toLowerCase() === slotName.toLowerCase(),
           );
           if (!declaredSlot) {
-            const slotAttrOffset = slotMatch[0].indexOf('data-bascik-slot');
-            const start = document.positionAt(tagOffset + slotAttrOffset);
+            const start = document.positionAt(matchStart + baseOffset + slotAttr.index);
             const end = document.positionAt(
-              tagOffset + slotMatch[0].length - (slotMatch[0].endsWith('/>') ? 2 : 1),
+              matchStart + baseOffset + slotAttr.index + slotAttr.name.length,
             );
             const diag = new vscode.Diagnostic(
               new vscode.Range(start, end),
