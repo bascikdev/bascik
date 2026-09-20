@@ -1,0 +1,50 @@
+[
+  {
+    "id": "css-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|,)\\s*\\[[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]",
+    "flags": "gm",
+    "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
+    "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector."
+  },
+  {
+    "id": "css-is-element-names",
+    "kind": "css",
+    "pattern": ":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)",
+    "flags": "gi",
+    "message": "Element names inside :is(), :where(), or :has() are not converted by Bascik.",
+    "suggestion": "Use a class selector inside the pseudo-class instead of bare element names."
+  },
+  {
+    "id": "js-id-setter",
+    "kind": "js",
+    "pattern": "\\.id\\s*=\\s*(?:[\"'`]|\\w)",
+    "flags": "g",
+    "message": "Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.",
+    "suggestion": "Capture the element once with getElementById() and operate on that reference."
+  },
+  {
+    "id": "js-attribute-selector",
+    "kind": "js",
+    "pattern": "querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)",
+    "flags": "g",
+    "message": "Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.",
+    "suggestion": "Use getElementById() or a static class selector that Bascik can rewrite."
+  },
+  {
+    "id": "js-template-classname",
+    "kind": "js",
+    "pattern": "className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)",
+    "flags": "g",
+    "message": "Template-literal class names are not rewritten safely at build time.",
+    "suggestion": "Use classList.add(), classList.remove(), or a static string instead."
+  },
+  {
+    "id": "js-style-setproperty",
+    "kind": "js",
+    "pattern": "style\\.setProperty\\s*\\(\\s*[\"']--",
+    "flags": "g",
+    "message": "Runtime CSS custom property names are not rewritten by Bascik.",
+    "suggestion": "Use the scoped property name explicitly or keep the runtime logic on the resulting element reference."
+  }
+]

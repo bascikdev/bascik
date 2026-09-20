@@ -1,0 +1,42 @@
+{
+  "name": "@bascik/language-server",
+  "version": "0.1.0",
+  "description": "Language Server Protocol (LSP) server for Bascik components and scoping diagnostics",
+  "author": "Bascik Contributors",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bascik-language-server": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json",
+    "watch": "tsc -watch -p ./tsconfig.json",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "test": "vitest run",
+    "unit": "vitest run"
+  },
+  "dependencies": {
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
+  }
+}

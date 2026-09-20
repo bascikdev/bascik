@@ -6,7 +6,8 @@
     "create",
     "docs",
     "extensions/vscode-bascik",
-    "adapters/cloudflare"
+    "adapters/cloudflare",
+    "packages/language-server"
   ],
   "engines": {
     "node": ">=22.18.0"
@@ -79,6 +80,10 @@
     "ext:cover": "yarn ext:coverage",
     "ext:test": "yarn workspace bascik-vscode test",
     "ext:update-coverage": "yarn ext:coverage",
+    "lsp:build": "yarn workspace @bascik/language-server build",
+    "lsp:test": "yarn workspace @bascik/language-server test",
+    "lsp:unit": "yarn workspace @bascik/language-server unit",
+    "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
     "check:spelling": "codespell -L teY,directroy,scirpt,erorr,buld,afterAll --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
