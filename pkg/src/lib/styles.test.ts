@@ -1908,6 +1908,21 @@ describe("extractInlineStyles", () => {
     expect(css).toContain(".primary { color: red; }");
     expect(css).toContain("@media (min-width: 768px) {\n.primary { color: blue; }\n}");
   });
+
+  it("does not treat a literal <style> mention inside an HTML comment as a real style tag", () => {
+    // Regression: a `<style>` reference inside <!-- --> was mistaken for a real
+    // opening tag, causing everything up to the real </style> to be consumed as
+    // CSS and stripped from the HTML output.
+    const input =
+      '<!-- Keep CSS in this file\'s <style> block. -->\n' +
+      '<div class="demo-box"><span>Content</span></div>\n' +
+      '<style>.demo-box { border: 1px solid; }</style>';
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toContain('<div class="demo-box"><span>Content</span></div>');
+    expect(html).toContain("<!-- Keep CSS in this file's <style> block. -->");
+    expect(html).not.toContain("<style>.demo-box");
+    expect(css).toBe(".demo-box { border: 1px solid; }");
+  });
 });
 
 describe("Resilience to regex replacement patterns (TDD)", () => {

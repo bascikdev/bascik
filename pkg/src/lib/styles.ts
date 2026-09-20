@@ -1002,7 +1002,21 @@ export const extractInlineStyles = (
     return { html, css: "" };
   }
 
-  const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
+  // Mask HTML comments before shielding element contents so that a literal
+  // `<style>` reference inside a comment (e.g. "keep CSS in this file's
+  // <style> block") is never mistaken for a real style tag opener.
+  // Replace each comment with a same-length run of spaces so all subsequent
+  // string indices remain valid for the restore step.
+  const commentPlaceholders: Array<{ token: string; original: string }> = [];
+  const htmlWithMaskedComments = html.includes("<!--")
+    ? html.replace(/<!--[\s\S]*?-->/g, (match) => {
+        const token = `\x00BASCIK_COMMENT_${commentPlaceholders.length}\x00`;
+        commentPlaceholders.push({ token, original: match });
+        return token;
+      })
+    : html;
+
+  const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
   const cleanedHtml = shielded.html.replace(
@@ -1024,8 +1038,14 @@ export const extractInlineStyles = (
     },
   );
 
+  // Restore shielded element content first, then restore masked HTML comments.
+  let restoredHtml = shielded.restore(cleanedHtml);
+  for (const { token, original } of commentPlaceholders) {
+    restoredHtml = restoredHtml.replace(token, () => original);
+  }
+
   return {
-    html: shielded.restore(cleanedHtml),
+    html: restoredHtml,
     css: cssBlocks.join("\n"),
   };
 };
