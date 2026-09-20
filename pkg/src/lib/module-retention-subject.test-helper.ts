@@ -124,17 +124,15 @@ chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
     }
     if (buildDepEnabled) {
       if (!observation || resolve(path) !== observation.path) return;
-      if (observation.watchEvent) {
-        // Debounce / deduplicate identical watch events on the same armed path from multiple watchers
-        if (observation.watchEvent === event) return;
-        process.send!({ error: `Unexpected build-dependency watch event: ${event} ${path}, generation ${observation.generation}` });
-        return;
+      // Chokidar may deliver a stale event from the previous operation after the
+      // next generation is armed (e.g. a late `add` while gen N+1 expects
+      // `change`). The `completed` acknowledgment is causally tied to the actual
+      // compilation callback (see the watcher.on wrapper), not to this event
+      // bookkeeping, so a reordered or duplicate event must not fail the harness.
+      // Record the expected event when it arrives and ignore everything else.
+      if (event === armed!.expectedWatchEvent) {
+        observation.watchEvent = event;
       }
-      if (event !== armed!.expectedWatchEvent) {
-        process.send!({ error: `Unexpected build-dependency watch event: ${event} ${path}, generation ${observation.generation}` });
-        return;
-      }
-      observation.watchEvent = event;
       return;
     }
     if (devModuleEnabled) {
