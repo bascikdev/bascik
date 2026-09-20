@@ -1,6 +1,6 @@
 # VS Code Extension
 
-The official Bascik extension brings component navigation, context-aware component, prop, and slot suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It infers component contracts from markup and catches component metadata, scoping, server rendering, streaming, and API route problems while you edit, before they reach a build or browser.
+The official Bascik extension brings component navigation, context-aware component, prop, and slot suggestions, rich hover details, syntax highlighting, and real-time diagnostics into VS Code. It is powered by the [`@bascik/language-server`](/tools/linter) engine, which also provides CLI linting and multi-editor support for Neovim, Zed, and Helix.
 
 ## Install the Extension
 
@@ -197,6 +197,12 @@ The extension publishes actionable diagnostics in the editor and Problems panel:
 - **Undeclared metadata annotations:** Warns when an `@prop` or `@slot` annotation does not match a member inferred from the component markup.
 
 Multiple inline `<style>` elements are supported and are not reported as an editor problem.
+
+---
+
+## Command-Line Linting & Other Editors
+
+If you need to run these diagnostics in continuous integration (CI) or want editor support for Neovim, Zed, or Helix, see the [Linter & Editor Support](/tools/linter) documentation.
 
 Metadata annotation warnings use the current unsaved component text, so mistakes appear as you edit without waiting for the file to be saved. Hover and completion contracts refresh from disk when component files change.
 
