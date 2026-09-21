@@ -117,6 +117,11 @@ describe("minifyJs – statement separation (ASI)", () => {
     expect(minifyJs(input)).toBe("const a=1;const b=2");
   });
 
+  it("inserts semicolon across a string literal segment", () => {
+    const input = "const a = 'value'\nconst b = 2";
+    expect(minifyJs(input)).toBe("const a='value';const b=2");
+  });
+
   it("inserts semicolon between function calls on new lines", () => {
     const input = "foo()\nbar()";
     expect(minifyJs(input)).toBe("foo();bar()");
@@ -181,6 +186,12 @@ describe("minifyJs – statement separation (ASI)", () => {
 
     const inputMinusMinus = "foo()\n--x";
     expect(minifyJs(inputMinusMinus)).toBe("foo();--x");
+  });
+
+  it("does not treat identifiers beginning with in as the in keyword", () => {
+    expect(minifyJs("const value = fields[field]\ninput.setAttribute('x', 'y');")).toBe(
+      "const value=fields[field];input.setAttribute('x','y');",
+    );
   });
 });
 

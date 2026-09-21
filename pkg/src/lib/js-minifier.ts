@@ -318,6 +318,14 @@ export const minifyJs = (js: string): string => {
       continue;
     }
 
+    if (sIdx > 0 && segments[sIdx - 1].literal && /^\s*\n/.test(seg.text)) {
+      const firstLine = seg.text.match(/\S.*/)?.[0] ?? "";
+      if (resultLast && firstLine && !/^(?:(?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(firstLine)) {
+        result += ";";
+        resultLast = ";";
+      }
+    }
+
     let text = seg.text;
 
     // 1. Process line breaks: convert newlines to semicolons or spaces for ASI safety
@@ -382,14 +390,14 @@ export const minifyJs = (js: string): string => {
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures
         const startsWithContinuation =
-          /^(else|catch|finally|while|instanceof|in|of|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line);
+          /^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line);
 
         if (!endsWithOpenControl && !startsWithContinuation && !/[;{}:,]\s*$/.test(ptTail)) {
           needsSemicolon = true;
         }
       } else if (lastChar === "}") {
         // After }, insert semicolon unless followed by control continuation (else, catch, finally, while, etc.)
-        if (!/^(else|catch|finally|while|instanceof|in|of|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line)) {
+        if (!/^(else|catch|finally|while|instanceof|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\|)/.test(line)) {
           needsSemicolon = true;
         }
       }
