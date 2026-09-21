@@ -312,6 +312,86 @@ describe("recursivelyTranspile – integration", () => {
     );
   });
 
+  it("preserves named slots for their nearest nested component boundary", () => {
+    const componentList = {
+      "outer-shell": {
+        fileName: "components/outer-shell.html",
+        fileContent:
+          '<section><inner-demo><div data-bascik-slot="source-html"><code-block>expected</code-block></div></inner-demo></section>',
+      },
+      "inner-demo": {
+        fileName: "components/inner-demo.html",
+        fileContent:
+          '<article><div data-bascik-slot="source-html">fallback</div></article>',
+      },
+      "code-block": {
+        fileName: "components/code-block.html",
+        fileContent: "<pre><div data-bascik-slot></div></pre>",
+      },
+    };
+
+    const { transpiledHtmlBody } = recursivelyTranspile(
+      "<outer-shell></outer-shell>",
+      componentList,
+    );
+
+    expect(transpiledHtmlBody).toBe(
+      "<section><article><pre>expected</pre></article></section>",
+    );
+  });
+
+  it("keeps parent and nested child slots with the same name isolated", () => {
+    const componentList = {
+      "outer-shell": {
+        fileName: "components/outer-shell.html",
+        fileContent:
+          '<section><header data-bascik-slot="content">outer fallback</header>' +
+          '<inner-demo><div data-bascik-slot="content">child content</div></inner-demo></section>',
+      },
+      "inner-demo": {
+        fileName: "components/inner-demo.html",
+        fileContent: '<article data-bascik-slot="content">child fallback</article>',
+      },
+    };
+
+    const { transpiledHtmlBody } = recursivelyTranspile(
+      '<outer-shell><div data-bascik-slot="content">parent content</div></outer-shell>',
+      componentList,
+    );
+
+    expect(transpiledHtmlBody).toBe(
+      "<section>parent contentchild content</section>",
+    );
+  });
+
+  it("preserves static build-script output inside a nested named slot", () => {
+    const componentList = {
+      "outer-shell": {
+        fileName: "components/outer-shell.html",
+        fileContent:
+          '<section><inner-demo><div data-bascik-slot="source-html"><code-block><strong>generated source</strong></code-block></div></inner-demo></section>',
+      },
+      "inner-demo": {
+        fileName: "components/inner-demo.html",
+        fileContent:
+          '<article><div data-bascik-slot="source-html">fallback</div></article>',
+      },
+      "code-block": {
+        fileName: "components/code-block.html",
+        fileContent: '<pre data-code-block><div data-bascik-slot></div></pre>',
+      },
+    };
+
+    const { transpiledHtmlBody } = recursivelyTranspile(
+      "<outer-shell></outer-shell>",
+      componentList,
+    );
+
+    expect(transpiledHtmlBody).toBe(
+      '<section><article><pre data-code-block><strong>generated source</strong></pre></article></section>',
+    );
+  });
+
   it("does not leak a nested component prop from slot content into its parent", () => {
     const componentList = {
       "my-card": {
@@ -3295,6 +3375,47 @@ throw new Error("component failure");
       "src/pages/consumer.html",
       undefined,
       expect.objectContaining({ pageFile: "src/pages/consumer.html" }),
+    );
+  });
+
+  it("executes a page-aware build script inside a nested child named slot", async () => {
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (html: string) => html.replace(
+        /<script\b[^>]*\bdata-bascik-build[^>]*>[\s\S]*?<\/script>/gi,
+        "<strong>page-aware source</strong>",
+      ),
+    );
+    const componentList = {
+      "outer-shell": {
+        fileName: "src/components/outer-shell.html",
+        fileContent:
+          '<section><inner-demo><div data-bascik-slot="source-html"><code-block><script data-bascik-build="page">console.log("page-aware source")</script></code-block></div></inner-demo></section>',
+      },
+      "inner-demo": {
+        fileName: "src/components/inner-demo.html",
+        fileContent:
+          '<article><div data-bascik-slot="source-html">fallback</div></article>',
+      },
+      "code-block": {
+        fileName: "src/components/code-block.html",
+        fileContent: '<pre data-code-block><div data-bascik-slot></div></pre>',
+      },
+    };
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<!DOCTYPE html><html><head></head><body><outer-shell></outer-shell></body></html>",
+    );
+
+    const result = await transpilePage("src/pages/nested-demo.html", componentList);
+
+    expect(result?.distHtml).toContain(
+      '<article><pre data-code-block><strong>page-aware source</strong></pre></article>',
+    );
+    expect(executeBuildScripts).toHaveBeenCalledWith(
+      expect.stringMatching(/data-bascik-build="page"/),
+      "src/pages/nested-demo.html",
+      undefined,
+      expect.objectContaining({ pageFile: "src/pages/nested-demo.html" }),
     );
   });
 });

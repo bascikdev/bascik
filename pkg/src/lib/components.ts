@@ -943,6 +943,7 @@ const findMatchingClose = (
  */
 const parseNamedSlots = (
   innerContent: string,
+  componentNames: ReadonlySet<string> = new Set(),
 ): Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> => {
   if (!innerContent.includes("data-bascik-slot")) return [];
   const results: Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> = [];
@@ -957,6 +958,7 @@ const parseNamedSlots = (
   let match: RegExpExecArray | null;
   while ((match = openTagRe.exec(innerContent)) !== null) {
     const [fullOpen, tagName, slotName] = match;
+    if (isInsideNestedComponent(innerContent, match.index, componentNames)) continue;
     const contentStart = match.index + fullOpen.length;
     const closeIndex = findMatchingClose(innerContent, tagName, contentStart);
     if (closeIndex === -1) continue;
@@ -975,6 +977,44 @@ const parseNamedSlots = (
 };
 
 /**
+ * Returns true when an index is inside an unresolved child component usage.
+ * Named slots belong to their nearest component boundary, so a parent must not
+ * consume slot wrappers authored inside a nested component's usage content.
+ */
+const isInsideNestedComponent = (
+  html: string,
+  index: number,
+  componentNames: ReadonlySet<string>,
+): boolean => {
+  if (componentNames.size === 0) return false;
+  const masked = maskRawTextContent(html);
+  for (const componentName of componentNames) {
+    let searchFrom = 0;
+    while (searchFrom < index) {
+      const child = getTag(html, componentName, undefined, masked, searchFrom);
+      const startIndex = child.startIndex;
+      const contentStart = child.contentStart;
+      const closeIndex = child.closeIndex;
+      const endIndex = child.endIndex;
+      if (typeof startIndex !== "number" || startIndex >= index) break;
+      if (
+        typeof contentStart === "number" &&
+        typeof closeIndex === "number" &&
+        closeIndex !== -1 &&
+        index >= contentStart &&
+        index < closeIndex
+      ) {
+        return true;
+      }
+      searchFrom = typeof endIndex === "number" && endIndex > startIndex
+        ? endIndex
+        : startIndex + 1;
+    }
+  }
+  return false;
+};
+
+/**
  * Strip `data-bascik-slot="name"` wrapper elements from inner content,
  * leaving only the content intended for the default slot.
  *
@@ -983,9 +1023,10 @@ const parseNamedSlots = (
  */
 export const extractDefaultSlotContent = (
   innerContent: string | undefined,
+  componentNames: ReadonlySet<string> = new Set(),
 ): string => {
   if (!innerContent) return "";
-  const named = parseNamedSlots(innerContent);
+  const named = parseNamedSlots(innerContent, componentNames);
   if (named.length === 0) return innerContent.trim();
   // Remove each named-slot wrapper from right-to-left to preserve indices
   let result = innerContent;
@@ -1005,10 +1046,11 @@ export const extractDefaultSlotContent = (
  */
 export const extractNamedSlotContent = (
   innerContent: string | undefined,
+  componentNames: ReadonlySet<string> = new Set(),
 ): Record<string, string> => {
   if (!innerContent) return {};
   const slots: Record<string, string> = {};
-  for (const { slotName, content } of parseNamedSlots(innerContent)) {
+  for (const { slotName, content } of parseNamedSlots(innerContent, componentNames)) {
     slots[slotName] = content;
   }
   return slots;
@@ -1026,11 +1068,12 @@ export const extractNamedSlotContent = (
 export const replaceNamedSlots = (
   fileContent: string,
   slots: Record<string, string>,
+  componentNames: ReadonlySet<string> = new Set(),
 ): string => {
   // Scan wrappers with the same depth-aware parser used for extraction so
   // nested same-tag elements inside a placeholder's fallback content are
   // handled correctly, then replace right-to-left to preserve indices.
-  const wrappers = parseNamedSlots(fileContent);
+  const wrappers = parseNamedSlots(fileContent, componentNames);
   let result = fileContent;
   for (let i = wrappers.length - 1; i >= 0; i--) {
     const { slotName, startIndex, endIndex, content } = wrappers[i];

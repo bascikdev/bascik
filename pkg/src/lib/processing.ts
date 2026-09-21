@@ -611,19 +611,41 @@ export const recursivelyTranspile = (
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
+      const componentNames = new Set(Object.keys(componentList));
+      const protectedChildren: Array<{ placeholder: string; content: string }> = [];
+      let slotTemplate = component.fileContent;
+      let childSearchFrom = 0;
+      while (childSearchFrom < slotTemplate.length) {
+        const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
+          startIndex?: number;
+          endIndex?: number;
+        };
+        if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
+        const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
+        const childContent = slotTemplate.slice(child.startIndex, child.endIndex);
+        protectedChildren.push({ placeholder, content: childContent });
+        slotTemplate =
+          slotTemplate.slice(0, child.startIndex) +
+          placeholder +
+          slotTemplate.slice(child.endIndex);
+        childSearchFrom = child.startIndex + placeholder.length;
+      }
       // Resolve named slots from the usage inner HTML.
-      const namedSlots = extractNamedSlotContent(component.innerContent);
-      component.fileContent = replaceNamedSlots(component.fileContent, namedSlots);
+      const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
+      slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
 
       // Resolve the default slot: innerContent with named-slot wrappers stripped.
-      const defaultSlotContent = extractDefaultSlotContent(component.innerContent);
+      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
 
       // Replace <element data-bascik-slot> default slot markers.
       // Named slots were already handled above by replaceNamedSlots.
       let transpiledTag = replaceDefaultSlots(
-        component.fileContent,
+        slotTemplate,
         defaultSlotContent,
       );
+      for (const { placeholder, content } of protectedChildren) {
+        transpiledTag = transpiledTag.replace(placeholder, () => content);
+      }
 
       currentStage = "attribute inheritance";
       // Merge non-bascik attributes from the usage tag onto the component root element.

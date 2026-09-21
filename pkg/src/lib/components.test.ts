@@ -591,6 +591,13 @@ describe("extractNamedSlotContent", () => {
       "<p title='see data-bascik-slot=\"fake\" usage'>text</p>";
     expect(extractNamedSlotContent(inner)).toEqual({});
   });
+
+  it("ignores named slots owned by a nested child component", () => {
+    const inner =
+      '<p>parent content</p><inner-demo><div data-bascik-slot="source-html">child content</div></inner-demo>';
+
+    expect(extractNamedSlotContent(inner, new Set(["inner-demo"]))).toEqual({});
+  });
 });
 
 describe("replaceNamedSlots", () => {
@@ -641,6 +648,13 @@ describe("replaceNamedSlots", () => {
     expect(replaceNamedSlots(template, { x: "<p>filled</p>" })).toBe(
       "<section><p>filled</p></section>",
     );
+  });
+
+  it("does not replace named slots inside an unresolved child component", () => {
+    const template =
+      '<section><inner-demo><div data-bascik-slot="source-html">child fallback</div></inner-demo></section>';
+
+    expect(replaceNamedSlots(template, {}, new Set(["inner-demo"]))).toBe(template);
   });
 });
 
@@ -724,6 +738,13 @@ describe("extractDefaultSlotContent", () => {
       '<div data-bascik-slot="a"><span>a</span></div>' +
       "\n";
     expect(extractDefaultSlotContent(inner)).toBe("<p>main</p>");
+  });
+
+  it("preserves nested child named-slot markup in the parent default slot", () => {
+    const inner =
+      '<p>parent content</p><inner-demo><div data-bascik-slot="source-html">child content</div></inner-demo>';
+
+    expect(extractDefaultSlotContent(inner, new Set(["inner-demo"]))).toBe(inner);
   });
 });
 
