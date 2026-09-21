@@ -110,6 +110,7 @@ import {
   shieldCssStrings,
 } from "./styles.ts";
 import {
+  createContentShield,
   shieldElementContents,
   shieldPreservedAttribute,
   stripPreserveDirectives,
@@ -958,8 +959,18 @@ export const getComponentScripts = async (
 export const namespaceScriptTags = (
   component: BascikComponent,
 ): BascikComponent => {
+  // Script-looking examples in HTML comments are documentation, not browser
+  // code. Shield comments before scanning for script tags so a fake opener in
+  // a comment cannot be paired with a later real </script> and wrapped into an
+  // invalid runtime script.
+  const commentShield = createContentShield(component.fileContent);
+  const commentMaskedContent = component.fileContent.replace(
+    /<!--[\s\S]*?-->/g,
+    (comment) => commentShield.hide(comment),
+  );
+
   // Only wrap <script> tags with no type or type="text/javascript"
-  component.fileContent = component.fileContent.replace(
+  component.fileContent = commentShield.restore(commentMaskedContent.replace(
     /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
     (match, open, code, close, _offset) => {
       // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
@@ -1004,7 +1015,7 @@ export const namespaceScriptTags = (
         return `${cleanOpen}(function() {${leading}${code}${trailing}})();${close}`;
       }
     },
-  );
+  ));
   return component;
 };
 

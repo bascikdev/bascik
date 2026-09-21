@@ -1569,6 +1569,20 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
     expect(isolated.fileContent).toContain('var secret = "A";');
     expect(isolated.fileContent).toContain('(function() {');
   });
+
+  it("does not treat script examples in HTML comments as browser scripts", () => {
+    const c = makeComponent(
+      '<!-- The <script> below runs after markup. -->' +
+      '<div id="panel"></div>' +
+      '<script>document.getElementById("panel");</script>',
+    );
+
+    const isolated = namespaceScriptTags(c);
+
+    expect(isolated.fileContent).toContain('<!-- The <script> below runs after markup. -->');
+    expect(isolated.fileContent).toContain('(function() {\ndocument.getElementById("panel");\n})();');
+    expect(isolated.fileContent).not.toContain('<!-- The <script>(function()');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
