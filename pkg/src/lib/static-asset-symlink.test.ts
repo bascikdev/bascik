@@ -16,7 +16,7 @@ vi.mock("./config.js", () => ({
 }));
 
 import { BascikConfig } from "./config.ts";
-import { copyReplicatePath } from "./file-system.ts";
+import { copyReplicatePath, copyStaticAssets } from "./file-system.ts";
 
 describe.skipIf(process.platform === "win32")("development static-asset symlinks", () => {
   let root: string;
@@ -56,5 +56,51 @@ describe.skipIf(process.platform === "win32")("development static-asset symlinks
     await copyReplicatePath(sourceFile, output);
     expect((await lstat(outputFile)).isSymbolicLink()).toBe(false);
     expect(await readFile(outputFile, "utf8")).toBe("updated");
+  });
+
+  it("keeps the destination usable when concurrent copies replace an asset link", async () => {
+    const sourceFile = join(source, "images/logo.svg");
+    const outputFile = join(output, "images/logo.svg");
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => { });
+
+    try {
+      await Promise.all([
+        copyReplicatePath(sourceFile, output),
+        copyReplicatePath(sourceFile, output),
+      ]);
+
+      expect((await lstat(outputFile)).isSymbolicLink()).toBe(true);
+      expect(await readFile(outputFile, "utf8")).toBe("first");
+      expect(warning).not.toHaveBeenCalledWith(
+        expect.stringContaining("could not create static-asset symlinks"),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it("restores every nested asset after its source directory is recreated", async () => {
+    const images = join(source, "images");
+    const nested = join(images, "nested");
+    const assets = [
+      [join(images, "first.svg"), "first"],
+      [join(images, "second.svg"), "second"],
+      [join(nested, "third.png"), "third"],
+    ] as const;
+    await mkdir(nested, { recursive: true });
+    await Promise.all(assets.map(([file, content]) => writeFile(file, content)));
+    await copyStaticAssets();
+
+    await rm(images, { recursive: true, force: true });
+    await rm(join(output, "images"), { recursive: true, force: true });
+    await mkdir(nested, { recursive: true });
+    await Promise.all(assets.map(([file, content]) => writeFile(file, `${content}-restored`)));
+    await copyStaticAssets();
+
+    for (const [file, content] of assets) {
+      const destination = join(output, "images", file.slice(images.length + 1));
+      expect((await lstat(destination)).isSymbolicLink()).toBe(true);
+      expect(await readFile(destination, "utf8")).toBe(`${content}-restored`);
+    }
   });
 });

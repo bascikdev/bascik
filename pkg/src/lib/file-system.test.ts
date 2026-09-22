@@ -16,7 +16,7 @@ import {
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
-import { readdir, rm, copyFile, readFile, writeFile, lstat, symlink, unlink } from "node:fs/promises";
+import { readdir, rm, copyFile, readFile, writeFile, lstat, symlink, unlink, rename } from "node:fs/promises";
 
 const isDirMock = vi.fn().mockImplementation(() => false);
 
@@ -98,6 +98,7 @@ vi.mock("node:fs/promises", () => {
     lstat: vi.fn(async () => ({ isSymbolicLink: () => false })),
     symlink: vi.fn(async () => undefined),
     unlink: vi.fn(async () => undefined),
+    rename: vi.fn(async () => undefined),
   };
 });
 
@@ -441,8 +442,12 @@ describe("copyReplicatePath", () => {
 
       expect(symlink).toHaveBeenCalledWith(
         expect.stringMatching(/pages\/images\/logo\.svg$/),
-        resolve("dist/images/logo.svg"),
+        expect.stringMatching(/\.logo\.svg\.bascik-link-/),
         "file",
+      );
+      expect(rename).toHaveBeenCalledWith(
+        expect.stringMatching(/\.logo\.svg\.bascik-link-/),
+        resolve("dist/images/logo.svg"),
       );
       expect(copyFile).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith("linked:", "pages/images/logo.svg");

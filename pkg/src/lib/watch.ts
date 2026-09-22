@@ -93,168 +93,178 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
   if (BascikConfig.pipeline?.exec?.some(entry => !!entry.watch)) {
     await watchSourceCycles(invalidateRuntimeModule, options.bootCompile);
   } else {
-  // Copy non-page files
-  w(chokidar
-    .watch([BascikConfig.directory.pages], {
-      ...watchOptions,
-      ignored: (path: string, stats?: Stats): boolean =>
-        !!(stats?.isFile() && !isInlineStylesheet(path) && !isStaticAssetPath(path)),
-      ignoreInitial: true,
-      persistent: !BascikConfig.isBuild,
-    })
-    .on("add", async (path) => {
-      try {
-        if (isInlineStylesheet(path)) {
-          if (!BascikConfig.isBuild) {
-            await processAllPages();
-          }
-        } else {
-          await copyReplicatePath(path, BascikConfig.directory.out);
-          if (!BascikConfig.isBuild) {
-            eventEmitter.emit("asset-changed");
-          }
-        }
-      } catch (err) { onWatchError(err); }
-    })
-    .on("change", async (path) => {
-      try {
-        if (isInlineStylesheet(path)) {
-          if (!BascikConfig.isBuild) {
-            await processAllPages();
-          }
-        } else {
-          await copyReplicatePath(path, BascikConfig.directory.out);
-          // Reload any currently-open page when a static asset changes
-          if (!BascikConfig.isBuild) {
-            eventEmitter.emit("asset-changed");
-          }
-        }
-      } catch (err) { onWatchError(err); }
-    })
-    .on("unlink", (path) => {
-      const operation = isInlineStylesheet(path)
-        ? processAllPages()
-        : deleteDistFile(path);
-      operation.catch(onWatchError);
-    })
-    .on("unlinkDir", (path) => deleteDistDir(path).catch(onWatchError)));
-
-  // Transpile pages as they change
-  let initialScanDone = false;
-  compileInitialSources = async (): Promise<void> => {
-    await Promise.all([copyStaticAssets(), processAllPages()]);
-    initialScanDone = true;
-  };
-  await new Promise<void>((resolve, reject) => {
+    // Copy non-page files
+    const removedAssetDirectories = new Set<string>();
     w(chokidar
       .watch([BascikConfig.directory.pages], {
         ...watchOptions,
-        // only watch html files
         ignored: (path: string, stats?: Stats): boolean =>
-          !!(stats?.isFile() && !path.endsWith(".html")),
-        persistent: !BascikConfig.isBuild,
-      })
-      .on("add", (_path) => {
-        if (initialScanDone) processAllPages().catch(onWatchError);
-      })
-      .on("change", (path) => pageProcessing(path).catch(onWatchError))
-      .on("unlink", (path: string, _stats?: Stats) => {
-        removePage(path).then(() => processAllPages()).catch(onWatchError);
-      })
-      .on("unlinkDir", (path: string, _stats?: Stats) => deleteDistDir(path).catch(onWatchError))
-      .on("ready", () => resolve())
-      .on("error", reject));
-  });
-
-  if (compileInitialSources && options.bootCompile) {
-    await options.bootCompile(compileInitialSources);
-  } else if (compileInitialSources) {
-    await compileInitialSources();
-  }
-
-  // Transpile pages if components change. Every configured root is watched;
-  // symlinks are followed here (and only here) so a linked shared directory
-  // inside a root triggers rebuilds. Chokidar reports link paths, which is
-  // what selectivelyProcessPages expects.
-  w(chokidar
-    .watch([...BascikConfig.directory.components], {
-      ...watchOptions,
-      followSymlinks: true,
-      ignored: (path: string, stats?: Stats): boolean => {
-        return !!(
-          stats?.isFile() && !(path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js") || path.endsWith(".ts") || path.endsWith(".mjs"))
-        );
-      },
-      ignoreInitial: true,
-      persistent: !BascikConfig.isBuild,
-    })
-    // If you add a component, how will we know what pages to update unless we go and look
-    .on("add", async (path) => {
-      invalidateRuntimeModule(path);
-      try {
-        clearBuildScriptCaches(path);
-        await processAllPages();
-      } catch (err) {
-        onWatchError(err);
-      }
-    })
-    // For changes and deletion of components we can be selective
-    .on("change", async (path) => {
-      invalidateRuntimeModule(path);
-      try {
-        clearBuildScriptCaches(path);
-        await selectivelyProcessPages(path);
-      } catch (err) {
-        onWatchError(err);
-      }
-    })
-    .on("unlink", async (path) => {
-      invalidateRuntimeModule(path);
-      try {
-        clearBuildScriptCaches(path);
-        await selectivelyProcessPages(path);
-      } catch (err) {
-        onWatchError(err);
-      }
-    }));
-
-  // Compilation watches are independent of exec.watch and exec completion.
-  const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
-  if (!BascikConfig.isBuild && watchPaths.length) {
-    w(chokidar
-      .watch(watchPaths, {
-        ...watchOptions,
+          !!(stats?.isFile() && !isInlineStylesheet(path) && !isStaticAssetPath(path)),
         ignoreInitial: true,
-        persistent: true,
+        persistent: !BascikConfig.isBuild,
       })
       .on("add", async (path) => {
         try {
+          if (isInlineStylesheet(path)) {
+            if (!BascikConfig.isBuild) {
+              await processAllPages();
+            }
+          } else {
+            await copyReplicatePath(path, BascikConfig.directory.out);
+            if (!BascikConfig.isBuild) {
+              eventEmitter.emit("asset-changed");
+            }
+          }
+        } catch (err) { onWatchError(err); }
+      })
+      .on("change", async (path) => {
+        try {
+          if (isInlineStylesheet(path)) {
+            if (!BascikConfig.isBuild) {
+              await processAllPages();
+            }
+          } else {
+            await copyReplicatePath(path, BascikConfig.directory.out);
+            // Reload any currently-open page when a static asset changes
+            if (!BascikConfig.isBuild) {
+              eventEmitter.emit("asset-changed");
+            }
+          }
+        } catch (err) { onWatchError(err); }
+      })
+      .on("unlink", (path) => {
+        const operation = isInlineStylesheet(path)
+          ? processAllPages()
+          : deleteDistFile(path);
+        operation.catch(onWatchError);
+      })
+      .on("unlinkDir", (path) => {
+        removedAssetDirectories.add(path);
+        deleteDistDir(path).catch(onWatchError);
+      })
+      .on("addDir", (path) => {
+        if (!removedAssetDirectories.delete(path)) return;
+        copyStaticAssets()
+          .then(() => eventEmitter.emit("asset-changed"))
+          .catch(onWatchError);
+      }));
+
+    // Transpile pages as they change
+    let initialScanDone = false;
+    compileInitialSources = async (): Promise<void> => {
+      await Promise.all([copyStaticAssets(), processAllPages()]);
+      initialScanDone = true;
+    };
+    await new Promise<void>((resolve, reject) => {
+      w(chokidar
+        .watch([BascikConfig.directory.pages], {
+          ...watchOptions,
+          // only watch html files
+          ignored: (path: string, stats?: Stats): boolean =>
+            !!(stats?.isFile() && !path.endsWith(".html")),
+          persistent: !BascikConfig.isBuild,
+        })
+        .on("add", (_path) => {
+          if (initialScanDone) processAllPages().catch(onWatchError);
+        })
+        .on("change", (path) => pageProcessing(path).catch(onWatchError))
+        .on("unlink", (path: string, _stats?: Stats) => {
+          removePage(path).then(() => processAllPages()).catch(onWatchError);
+        })
+        .on("unlinkDir", (path: string, _stats?: Stats) => deleteDistDir(path).catch(onWatchError))
+        .on("ready", () => resolve())
+        .on("error", reject));
+    });
+
+    if (compileInitialSources && options.bootCompile) {
+      await options.bootCompile(compileInitialSources);
+    } else if (compileInitialSources) {
+      await compileInitialSources();
+    }
+
+    // Transpile pages if components change. Every configured root is watched;
+    // symlinks are followed here (and only here) so a linked shared directory
+    // inside a root triggers rebuilds. Chokidar reports link paths, which is
+    // what selectivelyProcessPages expects.
+    w(chokidar
+      .watch([...BascikConfig.directory.components], {
+        ...watchOptions,
+        followSymlinks: true,
+        ignored: (path: string, stats?: Stats): boolean => {
+          return !!(
+            stats?.isFile() && !(path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js") || path.endsWith(".ts") || path.endsWith(".mjs"))
+          );
+        },
+        ignoreInitial: true,
+        persistent: !BascikConfig.isBuild,
+      })
+      // If you add a component, how will we know what pages to update unless we go and look
+      .on("add", async (path) => {
+        invalidateRuntimeModule(path);
+        try {
           clearBuildScriptCaches(path);
-          await selectivelyProcessPagesForWatchPath(path);
-          eventEmitter.emit("watch-path-processed", { path });
+          await processAllPages();
         } catch (err) {
           onWatchError(err);
         }
       })
+      // For changes and deletion of components we can be selective
       .on("change", async (path) => {
+        invalidateRuntimeModule(path);
         try {
           clearBuildScriptCaches(path);
-          await selectivelyProcessPagesForWatchPath(path);
-          eventEmitter.emit("watch-path-processed", { path });
+          await selectivelyProcessPages(path);
         } catch (err) {
           onWatchError(err);
         }
       })
       .on("unlink", async (path) => {
+        invalidateRuntimeModule(path);
         try {
           clearBuildScriptCaches(path);
-          await selectivelyProcessPagesForWatchPath(path);
-          eventEmitter.emit("watch-path-processed", { path });
+          await selectivelyProcessPages(path);
         } catch (err) {
           onWatchError(err);
         }
       }));
-  }
+
+    // Compilation watches are independent of exec.watch and exec completion.
+    const watchPaths = BascikConfig.pipeline?.watchPaths ?? [];
+    if (!BascikConfig.isBuild && watchPaths.length) {
+      w(chokidar
+        .watch(watchPaths, {
+          ...watchOptions,
+          ignoreInitial: true,
+          persistent: true,
+        })
+        .on("add", async (path) => {
+          try {
+            clearBuildScriptCaches(path);
+            await selectivelyProcessPagesForWatchPath(path);
+            eventEmitter.emit("watch-path-processed", { path });
+          } catch (err) {
+            onWatchError(err);
+          }
+        })
+        .on("change", async (path) => {
+          try {
+            clearBuildScriptCaches(path);
+            await selectivelyProcessPagesForWatchPath(path);
+            eventEmitter.emit("watch-path-processed", { path });
+          } catch (err) {
+            onWatchError(err);
+          }
+        })
+        .on("unlink", async (path) => {
+          try {
+            clearBuildScriptCaches(path);
+            await selectivelyProcessPagesForWatchPath(path);
+            eventEmitter.emit("watch-path-processed", { path });
+          } catch (err) {
+            onWatchError(err);
+          }
+        }));
+    }
 
   }
 

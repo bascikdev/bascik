@@ -99,6 +99,25 @@ describe('source observer and phase queue integration', () => {
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
 
+  it('rescans static assets after a removed page directory is recreated', async () => {
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit('boot-done');
+    mocks.copy.mockClear();
+    mocks.all.mockClear();
+
+    watcher.emit('all', 'unlinkDir', 'src/pages/images');
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.remove).toHaveBeenCalledWith(resolve('src/pages/images'));
+    expect(mocks.copy).not.toHaveBeenCalled();
+
+    watcher.emit('all', 'addDir', 'src/pages/images');
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.copy).toHaveBeenCalledOnce();
+    expect(mocks.all).toHaveBeenCalledTimes(2);
+  });
+
   it('runs the boot compile hook only after the source watcher is ready', async () => {
     const ready = Promise.withResolvers<void>();
     mocks.watch.mockReset().mockImplementation(() => {

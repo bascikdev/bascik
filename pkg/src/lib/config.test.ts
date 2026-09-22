@@ -317,6 +317,18 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     expect(serverCfg.http.tls.enabled).toBe(true);
   });
 
+  it("uses the dev asset symlink override only in development mode", () => {
+    const overrides = { dev: { assets: { symlink: true } } };
+
+    const devCfg = initBascikConfig({}, overrides, { isBuild: false }).BascikConfig;
+    const buildCfg = initBascikConfig({}, overrides, { isBuild: true }).BascikConfig;
+    const defaultCfg = initBascikConfig({}, {}, { isBuild: false }).BascikConfig;
+
+    expect(devCfg.assets.symlink).toBe(true);
+    expect(buildCfg.assets.symlink).toBe(false);
+    expect(defaultCfg.assets.symlink).toBe(false);
+  });
+
   it("allows directory.out to be customized and reach all resolution logic", () => {
     const { BascikConfig: cfg } = initBascikConfig({ directory: { out: "custom-build" } });
     expect(cfg.directory.out).toMatch(/[/\\]custom-build$/);
