@@ -46,6 +46,7 @@ export const watchSourceCycles = async (
       for (const path of paths) changes.delete(path);
       const pages = new Set<string>();
       let all = false;
+      let staticAssetsInvalidated = false;
       // Invalidate input-content memoization once after pre writes. Script
       // result caching remains enabled and rechecks the actual dependency bytes.
       clearBuildScriptCaches();
@@ -59,7 +60,15 @@ export const watchSourceCycles = async (
         const dependents = mem.pagesDependentOnFile(path);
         for (const page of dependents) pages.add(resolve(page));
         if (kind === 'unlinkDir') {
-          if (inPages) await deleteDistDir(path);
+          if (inPages) {
+            await deleteDistDir(path);
+          }
+          all = true;
+        } else if (kind === 'addDir' && inPages) {
+          // An editor or pipeline can replace a directory atomically. Its
+          // nested add events are not guaranteed on every filesystem, so
+          // rescan on recreation instead of relying on them for recovery.
+          staticAssetsInvalidated = true;
           all = true;
         } else if (inPages && path.endsWith('.html')) {
           if (kind === 'unlink') { await removePage(path); all = true; }
@@ -81,6 +90,7 @@ export const watchSourceCycles = async (
           publish('asset-changed');
         }
       }
+      if (staticAssetsInvalidated) await copyStaticAssets();
       if (all) await processAllPages();
       else if (pages.size) await processPageBatch([...pages]);
     }, { onPageErrors: 'throw' }),
@@ -102,7 +112,7 @@ export const watchSourceCycles = async (
     ignored: path => inside(resolve(path), outRoot),
   });
   watcher.on('all', (kind, changed) => {
-    if (!['add', 'change', 'unlink', 'unlinkDir'].includes(kind)) return;
+    if (!['add', 'change', 'unlink', 'unlinkDir', 'addDir'].includes(kind)) return;
     const path = resolve(changed);
     const owned = inside(path, pagesRoot) || componentRoots.some(root => inside(path, root));
     if (!owned && !execWatchCoversPath([...watchPaths, ...execPatterns], path)) return;

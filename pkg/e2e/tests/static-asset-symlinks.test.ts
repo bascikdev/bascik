@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { lstat, readFile, readlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readlink, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 const fixtureDir = join(import.meta.dirname, '..', 'symlink-fixture');
@@ -21,6 +21,51 @@ test.describe('Development static-asset symlinks', () => {
       expect((await lstat(outputAsset)).isSymbolicLink()).toBe(true);
     } finally {
       await writeFile(sourceAsset, original, 'utf8');
+    }
+  });
+
+  test('recovers HTTP delivery after the symlink target is recreated without restarting', async ({ request }) => {
+    const original = await readFile(sourceAsset, 'utf8');
+
+    try {
+      expect((await request.get('/assets/logo.svg')).status()).toBe(200);
+      await rm(sourceAsset);
+      expect((await request.get('/assets/logo.svg')).status()).toBe(404);
+
+      await writeFile(sourceAsset, original.replace('green', 'orange'), 'utf8');
+      await expect.poll(async () => (await request.get('/assets/logo.svg')).text()).toContain('orange');
+      expect((await lstat(outputAsset)).isSymbolicLink()).toBe(true);
+    } finally {
+      await writeFile(sourceAsset, original, 'utf8');
+    }
+  });
+
+  test('restores all static assets after a watched directory is removed and recreated', async ({ request }) => {
+    const assetsDirectory = join(fixtureDir, 'src/pages/assets');
+    const nestedDirectory = join(assetsDirectory, 'nested');
+    const restoredAssets = [
+      ['first.svg', '<svg xmlns="http://www.w3.org/2000/svg"><title>first</title></svg>'],
+      ['second.svg', '<svg xmlns="http://www.w3.org/2000/svg"><title>second</title></svg>'],
+      ['nested/third.svg', '<svg xmlns="http://www.w3.org/2000/svg"><title>third</title></svg>'],
+    ] as const;
+    const originalLogo = await readFile(sourceAsset, 'utf8');
+
+    try {
+      expect((await request.get('/assets/logo.svg')).status()).toBe(200);
+      await rm(assetsDirectory, { recursive: true, force: true });
+      await mkdir(nestedDirectory, { recursive: true });
+      await Promise.all(restoredAssets.map(([path, contents]) =>
+        writeFile(join(assetsDirectory, path), contents),
+      ));
+
+      for (const [path, contents] of restoredAssets) {
+        await expect.poll(async () => (await request.get(`/assets/${path}`)).text()).toBe(contents);
+        expect((await lstat(join(fixtureDir, 'dist/assets', path))).isSymbolicLink()).toBe(true);
+      }
+    } finally {
+      await rm(assetsDirectory, { recursive: true, force: true });
+      await mkdir(assetsDirectory, { recursive: true });
+      await writeFile(sourceAsset, originalLogo, 'utf8');
     }
   });
 });

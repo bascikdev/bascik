@@ -458,6 +458,18 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     expect(deleteDistDir).toHaveBeenCalledWith("/path/to/dir");
   });
 
+  it("rescans static assets when a removed directory is recreated", async () => {
+    const unlinkDir = getHandler(0, "unlinkDir");
+    const addDir = getHandler(0, "addDir");
+
+    unlinkDir?.("/project/src/pages/images");
+    addDir?.("/project/src/pages/images");
+    await Promise.resolve();
+
+    expect(copyStaticAssets).toHaveBeenCalledTimes(2);
+    expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
+  });
+
   it("emits asset-changed when a file changes and not in build mode", async () => {
     const handler = getHandler(0, "change");
     await handler?.("/path/to/style.css");

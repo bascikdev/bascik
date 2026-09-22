@@ -1,6 +1,6 @@
-import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath, lstat, symlink, unlink } from "node:fs/promises";
+import { readdir, rm, mkdir, copyFile, readFile, writeFile, stat, realpath, lstat, symlink, unlink, rename } from "node:fs/promises";
 import { join, dirname, resolve, relative, isAbsolute, basename } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
@@ -229,16 +229,19 @@ export async function copyReplicatePath(
     const destinationIsSymlink = await lstat(destPath).then(entry => entry.isSymbolicLink()).catch(() => false);
     if (srcHash !== destHash || destinationIsSymlink !== Boolean(useSymlink)) {
       if (useSymlink) {
-        // `symlink` refuses an existing file, unlike copyFile. Always replace
-        // the destination here; links are dev-only and source edits require no
-        // relinking because the target remains the original source path.
-        await rm(destPath, { force: true });
+        // Create the replacement beside its destination, then atomically put
+        // it in place. Removing the old link first leaves a request-visible
+        // 404 window, and concurrent watcher events can otherwise mistake an
+        // EEXIST race for an unavailable symlink capability.
+        const temporaryLinkPath = join(destDir, `.${basename(destPath)}.bascik-link-${randomUUID()}`);
         try {
-          await symlink(relative(destDir, src), destPath, "file");
+          await symlink(relative(destDir, src), temporaryLinkPath, "file");
+          await rename(temporaryLinkPath, destPath);
           if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
             console.log("linked:", displayRelativePath(src));
           }
         } catch (error) {
+          await rm(temporaryLinkPath, { force: true }).catch(() => { });
           // Windows can reject symlink creation when Developer Mode or the
           // required privilege is unavailable. Copying keeps dev usable.
           if (!warnedSymlinkFallback) {
@@ -248,6 +251,9 @@ export async function copyReplicatePath(
               "On Windows, enable Developer Mode or grant symlink permission to use assets.symlink.",
             );
           }
+          // Never follow an old destination link when falling back: doing so
+          // can overwrite the source file it targets.
+          await unlinkDestinationSymlink(destPath);
           await copyFile(src, destPath);
           if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
             console.log("copied:", displayRelativePath(src));
