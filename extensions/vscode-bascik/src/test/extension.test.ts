@@ -183,7 +183,7 @@ suite('Extension Integration Suite', () => {
     for (const uri of temporaryDocumentUris) {
       try {
         await vscode.workspace.fs.delete(uri);
-      } catch {}
+      } catch { }
     }
   });
 
@@ -437,7 +437,7 @@ suite('Extension Integration Suite', () => {
       );
       assert.ok(
         !hovers ||
-          hovers.every((hover) => !hoverMarkdown(hover).includes('**Source:**')),
+        hovers.every((hover) => !hoverMarkdown(hover).includes('**Source:**')),
         'The Bascik component provider should not describe built-in elements',
       );
     });
@@ -1031,10 +1031,10 @@ suite('Extension Integration Suite', () => {
       } finally {
         try {
           await vscode.workspace.fs.delete(componentUri);
-        } catch {}
+        } catch { }
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch {}
+        } catch { }
       }
     });
 
@@ -1110,7 +1110,7 @@ suite('Extension Integration Suite', () => {
       } finally {
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch {}
+        } catch { }
       }
     });
 
@@ -1161,7 +1161,7 @@ suite('Extension Integration Suite', () => {
         for (const uri of [oldUri, newUri, usageUri]) {
           try {
             await vscode.workspace.fs.delete(uri);
-          } catch {}
+          } catch { }
         }
       }
     });
@@ -1216,7 +1216,7 @@ suite('Extension Integration Suite', () => {
           await vscode.workspace.fs.delete(vscode.Uri.file(projectRoot), {
             recursive: true,
           });
-        } catch {}
+        } catch { }
       }
     });
 
@@ -1259,7 +1259,7 @@ suite('Extension Integration Suite', () => {
             await vscode.workspace.fs.delete(vscode.Uri.file(root), {
               recursive: true,
             });
-          } catch {}
+          } catch { }
         }
       });
     }
@@ -1335,18 +1335,18 @@ suite('Extension Integration Suite', () => {
         await vscode.workspace.fs.writeFile(configUri, originalConfig);
         try {
           await vscode.workspace.fs.delete(usageUri);
-        } catch {}
+        } catch { }
         try {
           await vscode.workspace.fs.delete(vscode.Uri.file(externalRoot), {
             recursive: true,
           });
-        } catch {}
+        } catch { }
         try {
           await vscode.workspace.fs.delete(
             vscode.Uri.file(path.dirname(alternateImportUri.fsPath)),
             { recursive: true },
           );
-        } catch {}
+        } catch { }
       }
 
       await waitFor(async () => {
@@ -1422,7 +1422,7 @@ suite('Extension Integration Suite', () => {
         );
         try {
           await vscode.workspace.fs.delete(diagnosticUri);
-        } catch {}
+        } catch { }
       }
 
       await waitFor(async () => {
@@ -1485,9 +1485,9 @@ suite('Extension Integration Suite', () => {
             .filter(
               (diagnostic) =>
                 diagnostic.code ===
-                  'component-metadata-duplicate-annotation' ||
+                'component-metadata-duplicate-annotation' ||
                 diagnostic.code ===
-                  'component-metadata-undeclared-annotation',
+                'component-metadata-undeclared-annotation',
             )
             .every(
               (diagnostic) =>
@@ -1995,7 +1995,7 @@ suite('Extension Integration Suite', () => {
       } finally {
         try {
           await vscode.workspace.fs.delete(testFileUri);
-        } catch {}
+        } catch { }
       }
     });
 
@@ -2215,7 +2215,7 @@ suite('Extension Integration Suite', () => {
         } finally {
           try {
             await vscode.workspace.fs.delete(uri);
-          } catch {}
+          } catch { }
         }
       });
     }
@@ -2260,7 +2260,7 @@ suite('Extension Integration Suite', () => {
       } finally {
         try {
           await vscode.workspace.fs.delete(uri);
-        } catch {}
+        } catch { }
       }
     });
 

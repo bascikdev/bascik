@@ -604,7 +604,7 @@ function isExcludedProjectPath(fsPath: string, workspaceRoot: string): boolean {
 }
 
 class ComponentDefinitionProvider implements vscode.DefinitionProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideDefinition(
     document: vscode.TextDocument,
@@ -635,9 +635,8 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 class ComponentCompletionItemProvider
-  implements vscode.CompletionItemProvider
-{
-  constructor(private readonly projects: ProjectStateManager) {}
+  implements vscode.CompletionItemProvider {
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideCompletionItems(
     document: vscode.TextDocument,
@@ -920,7 +919,7 @@ function createComponentDocumentation(
 }
 
 class ComponentHoverProvider implements vscode.HoverProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideHover(
     document: vscode.TextDocument,
@@ -1100,7 +1099,7 @@ function parseScriptOpenTagAttributes(
 }
 
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideDefinition(
     document: vscode.TextDocument,
