@@ -6,6 +6,8 @@ name: Release
 # create:   git tag create-v1.0.0-rc.1 && git push --tags
 # adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 && git push --tags
 # lsp:      git tag lsp-v0.1.0-rc.1 && git push --tags
+# ext:      git tag ext-v0.1.0 && git push --tags            (Marketplace stable)
+#           git tag ext-pre-v0.1.0 && git push --tags        (Marketplace pre-release)
 on:
   push:
     tags:
@@ -13,6 +15,8 @@ on:
       - 'create-v*.*.*'
       - 'adapter-cloudflare-v*.*.*'
       - 'lsp-v*.*.*'
+      - 'ext-v*.*.*'
+      - 'ext-pre-v*.*.*'
 
 jobs:
   release:
@@ -160,3 +164,37 @@ jobs:
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh lsp-v
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-extension:
+    name: Publish Bascik VS Code extension to the Marketplace
+    if: startsWith(github.ref_name, 'ext-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests
+        run: yarn ext:unit
+
+      - name: Publish to the Marketplace
+        working-directory: extensions/vscode-bascik
+        run: |
+          prefix=ext-v
+          if [[ "${GITHUB_REF_NAME}" == ext-pre-v* ]]; then prefix=ext-pre-v; fi
+          "${GITHUB_WORKSPACE}/.github/scripts/publish-vsce.sh" "$prefix"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

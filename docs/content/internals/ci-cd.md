@@ -44,7 +44,7 @@ All jobs enforce least-privilege with `permissions: contents: read`.
 
 ## Release Workflow
 
-The release workflow (`.github/workflows/release.yml`) triggers on version tags. The four packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
+The release workflow (`.github/workflows/release.yml`) triggers on version tags. The four packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to. The VS Code extension is published to the Marketplace by the same workflow. For the step-by-step publish order, see `RELEASING.md` in the repository root.
 
 | Package | Tag format | Example |
 | --- | --- | --- |
@@ -52,6 +52,7 @@ The release workflow (`.github/workflows/release.yml`) triggers on version tags.
 | `create-bascik` | `create-v<semver>` | `create-v1.0.3` |
 | `@bascik/adapter-cloudflare` | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
 | `@bascik/language-server` | `lsp-v<semver>` | `lsp-v0.1.0` |
+| Bascik VS Code extension (Marketplace) | `ext-v<semver>`, or `ext-pre-v<semver>` for a pre-release | `ext-v0.1.0` |
 
 Each job uses an `if:` guard so only the relevant package is built and published:
 
@@ -72,6 +73,10 @@ jobs:
   release-language-server:
     if: startsWith(github.ref_name, 'lsp-v')
     # publishes @bascik/language-server
+
+  release-extension:
+    if: startsWith(github.ref_name, 'ext-')
+    # publishes the VS Code extension with vsce (VSCE_PAT secret)
 ```
 
 All jobs follow the same steps: install dependencies, build, run tests, then publish.
