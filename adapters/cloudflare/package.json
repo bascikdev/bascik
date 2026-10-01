@@ -2,6 +2,7 @@
   "name": "@bascik/adapter-cloudflare",
   "version": "1.0.0",
   "description": "Cloudflare Pages and Workers adapter for Bascik",
+  "license": "Elastic-2.0",
   "type": "module",
   "exports": {
     ".": {

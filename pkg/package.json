@@ -2,7 +2,7 @@
   "name": "@bascik/bascik",
   "description": "A Web Framework",
   "version": "1.0.0",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Elastic-2.0",
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
   "type": "module",

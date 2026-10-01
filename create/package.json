@@ -2,7 +2,7 @@
   "name": "create-bascik",
   "description": "Create a new Bascik project",
   "version": "1.0.0",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
   "type": "module",
@@ -29,7 +29,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepare": "mkdir -p assets && ([ -f ../docs/src/pages/assets/SKILL.md ] && cp ../docs/src/pages/assets/SKILL.md assets/SKILL.md || true) && tsc -p tsconfig.build.json",
-    "prepack": "cp ../LICENSE LICENSE && mkdir -p assets && cp ../docs/src/pages/assets/SKILL.md assets/SKILL.md",
+    "prepack": "mkdir -p assets && cp ../docs/src/pages/assets/SKILL.md assets/SKILL.md",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
     "test": "vitest",

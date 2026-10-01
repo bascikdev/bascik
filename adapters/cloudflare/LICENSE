@@ -1,116 +1,90 @@
-Bascik Source Available License 1.0
+Elastic License 2.0
 
-URL: https://bascik.dev/license
+URL: https://www.elastic.co/licensing/elastic-license
 
 Copyright (c) 2026 Collin Thomas
 
 ## Acceptance
 
-By using, copying, or modifying the software, you agree to all terms of this
-license.
+By using the software, you agree to all of the terms and conditions below.
 
-## Grant of Rights
+## Copyright License
 
-Subject to the terms below, the licensor grants you a non-exclusive, worldwide,
-royalty-free license to:
+The licensor grants you a non-exclusive, royalty-free, worldwide,
+non-sublicensable, non-transferable license to use, copy, distribute, make
+available, and prepare derivative works of the software, in each case subject to
+the limitations and conditions below.
 
-1. Use the software as a build tool to develop, build, test, deploy, and host
-   your own websites, applications, and other projects, including for commercial
-   purposes.
+## Limitations
 
-2. Copy the software for the purposes expressly permitted by this license.
+You may not provide the software to third parties as a hosted or managed
+service, where the service provides users with access to any substantial set of
+the features or functionality of the software.
 
-3. Modify the software for your own personal, internal, or public use.
+You may not move, change, disable, or circumvent the license key functionality
+in the software, and you may not remove or obscure any functionality in the
+software that is protected by the license key.
 
-## Restrictions
+You may not alter, remove, or obscure any licensing, copyright, or other notices
+of the licensor in the software. Any use of the licensor's trademarks is subject
+to applicable law.
 
-Without the licensor's prior written permission, you may not:
+## Patents
 
-1. Sell or commercially license the software, or any modified, forked, adapted,
-   or substantially similar version of it, as a product, library, CLI tool,
-   framework, or development tool — whether standalone, bundled, or as a feature
-   of a larger product.
-
-2. Offer the software itself as a hosted or managed build service, transpilation
-   service, or development tool service, where third parties access the
-   software's core functionality remotely without running it themselves.
-
-3. Remove, alter, or obscure any copyright, trademark, or license notice in the
-   software or its documentation.
-
-4. Sublicense the software or grant any third party rights beyond those expressly
-   set out in this license.
-
-## Permitted Redistribution
-
-You may distribute copies of the software, modified or unmodified, provided that:
-
-- This license and all copyright notices are included with each copy.
-- You do not charge a fee for the software itself (separate from reasonable
-  distribution costs).
-
-## Permitted Uses for Clarity
-
-Nothing in this license restricts your right to:
-
-- Use the software to build, host, or sell websites, applications, or products
-  of your own creation.
-- Use the software in automated CI/CD pipelines, build systems, or any
-  development workflow.
-- Share or publish the output — HTML, CSS, JavaScript, and other files generated
-  by the software — without restriction. The output of the software is
-  unencumbered by this license.
-
-## Attribution
-
-Any permitted distribution of the software must preserve all existing copyright
-and author attribution notices.
-
-## Patent Rights
-
-The licensor grants you a license under any patent claims the licensor can
-license to use and distribute the software as permitted by this license. This
-patent license terminates immediately if you make any written claim that the
-software infringes a patent.
+The licensor grants you a license, under any patent claims the licensor can
+license, or becomes able to license, to make, have made, use, sell, offer for
+sale, import and have imported the software, in each case subject to the
+limitations and conditions in this license. This license does not cover any
+patent claims that you cause to be infringed by modifications or additions to
+the software. If you or your company make any written claim that the software
+infringes or contributes to infringement of any patent, your patent license for
+the software granted under these terms ends immediately. If your company makes
+such a claim, your patent license ends immediately for work on behalf of your
+company.
 
 ## Notices
 
-Anyone who receives a copy of any portion of the software from you must also
-receive a copy of this license.
+You must ensure that anyone who gets a copy of any part of the software from you
+also gets a copy of these terms.
+
+If you modify the software, you must include in any modified copies of the
+software prominent notices stating that you have modified the software.
+
+## No Other Rights
+
+These terms do not imply any licenses other than those expressly granted in
+these terms.
 
 ## Termination
 
-Your rights under this license terminate automatically and without notice if
-you violate any term. The licensor may reinstate your rights upon written
-notice if you cure the violation within 30 days of receiving that notice.
-Any reinstated rights end permanently upon any subsequent violation.
+If you use the software in violation of these terms, such use is not licensed,
+and your licenses will automatically terminate. If the licensor provides you
+with a notice of your violation, and you cease all violation of this license no
+later than 30 days after you receive that notice, your licenses will be
+reinstated retroactively. However, if you violate these terms after such
+reinstatement, any additional violation of these terms will cause your licenses
+to terminate automatically and permanently.
 
-## No Warranty
+## No Liability
 
-The software is provided "as is", without warranty of any kind, express or
-implied, including but not limited to warranties of merchantability, fitness
-for a particular purpose, title, or non-infringement.
-
-## Limitation of Liability
-
-To the maximum extent permitted by applicable law, the licensor will not be
-liable to you for any damages arising out of or related to this license or
-your use of the software, regardless of the legal theory.
+As far as the law allows, the software comes as is, without any warranty or
+condition, and the licensor will not be liable to you for any damages arising
+out of these terms or the use or nature of the software, under any kind of legal
+claim.
 
 ## Definitions
 
-The **licensor** is Collin Thomas.
+The **licensor** is the entity offering these terms, and the **software** is the
+software the licensor makes available under these terms, including any portion
+of it.
 
-The **software** is Bascik, including all source code, binaries, documentation,
-and associated files made available under this license.
-
-**You** refers to the individual or legal entity agreeing to these terms.
+**you** refers to the individual or entity agreeing to these terms.
 
 **your company** is any legal entity, sole proprietorship, or other kind of
 organization that you work for, plus all organizations that have control over,
 are under the control of, or are under common control with that organization.
-**control** means ownership of substantially all the assets of an entity, or
-the power to direct its management and policies by vote, contract, or otherwise.
+**control** means ownership of substantially all the assets of an entity, or the
+power to direct its management and policies by vote, contract, or otherwise.
 Control can be direct or indirect.
 
 **your licenses** are all the licenses granted to you for the software under
