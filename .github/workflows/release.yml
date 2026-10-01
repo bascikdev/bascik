@@ -6,8 +6,8 @@ name: Release
 # create:   git tag create-v1.0.0-rc.1 && git push --tags
 # adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 && git push --tags
 # lsp:      git tag lsp-v0.1.0-rc.1 && git push --tags
-# ext:      git tag ext-v0.1.0 && git push --tags            (Marketplace stable)
-#           git tag ext-pre-v0.1.0 && git push --tags        (Marketplace pre-release)
+# ext:      git tag ext-v0.2.0 && git push --tags            (Marketplace stable, even minor)
+#           git tag ext-pre-v0.1.0 && git push --tags        (Marketplace pre-release, odd minor)
 on:
   push:
     tags:

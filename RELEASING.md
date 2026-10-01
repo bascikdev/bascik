@@ -16,7 +16,7 @@ The tag must equal the prefix plus the `version` in that package's `package.json
 
 1. **npm:** the `bascik` organization must exist and `NPM_TOKEN` (repository secret) must be a granular token with publish rights to the `@bascik` scope and to `create-bascik`.
 2. **Provenance:** npm provenance needs a public GitHub repository and a `repository.url` in each `package.json` that matches it. Both are already configured.
-3. **Marketplace:** create the `bascik` publisher at https://marketplace.visualstudio.com/manage, then create an Azure DevOps personal access token (organization: all accessible organizations, scope: Marketplace > Manage) and store it as the `VSCE_PAT` repository secret.
+3. **Marketplace:** create the `bascik` publisher at https://marketplace.visualstudio.com/manage, then create an Azure DevOps personal access token (organization: all accessible organizations, scope: Marketplace > Manage) and store it as the `VSCE_PAT` repository secret. Azure DevOps retires global PATs on December 1, 2026. After that date, publishing must switch to Microsoft Entra ID authentication (`vsce publish --azure-credential` with a workload identity federated to GitHub Actions); see the "Secure automated publishing" section of the [VS Code publishing guide](https://code.visualstudio.com/api/working-with-extensions/publishing-extension). The PAT path in `publish-vsce.sh` works until then.
 
 ## Publish order
 
@@ -68,9 +68,11 @@ Push tags by name rather than `--tags` so only the intended tags trigger jobs.
 The Marketplace rejects semver prerelease identifiers, so extension versions are plain `x.y.z`. Use the tag prefix to choose the channel:
 
 - `ext-pre-v0.1.0` publishes with `vsce publish --pre-release` (opt-in for users).
-- `ext-v0.1.0` publishes a stable release.
+- `ext-v0.2.0` publishes a stable release.
 
-A version number can only be published once, so bump the version before each new tag. To check packaging locally without publishing:
+Pre-release and stable uploads must use different version numbers: if `0.1.0` is uploaded as a pre-release, the next stable release must be a distinct version. VS Code auto-updates every user to the highest version available, including pre-release users, so a stable version higher than the latest pre-release moves them onto stable. The Marketplace convention is to avoid surprises by using an odd minor for pre-releases and an even minor for stable (`0.1.*` pre-release, `0.2.*` stable). A version number can only be published once.
+
+Pre-release support requires `engines.vscode` of at least 1.63.0; the extension currently declares `^1.90.0`. To check packaging locally without publishing:
 
 ```sh
 cd extensions/vscode-bascik
