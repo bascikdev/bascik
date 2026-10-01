@@ -130,11 +130,60 @@ function completionLabel(item: vscode.CompletionItem): string {
   return typeof item.label === 'string' ? item.label : item.label.label;
 }
 
+function locationUri(location: vscode.Location | vscode.LocationLink): vscode.Uri {
+  return 'targetUri' in location ? location.targetUri : location.uri;
+}
+
+function firstLocationPath(
+  locations: (vscode.Location | vscode.LocationLink)[] | undefined,
+): string | undefined {
+  const first = locations?.[0];
+  return first ? locationUri(first).fsPath : undefined;
+}
+
+const documentExtensions: Record<string, string> = {
+  html: 'html',
+  css: 'css',
+  javascript: 'js',
+  typescript: 'ts',
+};
+const temporaryDocumentUris: vscode.Uri[] = [];
+
+// The extension only analyzes file: documents, so untitled buffers never receive diagnostics.
+async function openWorkspaceDocument(options: {
+  language: string;
+  content: string;
+}): Promise<vscode.TextDocument> {
+  const folder = getWorkspaceFolder('primary');
+  const extension = documentExtensions[options.language] ?? options.language;
+  const uri = vscode.Uri.file(
+    path.join(
+      folder.uri.fsPath,
+      'src',
+      `tmp-doc-${temporaryDocumentUris.length}.${extension}`,
+    ),
+  );
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(options.content));
+  temporaryDocumentUris.push(uri);
+  const document = await vscode.workspace.openTextDocument(uri);
+  // Diagnostics publish asynchronously after the open event; settle so absence assertions are meaningful.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return document;
+}
+
 suite('Extension Integration Suite', () => {
   suiteSetup(async () => {
     const ext = getBascikExtension();
     if (ext && !ext.isActive) {
       await ext.activate();
+    }
+  });
+
+  suiteTeardown(async () => {
+    for (const uri of temporaryDocumentUris) {
+      try {
+        await vscode.workspace.fs.delete(uri);
+      } catch {}
     }
   });
 
@@ -646,7 +695,7 @@ suite('Extension Integration Suite', () => {
         locations && locations.length > 0,
         'Definition should be found',
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, '/');
       assert.ok(
         targetPath.endsWith('src/lib/nav-helper.ts'),
         `Expected location to end with src/lib/nav-helper.ts, got ${targetPath}`,
@@ -813,7 +862,7 @@ suite('Extension Integration Suite', () => {
         locations && locations.length > 0,
         'Definition should be found',
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = locationUri(locations[0]).fsPath.replace(/\\/g, '/');
       assert.ok(
         targetPath.endsWith('src/lib/nav-helper.ts'),
         `Expected location to end with src/lib/nav-helper.ts, got ${targetPath}`,
@@ -873,7 +922,7 @@ suite('Extension Integration Suite', () => {
         '@/lib/nav-helper.ts',
       );
       assert.ok(
-        locations?.[0].uri.fsPath.endsWith(
+        locationUri(locations[0]).fsPath.endsWith(
           path.join('secondary-workspace', 'app', 'lib', 'nav-helper.ts'),
         ),
       );
@@ -967,7 +1016,7 @@ suite('Extension Integration Suite', () => {
             'src/cache-widget-usage.html',
             'cache-widget',
           );
-          return locations?.[0]?.uri.fsPath === componentUri.fsPath;
+          return firstLocationPath(locations) === componentUri.fsPath;
         }, 'Created component should become discoverable');
 
         await vscode.workspace.fs.delete(componentUri);
@@ -1089,7 +1138,7 @@ suite('Extension Integration Suite', () => {
             'src/rename-usage.html',
             'rename-old',
           );
-          return locations?.[0]?.uri.fsPath === oldUri.fsPath;
+          return firstLocationPath(locations) === oldUri.fsPath;
         }, 'Original component should be discoverable');
         await vscode.workspace.fs.rename(oldUri, newUri);
         await waitFor(async () => {
@@ -1105,7 +1154,7 @@ suite('Extension Integration Suite', () => {
           );
           return (
             (!oldLocations || oldLocations.length === 0) &&
-            newLocations?.[0]?.uri.fsPath === newUri.fsPath
+            firstLocationPath(newLocations) === newUri.fsPath
           );
         }, 'Renamed component should replace its old cache entry');
       } finally {
@@ -1150,7 +1199,7 @@ suite('Extension Integration Suite', () => {
             'runtime-project/index.html',
             'runtime-widget',
           );
-          return locations?.[0]?.uri.fsPath === componentUri.fsPath;
+          return firstLocationPath(locations) === componentUri.fsPath;
         }, 'Nested config should establish a project state');
 
         await vscode.workspace.fs.delete(configUri);
@@ -1272,7 +1321,7 @@ suite('Extension Integration Suite', () => {
             'src/cache-config-usage.html',
             'external-widget',
           );
-          return locations?.[0]?.uri.fsPath === externalComponentUri.fsPath;
+          return firstLocationPath(locations) === externalComponentUri.fsPath;
         }, 'Changed component root should be discovered');
         await waitFor(async () => {
           const locations = await definitionsInFile(
@@ -1280,7 +1329,7 @@ suite('Extension Integration Suite', () => {
             'src/cache-config-usage.html',
             '@/cache-helper.ts',
           );
-          return locations?.[0]?.uri.fsPath === alternateImportUri.fsPath;
+          return firstLocationPath(locations) === alternateImportUri.fsPath;
         }, 'Changed import root should be used');
       } finally {
         await vscode.workspace.fs.writeFile(configUri, originalConfig);
@@ -1307,7 +1356,7 @@ suite('Extension Integration Suite', () => {
           'my-button',
         );
         return (
-          locations?.[0]?.uri.fsPath.endsWith(
+          firstLocationPath(locations)?.endsWith(
             path.join('src', 'components', 'my-button.html'),
           ) ?? false
         );
@@ -1383,7 +1432,7 @@ suite('Extension Integration Suite', () => {
           'conflict-card',
         );
         return (
-          locations?.[0]?.uri.fsPath.endsWith(
+          firstLocationPath(locations)?.endsWith(
             path.join('ui', 'components', 'conflict-card.html'),
           ) ?? false
         );
@@ -1558,7 +1607,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('does not report component ID reference info for non-component HTML', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<label for="missing">Email</label><a href="#outside">Outside</a>',
@@ -1600,7 +1649,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('warns when data-bascik-preserve contains an unknown token', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content: '<div data-bascik-preserve="id href"></div>',
       });
@@ -1615,7 +1664,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('accepts every valid preserve token', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'html',
         content: '<div data-bascik-preserve="class id name"></div>',
       });
@@ -1629,7 +1678,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('does not warn for an external form outside a component file', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<form action="https://forms.example/submit"><input name="email"></form>',
@@ -1678,7 +1727,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('accepts an external form that preserves name attributes', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<form action="https://forms.example/submit" data-bascik-preserve="name"><input name="email"></form>',
@@ -1694,7 +1743,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('accepts a bare preserve directive on an external form', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'html',
         content:
           '<form action="https://forms.example/submit" data-bascik-preserve><input name="email"></form>',
@@ -1735,7 +1784,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports error when script has both data-bascik-build and data-bascik-server', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-build data-bascik-server>\nconsole.log(1);\n</script>',
@@ -1754,7 +1803,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports error when script has both data-bascik-routes and data-bascik-server', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-routes data-bascik-server>\nconsole.log(1);\n</script>',
@@ -1773,7 +1822,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports error when script has both data-bascik-routes and data-bascik-build', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-routes data-bascik-build>\nconsole.log(1);\n</script>',
@@ -1793,7 +1842,7 @@ suite('Extension Integration Suite', () => {
 
     for (const directive of ['server', 'routes']) {
       test(`reports conflict when stream appears with ${directive}`, async () => {
-        const document = await vscode.workspace.openTextDocument({
+        const document = await openWorkspaceDocument({
           language: 'html',
           content: `<script data-bascik-stream data-bascik-${directive}>export default async () => "";</script>`,
         });
@@ -1809,7 +1858,7 @@ suite('Extension Integration Suite', () => {
     }
 
     test('reports JS compatibility warning in html script tag', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content: '<script>\nelement.id = "custom";\n</script>',
       });
@@ -1822,9 +1871,9 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports CSS compatibility warning in an inline style tag', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'html',
-        content: '<style>[data-state] { color: red; }</style>',
+        content: '<style>\n[data-state] { color: red; }\n</style>',
       });
       assert.ok(
         vscode.languages
@@ -1838,7 +1887,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('does not report CSS compatibility warning for @import in html style tag', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content: '<style>\n@import "theme.css";\n</style>',
       });
@@ -1891,7 +1940,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('does not report warning for multiple style tags', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<style>.a { color: red; }</style>\n<style>.b { color: blue; }</style>',
@@ -1951,7 +2000,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports compatibility warning in standalone CSS file', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'css',
         content: '[data-state] { color: red; }',
       });
@@ -1964,7 +2013,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports compatibility warning in standalone JS file', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'javascript',
         content: 'document.querySelector("[data-target]");',
       });
@@ -1977,7 +2026,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports compatibility warning in standalone TypeScript file', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'typescript',
         content: 'document.querySelectorAll("[data-target]");',
       });
@@ -1991,7 +2040,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports template classList replacement warning in standalone TypeScript', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'typescript',
         content: 'element.classList.replace("old", `state-${nextState}`);',
       });
@@ -2026,7 +2075,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('does not report properly nested matching component tags as unclosed', async () => {
-      const document = await vscode.workspace.openTextDocument({
+      const document = await openWorkspaceDocument({
         language: 'html',
         content:
           '<my-card><my-card></my-card><my-button></my-button></my-card>',
@@ -2081,7 +2130,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports server script missing default export error', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content: '<script data-bascik-server>\nconst x = 1;\n</script>',
       });
@@ -2097,7 +2146,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports stream script href sink warning', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-stream>\nexport default async (request) => {\n  return `<a href="${x}">link</a>`;\n};\n</script>',
@@ -2118,7 +2167,7 @@ suite('Extension Integration Suite', () => {
       ['server-script-sink-text-unescaped', '<p>${request.url}</p>'],
     ] as const) {
       test(`publishes ${code} through HTML integration`, async () => {
-        const document = await vscode.workspace.openTextDocument({
+        const document = await openWorkspaceDocument({
           language: 'html',
           content: `<script data-bascik-server>export default async (request) => \`${template}\`;</script>`,
         });
@@ -2216,7 +2265,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('reports conflict error when script has both data-bascik-stream and data-bascik-build', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-stream data-bascik-build>\nexport default async () => "";\n</script>',
@@ -2239,7 +2288,7 @@ suite('Extension Integration Suite', () => {
     });
 
     test('clean server script yields zero bascik diagnostics in that block', async () => {
-      const doc = await vscode.workspace.openTextDocument({
+      const doc = await openWorkspaceDocument({
         language: 'html',
         content:
           '<script data-bascik-server>\nimport { escape } from "@/lib/server.ts";\nexport default async (request, context, { signal }) => {\n  const user = escape(request.headers.get("x-user") ?? "guest");\n  return `<p>Hello ${user}</p>`;\n};\n</script>',

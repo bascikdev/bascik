@@ -1905,8 +1905,12 @@ async function createDiagnosticsForDocument(
 
     for (const match of styleMatches) {
       const openTag = match[1];
-      const styleBody = match[2] ?? '';
       const styleBodyOffset = (match.index ?? 0) + openTag.length;
+      // maskedText blanks style bodies (same length), so read the real body from text.
+      const styleBody = text.slice(
+        styleBodyOffset,
+        styleBodyOffset + (match[2] ?? '').length,
+      );
 
       if (hasCompanionCss) {
         const start = document.positionAt(match.index ?? 0);
@@ -2062,9 +2066,19 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.workspace.onDidChangeTextDocument((event) => {
       void refreshDiagnostics(event.document);
+      // Open HTML buffers feed prop usage into other documents' diagnostics.
+      const state =
+        event.document.languageId === 'html'
+          ? projects.get(event.document)
+          : undefined;
+      if (state) scheduleProjectDiagnostics(state, 'html');
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnostics.delete(document.uri);
+      // Closing an open HTML buffer changes which usages supply component props.
+      const state =
+        document.languageId === 'html' ? projects.get(document) : undefined;
+      if (state) scheduleProjectDiagnostics(state, 'html');
     }),
   );
 }
