@@ -1,6 +1,14 @@
 {
   "name": "@bascik/language-server",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bascikdev/bascik.git",
+    "directory": "lsp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Language Server Protocol (LSP) server for Bascik components and scoping diagnostics",
   "author": "Bascik Contributors",
   "license": "MIT",
@@ -21,7 +29,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.json",

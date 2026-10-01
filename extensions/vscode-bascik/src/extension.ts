@@ -323,6 +323,7 @@ class ProjectState implements vscode.Disposable {
   private disposed = false;
   private readonly staticWatchers: vscode.FileSystemWatcher[] = [];
   private componentWatchers: vscode.FileSystemWatcher[] = [];
+  private htmlPatchQueue: Promise<void> = Promise.resolve();
 
   constructor(
     readonly folder: vscode.WorkspaceFolder,
@@ -400,9 +401,39 @@ class ProjectState implements vscode.Disposable {
     watcher: vscode.FileSystemWatcher,
     kind: ProjectChangeKind,
   ): void {
-    watcher.onDidCreate(() => this.invalidate(kind));
-    watcher.onDidChange(() => this.invalidate(kind));
-    watcher.onDidDelete(() => this.invalidate(kind));
+    const handle = (uri: vscode.Uri) =>
+      kind === 'html' ? this.patchHtmlUsage(uri) : this.invalidate(kind);
+    watcher.onDidCreate(handle);
+    watcher.onDidChange(handle);
+    watcher.onDidDelete(handle);
+  }
+
+  // Updates one usage file in the built snapshot; falls back to a full rebuild when none exists yet.
+  private patchHtmlUsage(uri: vscode.Uri): void {
+    const pending = this.snapshotPromise;
+    if (!pending) {
+      this.invalidate('html');
+      return;
+    }
+    const generation = this.generation;
+    this.htmlPatchQueue = this.htmlPatchQueue.then(async () => {
+      try {
+        const snapshot = await pending;
+        if (this.disposed || generation !== this.generation) return;
+        let html: string | undefined;
+        try {
+          html = await fsPromises.readFile(uri.fsPath, 'utf8');
+        } catch {
+          html = undefined;
+        }
+        if (this.disposed || generation !== this.generation) return;
+        if (html === undefined) snapshot.htmlUsageByFile.delete(uri.fsPath);
+        else snapshot.htmlUsageByFile.set(uri.fsPath, html);
+        this.onChange(this, 'html');
+      } catch {
+        this.invalidate('html');
+      }
+    });
   }
 
   private replaceComponentWatchers(roots: string[]): void {
@@ -604,7 +635,7 @@ function isExcludedProjectPath(fsPath: string, workspaceRoot: string): boolean {
 }
 
 class ComponentDefinitionProvider implements vscode.DefinitionProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideDefinition(
     document: vscode.TextDocument,
@@ -635,9 +666,8 @@ class ComponentDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 class ComponentCompletionItemProvider
-  implements vscode.CompletionItemProvider
-{
-  constructor(private readonly projects: ProjectStateManager) {}
+  implements vscode.CompletionItemProvider {
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideCompletionItems(
     document: vscode.TextDocument,
@@ -920,7 +950,7 @@ function createComponentDocumentation(
 }
 
 class ComponentHoverProvider implements vscode.HoverProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideHover(
     document: vscode.TextDocument,
@@ -1100,7 +1130,7 @@ function parseScriptOpenTagAttributes(
 }
 
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
-  constructor(private readonly projects: ProjectStateManager) {}
+  constructor(private readonly projects: ProjectStateManager) { }
 
   provideDefinition(
     document: vscode.TextDocument,
@@ -1905,8 +1935,12 @@ async function createDiagnosticsForDocument(
 
     for (const match of styleMatches) {
       const openTag = match[1];
-      const styleBody = match[2] ?? '';
       const styleBodyOffset = (match.index ?? 0) + openTag.length;
+      // maskedText blanks style bodies (same length), so read the real body from text.
+      const styleBody = text.slice(
+        styleBodyOffset,
+        styleBodyOffset + (match[2] ?? '').length,
+      );
 
       if (hasCompanionCss) {
         const start = document.positionAt(match.index ?? 0);
@@ -2062,9 +2096,19 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.workspace.onDidChangeTextDocument((event) => {
       void refreshDiagnostics(event.document);
+      // Open HTML buffers feed prop usage into other documents' diagnostics.
+      const state =
+        event.document.languageId === 'html'
+          ? projects.get(event.document)
+          : undefined;
+      if (state) scheduleProjectDiagnostics(state, 'html');
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnostics.delete(document.uri);
+      // Closing an open HTML buffer changes which usages supply component props.
+      const state =
+        document.languageId === 'html' ? projects.get(document) : undefined;
+      if (state) scheduleProjectDiagnostics(state, 'html');
     }),
   );
 }

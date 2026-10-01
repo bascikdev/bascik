@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/bascikdev/bascik/actions/workflows/ci.yml/badge.svg)](https://github.com/bascikdev/bascik/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/%40bascik%2Fbascik.svg)](https://www.npmjs.com/package/@bascik/bascik)
-[![License: BSAL-1.0](https://img.shields.io/badge/License-BSAL--1.0-blue.svg)](https://bascik.dev/license)
+[![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](https://bascik.dev/license)
 [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
 [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
 [![Unit branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.branches.pct&label=unit%20branches&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
@@ -140,8 +140,9 @@ export const buildOverrideConfig = {
 
 ## Publishing
 
-This repo has two independently versioned packages, each released by pushing a git tag.
+This repo has four independently versioned packages, each released by pushing a git tag.
 The [Release workflow](../.github/workflows/release.yml) builds and publishes automatically, and `dist/` is **not** committed to git.
+The tag must equal the prefix plus the package's `package.json` version. Prerelease versions such as `1.0.0-rc.1` publish under the `rc` dist-tag.
 
 ### Tag scheme
 
@@ -149,6 +150,8 @@ The [Release workflow](../.github/workflows/release.yml) builds and publishes au
 |---|---|---|
 | `@bascik/bascik` (`pkg/`) | `v<semver>` | `v0.3.0` |
 | `create-bascik` (`create/`) | `create-v<semver>` | `create-v0.2.0` |
+| `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
+| `@bascik/language-server` (`lsp/`) | `lsp-v<semver>` | `lsp-v0.1.0` |
 
 The `if:` condition on each workflow job ensures only the relevant package is published when a tag is pushed.
 

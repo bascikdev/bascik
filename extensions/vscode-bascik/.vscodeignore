@@ -7,6 +7,7 @@ node_modules/**
 src/**
 test-fixtures/**
 dist/test/**
+dist/**/*.test.js
 test-coverage.json
 tsconfig.json
 vite.config.mjs

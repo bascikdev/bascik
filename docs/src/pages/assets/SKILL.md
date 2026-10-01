@@ -1874,8 +1874,10 @@ Two GitHub Actions workflows handle all automation.
 |---|---|---|
 | `@bascik/bascik` | `v*.*.*` | `if: startsWith(github.ref_name, 'v')` |
 | `create-bascik` | `create-v*.*.*` | `if: startsWith(github.ref_name, 'create-v')` |
+| `@bascik/adapter-cloudflare` | `adapter-cloudflare-v*.*.*` | `if: startsWith(github.ref_name, 'adapter-cloudflare-v')` |
+| `@bascik/language-server` | `lsp-v*.*.*` | `if: startsWith(github.ref_name, 'lsp-v')` |
 
-Both release jobs: install → test → build → `npm publish --provenance --access public`.
+Each release job: install → test → build → `npm publish --provenance --access public --tag <dist-tag>`. The tag must equal the prefix plus the package version; prereleases such as `1.0.0-rc.1` publish under the `rc` dist-tag instead of `latest`.
 
 - `--provenance` requires `id-token: write` permission; generates a signed attestation on npmjs.com linking the package to the Actions run.
 - Both `package.json` files also declare `"publishConfig": { "access": "public" }`.
