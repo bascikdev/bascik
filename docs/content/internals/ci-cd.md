@@ -44,12 +44,14 @@ All jobs enforce least-privilege with `permissions: contents: read`.
 
 ## Release Workflow
 
-The release workflow (`.github/workflows/release.yml`) triggers on version tags. The two packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
+The release workflow (`.github/workflows/release.yml`) triggers on version tags. The four packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to.
 
 | Package | Tag format | Example |
 | --- | --- | --- |
 | `@bascik/bascik` | `v<semver>` | `v1.2.0` |
 | `create-bascik` | `create-v<semver>` | `create-v1.0.3` |
+| `@bascik/adapter-cloudflare` | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
+| `@bascik/language-server` | `lsp-v<semver>` | `lsp-v0.1.0` |
 
 Each job uses an `if:` guard so only the relevant package is built and published:
 
@@ -62,27 +64,35 @@ jobs:
   release-create:
     if: startsWith(github.ref_name, 'create-v')
     # publishes create-bascik
+
+  release-adapter-cloudflare:
+    if: startsWith(github.ref_name, 'adapter-cloudflare-v')
+    # publishes @bascik/adapter-cloudflare
+
+  release-language-server:
+    if: startsWith(github.ref_name, 'lsp-v')
+    # publishes @bascik/language-server
 ```
 
-Both jobs follow the same steps: install dependencies, run tests, build, then publish.
-
-> **Note.** `@bascik/adapter-cloudflare` is a publishable package (`publishConfig.access: "public"`) but is not currently wired into the release workflow. Publishing it requires adding a matching tag trigger and job.
+All jobs follow the same steps: install dependencies, build, run tests, then publish.
 
 ## Publishing to npm
 
-Both packages publish to the public npm registry using a granular access token stored as the `NPM_TOKEN` repository secret (Settings → Secrets and variables → Actions).
+All packages publish to the public npm registry under the `bascik` organization using a granular access token stored as the `NPM_TOKEN` repository secret (Settings → Secrets and variables → Actions). Every job calls `.github/scripts/publish-npm.sh <tag-prefix>` from the package directory:
 
 ```yaml
 - name: Publish to npm
-  run: npm publish --provenance --access public
+  working-directory: pkg
+  run: ${{ github.workspace }}/.github/scripts/publish-npm.sh v
   env:
     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-Two flags are always passed:
+The script fails unless the git tag equals the prefix plus the `version` in the package's `package.json`, then runs `npm publish --provenance --access public --tag <dist-tag>`:
 
-- `--access public`: required for scoped packages (`@bascik/bascik`) and explicit for `create-bascik`. Both `package.json` files also declare `"publishConfig": { "access": "public" }` as a belt-and-suspenders default.
-- `--provenance`: generates a signed attestation on npmjs.com that links the published package to the exact GitHub Actions run that built it. This requires `id-token: write` permission on the job.
+- `--access public`: required for scoped packages and explicit for `create-bascik`. Each `package.json` also declares `"publishConfig": { "access": "public" }` as a belt-and-suspenders default.
+- `--provenance`: generates a signed attestation on npmjs.com that links the published package to the exact GitHub Actions run that built it. This requires `id-token: write` permission on the job and a `repository.url` in `package.json` that matches the GitHub repository.
+- `--tag`: `latest` for stable versions. A prerelease such as `1.0.0-rc.1` publishes under the identifier before the first dot (`rc`), so `npm install <pkg>` never picks it up by default.
 
 ## Tagging a Release
 
@@ -106,6 +116,20 @@ git commit -m "chore: release create-bascik v1.0.3"
 git tag create-v1.0.3
 git push origin main --tags
 ```
+
+### `@bascik/adapter-cloudflare` and `@bascik/language-server`
+
+```sh
+# Bump version in adapters/cloudflare/package.json, then:
+git tag adapter-cloudflare-v1.0.0
+# Bump version in lsp/package.json, then:
+git tag lsp-v0.1.0
+git push origin main --tags
+```
+
+### Release candidates
+
+Use a prerelease version and the matching tag, for example `1.0.0-rc.1` with `v1.0.0-rc.1`. Publish `@bascik/language-server` and `@bascik/bascik` first, then the packages that depend on them (`create-bascik` and `@bascik/adapter-cloudflare`). Install with `npm install @bascik/bascik@rc`. Dependents pin a range that includes the prerelease (for example `^1.0.0-rc.1`), which also accepts the final `1.0.0`.
 
 The release workflow picks up the tag, runs tests, builds `dist/` (which is not committed to git), and publishes to npm.
 

@@ -140,8 +140,9 @@ export const buildOverrideConfig = {
 
 ## Publishing
 
-This repo has two independently versioned packages, each released by pushing a git tag.
+This repo has four independently versioned packages, each released by pushing a git tag.
 The [Release workflow](../.github/workflows/release.yml) builds and publishes automatically, and `dist/` is **not** committed to git.
+The tag must equal the prefix plus the package's `package.json` version. Prerelease versions such as `1.0.0-rc.1` publish under the `rc` dist-tag.
 
 ### Tag scheme
 
@@ -149,6 +150,8 @@ The [Release workflow](../.github/workflows/release.yml) builds and publishes au
 |---|---|---|
 | `@bascik/bascik` (`pkg/`) | `v<semver>` | `v0.3.0` |
 | `create-bascik` (`create/`) | `create-v<semver>` | `create-v0.2.0` |
+| `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` | `adapter-cloudflare-v1.0.0` |
+| `@bascik/language-server` (`lsp/`) | `lsp-v<semver>` | `lsp-v0.1.0` |
 
 The `if:` condition on each workflow job ensures only the relevant package is published when a tag is pushed.
 

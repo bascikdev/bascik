@@ -1,12 +1,18 @@
 name: Release
 
-# pkg:    git tag v1.0.0 && git push --tags
-# create: git tag create-v1.0.0 && git push --tags
+# The tag must be <prefix><version in that package's package.json>.
+# Prerelease versions (1.0.0-rc.1) publish under the matching dist-tag (rc), not latest.
+# pkg:      git tag v1.0.0-rc.1 && git push --tags
+# create:   git tag create-v1.0.0-rc.1 && git push --tags
+# adapter:  git tag adapter-cloudflare-v1.0.0-rc.1 && git push --tags
+# lsp:      git tag lsp-v0.1.0-rc.1 && git push --tags
 on:
   push:
     tags:
       - 'v*.*.*'
       - 'create-v*.*.*'
+      - 'adapter-cloudflare-v*.*.*'
+      - 'lsp-v*.*.*'
 
 jobs:
   release:
@@ -41,7 +47,7 @@ jobs:
 
       - name: Publish to npm
         working-directory: pkg
-        run: npm publish --provenance --access public
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh v
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -79,6 +85,78 @@ jobs:
 
       - name: Publish to npm
         working-directory: create
-        run: npm publish --provenance --access public
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh create-v
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-adapter-cloudflare:
+    name: Publish @bascik/adapter-cloudflare to npm
+    if: startsWith(github.ref_name, 'adapter-cloudflare-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
+
+      - name: Run tests
+        run: yarn adapter:cf:test:ci
+
+      - name: Publish to npm
+        working-directory: adapters/cloudflare
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh adapter-cloudflare-v
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-language-server:
+    name: Publish @bascik/language-server to npm
+    if: startsWith(github.ref_name, 'lsp-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run tests
+        run: yarn workspace @bascik/language-server test:ci
+
+      - name: Build
+        run: yarn lsp:build
+
+      - name: Publish to npm
+        working-directory: lsp
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh lsp-v
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

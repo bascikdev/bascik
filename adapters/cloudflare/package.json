@@ -1,6 +1,11 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0",
+  "version": "1.0.0-rc.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bascikdev/bascik.git",
+    "directory": "adapters/cloudflare"
+  },
   "description": "Cloudflare Pages and Workers adapter for Bascik",
   "license": "Elastic-2.0",
   "type": "module",
@@ -33,7 +38,7 @@
     "smol-toml": "^1.8.0"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0"
+    "@bascik/bascik": "^1.0.0-rc.1"
   },
   "devDependencies": {
     "@bascik/bascik": "workspace:*",

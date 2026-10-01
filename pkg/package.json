@@ -1,7 +1,12 @@
 {
   "name": "@bascik/bascik",
   "description": "A Web Framework",
-  "version": "1.0.0",
+  "version": "1.0.0-rc.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bascikdev/bascik.git",
+    "directory": "pkg"
+  },
   "license": "Elastic-2.0",
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
