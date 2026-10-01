@@ -43,11 +43,11 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run tests
-        run: yarn pkg:test:ci
-
       - name: Build
         run: yarn pkg:build
+
+      - name: Run tests
+        run: yarn pkg:test:ci
 
       - name: Publish to npm
         working-directory: pkg
@@ -153,11 +153,11 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run tests
-        run: yarn workspace @bascik/language-server test:ci
-
       - name: Build
         run: yarn lsp:build
+
+      - name: Run tests
+        run: yarn workspace @bascik/language-server test:ci
 
       - name: Publish to npm
         working-directory: lsp
