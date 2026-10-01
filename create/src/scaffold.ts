@@ -19,6 +19,9 @@ export const PACKAGE_JSON = (name: string): string =>
       name,
       version: "0.1.0",
       type: "module",
+      engines: {
+        node: ">=24.0.0",
+      },
       scripts: {
         dev: "bascik",
         build: "bascik --build",
