@@ -76,7 +76,7 @@ jobs:
 
   release-extension:
     if: startsWith(github.ref_name, 'ext-')
-    # publishes the VS Code extension with vsce (VSCE_PAT secret)
+    # publishes the VS Code extension with vsce (Microsoft Entra ID credentials)
 ```
 
 All jobs follow the same steps: install dependencies, build, run tests, then publish.

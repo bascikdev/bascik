@@ -25,4 +25,9 @@ fi
 
 echo "Publishing ${version} to the Marketplace ${flags[*]:-}"
 # The extension has no runtime dependencies, so skip vsce's npm dependency scan.
-npx --yes @vscode/vsce@3 publish --no-dependencies ${flags[@]+"${flags[@]}"} -p "${VSCE_PAT:?VSCE_PAT required}"
+# Entra ID credentials (az login or workload identity) are the default; VSCE_PAT is a fallback until PATs retire.
+auth=(--azure-credential)
+if [ -n "${VSCE_PAT:-}" ]; then
+  auth=(-p "${VSCE_PAT}")
+fi
+npx --yes @vscode/vsce@3 publish --no-dependencies ${flags[@]+"${flags[@]}"} "${auth[@]}"

@@ -196,5 +196,3 @@ jobs:
           prefix=ext-v
           if [[ "${GITHUB_REF_NAME}" == ext-pre-v* ]]; then prefix=ext-pre-v; fi
           "${GITHUB_WORKSPACE}/.github/scripts/publish-vsce.sh" "$prefix"
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
