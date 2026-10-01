@@ -79,6 +79,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Run tests
         working-directory: create
         run: yarn test:ci

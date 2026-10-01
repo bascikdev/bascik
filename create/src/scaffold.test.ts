@@ -129,6 +129,11 @@ describe("PACKAGE_JSON", () => {
     const pkg = JSON.parse(PACKAGE_JSON("cool-site"));
     expect(pkg.name).toBe("cool-site");
   });
+
+  it("declares a Node 24 engine floor matching the @types/node target", () => {
+    const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    expect(pkg.engines.node).toBe(">=24.0.0");
+  });
 });
 
 describe("VITE_CONFIG", () => {
