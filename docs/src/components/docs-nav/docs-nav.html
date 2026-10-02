@@ -3,7 +3,7 @@
   <div class="dnav-banner">
     <div class="dnav-banner-inner">
       <span class="dnav-banner-badge">Notice</span>
-      <span>Bascik is unreleased and not on npm yet. You found us early!</span>
+      <span>Bascik v1.0.0 is scheduled to release November 15, 2026.</span>
     </div>
   </div>
   <div class="dnav-inner">
@@ -130,7 +130,7 @@
       if (href === '/why-bascik') {
         current = (path === '/why-bascik');
       } else if (href === '/getting-started' && a.closest('.dnav-links')) {
-        current = (path !== '' && path !== '/' && path !== '/why-bascik');
+        current = (path !== '' && path !== '/' && path !== '/why-bascik' && path !== '/sponsor' && path !== '/press');
       } else {
         current = (href === path);
       }

@@ -11,7 +11,7 @@
 }
 
 .dnav-banner {
-  max-width: 1140px;
+  max-width: var(--site-max-width);
   margin: 0 auto;
   background: var(--accent-dim);
   border-bottom: 1px solid var(--accent-border);
@@ -23,7 +23,7 @@
 }
 
 .dnav-banner-inner {
-  max-width: 1140px;
+  max-width: var(--site-max-width);
   margin: 0 auto;
   padding: 6px 28px;
   display: flex;
@@ -52,7 +52,7 @@
 
 /* dnav-inner doubles as the container — max-width + centering baked in */
 .dnav-inner {
-  max-width: 1140px;
+  max-width: var(--site-max-width);
   margin: 0 auto;
   padding: 0 28px;
   height: 60px;

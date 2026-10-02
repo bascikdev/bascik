@@ -1,7 +1,7 @@
 {
   "name": "@bascik/bascik",
-  "description": "A Web Framework",
-  "version": "1.0.0-rc.1",
+  "description": "HTML components. Zero runtime",
+  "version": "1.0.0-rc.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",

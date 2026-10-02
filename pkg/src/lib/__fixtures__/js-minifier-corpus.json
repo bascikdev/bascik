@@ -9,11 +9,11 @@
   ],
   [
     "const r = (a + b) / (c - d) / e;",
-    "const r=(a+b)/ (c - d) /e;"
+    "const r=(a+b)/(c-d)/ e;"
   ],
   [
     "arr[0] / arr[1] / 2",
-    "arr[0]/ arr[1] /2"
+    "arr[0] / arr[1] / 2"
   ],
   [
     "obj.prop / other.prop",
@@ -450,5 +450,13 @@
   [
     "a = b\n/ c / d",
     "a=b;/ c / d"
+  ],
+  [
+    "if (ok) /\"/.test(s) && go();",
+    "if(ok)/\"/.test(s)&&go();"
+  ],
+  [
+    "while (i--) /a  b/.exec(s);",
+    "while(i--)/a  b/.exec(s);"
   ]
 ]

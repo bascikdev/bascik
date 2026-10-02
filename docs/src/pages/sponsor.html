@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <meta name="description"
+    content="Support the independent development and maintenance of Bascik through GitHub Sponsors." />
+  <title>Sponsor - Bascik Docs</title>
+  <style>
+    .sponsor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin: 0 0 36px;
+    }
+
+    .sponsor-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/sponsor'));
+        </script>
+
+        <!-- Intro rendered from docs/content/sponsor.md at build time. -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/sponsor.md', { to: 'Why Sponsor?' }));
+        </script>
+
+        <div class="sponsor-actions">
+          <a class="btn btn-primary sponsor-cta" href="https://github.com/sponsors/bascikdev" target="_blank"
+            rel="noopener noreferrer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path
+                d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+            </svg>
+            Sponsor on GitHub
+          </a>
+        </div>
+
+        <!-- Remaining content rendered from docs/content/sponsor.md at build time. -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/sponsor.md', { from: 'Why Sponsor?' }));
+        </script>
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+</body>
+
+</html>

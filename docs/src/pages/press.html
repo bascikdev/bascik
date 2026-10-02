@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <meta name="description"
+    content="Download the official Bascik logos, colors, and press kit, with usage guidelines and recommended image sizes for articles, talks, videos, and social profiles." />
+  <title>Press Resources - Bascik Docs</title>
+  <style>
+    .press-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 20px;
+      margin: 0 0 28px;
+    }
+
+    .press-actions-note {
+      margin: 0;
+      font-size: 0.85rem;
+    }
+
+    .docs-content .press-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin: 0 0 40px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .docs-content .press-grid li {
+      margin: 0;
+    }
+
+    .press-tile {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .press-swatch {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 150px;
+    }
+
+    .press-swatch-dark {
+      background: #18191b;
+    }
+
+    .press-swatch-mid {
+      background: #3a3d40;
+    }
+
+    .press-swatch-light {
+      background: #ffffff;
+    }
+
+    .press-swatch img {
+      display: block;
+      max-width: 80%;
+      height: auto;
+    }
+
+    .press-tile figcaption {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 4px 12px;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+
+    .press-tile figcaption span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .press-links {
+      display: inline-flex;
+      gap: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/press'));
+        </script>
+
+        <!-- Content rendered from docs/content/press.md at build time.
+             To update page content, edit the MD file, not this file. -->
+        <div data-testid="press-intro">
+          <script data-bascik-build>
+            import { renderMdRange } from '@/lib/md-renderer.ts';
+            console.log(await renderMdRange('./content/press.md', { to: 'Kit Contents' }));
+          </script>
+        </div>
+
+        <div class="press-actions">
+          <a class="btn btn-primary" href="/assets/press/bascik-press-kit.zip" download
+            data-testid="press-download-kit">Download brand kit (.zip)</a>
+          <p class="press-actions-note">Logos (SVG and PNG), profile images, and social images.</p>
+        </div>
+
+        <ul class="press-grid" aria-label="Logo previews" data-testid="press-previews">
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-dark">
+                <img src="/assets/press/logo/svg/bascik-wordmark.svg" width="228" height="56"
+                  alt="Bascik wordmark in full color" />
+              </div>
+              <figcaption>
+                <span>Wordmark, full color</span>
+                <span class="press-links">
+                  <a href="/assets/press/logo/svg/bascik-wordmark.svg" download
+                    aria-label="Download wordmark, full color, SVG">SVG</a>
+                  <a href="/assets/press/logo/png/bascik-wordmark-2400.png" download
+                    aria-label="Download wordmark, full color, PNG">PNG</a>
+                </span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-light">
+                <img src="/assets/press/logo/svg/bascik-wordmark.svg" width="228" height="56"
+                  alt="Bascik wordmark in full color on white" />
+              </div>
+              <figcaption>
+                <span>Wordmark on white</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-mid">
+                <img src="/assets/press/logo/svg/bascik-wordmark.svg" width="228" height="56"
+                  alt="Bascik wordmark in full color on gray" />
+              </div>
+              <figcaption>
+                <span>Wordmark on gray</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-dark">
+                <img src="/assets/press/logo/svg/bascik-mark.svg" width="96" height="96"
+                  alt="Bascik mark in full color" />
+              </div>
+              <figcaption>
+                <span>Mark, full color</span>
+                <span class="press-links">
+                  <a href="/assets/press/logo/svg/bascik-mark.svg" download
+                    aria-label="Download mark, full color, SVG">SVG</a>
+                  <a href="/assets/press/logo/png/bascik-mark-1024.png" download
+                    aria-label="Download mark, full color, PNG">PNG</a>
+                </span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-light">
+                <img src="/assets/press/logo/svg/bascik-mark.svg" width="96" height="96"
+                  alt="Bascik mark in full color on white" />
+              </div>
+              <figcaption>
+                <span>Mark on white</span>
+              </figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure class="press-tile">
+              <div class="press-swatch press-swatch-mid">
+                <img src="/assets/press/logo/svg/bascik-mark.svg" width="96" height="96"
+                  alt="Bascik mark in full color on gray" />
+              </div>
+              <figcaption>
+                <span>Mark on gray</span>
+              </figcaption>
+            </figure>
+          </li>
+        </ul>
+
+        <div data-testid="press-guidelines">
+          <script data-bascik-build>
+            import { renderMdRange } from '@/lib/md-renderer.ts';
+            console.log(await renderMdRange('./content/press.md', { from: 'Kit Contents' }));
+          </script>
+        </div>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

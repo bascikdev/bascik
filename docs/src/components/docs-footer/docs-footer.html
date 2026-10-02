@@ -4,6 +4,10 @@
       <div class="dfooter-brand">
         <a href="/" class="dfooter-logo" aria-label="Bascik home"><docs-logo /></a>
         <p class="dfooter-desc">HTML components.<br>Zero runtime.</p>
+        <script data-bascik-build>
+          import { renderSocialLinks } from '@/lib/social-links.ts';
+          console.log(renderSocialLinks());
+        </script>
       </div>
       <div class="dfooter-sitemap">
         <script data-bascik-build>
@@ -29,6 +33,8 @@
       </span>
       <div class="dfooter-links">
         <a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://shop.bascik.dev" target="_blank" rel="noopener noreferrer">Merch</a>
+        <a href="/sponsor">Sponsor</a>
         <a href="/license">License</a>
       </div>
     </div>

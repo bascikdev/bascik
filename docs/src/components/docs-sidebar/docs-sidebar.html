@@ -1,21 +1,36 @@
-<aside class="docs-sidebar" aria-label="Documentation navigation">
-     <script data-bascik-build>
-          import { NAV } from '@/lib/nav.ts';
-          let html = '';
-          for (const section of NAV) {
-               html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
-               for (const page of section.pages) {
-                    html += `<li><a href="${page.href}">${page.label}</a></li>`;
+<div class="docs-sidebar">
+     <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
+          <script data-bascik-build>
+               import { NAV } from '@/lib/nav.ts';
+               let html = '';
+               for (const section of NAV) {
+                    html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
+                    for (const page of section.pages) {
+                         html += `<li><a href="${page.href}">${page.label}</a></li>`;
+                    }
+                    html += '</ul>';
                }
-               html += '</ul>';
-          }
-          console.log(html);
-     </script>
-</aside>
+               console.log(html);
+          </script>
+     </aside>
+     <nav class="docs-toc" aria-label="On this page" hidden>
+          <p class="docs-toc-title">On this page</p>
+          <ol class="docs-toc-list">
+               <script data-bascik-build="page">
+                    import { renderPageTableOfContents } from '@/lib/render-nav.ts';
+                    const pageContentPath = process.env.BASCIK_PAGE_FILE
+                         ?.replace(/\\/g, '/')
+                         .replace(/^.*\/pages\//, '')
+                         .replace(/\.html$/, '.md');
+                    console.log(pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '');
+               </script>
+          </ol>
+     </nav>
+</div>
 <script>
      (function () {
           var path = window.location.pathname;
-          var sidebar = document.querySelector('.docs-sidebar');
+          var sidebar = document.querySelector('.docs-sidebar-nav');
           if (!sidebar) return;
 
           var links = Array.from(sidebar.querySelectorAll('a'));
@@ -93,5 +108,128 @@
                     preload(href);
                }, { passive: true });
           });
+     })();
+</script>
+<script>
+     (function () {
+          function initializeTableOfContents() {
+               var toc = document.querySelector('.docs-toc');
+               var list = toc && toc.querySelector('.docs-toc-list');
+               if (!toc || !list) return;
+
+               var links = new Map();
+               Array.from(list.querySelectorAll('a')).forEach(function (link) {
+                    var id = (link.getAttribute('href') || '').slice(1);
+                    if (id) links.set(id, link);
+               });
+               var headings = Array.from(links.keys()).map(function (id) { return document.getElementById(id); }).filter(Boolean);
+               if (!headings.length) return;
+
+               toc.hidden = false;
+
+               function revealCurrentLink(link) {
+                    var tocBounds = toc.getBoundingClientRect();
+                    var linkBounds = link.getBoundingClientRect();
+                    var padding = 12;
+                    var visibleTop = tocBounds.top + padding;
+                    var visibleBottom = tocBounds.bottom - padding;
+
+                    if (linkBounds.top < visibleTop) {
+                         toc.scrollTop += linkBounds.top - visibleTop;
+                    } else if (linkBounds.bottom > visibleBottom) {
+                         toc.scrollTop += linkBounds.bottom - visibleBottom;
+                    }
+               }
+
+               function setCurrent(id) {
+                    links.forEach(function (link, linkId) {
+                         if (linkId === id) {
+                              link.setAttribute('aria-current', 'location');
+                              revealCurrentLink(link);
+                         } else link.removeAttribute('aria-current');
+                    });
+               }
+
+               function updateCurrentHeading() {
+                    if (activeNavigationTarget) return;
+                    var offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')) || 0;
+                    var current = headings[0];
+                    // Anchor navigation can land a heading a fraction of a pixel
+                    // below the offset; tolerate that so the clicked item wins.
+                    var tolerance = 4;
+                    headings.forEach(function (heading) {
+                         if (heading.getBoundingClientRect().top <= offset + tolerance) current = heading;
+                    });
+                    setCurrent(current.id);
+               }
+
+               var activeNavigationTarget = '';
+               var navigationDestination = 0;
+               var navigationMaxTimer = 0;
+
+               // Hold the clicked item as current until the smooth scroll reaches
+               // its destination. Timers are unreliable here: a long scroll can
+               // outlast a fixed delay, and scroll events can be sparse, so the
+               // scroll-spy would flash every heading passed on the way.
+               function releaseNavigationTarget() {
+                    window.clearTimeout(navigationMaxTimer);
+                    if (!activeNavigationTarget) return;
+                    activeNavigationTarget = '';
+                    updateCurrentHeading();
+               }
+
+               function checkNavigationArrived() {
+                    if (!activeNavigationTarget) return;
+                    if (Math.abs(window.scrollY - navigationDestination) <= 2) releaseNavigationTarget();
+               }
+
+               window.addEventListener('scroll', checkNavigationArrived, { passive: true });
+               // The user taking over the scroll cancels the programmatic hold.
+               ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (type) {
+                    window.addEventListener(type, function (event) {
+                         if (event.target && event.target.closest && event.target.closest('.docs-toc')) return;
+                         releaseNavigationTarget();
+                    }, { passive: true });
+               });
+
+               list.addEventListener('click', function (event) {
+                    var link = event.target.closest('a');
+                    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    var id = (link.getAttribute('href') || '').slice(1);
+                    var target = document.getElementById(id);
+                    if (!target) return;
+
+                    event.preventDefault();
+                    history.pushState(null, '', '#' + id);
+                    var offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset')) || 0;
+                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                    var top = Math.min(Math.max(0, target.getBoundingClientRect().top + window.scrollY - offset), Math.max(0, maxScroll));
+                    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    activeNavigationTarget = id;
+                    navigationDestination = top;
+                    window.scrollTo({ top: top, behavior: reducedMotion ? 'auto' : 'smooth' });
+                    setCurrent(id);
+                    // Safety net for when the scroll never reaches the destination
+                    // or no scroll event fires (already at target, interrupted).
+                    window.clearTimeout(navigationMaxTimer);
+                    navigationMaxTimer = window.setTimeout(releaseNavigationTarget, reducedMotion ? 0 : 4000);
+               });
+
+               updateCurrentHeading();
+               if ('IntersectionObserver' in window) {
+                    var observer = new IntersectionObserver(updateCurrentHeading, {
+                         rootMargin: '-20% 0px -60% 0px',
+                         threshold: 0,
+                    });
+                    headings.forEach(function (heading) { observer.observe(heading); });
+               } else {
+                    window.addEventListener('scroll', updateCurrentHeading, { passive: true });
+               }
+               window.addEventListener('hashchange', updateCurrentHeading);
+               window.addEventListener('scrollend', checkNavigationArrived);
+          }
+
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeTableOfContents);
+          else initializeTableOfContents();
      })();
 </script>

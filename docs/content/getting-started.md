@@ -1,6 +1,6 @@
 # Getting Started
 
-Bascik requires Node.js v22.18+. Get up and running in under five minutes.
+Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.18, the first release that runs `.ts` files natively, which Bascik relies on for `bascik.config.ts`, build scripts, and helper modules. Get up and running in under five minutes.
 
 ## Quick Start
 

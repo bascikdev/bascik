@@ -60,11 +60,25 @@ describe('renderPagination', () => {
   });
 
   it('returns prev only on the last page', () => {
-    const html = renderPagination('/switch/from-vue');
+    const html = renderPagination('/sponsor');
     expect(html).toContain('data-pg="prev"');
     expect(html).not.toContain('data-pg="next"');
+    expect(html).toContain('<span data-pg-section>Community</span>');
+    expect(html).toContain('<span data-pg-label>Press Resources</span>');
+  });
+
+  it('links press to the previous section and to sponsor', () => {
+    const html = renderPagination('/press');
     expect(html).toContain('<span data-pg-section>Switch to Bascik</span>');
-    expect(html).toContain('<span data-pg-label>From Svelte</span>');
+    expect(html).toContain('<span data-pg-label>From WordPress</span>');
+    expect(html).toContain('href="/sponsor"');
+  });
+
+  it('keeps social profile links out of the nav data', () => {
+    const hrefs = NAV.flatMap(s => s.pages.map(p => p.href));
+    expect(hrefs.filter(h => /^https?:\/\//.test(h))).toEqual([]);
+    expect(hrefs).toContain('/press');
+    expect(hrefs).toContain('/sponsor');
   });
 
   it('includes section names and labels for prev and next across section transitions', () => {
@@ -154,12 +168,12 @@ describe('renderPagination', () => {
 
   it('handles last item in NAV correctly via BASCIK_PAGE_PATH', () => {
     const originalPath = process.env.BASCIK_PAGE_PATH;
-    process.env.BASCIK_PAGE_PATH = '/switch/from-vue';
+    process.env.BASCIK_PAGE_PATH = '/sponsor';
     try {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).not.toContain('data-pg="next"');
-      expect(html).toContain('href="/switch/from-svelte"');
+      expect(html).toContain('href="/press"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }
