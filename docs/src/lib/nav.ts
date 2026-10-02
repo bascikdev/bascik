@@ -52,6 +52,7 @@ export const NAV: NavSection[] = [
       { href: '/environment-variables', label: 'Environment Variables' },
       { href: '/compatibility', label: 'Compatibility' },
       { href: '/cli', label: 'Command Line Interface (CLI)' },
+      { href: '/package-exports', label: 'Package Exports' },
       { href: '/development-server', label: 'Development Server' },
       { href: '/production-server', label: 'Production Server' },
     ]
