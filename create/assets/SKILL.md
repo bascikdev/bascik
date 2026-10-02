@@ -28,6 +28,8 @@ This file contains the **complete, centralized documentation and development ski
 * It does not add any JavaScript to pages. Every script in the output was written by you.
 * It does not require Web Components, Shadow DOM, or any browser-specific API.
 
+**Node version:** Node.js 24 LTS is recommended. The minimum is 22.18, which provides native TypeScript stripping.
+
 ### End-to-End Example: Input → Output
 
 One component file, its usage, and the scoped build output:
@@ -99,6 +101,12 @@ Because IDs are scoped per instance, the same component can appear multiple time
 * Build instructions such as `data-bascik-slot`, `data-bascik-prop-*`, and `data-bascik-build` use HTML's standards-valid `data-*` extension mechanism.
 * Bascik consumes those instructions at build time. They are not runtime directives that require a client library to interpret them.
 * **Tag structure ordering rule:** When writing component files containing both styles and scripts alongside HTML, always place `<style>` tags above the HTML markup as a style guide, and always place `<script>` tags below the HTML markup.
+
+### Script Ownership and Decomposition
+* Put page behavior in that page's script and component behavior in that component's script. Prefer a focused inline `<script>` or a same-directory companion `.js`/`.ts` referenced with `<script src="...">` over a page-wide `main.js` that queries and coordinates every component's DOM.
+* Keep scripts small enough that their owning markup and behavior can be understood together. Split unrelated behavior into multiple component scripts rather than accumulating it in one global application script.
+* A shared script is appropriate when it provides genuinely shared code or state, such as one authenticated API client or a third-party library used by several components. Load shared code once, give components a small explicit interface to it, and keep component-specific DOM behavior in the component.
+* Client scripts are not npm bundlers. Bare package imports do not resolve in the browser; see [JavaScript Libraries & Progressive Enhancement](#12-javascript-libraries--progressive-enhancement) for bundling a shared dependency.
 
 ### Repository Layout and the Create App
 
@@ -1273,6 +1281,7 @@ src/
 
 ### Static Assets and Subdirectories
 * **One Publish Tree:** Put images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets under `directory.pages`. Colocate them with a route or use shared subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with relative structure preserved.
+* **Source versus generated output:** `directory.pages` and `directory.components` are authored inputs. Do not write generated bundles, compiled scripts, or other build products into `src/`, including `src/pages/assets/`. Write generated public files to `BASCIK_OUT_DIR` (normally `dist/`) from an existing `pipeline.exec` script. Keep generated output out of version control.
 * **Project-Specific Exclusions:** `assets.exclude` adds glob exclusions matched relative to `directory.pages`. Keep tests and source-only helpers outside the publish tree.
 * **Auto-Minification:** CSS and JS files placed in `src/pages/` are automatically minified by `bascik --build` and `bascik --server`; no config is required. Custom BYOMinifier minifier/transformer functions (e.g. PostCSS/Autoprefixer, LightningCSS, esbuild, terser) can be assigned to `minify.css` and `minify.js` only when a project needs non-default processing.
 * **Built-In Deny-List:** Dotfiles, dot-directories, `node_modules`, `.html`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, `.md`, test/spec files, and inlined stylesheets never copy. This deny-list always applies, including when `assets.exclude` is configured.
@@ -1560,6 +1569,8 @@ Bascik adds zero JavaScript to output pages by default, but places no restrictio
 Add a CDN `<script src>` tag to the page `<head>` or a shared head component. Bascik passes external script tags through completely unchanged.
 
 **Bare specifiers do not work in client scripts.** Bascik does not rewrite `import x from 'some-package'` in a `<script type="module">`; the browser receives it verbatim and fails with `Failed to resolve module specifier`. Bare specifiers work only in `data-bascik-build` and `data-bascik-server` scripts, which run in Node.js. For an npm package with no CDN build, bundle it with esbuild as a `pipeline.exec` step (`phase: 'pre'`), write the bundle into `dist/assets/js/`, and import it from the page with a root-relative URL.
+
+The bundler entrypoint should contain only code that is genuinely shared, such as a third-party library bundle or shared runtime state. Keep page- and component-specific behavior in that page's or component's own script; do not move all UI logic into one large bundled entrypoint just to import an npm dependency.
 
 ```html
 <head>

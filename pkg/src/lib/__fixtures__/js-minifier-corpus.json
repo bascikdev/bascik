@@ -9,11 +9,11 @@
   ],
   [
     "const r = (a + b) / (c - d) / e;",
-    "const r=(a+b)/ (c - d) /e;"
+    "const r=(a+b)/(c-d)/ e;"
   ],
   [
     "arr[0] / arr[1] / 2",
-    "arr[0]/ arr[1] /2"
+    "arr[0] / arr[1] / 2"
   ],
   [
     "obj.prop / other.prop",

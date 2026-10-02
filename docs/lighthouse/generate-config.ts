@@ -18,7 +18,7 @@ export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:80
   const navHrefs = NAV.flatMap((section) => section.pages.map((page) => page.href));
 
   // Standalone pages not listed in main nav hierarchy
-  const extraPages = ['/', '/license'];
+  const extraPages = ['/', '/license', '/sponsor'];
 
   // Combine and deduplicate
   const allRoutes = Array.from(new Set([...extraPages, ...navHrefs])).sort();

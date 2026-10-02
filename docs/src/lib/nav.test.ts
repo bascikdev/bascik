@@ -60,11 +60,11 @@ describe('renderPagination', () => {
   });
 
   it('returns prev only on the last page', () => {
-    const html = renderPagination('/switch/from-vue');
+    const html = renderPagination('/press');
     expect(html).toContain('data-pg="prev"');
     expect(html).not.toContain('data-pg="next"');
     expect(html).toContain('<span data-pg-section>Switch to Bascik</span>');
-    expect(html).toContain('<span data-pg-label>From Svelte</span>');
+    expect(html).toContain('<span data-pg-label>From WordPress</span>');
   });
 
   it('includes section names and labels for prev and next across section transitions', () => {
@@ -154,12 +154,12 @@ describe('renderPagination', () => {
 
   it('handles last item in NAV correctly via BASCIK_PAGE_PATH', () => {
     const originalPath = process.env.BASCIK_PAGE_PATH;
-    process.env.BASCIK_PAGE_PATH = '/switch/from-vue';
+    process.env.BASCIK_PAGE_PATH = '/press';
     try {
       const html = renderPagination();
       expect(html).toContain('data-pg="prev"');
       expect(html).not.toContain('data-pg="next"');
-      expect(html).toContain('href="/switch/from-svelte"');
+      expect(html).toContain('href="/switch/from-wordpress"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }

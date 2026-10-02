@@ -63,4 +63,4 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 | API endpoints | Handlers in `src/api/` using standard `Request` and `Response` | [API Routes](/api-routes) |
 | Client interactivity / hooks | Vanilla JS in `<script>` tags | [Scoped JavaScript](/scoped-javascript) |
 
-> Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue)
+> Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue) · [WordPress](/switch/from-wordpress)

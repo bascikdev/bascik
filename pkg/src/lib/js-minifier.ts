@@ -40,6 +40,9 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "do",
 ]);
 
+/** Characters that can end an expression, making a following slash division. */
+const REGEX_CANNOT_PRECEDE = new Set([")", "]", "}", "'", '"', "`"]);
+
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
   (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === "$";
@@ -96,6 +99,153 @@ const lastWordBeforeSlash = (run: string): string | undefined => {
   }
   return undefined;
 };
+
+const skipQuotedString = (js: string, start: number): number => {
+  const quote = js[start];
+  let i = start + 1;
+  while (i < js.length) {
+    __scanStatsForTests.charsExamined++;
+    if (js[i] === "\\") {
+      i += 2;
+      continue;
+    }
+    if (js[i++] === quote) break;
+  }
+  return Math.min(i, js.length);
+};
+
+const skipRegexLiteral = (js: string, start: number): number => {
+  let i = start + 1;
+  let inClass = false;
+  while (i < js.length) {
+    __scanStatsForTests.charsExamined++;
+    const c = js[i++];
+    if (c === "\\") {
+      i++;
+      continue;
+    }
+    if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (c === "/" && !inClass) break;
+    else if (c === "\n") return i;
+  }
+  while (i < js.length && /[a-z]/i.test(js[i])) i++;
+  return i;
+};
+
+const canStartRegexAfter = (token: string): boolean =>
+  !token || REGEX_PRECEDING_KEYWORDS.has(token) ||
+  !["value", ")", "]", "}", "++", "--"].includes(token);
+
+const findTemplateExpressionEnd = (js: string, start: number): number => {
+  let depth = 1;
+  let i = start;
+  let lastToken = "";
+
+  while (i < js.length) {
+    __scanStatsForTests.charsExamined++;
+    const c = js[i];
+
+    if (isSpace(c)) {
+      i++;
+      continue;
+    }
+
+    if (c === "'" || c === '"') {
+      i = skipQuotedString(js, i);
+      lastToken = "value";
+      continue;
+    }
+
+    if (c === "`") {
+      i = findTemplateLiteralEnd(js, i);
+      lastToken = "value";
+      continue;
+    }
+
+    if (c === "/") {
+      const next = js[i + 1];
+      if (next === "/") {
+        i += 2;
+        while (i < js.length && js[i] !== "\n") {
+          __scanStatsForTests.charsExamined++;
+          i++;
+        }
+        continue;
+      }
+      if (next === "*") {
+        i += 2;
+        while (i + 1 < js.length && !(js[i] === "*" && js[i + 1] === "/")) {
+          __scanStatsForTests.charsExamined++;
+          i++;
+        }
+        i = Math.min(i + 2, js.length);
+        continue;
+      }
+      if (canStartRegexAfter(lastToken)) {
+        i = skipRegexLiteral(js, i);
+        lastToken = "value";
+        continue;
+      }
+      lastToken = "/";
+      i++;
+      continue;
+    }
+
+    if (isWordChar(c)) {
+      const tokenStart = i++;
+      while (i < js.length && isWordChar(js[i])) {
+        __scanStatsForTests.charsExamined++;
+        i++;
+      }
+      const word = js.slice(tokenStart, i);
+      lastToken = REGEX_PRECEDING_KEYWORDS.has(word) ? word : "value";
+      continue;
+    }
+
+    if (c === "{") {
+      depth++;
+      lastToken = c;
+      i++;
+      continue;
+    }
+    if (c === "}") {
+      depth--;
+      i++;
+      if (depth === 0) return i;
+      lastToken = c;
+      continue;
+    }
+
+    if ((c === "+" && js[i + 1] === "+") || (c === "-" && js[i + 1] === "-")) {
+      lastToken = c + c;
+      i += 2;
+      continue;
+    }
+    lastToken = c;
+    i++;
+  }
+  return js.length;
+};
+
+function findTemplateLiteralEnd(js: string, start: number): number {
+  let i = start + 1;
+  while (i < js.length) {
+    __scanStatsForTests.charsExamined++;
+    const c = js[i];
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (c === "`") return i + 1;
+    if (c === "$" && js[i + 1] === "{") {
+      i = findTemplateExpressionEnd(js, i + 2);
+      continue;
+    }
+    i++;
+  }
+  return js.length;
+}
 
 /**
  * Single forward pass that splits source into literal segments (strings,
@@ -175,21 +325,9 @@ const scanSegments = (js: string): Segment[] => {
     // Template literals (`...`) — preserve verbatim
     if (ch === "`") {
       flushCode();
-      let lit = "`";
-      i++;
-      while (i < len) {
-        const c = js[i];
-        __scanStatsForTests.charsExamined++;
-        if (c === "\\" && i + 1 < len) {
-          lit += c + js[i + 1];
-          i += 2;
-          continue;
-        }
-        lit += c;
-        i++;
-        if (c === "`") break;
-      }
-      segments.push({ literal: true, text: lit });
+      const end = findTemplateLiteralEnd(js, i);
+      segments.push({ literal: true, text: js.slice(i, end) });
+      i = end;
       continue;
     }
 
@@ -213,14 +351,8 @@ const scanSegments = (js: string): Segment[] => {
           if (lastWord !== undefined && REGEX_PRECEDING_KEYWORDS.has(lastWord)) {
             couldBeRegex = true;
           }
-        } else if (!/[)\\]}'"`]/.test(lastSig)) {
+        } else if (!REGEX_CANNOT_PRECEDE.has(lastSig)) {
           // Preceded by operators/punctuation like '=', '(', '[', ':', ',', '!', '?', '&', '|', '+', '-', '*', ';'
-          // NOTE: this regex is kept byte-for-byte from the original scanner
-          // for output identity. Its class closes at `\\]`, so the pattern
-          // is `[)\\]` followed by the literal text }'"` and can never match
-          // a single character. Fixing it would change emitted bytes (for
-          // example `(a) / (b) / c` is currently kept as a regex-shaped
-          // literal); that is a separate output-policy decision.
           couldBeRegex = true;
         }
       }

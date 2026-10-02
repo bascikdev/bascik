@@ -71,6 +71,23 @@ describe("minifyJs – string and template literal preservation", () => {
   it("preserves template literals with interpolated expressions", () => {
     expect(minifyJs("var s = `sum is ${a + b}`;")).toBe("var s=`sum is ${a + b}`;");
   });
+
+  it("preserves nested template literals inside interpolated expressions", () => {
+    const input = "const value = `outer ${`See https://example.com/${name}`} tail`; return value;";
+    const minified = minifyJs(input);
+
+    expect(() => new Function("name", minified)).not.toThrow();
+    expect(new Function("name", minified)("Ada")).toBe("outer See https://example.com/Ada tail");
+  });
+
+  it("preserves URL slashes after division following a call", () => {
+    const input = "function buildUrl(host){const ratio=Date.now()/1e3;return `https://${host}/${host}/`; } function next(){return `done`;}";
+    const minified = minifyJs(input);
+
+    expect(() => new Function("host", `${minified};return buildUrl(host);`)).not.toThrow();
+    expect(new Function("host", `${minified};return buildUrl(host);`)("login.example"))
+      .toBe("https://login.example/login.example/");
+  });
 });
 
 describe("minifyJs – regex literal handling", () => {

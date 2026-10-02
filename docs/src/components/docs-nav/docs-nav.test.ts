@@ -13,6 +13,7 @@ describe('docs-nav component', () => {
     expect(html).toContain('<nav class="dnav" aria-label="Main">');
     expect(html).toContain('<docs-logo />');
     expect(html).toContain('<docs-search />');
+    expect(html).toContain('<a href="/sponsor">Sponsor</a>');
     expect(html).toContain("from '@/lib/nav.ts'");
   });
 

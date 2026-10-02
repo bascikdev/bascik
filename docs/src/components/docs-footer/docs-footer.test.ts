@@ -12,6 +12,7 @@ describe('docs-footer component', () => {
     expect(html).toContain('<footer class="dfooter">');
     expect(html).toContain('<docs-logo />');
     expect(html).toContain('data-bascik-build');
+    expect(html).toContain('<a href="/sponsor">Sponsor</a>');
     expect(html).toContain("from '@/lib/nav.ts'");
   });
 

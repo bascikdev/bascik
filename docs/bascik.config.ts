@@ -28,6 +28,13 @@ export default defineConfig({
         // Publishes the one intentional Markdown download (/assets/SKILL.md) to dist. Static asset copying
         // denies .md by design; the authored input is watched, the generated output never is.
       },
+      {
+        script: 'scripts/generate-press-kit.ts',
+        phase: 'parallel',
+        watch: ['src/pages/assets/bascik-logo.svg', 'src/pages/assets/favicon.svg'],
+        // Generates the brand kit (logos, PNG exports, social images, and the zip) into dist/assets/press/.
+        // Only the two authored logo SVGs are watched; the generated kit never is.
+      },
     ],
   },
   assets: {
@@ -36,7 +43,7 @@ export default defineConfig({
 });
 
 export const dev = defineConfig({
-  assets:{
+  assets: {
     symlink: true,
   },
   pipeline: {
@@ -49,6 +56,7 @@ export const build = defineConfig({
     exec: [
       { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
       { script: 'scripts/publish-agent-skill.ts', phase: 'parallel' },
+      { script: 'scripts/generate-press-kit.ts', phase: 'parallel' },
       { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
       { script: 'scripts/generate-og-images.ts', phase: 'parallel' },
     ],

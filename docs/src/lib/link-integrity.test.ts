@@ -54,7 +54,7 @@ async function collectRoutes(): Promise<Set<string>> {
 }
 
 /** Asset extensions that are not docs pages. */
-const ASSET_EXT = /\.(css|ico|svg|woff2?|jpe?g|png|gif|webp|webmanifest|xml|txt|js|mjs|json)$/i;
+const ASSET_EXT = /\.(css|ico|svg|woff2?|jpe?g|png|gif|webp|webmanifest|xml|txt|js|mjs|json|zip)$/i;
 
 /**
  * Strip regions that contain illustrative code, not real site links:

@@ -123,6 +123,12 @@ export const NAV: NavSection[] = [
       { href: '/switch/from-react', label: 'From React' },
       { href: '/switch/from-svelte', label: 'From Svelte' },
       { href: '/switch/from-vue', label: 'From Vue' },
+      { href: '/switch/from-wordpress', label: 'From WordPress' },
+    ]
+  },
+  {
+    section: 'Press', pages: [
+      { href: '/press', label: 'Brand Guidelines' },
     ]
   },
 ];
