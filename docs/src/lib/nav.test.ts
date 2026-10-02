@@ -67,10 +67,17 @@ describe('renderPagination', () => {
     expect(html).toContain('<span data-pg-label>Press Resources</span>');
   });
 
-  it('links press to the previous section and to sponsor', () => {
-    const html = renderPagination('/press');
+  it('links releases to the previous section and to press', () => {
+    const html = renderPagination('/releases');
     expect(html).toContain('<span data-pg-section>Switch to Bascik</span>');
     expect(html).toContain('<span data-pg-label>From WordPress</span>');
+    expect(html).toContain('href="/press"');
+  });
+
+  it('links press to releases and to sponsor', () => {
+    const html = renderPagination('/press');
+    expect(html).toContain('<span data-pg-section>Community</span>');
+    expect(html).toContain('<span data-pg-label>Releases</span>');
     expect(html).toContain('href="/sponsor"');
   });
 

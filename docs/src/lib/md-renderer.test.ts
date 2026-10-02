@@ -77,6 +77,26 @@ const x = 1;
     expect(html).toContain('<h2 id="subheading">');
   });
 
+  it('renderMd supports skipToFirstH2 option', async () => {
+    const mdContent = `# Title\n\nIntro paragraph.\n\n## Section 1\nFirst content.\n\n## Section 2\nSecond content.`;
+    const mdFile = join(tempDir, 'skip-h2.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile, { skipToFirstH2: true });
+    expect(html).not.toContain('Intro paragraph.');
+    expect(html).toContain('<h2 id="section-1">');
+    expect(html).toContain('<h2 id="section-2">');
+  });
+
+  it('renderMd skipToFirstH2 returns empty when no h2 exists', async () => {
+    const mdContent = `# Title\n\nIntro paragraph.`;
+    const mdFile = join(tempDir, 'skip-h2-none.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile, { skipToFirstH2: true });
+    expect(html).toBe('');
+  });
+
   it('renderMdRange renders content between headings', async () => {
     const mdContent = `
 # Title

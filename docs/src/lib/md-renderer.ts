@@ -25,6 +25,7 @@ import { slugFromHeadingHtml } from './heading-slug.ts';
 interface RenderMdOptions {
   skipFirstHeading?: boolean;
   stripDemoBlocks?: boolean;
+  skipToFirstH2?: boolean;
 }
 
 interface RenderRange {
@@ -86,7 +87,7 @@ export async function extractDemoBlock(filePath: string, markerId: string): Prom
 
 export async function renderMd(
   filePath: string,
-  { skipFirstHeading = false, stripDemoBlocks = false }: RenderMdOptions = {},
+  { skipFirstHeading = false, stripDemoBlocks = false, skipToFirstH2 = false }: RenderMdOptions = {},
 ): Promise<string> {
   let md: string;
   try {
@@ -94,6 +95,13 @@ export async function renderMd(
   } catch (err) {
     console.warn(`[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`);
     return `<div class="callout"><p><strong>File not found:</strong> <code>${filePath}</code></p></div>`;
+  }
+  if (skipToFirstH2) {
+    const firstH2 = md.match(/^## .+$/m);
+    // No H2 means no release entries yet; render nothing rather than the
+    // file header (which the page intro already covers).
+    if (!firstH2) return '';
+    md = md.slice(firstH2.index);
   }
   return _transformMd(md, { skipFirstHeading, stripDemoBlocks });
 }

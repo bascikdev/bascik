@@ -128,6 +128,7 @@ export const NAV: NavSection[] = [
   },
   {
     section: 'Community', pages: [
+      { href: '/releases', label: 'Releases' },
       { href: '/press', label: 'Press Resources' },
       { href: '/sponsor', label: 'Sponsor' },
     ]
