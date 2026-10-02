@@ -20,6 +20,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { marked } from 'marked';
+import { slugFromHeadingHtml } from './heading-slug.ts';
 
 interface RenderMdOptions {
   skipFirstHeading?: boolean;
@@ -161,18 +162,7 @@ function _transformMd(
 
   // Add id attributes to h2 and h3 headings and wrap text in a copyable anchor link.
   html = html.replace(/<h([23])>(.*?)<\/h\1>/g, (_, level, text) => {
-    const slug = text
-      .replace(/<[^>]+>/g, '')
-      .replace(/&#39;|&apos;/g, "'")
-      .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-');
+    const slug = slugFromHeadingHtml(text);
     return `<h${level} id="${slug}"><a class="anchor-link" href="#${slug}">${text}</a></h${level}>`;
   });
 

@@ -427,7 +427,7 @@ export async function generateOgImages(): Promise<void> {
   // Process home page + all documentation pages listed in NAV
   const allNavPages = [
     { href: '/', label: 'Bascik', section: 'Overview' },
-    ...NAV.flatMap((sec) => sec.pages.filter((p) => !p.external).map((p) => ({ ...p, section: sec.section }))),
+    ...NAV.flatMap((sec) => sec.pages.map((p) => ({ ...p, section: sec.section }))),
   ];
 
   for (const { href, label, section } of allNavPages) {

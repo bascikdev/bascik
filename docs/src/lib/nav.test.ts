@@ -10,11 +10,7 @@ describe('NAV structure', () => {
       expect(section.pages.length).toBeGreaterThan(0);
       for (const page of section.pages) {
         expect(page.label).toBeTruthy();
-        if (page.external) {
-          expect(page.href).toMatch(/^https?:\/\//);
-        } else {
-          expect(page.href).toMatch(/^\//);
-        }
+        expect(page.href).toMatch(/^\//);
       }
     }
   });

@@ -90,6 +90,57 @@ describe("minifyJs – string and template literal preservation", () => {
   });
 });
 
+describe("minifyJs – regex literal after control-statement headers", () => {
+  const run = (code: string, s: string): { out: unknown; threw?: string } => {
+    const globalObj: Record<string, unknown> = {};
+    try {
+      new Function("s", "globalThis", code)(s, globalObj);
+      return { out: globalObj.out };
+    } catch (error) {
+      return { out: undefined, threw: String(error) };
+    }
+  };
+
+  it.each([
+    ['if (ok) /"/.test(s) && (globalThis.hit = 1);', '"'],
+    ["while (i--) /['\"]  x/.exec(s);", "x"],
+    ["for (; i < 1; i++) /`/.test(s); ", "`"],
+    ['with (s) /"/.test(s);', '"'],
+    ['if (a) { } else if (b) /"/.test(s);', '"'],
+  ])("keeps strings that follow a regex statement intact: %s", (header, s) => {
+    const source = `var ok=true,i=0,a=false,b=true;\n${header}\nglobalThis.out = "a    b";`;
+    const minified = minifyJs(source);
+    expect(() => new Function("s", "globalThis", minified)).not.toThrow();
+    expect(minified).toContain('"a    b"');
+    expect(run(minified, s).out).toBe(run(source, s).out);
+  });
+
+  it("keeps strings that follow a regex statement after a block-closing brace", () => {
+    const source = 'function f(){}\n/["\']  y/.test(s);\nglobalThis.out = "a    b";';
+    const minified = minifyJs(source);
+    expect(minified).toContain('"a    b"');
+    expect(run(minified, "y").out).toBe("a    b");
+  });
+
+  it("still treats a slash after a non-control parenthesis as division", () => {
+    for (const source of ["const r = (8) / (4) / 2; globalThis.out = r;", "const f = (x) => x; const r = f(8) / 4 / 2; globalThis.out = r;"]) {
+      const minified = minifyJs(source);
+      expect(run(minified, "").threw).toBeUndefined();
+      expect(run(minified, "").out).toBe(run(source, "").out);
+      expect(run(minified, "").out).toBe(1);
+    }
+  });
+
+  it("preserves a regex containing a backtick inside a template interpolation", () => {
+    const input = "const a = `x ${ /`/.test(y) ? 1 : 2 } z`; globalThis.out = a;";
+    const minified = minifyJs(input);
+    expect(() => new Function("y", "globalThis", minified)).not.toThrow();
+    const globalObj: Record<string, unknown> = {};
+    new Function("y", "globalThis", minified)("`", globalObj);
+    expect(globalObj.out).toBe("x 1 z");
+  });
+});
+
 describe("minifyJs – regex literal handling", () => {
   it("preserves a simple regex literal verbatim", () => {
     expect(minifyJs("var re = /abc/g;")).toBe("var re=/abc/g;");

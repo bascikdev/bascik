@@ -95,8 +95,7 @@ lines.push('');
 for (const { section, pages } of NAV) {
   lines.push(`## ${section}`);
   lines.push('');
-  for (const { href, label, external } of pages) {
-    if (external) continue;
+  for (const { href, label } of pages) {
     const md = await readMd(href);
     const desc = md ? extractDescription(md) : '';
     const url = `${siteUrl}${href}`;

@@ -88,7 +88,7 @@ npx @vscode/vsce@3 package --no-dependencies -o /tmp/bascik-ext.vsix
 
 ## Promoting a release candidate to stable
 
-1. Bump each package to its stable version (`1.0.0`, `0.1.0`) and update dependent ranges if needed.
+1. Bump each package to its stable version (`1.0.0`, `0.1.0`) and update dependent ranges if needed. Update the release-date banner in `docs/src/components/docs-nav/docs-nav.html` (remove it, or change it to announce the release) so the docs site does not advertise a past date.
 2. Tag and push in the same order as above, using the stable tags (`v1.0.0`, and so on). Stable versions publish under the `latest` dist-tag.
 3. The `rc` dist-tag keeps pointing at the last candidate. That is harmless, but it can be moved with `npm dist-tag add <package>@<version> rc`.
 

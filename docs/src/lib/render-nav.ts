@@ -12,7 +12,9 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { marked } from 'marked';
+import { headingPlainText, slugFromHeadingHtml } from './heading-slug.ts';
 import { NAV } from './nav.ts';
 
 function resolveRoutePath(currentPath?: string): string {
@@ -49,16 +51,6 @@ export function renderSectionLabel(currentPath?: string): string {
   return `<p class="section-label">${section.section}</p>`;
 }
 
-function slugifyHeading(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
-}
-
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -73,29 +65,31 @@ function escapeHtml(text: string): string {
  * browser responsible only for indicating the section currently in view.
  */
 export async function renderPageTableOfContents(pageContentPath?: string): Promise<string> {
-  let pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
-  if (!pageFile) {
-    const route = resolveRoutePath();
-    if (!route) return '';
-    const pageRelativePath = route === '/'
-      ? 'index.html'
-      : route === '/deployment'
-        ? 'deployment/index.html'
-        : `${route.slice(1)}.html`;
-    pageFile = join(process.cwd(), 'src/pages', pageRelativePath);
-  }
+  let contentPaths: string[];
+  if (pageContentPath) {
+    contentPaths = [resolve(process.cwd(), pageContentPath)];
+  } else {
+    let pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
+    if (!pageFile) {
+      const route = resolveRoutePath();
+      if (!route) return '';
+      const pageRelativePath = route === '/'
+        ? 'index.html'
+        : route === '/deployment'
+          ? 'deployment/index.html'
+          : `${route.slice(1)}.html`;
+      pageFile = join(process.cwd(), 'src/pages', pageRelativePath);
+    }
 
-  let pageSource: string;
-  try {
-    pageSource = await readFile(pageFile, 'utf8');
-  } catch {
-    return '';
-  }
-
-  const contentPaths = pageContentPath
-    ? [join(process.cwd(), pageContentPath)]
-    : [...pageSource.matchAll(/['"]\.\/content\/([^'"]+\.md)['"]/g)]
+    let pageSource: string;
+    try {
+      pageSource = await readFile(pageFile, 'utf8');
+    } catch {
+      return '';
+    }
+    contentPaths = [...pageSource.matchAll(/['"]\.\/content\/([^'"]+\.md)['"]/g)]
       .map(match => join(dirname(pageFile), 'content', match[1]));
+  }
   const uniqueContentPaths = [...new Set(contentPaths)];
   if (!uniqueContentPaths.length) return '';
 
@@ -108,29 +102,45 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
       continue;
     }
 
-    for (const match of markdown.matchAll(/^(#{2,3})\s+(.+?)\s*$/gm)) {
-      const level = match[1].length as 2 | 3;
-      const text = match[2].replace(/\s+#+\s*$/, '');
-      headings.push({ level, text, id: slugifyHeading(text) });
+    // The lexer skips fenced code and indented code, and the heading HTML is
+    // slugged by the same function md-renderer.ts uses for the page's ids.
+    for (const token of marked.lexer(markdown)) {
+      if (token.type !== 'heading' || (token.depth !== 2 && token.depth !== 3)) continue;
+      const headingHtml = marked.parseInline(token.text, { async: false });
+      headings.push({
+        level: token.depth,
+        text: headingPlainText(headingHtml),
+        id: slugFromHeadingHtml(headingHtml),
+      });
     }
   }
 
   if (!headings.length) return '';
   let html = '';
   let subsectionListOpen = false;
+  let subsectionHasItems = false;
+  const closeSubsections = (): void => {
+    if (!subsectionListOpen) return;
+    // An h2 with no h3 children emits no empty <ol>.
+    html += subsectionHasItems ? '</ol></li>' : '</li>';
+    subsectionListOpen = false;
+    subsectionHasItems = false;
+  };
   for (const heading of headings) {
     const link = `<a href="#${escapeHtml(heading.id)}" data-toc-level="${heading.level}">${escapeHtml(heading.text)}</a>`;
     if (heading.level === 2) {
-      if (subsectionListOpen) html += '</ol></li>';
-      html += `<li>${link}<ol class="docs-toc-subsections">`;
+      closeSubsections();
+      html += `<li>${link}`;
       subsectionListOpen = true;
     } else if (subsectionListOpen) {
+      if (!subsectionHasItems) html += '<ol class="docs-toc-subsections">';
+      subsectionHasItems = true;
       html += `<li>${link}</li>`;
     } else {
       html += `<li>${link}</li>`;
     }
   }
-  if (subsectionListOpen) html += '</ol></li>';
+  closeSubsections();
   return html;
 }
 
@@ -143,7 +153,7 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
 export function renderPagination(currentPath?: string): string {
   const path = resolveRoutePath(currentPath);
   if (!path) return '';
-  const flat = NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => ({ ...p, section: s.section })));
+  const flat = NAV.flatMap(s => s.pages.map(p => ({ ...p, section: s.section })));
   const idx = flat.findIndex(p => p.href === path);
   if (idx === -1) return '';
   const prev = idx > 0 ? flat[idx - 1] : null;

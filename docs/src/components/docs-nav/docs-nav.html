@@ -26,11 +26,7 @@
             for (const section of NAV) {
               html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
               for (const page of section.pages) {
-                if (page.external) {
-                  html += `<li><a href="${page.href}" target="_blank" rel="noopener noreferrer">${page.label} &#x2197;</a></li>`;
-                } else {
-                  html += `<li><a href="${page.href}">${page.label}</a></li>`;
-                }
+                html += `<li><a href="${page.href}">${page.label}</a></li>`;
               }
               html += '</ul>';
             }

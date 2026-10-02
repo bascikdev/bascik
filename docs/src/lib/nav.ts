@@ -9,8 +9,6 @@
 export interface NavPage {
   href: string;
   label: string;
-  /** External links open in a new tab and are excluded from pagination, search, llms.txt, and OG images. Social profile links live in social-links.ts (footer icons), not here. */
-  external?: boolean;
 }
 
 export interface NavSection {

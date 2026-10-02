@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Press kit', () => {
   test('press resources page renders with a working download and previews', async ({ page, request }) => {
     await page.goto('/press');
-    await expect(page.locator('#main-content h1')).toHaveText('Press Resources');
+    await expect(page.getByRole('heading', { level: 1, name: 'Press Resources' })).toBeVisible();
 
     const download = page.getByTestId('press-download-kit');
     await expect(download).toBeVisible();
@@ -29,11 +29,13 @@ test.describe('Press kit', () => {
 
   test('every kit file linked from the page is served', async ({ page, request }) => {
     await page.goto('/press');
-    const hrefs = await page.locator('#main-content a[href^="/assets/press/"]').evaluateAll(
+    const hrefs = await page.getByTestId('press-previews').getByRole('link').evaluateAll(
       (links) => links.map((a) => String(a.getAttribute('href'))),
     );
-    expect(hrefs.length).toBeGreaterThan(6);
+    hrefs.push(String(await page.getByTestId('press-download-kit').getAttribute('href')));
+    expect(hrefs.length).toBeGreaterThan(3);
     for (const href of new Set(hrefs)) {
+      expect(href.startsWith('/assets/press/'), href).toBe(true);
       const response = await request.get(href);
       expect(response.status(), href).toBe(200);
     }
@@ -41,7 +43,7 @@ test.describe('Press kit', () => {
 
   test('page lists the same social and avatar files the kit contains', async ({ page, request }) => {
     await page.goto('/press');
-    const files = await page.locator('#main-content table code').allTextContents();
+    const files = await page.getByTestId('press-guidelines').getByRole('table').getByRole('code').allTextContents();
     const kitFiles = files.filter((text) => /^(social|avatar)\/.+\.png$/.test(text));
     expect(kitFiles.length).toBeGreaterThanOrEqual(6);
     for (const file of kitFiles) {

@@ -450,5 +450,13 @@
   [
     "a = b\n/ c / d",
     "a=b;/ c / d"
+  ],
+  [
+    "if (ok) /\"/.test(s) && go();",
+    "if(ok)/\"/.test(s)&&go();"
+  ],
+  [
+    "while (i--) /a  b/.exec(s);",
+    "while(i--)/a  b/.exec(s);"
   ]
 ]

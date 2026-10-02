@@ -6,11 +6,7 @@
                for (const section of NAV) {
                     html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
                     for (const page of section.pages) {
-                         if (page.external) {
-                              html += `<li><a href="${page.href}" target="_blank" rel="noopener noreferrer">${page.label}</a></li>`;
-                         } else {
-                              html += `<li><a href="${page.href}">${page.label}</a></li>`;
-                         }
+                         html += `<li><a href="${page.href}">${page.label}</a></li>`;
                     }
                     html += '</ul>';
                }

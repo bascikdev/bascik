@@ -40,8 +40,18 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
   "do",
 ]);
 
-/** Characters that can end an expression, making a following slash division. */
-const REGEX_CANNOT_PRECEDE = new Set([")", "]", "}", "'", '"', "`"]);
+/**
+ * Characters that end an expression, making a following slash division.
+ * `)` is handled separately (it may close an `if`/`while`/`for`/`with` header,
+ * after which a regex literal is valid). `}` is deliberately absent: it may end
+ * a block statement (`function f(){}\n/re/.test(s)`), and treating it as regex-
+ * capable is the conservative choice because a regex is only accepted when it
+ * closes on the same line.
+ */
+const REGEX_CANNOT_PRECEDE = new Set(["]", "'", '"', "`"]);
+
+/** Keywords whose parenthesized header is followed by a statement, not an operator. */
+const CONTROL_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
 
 /** Identifier/number characters: the "word" class the scanner tracks. */
 const isWordChar = (c: string): boolean =>
@@ -268,6 +278,10 @@ const scanSegments = (js: string): Segment[] => {
   let lastRaw = "";
   let lastSig = "";
   let wordRun = "";
+  // One entry per open `(`: true when it opens an if/while/for/with header.
+  // Lives outside flushCode because literals never contain code parens.
+  const parenIsControlHeader: boolean[] = [];
+  let lastParenClosedControlHeader = false;
   let i = 0;
   const len = js.length;
 
@@ -282,6 +296,12 @@ const scanSegments = (js: string): Segment[] => {
   };
 
   const appendCode = (c: string): void => {
+    if (c === "(") {
+      const keyword = isWordChar(lastSig) ? lastWordBeforeSlash(wordRun) : undefined;
+      parenIsControlHeader.push(keyword !== undefined && CONTROL_HEADER_KEYWORDS.has(keyword));
+    } else if (c === ")") {
+      lastParenClosedControlHeader = parenIsControlHeader.pop() ?? false;
+    }
     codeAccum += c;
     if (isSpace(c)) {
       lastRaw = c;
@@ -351,6 +371,9 @@ const scanSegments = (js: string): Segment[] => {
           if (lastWord !== undefined && REGEX_PRECEDING_KEYWORDS.has(lastWord)) {
             couldBeRegex = true;
           }
+        } else if (lastSig === ")") {
+          // `if (x) /re/.test(y)` is a regex statement; `f(x) / 2` is division.
+          couldBeRegex = lastParenClosedControlHeader;
         } else if (!REGEX_CANNOT_PRECEDE.has(lastSig)) {
           // Preceded by operators/punctuation like '=', '(', '[', ':', ',', '!', '?', '&', '|', '+', '-', '*', ';'
           couldBeRegex = true;
