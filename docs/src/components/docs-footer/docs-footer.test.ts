@@ -16,6 +16,13 @@ describe('docs-footer component', () => {
     expect(html).toContain("from '@/lib/nav.ts'");
   });
 
+  it('renders social icon links from social-links.ts instead of the nav sitemap', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    expect(html).toContain("from '@/lib/social-links.ts'");
+    expect(html).toContain('renderSocialLinks()');
+  });
+
   it('uses standard breakpoint media query max-width 640px for mobile in footer CSS', async () => {
     const css = await readFile(cssPath, 'utf8');
 

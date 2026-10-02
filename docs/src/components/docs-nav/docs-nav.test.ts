@@ -13,15 +13,27 @@ describe('docs-nav component', () => {
     expect(html).toContain('<nav class="dnav" aria-label="Main">');
     expect(html).toContain('<docs-logo />');
     expect(html).toContain('<docs-search />');
-    expect(html).toContain('<a href="/sponsor">Sponsor</a>');
     expect(html).toContain("from '@/lib/nav.ts'");
   });
 
-  it('constrains banner and dnav-inner to max-width 1140px', async () => {
+  it('does not link Sponsor directly from the top navigation', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    expect(html).not.toContain('<a href="/sponsor">Sponsor</a>');
+  });
+
+  it('excludes /sponsor and /press from activating the Docs link', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    expect(html).toContain("path !== '/sponsor'");
+    expect(html).toContain("path !== '/press'");
+  });
+
+  it('constrains banner and dnav-inner to max-width', async () => {
     const css = await readFile(cssPath, 'utf8');
 
-    expect(css).toContain('.dnav-banner {\n  max-width: 1140px;\n  margin: 0 auto;');
-    expect(css).toContain('.dnav-inner {\n  max-width: 1140px;\n  margin: 0 auto;');
+    expect(css).toContain('.dnav-banner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;');
+    expect(css).toContain('.dnav-inner {\n  max-width: var(--site-max-width);\n  margin: 0 auto;');
   });
 
   it('contains skip-link styles placed off-screen by default in global styles.css', async () => {

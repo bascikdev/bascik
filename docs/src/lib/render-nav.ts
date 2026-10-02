@@ -11,6 +11,8 @@
  * Page order comes from nav.ts (the single source of truth).
  */
 
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { NAV } from './nav.ts';
 
 function resolveRoutePath(currentPath?: string): string {
@@ -47,6 +49,91 @@ export function renderSectionLabel(currentPath?: string): string {
   return `<p class="section-label">${section.section}</p>`;
 }
 
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Renders the current page's Markdown section links during the build. The
+ * sidebar component calls this from a data-bascik-build script, leaving the
+ * browser responsible only for indicating the section currently in view.
+ */
+export async function renderPageTableOfContents(pageContentPath?: string): Promise<string> {
+  let pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
+  if (!pageFile) {
+    const route = resolveRoutePath();
+    if (!route) return '';
+    const pageRelativePath = route === '/'
+      ? 'index.html'
+      : route === '/deployment'
+        ? 'deployment/index.html'
+        : `${route.slice(1)}.html`;
+    pageFile = join(process.cwd(), 'src/pages', pageRelativePath);
+  }
+
+  let pageSource: string;
+  try {
+    pageSource = await readFile(pageFile, 'utf8');
+  } catch {
+    return '';
+  }
+
+  const contentPaths = pageContentPath
+    ? [join(process.cwd(), pageContentPath)]
+    : [...pageSource.matchAll(/['"]\.\/content\/([^'"]+\.md)['"]/g)]
+      .map(match => join(dirname(pageFile), 'content', match[1]));
+  const uniqueContentPaths = [...new Set(contentPaths)];
+  if (!uniqueContentPaths.length) return '';
+
+  const headings: Array<{ level: 2 | 3; text: string; id: string }> = [];
+  for (const contentPath of uniqueContentPaths) {
+    let markdown: string;
+    try {
+      markdown = await readFile(contentPath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const match of markdown.matchAll(/^(#{2,3})\s+(.+?)\s*$/gm)) {
+      const level = match[1].length as 2 | 3;
+      const text = match[2].replace(/\s+#+\s*$/, '');
+      headings.push({ level, text, id: slugifyHeading(text) });
+    }
+  }
+
+  if (!headings.length) return '';
+  let html = '';
+  let subsectionListOpen = false;
+  for (const heading of headings) {
+    const link = `<a href="#${escapeHtml(heading.id)}" data-toc-level="${heading.level}">${escapeHtml(heading.text)}</a>`;
+    if (heading.level === 2) {
+      if (subsectionListOpen) html += '</ol></li>';
+      html += `<li>${link}<ol class="docs-toc-subsections">`;
+      subsectionListOpen = true;
+    } else if (subsectionListOpen) {
+      html += `<li>${link}</li>`;
+    } else {
+      html += `<li>${link}</li>`;
+    }
+  }
+  if (subsectionListOpen) html += '</ol></li>';
+  return html;
+}
+
 /**
  * Renders the prev/next pagination <nav> for a given page. Returns an
  * empty string when currentPath is not found in NAV or is the only page.
@@ -56,7 +143,7 @@ export function renderSectionLabel(currentPath?: string): string {
 export function renderPagination(currentPath?: string): string {
   const path = resolveRoutePath(currentPath);
   if (!path) return '';
-  const flat = NAV.flatMap(s => s.pages.map(p => ({ ...p, section: s.section })));
+  const flat = NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => ({ ...p, section: s.section })));
   const idx = flat.findIndex(p => p.href === path);
   if (idx === -1) return '';
   const prev = idx > 0 ? flat[idx - 1] : null;

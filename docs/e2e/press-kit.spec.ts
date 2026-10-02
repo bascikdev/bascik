@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Press kit', () => {
-  test('brand guidelines page renders with a working download and previews', async ({ page, request }) => {
+  test('press resources page renders with a working download and previews', async ({ page, request }) => {
     await page.goto('/press');
-    await expect(page.locator('#main-content h1')).toHaveText('Brand Guidelines');
+    await expect(page.locator('#main-content h1')).toHaveText('Press Resources');
 
     const download = page.getByTestId('press-download-kit');
     await expect(download).toBeVisible();

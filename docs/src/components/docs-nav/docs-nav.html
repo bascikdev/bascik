@@ -17,7 +17,6 @@
         <ul class="dnav-links">
           <li><a href="/why-bascik">Why Bascik</a></li>
           <li><a href="/getting-started">Docs</a></li>
-          <li><a href="/sponsor">Sponsor</a></li>
           <li><a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
         <div class="mobile-only-sections">
@@ -27,7 +26,11 @@
             for (const section of NAV) {
               html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
               for (const page of section.pages) {
-                html += `<li><a href="${page.href}">${page.label}</a></li>`;
+                if (page.external) {
+                  html += `<li><a href="${page.href}" target="_blank" rel="noopener noreferrer">${page.label} &#x2197;</a></li>`;
+                } else {
+                  html += `<li><a href="${page.href}">${page.label}</a></li>`;
+                }
               }
               html += '</ul>';
             }
@@ -35,7 +38,6 @@
           </script>
           <hr class="mobile-sep" />
           <ul class="mobile-sec-nav">
-            <li><a href="/sponsor">Sponsor</a></li>
             <li><a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener">GitHub &#x2197;</a>
             </li>
             <li>
@@ -132,7 +134,7 @@
       if (href === '/why-bascik') {
         current = (path === '/why-bascik');
       } else if (href === '/getting-started' && a.closest('.dnav-links')) {
-        current = (path !== '' && path !== '/' && path !== '/why-bascik');
+        current = (path !== '' && path !== '/' && path !== '/why-bascik' && path !== '/sponsor' && path !== '/press');
       } else {
         current = (href === path);
       }

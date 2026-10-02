@@ -57,6 +57,19 @@
   }
   </script>
   <style>
+    /* The nav and docs pages use the wider site width. The home page content
+       keeps the original narrower measure. */
+    #main-content .container {
+      max-width: 1140px;
+      padding: 0 28px;
+    }
+
+    @media (max-width: 768px) {
+      #main-content .container {
+        padding: 0 24px;
+      }
+    }
+
     /* ── Hero ── */
     .hero {
       position: relative;
@@ -729,7 +742,8 @@
           nearly 600 custom Node.js
           build scripts to render Markdown and extract demo blocks, the entire site transpiles for dev startup in about
           <b class="highlight-text">1.4 seconds</b>
-          with a warm cache and workers enabled on multi-core hardware.</p>
+          with a warm cache and workers enabled on multi-core hardware.
+        </p>
         <div class="speed-grid">
           <div class="speed-terminal">
             <div class="speed-terminal-bar">

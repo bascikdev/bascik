@@ -235,8 +235,8 @@ Colors
   Paper      ${COLORS.paper}   light backgrounds
 
 Quick rules
-  - Use the full-color logo on dark or mid-tone backgrounds.
-    Use the black logo on white or very light backgrounds.
+  - Use the full-color logo by default, on dark, light, or mid-tone backgrounds.
+    Use the black or white logo only when you are limited to a single color, such as one-color print.
   - Keep clear space of at least one quarter of the logo height on every side.
   - Display the logo at least 24 px tall on screen or 1/8 inch (3 mm) tall in print.
   - Do not recolor, stretch, rotate, add effects to, crop, or retype the logo.

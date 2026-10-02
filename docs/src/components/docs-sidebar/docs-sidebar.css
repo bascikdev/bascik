@@ -1,8 +1,14 @@
 /* All sidebar styles are here so bascik scopes them to match the component HTML. */
 
 .docs-sidebar {
+  display: contents;
+}
+
+.docs-sidebar-nav {
+  grid-column: 1;
+  grid-row: 1;
   border-right: 1px solid var(--border);
-  padding: 32px 20px;
+  padding: 32px 22px 32px 0;
   position: sticky;
   top: 88px;
   height: calc(100vh - 88px);
@@ -72,8 +78,82 @@
   background: var(--accent);
 }
 
+.docs-toc {
+  grid-column: 3;
+  grid-row: 1;
+  position: sticky;
+  top: 104px;
+  align-self: start;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 8px 0 28px 28px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.docs-toc-title {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 10px;
+  letter-spacing: 0;
+  line-height: 1.25;
+  margin: 0 0 16px;
+}
+
+.docs-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.docs-toc li { margin: 0; padding: 0; }
+
+.docs-toc a {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0 4px 6px 17px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: color .15s;
+}
+
+.docs-toc a:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.docs-toc a[aria-current="location"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.docs-toc a[data-toc-level="3"] {
+  font-size: 0.79rem;
+  padding-left: 20px;
+  padding-bottom: 5px;
+}
+
+.docs-toc a[data-toc-level="2"] {
+  padding-bottom: 9px;
+}
+
+.docs-toc-subsections {
+  margin: 0 0 4px;
+  padding: 0;
+}
+
+@media (max-width: 1200px) {
+  .docs-toc { display: none !important; }
+}
+
 @media (max-width: 768px) {
-  .docs-sidebar {
+  .docs-sidebar-nav {
     display: none !important;
   }
 }

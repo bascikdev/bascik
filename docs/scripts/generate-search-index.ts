@@ -98,7 +98,8 @@ function parseMd(md: string, navLabel: string, section: string, href: string): S
 const entries: SearchEntry[] = [];
 
 for (const { section, pages } of NAV) {
-  for (const { href, label } of pages) {
+  for (const { href, label, external } of pages) {
+    if (external) continue;
     const md = await readMd(href);
     if (!md) {
       entries.push({ title: label, navLabel: label, section, path: href, heading: null, text: '' });

@@ -1,4 +1,4 @@
-# Sponsor Bascik
+# Sponsor
 
 Bascik is an independent, open-source web development framework built for zero-runtime HTML components and sub-millisecond builds.
 

@@ -4,6 +4,10 @@
       <div class="dfooter-brand">
         <a href="/" class="dfooter-logo" aria-label="Bascik home"><docs-logo /></a>
         <p class="dfooter-desc">HTML components.<br>Zero runtime.</p>
+        <script data-bascik-build>
+          import { renderSocialLinks } from '@/lib/social-links.ts';
+          console.log(renderSocialLinks());
+        </script>
       </div>
       <div class="dfooter-sitemap">
         <script data-bascik-build>
@@ -12,7 +16,11 @@
           for (const section of NAV) {
             html += `<div class="dfooter-col"><p class="dfooter-col-heading">${section.section}</p><ul class="dfooter-col-links">`;
             for (const page of section.pages) {
-              html += `<li><a href="${page.href}">${page.label}</a></li>`;
+              if (page.external) {
+                html += `<li><a href="${page.href}" target="_blank" rel="noopener noreferrer">${page.label}</a></li>`;
+              } else {
+                html += `<li><a href="${page.href}">${page.label}</a></li>`;
+              }
             }
             html += '</ul></div>';
           }

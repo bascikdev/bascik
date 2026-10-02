@@ -1,4 +1,4 @@
-# Brand Guidelines
+# Press Resources
 
 Official Bascik logos, colors, and usage rules for articles, talks, videos, podcasts, and community sites. Download the full brand kit or pick individual files.
 
@@ -14,6 +14,10 @@ The brand kit is a single zip containing a `bascik-press-kit/` folder. Every ras
 | `social` | Link preview image and profile banners | Article headers, repository previews, and social profiles |
 | `README.txt` | One-page summary of the rules on this page | Sharing the rules with collaborators |
 
+## Brand Guidelines
+
+The sections below cover logos, colors, naming, image sizes, and usage. Following them keeps Bascik recognizable and accurately represented wherever it appears.
+
 ## Logos
 
 Bascik has two logos. Both are skewed lime tiles with an ink cursor, and both are supplied as static artwork.
@@ -25,11 +29,11 @@ Bascik has two logos. Both are skewed lime tiles with an ink cursor, and both ar
 
 | Version | Use on |
 | --- | --- |
-| Full color (lime tile, ink cursor and letters) | Dark backgrounds, and mid-tone or busy backgrounds where the lime tile stands out |
-| Black | White and very light backgrounds, and one-color print |
-| White | Dark photos and dark solid backgrounds, and one-color print on dark stock |
+| Full color (lime tile, ink cursor and letters) | Everywhere by default, on dark, light, and mid-tone backgrounds |
+| Black | Only when a single ink is required, such as one-color print |
+| White | Only when a single ink is required on a dark stock |
 
-The black and white versions are a solid tile with the cursor and letters cut out, so the background shows through them. The full-color logo has too little contrast against white or pale backgrounds (lime on white is about 1.1:1), so switch to the black version there.
+Use the full-color logo unless you are limited to one color. The black and white versions are a solid tile with the cursor and letters cut out, so the background shows through them. On a plain white background, give the full-color logo a little extra clear space so the lime tile reads as a shape.
 
 ### Spacing and Minimum Size
 
