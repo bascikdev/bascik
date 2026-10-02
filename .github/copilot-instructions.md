@@ -122,6 +122,10 @@ This project runs on **Node 24**. Node natively strips TypeScript types, with no
 
 ## Agent Environment Notes
 
+### Finding Code in pkg
+
+When locating behavior or tracing dependencies in `pkg/`, use the `bascik-code-navigation` skill before repeated broad searches. `yarn pkg:build` refreshes a gitignored module map in the background at `.code-map/pkg.json`. Run `yarn pkg:map` to refresh it synchronously when missing or after imports change; run `yarn pkg:map <path-fragment>` to print matching modules with their imports and importers. The map includes source tests, not function calls or runtime worker/script connections. Use it to choose nearby implementation and tests, then read those files.
+
 ### Customization Surface
 
 This repo ships its own agent customizations. Know which is which before editing:

@@ -52,6 +52,7 @@
     "0x": "^6.0.0",
     "@mdn/browser-compat-data": "^8.0.13",
     "@playwright/test": "^1.62.0",
+    "@swc/core": "^1.16.2",
     "@types/css-tree": "^3",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^4.1.10",
@@ -62,6 +63,7 @@
     "c8": "^12.0.0",
     "clinic": "^13.0.0",
     "css-tree": "^3.2.1",
+    "dependency-cruiser": "^18.4.0",
     "esbuild": "^0.28.2",
     "fast-check": "^4.9.0",
     "postcss": "^8.5.26",
@@ -72,7 +74,8 @@
     "webidl2": "^24.5.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node bin/code-map.mjs --background",
+    "code-map": "node bin/code-map.mjs",
     "prepack": "cp ../LICENSE LICENSE",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "unit": "vitest run --project unit",

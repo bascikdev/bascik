@@ -91,5 +91,6 @@ docs/.wrangler
 .wrangler
 .playwright-mcp/
 .headroom/
+.code-map/
 
 bascik-prompts/

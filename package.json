@@ -17,6 +17,7 @@
   },
   "scripts": {
     "pkg:build": "yarn workspace @bascik/bascik build",
+    "pkg:map": "yarn workspace @bascik/bascik code-map",
     "pkg:bench": "yarn workspace @bascik/bascik bench",
     "pkg:typecheck": "yarn workspace @bascik/bascik typecheck",
     "pkg:unit": "yarn workspace @bascik/bascik unit",
