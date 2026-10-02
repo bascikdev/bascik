@@ -1,0 +1,12 @@
+{
+  "id": "eleventy-base-blog",
+  "repository": "https://github.com/11ty/eleventy-base-blog",
+  "commit": "94bd3b71d454da5b88eb505b8db6aea1cd0e9754",
+  "subdirectory": ".",
+  "archiveSha256": "5caf0c30cdb093d9efb9eae3c07d1e97c4957c1a2a5d31fc9e3d096445206ea1",
+  "licensePath": "LICENSE",
+  "license": "MIT",
+  "notice": "Copyright (c) 2017-2024 Zach Leatherman @zachleat",
+  "lockfile": "eleventy-base-blog.package-lock.json",
+  "lockfileStatus": "Review and retain the pinned upstream lockfile in task 04."
+}

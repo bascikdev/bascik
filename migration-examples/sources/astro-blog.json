@@ -1,0 +1,12 @@
+{
+  "id": "astro-blog",
+  "repository": "https://github.com/withastro/astro",
+  "commit": "4c1470a7f907fe678ef5e7dceaa972ca83d297da",
+  "subdirectory": "examples/blog",
+  "archiveSha256": "bc0dd29141d5d8fd2095500cdb88454dd5da2cc54dbdc417cb082e93d2c278ca",
+  "licensePath": "LICENSE",
+  "license": "MIT",
+  "notice": "Copyright (c) 2021 Fred K. Schott",
+  "lockfile": "astro-blog.package-lock.json",
+  "lockfileStatus": "Capture in task 03 before installing the upstream."
+}

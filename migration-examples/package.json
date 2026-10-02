@@ -1,0 +1,12 @@
+{
+  "name": "bascik-migration-validation",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "test:unit": "node --test harness/unit.test.mjs",
+    "test:integration": "node --test harness/integration.test.mjs",
+    "test:browser": "node --test harness/browser.test.mjs",
+    "fetch": "node harness/fetch-source.mjs"
+  }
+}

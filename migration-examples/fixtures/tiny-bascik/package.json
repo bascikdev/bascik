@@ -1,0 +1,7 @@
+{
+  "name": "bascik-parity-fixture",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@bascik/bascik": "1.0.0-rc.2" },
+  "scripts": { "build": "bascik --build", "serve": "bascik --server" }
+}
