@@ -38,7 +38,9 @@ test('packed local Bascik: isolated production build, browser routes and keyboar
         const packageDirectory = await realpath(join(site.cwd, 'node_modules/@bascik/bascik'));
         assert.ok(packageDirectory.startsWith(site.cwd + '/'), 'Bascik must resolve within the isolated project');
         const manifest = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'));
-        assert.equal(manifest.version, '1.0.0-rc.2');
+        // The installed artifact must be the local source package, whatever its current version.
+        const source = JSON.parse(await readFile(fileURLToPath(new URL('../../pkg/package.json', import.meta.url)), 'utf8'));
+        assert.equal(manifest.version, source.version, 'tarball must be a fresh pack of pkg/');
         console.log(`Local-source artifact: ${tarball}; Bascik ${manifest.version}; no registry-release validation`);
       },
       check: async (sites) => {
