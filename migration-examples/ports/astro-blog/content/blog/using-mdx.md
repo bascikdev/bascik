@@ -19,7 +19,7 @@ behavior. Keeping them in one file lets an author place a widget exactly where i
 Here is how a component appears inside a Markdown file. When you open this page in the browser, you
 should see the clickable link below.
 
-<menu-link href="#" onclick="alert('clicked!'); return false;">Embedded component in Markdown</menu-link>
+<header-link href="#" onclick="alert('clicked!'); return false;">Embedded component in Markdown</header-link>
 
 ## More Links
 

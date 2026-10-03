@@ -18,12 +18,11 @@ export default defineConfig({
     cache: {
       // Cached output is keyed by script text and detected imports. Scripts that read the
       // content/ directory, and the footer's current-year read, depend on inputs Bascik
-      // cannot see, so they must re-run on every build. Patterns need the leading **/ because
-      // they are matched against absolute source paths: 'src/components/...' never matched.
+      // cannot see, so they must re-run on every build.
       exclude: [
-        '**/src/components/site-footer/**',
-        '**/src/components/post-list/**',
-        '**/src/pages/blog/**',
+        'src/components/site-footer/**',
+        'src/components/post-list/**',
+        'src/pages/blog/**',
       ],
     },
   },

@@ -8,9 +8,13 @@ h2 {
   margin: 0;
   font-size: 1em;
 }
-.site-title {
+h2 a {
+  text-decoration: none;
+}
+nav a {
   display: inline-block;
   padding: 1em 0.5em;
+  color: var(--black);
   border-bottom: 4px solid transparent;
   text-decoration: none;
 }
@@ -21,6 +25,7 @@ nav {
 }
 .internal-links .nav-link {
   padding: 1em 0.5em;
+  color: var(--black);
   border-bottom: 4px solid transparent;
   text-decoration: none;
 }

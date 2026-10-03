@@ -118,6 +118,7 @@ function lane(name, { dev = false, useTarball = false } = {}) {
 lane('production');
 lane('local', { useTarball: true });
 lane('dev', { dev: true });
+lane('local-dev', { dev: true, useTarball: true });
 
 // Control: the shared checks must reject a site that is not the blog. Uses the dependency-free
 // original fixture from task 02 for both sides, so no Bascik install is involved.

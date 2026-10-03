@@ -155,8 +155,13 @@ export async function checkNavigation(browser, site, expected, label) {
             weight: Number(computed.fontWeight),
             underline: computed.textDecorationLine.includes('underline'),
             border: computed.borderBottomColor,
+            // The header's own box-shadow and background must not leak onto link elements.
+            shadow: computed.boxShadow,
+            background: computed.backgroundColor,
           };
         });
+        assert.equal(style.shadow, 'none', `${label}: ${path} ${name} box-shadow`);
+        assert.equal(style.background, 'rgba(0, 0, 0, 0)', `${label}: ${path} ${name} background`);
         const isActive = name === active;
         // The pinned header stylesheet wins the cascade over the link's own underline rule, so the
         // active link is bold with an accent border and is not underlined.
@@ -363,7 +368,7 @@ export async function checkPortOnly(browser, site, expected, label, { dev }) {
     const { text } = await fetchText(site, path);
     const directives = text.replace(/data-bascik-live-reload/g, '').match(/data-bascik-[a-z-]+/g) ?? [];
     assert.deepEqual(directives, [], `${label}: ${path} leaks Bascik directives`);
-    for (const tag of ['menu-link', 'base-head', 'site-header', 'site-footer', 'post-layout', 'post-list', 'formatted-date', 'social-links']) {
+    for (const tag of ['header-link', 'base-head', 'site-header', 'site-footer', 'post-layout', 'post-list', 'formatted-date', 'social-links']) {
       assert.ok(!new RegExp(`<${tag}[\\s>/]`).test(text), `${label}: ${path} left <${tag}> unexpanded`);
     }
     if (!dev) assert.ok(!text.includes('bascik__'), `${label}: ${path} identifiers are minified`);

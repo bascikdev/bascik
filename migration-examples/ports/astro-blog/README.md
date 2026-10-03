@@ -44,7 +44,16 @@ the feed, and the sitemap need an absolute origin. Replace it with your own.
 - The feed is RSS 2.0 from the `feed` package. Item `guid` and channel metadata differ in detail.
 - Dates in front matter are written as ISO dates so the machine-readable `datetime` is the same
   on every machine.
-- The link component is named `menu-link`, not `header-link`. A component named `header-link`
-  collides with a stylesheet that styles `header` (see the task record).
-- Emitted nav anchors are styled by class rather than the upstream `nav a` descendant selector.
-- `scripts.cache.exclude` uses `**/` prefixed patterns. Relative patterns did not match.
+- The nav links emitted by the header's build script carry a `nav-link` class, and the header
+  stylesheet targets `.internal-links .nav-link`. Upstream styles them with `nav a` from the parent
+  `Header.astro`, which Astro lets reach a child component's root anchor. Bascik scopes `nav a` to
+  anchors in the same component only, so the cross-component rule needs a class hook.
+
+## Bascik version
+
+The component is named `header-link` and `scripts.cache.exclude` uses project-relative patterns,
+as upstream does. Both need a Bascik build that includes the task 03 fixes (tag-name boundary for
+element class injection, and absolute-path matching for cache globs). With the released
+`1.0.0-rc.2`, the header's `box-shadow` and background leak onto every `header-link` anchor, and
+editing `content/` does not refresh a page whose script is excluded by a relative pattern. Use a
+build with the fixes.
