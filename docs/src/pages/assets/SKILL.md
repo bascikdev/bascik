@@ -737,6 +737,21 @@ If a component template contains multiple root elements, inherited attributes ar
 
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance, set `scoping.inheritAttributes` to `false` in `bascik.config.ts`.
 
+### Styling a Child Component from Its Parent
+A component's CSS applies only to markup written in its own template. A parent's element selector such as `nav a { }` never matches the root element of a child component, so components stay isolated. To style a child's root from the parent, put a class on the child's usage tag and define that class in the parent's CSS. Bascik scopes it to the parent and merges it onto the child root. A class not defined in the parent's CSS passes through unscoped.
+
+```html
+<!-- illustrative: site-nav.html (parent) -->
+<nav>
+  <nav-link class="item" href="/">Home</nav-link>
+</nav>
+<!-- site-nav.css: .item { padding: 1em 0.5em; } -->
+<!-- nav-link.html (child, root is an anchor): <a><span data-bascik-slot></span></a> -->
+<!-- output: <a class="bascik__site-nav__item" href="/">Home</a> -->
+```
+
+The same applies to markup that a build script or slot produces: put the class on each child usage tag.
+
 ### Internal Masking vs. Preserving Element Contents
 
 These two mechanisms serve distinct purposes:

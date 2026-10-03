@@ -205,6 +205,8 @@ Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's 
 .logo { font-weight: bold; }
 ```
 
+One difference: in Astro a parent's selector such as `nav a { }` can also style the root element of a child component placed inside that `nav`. In Bascik it cannot, because each component's CSS applies only to markup written in its own template. Put a class on the child's usage tag and define it in the parent's CSS instead. See [Styling a Child Component from Its Parent](/attribute-inheritance#styling-a-child-component-from-its-parent).
+
 ## Content Collections → `<script data-bascik-build>`
 
 Astro's Content Collections provide a typed, validated interface to Markdown and MDX files. In Bascik, read the same source files directly from the filesystem in a build script using Node.js `fs` and a Markdown/front-matter parser.

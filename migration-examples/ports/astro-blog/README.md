@@ -46,8 +46,10 @@ the feed, and the sitemap need an absolute origin. Replace it with your own.
   on every machine.
 - The nav links emitted by the header's build script carry a `nav-link` class, and the header
   stylesheet targets `.internal-links .nav-link`. Upstream styles them with `nav a` from the parent
-  `Header.astro`, which Astro lets reach a child component's root anchor. Bascik scopes `nav a` to
-  anchors in the same component only, so the cross-component rule needs a class hook.
+  `Header.astro`, which Astro lets reach a child component's root anchor. In Bascik a parent's
+  element selector never matches a child component's root, by design, so the class goes on the
+  child's usage tag. This is the documented pattern: see "Styling a Child Component from Its
+  Parent" in the attribute inheritance docs.
 
 ## Bascik version
 
