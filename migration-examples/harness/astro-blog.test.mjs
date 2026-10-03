@@ -68,8 +68,11 @@ async function runChecks({ site, expected, label, dev = false, includePort = fal
   if (includePort) await shared.checkPortOnly(browser, site, expected, label, { dev });
 }
 
-function lane(name, { dev = false, useTarball = false } = {}) {
-  const skip = (only && only !== name) ? `ASTRO_LANE=${only}` : (useTarball && !tarball ? 'set BASCIK_TARBALL' : false);
+// When BASCIK_TARBALL is set, every lane installs that locally packed Bascik over the registry
+// release. Unreleased fixes are only testable this way. Without it, lanes use the registry release.
+function lane(name, { dev = false } = {}) {
+  const useTarball = Boolean(tarball);
+  const skip = (only && only !== name) ? `ASTRO_LANE=${only}` : false;
   test(`astro blog: ${name} lane`, { skip, timeout: 600000 }, async () => {
     const notes = [];
     const observed = [];
@@ -116,9 +119,7 @@ function lane(name, { dev = false, useTarball = false } = {}) {
 }
 
 lane('production');
-lane('local', { useTarball: true });
 lane('dev', { dev: true });
-lane('local-dev', { dev: true, useTarball: true });
 
 // Control: the shared checks must reject a site that is not the blog. Uses the dependency-free
 // original fixture from task 02 for both sides, so no Bascik install is involved.

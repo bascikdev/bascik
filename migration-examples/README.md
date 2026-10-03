@@ -125,9 +125,10 @@ Port: `ports/astro-blog/` (see its README and NOTICE.md). Behavior checks:
 3. `yarn pkg:build && yarn workspace @bascik/bascik pack --out /tmp/bascik-task03.tgz`
 4. `BASCIK_TARBALL=/tmp/bascik-task03.tgz npm --prefix migration-examples run test:astro`
 
-`ASTRO_LANE=production|local|dev|control` selects one lane. Each lane copies the pinned upstream and
+`ASTRO_LANE=production|dev|control` selects one lane. With `BASCIK_TARBALL` set, every lane installs
+that locally packed Bascik (required to test unreleased fixes). Without it, lanes use the registry release. Each lane copies the pinned upstream and
 the port into separate temporary directories outside the repository, installs the upstream from the
 retained lockfile with `npm ci --ignore-scripts` plus `npm rebuild esbuild`, and installs the port
-with `npm ci --ignore-scripts` (the `local` lane then installs the packed tarball over the registry
-release). The same checks run against both sites with Chromium. The `control` lane proves the checks
+with `npm ci --ignore-scripts` (then installs the packed tarball over the registry release when
+`BASCIK_TARBALL` is set). The same checks run against both sites with Chromium. The `control` lane proves the checks
 reject a site that is not the blog.
