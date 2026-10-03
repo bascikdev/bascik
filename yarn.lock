@@ -2896,6 +2896,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@zachleat/heading-anchors@npm:^1.0.5":
+  version: 1.0.5
+  resolution: "@zachleat/heading-anchors@npm:1.0.5"
+  checksum: 10c0/8727d9fd939773fcb9af0b97524fb66963cb91d7230a16a132dd79e9c410052d286730505ed7e05230c30ad092434faa6981bce9bc9a207e4cb933aea2f83739
+  languageName: node
+  linkType: hard
+
 "JSONStream@npm:^1.0.3":
   version: 1.3.5
   resolution: "JSONStream@npm:1.3.5"
@@ -3537,6 +3544,7 @@ __metadata:
     "@types/node": "npm:^24.0.0"
     "@types/nunjucks": "npm:^3"
     "@vitest/coverage-v8": "npm:^4.1.10"
+    "@zachleat/heading-anchors": "npm:^1.0.5"
     canvas-confetti: "npm:^1.9.4"
     ejs: "npm:^6.0.1"
     esbuild: "npm:^0.28.2"
