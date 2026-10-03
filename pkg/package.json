@@ -1,13 +1,13 @@
 {
   "name": "@bascik/bascik",
   "description": "HTML components. Zero runtime",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
     "directory": "pkg"
   },
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
   "type": "module",

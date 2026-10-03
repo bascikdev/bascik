@@ -95,16 +95,15 @@ High unit test coverage numbers can create false confidence if tests only exerci
 
 ## License Source of Truth
 
-The license lives in **four places** that must stay in sync for the Elastic-2.0 packages (`@bascik/bascik` and `@bascik/adapter-cloudflare`). `create-bascik`, `@bascik/language-server`, and the VS Code extension are MIT: each keeps its own committed `LICENSE`, which is never overwritten by `prepack`.
+All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik` and `@bascik/adapter-cloudflare`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
 
-- `docs/content/license.md`: the web-formatted version rendered at `https://bascik.dev/license`
-- `LICENSE` (repo root): plain-text version; **required** for GitHub license detection and as the `prepack` source
-- `pkg/LICENSE` and `adapters/cloudflare/LICENSE`: copies for the npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
+- `docs/content/license.md`: the web-formatted MIT license rendered at `https://bascik.dev/license`
+- `LICENSE` (repo root): plain-text MIT license; **required** for GitHub license detection and as the `prepack` source
+- `pkg/LICENSE` and `adapters/cloudflare/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
 
 **When updating the license terms:**
-1. Edit `docs/content/license.md` (the human-readable web version)
-2. Mirror those changes to the root `LICENSE` (same terms, plain-text format). The license is the Elastic License 2.0 (`Elastic-2.0`); keep the canonical text intact
-3. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE` to sync the package copies immediately
+1. Update the root `LICENSE` and mirror the terms in `docs/content/license.md`
+2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE` to sync the package copies immediately
 
 Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE` or `adapters/cloudflare/LICENSE` directly; they are derived files.
 
