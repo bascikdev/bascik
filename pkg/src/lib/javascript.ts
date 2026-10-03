@@ -331,9 +331,13 @@ export const prefixElementAttribute = (
 
   // For class attributes: extract all class names defined in the component's CSS
   // (companion .css and inline <style> tags). Only classes present in component CSS
-  // are scoped; classes not in component CSS are treated as global classes.
+  // are scoped; classes not in component CSS are treated as global classes. A component
+  // with no stylesheet at all defines no classes, so none of its classes are scoped:
+  // they belong to the site's global stylesheet. (`components.ts` leaves
+  // `cssFileContent` unset for an empty or comment-only stylesheet, so "no stylesheet"
+  // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
-  if (attribute === "class" && (component.cssFileContent !== undefined || component.fileContent.includes("<style"))) {
+  if (attribute === "class") {
     scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {

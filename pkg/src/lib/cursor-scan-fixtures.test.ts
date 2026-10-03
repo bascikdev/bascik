@@ -34,7 +34,8 @@ describe("cursor scan falsification fixtures", () => {
   it("resolves a component whose template BEGINS with another component", () => {
     const list: ComponentList = {
       "outer-box": { fileContent: `<inner-dot></inner-dot><span class="after">after</span>` },
-      "inner-dot": { fileContent: `<i class="dot">.</i>` },
+      // Only classes a component's own stylesheet defines are renamed.
+      "inner-dot": { fileContent: `<i class="dot">.</i>`, cssFileContent: ".dot { color: red; }" },
     };
     const out = run(`<outer-box></outer-box><outer-box></outer-box>`, list);
     expect(out).not.toContain("<inner-dot");
@@ -44,7 +45,7 @@ describe("cursor scan falsification fixtures", () => {
 
   it("resolves a nested same-name component to the balanced close tag", () => {
     const list: ComponentList = {
-      "my-list": { fileContent: `<ul class="l"><li data-bascik-slot></li></ul>` },
+      "my-list": { fileContent: `<ul class="l"><li data-bascik-slot></li></ul>`, cssFileContent: ".l { margin: 0; }" },
     };
     const out = run(`<my-list>a<my-list>b</my-list>c</my-list>`, list);
     expect(out).toBe(
@@ -61,7 +62,7 @@ describe("cursor scan falsification fixtures", () => {
           `<textarea><ghost-a></ghost-a></textarea>` +
           `<!-- <ghost-a></ghost-a> --><ghost-a></ghost-a></div>`,
       },
-      "ghost-a": { fileContent: `<b class="g">REAL</b>` },
+      "ghost-a": { fileContent: `<b class="g">REAL</b>`, cssFileContent: ".g { color: red; }" },
     };
     const out = run(`<raw-host></raw-host>`, list);
     // Exactly one real resolution (the last, outside raw text). The <style>
@@ -75,7 +76,7 @@ describe("cursor scan falsification fixtures", () => {
 
   it("handles adjacent self-closing and paired instances in source order", () => {
     const list: ComponentList = {
-      "a-tag": { fileContent: `<span class="a"><span data-bascik-slot>D</span></span>` },
+      "a-tag": { fileContent: `<span class="a"><span data-bascik-slot>D</span></span>`, cssFileContent: ".a { color: red; }" },
     };
     const out = run(`<a-tag />1<a-tag>X</a-tag>2<a-tag/>3<a-tag></a-tag>`, list);
     expect(out).toBe(

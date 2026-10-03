@@ -34,6 +34,26 @@ const makeComponent = (
   cssFileContent,
 });
 
+// A component whose stylesheet defines every class its markup and scripts use. Class scoping
+// only renames classes the component's own CSS defines, so tests that exercise the renaming
+// need this. Use makeComponent for the cases where a class is meant to stay global.
+const makeScopedComponent = (
+  fileContent: string,
+  cssFileContent: string | undefined = undefined,
+): BascikComponent => {
+  const names = new Set<string>();
+  for (const attribute of fileContent.matchAll(/\sclass\s*=\s*(["'])([^"']*)\1/gi)) {
+    for (const token of attribute[2].split(/\s+/)) if (token) names.add(token);
+  }
+  for (const script of fileContent.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    for (const quoted of script[1].matchAll(/["']([^"'\n]*)["']/g)) {
+      for (const token of quoted[1].split(/[\s.]+/)) if (/^[a-zA-Z_][\w-]*$/.test(token)) names.add(token);
+    }
+  }
+  const defined = [...names].map((name) => `.${name.replace(/[^\w-]/g, '\\$&')} { color: red; }`).join('\n');
+  return makeComponent(fileContent, [cssFileContent, defined].filter(Boolean).join('\n'));
+};
+
 // IDs and names include the instanceId for DOM uniqueness.
 const scope = (attr: string, id = "test1234"): string =>
   `bascik__my-comp__${id}__${attr}`;
@@ -75,7 +95,7 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   });
 
   it("preserves only name when requested", () => {
-    let component = makeComponent(
+    let component = makeScopedComponent(
       '<form data-bascik-preserve="name"><input id="email" name="email" class="field"></form>',
     );
 
@@ -129,7 +149,7 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   });
 
   it("allows a descendant to widen preservation", () => {
-    let component = makeComponent(
+    let component = makeScopedComponent(
       '<div id="outer" name="outer" class="outer" data-bascik-preserve="name"><input id="email" name="email" class="field" data-bascik-preserve></div>',
     );
     component = prefixElementAttribute(component, "id", "test1234");
@@ -153,7 +173,7 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
   });
 
   it("uses the same preservation path for a configured wildcard pattern", () => {
-    let component = makeComponent(
+    let component = makeScopedComponent(
       '<vendor-widget id="keep" name="keep" class="keep"><span id="inner" name="inner" class="inner"></span></vendor-widget>' +
       '<p id="outer" name="outer" class="outer"></p>',
     );
@@ -299,7 +319,7 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
   });
 
   it("scopes single-quoted class and id attributes in HTML", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       "<div class='card' id='btn'></div><script>document.querySelector('.card'); document.getElementById('btn')</script>",
     );
     let result = prefixElementAttribute(c, "class", "test1234");
@@ -311,14 +331,14 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
 
 describe("prefixElementAttribute – class with deduplicateCss: false", () => {
   it("uses per-instance scoped class names in HTML", () => {
-    const c = makeComponent('<div class="card"></div>');
+    const c = makeScopedComponent('<div class="card"></div>');
     const result = prefixElementAttribute(c, "class", "test1234", false);
     expect(result.fileContent).toContain(scopeClassPerInstance("card"));
     expect(result.fileContent).not.toContain(scopeClass("card"));
   });
 
   it("rewrites querySelector with per-instance class", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>document.querySelector(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234", false);
@@ -365,9 +385,59 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
     expect(result.cssFileContent).toContain(`.${scopeClass("dnav-logo")}`);
   });
 
+  describe("classes the component's own stylesheet does not define stay global", () => {
+    const markup =
+      '<a href="#main" class="skip-link">Skip</a>' +
+      '<script>document.querySelector(".skip-link"); el.classList.add("skip-link");</script>';
+
+    it("leaves every class literal when the component has no stylesheet at all", () => {
+      const result = prefixElementAttribute(makeComponent(markup), "class", "test1234");
+      expect(result.fileContent).toContain('class="skip-link"');
+      expect(result.fileContent).toContain('querySelector(".skip-link")');
+      expect(result.fileContent).toContain('classList.add("skip-link")');
+      expect(result.fileContent).not.toContain("bascik__");
+    });
+
+    it("leaves every class literal when the stylesheet is an empty string", () => {
+      const result = prefixElementAttribute(makeComponent(markup, ""), "class", "test1234");
+      expect(result.fileContent).toContain('class="skip-link"');
+      expect(result.fileContent).not.toContain("bascik__");
+    });
+
+    it("treats a comment-only stylesheet the same as no stylesheet", () => {
+      const withComment = prefixElementAttribute(makeComponent(markup, "/* global styles live elsewhere */"), "class", "test1234");
+      const without = prefixElementAttribute(makeComponent(markup), "class", "test1234");
+      expect(withComment.fileContent).toBe(without.fileContent);
+    });
+
+    it("leaves classes literal in a component whose only <style> is empty", () => {
+      const result = prefixElementAttribute(makeComponent(`${markup}<style></style>`), "class", "test1234");
+      expect(result.fileContent).toContain('class="skip-link"');
+      expect(result.fileContent).not.toContain("bascik__");
+    });
+
+    it("still scopes a class the stylesheet defines and leaves the others literal", () => {
+      const result = prefixElementAttribute(
+        makeComponent('<a class="skip-link own">x</a>', ".own { color: red; }"),
+        "class",
+        "test1234",
+      );
+      expect(result.fileContent).toContain(`class="skip-link ${scopeClass("own")}"`);
+    });
+
+    it("keeps scoping id and name when the component has no stylesheet", () => {
+      const html = '<input id="email" name="email" class="field">';
+      const withId = prefixElementAttribute(makeComponent(html), "id", "test1234");
+      const withName = prefixElementAttribute(makeComponent(html), "name", "test1234");
+      expect(withId.fileContent).toContain(`id="${scope("email")}"`);
+      expect(withName.fileContent).toContain(`name="${scope("email")}"`);
+    });
+  });
+
   it("scopes getElementsByClassName", () => {
     const c = makeComponent(
       '<div class="card"></div><script>document.getElementsByClassName("card")</script>',
+      ".card { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(
@@ -382,7 +452,7 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
   });
 
   it("scopes querySelector('.class')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>document.querySelector(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -392,7 +462,7 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
   });
 
   it("scopes querySelectorAll('.class')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>document.querySelectorAll(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -403,7 +473,7 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
 
   it("normalizes trailing class whitespace without producing an empty token", () => {
     const result = prefixElementAttribute(
-      makeComponent('<div class="card "></div>'),
+      makeScopedComponent('<div class="card "></div>'),
       "class",
       "test1234",
     );
@@ -425,7 +495,7 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
 
   it("normalizes newlines and repeated spaces between class tokens", () => {
     const result = prefixElementAttribute(
-      makeComponent('<div class="alpha\n  beta"></div>'),
+      makeScopedComponent('<div class="alpha\n  beta"></div>'),
       "class",
       "test1234",
     );
@@ -437,7 +507,7 @@ describe("prefixElementAttribute – class (existing patterns)", () => {
 
   it("normalizes tabs between class tokens", () => {
     const result = prefixElementAttribute(
-      makeComponent('<div class="alpha\tbeta"></div>'),
+      makeScopedComponent('<div class="alpha\tbeta"></div>'),
       "class",
       "test1234",
     );
@@ -486,7 +556,7 @@ describe("prefixElementAttribute – id querySelector/querySelectorAll (new)", (
   });
 
   it("handles whitespace inside getElementById, querySelector, and getElementsByClassName calls", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<button id="btn" class="my-cls"></button>' +
       "<script>" +
       'document.getElementById( "btn" );\n' +
@@ -532,7 +602,7 @@ describe("prefixElementAttribute – id closest/matches", () => {
 
 describe("prefixElementAttribute – class closest/matches", () => {
   it("scopes closest('.class')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>el.closest(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -540,7 +610,7 @@ describe("prefixElementAttribute – class closest/matches", () => {
   });
 
   it("scopes matches('.class')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>el.matches(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -554,7 +624,7 @@ describe("prefixElementAttribute – class closest/matches", () => {
 
 describe("prefixElementAttribute – class classList methods", () => {
   it("scopes classList.add", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active"></div><script>el.classList.add("active")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -564,7 +634,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.remove", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active"></div><script>el.classList.remove("active")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -574,7 +644,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.toggle", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="open"></div><script>el.classList.toggle("open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -584,7 +654,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.contains", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="open"></div><script>el.classList.contains("open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -594,7 +664,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.add with multiple arguments", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active open"></div><script>el.classList.add("active", "open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -604,7 +674,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.remove with multiple arguments", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active open"></div><script>el.classList.remove("active", "open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -614,7 +684,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.toggle with boolean second argument", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="open"></div><script>el.classList.toggle("open", condition)</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -624,7 +694,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.replace — rewrites both old and new token args", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active open"></div><script>el.classList.replace("active", "open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -634,7 +704,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.replace — both args scoped when both appear in classList call", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active"></div><script>el.classList.replace("active", "other")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -646,7 +716,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("scopes classList.add with nested function calls in arguments", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active"></div><script>el.classList.add(fn("active"), "other")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -656,7 +726,7 @@ describe("prefixElementAttribute – class classList methods", () => {
   });
 
   it("ignores parentheses inside regex literals while scanning classList calls", () => {
-    const component = makeComponent(
+    const component = makeScopedComponent(
       '<div class="active"></div><script>el.classList.add(fn(/[)]/), "active")</script>',
     );
     const result = prefixElementAttribute(component, "class", "test1234");
@@ -696,7 +766,7 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
   });
 
   it("scopes a JS-only class in classList.toggle", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<nav></nav><script>el.classList.toggle("open")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -704,7 +774,7 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
   });
 
   it("scopes a JS-only class in classList.contains", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div></div><script>el.classList.contains("selected")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -712,7 +782,7 @@ describe("prefixElementAttribute – JS-only class discovery via classList", () 
   });
 
   it("does not double-scope a class that appears in both HTML attrs and classList.add", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="active"></div><script>el.classList.add("active")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -762,7 +832,7 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
   });
 
   it("scopes a JS-only class used in querySelectorAll", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<ul></ul><script>el.querySelectorAll(".item")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -770,7 +840,7 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
   });
 
   it("scopes a JS-only class used in closest", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div></div><script>el.closest(".panel")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -778,7 +848,7 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
   });
 
   it("scopes a JS-only class used in matches", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div></div><script>el.matches(".active")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -796,7 +866,7 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
   });
 
   it("scopes JS-only classes assigned via className = with multiple tokens", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div></div><script>el.className = "card card--active"</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -816,7 +886,7 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
   });
 
   it("does not double-scope a class appearing in both HTML and querySelector", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>el.querySelector(".card")</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -867,7 +937,7 @@ describe("prefixElementAttribute – name setAttribute", () => {
 
 describe("prefixElementAttribute – class scope key", () => {
   it("class HTML attribute does not contain instanceId", () => {
-    const c = makeComponent('<div class="btn"></div>');
+    const c = makeScopedComponent('<div class="btn"></div>');
     const result = prefixElementAttribute(c, "class", "test1234");
     // Should contain component-name-only scope, not componentInstanceName
     expect(result.fileContent).toContain("bascik__my-comp__btn");
@@ -881,8 +951,8 @@ describe("prefixElementAttribute – class scope key", () => {
   });
 
   it("two instances of same component get identical class scoped names", () => {
-    const c1 = makeComponent('<div class="btn"></div>');
-    const c2 = makeComponent('<div class="btn"></div>');
+    const c1 = makeScopedComponent('<div class="btn"></div>');
+    const c2 = makeScopedComponent('<div class="btn"></div>');
     const r1 = prefixElementAttribute(c1, "class", "aaa11111");
     const r2 = prefixElementAttribute(c2, "class", "bbb22222");
     // Both instances should have the same scoped class name regardless of instanceId
@@ -1063,7 +1133,7 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
 
 describe("prefixElementAttribute – compound querySelector (class)", () => {
   it("scopes both tokens in querySelector('.foo .bar')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="foo"><span class="bar"></span></div>' +
       '<script>document.querySelector(".foo .bar")</script>',
     );
@@ -1074,7 +1144,7 @@ describe("prefixElementAttribute – compound querySelector (class)", () => {
   });
 
   it("scopes both tokens in querySelectorAll('.foo > .bar')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="foo"><span class="bar"></span></div>' +
       '<script>document.querySelectorAll(".foo > .bar")</script>',
     );
@@ -1085,7 +1155,7 @@ describe("prefixElementAttribute – compound querySelector (class)", () => {
   });
 
   it("scopes the class token in querySelector('#id .cls')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div id="panel" class="card"></div>' +
       '<script>document.querySelector("#panel .card")</script>',
     );
@@ -1113,7 +1183,7 @@ describe("prefixElementAttribute – compound querySelector (id)", () => {
 
 describe("prefixElementAttribute – setAttribute", () => {
   it("scopes setAttribute('class', 'value')", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div>' +
       '<script>el.setAttribute("class", "card")</script>',
     );
@@ -1141,7 +1211,7 @@ describe("prefixElementAttribute – setAttribute", () => {
 
 describe("prefixElementAttribute – element.className setter", () => {
   it("scopes single-class assignment", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card"></div><script>el.className = "card"</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -1149,7 +1219,7 @@ describe("prefixElementAttribute – element.className setter", () => {
   });
 
   it("scopes both tokens in a space-separated assignment", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card active"></div>' +
       '<script>el.className = "card active"</script>',
     );
@@ -1160,7 +1230,7 @@ describe("prefixElementAttribute – element.className setter", () => {
   });
 
   it("scopes className += append form", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="open"></div><script>el.className += " open"</script>',
     );
     const result = prefixElementAttribute(c, "class", "test1234");
@@ -1172,7 +1242,7 @@ describe("prefixElementAttribute – element.className setter", () => {
   it("does not re-scope an already-scoped class name", () => {
     // Once a class is scoped (e.g. bascik__my-comp__card), a subsequent
     // iteration for a different class should not touch it.
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="card btn"></div>' +
       '<script>el.className = "card btn"</script>',
     );
@@ -1212,24 +1282,28 @@ describe("prefixElementAttribute – attribute names with regex metacharacters",
     );
   });
 
-  it("scopes getElementsByClassName for a class containing '.'", () => {
+  // The stylesheet scanner reads `.a\.b` as the two classes `a` and `b`, so a class literally
+  // named `a.b` is never "defined in the component's stylesheet" and stays global. These two
+  // tests used to reach the rename path only because a component with no stylesheet renamed
+  // everything; they now pin that the dot is never treated as a regex wildcard.
+  it("leaves getElementsByClassName for a class containing '.' alone when the stylesheet does not define it", () => {
     const c = makeComponent(
       '<div class="a.b"></div><script>document.getElementsByClassName("a.b")</script>',
+      ".axb { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(
-      `getElementsByClassName("${scopeClass("a.b")}")`,
-    );
+    expect(result.fileContent).toContain('getElementsByClassName("a.b")');
+    expect(result.fileContent).not.toContain("bascik__");
   });
 
-  it("scopes setAttribute(\"class\", …) for a class containing '.'", () => {
+  it("leaves setAttribute(\"class\", …) for a class containing '.' alone when the stylesheet does not define it", () => {
     const c = makeComponent(
       '<div class="a.b"></div><script>el.setAttribute("class", "a.b")</script>',
+      ".axb { color: red; }",
     );
     const result = prefixElementAttribute(c, "class", "test1234");
-    expect(result.fileContent).toContain(
-      `setAttribute("class", "${scopeClass("a.b")}")`,
-    );
+    expect(result.fileContent).toContain('setAttribute("class", "a.b")');
+    expect(result.fileContent).not.toContain("bascik__");
   });
 
   it("does not over-match similar names when the class contains '.'", () => {
@@ -1272,7 +1346,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
 
   it("does not rewrite class attributes on elements inside a skipped tag", () => {
     // Inner HTML of <code> (e.g. display code) must be left untouched
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<div class="outer"><code class="cblock-body"><div class="inner">literal</div></code></div>',
     );
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
@@ -1313,7 +1387,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
 
   it("handles nested skip tags (pre > code)", () => {
     const inner = '<code class="language-html"><div class="inner">content</div></code>';
-    const c = makeComponent(`<pre>${inner}</pre><div class="outside"></div>`);
+    const c = makeScopedComponent(`<pre>${inner}</pre><div class="outside"></div>`);
     const result = prefixElementAttribute(c, "class", "test1234", true, ["pre", "code"]);
     // Outer class is scoped
     expect(result.fileContent).toContain(scopeClass("outside"));
@@ -1346,7 +1420,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
     // attribute value (data-x="a>b") terminated the match early and corrupted
     // the shielding.
     const inner = '<div class="inner">literal</div>';
-    const c = makeComponent(
+    const c = makeScopedComponent(
       `<code class="cblock-body" data-x="a>b">${inner}</code><div class="outer"></div>`,
     );
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
@@ -1363,7 +1437,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
   });
 
   it("handles a '>' inside a single-quoted attribute value on the skip element's open tag", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       `<code data-x='a>b'><div class="inner">literal</div></code><div class="outer"></div>`,
     );
     const result = prefixElementAttribute(c, "class", "test1234", true, ["code"]);
@@ -1374,7 +1448,7 @@ describe("prefixElementAttribute – skipElementContents", () => {
   });
 
   it("handles a '>' inside an attribute that appears before class, id, or name attributes", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       `<div data-condition="x > y" class="my-cls" id="my-id" name="my-name"></div>`,
     );
     let result = prefixElementAttribute(c, "class", "test1234");
@@ -1503,7 +1577,7 @@ describe("property-based JS scoping fuzzing", () => {
 
     fc.assert(
       fc.property(classAttributeArb, ({ classes, value }) => {
-        const component = makeComponent(
+        const component = makeScopedComponent(
           `<div class="${value}"></div><script>const empty = "";</script>`,
         );
         const result = prefixElementAttribute(component, "class", "test1234");
@@ -1523,7 +1597,7 @@ describe("property-based JS scoping fuzzing", () => {
 
 describe("prefixElementAttribute – JS regex scoping design decision boundaries", () => {
   it("rewrites DOM query patterns inside JS line comments and block comments", () => {
-    const c = makeComponent(
+    const c = makeScopedComponent(
       '<button id="btn" class="card"></button>' +
       '<script>' +
       '// document.querySelector("#btn");\n' +
@@ -1645,7 +1719,9 @@ describe("prefixElementAttribute – scoping completeness", () => {
           const html = elements
             .map(({ tag, cls }) => `<${tag} class="${cls}">x</${tag}>`)
             .join("\n");
-          const component = { name: "comp", fileContent: html };
+          // Only classes the component's own stylesheet defines are renamed, so define them all.
+          const cssFileContent = elements.map(({ cls }) => `.${cls} { color: red; }`).join("\n");
+          const component = { name: "comp", fileContent: html, cssFileContent };
           const result = prefixElementAttribute(component, "class", "abc12345");
           for (const { cls } of elements) {
             // The original bare class name must no longer appear as a standalone

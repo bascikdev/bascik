@@ -883,6 +883,8 @@ describe("transpilePage – inline component <style> extraction & deduplication"
           '<script>console.log("init");</script>' +
           '<div class="card-head">Header</div>' +
           '<div class="card-body">Body</div>',
+        // Only classes a component's own stylesheet defines are renamed.
+        cssFileContent: ".card-head { font-weight: 700; } .card-body { margin: 0; }",
       },
     };
 
@@ -956,6 +958,8 @@ describe("recursivelyTranspile – prop attribute scoping", () => {
         fileName: "components/bound-field.html",
         fileContent:
           '<input data-bascik-attr-id="id" data-bascik-attr-name="name" data-bascik-attr-class="class">',
+        // The injected class `control` is renamed only because the component's stylesheet defines it.
+        cssFileContent: ".control { border: 1px solid; }",
       },
     };
     const result = recursivelyTranspile(

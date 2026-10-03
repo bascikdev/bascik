@@ -199,7 +199,7 @@ el.setAttribute("class", "bascik__site-nav__toggle-btn");
 
 ### JS-only class discovery
 
-The CSS pass scopes every class name it finds in the `.css` file regardless of whether that class appears in the HTML template. Without a corresponding discovery pass, class names used only in JavaScript (never in a `class="…"` attribute) would be scoped in CSS but left unscoped in JS, making them permanently out of sync.
+The set of classes to scope is the set the component's own stylesheet defines (companion `.css` plus inline `<style>`). A component with no stylesheet defines none, so no class in it is scoped. The CSS pass scopes every class name it finds in that stylesheet regardless of whether that class appears in the HTML template. Without a corresponding discovery pass, class names used only in JavaScript (never in a `class="…"` attribute) would be scoped in CSS but left unscoped in JS, making them permanently out of sync.
 
 To fix this, after the HTML attribute pass builds the initial class scope map, a second scan over every `<script>` block extracts class name string literals from all class-referencing JS patterns and adds any new names to the scope map before the JS rewrite runs:
 
