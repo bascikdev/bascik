@@ -606,6 +606,12 @@ Placing the skip link at the top of a `<site-nav>` component guarantees it is re
 
 Because `id="main-content"` is written on the page shell (`<main id="main-content">`), the `id` is not hashed, ensuring the component's `<a href="#main-content">` skip link always resolves cleanly to the main landmark.
 
+Do not add `data-bascik-preserve="id"` to the skip link to "keep it working". A preserved link is never rewritten, so if its target is a scoped id inside the same component the link ends up pointing at nothing. See the reference rules in [Preserve Scoping](/preserve#reference-rules).
+
+### Third-Party Custom Elements
+
+A hyphenated tag that is not a Bascik component, such as a library's `<heading-anchors>` or `<model-viewer>`, is passed to the browser unchanged. By default each page prints an `Unresolved component tag` warning for it. Declare the tag in [`components.external`](/configuration#componentsexternal) to remove the warning and the `bascik --check` finding. Typos are still reported.
+
 ## Sharing and Distributing Components
 
 Components can be shared across projects or distributed as npm packages:

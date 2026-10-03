@@ -757,7 +757,8 @@ The same applies to markup that a build script or slot produces: put the class o
 These two mechanisms serve distinct purposes:
 
 * **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
-* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Entries are exact tag names or `*` wildcard patterns (for example `vendor-*` preserves every tag whose name starts with `vendor-`); both use the same semantics. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names.
+* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Entries are exact tag names or `*` wildcard patterns (for example `vendor-*` preserves every tag whose name starts with `vendor-`); both use the same semantics. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names. Preserving an `id` also stops reference rewriting inside the preserved region: a link inside a preserved subtree stays literal even if its target is scoped, so a link and its target must be both preserved or both scoped (a scoped link to a preserved target works). Never preserve a skip link to "keep it working"; put the target `id` on the page shell. Preserve does not silence unresolved-tag warnings.
+* **External custom elements (`components.external`):** Hyphenated tags that belong to a browser custom element or library (for example `heading-anchors`) print `Unresolved component tag` on every page and appear in `bascik --check`. List them in `components: { external: ['heading-anchors', 'vendor-*'] }` (exact names or `*` wildcards, case-insensitive) to remove both. It changes diagnostics only: a real component of the same name still expands, scoping is unaffected, and typos stay reported.
 
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:
@@ -1172,6 +1173,9 @@ export default defineConfig({
     out: 'dist',
     api: 'src/api',
   },
+  components: {
+    external: [],
+  },
   scoping: {
     scriptBlocks: true,
     inheritAttributes: true,
@@ -1497,7 +1501,7 @@ Build failed with 2 page errors:
   ```terminal
   [bascik] Unresolved component tag in "pages/about.html": <my-mistyped> - no matching component file found. Run `bascik --check` for a full report.
   ```
-  Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics.
+  Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics. Tags that belong to a custom element or library can be declared in `components.external` so neither the warning nor `--check` reports them.
 
 #### 4. Static Analysis (`bascik --check`)
 Run `bascik --check` from your project root to validate pages, component files, config, and API route files without starting the dev server or writing any output:

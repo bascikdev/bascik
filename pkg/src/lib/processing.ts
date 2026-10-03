@@ -98,6 +98,7 @@ import {
   maskRawTextContent,
 } from "./components.ts";
 import { stripPreserveDirectives } from "./shielding.ts";
+import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
 
@@ -1553,6 +1554,7 @@ export const transpilePage = async (
   // matching component file and will appear unresolved in the output HTML.
   {
     const unresolved = new Set<string>();
+    const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
     for (const chunk of [transpiledHtmlBody, transpiledHeadContent]) {
       // Strip HTML comments as well as <script>, <style>, and <textarea> content
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
@@ -1568,6 +1570,7 @@ export const transpilePage = async (
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {
         const tag = m[1].toLowerCase();
+        if (isExternalTag(tag)) continue;
         unresolved.add(tag);
       }
     }

@@ -122,6 +122,9 @@ export default defineConfig({
     out: 'dist',
     api: 'src/api',
   },
+  components: {
+    external: [],
+  },
   scoping: {
     scriptBlocks: true,
     inheritAttributes: true,
@@ -256,6 +259,30 @@ The following built-in exclusions always apply:
 
 Files in `directory.components` are source-only and are never copied directly.
 
+### `components`
+
+```ts
+components: {
+  external: [], // hyphenated tags owned by a custom element or library, not a Bascik component
+}
+```
+
+### `components.external`
+
+An array of hyphenated tag names that belong to a browser custom element or a third-party library rather than a file in `directory.components`. Entries are exact tag names or `*` wildcard patterns, matched case-insensitively with the same rules as [`scoping.preserve`](#scopingpreserve).
+
+```ts
+export default defineConfig({
+  components: {
+    external: ['heading-anchors', 'model-viewer', 'vendor-*'],
+  },
+});
+```
+
+By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose.
+
+This option changes diagnostics only. A declared tag is passed to the browser unchanged. If a real component file has the same name, the component still expands. It does not stop `id`, `name`, or `class` scoping inside the element; use [`scoping.preserve`](#scopingpreserve) for that. The two options are independent, and most external elements need only `components.external`.
+
 ### `scoping`
 
 Control component scoping behaviors, attribute scoping, element content preservation, and style deduplication.
@@ -310,7 +337,7 @@ export default defineConfig({
 
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
 
-For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. See [Preserve Scoping](/preserve).
+For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. See [Preserve Scoping](/preserve).
 
 ### `minify` (BYOMinifier)
 

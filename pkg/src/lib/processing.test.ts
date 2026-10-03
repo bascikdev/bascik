@@ -1161,7 +1161,7 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   });
 
   it("reports only active per-page work time, excluding a shared batch wait", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
 
     try {
@@ -1566,6 +1566,68 @@ describe("transpilePage – unresolved component tag warning", () => {
     await transpilePage(PAGE_PATH, componentList);
     expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("<my-resolved>"));
     warnSpy.mockRestore();
+  });
+
+  it("does not warn about tags declared in components.external, exact or wildcard", async () => {
+    const html = [
+      "<!DOCTYPE html><html><head></head><body>",
+      "<heading-anchors><h2>x</h2></heading-anchors>",
+      "<vendor-chart></vendor-chart>",
+      "</body></html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["Heading-Anchors", "vendor-*"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      await transpilePage(PAGE_PATH, {});
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("Unresolved component tag"));
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
+  });
+
+  it("still warns about an undeclared tag when others are external, and names only that tag", async () => {
+    const html = [
+      "<!DOCTYPE html><html><head></head><body>",
+      "<heading-anchors></heading-anchors><my-typo></my-typo>",
+      "</body></html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["heading-anchors"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      await transpilePage(PAGE_PATH, {});
+      const message = warnSpy.mock.calls.map((call) => String(call[0])).find((text) => text.includes("Unresolved"));
+      expect(message).toContain("<my-typo>");
+      expect(message).not.toContain("<heading-anchors>");
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
+  });
+
+  it("does not let an external declaration shadow a real component of the same name", async () => {
+    const componentList = {
+      "heading-anchors": {
+        fileName: "components/heading-anchors.html",
+        fileContent: "<section>from component</section>",
+      },
+    };
+    const html = "<!DOCTYPE html><html><head></head><body><heading-anchors></heading-anchors></body></html>";
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["heading-anchors"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      const result = await transpilePage(PAGE_PATH, componentList);
+      expect(JSON.stringify(result)).toContain("from component");
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
   });
 
   it("does not warn about hyphenated tags inside script/style elements", async () => {

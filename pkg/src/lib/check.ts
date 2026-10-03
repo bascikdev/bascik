@@ -20,6 +20,7 @@ import { findComponentRoot } from "./component-roots.ts";
 import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
+import { createExternalTagMatcher } from "./external-components.ts";
 import { scanApiRouteFiles, fileToApiRoutePath } from "./api-routes.ts";
 import { getHttpPath } from "./paths.ts";
 import { buildMissingSiteUrlError } from "./sitemap.ts";
@@ -567,6 +568,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
     }),
   );
 
+  const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
   const usedComponents = new Set<string>();
   const unmatchedTagLocations = new Map<string, FindingLocation[]>();
   const unknownBascikAttrs = new Map<string, FindingLocation[]>();
@@ -632,7 +634,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
     for (const { tag, line } of occurrences) {
       if (knownComponents.has(tag)) {
         usedComponents.add(tag);
-      } else {
+      } else if (!isExternalTag(tag)) {
         const list = unmatchedTagLocations.get(tag) ?? [];
         list.push({ filePath: displayPath, line });
         unmatchedTagLocations.set(tag, list);
@@ -896,7 +898,7 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "unmatched-tag": {
     title: "Components with no matching file",
     description:
-      "These are either typos, or third-party web components. Bascik does not\ntranspile them; they are passed through to the browser unchanged.",
+      "These are either typos, or third-party web components. Bascik does not\ntranspile them; they are passed through to the browser unchanged.\nDeclare intentional ones in components.external to hide them.",
   },
   "unused-component": {
     title: "Unused components",

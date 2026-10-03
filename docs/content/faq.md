@@ -71,9 +71,11 @@ During a build, Bascik emits a warning naming the unresolved tag, and the tag sh
 
 Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
 
+To silence the warning for a tag you own on purpose, list it in [`components.external`](/configuration#componentsexternal), for example `components: { external: ['model-viewer', 'ion-icon', 'vendor-*'] }`. Typos stay reported. `scoping.preserve` does not do this: it only controls attribute scoping.
+
 ## Why does `--check` list my third-party web components?
 
-Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
+Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. Declare the ones you use in [`components.external`](/configuration#componentsexternal) to remove them from the report. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
 
 ## What does `bascik --check` actually check?
 

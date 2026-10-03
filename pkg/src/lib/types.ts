@@ -173,6 +173,18 @@ export interface ScopingOptions {
   deduplicateCss: boolean;
 }
 
+export interface ComponentsOptions {
+  /**
+   * Hyphenated tags owned by a browser custom element or third-party library,
+   * not by a Bascik component file. Entries are exact tag names or `*` wildcard
+   * patterns (for example `heading-anchors` or `vendor-*`). Matching tags are
+   * left out of the "Unresolved component tag" build warning and the
+   * `bascik --check` unmatched-tag findings. Resolution and scoping are
+   * unchanged; use `scoping.preserve` to stop attribute scoping.
+   */
+  external: string[];
+}
+
 export interface AssetsOptions {
   inlineStyles: boolean | string[];
   exclude: string[];
@@ -312,6 +324,7 @@ export interface LoggingOptions {
 
 export interface BascikConfigOptions {
   directory: DirectoryOptions;
+  components: ComponentsOptions;
   scoping: ScopingOptions;
   minify: MinifyOptions;
   assets: AssetsOptions;
@@ -331,6 +344,9 @@ export interface BascikConfigOptions {
 
 export type UserConfig = {
   directory?: DirectoryInput;
+  components?: {
+    external?: string[];
+  };
   scoping?: {
     scriptBlocks?: boolean;
     inheritAttributes?: boolean;

@@ -129,6 +129,9 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
     out: "dist",
     api: "src/api",
   },
+  components: {
+    external: [],
+  },
   scoping: {
     scriptBlocks: true,
     inheritAttributes: true,

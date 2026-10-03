@@ -69,6 +69,7 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | Prop-to-attribute binding | WHATWG HTML §3.2.6.6 | ✓ | `data-bascik-attr-{attribute}="{propName}"` binds a supplied prop to plain and hyphenated attributes, then removes the directive. Missing props add nothing; existing targets warn and are replaced. Bound `id`, `name`, and `class` values use normal scoping rules. |
 | Nested prop boundary | WHATWG HTML §3.2.6.6 | ✓ | Props are extracted only from a component's opening usage tag, so declarations on nested components inside slot content never leak into the parent. |
 | Tag-level preserve | WHATWG HTML §13.1.2 | ✓ | `scoping.preserve` keeps each configured tag's `id`, `name`, and `class` attributes, contents, and descendants unscoped through shared restorable shielding. Entries accept `*` wildcard patterns (for example `vendor-*`) with the same semantics as exact names. |
+| External custom elements | WHATWG HTML §4.13 | ✓ | `components.external` lists hyphenated tags owned by a custom element or library (exact names or `*` wildcards, case-insensitive). Matching tags are omitted from the `Unresolved component tag` build warning and the `--check` unmatched-tag findings. A real component of the same name still expands, and attribute scoping is unaffected. |
 | Element-level preserve | WHATWG HTML §3.2.6.6 | ✓ | `data-bascik-preserve` applies to one subtree. A bare directive preserves `id`, `name`, and `class`; a space-separated value preserves only listed attributes. The directive is removed from output. |
 | Internal raw-text mask | WHATWG HTML §13.1.2 | ✓ | Internal scans use a hardcoded same-length discard mask for scripts, styles, textareas, and comments. It is not configurable and is distinct from author-facing preservation. |
 | Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. |
@@ -97,7 +98,7 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | CSS cross-document fragments | ✓ | Values such as `url(other.svg#icon)` are deliberately untouched because the fragment belongs to another document. Real, remote, and data URLs also remain unchanged. |
 | `usemap` on `<img>` | ✓ | Resolves against a local `<map name>`, not an ID, and follows `scoping.attributes.name`. |
 | Cross-component ID references | ✗ | IDs are scoped per instance, so references cannot resolve safely across component boundaries at build time. They remain unchanged. |
-| Preserved subtrees | ✓ | References and declarations inside `scoping.preserve` tags or `data-bascik-preserve` subtrees remain literal. |
+| Preserved subtrees | ✓ | References and declarations inside `scoping.preserve` tags or `data-bascik-preserve` subtrees remain literal. A link inside a preserved subtree is never rewritten, even to a scoped target elsewhere in the component, so a link and its target must be both preserved or both scoped. A scoped link to a preserved target keeps working. |
 
 ---
 

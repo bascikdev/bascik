@@ -271,7 +271,7 @@ Build failed with 2 page errors:
     write output: EACCES: permission denied
 ```
 
-Unresolved component tags remain transpilation warnings. `bascik --check` reports them as errors, making that command the strict CI gate for component references.
+Unresolved component tags remain transpilation warnings and never fail a build. `bascik --check` lists them as warnings (exit code 0); pass `--strict` to make them fail, which turns that command into the CI gate for component references. Tags that belong to a custom element or library can be declared in [`components.external`](/configuration#componentsexternal) so neither the build warning nor `--check` reports them, which is what lets `--check --strict` pass on a site that uses them.
 
 Component transpilation failure:
 
@@ -316,6 +316,7 @@ bascik --check
 Components with no matching file (3)
   These are either typos, or third-party web components. Bascik does not
   transpile them; they are passed through to the browser unchanged.
+  Declare intentional ones in components.external to hide them.
 
   <model-viewer>     src/pages/gallery.html:42
   <ion-icon>         src/components/nav/nav.html:8, src/pages/index.html:14

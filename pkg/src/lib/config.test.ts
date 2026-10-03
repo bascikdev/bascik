@@ -32,6 +32,21 @@ describe("defaultConfig", () => {
     expect(defaultConfig.scoping.preserve).toEqual(["code"]);
   });
 
+  it("declares no external components by default", () => {
+    expect(defaultConfig.components.external).toEqual([]);
+  });
+
+  it("merges a user components.external list into the resolved config", () => {
+    const { BascikConfig: cfg } = initBascikConfig(
+      { components: { external: ["heading-anchors", "vendor-*"] } },
+      {},
+      {},
+      { fs: allowAllFs },
+    );
+    expect(cfg.components.external).toEqual(["heading-anchors", "vendor-*"]);
+    expect(defaultConfig.components.external).toEqual([]);
+  });
+
   it("has default directory paths including out", () => {
     expect(defaultConfig.directory.pages).toMatch(/src[/\\]pages$/);
     expect(defaultConfig.directory.components).toEqual(["src/components"]);

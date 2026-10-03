@@ -354,6 +354,24 @@ describe("checkProject", () => {
       expect(unused?.message).toContain("unused-card");
     });
 
+    it("omits tags declared in components.external from unmatched-tag findings, exact and wildcard", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<heading-anchors><h2>x</h2></heading-anchors><vendor-chart></vendor-chart><my-typo></my-typo>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const original = (BascikConfig as any).components;
+      (BascikConfig as any).components = { external: ["heading-anchors", "vendor-*"] };
+      try {
+        const findings = await checkProject();
+        const unmatched = findings.items.filter((i) => i.category === "unmatched-tag");
+        expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
+      } finally {
+        (BascikConfig as any).components = original;
+      }
+    });
+
     it("checkProject prints nothing directly to console", async () => {
       await setupProject({
         "pages/index.html": "<model-viewer></model-viewer>",

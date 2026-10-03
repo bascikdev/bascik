@@ -571,6 +571,41 @@ describe("base normalization", () => {
   });
 });
 
+describe("components.external", () => {
+  it("accepts exact tag names and wildcard patterns", () => {
+    expect(
+      validateConfigShape({ components: { external: ["heading-anchors", "vendor-*", "*-widget"] } }),
+    ).toHaveLength(0);
+    expect(validateConfigShape({ components: { external: [] } })).toHaveLength(0);
+  });
+
+  it("rejects a non-array value, naming the key", () => {
+    const errors = validateConfigShape({ components: { external: "heading-anchors" as any } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("components.external");
+    expect(errors[0].message).toContain("array");
+  });
+
+  it("rejects malformed entries with the entry index in the key", () => {
+    const errors = validateConfigShape({
+      components: { external: ["heading-anchors", "div span", 42 as any, ""] },
+    });
+    expect(errors.map((e) => e.key)).toEqual([
+      "components.external[1]",
+      "components.external[2]",
+      "components.external[3]",
+    ]);
+    expect(errors[0].message).toContain("tag name or wildcard");
+  });
+
+  it("suggests the right key for a near miss", () => {
+    const errors = validateConfigShape({ components: { extrnal: ["heading-anchors"] } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("components.extrnal");
+    expect(errors[0].message).toContain('did you mean "components.external"');
+  });
+});
+
 describe("scoping.preserve and assets.exclude", () => {
   it("rejects a malformed preserve entry", () => {
     const errors = validateConfigShape({ scoping: { preserve: ["code", "div span"] } });

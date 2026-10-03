@@ -71,6 +71,7 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 /** Nested map of every known config key. Leaf value is null. */
 const KNOWN_KEYS: Record<string, unknown> = {
   directory: { pages: null, components: null, out: null, api: null },
+  components: { external: null },
   scoping: {
     scriptBlocks: null,
     inheritAttributes: null,
@@ -530,6 +531,23 @@ export const validateConfigShape = (
     }
     if (assets.symlink !== undefined && typeof assets.symlink !== "boolean") {
       push("assets.symlink", assets.symlink, "expected a boolean");
+    }
+  }
+
+  /* components */
+  if (isPlainObject(raw.components) && raw.components.external !== undefined) {
+    const external = raw.components.external;
+    if (!Array.isArray(external)) {
+      push("components.external", external, "expected an array of tag names");
+    } else {
+      external.forEach((entry, index) => {
+        if (
+          typeof entry !== "string" ||
+          (!PLAUSIBLE_TAG_NAME.test(entry) && !PRESERVE_WILDCARD_PATTERN.test(entry))
+        ) {
+          push(`components.external[${index}]`, entry, 'expected a tag name or wildcard pattern like "heading-anchors" or "vendor-*"');
+        }
+      });
     }
   }
 
