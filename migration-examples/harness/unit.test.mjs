@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { validateManifest, verifyArchive } from './fetch-source.mjs';
+import { expandCommand } from './runner.mjs';
+
+test('command tokens expand per site without a shell', () => {
+  assert.deepEqual(expandCommand(['x', '--port', '{PORT}', '--host={HOST}'], 4321), ['x', '--port', '4321', '--host=127.0.0.1']);
+  assert.deepEqual(expandCommand(['plain'], 1), ['plain']);
+});
 
 test('approved manifests use immutable safe pins', async () => {
   for (const id of ['astro-blog', 'eleventy-base-blog']) {

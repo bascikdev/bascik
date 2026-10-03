@@ -1,0 +1,27 @@
+<header>
+  <nav>
+    <h2>
+      <script data-bascik-build>
+        import { SITE_TITLE, escapeHtml } from '@/lib/site.ts';
+        console.log(`<a class="site-title" data-testid="site-title" href="/">${escapeHtml(SITE_TITLE)}</a>`);
+      </script>
+    </h2>
+    <div class="internal-links">
+      <script data-bascik-build="page">
+        import { pagePath } from '@/lib/site.ts';
+        // Equivalent of HeaderLink.astro: a link is current when its first path segment
+        // matches the current route's first segment, so /blog/first-post/ keeps Blog active.
+        const first = '/' + (pagePath().match(/[^/]+/g)?.[0] ?? '');
+        const links = [['/', 'Home', 'nav-home'], ['/blog', 'Blog', 'nav-blog'], ['/about', 'About', 'nav-about']];
+        // Emitted anchors are styled by class. In testing, the element selector `nav a` styled these
+        // build-script anchors in production but not in dev, so classes keep both modes identical.
+        // One write with no separators: whitespace between inline links would add visible gaps.
+        console.log(links.map(([href, label, testid]) => {
+          const current = href === first ? ' aria-current="page"' : '';
+          return `<menu-link class="nav-link" href="${href}" data-testid="${testid}"${current}>${label}</menu-link>`;
+        }).join(''));
+      </script>
+    </div>
+    <div class="social-links"><social-links></social-links></div>
+  </nav>
+</header>

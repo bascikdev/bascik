@@ -112,3 +112,22 @@ color. It uses `data-testid` and `getByTestId`, not compiler-specific class name
 This does not establish accessibility compliance or framework-wide parity.
 Dev/SSE, production HTTP/2/TLS, full monorepo suites, and actual Astro/Eleventy
 builds are outside this independent task's acceptance checks.
+
+## Task 03: Astro blog port
+
+Port: `ports/astro-blog/` (see its README and NOTICE.md). Behavior checks:
+`harness/astro-blog-checks.mjs`, expectations in `harness/astro-blog-expected.mjs`, runner in
+`harness/astro-blog.test.mjs`. The dependency lockfile for the pinned upstream is
+`sources/astro-blog.package-lock.json`.
+
+1. `npm --prefix migration-examples ci --ignore-scripts`
+2. `npm --prefix migration-examples run fetch -- astro-blog` (once; skip if `.upstream/astro-blog` exists)
+3. `yarn pkg:build && yarn workspace @bascik/bascik pack --out /tmp/bascik-task03.tgz`
+4. `BASCIK_TARBALL=/tmp/bascik-task03.tgz npm --prefix migration-examples run test:astro`
+
+`ASTRO_LANE=production|local|dev|control` selects one lane. Each lane copies the pinned upstream and
+the port into separate temporary directories outside the repository, installs the upstream from the
+retained lockfile with `npm ci --ignore-scripts` plus `npm rebuild esbuild`, and installs the port
+with `npm ci --ignore-scripts` (the `local` lane then installs the packed tarball over the registry
+release). The same checks run against both sites with Chromium. The `control` lane proves the checks
+reject a site that is not the blog.

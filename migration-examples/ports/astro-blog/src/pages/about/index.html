@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <base-head data-bascik-prop-title="About This Port"
+    data-bascik-prop-description="Why this site exists and what it demonstrates."></base-head>
+</head>
+
+<body>
+  <site-header></site-header>
+  <post-layout data-bascik-prop-title="About This Port">
+    <div data-bascik-slot="hero"><img src="/assets/about.webp" alt="" width="1020" height="510" loading="lazy" decoding="async"></div>
+    <div data-bascik-slot="date"><formatted-date data-bascik-prop-iso="2021-08-08T00:00:00.000Z" data-bascik-prop-label="Aug 8, 2021"></formatted-date></div>
+    <p>
+      This site is a hand port of the official Astro blog example to Bascik. It exists to check, one
+      behavior at a time, what carries over from Astro and what needs a different approach.
+    </p>
+    <p>
+      Every route here has a counterpart in the original: a home page, a blog index, an about page,
+      five posts, an RSS feed, and a sitemap. The visual design follows the original stylesheet. The
+      words and pictures are new.
+    </p>
+    <p>
+      Nothing on these pages needs JavaScript to read. The one script on the site is the click handler
+      on the embedded component in the Markdown post, which is there to prove that inline event
+      attributes survive the build.
+    </p>
+  </post-layout>
+  <site-footer></site-footer>
+</body>
+
+</html>

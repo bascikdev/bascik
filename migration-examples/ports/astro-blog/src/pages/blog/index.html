@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script data-bascik-build>
+    import { SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site.ts';
+    import { renderBaseHead } from '@/lib/render.ts';
+    console.log(renderBaseHead({ title: SITE_TITLE, description: SITE_DESCRIPTION }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <post-list></post-list>
+  <site-footer></site-footer>
+</body>
+
+</html>

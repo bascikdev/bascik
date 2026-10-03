@@ -15,6 +15,11 @@ export async function unusedPort() {
   return port;
 }
 
+// Commands run without a shell, so per-site loopback port/host reach a CLI through argument tokens.
+export function expandCommand(command, port, host = '127.0.0.1') {
+  return command.map((part) => part.replaceAll('{PORT}', String(port)).replaceAll('{HOST}', host));
+}
+
 export function launch(command, cwd, env) {
   const child = spawn(command[0], command.slice(1), {
     cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
@@ -107,12 +112,12 @@ export async function runPair({ upstream, bascik, prepare, check, timeoutMs = 10
       sites[name] = site;
       if (prepare) await prepare(name, site);
       if (spec.build) {
-        const build = launch(spec.build, cwd, env);
+        const build = launch(expandCommand(spec.build, port), cwd, env);
         processes.push(build);
         await build.wait(timeoutMs);
         await build.stop();
       }
-      const server = launch(spec.serve, cwd, env);
+      const server = launch(expandCommand(spec.serve, port), cwd, env);
       processes.push(server);
       site.pid = server.child.pid;
       observe?.({ name, ...site });

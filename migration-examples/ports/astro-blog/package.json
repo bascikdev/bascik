@@ -1,0 +1,23 @@
+{
+  "name": "astro-blog-bascik-port",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "bascik --site-url https://example.com",
+    "build": "bascik --build --site-url https://example.com",
+    "serve": "bascik --server"
+  },
+  "dependencies": {
+    "@bascik/bascik": "1.0.0-rc.2",
+    "feed": "^6.0.0",
+    "gray-matter": "^4.0.3",
+    "marked": "^18.0.14",
+    "marked-footnote": "^1.4.0",
+    "marked-gfm-heading-id": "^4.1.4",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,8 @@
+a {
+  display: inline-block;
+  text-decoration: none;
+}
+a[aria-current='page'] {
+  font-weight: bolder;
+  text-decoration: underline;
+}

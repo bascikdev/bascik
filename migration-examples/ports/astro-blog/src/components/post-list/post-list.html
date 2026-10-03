@@ -1,0 +1,11 @@
+<main>
+  <section>
+    <ul>
+      <script data-bascik-build>
+        import { getSortedPosts } from '@/lib/posts.ts';
+        import { renderPostCard } from '@/lib/render.ts';
+        for (const post of await getSortedPosts()) console.log(renderPostCard(post));
+      </script>
+    </ul>
+  </section>
+</main>

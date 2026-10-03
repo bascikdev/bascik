@@ -8,5 +8,5 @@
   "license": "MIT",
   "notice": "Copyright (c) 2021 Fred K. Schott",
   "lockfile": "astro-blog.package-lock.json",
-  "lockfileStatus": "Capture in task 03 before installing the upstream."
+  "lockfileStatus": "Captured 2026-10-03 with npm install --ignore-scripts --before=2026-09-25. Reproduce with npm ci --ignore-scripts, then npm rebuild esbuild."
 }
