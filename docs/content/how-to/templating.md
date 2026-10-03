@@ -195,6 +195,8 @@ The same `data` object can feed a second script on the page, a JSON payload for 
 
 > **Build script caching cannot see network fetches.** The build script cache keys on the script body and its statically scanned local dependencies. A script whose output depends on a remote API will be served from cache with stale data across builds, and nothing will tell you. If a script fetches from the network, reads a directory with `readdir`, or uses computed file paths, exclude it from caching in `bascik.config.ts`:
 >
+> The `include` and `exclude` globs are relative to the project root, so `src/pages/live-feed/**` and `src/components/api-cards/**` match those source paths even though the compiler may pass absolute file paths internally.
+>
 > ```ts
 > // bascik.config.ts
 > export default defineConfig({

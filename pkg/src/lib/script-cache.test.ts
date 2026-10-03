@@ -18,7 +18,7 @@ vi.mock("./config.js", () => ({
 
 import { isScriptCacheEnabledForPath, pruneScriptCache, resetScriptCachePruneThrottle } from "./script-cache.ts";
 import { BascikConfig } from "./config.ts";
-import { mkdir, writeFile, utimes, readdir, rm } from "node:fs/promises";
+import { mkdir, writeFile, utimes, readdir, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -47,6 +47,38 @@ describe("script-cache configuration and scoping", () => {
     expect(isScriptCacheEnabledForPath("src/pages/about.html")).toBe(true);
     expect(isScriptCacheEnabledForPath("src/pages/live/feed.html")).toBe(false);
     expect(isScriptCacheEnabledForPath("src/components/card.html")).toBe(false);
+  });
+
+  it("matches project-relative include and exclude globs for absolute and relative paths", async () => {
+    const originalCwd = process.cwd();
+    const projectRootInput = join(tmpdir(), `bascik-script-cache-paths-${Date.now()}`);
+    await mkdir(projectRootInput, { recursive: true });
+    const projectRoot = await realpath(projectRootInput);
+    process.chdir(projectRoot);
+
+    try {
+      (BascikConfig as any).scripts.cache = {
+        enabled: true,
+        include: ["src/pages/**"],
+        exclude: ["src/pages/live/**"],
+      };
+
+      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html"))).toBe(true);
+      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/live/feed.html"))).toBe(false);
+      expect(isScriptCacheEnabledForPath("src\\pages\\live\\feed.html")).toBe(false);
+      expect(isScriptCacheEnabledForPath("src/pages/about.html")).toBe(true);
+
+      (BascikConfig as any).scripts.cache = {
+        enabled: true,
+        include: ["**/src/pages/**"],
+        exclude: ["**/src/pages/live/**"],
+      };
+      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/about.html"))).toBe(true);
+      expect(isScriptCacheEnabledForPath(join(projectRoot, "src/pages/live/feed.html"))).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+      await rm(projectRootInput, { recursive: true, force: true });
+    }
   });
 
   it("prunes cache entries older than 7 days", async () => {

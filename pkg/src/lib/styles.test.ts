@@ -208,6 +208,14 @@ describe("addElementClassesInHtml", () => {
     expect(result).not.toContain("docs-sidebar bascik__docs-sidebar__el__a");
     expect(result).toContain('<a class="bascik__docs-sidebar__el__a" href="/why-bascik">Why Bascik</a>');
   });
+
+  it("does not match hyphenated tag-name prefixes", () => {
+    const html = '<header><header class="x"></header><header\n  data-x></header><header /><header-link data-x="1">link</header-link></header>';
+    const result = addElementClassesInHtml(html, "site-header", ["header"]);
+    expect(result).toBe(
+      '<header class="bascik__site-header__el__header"><header class="x bascik__site-header__el__header"></header><header class="bascik__site-header__el__header"\n  data-x></header><header class="bascik__site-header__el__header" /><header-link data-x="1">link</header-link></header>',
+    );
+  });
 });
 
 describe("addIdClassesInHtml", () => {
@@ -880,6 +888,18 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
     expect(elementsConvertedClasses).toContain("p");
   });
 
+  it("converts descendant elements after a minified scoped class", () => {
+    BascikConfig.minify.identifiers = true;
+    try {
+      const { css, elementsConvertedClasses } =
+        convertCssElementSelectorsToClasses("nav a { color: red; }", "site-header");
+      expect(elementsConvertedClasses).toEqual(["nav", "a"]);
+      expect(css).not.toMatch(/ a\s*\{/);
+    } finally {
+      BascikConfig.minify.identifiers = false;
+    }
+  });
+
   it("converts element after scoped class with child combinator >", () => {
     const pre = ".bascik__my-comp__list > li { list-style: none; }";
     const { css } = convertCssElementSelectorsToClasses(pre, "my-comp");
@@ -1081,6 +1101,14 @@ describe("scopeInlineStyleTags", () => {
     const html = '<style>.foo { color: red; }</style><div class="foo"></div>';
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
     expect(result).toContain(".bascik__my-comp__foo");
+  });
+
+  it("does not treat a custom element with a style prefix as a style tag", () => {
+    const html = "<style-card><style>.foo { color: red; }</style></style-card>";
+    const { html: result } = scopeInlineStyleTags(html, "my-comp");
+    expect(result).toBe(
+      "<style-card><style>.bascik__my-comp__foo { color: red; }</style></style-card>",
+    );
   });
 
   it("returns element classes to inject into HTML", () => {
@@ -1838,6 +1866,13 @@ describe("extractInlineStyles", () => {
     const { html, css } = extractInlineStyles(input);
     expect(html).toBe('<span class="badge">Badge</span>');
     expect(css).toBe(".badge { color: red; }");
+  });
+
+  it("does not treat a custom element with a style prefix as a style tag", () => {
+    const input = '<style-card><style>.box { color: red; }</style></style-card>';
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toBe("<style-card></style-card>");
+    expect(css).toBe(".box { color: red; }");
   });
 
   it("extracts multiple <style> tags and concatenates their CSS", () => {

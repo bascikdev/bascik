@@ -328,6 +328,8 @@ A script whose dependency graph cannot be statically known (a dynamic `import()`
 
 If your script reads from any of the undetectable sources above, configure `scripts.cache.exclude` in `bascik.config.ts`:
 
+`include` and `exclude` globs match script source paths relative to the project root, such as `src/pages/live-feed/index.html`, even when Bascik passes an absolute path internally. Existing patterns prefixed with `**/` continue to match.
+
 ```ts
 // bascik.config.ts
 import { defineConfig } from '@bascik/bascik/config';

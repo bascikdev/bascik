@@ -21,7 +21,7 @@ You access these variables using standard Node.js `process.env.<VARIABLE_NAME>`.
 
 ## Build-Time Scripts (`data-bascik-build`)
 
-Every `<script data-bascik-build>` block runs inside an isolated Node.js child process with access to page, file, and configuration variables.
+Every `<script data-bascik-build>` block runs inside an isolated Node.js child process with access to page, file, and configuration variables. In component templates, page variables describe a specific page only when the script is deferred with `data-bascik-build="page"` or `data-bascik-page-aware`.
 
 ### `BASCIK_PAGE_PATH`
 
@@ -37,6 +37,8 @@ The normalized root-relative URL path corresponding to the page being generated.
 const currentPath = process.env.BASCIK_PAGE_PATH;
 const isCurrent = currentPath === '/components';
 ```
+
+Component scripts that read this variable through an imported helper must use an explicit page-aware marker. Indirect helper reads are not inferred from the import graph; without the marker, the script runs once during component registration and does not have page-specific context.
 
 ### `BASCIK_SOURCE_FILE` vs `BASCIK_PAGE_FILE`
 

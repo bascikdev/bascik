@@ -106,21 +106,17 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 By default, static `<script data-bascik-build>` blocks inside component templates execute once during initial component registration. However, reusable navigation, breadcrumb, TOC, and pagination components (like `<docs-pagination />`) need to adapt to whichever page shell they are placed on.
 
-Declaring `data-bascik-build="page"` or `data-bascik-page-aware` (or referencing `process.env.BASCIK_PAGE_PATH` inside the script) tells Bascik to defer script execution to page transpilation time:
+Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to defer script execution to page transpilation time. A literal `process.env.BASCIK_PAGE_PATH` reference inside the script is also detected. Bascik does not follow imported helpers to infer indirect environment reads, so use the explicit `page` value when a helper such as `pagePath()` reads page context:
 
 ```html
 <!-- src/components/docs-pagination/docs-pagination.html -->
 <script data-bascik-build="page">
-  import { join } from 'node:path';
-  import { pathToFileURL } from 'node:url';
-  const { renderPagination } = await import(
-    pathToFileURL(join(process.cwd(), 'src/lib/render-nav.ts')).href
-  );
-  console.log(renderPagination());
+  import { pagePath, siteOrigin } from '@/lib/site.ts';
+  console.log(`<link rel="canonical" href="${siteOrigin()}${pagePath()}">`);
 </script>
 ```
 
-When Bascik transpiles `src/pages/components.html` containing `<docs-pagination />`, it executes the deferred component build script with `process.env.BASCIK_PAGE_PATH` set to `"/components"`. Each page gets its own isolated output and disk cache entry automatically.
+Without an explicit page-aware marker, a component build script that reads page context only through an imported helper runs once during component registration. Its output is then reused, and a helper may derive a path from the component file instead of the page. With the marker, when Bascik transpiles `src/pages/components.html` containing `<docs-pagination />`, it executes the deferred script with `process.env.BASCIK_PAGE_PATH` set to `"/components"`. Each page gets its own output and disk cache entry.
 
 ## The Pattern in Practice
 

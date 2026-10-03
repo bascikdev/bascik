@@ -407,7 +407,11 @@ Script execution configuration and error handling.
 
 ```ts
 scripts: {
-  cache: { enabled: true },     // cache build script output
+  cache: {
+    enabled: true,
+    include: ['src/pages/**'],  // optional project-root-relative globs
+    exclude: ['src/pages/live/**'],
+  },
   typescript: true,             // browser TS compiler: true | false | function
   onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
   onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
@@ -416,6 +420,8 @@ scripts: {
   importRoot: 'src',            // directory that @/ and / resolve against
 }
 ```
+
+`scripts.cache.include` and `scripts.cache.exclude` are matched against project-root-relative script source paths. For example, `src/pages/live/**` excludes scripts in that directory whether the compiler supplies a relative or absolute source path. A `**/src/pages/live/**` pattern remains supported for projects that already use that form.
 
 #### `scripts.typescript`
 
