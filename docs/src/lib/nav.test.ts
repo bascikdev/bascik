@@ -35,6 +35,19 @@ describe('renderSectionLabel', () => {
     expect(renderSectionLabel('/how-to/markdown')).toBe('<p class="section-label">How-to</p>');
   });
 
+  it('escapes labels and sections as attribute values, and never emits the old inline spans', () => {
+    const html = renderPagination('/testing/unit-testing');
+    expect(html).toContain('data-bascik-prop-section="Testing &amp; Debugging"');
+    expect(html).not.toContain('<span');
+    expect(html).not.toMatch(/data-pg-(dir|section|label)/);
+  });
+
+  it('passes the direction text as a prop so each link component can render it', () => {
+    const html = renderPagination('/components');
+    expect(html).toContain('data-bascik-prop-dir="\u2190 Previous"');
+    expect(html).toContain('data-bascik-prop-dir="Next \u2192"');
+  });
+
   it('returns empty string for unknown paths', () => {
     expect(renderSectionLabel('/nonexistent-page')).toBe('');
   });
@@ -55,29 +68,29 @@ describe('renderPagination', () => {
     const html = renderPagination('/why-bascik');
     expect(html).toContain('data-pg="next"');
     expect(html).not.toContain('data-pg="prev"');
-    expect(html).toContain('<span data-pg-section>Overview</span>');
-    expect(html).toContain('<span data-pg-label>Developer Experience</span>');
+    expect(html).toContain('data-bascik-prop-section="Overview"');
+    expect(html).toContain('data-bascik-prop-label="Developer Experience"');
   });
 
   it('returns prev only on the last page', () => {
     const html = renderPagination('/sponsor');
     expect(html).toContain('data-pg="prev"');
     expect(html).not.toContain('data-pg="next"');
-    expect(html).toContain('<span data-pg-section>Community</span>');
-    expect(html).toContain('<span data-pg-label>Press Resources</span>');
+    expect(html).toContain('data-bascik-prop-section="Community"');
+    expect(html).toContain('data-bascik-prop-label="Press Resources"');
   });
 
   it('links releases to the previous section and to press', () => {
     const html = renderPagination('/releases');
-    expect(html).toContain('<span data-pg-section>Switch to Bascik</span>');
-    expect(html).toContain('<span data-pg-label>From WordPress</span>');
+    expect(html).toContain('data-bascik-prop-section="Switch to Bascik"');
+    expect(html).toContain('data-bascik-prop-label="From WordPress"');
     expect(html).toContain('href="/press"');
   });
 
   it('links press to releases and to sponsor', () => {
     const html = renderPagination('/press');
-    expect(html).toContain('<span data-pg-section>Community</span>');
-    expect(html).toContain('<span data-pg-label>Releases</span>');
+    expect(html).toContain('data-bascik-prop-section="Community"');
+    expect(html).toContain('data-bascik-prop-label="Releases"');
     expect(html).toContain('href="/sponsor"');
   });
 
@@ -92,17 +105,17 @@ describe('renderPagination', () => {
     const html = renderPagination('/production-server');
     expect(html).toContain('data-pg="prev"');
     expect(html).toContain('data-pg="next"');
-    expect(html).toContain('<span data-pg-section>Reference</span>');
-    expect(html).toContain('<span data-pg-label>Development Server</span>');
-    expect(html).toContain('<span data-pg-section>Tooling</span>');
-    expect(html).toContain('<span data-pg-label>Linter</span>');
+    expect(html).toContain('data-bascik-prop-section="Reference"');
+    expect(html).toContain('data-bascik-prop-label="Development Server"');
+    expect(html).toContain('data-bascik-prop-section="Tooling"');
+    expect(html).toContain('data-bascik-prop-label="Linter"');
   });
 
   it('includes section names within the same section', () => {
     const html = renderPagination('/testing/unit-testing');
-    expect(html).toContain('<span data-pg-section>Testing & Debugging</span>');
-    expect(html).toContain('<span data-pg-label>Overview</span>');
-    expect(html).toContain('<span data-pg-label>Component Testing</span>');
+    expect(html).toContain('data-bascik-prop-section="Testing &amp; Debugging"');
+    expect(html).toContain('data-bascik-prop-label="Overview"');
+    expect(html).toContain('data-bascik-prop-label="Component Testing"');
   });
 
   it('returns empty string for unknown paths', () => {
@@ -152,7 +165,10 @@ describe('renderPagination', () => {
     process.env.BASCIK_PAGE_PATH = '/components';
     try {
       const html = renderPagination();
-      expect(html).toContain('<nav class="docs-pagination" aria-label="Page navigation">');
+      // The <nav> and its styles belong to the docs-pagination component; the
+      // script only emits the link components, whose styles are scoped too.
+      expect(html).not.toContain('<nav');
+      expect(html).toContain('<pagination-link href="/getting-started" data-pg="prev"');
       expect(html).toContain('href="/getting-started"');
       expect(html).toContain('href="/scoped-styles"');
     } finally {

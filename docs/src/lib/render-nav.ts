@@ -159,21 +159,16 @@ export function renderPagination(currentPath?: string): string {
   const prev = idx > 0 ? flat[idx - 1] : null;
   const next = idx < flat.length - 1 ? flat[idx + 1] : null;
   if (!prev && !next) return '';
-  let html = '<nav class="docs-pagination" aria-label="Page navigation">';
-  if (prev) {
-    html += `<a href="${prev.href}" data-pg="prev">`;
-    html += `<span data-pg-dir>&#8592; Previous</span>`;
-    html += `<span data-pg-section>${prev.section}</span>`;
-    html += `<span data-pg-label>${prev.label}</span>`;
-    html += `</a>`;
-  }
-  if (next) {
-    html += `<a href="${next.href}" data-pg="next">`;
-    html += `<span data-pg-dir>Next &#8594;</span>`;
-    html += `<span data-pg-section>${next.section}</span>`;
-    html += `<span data-pg-label>${next.label}</span>`;
-    html += `</a>`;
-  }
-  html += '</nav>';
+  // Only data goes through the script. The <nav> and every link's markup and
+  // styles belong to components (docs-pagination, pagination-link), so their
+  // scoped CSS applies; build-script output is not scoped.
+  const link = (item: { href: string; section: string; label: string }, dir: string, which: 'prev' | 'next'): string =>
+    `<pagination-link href="${escapeHtml(item.href)}" data-pg="${which}" ` +
+    `data-bascik-prop-dir="${dir}" ` +
+    `data-bascik-prop-section="${escapeHtml(item.section)}" ` +
+    `data-bascik-prop-label="${escapeHtml(item.label)}"></pagination-link>`;
+  let html = '';
+  if (prev) html += link(prev, '\u2190 Previous', 'prev');
+  if (next) html += link(next, 'Next \u2192', 'next');
   return html;
 }

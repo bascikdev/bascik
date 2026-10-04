@@ -6,58 +6,6 @@
   border-top: 1px solid var(--border);
 }
 
-.docs-pagination a {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  text-decoration: none;
-  color: var(--text);
-  max-width: 48%;
-  transition: border-color .15s, background .15s;
-}
-
-.docs-pagination a:hover {
-  border-color: var(--pagination-border-hover);
-  background: var(--elevated);
-  opacity: 1;
-}
-
-.docs-pagination a[data-pg="next"] {
-  margin-left: auto;
-  align-items: flex-end;
-  text-align: right;
-}
-
-.docs-pagination [data-pg-dir] {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--text-muted);
-}
-
-.docs-pagination [data-pg-section] {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.docs-pagination [data-pg-label] {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--pagination-label);
-}
-
-@media (max-width: 640px) {
-  .docs-pagination a {
-    flex: 1 1 0;
-    max-width: none;
-    min-width: 0;
-  }
-
-  .docs-pagination a[data-pg="next"] {
-    margin-left: 0;
-  }
+@media print {
+  .docs-pagination { display: none !important; }
 }
