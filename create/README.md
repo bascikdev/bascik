@@ -19,6 +19,17 @@ Pass a project name as an argument or run without arguments to be prompted:
 npm create bascik@latest
 ```
 
+## Start from an example
+
+```sh
+npm create bascik@latest my-blog -- --example blog
+npm create bascik@latest my-app -- --example https://github.com/owner/repo/tree/main/starter
+```
+
+`--example` (`-e`) takes an official example name (the folders in [`templates/`](https://github.com/bascikdev/bascik/tree/main/templates), published as `examples/<name>` branches on each Bascik release) or a public `https://github.com/...` link. Add `--example-path <folder>` when the link does not name a folder. Run with no arguments to choose from a list. It needs the internet.
+
+A third-party example is copied but not installed, even with `--yes`, because installing runs its scripts. Links, paths that leave the project, and non-empty destinations are refused. See [Getting Started](https://bascik.dev/getting-started#start-from-an-example) for the details.
+
 ## What it scaffolds
 
 `create-bascik` creates a complete, ready-to-run starter site:

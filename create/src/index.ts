@@ -1,66 +1,46 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { parseCliOptions } from "./cli.js";
-import { scaffold, validateProjectName } from "./scaffold.js";
-
-const args = process.argv.slice(2);
-const { yesFlag, noDevFlag } = parseCliOptions(args);
-const nameArg = args.find((a) => !a.startsWith("-"));
+import { rmSync } from "node:fs";
+import { run, type Io } from "./run.js";
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-let projectName: string;
+const io: Io = {
+  ask: (question) => rl.question(question),
+  out: (text) => void process.stdout.write(text),
+  err: (text) => void process.stderr.write(text),
+  run: (command, args, cwd) => {
+    const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+    return result.error ? null : result.status;
+  },
+  cwd: () => process.cwd(),
+  platform: process.platform,
+  interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+};
 
-if (nameArg) {
-  projectName = nameArg;
-} else {
-  const answer = await rl.question("Project name (bascik-app): ");
-  projectName = answer.trim() || "bascik-app";
-}
+// A download in progress leaves a staging folder next to the project. Remove it on Ctrl+C or a kill,
+// and never touch anything else.
+let staging: string | undefined;
+const cleanup = (signal: NodeJS.Signals): void => {
+  if (staging) rmSync(staging, { recursive: true, force: true });
+  process.exit(signal === "SIGINT" ? 130 : 143);
+};
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
 
-const error = validateProjectName(projectName);
-if (error) {
+// Tests point the downloader at a local server. A real user never sets this.
+const archiveBase = process.env.CREATE_BASCIK_ARCHIVE_BASE;
+
+let code: number;
+try {
+  code = await run(process.argv.slice(2), io, {
+    onStaging: (directory) => {
+      staging = directory;
+    },
+    ...(archiveBase ? { archiveBase } : {}),
+  });
+} finally {
   rl.close();
-  console.error(`\nError: ${error}\n`);
-  process.exit(1);
 }
-
-console.log(`\nCreating Bascik project "${projectName}"…\n`);
-await scaffold(projectName);
-console.log(`✓ Scaffolded ${projectName}/\n`);
-
-let shouldInstall: boolean;
-let shouldDev: boolean;
-
-if (yesFlag) {
-  shouldInstall = true;
-  shouldDev = !noDevFlag;
-} else {
-  const installAnswer = await rl.question("Install dependencies now? (Y/n) ");
-  shouldInstall = installAnswer.trim().toLowerCase() !== "n";
-  const devAnswer = await rl.question("Start the dev server after install? (Y/n) ");
-  shouldDev = devAnswer.trim().toLowerCase() !== "n";
-}
-
-rl.close();
-
-const projectDir = join(process.cwd(), projectName);
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-
-if (shouldInstall) {
-  console.log("\nInstalling dependencies…\n");
-  spawnSync(npmCmd, ["install"], { cwd: projectDir, stdio: "inherit" });
-}
-
-if (shouldDev) {
-  console.log("\nStarting dev server…\n");
-  spawnSync(npmCmd, ["run", "dev"], { cwd: projectDir, stdio: "inherit" });
-  console.log(`\nTo start again:  cd ${projectName} && npm run dev\n`);
-} else {
-  console.log("\nNext steps:\n");
-  if (!shouldInstall) console.log(`  cd ${projectName}`);
-  if (!shouldInstall) console.log("  npm install");
-  console.log("  npm run dev\n");
-}
+process.exit(code);

@@ -124,7 +124,7 @@ The `create/` folder is intentionally separate from `pkg/`. Contributor work in 
 
 The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides context-aware IntelliSense (component, prop, and slot completions), command-click component navigation, rich hover details, syntax highlighting, and real-time scoping warnings. Linting and language server capabilities are powered by `@bascik/language-server`, which also runs standalone via CLI (`npm run lint` or `npx @bascik/language-server --check`) and implements LSP so it works in Neovim, Helix, Zed, and other editors. The compatibility rules are generated from `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
 
-The generator in `create/src/index.ts` validates input, then calls `create/src/scaffold.ts` to write the project files. The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
+The generator's entry point `create/src/index.ts` wires the terminal into `run()` in `create/src/run.ts`, which validates input, then calls `create/src/scaffold.ts` to write the project files (or `create/src/example.ts` to copy an example from GitHub). The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
 
 For local contributor testing of the generator itself, rebuild from `create/`, link it with `npm link`, and invoke it via `npx create-bascik ...`; that remains the working flow for exercising the local scaffold end-to-end. `npm link` runs the `prepare` script, which copies the latest SKILL.md from `docs/` and rebuilds `dist/` automatically, so no separate build step is needed after a fresh checkout.
 
@@ -1333,6 +1333,23 @@ The scaffold creates a complete starter site: pages, components with unit tests,
 ```
 To start again:  cd my-site && npm run dev
 ```
+
+### Start from an Example
+
+`--example` (or `-e`) starts from a complete example instead of the default starter:
+
+```sh
+npm create bascik@latest my-blog -- --example blog
+npm create bascik@latest my-app -- --example https://github.com/owner/repo/tree/main/starter
+npm create bascik@latest my-app -- --example https://github.com/owner/repo --example-path starter
+```
+
+Official examples live in `templates/` of the Bascik repository (`blog` today) and are published as the branch `examples/<name>` when `@bascik/bascik` is released, so `--example <name>` never reads unreleased code. Any public GitHub repository also works: pass its link, with `/tree/<branch-or-tag>/<folder>` to pick a ref and folder, or use `--example-path`. Only `https://github.com` links are accepted. The folder must contain a `package.json`; the project takes the name you chose. Unknown options and unknown example names are errors.
+
+* It downloads from GitHub, so it needs the internet. Private repositories are not supported. Pin a third-party example with a tag or commit; its default branch can change.
+* Third-party examples are not reviewed by Bascik. Installing runs their scripts, so `--yes` copies a third-party example but does not install it. Official examples behave like the default starter (`--yes` installs and starts the dev server; `--no-dev` stops after install).
+* Symbolic links, hard links, and paths that leave the project are refused; the download is size and time limited; nothing is created if a check fails. The destination must not exist or must be empty.
+* An example may include `template.json` (`license`, `requires.node`, `requires.bascik`, `requirements`). The CLI prints it and refuses an example that needs a newer Node than the one running.
 
 ### Adding to an Existing Project
 

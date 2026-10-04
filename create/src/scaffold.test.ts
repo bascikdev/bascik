@@ -60,6 +60,8 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "-y"])).toEqual({
       yesFlag: true,
       noDevFlag: false,
+      helpFlag: false,
+      projectName: "my-site",
     });
   });
 
@@ -67,6 +69,8 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "--yes", "--no-dev"])).toEqual({
       yesFlag: true,
       noDevFlag: true,
+      helpFlag: false,
+      projectName: "my-site",
     });
   });
 });

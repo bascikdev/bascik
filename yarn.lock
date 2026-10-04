@@ -4793,6 +4793,7 @@ __metadata:
   dependencies:
     "@types/node": "npm:^24.0.0"
     "@vitest/coverage-v8": "npm:^4.1.10"
+    tar: "npm:^7.5.22"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.1.5"
     vitest: "npm:^4.1.10"
@@ -11719,7 +11720,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tar@npm:^7.5.4":
+"tar@npm:^7.5.22, tar@npm:^7.5.4":
   version: 7.5.22
   resolution: "tar@npm:7.5.22"
   dependencies:

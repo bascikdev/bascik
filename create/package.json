@@ -42,5 +42,8 @@
     "coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts",
     "cover": "yarn coverage",
     "update-coverage": "vitest run --coverage.enabled && node bin/update-coverage.ts"
+  },
+  "dependencies": {
+    "tar": "^7.5.22"
   }
 }
