@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slot Forward Test</title>
+</head>
+
+<body>
+  <h1>Slot Forward Test</h1>
+
+  <div data-testid="given">
+    <slot-forward-outer>
+      <p data-testid="given-content">given to the outer component</p>
+    </slot-forward-outer>
+  </div>
+
+  <div data-testid="given-again">
+    <slot-forward-outer>
+      <p data-testid="given-again-content">a second, different instance</p>
+    </slot-forward-outer>
+  </div>
+
+  <div data-testid="empty">
+    <slot-forward-outer></slot-forward-outer>
+  </div>
+</body>
+
+</html>

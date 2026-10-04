@@ -132,6 +132,7 @@ export const NAV: NavSection[] = [
       { href: '/switch/from-hugo', label: 'From Hugo' },
       { href: '/switch/from-next', label: 'From Next.js' },
       { href: '/switch/from-react', label: 'From React' },
+      { href: '/switch/react-product-table-tutorial', label: 'Product Table Tutorial' },
       { href: '/switch/from-svelte', label: 'From Svelte' },
       { href: '/switch/from-vue', label: 'From Vue' },
       { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },

@@ -16,8 +16,11 @@
     "test:blog-template": "node --test --test-concurrency=1 harness/blog-template.test.mjs",
     "test:blog-template-browser": "node --test --test-concurrency=1 harness/blog-template-browser.test.mjs",
     "test:blog-template-mutations": "node --test --test-concurrency=1 harness/blog-template-mutations.test.mjs",
+    "test:react": "node --test --test-concurrency=1 harness/react-product-table.test.mjs",
+    "test:react-mutations": "node --test --test-concurrency=1 harness/react-product-table-mutations.test.mjs",
     "test:vue": "node --test --test-concurrency=1 harness/vue-grid.test.mjs",
     "test:vue-mutations": "node --test --test-concurrency=1 harness/vue-grid-mutations.test.mjs",
-    "test:vue-guide": "node --test --test-concurrency=1 harness/vue-guide-claims.test.mjs"
+    "test:vue-guide": "node --test --test-concurrency=1 harness/vue-guide-claims.test.mjs",
+    "test:react-guide": "node --test --test-concurrency=1 harness/react-guide-claims.test.mjs"
   }
 }

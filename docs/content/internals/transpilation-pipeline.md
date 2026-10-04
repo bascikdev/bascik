@@ -253,7 +253,7 @@ Each step is skipped if disabled in `bascik.config.ts`.
 
 1. **Props.** `injectProps` replaces every `data-bascik-prop-*` placeholder in the component template with the corresponding attribute value from the usage tag.
 2. **Named slots.** `replaceNamedSlots` fills each `data-bascik-slot="name"` zone in the template with the matching `<div data-bascik-slot="name">` content from the usage site.
-3. **Default slot.** The inner content of the usage tag is placed into the element carrying `data-bascik-slot` (no value). If the usage tag has no inner content, the template's fallback content is preserved.
+3. **Default slot.** The inner content of the usage tag is placed into the element carrying `data-bascik-slot` (no value). If the usage tag has no inner content, the template's fallback content is preserved. Nested component tags in the template are set aside first so their own content is not mistaken for the template's, but the usage site's default slot content is also applied to a valueless marker written between a nested component's tags. That is how `children` is forwarded to an inner component.
 4. **Attribute inheritance.** `mergeAttributesOntoRoot` copies pass-through attributes (`aria-*`, `data-*`, `class`, etc.) from the usage tag onto the component's root element. If the component template contains multiple root elements (or leading comments, `<script>`, or `<style>` blocks), attributes are merged onto the first root HTML element.
 
 ### Step 3: Substitution

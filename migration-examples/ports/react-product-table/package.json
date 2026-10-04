@@ -1,0 +1,17 @@
+{
+  "name": "react-product-table-bascik-port",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "bascik --site-url https://example.com",
+    "build": "bascik --build --site-url https://example.com",
+    "serve": "bascik --server"
+  },
+  "dependencies": {
+    "@bascik/bascik": "^1.0.0-rc.2"
+  }
+}

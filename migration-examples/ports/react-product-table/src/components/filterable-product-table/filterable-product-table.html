@@ -1,0 +1,39 @@
+<div id="root">
+  <search-bar></search-bar>
+  <product-table></product-table>
+</div>
+<script>
+  const root = document.getElementById('root');
+
+  // The state lives in the closest common parent of the two components that use it, as in the
+  // tutorial's step 4. The filtered list is computed from it on every change, never stored.
+  let filterText = '';
+  let inStockOnly = false;
+
+  function render() {
+    const needle = filterText.toLowerCase();
+    let categoryRow = null;
+    let categoryHasRows = false;
+    const finishCategory = () => { if (categoryRow) categoryRow.hidden = !categoryHasRows; };
+    for (const row of root.querySelectorAll('tbody > tr')) {
+      if (row.hasAttribute('data-category')) {
+        finishCategory();
+        categoryRow = row;
+        categoryHasRows = false;
+        continue;
+      }
+      const name = row.getAttribute('data-name') ?? '';
+      const stocked = row.getAttribute('data-stocked') === 'true';
+      const visible = name.toLowerCase().includes(needle) && !(inStockOnly && !stocked);
+      row.hidden = !visible;
+      if (visible) categoryHasRows = true;
+    }
+    finishCategory();
+  }
+
+  root.addEventListener('filterchange', (event) => {
+    filterText = event.detail.filterText;
+    inStockOnly = event.detail.inStockOnly;
+    render();
+  });
+</script>

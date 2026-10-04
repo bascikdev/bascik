@@ -1,0 +1,29 @@
+<form id="form">
+  <input type="text" id="text" placeholder="Search..." aria-label="Search products">
+  <label>
+    <input type="checkbox" id="stock">
+    Only show products in stock
+  </label>
+</form>
+<script>
+  const form = document.getElementById('form');
+  const text = document.getElementById('text');
+  const stock = document.getElementById('stock');
+
+  // Inverse data flow: the bar owns no state. It reports each change to whoever holds the
+  // state, as an event that bubbles up from the form.
+  function report() {
+    form.dispatchEvent(new CustomEvent('filterchange', {
+      bubbles: true,
+      detail: { filterText: text.value, inStockOnly: stock.checked },
+    }));
+  }
+  text.addEventListener('input', report);
+  stock.addEventListener('change', report);
+  // The browser restores typed values when the user comes back to the page. A controlled React
+  // input cannot disagree with its state; plain fields can, so report what they hold on every
+  // page show (the first load too, when it is empty and changes nothing).
+  window.addEventListener('pageshow', report);
+  // Enter in the field must not submit the form and reload the page.
+  form.addEventListener('submit', (event) => event.preventDefault());
+</script>

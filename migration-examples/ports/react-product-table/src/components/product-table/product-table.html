@@ -1,0 +1,31 @@
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Price</th>
+    </tr>
+  </thead>
+  <tbody>
+    <script data-bascik-build>
+      import { PRODUCTS } from '@/data/products.ts';
+      import { escapeHtml } from '@/lib/escape.ts';
+
+      // The same loop as the tutorial's ProductTable, run at build time: print a category
+      // row whenever the category changes, then the product row.
+      const rows = [];
+      let lastCategory = null;
+      for (const product of PRODUCTS) {
+        if (product.category !== lastCategory) {
+          rows.push(`<product-category-row data-bascik-prop-category="${escapeHtml(product.category)}"></product-category-row>`);
+        }
+        rows.push(
+          `<product-row data-bascik-prop-name="${escapeHtml(product.name)}" ` +
+          `data-bascik-prop-price="${escapeHtml(product.price)}" ` +
+          `data-bascik-prop-stocked="${product.stocked}"></product-row>`,
+        );
+        lastCategory = product.category;
+      }
+      console.log(rows.join('\n'));
+    </script>
+  </tbody>
+</table>

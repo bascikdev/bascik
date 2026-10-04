@@ -63,6 +63,27 @@ The first demo on this page combines named `eyebrow`, `title`, and `actions` slo
 
 > **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.
 
+## Forwarding a Slot into a Nested Component
+
+A component template can use another component. To pass the outer component's default slot content through to the inner component, put a valueless `data-bascik-slot` marker between the inner component's tags:
+
+```html
+<!-- outer-box.html -->
+<div class="outer">
+  <inner-box>
+    <div data-bascik-slot>Shown when the outer tag is empty.</div>
+  </inner-box>
+</div>
+```
+
+```html
+<outer-box><p>Given to the outer component.</p></outer-box>
+```
+
+The `<p>` becomes the inner component's default slot content. When the outer tag is empty, the marker's own content is used. Each instance forwards its own content.
+
+Only the default slot is forwarded. A named wrapper written between the inner component's tags (`<div data-bascik-slot="head">`) fills the inner component's named slot, and the outer component's named slots are filled separately by the outer usage. Forwarding works through any depth of nesting. It needs 1.0.0-rc.3 or later. Earlier releases left the marker in the output and dropped the content.
+
 ## Whitespace Handling
 
 Leading and trailing whitespace is trimmed from all slot content at build time. This means you can write component usage on multiple lines without worrying about stray newlines or indentation appearing in the output:

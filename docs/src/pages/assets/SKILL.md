@@ -2006,6 +2006,34 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 - **Feeds, sitemaps, images:** RSS/Atom is a `pipeline.exec` script (`phase: 'post'`) writing to `BASCIK_OUT_DIR`. Sitemap and robots are built in. No image optimization or syntax highlighting built in; do it in your own build step.
 - **Component scripts that print styled markup:** Output of a component build script, page-aware or not, is scoped like the template, including markup returned by imported helpers. Classes the component stylesheet does not define stay global.
 
+### From React
+
+Full guide: `/switch/from-react`. Worked example: `/switch/react-product-table-tutorial` (the finished "Thinking in React" product table). Key React-specific mappings:
+
+| React | Bascik |
+|-------|--------|
+| Function component | `.html` file in `src/components/<name>/`, folder name is the hyphenated tag |
+| `children` | `data-bascik-slot` (no value), fallback inside it |
+| Render prop / named children | `<div data-bascik-slot="x">` wrapper at the usage site and in the component |
+| `props.x` | `data-bascik-prop-x` (text only; booleans and numbers arrive as strings) |
+| Prop used as an attribute | `data-bascik-attr-<attribute>="propName"` |
+| Object, array, or function prop | Not possible. Print one component per item from a build script; use a bubbling `CustomEvent` instead of a callback |
+| `useState` in the common parent | Variables in the parent component's `<script>`; a function applies them to the DOM |
+| `onChange` callback prop | Child dispatches `new CustomEvent('x', { bubbles: true, detail })` from its own element; the parent listens on its root |
+| Re-render of a filtered list | One function sets `hidden` on existing rows; there is no diff, so write every place a value shows |
+| `.map()` over data | `<script data-bascik-build>` that prints component tags with escaped props |
+| Conditional style | A `data-` attribute and a CSS selector, in the component's own CSS |
+| React Router `/blog/:slug` | `src/pages/blog/[slug]/index.html` with `<script data-bascik-routes>` |
+
+React-specific gotchas:
+
+- **Escape every interpolated value in a build script.** JSX does it for you; a template string does not.
+- **Forwarding `children` to an inner component:** write a default slot marker between the inner component's tags, `<inner-box><div data-bascik-slot>fallback</div></inner-box>`. It receives the outer usage's default content (1.0.0-rc.3 or later; earlier releases left the marker and dropped the content silently). Named wrappers between the inner tags fill the inner component's named slots.
+- **Plain inputs can disagree with state after Back or reload.** Report the fields again on `pageshow`. A form with one text box submits on Enter; call `preventDefault()` in a `submit` listener when a script drives the form.
+- **Component scripts run once and are moved in production.** Minified production HTML moves them to the end of the document; the dev server leaves them in place. Look up elements inside handlers or after `DOMContentLoaded`.
+- **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.
+- **Tag names need a hyphen.** `Card.jsx` becomes `info-card`.
+
 ### From Svelte
 
 Full guide: `/switch/from-svelte`. Key Svelte-specific mappings:

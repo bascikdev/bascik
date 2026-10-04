@@ -414,6 +414,149 @@ describe("recursivelyTranspile – integration", () => {
     );
   });
 
+  describe("forwarding the default slot into a nested component", () => {
+    const innerBox = {
+      fileName: "components/inner-box.html",
+      fileContent: "<section><div data-bascik-slot>inner fallback</div></section>",
+    };
+
+    it("fills a default slot marker written inside a child's usage tag", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div class="outer"><inner-box><div data-bascik-slot>outer fallback</div></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>given</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe('<div class="outer"><section><p>given</p></section></div>');
+      expect(transpiledHtmlBody).not.toContain("data-bascik-slot");
+    });
+
+    it("uses the marker's own fallback when the outer tag has no content", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div class="outer"><inner-box><div data-bascik-slot>outer fallback</div></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile("<outer-box></outer-box>", componentList);
+      expect(transpiledHtmlBody).toBe('<div class="outer"><section>outer fallback</section></div>');
+    });
+
+    it("keeps the rest of the child's content around the forwarded slot", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div><inner-box class="x"><h2>Title</h2><div data-bascik-slot></div><p>after</p></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><em>body</em></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        '<div><section class="x"><h2>Title</h2><em>body</em><p>after</p></section></div>',
+      );
+    });
+
+    it("forwards through two levels of nesting", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<main><mid-box><div data-bascik-slot></div></mid-box></main>",
+        },
+        "mid-box": {
+          fileName: "components/mid-box.html",
+          fileContent: "<div class='mid'><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><b>deep</b></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe("<main><div class='mid'><section><b>deep</b></section></div></main>");
+    });
+
+    it("keeps two instances with different content separate", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box>one</outer-box><outer-box>two</outer-box><outer-box></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        "<div><section>one</section></div><div><section>two</section></div><div><section>inner fallback</section></div>",
+      );
+    });
+
+    it("inserts content with replacement tokens literally", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>$& $1 $` $' $$</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe("<div><section><p>$& $1 $` $' $$</p></section></div>");
+    });
+
+    it("still routes named wrappers inside a child's usage tag to the child", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div><named-box><div data-bascik-slot="head">child head</div><div data-bascik-slot></div></named-box></div>',
+        },
+        "named-box": {
+          fileName: "components/named-box.html",
+          fileContent: '<article><h1 data-bascik-slot="head">fallback head</h1><div data-bascik-slot>fallback body</div></article>',
+        },
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><i>forwarded body</i></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        "<div><article>child head<i>forwarded body</i></article></div>",
+      );
+    });
+
+    it("does not treat a valueless marker on the child's own usage tag as a slot", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box data-bascik-slot>kept</inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>x</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toContain("kept");
+      expect(transpiledHtmlBody).not.toContain("<p>x</p>");
+    });
+  });
+
   it("tracks usedComponents", () => {
     const componentList = {
       "my-btn": {

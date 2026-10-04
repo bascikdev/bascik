@@ -16,6 +16,11 @@ export function validateManifest(manifest) {
     !/^[a-f0-9]{64}$/.test(manifest.archiveSha256)) {
     throw new Error('Invalid pinned source manifest');
   }
+  if (manifest.licenseMarkers !== undefined &&
+    (!Array.isArray(manifest.licenseMarkers) || manifest.licenseMarkers.length === 0 ||
+      manifest.licenseMarkers.some((marker) => typeof marker !== 'string' || !marker))) {
+    throw new Error('Invalid license markers');
+  }
   for (const path of [manifest.subdirectory, manifest.licensePath]) {
     if (typeof path !== 'string' || !path || path.startsWith('/') ||
       path.includes('\\') || path.split('/').includes('..')) {
@@ -55,8 +60,10 @@ export async function fetchSource(id) {
       [`${prefix}/${manifest.subdirectory}`, `${prefix}/${manifest.licensePath}`];
     await execute('tar', ['-xzf', archive, '-C', extracted, '--strip-components=1', ...members]);
     const license = await readFile(join(extracted, manifest.licensePath), 'utf8');
-    if (!license.includes('MIT License') || !license.includes('Permission is hereby granted')) {
-      throw new Error('Expected MIT notice missing');
+    // MIT by default. A manifest for another license lists text its license file must contain.
+    const markers = manifest.licenseMarkers ?? ['MIT License', 'Permission is hereby granted'];
+    if (!markers.every((marker) => license.includes(marker))) {
+      throw new Error(`Expected ${manifest.license} notice missing`);
     }
     await mkdir(dirname(destination), { recursive: true });
     // Refuse to overwrite an existing cache, including any authored lockfile.

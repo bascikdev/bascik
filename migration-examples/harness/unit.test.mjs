@@ -11,12 +11,20 @@ test('command tokens expand per site without a shell', () => {
 });
 
 test('approved manifests use immutable safe pins', async () => {
-  for (const id of ['astro-blog', 'eleventy-base-blog']) {
+  for (const id of ['astro-blog', 'eleventy-base-blog', 'react-thinking-in-react']) {
     const manifest = JSON.parse(await readFile(new URL(`../sources/${id}.json`, import.meta.url)));
     assert.equal(validateManifest(manifest).id, id);
     assert.throws(() => validateManifest({ ...manifest, subdirectory: '../escape' }), /Unsafe/);
     assert.throws(() => validateManifest({ ...manifest, commit: 'main' }), /Invalid/);
   }
+});
+
+test('a manifest for a non-MIT license must list marker text', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../sources/react-thinking-in-react.json', import.meta.url)));
+  assert.equal(validateManifest(manifest).license, 'CC-BY-4.0');
+  assert.throws(() => validateManifest({ ...manifest, licenseMarkers: [] }), /license markers/);
+  assert.throws(() => validateManifest({ ...manifest, licenseMarkers: [''] }), /license markers/);
+  assert.throws(() => validateManifest({ ...manifest, licenseMarkers: 'MIT' }), /license markers/);
 });
 
 test('checksum oracle accepts exact bytes and rejects changed bytes', () => {

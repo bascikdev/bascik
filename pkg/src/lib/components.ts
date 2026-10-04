@@ -556,7 +556,13 @@ export const getFirstComponent = (
   __componentScanStatsForTests.prefixBytesExamined += match.index - searchFrom;
   const firstComponentName = match[1].toLowerCase();
   const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml, match.index);
-  const resultObj: Partial<BascikComponent> & { index?: number; startIndex?: number; endIndex?: number } = {
+  const resultObj: Partial<BascikComponent> & {
+    index?: number;
+    startIndex?: number;
+    endIndex?: number;
+    contentStart?: number;
+    closeIndex?: number;
+  } = {
     name: firstComponentName,
     index: match.index,
     ...tagInfo,
@@ -566,6 +572,14 @@ export const getFirstComponent = (
   }
   if (typeof tagInfo.endIndex === "number") {
     Object.defineProperty(resultObj, "endIndex", { value: tagInfo.endIndex, enumerable: false });
+  }
+  // Where the usage tag's inner content starts and its closing tag begins (-1 when the tag has
+  // no closing tag), so a caller can edit just the inner content.
+  if (typeof tagInfo.contentStart === "number") {
+    Object.defineProperty(resultObj, "contentStart", { value: tagInfo.contentStart, enumerable: false });
+  }
+  if (typeof tagInfo.closeIndex === "number") {
+    Object.defineProperty(resultObj, "closeIndex", { value: tagInfo.closeIndex, enumerable: false });
   }
   return resultObj;
 };
