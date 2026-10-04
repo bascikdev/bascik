@@ -303,7 +303,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
@@ -334,7 +334,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
@@ -360,7 +360,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
@@ -386,7 +386,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
@@ -413,7 +413,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
@@ -439,7 +439,7 @@ describe("processAllPages – build mode sitemap", () => {
     (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(pages);
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
 
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
     let callCount = 0;
     nowSpy.mockImplementation(() => {
