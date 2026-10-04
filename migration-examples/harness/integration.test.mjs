@@ -81,6 +81,33 @@ test('build failure propagates and removes both isolated copies', async () => {
   await clean(observed);
 });
 
+// Like the Bascik dev server: the home page is real while unknown paths still get the boot page
+// (post-phase exec scripts are running), then the boot ends and the late file appears.
+// Waiting for the home page alone was the cause of the flaky Eleventy dev lane (feed 404).
+test('startup waits until unknown paths stop getting the dev boot page', async () => {
+  const observed = [];
+  const booting = `
+    const { createServer } = require('node:http');
+    const started = Date.now();
+    createServer((request, response) => {
+      const booted = Date.now() - started > 1500;
+      if (request.url === '/') return response.end('<p>home</p>');
+      // A file path is 404 until the script that writes it finishes, as /feed/feed.xml is.
+      if (request.url === '/late.xml') return booted ? response.end('<feed/>') : response.writeHead(404).end();
+      if (!booted) return response.end('<script src="/bascik-live-reload?boot=1"></script>');
+      response.writeHead(404).end('Not found');
+    }).listen(Number(process.env.PORT), '127.0.0.1');`;
+  const serve = { source, serve: [process.execPath, '-e', booting] };
+  await runPair({
+    upstream: serve, bascik: serve, observe: (site) => observed.push(site),
+    check: async ({ bascik }) => {
+      assert.equal((await fetch(bascik.url + '/late.xml')).status, 200, 'late file is served');
+      assert.equal((await fetch(bascik.url + '/missing/')).status, 404, 'unknown path is a real 404');
+    },
+  });
+  await clean(observed);
+});
+
 test('startup deadline cleans up a process that never listens', async () => {
   const observed = [];
   await assert.rejects(runPair({

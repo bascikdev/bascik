@@ -71,15 +71,25 @@ export function launch(command, cwd, env) {
   };
 }
 
+// The Bascik dev server binds before its first build ends. Until then it answers every page it has
+// not built, including unknown paths, with a 200 boot page. The home page can be built before
+// post-phase exec scripts (for example a feed generator) finish, so a 200 from the ready path is
+// not enough: the site is ready once an unknown path also stops getting the boot page.
+export const BOOT_PAGE_MARKER = 'bascik-live-reload?boot=1';
+const READY_PROBE_PATH = '/__bascik_parity_ready_probe__/';
+
 async function ready(processHandle, url, timeoutMs, signal) {
   const deadline = Date.now() + timeoutMs;
+  const probe = new URL(READY_PROBE_PATH, url).href;
   while (Date.now() < deadline) {
     signal.throwIfAborted();
     processHandle.assertAlive();
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(250) });
-      await response.arrayBuffer();
-      if (response.ok) {
+      const body = await response.text();
+      const booted = response.ok && !body.includes(BOOT_PAGE_MARKER) &&
+        !(await (await fetch(probe, { signal: AbortSignal.timeout(250) })).text()).includes(BOOT_PAGE_MARKER);
+      if (booted) {
         processHandle.assertAlive();
         return;
       }
