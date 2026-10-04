@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Two grids</title>
+</head>
+
+<body>
+  <h1>Two grids</h1>
+  <p>The same components twice, each with its own state. The second search box sits after its grid.</p>
+  <grid-search data-bascik-prop-label="Search fighters" data-bascik-prop-target="fighters"></grid-search>
+  <demo-grid id="fighters" data-testid="fighters-grid">
+    <script data-bascik-build>
+      import { gridColumns, gridData } from '@/data/grid.ts';
+      import { renderGridData } from '@/lib/grid.ts';
+      console.log(renderGridData({ columns: gridColumns, rows: gridData }));
+    </script>
+  </demo-grid>
+  <demo-grid id="planets" data-testid="planets-grid">
+    <script data-bascik-build>
+      import { planetColumns, planetData } from '@/data/grid.ts';
+      import { renderGridData } from '@/lib/grid.ts';
+      console.log(renderGridData({ columns: planetColumns, rows: planetData }));
+    </script>
+  </demo-grid>
+  <grid-search data-bascik-prop-label="Search planets" data-bascik-prop-target="planets"></grid-search>
+</body>
+
+</html>

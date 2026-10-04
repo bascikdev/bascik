@@ -35,6 +35,17 @@ Place the same component on a page more than once and each instance runs indepen
 
 The two counters at the top of this page are the same component. Change either count, then inspect Output → HTML and Output → JS to compare their unique instance IDs.
 
+## Where Component Scripts Run
+
+A component script is an inline classic script, and where it sits in the page depends on the mode:
+
+- **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
+- **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
+
+Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
+
+There is no unmount step. A link loads a new document, so a script that must react to a page restored from the browser's back/forward cache listens for `pageshow`.
+
 ## HTML ID References
 
 Bascik keeps HTML relationships synchronized with scoped IDs. References such as `<label for>`, ARIA ID attributes, fragment-only links, SVG fragment attributes, and inline `style="...url(#id)"` values are rewritten automatically when the target ID is declared in the same component.

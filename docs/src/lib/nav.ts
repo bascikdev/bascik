@@ -134,6 +134,7 @@ export const NAV: NavSection[] = [
       { href: '/switch/from-react', label: 'From React' },
       { href: '/switch/from-svelte', label: 'From Svelte' },
       { href: '/switch/from-vue', label: 'From Vue' },
+      { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },
       { href: '/switch/from-wordpress', label: 'From WordPress' },
     ]
   },

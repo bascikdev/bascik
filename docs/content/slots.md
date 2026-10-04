@@ -61,6 +61,8 @@ The first demo on this page combines named `eyebrow`, `title`, and `actions` slo
 
 > **How it works:** Named slot wrappers in the usage inner HTML are extracted by name and injected into the matching `data-bascik-slot="name"` placeholder in the template. Everything left over goes into the default slot.
 
+> **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.
+
 ## Whitespace Handling
 
 Leading and trailing whitespace is trimmed from all slot content at build time. This means you can write component usage on multiple lines without worrying about stray newlines or indentation appearing in the output:
@@ -91,7 +93,7 @@ This example uses two named slots (`eyebrow` and `actions`) plus the default slo
   <span data-bascik-slot="eyebrow">Named slot</span>
   <span data-bascik-slot="title">Build-time slot layout</span>
   <p>Use named slots for fixed regions and the default slot for body content.</p>
-  <a data-bascik-slot="actions" href="/configuration">Read configuration</a>
+  <div data-bascik-slot="actions"><a href="/configuration">Read configuration</a></div>
 </slot-layout-demo>
 ```
 

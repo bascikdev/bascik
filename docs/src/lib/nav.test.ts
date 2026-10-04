@@ -97,6 +97,13 @@ describe('renderPagination', () => {
     expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
   });
 
+  it('places the Vue grid tutorial right after From Vue', () => {
+    const vue = renderPagination('/switch/vue-grid-tutorial');
+    expect(vue).toContain('href="/switch/from-vue"');
+    expect(vue).toContain('href="/switch/from-wordpress"');
+    expect(renderSectionLabel('/switch/vue-grid-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
+  });
+
   it('places Use Cases between Getting Started and Features, with the blog guide before the catalog', () => {
     const sections = NAV.map(s => s.section);
     expect(sections.indexOf('Use Cases')).toBe(sections.indexOf('Overview') + 1);

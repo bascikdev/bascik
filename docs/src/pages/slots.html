@@ -42,7 +42,7 @@
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/slots.md', { to: 'Default slots and fallback content' }));
-                    console.log(await renderMdRange('./content/slots.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
+          console.log(await renderMdRange('./content/slots.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/slot-layout-demo/">
@@ -51,7 +51,7 @@
               <span data-bascik-slot="eyebrow">Named slot</span>
               <span data-bascik-slot="title">Build-time slot layout</span>
               <p>Use named slots for fixed regions and the default slot for the main body content.</p>
-              <a data-bascik-slot="actions" class="slot-demo-link" href="/configuration">Read configuration</a>
+              <div data-bascik-slot="actions"><a href="/configuration">Read configuration</a></div>
             </slot-layout-demo>
           </div>
           <div data-bascik-slot="source-usage">

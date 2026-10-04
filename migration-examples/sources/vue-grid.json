@@ -1,0 +1,13 @@
+{
+  "id": "vue-grid",
+  "repository": "https://github.com/vuejs/docs",
+  "commit": "40aa88af0094f7bab4aaf786e55c748a6a251d88",
+  "subdirectory": "src/examples/src/grid",
+  "archiveSha256": "f05f75b8016d94248ed932a6528473693a4dbab45fe28baeb0fb164fddfdaada",
+  "licensePath": "LICENSE",
+  "license": "CC-BY-4.0",
+  "licenseMarkers": ["CC BY 4.0", "Creative Commons Attribution 4.0 International"],
+  "notice": "Copyright (c) 2019-present, Yuxi (Evan) You and Vue documentation contributors. Contents licensed CC BY 4.0, except image files.",
+  "lockfile": "vue-grid.package-lock.json",
+  "lockfileStatus": "Lockfile belongs to the harness shell in harness/vue-shell/, which runs the example's pinned Options API files. Captured with npm install --package-lock-only --ignore-scripts --before=2026-09-27."
+}

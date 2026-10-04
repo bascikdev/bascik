@@ -1,0 +1,20 @@
+<form id="search">
+  <label for="query" data-bascik-prop-label>Search</label>
+  <input id="query" name="query" data-bascik-attr-data-target="target">
+</form>
+<script>
+  const form = document.getElementById('search');
+  const input = document.getElementById('query');
+
+  function sync() {
+    const grid = document.getElementById(input.dataset.target);
+    if (!grid) throw new Error(`grid-search: no element with id "${input.dataset.target}"`);
+    grid.dispatchEvent(new CustomEvent('grid-filter', { detail: { query: input.value } }));
+  }
+
+  input.addEventListener('input', sync);
+  // The form has one text field, so Enter would otherwise reload the page.
+  form.addEventListener('submit', (event) => event.preventDefault());
+  // Also covers a value the browser restores after back navigation.
+  window.addEventListener('pageshow', sync);
+</script>
