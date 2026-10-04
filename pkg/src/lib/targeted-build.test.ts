@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./config.js", () => ({
   BascikConfig: {
@@ -22,7 +22,7 @@ import { cspHashCollector, type CspHashesManifest } from "./csp-hashes.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { ownershipTracker, finalizeOwnedArtifacts, writeOwnershipInventory } from "./ownership.ts";
 import { BascikConfig } from "./config.ts";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -101,11 +101,12 @@ describe("targeted build CLI parsing & glob matching", () => {
 });
 
 describe("targeted build artifact merging and warnings", () => {
-  const tempDir = join(tmpdir(), `bascik-targeted-build-${Date.now()}`);
+  // A fresh directory per test: unique even across concurrent runs, and removed
+  // afterward so repeated runs never accumulate files in the system temp dir.
+  let tempDir = "";
 
   beforeEach(async () => {
-    await rm(tempDir, { recursive: true, force: true });
-    await mkdir(tempDir, { recursive: true });
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-targeted-build-"));
     manifestCollector.clear();
     cspHashCollector.clear();
     ownershipTracker.clear();
@@ -116,6 +117,10 @@ describe("targeted build artifact merging and warnings", () => {
     (BascikConfig as any).generate.sitemap = true;
     (BascikConfig as any).generate.robots = true;
     (BascikConfig as any).only = ["blog/**"];
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
   });
 
   it("reconciles manifest entries on targeted build, pruning a rebuilt owner's removed output", async () => {
