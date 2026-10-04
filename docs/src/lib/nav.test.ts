@@ -87,6 +87,16 @@ describe('renderPagination', () => {
     expect(html).toContain('href="/press"');
   });
 
+  it('places each migration tutorial right after its switch guide', () => {
+    const astro = renderPagination('/switch/astro-blog-tutorial');
+    expect(astro).toContain('href="/switch/from-astro"');
+    expect(astro).toContain('href="/switch/from-eleventy"');
+    const eleventy = renderPagination('/switch/eleventy-blog-tutorial');
+    expect(eleventy).toContain('href="/switch/from-eleventy"');
+    expect(eleventy).toContain('href="/switch/from-hugo"');
+    expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
+  });
+
   it('links press to releases and to sponsor', () => {
     const html = renderPagination('/press');
     expect(html).toContain('data-bascik-prop-section="Community"');

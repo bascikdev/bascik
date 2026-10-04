@@ -18,10 +18,10 @@ Most of what you already know translates directly to Bascik:
 
 You do not need to convert your entire project at once. A good first step is migrating a single content page and a shared card component:
 
-1. Create a new Bascik workspace with `yarn create bascik`.
+1. Create a new Bascik project with `npm create bascik@latest my-site`.
 2. Extract one reusable UI block into `src/components/post-card/post-card.html`.
 3. Create `src/pages/index.html` and use `<post-card></post-card>`.
-4. Run `yarn dev` to inspect your zero-JS output immediately.
+4. Run `npm run dev` to inspect your zero-JS output immediately.
 
 ## How to Switch
 
@@ -54,7 +54,7 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 | `children` prop / default `<slot>` | `data-bascik-slot` | [Slots](/slots) |
 | Named slots | `data-bascik-slot="name"` | [Slots](/slots#named-slots) |
 | Text props | `data-bascik-prop-name="value"` | [Props](/props) |
-| Attribute props | `data-bascik-attr-href="link"` | [Props](/props#attribute-binding) |
+| Attribute props | `data-bascik-attr-href="link"` | [Props](/props#put-a-prop-in-an-attribute) |
 | CSS Modules / scoped CSS | Paired `.css` file or `<style>` block (auto-scoped) | [Scoped Styles](/scoped-styles) |
 | File-based routing | Files in `src/pages/` | [Dynamic Routes](/dynamic-routes) |
 | Dynamic routes (`[slug].js`) | `src/pages/[slug].html` build-time route generation | [Dynamic Routes](/dynamic-routes) |
@@ -62,5 +62,7 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 | Request-time SSR / Streaming | `<script data-bascik-server>` / `<script data-bascik-stream>` | [Server Scripts](/server-scripts) · [Stream Scripts](/stream-scripts) |
 | API endpoints | Handlers in `src/api/` using standard `Request` and `Response` | [API Routes](/api-routes) |
 | Client interactivity / hooks | Vanilla JS in `<script>` tags | [Scoped JavaScript](/scoped-javascript) |
+
+> **Worked examples:** the [Astro Blog Tutorial](/switch/astro-blog-tutorial) and the [Eleventy Blog Tutorial](/switch/eleventy-blog-tutorial) port each framework's official blog starter end to end, including feeds, sitemaps, drafts, and tag pages.
 
 > Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue) · [WordPress](/switch/from-wordpress)

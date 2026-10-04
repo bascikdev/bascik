@@ -119,7 +119,9 @@ export const NAV: NavSection[] = [
     section: 'Switch to Bascik', pages: [
       { href: '/switch', label: 'Overview' },
       { href: '/switch/from-astro', label: 'From Astro' },
+      { href: '/switch/astro-blog-tutorial', label: 'Astro Blog Tutorial' },
       { href: '/switch/from-eleventy', label: 'From Eleventy' },
+      { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
       { href: '/switch/from-hugo', label: 'From Hugo' },
       { href: '/switch/from-next', label: 'From Next.js' },
       { href: '/switch/from-react', label: 'From React' },

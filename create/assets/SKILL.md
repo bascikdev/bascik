@@ -406,7 +406,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
-* Compound element selectors: `.class element {}` and `.class > element {}` are scoped (element converted to class and injected on matching HTML elements); patterns with two bare elements (`div p {}`) still require a class anchor on the left
+* Compound element selectors: every element name in a chain is converted to a scoped class and injected on matching elements in the component's own template, with or without a class anchor (`.card p {}`, `div p {}`, `p + p {}`, `nav a {}`, `ul li * {}` all work); they never reach page markup or a child component's root
 * Element names inside `:is()`, `:where()`, and `:has()` are not converted; use class selectors inside those pseudo-classes instead
 
 ---
@@ -1970,8 +1970,12 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 - **Slots:** `<slot />` / `children` → `data-bascik-slot` (no value) for default, `data-bascik-slot="name"` for named slots.
 - **Props:** `defineProps` / component props → `data-bascik-prop-*` attributes (text only).
 - **Reactive state:** `ref`, `useState`, etc. → plain `<script>` with vanilla JS. Bascik scopes `id` values so multiple instances stay independent.
-- **Routing:** Client-side router → one `.html` file per URL in `src/pages/`. No dynamic segments; generate static files for parameterized routes.
+- **Routing:** Client-side router → one `.html` file per URL in `src/pages/`. For parameterized routes (`[slug].astro`, `getStaticPaths`, Eleventy pagination), use a dynamic route template such as `src/pages/blog/[slug]/index.html` (trailing-slash URLs) with a `<script data-bascik-routes>` block. Do not generate page files into `src/pages/`. A route param cannot contain `/`; use one template per depth.
 - **Build-time data:** `onMounted` / `getStaticProps` / frontmatter → `<script data-bascik-build>` (Node.js ESM, stdout injected).
+- **Content collections (Astro `getCollection`, Eleventy `collections`):** No built-in equivalent. Write a `src/lib/posts.ts` helper that reads `content/` with `fs`, parses front matter with `gray-matter`, validates with `zod`, and sorts by the parsed date (not the file name). Escape every interpolated value. Drafts: skip them when `process.env.BASCIK_BUILD === '1'`. Exclude scripts that read `content/` from `scripts.cache` and add `content/` to `pipeline.watchPaths`.
+- **Template logic (Nunjucks/Liquid loops, filters, includes with variables):** Becomes TypeScript helpers in `src/lib/` that return HTML. Only static includes become components. Pages keep `<html>`/`<head>`/`<body>`; a component cannot own them.
+- **Feeds, sitemaps, images:** RSS/Atom is a `pipeline.exec` script (`phase: 'post'`) writing to `BASCIK_OUT_DIR`. Sitemap and robots are built in. No image optimization or syntax highlighting built in; do it in your own build step.
+- **Page-aware component scripts that print styled markup:** Inside `data-bascik-build="page"`, only class and element names written literally in the script source are scoped. Markup returned by an imported helper is not scoped, so style it from a global stylesheet or keep the names literal in the script.
 
 ### From Svelte
 
