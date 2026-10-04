@@ -82,7 +82,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   minify: { html: null, css: null, js: null, identifiers: null },
   assets: { inlineStyles: null, exclude: null, symlink: null },
   generate: { sitemap: null, robots: null, sitemapLastmod: null, cspHashes: null, manifest: null },
-  pipeline: { watchPaths: null, exec: null, workers: null },
+  pipeline: { watchPaths: null, exec: null, workers: null, onExecError: null },
   scripts: {
     cache: { enabled: null, include: null, exclude: null, environment: null },
     typescript: null,
@@ -468,6 +468,9 @@ export const validateConfigShape = (
       if (!valid) {
         push("pipeline.workers", workers, "expected true, false, or a positive integer");
       }
+    }
+    if (pipeline.onExecError !== undefined && !VALID_MINIFY_ERROR_VALUES.has(pipeline.onExecError as string)) {
+      push("pipeline.onExecError", pipeline.onExecError, 'expected "warn" or "error"');
     }
     if (pipeline.watchPaths !== undefined) {
       const watchPaths = pipeline.watchPaths;

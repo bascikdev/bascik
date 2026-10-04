@@ -283,6 +283,22 @@ describe("pipeline.workers", () => {
   });
 });
 
+describe("pipeline.onExecError", () => {
+  it("accepts warn and error", () => {
+    expect(validateConfigShape({ pipeline: { onExecError: "warn" } })).toHaveLength(0);
+    expect(validateConfigShape({ pipeline: { onExecError: "error" } })).toHaveLength(0);
+  });
+
+  it("rejects ignore and typos, naming the allowed values", () => {
+    for (const value of ["ignore", "erorr", true]) {
+      const errors = validateConfigShape({ pipeline: { onExecError: value as any } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("pipeline.onExecError");
+      expect(errors[0].message).toContain('"warn" or "error"');
+    }
+  });
+});
+
 describe("pipeline.exec phase", () => {
   it("rejects an unknown exec phase, folded into the validation pass", () => {
     const errors = validateConfigShape({

@@ -14,6 +14,7 @@ import { scanApiRouteFiles, formatApiRouteWarning, buildApiRouteTree } from "./l
 import { withCompilationPublisher } from "./lib/compilation-events.ts";
 import { eventEmitter } from "./lib/events.ts";
 import { assertProductionBuildState, writeBuildState } from "./lib/build-state.ts";
+import { toleratingExecFailure } from "./lib/exec-policy.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -40,16 +41,19 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
 
   const overallStart = performance.now();
 
+  // Exec script failures follow `pipeline.onExecError`: a build stops on one
+  // by default (exit 1), the dev server reports it and keeps running. Page
+  // compilation failures are never tolerated here.
   if (BascikConfig.isBuild) {
-    await runExecPhase("pre");
+    await toleratingExecFailure(() => runExecPhase("pre"));
     const parallel = startExecParallel();
     // Start both branches before joining. Observe every failure immediately,
     // and wait for all children even when compilation or another child fails.
     const results = await Promise.allSettled([
-      parallel,
+      toleratingExecFailure(() => parallel),
       (async () => {
         await watchFiles();
-        await runExecPhase("post");
+        await toleratingExecFailure(() => runExecPhase("post"));
       })(),
     ]);
     const failures = results.filter(result => result.status === "rejected");
@@ -91,7 +95,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const totalElapsed = performance.now() - overallStart;
     console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
   } else {
-    await runExecPhase("pre");
+    await toleratingExecFailure(() => runExecPhase("pre"));
     // Parallel entries run alongside the dev server and page compilation:
     // the handle is started here but NOT awaited, so the server binds and
     // pages compile while the entries work. The handle is retained and handed
@@ -116,7 +120,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
           { onPageErrors: "publish" },
         ),
     });
-    await runExecPhase("post");
+    await toleratingExecFailure(() => runExecPhase("post"));
     for (const [event, payload] of publications) eventEmitter.emit(event, payload);
     const version = await readVersion();
     await writeBuildState("development", version);

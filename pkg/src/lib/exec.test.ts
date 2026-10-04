@@ -90,6 +90,7 @@ vi.mock("chokidar", () => ({ default: { watch: mockWatch } }));
 vi.mock("./events.js", () => ({
   eventEmitter: { emit: mockEventEmit },
   registerShutdownHandler: mockRegisterShutdownHandler,
+  runShutdownHandlers: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./config.js", () => ({
   BascikConfig: { pipeline: { exec: undefined }, directory: { out: undefined, pages: undefined, components: undefined } },
@@ -271,6 +272,38 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     errorSpy.mockRestore();
   });
 
+  it("stops the dev session when a parallel script fails and pipeline.onExecError is 'error'", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
+    (cfg.pipeline as any).onExecError = "error";
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      const handle = startExecParallel();
+      await startExecDev({ parallel: handle });
+      await handle.catch(() => { });
+      await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+    } finally {
+      delete (cfg.pipeline as any).onExecError;
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("keeps the dev session running on a parallel failure by default", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "parallel" }];
+    setNextExitCode(1);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const handle = startExecParallel();
+    await startExecDev({ parallel: handle });
+    await handle.catch(() => { });
+    await Promise.resolve();
+    expect(exitSpy).not.toHaveBeenCalled();
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
   it("publishes parallel outcomes even when no watched entries exist", async () => {
     cfg.pipeline.exec = [{ script: "scripts/par1.ts", phase: "parallel" }];
     const handle = startExecParallel();
@@ -296,7 +329,7 @@ describe("startExecDev", () => {
           if (event === 'close') closes.push(code => callback(code));
           return child;
         }),
-        emitEvent: (_event: string, ..._args: unknown[]) => {},
+        emitEvent: (_event: string, ..._args: unknown[]) => { },
       };
       return child;
     });

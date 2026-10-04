@@ -207,6 +207,12 @@ export interface PipelineOptions {
   watchPaths: string[];
   exec?: ExecEntry[];
   workers: boolean;
+  /**
+   * What a failing `exec` script does. `'error'` stops (a build exits 1, a dev
+   * session exits 1); `'warn'` reports and continues. Default: `'error'` for
+   * `--build`, `'warn'` for the dev server.
+   */
+  onExecError?: "error" | "warn";
 }
 
 export interface ScopableOptions {
@@ -365,6 +371,7 @@ export type UserConfig = {
     watchPaths?: string[];
     exec?: ExecEntry[];
     workers?: boolean;
+    onExecError?: "error" | "warn";
   };
   scripts?: {
     cache?: ScopableConfig;

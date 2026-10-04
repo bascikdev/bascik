@@ -283,6 +283,22 @@ describe("dev vs build vs server mode overrides and defaults", () => {
     vi.resetModules();
   });
 
+  it("leaves pipeline.onExecError unset so the mode decides, and keeps a configured value", () => {
+    expect(initBascikConfig({}, {}, { isBuild: false }).BascikConfig.pipeline.onExecError).toBeUndefined();
+    expect(initBascikConfig({}, {}, { isBuild: true }).BascikConfig.pipeline.onExecError).toBeUndefined();
+    const flipped = initBascikConfig({ pipeline: { onExecError: "error" } }, {}, { isBuild: false }).BascikConfig;
+    expect(flipped.pipeline.onExecError).toBe("error");
+  });
+
+  it("lets the dev and build mode exports set pipeline.onExecError independently", () => {
+    const overrides = {
+      dev: { pipeline: { onExecError: "error" as const } },
+      build: { pipeline: { onExecError: "warn" as const } },
+    };
+    expect(initBascikConfig({}, overrides, { isBuild: false }).BascikConfig.pipeline.onExecError).toBe("error");
+    expect(initBascikConfig({}, overrides, { isBuild: true }).BascikConfig.pipeline.onExecError).toBe("warn");
+  });
+
   it("keeps minify options off and defaults error actions to 'error' for scripts in dev mode", () => {
     const { BascikConfig: cfg } = initBascikConfig({}, {}, { isBuild: false, isProdServer: false });
     expect(cfg.minify).toEqual({ html: false, css: false, js: false, identifiers: false });

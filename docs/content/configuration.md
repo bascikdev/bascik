@@ -200,6 +200,7 @@ Here are just a few ways Bascik puts architectural choices back in your hands:
 - **Style Deduplication (`scoping.deduplicateCss`):** Choose between clean, single-definition scoped stylesheets for optimal payload sizes, or individual per-instance styling for seamless local script querying.
 - **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently, or plug in your own custom async minifiers (like esbuild or terser). TypeScript in referenced `.ts` companions and `type="text/typescript"` blocks is stripped automatically before minification, so no minifier configuration is needed for it.
 - **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
+- **Exec Failure Behavior (`pipeline.onExecError`):** Choose whether a failing `pipeline.exec` script stops the run (`'error'`) or is reported while it continues (`'warn'`). Defaults to `'warn'` in dev and `'error'` for `--build`.
 - **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
 - **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
 - **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
@@ -423,8 +424,11 @@ pipeline: {
     },
   ],
   workers: false,                    // enable multi-threaded worker pool (defaults to false; dev advises true on large multi-core workloads)
+  onExecError: 'warn',               // 'warn' | 'error'. Default: 'warn' in dev, 'error' for --build
 }
 ```
+
+`pipeline.onExecError` sets what a failing exec script does. With `'error'`, a build stops and exits 1 and a dev session exits 1. With `'warn'`, the failure is reported and the run continues. The default is `'warn'` for the dev server (a typo in a script should not end your session) and `'error'` for `--build` (a failed script must not produce a build that looks successful). See [When a script fails](/exec-scripts#when-a-script-fails).
 
 `pipeline.exec[].watch` selects scripts after matching source edits. Pages, components, `pipeline.watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `pipeline.watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
 

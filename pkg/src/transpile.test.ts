@@ -297,12 +297,140 @@ describe("runTranspile", () => {
     await expect(runTranspile({ exitOnError: false })).rejects.toThrow("Port in use");
   });
 
-  it("rejects without calling watchFiles when a pre exec script fails in dev", async () => {
-    (BascikConfig as any).isBuild = false;
-    _mockRunExecPhase.mockRejectedValueOnce(new Error("exec pre failed"));
+  describe("pipeline.onExecError", () => {
+    const failOnce = (phase: "pre" | "post") =>
+      _mockRunExecPhase.mockImplementation(async (p: string) => {
+        _callOrder.push(`runExecPhase:${p}`);
+        if (p === phase) throw new Error(`exec ${phase} failed`);
+        return { count: 1, totalElapsed: 5 };
+      });
+    const restore = () => {
+      delete (BascikConfig.pipeline as any).onExecError;
+      _mockRunExecPhase.mockImplementation(async (p: string) => {
+        _callOrder.push(`runExecPhase:${p}`);
+        return { count: 1, totalElapsed: 5 };
+      });
+    };
+    const quiet = () => ({
+      error: vi.spyOn(console, "error").mockImplementation(() => { }),
+      log: vi.spyOn(console, "log").mockImplementation(() => { }),
+    });
 
-    await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
-    expect(_mockWatchFiles).not.toHaveBeenCalled();
+    it("dev keeps running when a pre script fails: reports a build-error, still compiles and boots", async () => {
+      const spies = quiet();
+      const emitSpy = vi.spyOn(eventEmitter, "emit");
+      (BascikConfig as any).isBuild = false;
+      _parallel.release();
+      failOnce("pre");
+      try {
+        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+        expect(_mockWatchFiles).toHaveBeenCalled();
+        expect(emitSpy).toHaveBeenCalledWith("build-error", { message: "exec failed: exec pre failed" });
+        expect(emitSpy).toHaveBeenCalledWith("boot-done");
+        expect(mem.setBootingDone).toHaveBeenCalledOnce();
+      } finally {
+        restore();
+        emitSpy.mockRestore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("dev keeps running when a post script fails: reports a build-error and still boots", async () => {
+      const spies = quiet();
+      const emitSpy = vi.spyOn(eventEmitter, "emit");
+      (BascikConfig as any).isBuild = false;
+      _parallel.release();
+      failOnce("post");
+      try {
+        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+        expect(emitSpy).toHaveBeenCalledWith("build-error", { message: "exec failed: exec post failed" });
+        expect(emitSpy).toHaveBeenCalledWith("boot-done");
+      } finally {
+        restore();
+        emitSpy.mockRestore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("dev with onExecError 'error' rejects on a pre failure before compiling", async () => {
+      const spies = quiet();
+      (BascikConfig as any).isBuild = false;
+      (BascikConfig.pipeline as any).onExecError = "error";
+      failOnce("pre");
+      try {
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
+        expect(_mockWatchFiles).not.toHaveBeenCalled();
+      } finally {
+        restore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("dev with onExecError 'error' rejects on a post failure and never reports ready", async () => {
+      const spies = quiet();
+      (BascikConfig as any).isBuild = false;
+      (BascikConfig.pipeline as any).onExecError = "error";
+      _parallel.release();
+      failOnce("post");
+      try {
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec post failed");
+        expect(mem.setBootingDone).not.toHaveBeenCalled();
+      } finally {
+        restore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("a build stops before compiling when a pre script fails", async () => {
+      const spies = quiet();
+      (BascikConfig as any).isBuild = true;
+      failOnce("pre");
+      try {
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec pre failed");
+        expect(_mockWatchFiles).not.toHaveBeenCalled();
+      } finally {
+        restore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("a build fails after compiling when a post script fails, and never claims success", async () => {
+      const spies = quiet();
+      (BascikConfig as any).isBuild = true;
+      _parallel.release();
+      failOnce("post");
+      try {
+        await expect(runTranspile({ exitOnError: false })).rejects.toThrow("exec post failed");
+        expect(spies.log).not.toHaveBeenCalledWith(expect.stringContaining("Build complete"));
+      } finally {
+        restore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
+
+    it("a build with onExecError 'warn' logs a failed pre script, continues, and completes", async () => {
+      const spies = quiet();
+      (BascikConfig as any).isBuild = true;
+      (BascikConfig.pipeline as any).onExecError = "warn";
+      _parallel.release();
+      failOnce("pre");
+      try {
+        await expect(runTranspile({ exitOnError: false })).resolves.toBeUndefined();
+        expect(_mockWatchFiles).toHaveBeenCalled();
+        expect(spies.error).toHaveBeenCalledWith(expect.stringContaining("pipeline.onExecError"));
+        expect(spies.log).toHaveBeenCalledWith(expect.stringMatching(/Build complete/));
+      } finally {
+        restore();
+        spies.error.mockRestore();
+        spies.log.mockRestore();
+      }
+    });
   });
 
   it("buffers only the boot compile and emits later watcher publications directly", async () => {

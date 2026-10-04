@@ -4,6 +4,7 @@ import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { createSourceCycle } from './source-cycle.ts';
 import { execWatchCoversPath, runScript } from './exec.ts';
+import { getExecErrorAction, stopAfterExecFailure } from './exec-policy.ts';
 import { withCompilationPublisher } from './compilation-events.ts';
 import { clearBuildScriptCaches } from './build-scripts.ts';
 import { invalidateComponentListCache } from './components.ts';
@@ -41,6 +42,9 @@ export const watchSourceCycles = async (
     entries,
     run: runScript,
     emitter: eventEmitter,
+    // Under the default dev action ('warn') the cycle already reported a
+    // build-error and retries on the next edit. Under 'error' the session ends.
+    onExecFailure: error => { if (getExecErrorAction() === 'error') stopAfterExecFailure(error); },
     compile: async (paths, publish) => withCompilationPublisher(publish, async () => {
       const batchChanges = new Map(paths.map(path => [path, changes.get(path) ?? 'change']));
       for (const path of paths) changes.delete(path);
