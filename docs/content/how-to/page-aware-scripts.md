@@ -118,7 +118,7 @@ Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to
 
 Without an explicit page-aware marker, a component build script that reads page context only through an imported helper runs once during component registration. Its output is then reused, and a helper may derive a path from the component file instead of the page. With the marker, when Bascik transpiles `src/pages/components.html` containing `<docs-pagination />`, it executes the deferred script with `process.env.BASCIK_PAGE_PATH` set to `"/components"`. Each page gets its own output and disk cache entry.
 
-> **Styling what a page-aware script prints.** The component's scoped CSS matches printed markup only where the class and element names appear literally in the script source. Markup returned by an imported helper, or class names built while the script runs, are inserted as written and keep their plain names. Keep styled markup in the component template and let the script print only data, or style the printed names from a global stylesheet. A script without the page-aware marker does not have this limitation.
+> **Styling what a page-aware script prints.** Markup a page-aware component script prints is scoped exactly like the component's template, including markup returned by an imported helper and class names built while the script runs. Classes and elements the component's stylesheet defines get scoped names, and classes it does not define stay global. Markup inside comments, `<script>`, `<style>`, and `<textarea>` is left as written.
 
 ## The Pattern in Practice
 

@@ -58,6 +58,7 @@ import {
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
 import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
 import { getImportRoot } from "./import-root.ts";
+import { applyOutputScope, decodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
 import {
   ATTR,
   BUILD_FLAG,
@@ -525,6 +526,7 @@ export const executeBuildScripts = async (
     startLine: number;
     tmpPath: string;
     sourceFile: string;
+    outputScope: OutputScope | null;
     output?: string;
   }
 
@@ -655,6 +657,7 @@ export const executeBuildScripts = async (
       cacheKey,
       startLine,
       tmpPath,
+      outputScope: decodeOutputScope(getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE)),
       sourceFile,
     });
   }
@@ -751,8 +754,12 @@ export const executeBuildScripts = async (
   // so earlier indices stay valid. Index splicing is inherently safe against
   // `$`-style replacement patterns and against duplicate identical tags.
   tasks.sort((a, b) => b.index - a.index);
-  for (const { fullTag, index, output } of tasks) {
-    result = result.slice(0, index) + (output ?? "") + result.slice(index + fullTag.length);
+  for (const { fullTag, index, output, outputScope } of tasks) {
+    // A deferred page-aware component script carries its component's scope so
+    // its page-time output matches the component's scoped CSS. Applied after
+    // caching, so the cache stores the script's own stdout.
+    const emitted = outputScope ? applyOutputScope(output ?? "", outputScope) : (output ?? "");
+    result = result.slice(0, index) + emitted + result.slice(index + fullTag.length);
   }
 
   return result;

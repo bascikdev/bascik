@@ -1942,3 +1942,52 @@ describe("getComponentScripts", () => {
     });
   });
 });
+
+describe("prefixElementAttribute – page-aware build script output scope", () => {
+  const readScope = (html: string) => {
+    const match = /data-bascik-output-scope="([^"]*)"/.exec(html);
+    return match ? JSON.parse(decodeURIComponent(match[1])) : null;
+  };
+
+  it("records the component's class and element scope on a deferred page-aware script", () => {
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap"><script data-bascik-build="page">console.log(helper());</script></div>',
+        ".wrap { display: flex; } .item { color: red; } h2 a { color: blue; }",
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(readScope(component.fileContent)).toEqual({
+      classes: {
+        wrap: "bascik__my-comp__wrap",
+        item: "bascik__my-comp__item",
+      },
+      elements: {
+        h2: "bascik__my-comp__el__h2",
+        a: "bascik__my-comp__el__a",
+      },
+    });
+  });
+
+  it("does not annotate scripts that already run during component registration", () => {
+    const component = prefixElementAttribute(
+      makeComponent(
+        '<div class="wrap"><script data-bascik-build>console.log("x");</script></div>',
+        ".wrap { display: flex; }",
+      ),
+      "class",
+      "abc12345",
+    );
+    expect(component.fileContent).not.toContain("data-bascik-output-scope");
+  });
+
+  it("does not annotate a page-aware script in a component with no stylesheet", () => {
+    const component = prefixElementAttribute(
+      makeComponent('<nav><script data-bascik-build="page">console.log("x");</script></nav>'),
+      "class",
+      "abc12345",
+    );
+    expect(component.fileContent).not.toContain("data-bascik-output-scope");
+  });
+});

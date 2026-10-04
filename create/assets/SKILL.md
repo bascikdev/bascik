@@ -1975,7 +1975,7 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 - **Content collections (Astro `getCollection`, Eleventy `collections`):** No built-in equivalent. Write a `src/lib/posts.ts` helper that reads `content/` with `fs`, parses front matter with `gray-matter`, validates with `zod`, and sorts by the parsed date (not the file name). Escape every interpolated value. Drafts: skip them when `process.env.BASCIK_BUILD === '1'`. Exclude scripts that read `content/` from `scripts.cache` and add `content/` to `pipeline.watchPaths`.
 - **Template logic (Nunjucks/Liquid loops, filters, includes with variables):** Becomes TypeScript helpers in `src/lib/` that return HTML. Only static includes become components. Pages keep `<html>`/`<head>`/`<body>`; a component cannot own them.
 - **Feeds, sitemaps, images:** RSS/Atom is a `pipeline.exec` script (`phase: 'post'`) writing to `BASCIK_OUT_DIR`. Sitemap and robots are built in. No image optimization or syntax highlighting built in; do it in your own build step.
-- **Page-aware component scripts that print styled markup:** Inside `data-bascik-build="page"`, only class and element names written literally in the script source are scoped. Markup returned by an imported helper is not scoped, so style it from a global stylesheet or keep the names literal in the script.
+- **Component scripts that print styled markup:** Output of a component build script, page-aware or not, is scoped like the template, including markup returned by imported helpers. Classes the component stylesheet does not define stay global.
 
 ### From Svelte
 

@@ -184,7 +184,7 @@ Astro's `<slot name="header" />` maps to a receiver element with `data-bascik-sl
 
 ## Astro Scoped `<style>` → Paired .css Files
 
-Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's equivalent is a paired `.css` file in the same directory as the component HTML. Remove the `<style>` block from the component file and paste its contents into the `.css` file. Class names, element selectors (including descendant chains such as `nav a` and `ul li *`), and `@keyframes` are scoped automatically at build time, and selectors that only target markup in the same component need no changes. The exceptions are markup that belongs to another component, covered below, and markup a page-aware build script returns from an imported helper, covered in [Build Script Output](#build-script-output).
+Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's equivalent is a paired `.css` file in the same directory as the component HTML. Remove the `<style>` block from the component file and paste its contents into the `.css` file. Class names, element selectors (including descendant chains such as `nav a` and `ul li *`), and `@keyframes` are scoped automatically at build time, and selectors that only target markup in the same component need no changes. The exception is markup that belongs to another component, covered below.
 
 ```astro
 <!-- SiteNav.astro (Astro - before) -->
@@ -215,7 +215,7 @@ One difference: in Astro a parent's selector such as `nav a { }` can also style 
 
 ### Build Script Output
 
-Markup that a component's build script prints is scoped like the rest of the template. Page-aware scripts (`data-bascik-build="page"`) are the exception: only class and element names written literally in the script source are scoped. Markup returned by an imported helper, or class names computed while the script runs, are inserted as written, so the component's scoped rules do not match them. Either keep those names literal in the script, or style that markup from a global stylesheet listed in `assets.inlineStyles`. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet can always style them.
+Markup that a component's build script prints is scoped like the rest of the template, including markup returned by a helper the script imports and markup from page-aware scripts (`data-bascik-build="page"`). So a helper in `src/lib/` can print a post card, and the component's `.card` and `h2 a` rules still match it. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet listed in `assets.inlineStyles` can always style them.
 
 ## Content Collections → Dynamic Routes
 

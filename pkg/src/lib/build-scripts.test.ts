@@ -628,6 +628,68 @@ describe("executeBuildScripts", () => {
   });
 });
 
+// ─── page-aware output scope ─────────────────────────────────────────────────
+
+describe("executeBuildScripts – page-aware output scope", () => {
+  const scope = (value: unknown) => encodeURIComponent(JSON.stringify(value));
+  const SCOPE = scope({
+    classes: { item: "bascik__my-comp__item", wrap: "bascik__my-comp__wrap" },
+    elements: { h2: "bascik__my-comp__el__h2", a: "bascik__my-comp__el__a" },
+  });
+
+  it("scopes classes and elements in the output of a script carrying an output scope", async () => {
+    resolveWith('<p class="item global-only">x</p><h2><a href="/">y</a></h2><section class="wrap"></section>');
+    const result = await executeBuildScripts(
+      `<div><script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(helper())</script></div>`,
+      "src/pages/index.html",
+      null,
+      { pageFile: "src/pages/index.html" },
+    );
+    expect(result).toBe(
+      '<div><p class="bascik__my-comp__item global-only">x</p>' +
+      '<h2 class="bascik__my-comp__el__h2"><a class="bascik__my-comp__el__a" href="/">y</a></h2>' +
+      '<section class="bascik__my-comp__wrap"></section></div>',
+    );
+  });
+
+  it("leaves output untouched without an output scope", async () => {
+    resolveWith('<p class="item">x</p><h2><a href="/">y</a></h2>');
+    const result = await executeBuildScripts(
+      '<div><script data-bascik-build="page">console.log(helper())</script></div>',
+      "src/pages/index.html",
+    );
+    expect(result).toBe('<div><p class="item">x</p><h2><a href="/">y</a></h2></div>');
+  });
+
+  it("does not scope markup inside raw-text elements, comments, or attribute values", async () => {
+    resolveWith('<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>');
+    const result = await executeBuildScripts(
+      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      "src/pages/index.html",
+    );
+    expect(result).toBe('<script>const s = "<a class=\\"item\\">";</script><!-- <a class="item"> --><p title="<a class=item>">z</p><textarea><a></a></textarea>');
+  });
+
+  it("does not let replacement tokens in output expand", async () => {
+    resolveWith('<p class="item">$1 $& $`</p>');
+    const result = await executeBuildScripts(
+      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      "src/pages/index.html",
+    );
+    expect(result).toBe('<p class="bascik__my-comp__item">$1 $& $`</p>');
+  });
+
+  it("does not let the scope annotation reach the script or the cache key", async () => {
+    resolveWith("");
+    await executeBuildScripts(
+      `<script data-bascik-build="page" data-bascik-output-scope="${SCOPE}">console.log(1)</script>`,
+      "src/pages/index.html",
+    );
+    const written = (writeFile as ReturnType<typeof vi.fn>).mock.calls.find(([path]) => String(path).endsWith(".mjs"))?.[1] as string;
+    expect(written).not.toContain("output-scope");
+  });
+});
+
 // ─── extractScriptDeps ───────────────────────────────────────────────────────
 
 describe("extractScriptDeps", () => {

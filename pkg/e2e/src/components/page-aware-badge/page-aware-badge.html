@@ -2,4 +2,8 @@
   <script data-bascik-build="page">
     console.log('<span data-testid="current-page-path">' + process.env.BASCIK_PAGE_PATH + '</span>');
   </script>
+  <script data-bascik-build="page">
+    import { pageAwareLabel } from '@/lib/page-aware-label.ts';
+    console.log(pageAwareLabel(process.env.BASCIK_PAGE_PATH));
+  </script>
 </div>

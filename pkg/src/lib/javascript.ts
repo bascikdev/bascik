@@ -79,6 +79,23 @@ import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+import { encodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
+
+/**
+ * Add the output-scope annotation to every page-aware build script open tag
+ * (`data-bascik-build="page"` or `data-bascik-page-aware`). Static build
+ * scripts already ran before scoping, so their output was scoped with the
+ * template and needs no annotation.
+ */
+const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
+  html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
+    if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
+    const isPageAware =
+      /\sdata-bascik-page-aware\b/i.test(openTag) ||
+      /\sdata-bascik-build\s*=\s*["']?page["']?/i.test(openTag);
+    if (!isPageAware) return openTag;
+    return openTag.replace(/>$/, ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`);
+  });
 
 /**
  * A `<script>` open tag carrying any Bascik directive (`build`, `server`,
@@ -866,6 +883,20 @@ export const prefixElementAttribute = (
       component.fileContent,
       allIdsConverted,
     );
+
+    // Deferred page-aware build scripts print their markup at page time, after
+    // this pass. Record the mapping on each one so executeBuildScripts scopes
+    // that output the same way (see output-scope.ts).
+    if (scopedClassesSet && (scopedClassesSet.size > 0 || allElementClasses.length > 0)) {
+      const scope: OutputScope = { classes: {}, elements: {} };
+      for (const className of scopedClassesSet) {
+        scope.classes[className] = minifyAttributeName(`bascik__${scopeKey}__${className}`);
+      }
+      for (const element of new Set(allElementClasses)) {
+        scope.elements[element] = minifyAttributeName(`bascik__${scopeKey}__el__${element}`);
+      }
+      component.fileContent = annotatePageAwareScripts(component.fileContent, encodeOutputScope(scope));
+    }
   }
 
   // Restore any inner content that was shielded from transforms.
