@@ -346,7 +346,7 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
 .bascik__list > .bascik__list__el__li { padding: 0; }
 ```
 
-This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators (`div p {}`, `p + p {}`) with no class anchor on the left side are still not converted.
+This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.bascik__card__el__div .bascik__card__el__p {}` and matches only elements in the component's template.
 
 ### CSS nesting element selectors
 
