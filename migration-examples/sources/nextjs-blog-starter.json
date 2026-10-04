@@ -1,0 +1,12 @@
+{
+  "id": "nextjs-blog-starter",
+  "repository": "https://github.com/vercel/next.js",
+  "commit": "ba80ee48fc319735151c3ad6d9bb9a8180c9f09e",
+  "subdirectory": "examples/blog-starter",
+  "archiveSha256": "2d5323129612f58c16523d29e09032518207ee2743467c466e526fc5a26650b5",
+  "licensePath": "license.md",
+  "license": "MIT",
+  "notice": "Copyright (c) 2025 Vercel, Inc.",
+  "lockfile": "nextjs-blog-starter.package-lock.json",
+  "lockfileStatus": "Captured 2026-10-04 with npm install --package-lock-only --ignore-scripts --before=2026-09-27 (resolves next@latest to 16.3.6). Reproduce with npm ci --ignore-scripts. Only fsevents (optional) has an install script and is not needed."
+}

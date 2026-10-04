@@ -917,14 +917,14 @@ Markdown stays comfortable for authors, while the published page stays **vanilla
 
 The parser emits ordinary HTML, so it can be styled by a global stylesheet or wrapped in a Bascik component. For reusable scoped styles, have the script emit `<markdown-content>${marked(md)}</markdown-content>` and give that component a default slot.
 
-Use wrapper descendant selectors for generated slot content:
+Use the wrapper class plus `:is()` around element names for generated slot content:
 
 ```css
-.markdown-content h2 { margin-block: 2.5rem 0.75rem; }
-.markdown-content blockquote { border-left: 4px solid currentColor; }
+.markdown-content :is(h2) { margin-block: 2.5rem 0.75rem; }
+.markdown-content :is(blockquote) { border-left: 4px solid currentColor; }
 ```
 
-Do not rely on a bare `h2 {}` component rule for Markdown passed through a slot. Bare element rules are transformed before slot content is inserted; a scoped wrapper selector continues to match the generated descendants.
+Do not write `h2 {}` or `.markdown-content h2 {}` for Markdown passed through a slot. Bascik scopes an element name by adding a class to the matching elements in the component's own template, also after a wrapper class, so slotted headings (plain tags) never match. Names inside `:is()` are left as written; the wrapper class stays scoped and specificity is unchanged.
 
 ### Page-Aware Scripts
 
@@ -2033,6 +2033,32 @@ React-specific gotchas:
 - **Component scripts run once and are moved in production.** Minified production HTML moves them to the end of the document; the dev server leaves them in place. Look up elements inside handlers or after `DOMContentLoaded`.
 - **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.
 - **Tag names need a hyphen.** `Card.jsx` becomes `info-card`.
+
+### From Next.js
+
+Full guide: `/switch/from-next`. Worked example: `/switch/next-blog-tutorial` (the official `blog-starter` example). Key Next.js-specific mappings:
+
+| Next.js | Bascik |
+|---------|--------|
+| `app/page.tsx`, `app/posts/[slug]/page.tsx` | `src/pages/index.html`, `src/pages/posts/[slug].html` (`/posts/<slug>`, also served with a trailing slash) |
+| `generateStaticParams` | `<script data-bascik-routes>` printing `[{ "params": { "slug": "..." } }]` |
+| `generateMetadata` / `metadata` export | A build script in `<head>` that prints `<title>` and `<meta>` from a `src/lib` helper; absolute URLs from `BASCIK_SITE_URL` |
+| `app/layout.tsx` | Pages keep `<html>`/`<head>`/`<body>`; a head component plus header/footer components |
+| Server component that maps data to JSX | A `src/lib` helper returning escaped HTML strings, printed by a build script |
+| `"use client"` component with `useState`/`useEffect` | A component with a plain `<script>`; persistent state lives in the DOM or `localStorage` |
+| `next/link`, `next/image`, `next/font` | `<a>`, `<img>` with `width`/`height`, a self-hosted `@font-face` plus `<link rel="preload">` |
+| CSS Modules (`styles.x`) | Paired component `.css`; a class written in the template is scoped |
+| Tailwind via PostCSS | A `pipeline.exec` `pre` script running PostCSS + Tailwind into `BASCIK_OUT_DIR`; Tailwind `content` lists `src/**/*.html` and `src/lib/**/*.ts` |
+| `app/api/x/route.ts` | `src/api/x.ts` exporting `GET`/`POST`; `context.params` is a plain object, not a promise; `bascik --server` only |
+
+Next.js-specific gotchas:
+
+- **`@/` in a helper that imports a helper fails.** tsconfig `paths` do not apply; Node runs `src/lib/*.ts` directly. Inside helpers use relative paths with the `.ts` extension, and `import type` for type-only imports.
+- **Tailwind `@apply` in component CSS is not processed.** Write the CSS out, or keep `@apply` in the global Tailwind input file.
+- **Tailwind's `dark` class works unscoped** when it is toggled on `<html>` and the component's own CSS does not define it.
+- **A pre-paint script (theme, FOUC) goes in `<head>`.** Production HTML minification moves body scripts to the end of the body; head scripts stay put.
+- **Style slotted Markdown with `.wrapper :is(h2)`**, not `.wrapper h2` (see Markdown above).
+- **Unknown slugs return 404.** The upstream example answers 500 for them, because `getPostBySlug` throws before `notFound()`.
 
 ### From Svelte
 

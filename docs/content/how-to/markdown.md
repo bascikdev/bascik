@@ -121,7 +121,7 @@ For a portable content style, create a component whose default slot receives the
 </article>
 ```
 
-Pair it with component CSS. Start selectors with the wrapper class so the rules apply to HTML inserted through the slot:
+Pair it with component CSS. Start selectors with the wrapper class, and put the element names in `:is()` so the rules apply to HTML inserted through the slot:
 
 ```css
 /* src/components/markdown-content/markdown-content.css */
@@ -132,20 +132,20 @@ Pair it with component CSS. Start selectors with the wrapper class so the rules 
   font: 1.05rem/1.75 Georgia, serif;
 }
 
-.markdown-content h2 {
+.markdown-content :is(h2) {
   margin-block: 2.5rem 0.75rem;
   color: #142c35;
   font: 700 1.75rem/1.2 system-ui, sans-serif;
 }
 
-.markdown-content blockquote {
+.markdown-content :is(blockquote) {
   margin-inline: 0;
   padding: 1rem 1.25rem;
   border-left: 4px solid #d7b329;
   background: #fff9df;
 }
 
-.markdown-content img {
+.markdown-content :is(img) {
   display: block;
   max-width: 100%;
   height: auto;
@@ -164,9 +164,9 @@ Have the build script emit the component tag around the parsed Markdown:
 </script>
 ```
 
-Bascik runs the script first, sees the emitted `<markdown-content>` tag, resolves it, fills its slot, and includes its scoped CSS. Only that component's wrapper receives the generated scoped class; selectors such as `.markdown-content h2` then style the ordinary heading descendants inside it.
+Bascik runs the script first, sees the emitted `<markdown-content>` tag, resolves it, fills its slot, and includes its scoped CSS. Only that component's wrapper receives the generated scoped class; selectors such as `.markdown-content :is(h2)` then style the ordinary heading descendants inside it.
 
-> **Use a wrapper selector for slot content.** A bare `h2 {}` rule in component CSS is transformed by Bascik and attached to headings present in the component template. Markdown headings arrive through the slot later, so write `.markdown-content h2 {}` for generated content.
+> **Put element names in `:is()` for slot content.** Bascik scopes an element name in component CSS by adding a generated class to the matching elements in the component's own template. That applies after a wrapper class too: `.markdown-content h2` only matches an `h2` written in the template. Markdown headings arrive through the slot and keep plain tags, so write `.markdown-content :is(h2) {}`. Bascik leaves names inside `:is()` as written, the wrapper class stays scoped, and the specificity equals `.markdown-content h2`.
 
 ### What Reaches the Browser
 

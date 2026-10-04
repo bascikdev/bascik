@@ -1,0 +1,26 @@
+{
+  "name": "nextjs-blog-bascik-port",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "bascik --site-url https://example.com",
+    "build": "bascik --build --site-url https://example.com",
+    "serve": "bascik --server"
+  },
+  "dependencies": {
+    "@bascik/bascik": "1.0.0-rc.2",
+    "autoprefixer": "^10.4.19",
+    "date-fns": "^3.6.0",
+    "feed": "^6.0.0",
+    "gray-matter": "^4.0.3",
+    "postcss": "^8.4.38",
+    "remark": "^15.0.1",
+    "remark-html": "^16.0.1",
+    "tailwindcss": "^3.4.4",
+    "zod": "^4.6.5"
+  }
+}

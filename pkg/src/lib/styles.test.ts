@@ -195,6 +195,35 @@ describe("convertCssElementSelectorsToClasses", () => {
       expect(elementsConvertedClasses, label).not.toContain("head");
     }
   });
+
+  it("leaves percentage keyframe selectors untouched", () => {
+    // Element names start with a letter. `40%` and the `100%` after a comma are
+    // keyframe stops; scoping them as elements makes the browser drop those stops.
+    const css = [
+      "@keyframes n {",
+      "  40% { transform: rotate(-15deg); }",
+      "  80% { transform: rotate(10deg); }",
+      "  0%,",
+      "  100% { transform: rotate(0deg); }",
+      "}",
+      "@keyframes m { from { opacity: 0; } 50% { opacity: .5; } 0%, 100% { opacity: 1; } }",
+      "@keyframes k { 12.5% { opacity: .1; } }",
+    ].join("\n");
+    const { css: result, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(css, "my-comp");
+    expect(result).toBe(css);
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("still scopes heading elements that contain digits next to keyframes", () => {
+    const css = "h1, h2 { margin: 0; } @keyframes n { 0%, 100% { opacity: 1; } }";
+    const { css: result, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(css, "my-comp");
+    expect(result).toBe(
+      ".bascik__my-comp__el__h1, .bascik__my-comp__el__h2 { margin: 0; } @keyframes n { 0%, 100% { opacity: 1; } }",
+    );
+    expect(elementsConvertedClasses).toEqual(["h1", "h2"]);
+  });
 });
 
 describe("addElementClassesInHtml", () => {

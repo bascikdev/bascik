@@ -104,6 +104,13 @@ describe('renderPagination', () => {
     expect(renderSectionLabel('/switch/react-product-table-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
   });
 
+  it('places the Next.js blog tutorial right after From Next.js', () => {
+    const next = renderPagination('/switch/next-blog-tutorial');
+    expect(next).toContain('href="/switch/from-next"');
+    expect(next).toContain('href="/switch/from-react"');
+    expect(renderSectionLabel('/switch/next-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
+  });
+
   it('places the Vue grid tutorial right after From Vue', () => {
     const vue = renderPagination('/switch/vue-grid-tutorial');
     expect(vue).toContain('href="/switch/from-vue"');

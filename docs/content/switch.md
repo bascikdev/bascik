@@ -65,6 +65,8 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 
 > **Worked examples:** the [Astro Blog Tutorial](/switch/astro-blog-tutorial) and the [Eleventy Blog Tutorial](/switch/eleventy-blog-tutorial) port each framework's official blog starter end to end, including feeds, sitemaps, drafts, and tag pages.
 
+> **Worked example for Next.js:** the [Next.js Blog Tutorial](/switch/next-blog-tutorial) ports the official `blog-starter` example, an App Router site with Tailwind, a CSS Module, and a client theme switch, and shows how `generateStaticParams`, metadata, and client components translate.
+
 > **Worked example for React:** the [Product Table Tutorial](/switch/react-product-table-tutorial) ports the finished example from React's "Thinking in React", a lifted-state component, and shows how props, events instead of callbacks, and repeated instances translate.
 
 > **Worked example for Vue:** the [Vue Grid Tutorial](/switch/vue-grid-tutorial) ports the official sortable, filterable grid, a reusable stateful component, and shows how props with arrays, events, and script placement translate.

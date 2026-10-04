@@ -697,6 +697,31 @@ describe("recursivelyTranspile – recursion guard", () => {
       PAGE_PATH,
     )).toThrow(/component expansion.*safety limits/i);
   });
+
+  it("does not expand a component tag written inside the template's own HTML comment", () => {
+    // Development keeps comments (no HTML minification). A comment that names the component,
+    // such as a usage note, is text and must never be expanded, or the component appears to
+    // include itself. Two comment shapes: the whole comment, and one whose text spans lines.
+    const componentList = {
+      "post-body": {
+        fileName: "components/post-body.html",
+        fileContent: "<!-- the page prints Markdown inside <post-body> -->\n" +
+          "<!-- a multi-line note\n     about <post-body>. -->" +
+          "<div class=\"markdown\"><div data-bascik-slot></div></div>",
+      },
+    };
+    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
+      "<post-body><h2>Heading</h2></post-body><post-body><p>Second</p></post-body>",
+      componentList,
+      [],
+      PAGE_PATH,
+    );
+    expect(usedComponents).toHaveLength(2);
+    expect(transpiledHtmlBody).toContain("<h2>Heading</h2>");
+    expect(transpiledHtmlBody).toContain("<p>Second</p>");
+    // The comments survive as written.
+    expect(transpiledHtmlBody).toContain("<!-- the page prints Markdown inside <post-body> -->");
+  });
 });
 
 describe("recursivelyTranspile – idempotence", () => {

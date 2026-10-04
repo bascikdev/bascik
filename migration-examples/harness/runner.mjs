@@ -36,7 +36,10 @@ export function launch(command, cwd, env) {
   const signalGroup = (signal) => {
     if (!child.pid) return;
     try { process.kill(-child.pid, signal); } catch (error) {
-      if (error.code !== 'ESRCH') throw error;
+      // ESRCH: the group is gone. EPERM: on macOS, a group whose remaining members are all
+      // zombies (for example `next build` workers awaiting reaping) rejects signals. Neither
+      // leaves a live process behind, and throwing here would hide the real test failure.
+      if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error;
     }
   };
   return {

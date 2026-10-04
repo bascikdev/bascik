@@ -698,7 +698,10 @@ export const recursivelyTranspile = (
         // safe; without known indices, be conservative.
         searchFrom = typeof sIdx === "number" ? sIdx : 0;
       } else {
-        masked = masked.slice(0, sIdx) + transpiledTag + masked.slice(eIdx);
+        // Mask the inserted template too. Without HTML minification (the dev server, or
+        // `minify.html: false`) a template keeps its comments, and a component tag named in
+        // one, such as a usage note, must stay text instead of being expanded.
+        masked = masked.slice(0, sIdx) + maskRawTextContent(transpiledTag) + masked.slice(eIdx);
         searchFrom = sIdx;
       }
 

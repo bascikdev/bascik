@@ -21,6 +21,7 @@
     "test:vue": "node --test --test-concurrency=1 harness/vue-grid.test.mjs",
     "test:vue-mutations": "node --test --test-concurrency=1 harness/vue-grid-mutations.test.mjs",
     "test:vue-guide": "node --test --test-concurrency=1 harness/vue-guide-claims.test.mjs",
-    "test:react-guide": "node --test --test-concurrency=1 harness/react-guide-claims.test.mjs"
+    "test:react-guide": "node --test --test-concurrency=1 harness/react-guide-claims.test.mjs",
+    "test:nextjs": "node --test --test-concurrency=1 harness/nextjs-blog.test.mjs"
   }
 }

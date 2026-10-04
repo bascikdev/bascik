@@ -45,4 +45,25 @@ describe("minifyCss", () => {
     const result = minifyCss(input);
     expect(result).toBe("@media (max-width:768px){.a{display:none;}}");
   });
+
+  it("keeps the descendant combinator before a pseudo-class or pseudo-element", () => {
+    // `.a :hover` matches hovered descendants of .a; `.a:hover` matches .a itself.
+    const input = [
+      ".a :is(h2, h3) { color: red; }",
+      ".a :where(p) { margin: 0; }",
+      ".a :hover { color: blue; }",
+      ".a ::before { content: ''; }",
+      ".a > :first-child { color: green; }",
+      ".a { .b :focus { outline: 0; } }",
+    ].join("\n");
+    expect(minifyCss(input)).toBe(
+      ".a :is(h2,h3){color:red;}.a :where(p){margin:0;}.a :hover{color:blue;}" +
+      ".a ::before{content:'';}.a > :first-child{color:green;}.a{.b :focus{outline:0;}}",
+    );
+  });
+
+  it("still removes spaces around declaration colons", () => {
+    expect(minifyCss(".a { color : red ; margin :0 }")).toBe(".a{color:red;margin:0}");
+    expect(minifyCss(".a { color: red; &:hover { color : blue } }")).toBe(".a{color:red;&:hover{color:blue}}");
+  });
 });

@@ -25,6 +25,19 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Percentage stops, including a stop list split across lines. None of them
+   is an element selector, so all four must reach the browser unchanged. */
+@keyframes wobble {
+  40% { transform: rotate(-15deg); }
+  80% { transform: rotate(10deg); }
+  0%,
+  100% { transform: rotate(0deg); }
+}
+
+.special-box {
+  animation: wobble 1s linear paused;
+}
+
 .animated-box {
   opacity: 0.3;
   padding: 12px;

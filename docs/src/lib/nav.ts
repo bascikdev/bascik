@@ -131,6 +131,7 @@ export const NAV: NavSection[] = [
       { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
       { href: '/switch/from-hugo', label: 'From Hugo' },
       { href: '/switch/from-next', label: 'From Next.js' },
+      { href: '/switch/next-blog-tutorial', label: 'Next.js Blog Tutorial' },
       { href: '/switch/from-react', label: 'From React' },
       { href: '/switch/react-product-table-tutorial', label: 'Product Table Tutorial' },
       { href: '/switch/from-svelte', label: 'From Svelte' },
