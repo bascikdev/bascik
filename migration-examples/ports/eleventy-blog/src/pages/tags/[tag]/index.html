@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script data-bascik-routes>
+    import { collectTags, loadPosts } from '@/lib/posts.ts';
+    console.log(JSON.stringify(collectTags(await loadPosts()).map((tag) => ({ params: { tag: tag.slug } }))));
+  </script>
+  <script data-bascik-build>
+    import { collectTags, loadPosts } from '@/lib/posts.ts';
+    import { renderHead } from '@/lib/render.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    const group = collectTags(await loadPosts()).find((tag) => tag.slug === params.tag);
+    console.log(renderHead({ title: `Tagged '${group.name}'` }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <script data-bascik-build>
+      import { collectTags, loadPosts } from '@/lib/posts.ts';
+      import { renderTagPage } from '@/lib/render.ts';
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      console.log(renderTagPage(collectTags(await loadPosts()).find((tag) => tag.slug === params.tag)));
+    </script>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

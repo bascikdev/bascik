@@ -12,7 +12,7 @@ Independent templates belong in the future top-level `templates/` directory.
 - `.upstream/<id>/`: gitignored pinned input. Fetching verifies the whole archive
   before extracting the selected input and original license. It installs nothing,
   executes no downloaded code, and refuses to replace an existing cache.
-- `ports/`: future Bascik adaptations. No pilot port has been implemented.
+- `ports/`: Bascik adaptations (`astro-blog`, `eleventy-blog`).
 - `fixtures/`: original tiny test sites only, not upstream sample content.
 - `harness/`: Node's built-in test runner and explicit browser-tool reuse.
 

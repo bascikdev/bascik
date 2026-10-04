@@ -41,6 +41,10 @@ export function launch(command, cwd, env) {
   };
   return {
     child, completion,
+    /** The most recent output (stdout and stderr combined). */
+    output() {
+      return output;
+    },
     assertAlive() {
       if (ended) throw new Error(`Process exited before validation: ${output}`);
     },
