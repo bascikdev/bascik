@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script data-bascik-routes>
+    import { loadPosts } from '@/lib/posts.ts';
+    import { SITE } from '@/data/site.ts';
+    import { extraPages } from '@/lib/pagination.ts';
+    // Page 1 is blog/index.html, so only pages 2 and up are generated here. With few posts this
+    // list is empty and Bascik warns that the template produced 0 routes. That is expected.
+    const posts = await loadPosts();
+    console.log(JSON.stringify(extraPages(posts.length, SITE.postsPerPage).map((page) => ({ params: { page: String(page) } }))));
+  </script>
+  <script data-bascik-build>
+    import { renderHead } from '@/lib/render.ts';
+    import { parsePageParam } from '@/lib/pagination.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    const page = parsePageParam(params.page);
+    console.log(renderHead({ title: `Archive, page ${page}`, description: 'Every post, newest first.' }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <script data-bascik-build>
+      import { loadPosts } from '@/lib/posts.ts';
+      import { parsePageParam } from '@/lib/pagination.ts';
+      import { renderArchive } from '@/lib/render.ts';
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      console.log(renderArchive(await loadPosts(), parsePageParam(params.page)));
+    </script>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

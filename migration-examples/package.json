@@ -12,6 +12,9 @@
     "test:astro": "node --test --test-concurrency=1 harness/astro-blog.test.mjs",
     "fetch": "node harness/fetch-source.mjs",
     "test:eleventy": "node --test --test-concurrency=1 harness/eleventy-blog.test.mjs",
-    "test:eleventy-mutations": "node --test --test-concurrency=1 harness/eleventy-blog-mutations.test.mjs"
+    "test:eleventy-mutations": "node --test --test-concurrency=1 harness/eleventy-blog-mutations.test.mjs",
+    "test:blog-template": "node --test --test-concurrency=1 harness/blog-template.test.mjs",
+    "test:blog-template-browser": "node --test --test-concurrency=1 harness/blog-template-browser.test.mjs",
+    "test:blog-template-mutations": "node --test --test-concurrency=1 harness/blog-template-mutations.test.mjs"
   }
 }

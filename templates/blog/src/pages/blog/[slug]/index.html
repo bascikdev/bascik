@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script data-bascik-routes>
+    import { loadPosts, postRoutes } from '@/lib/posts.ts';
+    console.log(JSON.stringify(postRoutes(await loadPosts())));
+  </script>
+  <script data-bascik-build>
+    import { findPost, loadPosts } from '@/lib/posts.ts';
+    import { publicPath } from '@/lib/images.ts';
+    import { renderCodeStyles, renderHead } from '@/lib/render.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    const post = findPost(await loadPosts(), params.slug);
+    console.log(renderHead({
+      title: post.title,
+      description: post.description,
+      image: post.image ? publicPath(post.image) : undefined,
+      type: 'article',
+      published: post.date,
+      tags: post.tags,
+    }));
+    console.log(renderCodeStyles());
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <article>
+      <script data-bascik-build>
+        import { findPost, loadPosts } from '@/lib/posts.ts';
+        import { renderPost } from '@/lib/render.ts';
+        const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+        const posts = await loadPosts();
+        console.log(renderPost(findPost(posts, params.slug), posts));
+      </script>
+    </article>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script data-bascik-build>
+    import { renderHead } from '@/lib/render.ts';
+    console.log(renderHead());
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <script data-bascik-build>
+      import { loadPosts } from '@/lib/posts.ts';
+      import { renderHome } from '@/lib/render.ts';
+      console.log(renderHome(await loadPosts()));
+    </script>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

@@ -1,0 +1,18 @@
+<a href="#main" class="skip-link visually-hidden">Skip to main content</a>
+
+<header class="site-header">
+  <script data-bascik-build="page">
+    import { SITE, NAV } from '@/data/site.ts';
+    import { escapeHtml } from '@/lib/format.ts';
+    import { pagePath } from '@/lib/env.ts';
+
+    // aria-current marks the entry for the page being built (exact match).
+    const here = pagePath();
+    const items = NAV.map((entry) => {
+      const current = entry.url === here ? ' aria-current="page"' : '';
+      return `<li class="nav-item"><a href="${escapeHtml(entry.url)}"${current}>${escapeHtml(entry.title)}</a></li>`;
+    });
+    console.log(`<a href="/" class="home-link" data-testid="home-link">${escapeHtml(SITE.title)}</a>`);
+    console.log(`<nav aria-label="Main"><ul class="nav">${items.join('')}</ul></nav>`);
+  </script>
+</header>
