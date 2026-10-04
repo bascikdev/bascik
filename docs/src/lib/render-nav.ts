@@ -116,28 +116,34 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
   }
 
   if (!headings.length) return '';
+  // Only data goes through the script. The list items, links, and nested lists
+  // belong to the toc-entry and toc-sublist components, so their scoped CSS
+  // applies; markup printed by a build script is not scoped.
+  const entryOpen = (heading: { level: 2 | 3; text: string; id: string }): string =>
+    `<toc-entry data-bascik-prop-href="#${escapeHtml(heading.id)}" ` +
+    `data-bascik-prop-level="${heading.level}" ` +
+    `data-bascik-prop-text="${escapeHtml(heading.text)}">`;
   let html = '';
   let subsectionListOpen = false;
   let subsectionHasItems = false;
   const closeSubsections = (): void => {
     if (!subsectionListOpen) return;
-    // An h2 with no h3 children emits no empty <ol>.
-    html += subsectionHasItems ? '</ol></li>' : '</li>';
+    // An h2 with no h3 children emits no empty sublist.
+    html += subsectionHasItems ? '</toc-sublist></toc-entry>' : '</toc-entry>';
     subsectionListOpen = false;
     subsectionHasItems = false;
   };
   for (const heading of headings) {
-    const link = `<a href="#${escapeHtml(heading.id)}" data-toc-level="${heading.level}">${escapeHtml(heading.text)}</a>`;
     if (heading.level === 2) {
       closeSubsections();
-      html += `<li>${link}`;
+      html += entryOpen(heading);
       subsectionListOpen = true;
     } else if (subsectionListOpen) {
-      if (!subsectionHasItems) html += '<ol class="docs-toc-subsections">';
+      if (!subsectionHasItems) html += '<toc-sublist>';
       subsectionHasItems = true;
-      html += `<li>${link}</li>`;
+      html += `${entryOpen(heading)}</toc-entry>`;
     } else {
-      html += `<li>${link}</li>`;
+      html += `${entryOpen(heading)}</toc-entry>`;
     }
   }
   closeSubsections();
