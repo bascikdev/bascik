@@ -29,6 +29,8 @@ const devServerTestIgnore = [
   '**/caching-layer.test.ts',
   // Dev-exec lifecycle runs against its own exec-fixture config.
   '**/dev-exec-lifecycle.test.ts',
+  // Spawns the CLI in temporary projects; runs in its own lane.
+  '**/exec-error-policy.test.ts',
 ];
 
 export default defineConfig({
