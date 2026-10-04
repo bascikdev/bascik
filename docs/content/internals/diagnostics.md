@@ -150,7 +150,7 @@ Build failed with 2 page errors:
     write output: EACCES: permission denied
 ```
 
-Stages include `validate markup`, `component expansion`, `create output directory`, `write output`, `transpile page`, and `worker transpile`. Missing or unreadable configured source directories fail before page processing begins. A subdirectory that disappears during recursive traversal is treated as a file-watch race: Bascik warns and continues scanning the remaining tree.
+Stages include `validate markup`, `component expansion`, `create output directory`, `write output`, `transpile page`, and `worker transpile`. Missing or unreadable configured source directories fail before page processing begins. The one exception is the default components root: a missing `src/components/` means the project has no components, and an unmatched tag is still reported. Any other missing components root fails with a message that names the path. A subdirectory that disappears during recursive traversal is treated as a file-watch race: Bascik warns and continues scanning the remaining tree.
 
 In dev mode the same page records are logged, but they do not reject the batch. This allows boot to complete and healthy pages to remain available while a failed page waits for the next save. Unmatched custom component tags emit a warning by default (and exit with code 1 when `--strict` is passed).
 

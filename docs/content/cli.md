@@ -261,7 +261,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories, pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:

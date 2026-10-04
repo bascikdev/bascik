@@ -246,6 +246,7 @@ Rules that apply across all roots:
 - **`bascik add` targets the first listed root** and prints where the files landed. A team can keep vendored components separate from hand-written ones by listing a dedicated root first, for example `['src/vendor-components', 'src/components']`.
 - **Roots may not be nested inside one another.** `['src/components', 'src/components/shared']` is rejected at startup because the parent already includes the child.
 - **Duplicate roots are detected by real path**, so a symlink to an already-listed directory is rejected, not scanned twice.
+- **A listed root must exist.** A missing root fails the build and `bascik --check` with a message that names it, since a missing root is usually a typo. Only the default, `src/components`, may be absent: the project then has no components.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.

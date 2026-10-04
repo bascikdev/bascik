@@ -342,6 +342,7 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **Client-side / Browser-side JavaScript:** Standard scripts are wrapped in an IIFE for scoping, but they are not parsed or executed during the build. If there is a syntax error or a logical bug in your browser-side JavaScript, it is compiled as-is and sent to the client browser, where the error will be printed in the browser's developer console without affecting your server or build processes.
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
+- **Missing Components Directory:** A project without `src/components/` builds as a site with no components; create the directory when you add the first one, and the dev server picks it up without a restart. Any other directory listed in `directory.components` that does not exist is an error naming that path, because it is usually a typo.
 
 ## Can a server script slow down other requests?
 

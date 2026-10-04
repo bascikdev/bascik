@@ -1500,7 +1500,7 @@ While the dev server is active, Bascik watches your file system and incrementall
 #### 3. Transpilation & Build Errors
 Development and production builds handle page failures differently. The dev server logs a failed page, completes boot, continues serving healthy pages, and retries the failed page on the next save. A production `bascik --build` waits for every page job, reports all failures together, and exits nonzero rather than reporting success with missing output.
 
-Hard build failures include a missing or unreadable configured pages directory, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored.
+Hard build failures include a missing or unreadable configured pages directory, a missing or unreadable components root listed in `directory.components`, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored. A missing default `src/components/` is not an error: the project has no components until the directory is created.
 
 ```terminal
 Build failed with 2 page errors:
