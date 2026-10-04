@@ -139,7 +139,7 @@ async function listen(url: string): Promise<{ frames: () => string; close: () =>
   const decoder = new TextDecoder();
   void (async () => {
     try {
-      for (;;) {
+      for (; ;) {
         const { done, value } = await reader.read();
         if (done) break;
         text += decoder.decode(value, { stream: true });
