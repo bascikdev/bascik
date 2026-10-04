@@ -71,4 +71,6 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 
 > **Worked example for Vue:** the [Vue Grid Tutorial](/switch/vue-grid-tutorial) ports the official sortable, filterable grid, a reusable stateful component, and shows how props with arrays, events, and script placement translate.
 
+> **Worked example for WordPress:** the [WordPress Blog Tutorial](/switch/wordpress-blog-tutorial) rebuilds a WordPress 7.1.2 blog on the default theme from the REST API or a converted export, and shows how date permalinks, pagination, categories, tags, pages, media, and sanitizing post bodies translate.
+
 > Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue) · [WordPress](/switch/from-wordpress)

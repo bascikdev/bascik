@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script data-bascik-build>
+    import { loadSnapshot } from '@/lib/model.ts';
+    import { documentTitle, renderHead } from '@/lib/render.ts';
+    const snapshot = await loadSnapshot();
+    console.log(renderHead(snapshot, { title: documentTitle(snapshot, 'Page not found'), path: '/404', noindex: true }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <h1 data-testid="page-title">Page not found</h1>
+    <p>The page you are looking for does not exist. <a href="/" data-testid="home-link">Go to the home page</a>.</p>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

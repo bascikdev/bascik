@@ -83,7 +83,7 @@ describe('renderPagination', () => {
   it('links releases to the previous section and to press', () => {
     const html = renderPagination('/releases');
     expect(html).toContain('data-bascik-prop-section="Switch to Bascik"');
-    expect(html).toContain('data-bascik-prop-label="From WordPress"');
+    expect(html).toContain('data-bascik-prop-label="WordPress Blog Tutorial"');
     expect(html).toContain('href="/press"');
   });
 
@@ -116,6 +116,13 @@ describe('renderPagination', () => {
     expect(vue).toContain('href="/switch/from-vue"');
     expect(vue).toContain('href="/switch/from-wordpress"');
     expect(renderSectionLabel('/switch/vue-grid-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
+  });
+
+  it('places the WordPress blog tutorial right after From WordPress', () => {
+    const wordpress = renderPagination('/switch/wordpress-blog-tutorial');
+    expect(wordpress).toContain('href="/switch/from-wordpress"');
+    expect(wordpress).toContain('href="/releases"');
+    expect(renderSectionLabel('/switch/wordpress-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
   });
 
   it('places Use Cases between Getting Started and Features, with the blog guide before the catalog', () => {

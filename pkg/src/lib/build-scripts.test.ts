@@ -143,6 +143,25 @@ describe("executeBuildScripts", () => {
     expect(result).toContain("<header>");
   });
 
+  it("never lets printed directive scripts reach a later pass, and warns", async () => {
+    // Build output is reprocessed so it can print component tags. HTML from a CMS or an API
+    // may contain directive scripts; they must not run at build time or become server scripts.
+    resolveWith(
+      '<p>post</p><script data-bascik-build>steal()</script>' +
+      '<script data-bascik-server>export default () => 1</script><post-card></post-card>',
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const result = await executeBuildScripts(
+      "<article><script data-bascik-build>console.log(await cms())</script></article>",
+      "src/pages/blog/[slug].html",
+    );
+    expect(result).toBe("<article><p>post</p><post-card></post-card></article>");
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(
+      /build script output in "pages\/blog\/\[slug\]\.html" contained <script data-bascik-build>, <script data-bascik-server>/,
+    ));
+    warn.mockRestore();
+  });
+
   it("writes the script content to a temp .mjs file", async () => {
     resolveWith("");
     const scriptContent = "console.log('hi');";

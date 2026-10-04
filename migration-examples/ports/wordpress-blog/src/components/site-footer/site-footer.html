@@ -1,0 +1,10 @@
+<footer class="site-footer">
+  <script data-bascik-build>
+    import { loadSnapshot } from '@/lib/model.ts';
+    import { escapeHtml } from '@/lib/escape.ts';
+    const { site } = await loadSnapshot();
+    console.log(`<p class="site-name">${escapeHtml(site.name)}</p>`);
+    if (site.description) console.log(`<p class="tagline">${escapeHtml(site.description)}</p>`);
+  </script>
+  <p class="feed"><a href="/feed.xml" data-testid="feed-link">RSS feed</a></p>
+</footer>

@@ -153,6 +153,12 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 11. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
 12. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
 
+### Printed Output Guards
+
+These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `processing.ts` would execute a printed build directive and register a printed server directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
+
+A `BASCIK_ROUTE` payload over 32 KB is written to a temporary file and restored into `process.env` by a `--import` preload before the script and its imports run (`spillLargeEnv` in `script-runner.ts`). The OS rejects large environment strings with `E2BIG`: 128 KiB per string on Linux, about 1 MiB in total on macOS.
+
 ### Output Directory Lifecycle
 
 Dev and build runs remove `directory.out` before pre-phase lifecycle scripts execute, then repopulate it from the current source tree. This prevents deleted pages, renamed assets, and removed dynamic routes from surviving as stale deployment output. Cleaning happens before pre-phase scripts so files those scripts intentionally generate in `dist/` remain available to the rest of the run. Production server mode (`bascik --server`) reads an existing build and never cleans it.

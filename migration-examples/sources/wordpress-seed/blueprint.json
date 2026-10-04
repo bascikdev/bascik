@@ -1,0 +1,7 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/",
+  "steps": [
+    { "step": "runPHP", "code": "<?php require '/seed/seed.php';" }
+  ]
+}

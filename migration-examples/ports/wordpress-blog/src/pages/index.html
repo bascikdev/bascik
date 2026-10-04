@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script data-bascik-build>
+    import { loadSnapshot } from '@/lib/model.ts';
+    import { documentTitle, renderHead } from '@/lib/render.ts';
+    const snapshot = await loadSnapshot();
+    console.log(renderHead(snapshot, { title: documentTitle(snapshot), description: snapshot.site.description, path: '/' }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <script data-bascik-build>
+      import { loadSnapshot } from '@/lib/model.ts';
+      import { homeListing } from '@/lib/render.ts';
+      console.log(homeListing(await loadSnapshot(), 1));
+    </script>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

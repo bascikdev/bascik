@@ -1,0 +1,38 @@
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  max-width: var(--wide);
+  margin: 0 auto;
+  padding: 1.5rem var(--gutter);
+}
+
+.site-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.site-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-title a:hover {
+  text-decoration: underline;
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -10rem;
+  padding: 0.5rem 1rem;
+  background: var(--text);
+  color: var(--background);
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}

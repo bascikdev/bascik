@@ -1,0 +1,16 @@
+{
+  "id": "wordpress-core",
+  "kind": "release-archive",
+  "release": "7.1.2",
+  "archive": "wordpress-7.1.2.zip",
+  "archiveUrl": "https://downloads.wordpress.org/release/wordpress-7.1.2.zip",
+  "archiveSha1": "fab6ce3a905a1f4085ffff7fd9920bc693f5dd94",
+  "archiveSha256": "8fc96c59a78b7219e4a130222b7fadb51b03e503e8b0123beaa7e28961c21ce2",
+  "theme": "twentytwentyfive 1.5 (bundled in the release)",
+  "licensePath": "wordpress/license.txt",
+  "license": "GPL-2.0-or-later",
+  "notice": "WordPress - Web publishing software. Copyright 2011-2026 by the contributors. Reference only: no WordPress PHP, CSS, block markup, fonts, or images are copied into the port.",
+  "runtime": "@wp-playground/cli 3.1.55 (GPL-2.0-or-later), harness/wordpress-shell/package-lock.json",
+  "seed": "sources/wordpress-seed/ (original content, images drawn with GD at seed time)",
+  "lockfileStatus": "Shell lockfile captured with npm install --package-lock-only --ignore-scripts --before=2026-09-27. 302 registry packages. Only fs-ext-extra-prebuilt has an install script; it is not run and Playground works without it."
+}

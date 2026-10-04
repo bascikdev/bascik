@@ -1,0 +1,178 @@
+/* Original styles for the port. Twenty Twenty-Five is GPL, so none of its CSS is used; this
+   sheet only reproduces the general layout: a centered column, a wide header, a sans serif. */
+
+:root {
+  color-scheme: light dark;
+  --text: #1a1a1a;
+  --muted: #555;
+  --background: #fff;
+  --rule: #ddd;
+  --accent: #1d5b2a;
+  --narrow: 42rem;
+  --wide: 64rem;
+  --gutter: clamp(1rem, 4vw, 2rem);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f2f2f2;
+    --muted: #bbb;
+    --background: #141414;
+    --rule: #333;
+    --accent: #8fd19e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font: 1.0625rem/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+main {
+  max-width: var(--narrow);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--rule);
+  text-align: left;
+}
+
+blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--accent);
+}
+
+figure {
+  margin: 1.5rem 0;
+}
+
+figcaption,
+.entry-date,
+.byline {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.menu,
+.menu ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu ul {
+  padding-left: 1rem;
+  font-size: 0.9375rem;
+}
+
+.menu > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.menu a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.menu a:hover,
+.menu a[aria-current="page"] {
+  text-decoration: underline;
+}
+
+.post-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.entry-title {
+  margin: 0.75rem 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.entry-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.entry-title a:hover {
+  text-decoration: underline;
+}
+
+.entry-image img,
+.featured-image img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+
+.pagination,
+.post-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.page-list {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.post-tags a {
+  margin-right: 0.5rem;
+}
+
+.more-posts ul {
+  padding-left: 1.25rem;
+}
+
+.more-posts time {
+  color: var(--muted);
+  font-size: 0.875rem;
+}

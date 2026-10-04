@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- A category archive, /category/<slug>/. Only categorys with posts get a page, as in WordPress. -->
+  <script data-bascik-routes>
+    import { loadSnapshot, pageCount, termsWithPosts } from '@/lib/model.ts';
+    const snapshot = await loadSnapshot();
+    console.log(JSON.stringify(termsWithPosts(snapshot, 'category').map(({ term }) => ({ params: { term: term.slug } }))));
+  </script>
+  <script data-bascik-build>
+    import { loadSnapshot, termPath, termsWithPosts } from '@/lib/model.ts';
+    import { documentTitle, renderHead } from '@/lib/render.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    const snapshot = await loadSnapshot();
+    const { term } = termsWithPosts(snapshot, 'category').find((group) => group.term.slug === params.term);
+    const page = 1;
+    console.log(renderHead(snapshot, { title: documentTitle(snapshot, term.name, page), path: termPath('category', term.slug, page) }));
+  </script>
+</head>
+
+<body>
+  <site-header></site-header>
+  <main id="main">
+    <script data-bascik-build>
+      import { loadSnapshot, termPath, termsWithPosts } from '@/lib/model.ts';
+      import { renderListing } from '@/lib/render.ts';
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      const { term, posts } = termsWithPosts(await loadSnapshot(), 'category').find((group) => group.term.slug === params.term);
+      console.log(renderListing({
+        heading: `Category: ${term.name}`,
+        posts,
+        page: 1,
+        pathOf: (page) => termPath('category', term.slug, page),
+      }));
+    </script>
+  </main>
+  <site-footer></site-footer>
+</body>
+
+</html>

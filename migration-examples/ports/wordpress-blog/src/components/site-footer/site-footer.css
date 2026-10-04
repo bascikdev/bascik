@@ -1,0 +1,17 @@
+.site-footer {
+  max-width: var(--wide);
+  margin: 4rem auto 0;
+  padding: 2rem var(--gutter) 3rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.9375rem;
+}
+
+.site-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.tagline,
+.feed {
+  margin: 0.25rem 0 0;
+}

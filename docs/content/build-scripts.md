@@ -80,11 +80,33 @@ Node.js includes a global `fetch`. Use it to pull remote data at build time so t
 
 ```html
 <script data-bascik-build>
+  const escape = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const res = await fetch('https://api.example.com/posts/latest');
   const { title, excerpt } = await res.json();
-  console.log(`<h2>${title}</h2><p>${excerpt}</p>`);
+  console.log(`<h2>${escape(title)}</h2><p>${escape(excerpt)}</p>`);
 </script>
 ```
+
+A network response is invisible to the [output cache](#invalidation-limits-cache-exclusions), so list the page in `scripts.cache.exclude` or a rebuild reuses the old response.
+
+### Printing HTML You Did Not Write
+
+Build script output is transpiled again, so it can contain component tags and client scripts. When a script prints HTML from somewhere else, such as a CMS post body, an API response, or converted Markdown, that HTML lands in the page with the same power as your own markup:
+
+- An ordinary `<script>`, an `onerror` handler, or a `javascript:` link runs in every visitor's browser.
+- A component tag such as `<site-header>` expands into your component.
+
+Pass such HTML through an allowlist sanitizer (for example `sanitize-html`) before printing it, and escape plain text. The [WordPress Blog Tutorial](/switch/wordpress-blog-tutorial#sanitizing-post-bodies) shows one for WordPress content.
+
+Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-server>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
+
+```terminal
+[bascik] warning: build script output in "pages/index.html" contained <script data-bascik-build>.
+Printed directive scripts never run; they were removed. Write directives in source files, and
+sanitize HTML from a CMS or an API before printing it.
+```
+
+Write directives in page and component source files. To run more build-time code for printed markup, call a helper from the script that prints it. This guard applies to 1.0.0-rc.3 or later; earlier versions ran a printed `data-bascik-build` script during the build and registered a printed `data-bascik-server` script.
 
 ### Head Components & Dynamic Metadata
 
@@ -221,6 +243,8 @@ When a build script runs inside a dynamic route template (for example, `src/page
   console.log(`<h1>${data?.title || params?.slug}</h1>`);
 </script>
 ```
+
+Route `data` can be as large as the routes script prints, such as a whole post body. Payloads over 32 KB reach the script through a temporary file instead of the process environment, and `process.env.BASCIK_ROUTE` reads the same either way (1.0.0-rc.3 or later; earlier versions failed with `spawn E2BIG` above 128 KB on Linux or about 1 MB on macOS).
 
 See [Dynamic Routes](/dynamic-routes) for the complete guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full reference of variables available to build scripts.
 
@@ -381,6 +405,7 @@ rm -rf node_modules/.cache/bascik/script-cache
 - **No HMR awareness:** Local files imported or read by a build script are tracked as dependencies; edits under the import root, `directory.pages`, `directory.components`, or `pipeline.watchPaths` rebuild dependent pages. Files outside all of those need a restart or a `pipeline.watchPaths` entry (see [Watch Paths](/watch-paths)).
 - **ESM only:** Build scripts run as ES modules with standard `import`/`export` syntax. Write helpers as `.ts` (preferred on Node 22.18+), `.js`, or `.mjs`.
 - **Node.js only:** Browser globals like `window` and `document` are not available in build scripts.
+- **Printed directives never run:** A directive script in a build script's output is removed with a warning. Directives only run where they are written in a source file. See [Printing HTML You Did Not Write](#printing-html-you-did-not-write).
 
 For per-request server-side rendering, see [Server Scripts](/server-scripts).
 

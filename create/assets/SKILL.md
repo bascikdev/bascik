@@ -828,6 +828,10 @@ Build scripts receive these `process.env` variables:
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
 
+`BASCIK_ROUTE` may be any size (1.0.0-rc.3 or later): over 32 KB it is delivered through a temporary file and set before the script runs, so reading `process.env.BASCIK_ROUTE` is unchanged.
+
+**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, or `data-bascik-routes` script in the output is removed with a warning (1.0.0-rc.3 or later). Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
+
 ### The Fetch-Once Pattern
 
 When a data-driven page needs the same data in several places, read or fetch it **once at page level** in a single `data-bascik-build` script, then apply it everywhere on the page. Not once per component instance. The same data object can feed a second script, a JSON payload for client JavaScript, or a component prop, without a second network round trip or file read.
@@ -2102,6 +2106,30 @@ Vue-specific gotchas:
 - **Script-created elements get no element-selector styles.** CSS such as `td { }` applies to template markup. Put the markup in a `<template>` inside the component and clone it, instead of `document.createElement('td')`.
 - **Script placement differs between modes.** Production HTML minification moves component scripts to the end of the document; the development server and `minify.html: false` leave them in place. Never rely on a later element existing when the script starts: look it up inside an event handler or after `DOMContentLoaded`. Use `pageshow` to resync a form value the browser restored on Back.
 - **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.
+
+### From WordPress
+
+Full guide: `/switch/from-wordpress`. Worked example: `/switch/wordpress-blog-tutorial` (a WordPress 7.1.2 blog on Twenty Twenty-Five, from the REST API or a WXR export). Key WordPress-specific mappings:
+
+| WordPress | Bascik |
+|-----------|--------|
+| The Loop, `WP_Query` | A `src/lib` helper returning escaped HTML, printed by a build script |
+| `single.php` at `/%year%/%monthnum%/%day%/%postname%/` | `src/pages/[year]/[month]/[day]/[slug]/index.html` (one bracket per segment; a param cannot contain `/`) |
+| Pages and child pages | `src/pages/[pageslug]/index.html` and `src/pages/[parent]/[child]/index.html` |
+| Category, tag, and `/page/2/` archives | `category/[term]/`, `tag/[term]/`, `page/[page]/` templates, each paged archive its own template |
+| REST API (`/wp-json/wp/v2/`) | One `pre` exec script fetches everything (follow `X-WP-TotalPages`; `per_page` above 100 is a 400), sanitizes it, downloads media into `BASCIK_OUT_DIR`, and writes a JSON snapshot pages read |
+| Tools > Export (WXR) | `wordpress-export-to-markdown`, then restore page parents, menu order, term names, and image alt text by hand |
+| `wp-content/uploads/` | Same path under `dist/`, so content URLs keep working |
+| `/feed/` | A `post` exec script writing `/feed.xml`; redirect `/feed/` on the host |
+
+WordPress-specific gotchas:
+
+- **Sanitize every post body before printing it.** `content.rendered` can hold `<script>`, `on*` handlers, and `javascript:` links; administrators may save any markup. Use an allowlist such as `sanitize-html`, which also drops custom elements so content cannot place a component tag. Bascik itself only removes printed directive scripts.
+- **Exclude pages that read fetched data from the script cache** (`scripts.cache.exclude`). Network responses are not part of the cache key, so a rebuild after an edit in WordPress otherwise reuses old output.
+- **Keep page helpers light.** Every build script is its own Node process; import `zod` and `sanitize-html` in the sync step, not in helpers every page loads.
+- **Raise the exec `timeout` for media downloads.** The default is 60 seconds.
+- **Titles are HTML over REST** (`&#038;`, curly quotes); convert to text, then escape. WXR titles are the raw text.
+- **No comments, search, or date and author archives** in a static build; use services or add templates.
 
 ### Migrating Existing Sitemap & Robots Files
 
