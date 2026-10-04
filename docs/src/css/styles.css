@@ -438,6 +438,16 @@ pre code { background: none; border: none; padding: 0; color: #cdd6f4; font-size
   margin-bottom: 24px;
 }
 
+/* ── Screenshots in prose ── */
+.docs-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 /* ── Tables ── */
 .docs-content table {
   width: 100%; border-collapse: collapse;

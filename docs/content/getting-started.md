@@ -36,6 +36,8 @@ npm create bascik@latest my-app -- --example https://github.com/owner/repo --exa
 
 The folder must contain a `package.json`. The new project takes the name you chose, and nothing else in the example is changed.
 
+The [Template Catalog](/use-cases/templates) lists every official example with screenshots, version, and license.
+
 What to know before you use it:
 
 - **It needs the internet.** The example is downloaded from GitHub, and only `github.com` links are accepted. Private repositories are not supported.

@@ -97,6 +97,22 @@ describe('renderPagination', () => {
     expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
   });
 
+  it('places Use Cases between Getting Started and Features, with the blog guide before the catalog', () => {
+    const sections = NAV.map(s => s.section);
+    expect(sections.indexOf('Use Cases')).toBe(sections.indexOf('Overview') + 1);
+    expect(sections.indexOf('Features')).toBe(sections.indexOf('Use Cases') + 1);
+    const useCases = NAV.find(s => s.section === 'Use Cases')!;
+    expect(useCases.pages.map(p => p.href)).toEqual(['/use-cases', '/use-cases/blog', '/use-cases/templates']);
+
+    const first = renderPagination('/use-cases');
+    expect(first).toContain('href="/getting-started"');
+    expect(first).toContain('href="/use-cases/blog"');
+    const last = renderPagination('/use-cases/templates');
+    expect(last).toContain('href="/use-cases/blog"');
+    expect(last).toContain('href="/components"');
+    expect(renderSectionLabel('/use-cases/blog')).toBe('<p class="section-label">Use Cases</p>');
+  });
+
   it('links press to releases and to sponsor', () => {
     const html = renderPagination('/press');
     expect(html).toContain('data-bascik-prop-section="Community"');
@@ -178,8 +194,8 @@ describe('renderPagination', () => {
       // The <nav> and its styles belong to the docs-pagination component; the
       // script only emits the link components, whose styles are scoped too.
       expect(html).not.toContain('<nav');
-      expect(html).toContain('<pagination-link href="/getting-started" data-pg="prev"');
-      expect(html).toContain('href="/getting-started"');
+      expect(html).toContain('<pagination-link href="/use-cases/templates" data-pg="prev"');
+      expect(html).toContain('href="/use-cases/templates"');
       expect(html).toContain('href="/scoped-styles"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;

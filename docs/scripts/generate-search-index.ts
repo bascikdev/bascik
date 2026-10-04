@@ -25,6 +25,7 @@ function stripMd(text: string): string {
     .replace(/-->/g, '')
     .replace(/```[a-z0-9_-]*\n?([\s\S]*?)```/gi, '$1')
     .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')

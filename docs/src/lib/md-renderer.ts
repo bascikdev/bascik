@@ -18,9 +18,32 @@
  * the emitted <code-block> tags are resolved normally by Bascik.
  */
 
+import { closeSync, openSync, readSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { marked } from 'marked';
 import { slugFromHeadingHtml } from './heading-slug.ts';
+
+/**
+ * Width and height of a PNG in docs/src/pages, read from its header, or null when the file is
+ * missing or is not a PNG. Giving the browser both numbers reserves the space before the image
+ * loads, so the page does not shift.
+ */
+function pngSize(sitePath: string): { width: number; height: number } | null {
+  if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(join(process.cwd(), 'src/pages', sitePath), 'r');
+    const header = Buffer.alloc(24);
+    if (readSync(descriptor, header, 0, 24, 0) < 24) return null;
+    if (header.toString('latin1', 1, 4) !== 'PNG' || header.toString('latin1', 12, 16) !== 'IHDR') return null;
+    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
 
 interface RenderMdOptions {
   skipFirstHeading?: boolean;
@@ -200,6 +223,13 @@ function _transformMd(
   // Wrap all tables in <doc-table> component and ensure table header cells have scope="col"
   html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
+
+  // Images: lazy loading, and the real size when the file is a PNG that ships with the docs.
+  html = html.replace(/<img src="(\/[^"]+)"/g, (_, src: string) => {
+    const size = pngSize(src);
+    const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
+    return `<img loading="lazy" decoding="async"${dimensions} src="${src}"`;
+  });
 
   // Open external links in a new tab
   html = html.replace(

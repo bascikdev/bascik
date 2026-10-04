@@ -67,6 +67,16 @@ const x = 1;
     expect(html).toContain('</table></doc-table>');
   });
 
+  it('renderMd gives site images lazy loading and the real size of PNG files in src/pages', async () => {
+    const mdFile = join(tempDir, 'images.md');
+    await writeFile(mdFile, '![Blog home](/assets/templates/blog-home-desktop.png)\n\n![Missing](/assets/templates/not-there.png)\n');
+
+    const html = await renderMd(mdFile);
+    expect(html).toMatch(/<img loading="lazy" decoding="async" width="1200" height="750" src="\/assets\/templates\/blog-home-desktop\.png" alt="Blog home"/);
+    // A file that does not exist still renders, without invented dimensions.
+    expect(html).toMatch(/<img loading="lazy" decoding="async" src="\/assets\/templates\/not-there\.png"/);
+  });
+
   it('renderMd supports skipFirstHeading option', async () => {
     const mdContent = `# Title\n\nSecond heading text.\n\n## Subheading\n\nContent.`;
     const mdFile = join(tempDir, 'skip.md');
