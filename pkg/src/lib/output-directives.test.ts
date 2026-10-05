@@ -12,6 +12,7 @@ describe("removeOutputDirectives", () => {
     ["data-bascik-build", '<script data-bascik-build="page">x()</script>'],
     ["data-bascik-server", "<script data-bascik-server>export default () => 1</script>"],
     ["data-bascik-server", '<script type="module" data-bascik-server data-bascik-stream>x</script>'],
+    ["data-bascik-stream", "<script data-bascik-stream>export default async function* () {}</script>"],
     ["data-bascik-routes", "<script data-bascik-routes>console.log('[]')</script>"],
     ["data-bascik-build", '<SCRIPT DATA-BASCIK-BUILD src="./x.ts"></SCRIPT >'],
   ])("removes a printed %s script", (directive, tag) => {

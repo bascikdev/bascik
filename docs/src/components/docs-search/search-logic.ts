@@ -1,5 +1,5 @@
 /**
- * Pure search logic — no DOM dependencies, importable in Node for testing.
+ * Pure search logic: no DOM dependencies, importable in Node for testing.
  *
  * The docs-search component inlines these functions at build time (via a
  * <script data-bascik-build> that strips types with Node's stripTypeScriptTypes and

@@ -1,8 +1,8 @@
 /**
- * nav.ts — Single source of truth for docs navigation order.
+ * nav.ts: single source of truth for docs navigation order.
  *
  * Imported by render-nav.ts at build time. To add, remove, or reorder
- * pages, edit this file only — sidebar, pagination, and the top nav all
+ * pages, edit this file only. Sidebar, pagination, and the top nav all
  * derive from it automatically.
  */
 

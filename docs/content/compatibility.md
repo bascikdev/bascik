@@ -121,7 +121,7 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | Handler execution timeout | ✓ | `http.apiTimeout` triggers 504 and cooperative `AbortSignal` for async work. |
 | Error information protection | ✓ | Thrown handler errors return generic 500 without leaking stack traces or source paths. |
 | Header injection protection | ✓ | CR and LF in handler-supplied header values are rejected. |
-| Directive scripts printed by a build script | 🚫 | A `data-bascik-build`, `data-bascik-server`, or `data-bascik-routes` script in build script output is removed with a warning, so HTML from a CMS or an API cannot run code at build or request time. Ordinary scripts and handlers in printed HTML are not removed; sanitize it. |
+| Directive scripts printed by a build script | 🚫 | A `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, or `data-bascik-routes` script in build script output is removed with a warning, so HTML from a CMS or an API cannot run code at build or request time. Ordinary scripts and handlers in printed HTML are not removed; sanitize it. |
 | Large dynamic route `data` | ✓ | Any size the routes script prints. Over 32 KB, `BASCIK_ROUTE` is delivered through a temporary file, avoiding the OS environment limit (`spawn E2BIG`). |
 | Middleware chains (`_middleware.ts`) | ✕ | Not supported by design. Handlers compose plain functions directly. |
 | Built-in schema validation | ✕ | Not supported by design. Validate payloads using standard libraries (e.g. Zod, Valibot). |

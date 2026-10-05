@@ -35,13 +35,21 @@ export const decodeOutputScope = (value: string | undefined | null): OutputScope
   if (!value) return null;
   try {
     const parsed = JSON.parse(decodeURIComponent(value)) as Partial<OutputScope>;
-    return {
-      classes: parsed.classes && typeof parsed.classes === "object" ? parsed.classes : {},
-      elements: parsed.elements && typeof parsed.elements === "object" ? parsed.elements : {},
-    };
+    return { classes: keepStringEntries(parsed.classes), elements: keepStringEntries(parsed.elements) };
   } catch {
     return null;
   }
+};
+
+/** Keep only string-keyed pairs whose value is a string, so a malformed map never reaches the scope. */
+const keepStringEntries = (map: unknown): Record<string, string> => {
+  const result: Record<string, string> = {};
+  if (map && typeof map === "object") {
+    for (const [key, value] of Object.entries(map)) {
+      if (typeof value === "string") result[key] = value;
+    }
+  }
+  return result;
 };
 
 /** Remove the annotation from a script open tag (it never reaches emitted HTML or the script). */

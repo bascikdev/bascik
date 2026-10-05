@@ -49,7 +49,7 @@
   transition: color .15s;
 }
 
-/* Parallelogram background — same angle as the logo (7px / 28px) */
+/* Parallelogram background: same angle as the logo (7px / 28px) */
 .sidebar-nav li a::before {
   content: '';
   position: absolute;

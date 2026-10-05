@@ -221,7 +221,7 @@ body {
 /* Remove code-block rounding when inside a component-demo pane */
 [data-demo-pane] { --cblock-radius: 0; --cblock-border: none; --cblock-header-display: none; }
 
-/* ── Tab button — parallelogram active state, used with tab-bar component ── */
+/* ── Tab button: parallelogram active state, used with tab-bar component ── */
 .tab-btn {
   padding: 10px 16px;
   background: none;

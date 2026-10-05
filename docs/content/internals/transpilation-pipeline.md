@@ -155,7 +155,7 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 
 ### Printed Output Guards
 
-These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `processing.ts` would execute a printed build directive and register a printed server directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
+These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `processing.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
 
 A `BASCIK_ROUTE` payload over 32 KB is written to a temporary file and restored into `process.env` by a `--import` preload before the script and its imports run (`spillLargeEnv` in `script-runner.ts`). The OS rejects large environment strings with `E2BIG`: 128 KiB per string on Linux, about 1 MiB in total on macOS.
 

@@ -1,4 +1,4 @@
-/* Docs Nav — all styles live here so bascik scopes them alongside the HTML */
+/* Docs Nav: all styles live here so bascik scopes them alongside the HTML */
 
 .dnav {
   background: var(--nav-bg);
@@ -50,7 +50,7 @@
   flex-shrink: 0;
 }
 
-/* dnav-inner doubles as the container — max-width + centering baked in */
+/* dnav-inner doubles as the container: max-width + centering baked in */
 .dnav-inner {
   max-width: var(--site-max-width);
   margin: 0 auto;
@@ -143,7 +143,7 @@
   transition: color .15s;
 }
 
-/* Parallelogram background — matches the logo's exact angle (7px / 28px ≈ 14°) */
+/* Parallelogram background: matches the logo's exact angle (7px / 28px ≈ 14°) */
 .dnav-links li a::before {
   content: '';
   position: absolute;
@@ -235,7 +235,7 @@
 
   .dnav-theme-toggle { display: none; }
 
-  /* Hide compact top-level links on mobile — full list is in the overlay */
+  /* Hide compact top-level links on mobile; full list is in the overlay */
   .dnav-links { display: none; }
 
   /* Full-screen overlay */

@@ -98,7 +98,7 @@ Build script output is transpiled again, so it can contain component tags and cl
 
 Pass such HTML through an allowlist sanitizer (for example `sanitize-html`) before printing it, and escape plain text.
 
-Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-server>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
+Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-server>`, `<script data-bascik-stream>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
 
 ```terminal
 [bascik] warning: build script output in "pages/index.html" contained <script data-bascik-build>.

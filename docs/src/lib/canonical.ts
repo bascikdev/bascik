@@ -2,9 +2,9 @@
  * Generates a <link rel="canonical"> tag for the current page.
  *
  * Reads context from env vars injected by bascik's build-script runner:
- *   BASCIK_SITE_URL  — the siteUrl from bascik.config.ts
- *   BASCIK_PAGE_FILE — absolute path to the page file being built
- *   BASCIK_PAGES_DIR — absolute path to the configured pages directory
+ *   BASCIK_SITE_URL  : the siteUrl from bascik.config.ts
+ *   BASCIK_PAGE_FILE : absolute path to the page file being built
+ *   BASCIK_PAGES_DIR : absolute path to the configured pages directory
  *
  * Usage inside a <script data-bascik-build> block:
  *

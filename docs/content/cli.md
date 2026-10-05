@@ -354,7 +354,7 @@ Unused components (1)
 | Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
 | WHATWG HTML5 parse errors in compiled `dist/` HTML files | `dist-html-spec` | Error |
 
-The `dist-html-spec` check requires [parse5](https://parse5.js.org/) — the reference WHATWG HTML5 parser — to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
+The `dist-html-spec` check requires [parse5](https://parse5.js.org/), the reference WHATWG HTML5 parser, to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
 
 ```sh
 npm install --save-dev parse5

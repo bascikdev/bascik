@@ -1,6 +1,6 @@
 # Bascik Docs
 
-The official Bascik documentation site — built with Bascik itself.
+The official Bascik documentation site, built with Bascik itself.
 
 ## Pages
 
@@ -9,10 +9,7 @@ The official Bascik documentation site — built with Bascik itself.
 | `/`                  | Overview and feature index                                               |
 | `/getting-started`   | Installation, folder structure, first component, dev + build scripts     |
 | `/slots`             | Default slot, `data-bascik-slot`, slot fallback content, named slots     |
-| `/props`             | `data-bascik-prop-*` — injecting text values into component templates    |
-| `/scoped-styles`     | CSS file pairing, class scoping, element scoping, `@media`, `@keyframes` |
-| `/scoped-javascript` | IIFE isolation, ID/class selector rewriting, build/dev-only scripts      |
-| `/configuration`     | Full `bascik.config.ts` reference with `buildOverrideConfig`             |
+| `/props`             | `data-bascik-prop-*`: injecting text values into component templates    |
 
 ## Components
 

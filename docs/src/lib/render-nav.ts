@@ -1,5 +1,5 @@
 /**
- * render-nav.ts — Build-time pagination generator.
+ * render-nav.ts: build-time pagination generator.
  *
  * Usage in a page's `<script data-bascik-build>` block:
  *
@@ -7,7 +7,7 @@
  *     console.log(renderPagination('/getting-started'));
  *   </script>
  *
- * Nav, sidebar, and footer are bascik components — see src/components/.
+ * Nav, sidebar, and footer are bascik components; see src/components/.
  * Page order comes from nav.ts (the single source of truth).
  */
 

@@ -830,7 +830,7 @@ These are critical for scripts that generate per-page output. A script using `BA
 
 `BASCIK_ROUTE` may be any size: over 32 KB it is delivered through a temporary file and set before the script runs, so reading `process.env.BASCIK_ROUTE` is unchanged.
 
-**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, or `data-bascik-routes` script in the output is removed with a warning. Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
+**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, or `data-bascik-routes` script in the output is removed with a warning. Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
 
 ### The Fetch-Once Pattern
 
@@ -1870,7 +1870,7 @@ async function walk(dir: string, ext: string): Promise<string[]> {
   return out;
 }
 
-describe('dist HTML — WHATWG spec compliance', () => {
+describe('dist HTML: WHATWG spec compliance', () => {
   it('every page is free of parse errors', async () => {
     const files = await walk(DIST_DIR, '.html');
     const failures: string[] = [];
@@ -1887,7 +1887,7 @@ describe('dist HTML — WHATWG spec compliance', () => {
 });
 ```
 
-Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool — hold output to the full spec, not browser recovery behavior.
+Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool, so hold output to the full spec, not browser recovery behavior.
 
 ### Testing Site Logic in a Bascik Project
 
