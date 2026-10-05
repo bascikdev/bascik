@@ -96,7 +96,7 @@ Build script output is transpiled again, so it can contain component tags and cl
 - An ordinary `<script>`, an `onerror` handler, or a `javascript:` link runs in every visitor's browser.
 - A component tag such as `<site-header>` expands into your component.
 
-Pass such HTML through an allowlist sanitizer (for example `sanitize-html`) before printing it, and escape plain text. The [WordPress Blog Tutorial](/switch/wordpress-blog-tutorial#sanitizing-post-bodies) shows one for WordPress content.
+Pass such HTML through an allowlist sanitizer (for example `sanitize-html`) before printing it, and escape plain text.
 
 Directive scripts are the exception Bascik handles itself. A `<script data-bascik-build>`, `<script data-bascik-server>`, or `<script data-bascik-routes>` that appears in a build script's output is removed and never runs, and the build warns:
 

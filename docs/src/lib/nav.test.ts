@@ -82,35 +82,9 @@ describe('renderPagination', () => {
 
   it('links releases to the previous section and to press', () => {
     const html = renderPagination('/releases');
-    expect(html).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(html).toContain('data-bascik-prop-label="WordPress Blog Tutorial"');
+    expect(html).toContain('data-bascik-prop-section="Switch to Bascik"');
+    expect(html).toContain('data-bascik-prop-label="From WordPress"');
     expect(html).toContain('href="/press"');
-  });
-
-  it('groups migration tutorials separately from switch guides', () => {
-    const astro = renderPagination('/switch/astro-blog-tutorial');
-    expect(astro).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(astro).toContain('href="/switch/eleventy-blog-tutorial"');
-    expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
-
-    const react = renderPagination('/switch/react-product-table-tutorial');
-    expect(react).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(react).toContain('href="/switch/vue-grid-tutorial"');
-    expect(renderSectionLabel('/switch/react-product-table-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
-
-    const next = renderPagination('/switch/next-blog-tutorial');
-    expect(next).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(renderSectionLabel('/switch/next-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
-
-    const vue = renderPagination('/switch/vue-grid-tutorial');
-    expect(vue).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(vue).toContain('href="/switch/wordpress-blog-tutorial"');
-    expect(renderSectionLabel('/switch/vue-grid-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
-
-    const wordpress = renderPagination('/switch/wordpress-blog-tutorial');
-    expect(wordpress).toContain('data-bascik-prop-section="Migration Tutorials"');
-    expect(wordpress).toContain('href="/releases"');
-    expect(renderSectionLabel('/switch/wordpress-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
   });
 
   it('groups the template catalog separately from Use Cases', () => {

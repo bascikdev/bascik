@@ -1,13 +1,6 @@
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
-  directory: {
-    components: [
-      'src/components',
-      '../migration-examples/ports/react-product-table/src/components',
-      '../migration-examples/ports/vue-grid/src/components',
-    ],
-  },
   components: {
     // <heading-anchors> comes from @zachleat/heading-anchors and is demonstrated on
     // /how-to/third-party-web-components. It is not a Bascik component file.

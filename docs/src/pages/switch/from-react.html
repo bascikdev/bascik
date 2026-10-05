@@ -20,7 +20,7 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Learn how React components, props, events, and state map to Bascik, with a link to a complete searchable product table migration tutorial." />
+    content="React and Bascik are both component-driven. Learn how to switch a React project to Bascik's HTML-first, zero-runtime model." />
   <title>From React - Bascik Docs</title>
 </head>
 
@@ -39,14 +39,11 @@
           console.log(renderSectionLabel('/switch/from-react'));
         </script>
 
+        <!-- Content rendered from docs/content/switch/from-react.md at build time.
+             To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/switch/from-react.md', { to: 'When to Switch vs Keep React' }, { stripDemoBlocks: true }));
-        </script>
-
-        <script data-bascik-build>
-          import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/switch/from-react.md', { from: 'When to Switch vs Keep React' }, { stripDemoBlocks: true }));
+          import { renderMd } from '@/lib/md-renderer.ts';
+          console.log(await renderMd('./content/switch/from-react.md'));
         </script>
 
         <docs-pagination />

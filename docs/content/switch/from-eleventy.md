@@ -2,8 +2,6 @@
 
 Eleventy is a static site generator centered on template languages and Markdown rendering; Bascik is a build tool for HTML components. Neither adds a client-side runtime by default, so both produce vanilla HTML (the Eleventy base blog itself ships one small module script for heading anchors). The main conceptual shift is that Bascik uses standard HTML component files resolved by tag name, rather than template languages like Nunjucks, Liquid, or Handlebars. Loops, conditionals, and filters move into small TypeScript helpers that build scripts call.
 
-For a complete worked example, see the [Eleventy Blog Tutorial](/switch/eleventy-blog-tutorial), which ports the official Eleventy base blog, including tags, drafts, the feed, and previous and next links.
-
 ## Mental Model Comparison
 
 | Concept | Eleventy | Bascik |
@@ -250,7 +248,7 @@ src/pages/
 
 ## eleventy.config.js Plugins → Your Own Build Steps
 
-Bascik replaces only one plugin category natively: CSS and JS scoping. Each of the base blog's other plugins becomes a small build step you write with a general-purpose library. The [tutorial](/switch/eleventy-blog-tutorial) shows each one.
+Bascik replaces only one plugin category natively: CSS and JS scoping. Each of the base blog's other plugins becomes a small build step you write with a general-purpose library:
 
 | Eleventy plugin or template | Bascik replacement |
 | --- | --- |

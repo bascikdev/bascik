@@ -2012,7 +2012,7 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 
 ### From React
 
-Full guide: `/switch/from-react`. Worked example: `/switch/react-product-table-tutorial` (the finished "Thinking in React" product table). Key React-specific mappings:
+Full guide: `/switch/from-react`. Key React-specific mappings:
 
 | React | Bascik |
 |-------|--------|
@@ -2040,7 +2040,7 @@ React-specific gotchas:
 
 ### From Next.js
 
-Full guide: `/switch/from-next`. Worked example: `/switch/next-blog-tutorial` (the official `blog-starter` example). Key Next.js-specific mappings:
+Full guide: `/switch/from-next`. Key Next.js-specific mappings:
 
 | Next.js | Bascik |
 |---------|--------|
@@ -2083,7 +2083,7 @@ Full guide: `/switch/from-svelte`. Key Svelte-specific mappings:
 
 ### From Vue
 
-Full guide: `/switch/from-vue`. Worked example: `/switch/vue-grid-tutorial` (the official sortable, filterable grid). Key Vue-specific mappings:
+Full guide: `/switch/from-vue`. Key Vue-specific mappings:
 
 | Vue | Bascik |
 |-----|--------|
@@ -2109,7 +2109,7 @@ Vue-specific gotchas:
 
 ### From WordPress
 
-Full guide: `/switch/from-wordpress`. Worked example: `/switch/wordpress-blog-tutorial` (a WordPress 7.1.2 blog on Twenty Twenty-Five, from the REST API or a WXR export). Key WordPress-specific mappings:
+Full guide: `/switch/from-wordpress`. Key WordPress-specific mappings:
 
 | WordPress | Bascik |
 |-----------|--------|

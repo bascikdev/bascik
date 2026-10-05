@@ -1,6 +1,6 @@
 # From React
 
-React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript. The [Product Table Tutorial](/switch/react-product-table-tutorial) has the live example and a full source-to-output walkthrough.
+React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript.
 
 ## When to Switch vs Keep React
 
@@ -28,8 +28,6 @@ Migrate a simple static component (such as a card or navigation bar) to get fami
 3. Move your CSS Module rules into `src/components/site-nav/site-nav.css`.
 4. Use `<site-nav></site-nav>` inside `src/pages/index.html` without import statements.
 5. Run `npm run dev` to inspect the scoped output.
-
-For a complete worked example with state, events, and two instances on one page, follow the [Product Table Tutorial](/switch/react-product-table-tutorial). It ports the finished example from React's "Thinking in React".
 
 ## Component Syntax
 
@@ -148,7 +146,7 @@ export function AlertBox({ title, message }) {
 ></alert-box>
 ```
 
-> **Text only:** Props accept plain text strings, which Bascik escapes. Boolean and number props arrive as text too, so a `stocked={true}` prop becomes `data-bascik-prop-stocked="true"` and a script compares it with the string. Object and array props have no equivalent. For rich HTML content, use a named slot instead. For computed or array-based content, print one component per item from a `<script data-bascik-build>` block, as the [tutorial](/switch/react-product-table-tutorial) does for table rows.
+> **Text only:** Props accept plain text strings, which Bascik escapes. Boolean and number props arrive as text too, so a `stocked={true}` prop becomes `data-bascik-prop-stocked="true"` and a script compares it with the string. Object and array props have no equivalent. For rich HTML content, use a named slot instead. For computed or array-based content, print one component per item from a `<script data-bascik-build>` block.
 
 A prop can also land in an attribute instead of the text, which is how a value reaches a CSS selector or a script without a wrapper element:
 

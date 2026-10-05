@@ -2,8 +2,6 @@
 
 WordPress is a PHP content management system that renders pages from a database on each request; Bascik is a build tool for HTML components that produces static pages. The main conceptual shift is that a Bascik site has no database or admin dashboard at runtime. Theme templates become HTML component files, The Loop becomes a Node.js build script, and your posts and pages become Markdown files or build-time fetches from the WordPress REST API.
 
-For a complete worked example, see the [WordPress Blog Tutorial](/switch/wordpress-blog-tutorial). It rebuilds a WordPress 7.1.2 blog on the default Twenty Twenty-Five theme (posts, pages, categories, tags, pagination, featured images) from the REST API and, separately, from an export converted to Markdown. Its pages ship no JavaScript; the theme's pages load the WordPress navigation and comment scripts.
-
 ## Is This the Right Move?
 
 - **Great fit:** Brochure sites, marketing sites, blogs, and documentation that are updated by developers or a small team comfortable with Markdown or a Git workflow.
@@ -254,7 +252,7 @@ Run `bascik --server` to serve API routes in production. Fully static hosting ca
 
 You have two options, and they can be combined:
 
-1. **Export to Markdown.** Export your content from WordPress (Tools → Export produces a WXR XML file), convert posts to Markdown with a community converter such as `wordpress-export-to-markdown`, and commit the `.md` files under `content/`. Then read them with a build script as shown above. Run the converter while the old site is still online, because it downloads the images. Review the output: page builders and shortcodes rarely convert cleanly, and the [tutorial](/switch/wordpress-blog-tutorial#from-an-export) lists what a real export loses (page parents and order, category names, image alt text, draft dates).
+1. **Export to Markdown.** Export your content from WordPress (Tools → Export produces a WXR XML file), convert posts to Markdown with a community converter such as `wordpress-export-to-markdown`, and commit the `.md` files under `content/`. Then read them with a build script as shown above. Run the converter while the old site is still online, because it downloads the images. Review the output: page builders and shortcodes rarely convert cleanly; check page hierarchy, category names, image alt text, and draft dates.
 2. **Fetch at build time.** Read posts from the WordPress REST API in a build script. This keeps WordPress as your editor and Bascik as your renderer.
 
 The converter saves each post's images next to its Markdown, as originals only. Copy them into `dist/` with an [Exec Script](/exec-scripts) and point the Markdown at the copied path. The resized copies WordPress made (`photo-300x200.jpg`) are not in an export; if you want `srcset`, regenerate them or keep fetching through the REST API, which lists them.
@@ -299,8 +297,6 @@ await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot))
   })));
 </script>
 ```
-
-The [tutorial](/switch/wordpress-blog-tutorial) has the complete version: pages, categories, tags, featured images with their resized copies, and links between posts rewritten to the new paths.
 
 > **Sanitize what you print.** `content.rendered` is HTML that an editor wrote, and administrators may save any markup, including `<script>`, `onerror` handlers, and `javascript:` links. Printed as is, it runs in every visitor's browser. Pass it through an allowlist such as `sanitize-html` before printing. Bascik also removes any `<script data-bascik-build>`, `data-bascik-server`, or `data-bascik-routes` tag found in a build script's output, with a warning. This is not a substitute for sanitizing CMS content.
 

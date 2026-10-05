@@ -31,4 +31,4 @@ Bascik has no content collections, template language, or plugin system. A conten
 - [Exec Scripts](/exec-scripts) write files that are not pages, such as a feed or copied images.
 - [Markdown](/how-to/markdown) shows how to render Markdown with your own build script.
 - [Watch Paths](/watch-paths) explains how the development server notices content changes.
-- The [Astro Blog Tutorial](/switch/astro-blog-tutorial) and the [Eleventy Blog Tutorial](/switch/eleventy-blog-tutorial) walk through two complete blog ports in detail.
+- The [From Astro](/switch/from-astro) and [From Eleventy](/switch/from-eleventy) guides compare each framework's patterns to Bascik.

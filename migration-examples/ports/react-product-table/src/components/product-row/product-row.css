@@ -1,8 +1,0 @@
-td {
-  padding: 2px;
-}
-
-/* React wraps the name in a red span only when the product is out of stock. */
-[data-stocked="false"] .name {
-  color: red;
-}

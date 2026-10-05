@@ -139,16 +139,6 @@ export const NAV: NavSection[] = [
       { href: '/switch/from-wordpress', label: 'From WordPress' },
     ]
   },
-/*   {
-    section: 'Migration Tutorials', pages: [
-      { href: '/switch/astro-blog-tutorial', label: 'Astro Blog Tutorial' },
-      { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
-      { href: '/switch/next-blog-tutorial', label: 'Next.js Blog Tutorial' },
-      { href: '/switch/react-product-table-tutorial', label: 'Product Table Tutorial' },
-      { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },
-      { href: '/switch/wordpress-blog-tutorial', label: 'WordPress Blog Tutorial' },
-    ]
-  }, */
   {
     section: 'Community', pages: [
       { href: '/releases', label: 'Releases' },

@@ -1,6 +1,0 @@
-{
-  "name": "original-parity-fixture",
-  "private": true,
-  "type": "module",
-  "scripts": { "build": "node build.mjs", "serve": "node serve.mjs" }
-}

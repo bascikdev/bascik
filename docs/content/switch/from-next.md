@@ -4,8 +4,6 @@ Next.js and Bascik share intuitive file-based routing, but they serve different 
 
 Switching to Bascik replaces framework abstractions with standard web platform primitives: JSX components become vanilla HTML files, data-fetching functions become build scripts or server scripts, and specialized Next.js components become standard HTML tags.
 
-For a complete worked example, see the [Next.js Blog Tutorial](/switch/next-blog-tutorial), a port of the official `blog-starter` example. Its home and post pages ship two short inline scripts for the color scheme switch; the original ships about 590 kB of framework JavaScript.
-
 ## A Low-Risk First Step
 
 To evaluate Bascik on an existing Next.js codebase, migrate a single static marketing page (like an `/about` page) and a shared header component before touching complex application routes:
@@ -230,7 +228,7 @@ Replace `<Link href="...">` with a standard `<a href="...">`. Because Bascik sit
 
 A `"use client"` component becomes a Bascik component with a plain `<script>`. There is no hydration: the HTML is final, and the script attaches behavior. `useState` becomes a variable or a DOM attribute, and `useEffect` becomes code that runs once when the script runs. Use `getElementById` for the component's own elements, because Bascik rewrites those ids per instance.
 
-A script that must run before the page paints (for example, applying a saved color scheme) goes in `<head>`. Production HTML minification moves scripts in the body to the end of the body, but leaves head scripts where they are. The [tutorial](/switch/next-blog-tutorial#the-color-scheme-switch) splits the example's theme switcher this way.
+A script that must run before the page paints (for example, applying a saved color scheme) goes in `<head>`. Production HTML minification moves scripts in the body to the end of the body, but leaves head scripts where they are.
 
 ## next/head → Inline head Tags
 

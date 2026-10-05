@@ -2,8 +2,6 @@
 
 Astro and Bascik both compile component-based markup into HTML that ships no framework runtime by default. The key conceptual difference lies in authoring: Astro uses custom `.astro` templates with JS frontmatter and an islands architecture for client hydration, whereas Bascik uses standard vanilla HTML files resolved by custom tag name, running build scripts in Node.js and scoping vanilla JavaScript and CSS automatically.
 
-For a complete worked example, see the [Astro Blog Tutorial](/switch/astro-blog-tutorial), which ports the official Astro blog starter and covers the pieces this page only summarizes: the post route, the RSS feed, the sitemap, canonical metadata, and the active navigation link.
-
 ## Mental Model Comparison
 
 | Concept | Astro | Bascik |
@@ -81,7 +79,7 @@ const posts = await getCollection('blog');
 
 `gray-matter` is a normal npm dependency: install it with `npm install gray-matter`. Build scripts print HTML as text, so escape every value that comes from content before you interpolate it.
 
-> **No Astro content helpers:** Bascik has no equivalent of `getCollection`, `astro:content`, or the collection schema in `content.config.ts`. Read Markdown files directly with Node.js `fs`, parse front matter with `gray-matter`, and validate it yourself, for example with a `zod` schema in a shared helper under `src/lib/`. The [tutorial](/switch/astro-blog-tutorial#the-content-collection) shows a helper that does all three.
+> **No Astro content helpers:** Bascik has no equivalent of `getCollection`, `astro:content`, or the collection schema in `content.config.ts`. Read Markdown files directly with Node.js `fs`, parse front matter with `gray-matter`, and validate it yourself, for example with a `zod` schema in a shared helper under `src/lib/`.
 
 ## Astro.props → data-bascik-prop-*
 
@@ -342,7 +340,7 @@ The post page renders this Markdown in a build script, as in the dynamic route a
 
 ## What Has No Built-In Equivalent
 
-These Astro integrations are not part of Bascik. The [tutorial](/switch/astro-blog-tutorial) shows the replacement used for each:
+These Astro integrations are not part of Bascik:
 
 | Astro | Bascik replacement |
 | --- | --- |

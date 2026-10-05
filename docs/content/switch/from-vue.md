@@ -1,46 +1,13 @@
 # From Vue
 
-Vue and Bascik are both component-driven. Vue compiles Single-File Components (`.vue`) to JavaScript that runs in the browser with a reactive state system and a virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS and ships no framework runtime. Try the searchable, sortable grid below, then open the [Vue Grid Tutorial](/switch/vue-grid-tutorial) for the full port and its source-to-output walkthrough.
-
-<!-- demo:vue-demo-usage -->
-```html
-<grid-search data-bascik-prop-label="Search" data-bascik-prop-target="grid"></grid-search>
-<demo-grid id="grid">
-  <script data-bascik-build>
-    import { gridColumns, gridData } from '@/data/grid.ts';
-    import { renderGridData } from '@/lib/grid.ts';
-    console.log(renderGridData({ columns: gridColumns, rows: gridData }));
-  </script>
-</demo-grid>
-```
-
-<!-- demo:vue-demo-output -->
-```html
-<form id="bascik__grid-search__2ff4c658__search">
-  <label for="bascik__grid-search__2ff4c658__query">Search</label>
-  <input id="bascik__grid-search__2ff4c658__query" name="bascik__grid-search__2ff4c658__query" data-target="grid">
-</form>
-<div class="grid" id="grid">
-  <div id="bascik__demo-grid__3ea500b7__input" hidden>
-    <script type="application/json">{"columns":["name","power"],"rows":[{"name":"Chuck Norris","power":1e999},{"name":"Bruce Lee","power":9000},{"name":"Jackie Chan","power":7000},{"name":"Jet Li","power":8000}]}</script>
-  </div>
-  <table class="bascik__demo-grid__el__table" id="bascik__demo-grid__3ea500b7__table" hidden>
-    <thead>
-      <tr id="bascik__demo-grid__3ea500b7__head"></tr>
-    </thead>
-    <tbody id="bascik__demo-grid__3ea500b7__body"></tbody>
-  </table>
-  <p id="bascik__demo-grid__3ea500b7__empty" hidden>No matches found.</p>
-  <!-- Heading and cell <template> elements the script clones into the table -->
-</div>
-```
+Vue and Bascik are both component-driven. Vue compiles Single-File Components (`.vue`) to JavaScript that runs in the browser with a reactive state system and a virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS and ships no framework runtime.
 
 ## When to Switch vs Keep Vue
 
 - **Switch to Bascik:** For marketing portals, blogs, documentation sites, and content-rich pages where performance, fast loading, and minimal complexity are paramount.
 - **Keep Vue:** For complex single-page applications with heavy client-side state, form wizards, or dynamic reactive workflows that depend on Vue's reactivity system (`ref`, `reactive`, Pinia).
 
-The tutorial's sortable grid is one small widget. As a Bascik component it ships about 3 KB of inline script. The Vue build of the same example ships about 65 KB of JavaScript (Vue's runtime and the two components, uncompressed). That figure says nothing about a large application, where Vue's state tools do work you would otherwise write yourself.
+A client widget in Bascik ships only the inline script it needs, with no framework runtime. That figure says nothing about a large application, where Vue's state tools do work you would otherwise write yourself.
 
 ## Mental Model Comparison
 
@@ -249,7 +216,7 @@ export const jsonScript = (value: unknown) =>
 </script>
 ```
 
-JSON has no `Infinity`, `NaN`, `undefined`, dates, or `Map`. `JSON.stringify` turns `Infinity` into `null`. The [Vue Grid Tutorial](/switch/vue-grid-tutorial#arrays-and-objects-json-in-a-slot) shows how to keep `Infinity` and how to fail the build on `NaN`.
+JSON has no `Infinity`, `NaN`, `undefined`, dates, or `Map`. `JSON.stringify` turns `Infinity` into `null`.
 
 ## Events and v-model → DOM Events
 
@@ -478,7 +445,3 @@ Usage:
 ```
 
 The slot marker sits inside the `<ul>` in the source and is replaced by the `<li>` items, so the output is a valid list.
-
-## Next Step
-
-The [Vue Grid Tutorial](/switch/vue-grid-tutorial) ports the official sortable, filterable grid example with props, state, events, a `<template>`, and two instances on one page.
