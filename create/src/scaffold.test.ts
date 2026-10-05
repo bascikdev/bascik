@@ -60,6 +60,7 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "-y"])).toEqual({
       yesFlag: true,
       noDevFlag: false,
+      noInstallFlag: false,
     });
   });
 
@@ -67,6 +68,17 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "--yes", "--no-dev"])).toEqual({
       yesFlag: true,
       noDevFlag: true,
+      noInstallFlag: false,
+    });
+  });
+
+  it("supports skipping install with --no-install", () => {
+    expect(
+      parseCliOptions(["my-site", "-y", "--no-install", "--no-dev"]),
+    ).toEqual({
+      yesFlag: true,
+      noDevFlag: true,
+      noInstallFlag: true,
     });
   });
 });

@@ -105,7 +105,7 @@ yarn create:test-site
 
 This builds `create-bascik` (copying the latest `SKILL.md` from `docs/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The command redirects stdin so the CLI runs non-interactively and does not try to install the unpublished package from npm.
+The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup.
 
 ```text
 Build complete
