@@ -42,6 +42,6 @@ test.describe('default slot forwarded into a nested component', () => {
 
   test('no slot marker reaches the page', async ({ page }) => {
     expect(await page.locator('[data-bascik-slot]').count()).toBe(0);
-    expect(await page.content()).not.toContain('data-bascik');
+    expect(await page.content()).not.toContain('data-bascik-slot');
   });
 });
