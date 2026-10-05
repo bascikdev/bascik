@@ -67,7 +67,7 @@ Content stays in `content/`. Templates become pages in `src/pages/`, and the Nun
   </script>
 </head>
 <body>
-  <site-header></site-header>
+  <site-header />
   <main id="main">
     <script data-bascik-build>
       import { loadPosts } from '@/lib/posts.ts';
@@ -75,7 +75,7 @@ Content stays in `content/`. Templates become pages in `src/pages/`, and the Nun
       console.log(renderHome(await loadPosts()));
     </script>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```

@@ -139,7 +139,7 @@ export const NAV: NavSection[] = [
       { href: '/switch/from-wordpress', label: 'From WordPress' },
     ]
   },
-  {
+/*   {
     section: 'Migration Tutorials', pages: [
       { href: '/switch/astro-blog-tutorial', label: 'Astro Blog Tutorial' },
       { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
@@ -148,7 +148,7 @@ export const NAV: NavSection[] = [
       { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },
       { href: '/switch/wordpress-blog-tutorial', label: 'WordPress Blog Tutorial' },
     ]
-  },
+  }, */
   {
     section: 'Community', pages: [
       { href: '/releases', label: 'Releases' },

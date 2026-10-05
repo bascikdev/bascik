@@ -30,4 +30,12 @@ describe('component-demo component', () => {
     expect(html).toContain('data-bascik-prop-hide-preview');
     expect(html).toContain('.demo-no-preview-marker:not(:empty)');
   });
+
+  it('hides language tabs when slot expansion leaves an empty pane', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    expect(html).toContain('.demo-pane:not(:has(.demo-language-pane[data-language-pane="css"] code-block)) .demo-language-tab[data-language="css"]');
+    expect(html).toContain('.demo-pane:not(:has(.demo-language-pane code-block)) .demo-language-tabs');
+    expect(html).not.toContain('.demo-language-pane[data-language-pane="css"]:empty');
+  });
 });

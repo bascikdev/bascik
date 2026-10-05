@@ -265,7 +265,7 @@ In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html`
     const { params } = JSON.parse(process.env.BASCIK_ROUTE);
     console.log(renderPost(await getPost(params.slug)));
   </script>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```

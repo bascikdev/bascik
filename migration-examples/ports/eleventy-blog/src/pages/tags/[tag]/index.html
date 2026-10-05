@@ -16,7 +16,7 @@
 </head>
 
 <body>
-  <site-header></site-header>
+  <site-header />
   <main id="main">
     <script data-bascik-build>
       import { collectTags, loadPosts } from '@/lib/posts.ts';
@@ -25,7 +25,7 @@
       console.log(renderTagPage(collectTags(await loadPosts()).find((tag) => tag.slug === params.tag)));
     </script>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 
 </html>

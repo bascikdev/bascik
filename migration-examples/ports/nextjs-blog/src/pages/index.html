@@ -3,7 +3,7 @@
 
 <head>
   <!-- src/app/layout.tsx (document shell) plus src/app/page.tsx -->
-  <site-head></site-head>
+  <site-head />
   <script data-bascik-build>
     import { renderHead } from '@/lib/site.ts';
     console.log(renderHead());
@@ -11,11 +11,11 @@
 </head>
 
 <body class="dark:bg-slate-900 dark:text-slate-400">
-  <theme-switcher></theme-switcher>
+  <theme-switcher />
   <div class="min-h-screen">
     <main>
       <page-container>
-        <intro-section></intro-section>
+        <intro-section />
         <script data-bascik-build>
           import { getAllPosts } from '@/lib/api.ts';
           import { renderHeroPost, renderMoreStories } from '@/lib/render.ts';
@@ -26,7 +26,7 @@
       </page-container>
     </main>
   </div>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 
 </html>

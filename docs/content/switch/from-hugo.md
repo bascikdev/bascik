@@ -92,7 +92,7 @@ Hugo's `baseof.html` with `{{ block "main" . }}` / `{{ define "main" }}` maps to
 <body>
   <site-nav></site-nav>
   <main><div data-bascik-slot></div></main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 

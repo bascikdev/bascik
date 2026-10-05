@@ -99,7 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <h1>About</h1>
     <p>We build things.</p>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```
@@ -112,7 +112,7 @@ If many pages share the same outer wrapper, extract it into a layout component t
 <main class="content">
   <div data-bascik-slot></div>
 </main>
-<site-footer></site-footer>
+<site-footer />
 ```
 
 ```html
@@ -267,7 +267,7 @@ export default function About() {
 <body>
   <site-nav></site-nav>
   <h1>About</h1>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```

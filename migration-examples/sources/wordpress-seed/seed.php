@@ -102,7 +102,7 @@ $created['pasted-embed'] = seed_post([
   'post_name' => 'pasted-embed',
   'post_date' => '2026-05-20 10:00:00',
   'post_category' => [$notes],
-  'post_content' => "<!-- wp:paragraph -->\n<p>Below is markup pasted from a third-party widget.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n<script>window.__pastedEmbed = true;</script>\n<img src=\"/missing.png\" alt=\"broken\" onerror=\"window.__pastedHandler = true\">\n<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('BASCIK_CANARY', 'ran'); console.log('<p id=\"canary\">build directive ran</p>');</script>\n<site-header></site-header>\n<p><a href=\"javascript:alert(1)\">a javascript link</a></p>\n<!-- /wp:html -->",
+  'post_content' => "<!-- wp:paragraph -->\n<p>Below is markup pasted from a third-party widget.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:html -->\n<script>window.__pastedEmbed = true;</script>\n<img src=\"/missing.png\" alt=\"broken\" onerror=\"window.__pastedHandler = true\">\n<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('BASCIK_CANARY', 'ran'); console.log('<p id=\"canary\">build directive ran</p>');</script>\n<site-header />\n<p><a href=\"javascript:alert(1)\">a javascript link</a></p>\n<!-- /wp:html -->",
 ]);
 $created['seed-saving'] = seed_post([
   'post_title' => 'Saving seed from tomatoes',

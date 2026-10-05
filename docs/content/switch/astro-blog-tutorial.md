@@ -110,14 +110,14 @@ Build scripts run with the project root as the working directory, so `process.cw
   </script>
 </head>
 <body>
-  <site-header></site-header>
+  <site-header />
   <script data-bascik-build>
     import { getPost } from '@/lib/posts.ts';
     import { renderPost } from '@/lib/render.ts';
     const { params } = JSON.parse(process.env.BASCIK_ROUTE);
     console.log(renderPost(await getPost(params.slug)));
   </script>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 ```
 

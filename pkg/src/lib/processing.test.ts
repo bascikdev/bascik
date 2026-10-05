@@ -1917,7 +1917,7 @@ describe("transpilePage – usedComponentsNames", () => {
         fileContent: "<header><p>title</p></header>",
       },
     };
-    const html = "<!DOCTYPE html><html><head></head><body><site-header></site-header></body></html>";
+    const html = "<!DOCTYPE html><html><head></head><body><site-header /></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, componentList);
     expect(result).not.toBeNull();

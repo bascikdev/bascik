@@ -21,7 +21,7 @@
 </head>
 
 <body>
-  <site-header></site-header>
+  <site-header />
   <main id="main">
     <script data-bascik-build>
       import { loadPosts } from '@/lib/posts.ts';
@@ -31,7 +31,7 @@
       console.log(renderArchive(await loadPosts(), parsePageParam(params.page)));
     </script>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 
 </html>

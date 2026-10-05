@@ -2,6 +2,359 @@
 
 This tutorial ports the finished example from React's "Thinking in React" tutorial, a searchable product table, to Bascik. It covers a component hierarchy, props, state that lives in a parent, a child that reports input back up, repeated instances, and the places where Bascik and React do different work. It is a component exercise, not a site, so it says nothing about routing, data fetching, or React as a whole.
 
+<!-- demo:react-table-usage -->
+```html
+<filterable-product-table></filterable-product-table>
+```
+
+<!-- demo:react-table-source-html -->
+```html
+<!-- src/components/filterable-product-table/filterable-product-table.html -->
+<div id="root">
+  <search-bar />
+  <product-table />
+</div>
+```
+
+<!-- demo:react-table-source-js -->
+```js
+// src/components/search-bar/search-bar.html
+const form = document.getElementById('form');
+const text = document.getElementById('text');
+const stock = document.getElementById('stock');
+
+function report() {
+  form.dispatchEvent(new CustomEvent('filterchange', {
+    bubbles: true,
+    detail: { filterText: text.value, inStockOnly: stock.checked },
+  }));
+}
+text.addEventListener('input', report);
+stock.addEventListener('change', report);
+window.addEventListener('pageshow', report);
+form.addEventListener('submit', (event) => event.preventDefault());
+
+// src/components/filterable-product-table/filterable-product-table.html
+const root = document.getElementById('root');
+let filterText = '';
+let inStockOnly = false;
+
+function render() {
+  const needle = filterText.toLowerCase();
+  let categoryRow = null;
+  let categoryHasRows = false;
+  const finishCategory = () => { if (categoryRow) categoryRow.hidden = !categoryHasRows; };
+  for (const row of root.querySelectorAll('tbody > tr')) {
+    if (row.hasAttribute('data-category')) {
+      finishCategory();
+      categoryRow = row;
+      categoryHasRows = false;
+      continue;
+    }
+    const name = row.getAttribute('data-name') ?? '';
+    const stocked = row.getAttribute('data-stocked') === 'true';
+    const visible = name.toLowerCase().includes(needle) && !(inStockOnly && !stocked);
+    row.hidden = !visible;
+    if (visible) categoryHasRows = true;
+  }
+  finishCategory();
+}
+
+root.addEventListener('filterchange', (event) => {
+  filterText = event.detail.filterText;
+  inStockOnly = event.detail.inStockOnly;
+  render();
+});
+
+// src/components/product-table/product-table.html (build-time script)
+import { PRODUCTS } from '../../data/products.ts';
+import { escapeHtml } from '../../lib/escape.ts';
+
+const rows = [];
+let lastCategory = null;
+for (const product of PRODUCTS) {
+  if (product.category !== lastCategory) {
+    rows.push(`<product-category-row data-bascik-prop-category="${escapeHtml(product.category)}"></product-category-row>`);
+  }
+  rows.push(
+    `<product-row data-bascik-prop-name="${escapeHtml(product.name)}" ` +
+    `data-bascik-prop-price="${escapeHtml(product.price)}" ` +
+    `data-bascik-prop-stocked="${product.stocked}"></product-row>`,
+  );
+  lastCategory = product.category;
+}
+console.log(rows.join('\n'));
+```
+
+<!-- demo:react-table-output-html -->
+```html
+<div id="bascik__filterable-product-table__311d3598__root">
+  <form id="bascik__search-bar__599fcfdf__form">
+    <input type="text" id="bascik__search-bar__599fcfdf__text" placeholder="Search..." aria-label="Search products">
+    <label class="bascik__search-bar__el__label">
+      <input type="checkbox" id="bascik__search-bar__599fcfdf__stock">
+      Only show products in stock
+    </label>
+  </form>
+  <table>
+    <thead>
+      <tr>
+        <th class="bascik__product-table__el__th">Name</th>
+        <th class="bascik__product-table__el__th">Price</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr data-category="">
+        <th class="bascik__product-category-row__el__th" colspan="2">Fruits</th>
+      </tr>
+      <tr data-name="Apple" data-stocked="true">
+        <td class="bascik__product-row__el__td"><span class="bascik__product-row__name">Apple</span></td>
+        <td class="bascik__product-row__el__td">$1</td>
+      </tr>
+      <!-- One row per product, with a category row before each new category -->
+    </tbody>
+  </table>
+</div>
+```
+
+<!-- demo:react-table-output-js -->
+```js
+// src/components/search-bar/search-bar.html
+(function () {
+  const form = document.getElementById('bascik__search-bar__599fcfdf__form');
+  const text = document.getElementById('bascik__search-bar__599fcfdf__text');
+  const stock = document.getElementById('bascik__search-bar__599fcfdf__stock');
+  function report() {
+    form.dispatchEvent(new CustomEvent('filterchange', {
+      bubbles: true,
+      detail: { filterText: text.value, inStockOnly: stock.checked },
+    }));
+  }
+  text.addEventListener('input', report);
+  stock.addEventListener('change', report);
+  window.addEventListener('pageshow', report);
+  form.addEventListener('submit', (event) => event.preventDefault());
+})();
+//# sourceURL=src/components/search-bar/search-bar.html
+
+// src/components/filterable-product-table/filterable-product-table.html
+(function () {
+  const root = document.getElementById('bascik__filterable-product-table__311d3598__root');
+  let filterText = '';
+  let inStockOnly = false;
+  function render() {
+    const needle = filterText.toLowerCase();
+    let categoryRow = null;
+    let categoryHasRows = false;
+    const finishCategory = () => { if (categoryRow) categoryRow.hidden = !categoryHasRows; };
+    for (const row of root.querySelectorAll('tbody > tr')) {
+      if (row.hasAttribute('data-category')) {
+        finishCategory();
+        categoryRow = row;
+        categoryHasRows = false;
+        continue;
+      }
+      const name = row.getAttribute('data-name') ?? '';
+      const stocked = row.getAttribute('data-stocked') === 'true';
+      const visible = name.toLowerCase().includes(needle) && !(inStockOnly && !stocked);
+      row.hidden = !visible;
+      if (visible) categoryHasRows = true;
+    }
+    finishCategory();
+  }
+  root.addEventListener('filterchange', (event) => {
+    filterText = event.detail.filterText;
+    inStockOnly = event.detail.inStockOnly;
+    render();
+  });
+})();
+//# sourceURL=src/components/filterable-product-table/filterable-product-table.html
+```
+
+<!-- demo:react-search-usage -->
+```html
+<search-bar />
+```
+
+<!-- demo:react-search-source-html -->
+```html
+<!-- src/components/search-bar/search-bar.html -->
+<form id="form">
+  <input type="text" id="text" placeholder="Search..." aria-label="Search products">
+  <label>
+    <input type="checkbox" id="stock">
+    Only show products in stock
+  </label>
+</form>
+```
+
+<!-- demo:react-search-source-css -->
+```css
+/* src/components/search-bar/search-bar.css */
+label {
+  display: block;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+```
+
+<!-- demo:react-search-source-js -->
+```js
+// src/components/search-bar/search-bar.html
+const form = document.getElementById('form');
+const text = document.getElementById('text');
+const stock = document.getElementById('stock');
+
+function report() {
+  form.dispatchEvent(new CustomEvent('filterchange', {
+    bubbles: true,
+    detail: { filterText: text.value, inStockOnly: stock.checked },
+  }));
+}
+text.addEventListener('input', report);
+stock.addEventListener('change', report);
+window.addEventListener('pageshow', report);
+form.addEventListener('submit', (event) => event.preventDefault());
+```
+
+<!-- demo:react-search-output-html -->
+```html
+<form id="bascik__search-bar__83c26d2b__form">
+  <input type="text" id="bascik__search-bar__83c26d2b__text" placeholder="Search..." aria-label="Search products">
+  <label class="bascik__search-bar__el__label">
+    <input type="checkbox" id="bascik__search-bar__83c26d2b__stock">
+    Only show products in stock
+  </label>
+</form>
+```
+
+<!-- demo:react-search-output-css -->
+```css
+.bascik__search-bar__el__label {
+  display: block;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+```
+
+<!-- demo:react-search-output-js -->
+```js
+(function() {
+  const form = document.getElementById('bascik__search-bar__83c26d2b__form');
+  const text = document.getElementById('bascik__search-bar__83c26d2b__text');
+  const stock = document.getElementById('bascik__search-bar__83c26d2b__stock');
+  function report() {
+    form.dispatchEvent(new CustomEvent('filterchange', {
+      bubbles: true,
+      detail: { filterText: text.value, inStockOnly: stock.checked },
+    }));
+  }
+  text.addEventListener('input', report);
+  stock.addEventListener('change', report);
+  window.addEventListener('pageshow', report);
+  form.addEventListener('submit', (event) => event.preventDefault());
+})();
+//# sourceURL=../migration-examples/ports/react-product-table/src/components/search-bar/search-bar.html
+```
+
+<!-- demo:react-product-table-usage -->
+```html
+<product-table />
+```
+
+<!-- demo:react-product-table-source-html -->
+```html
+<!-- src/components/product-table/product-table.html -->
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Price</th>
+    </tr>
+  </thead>
+  <tbody>
+    <script data-bascik-build>
+      import { PRODUCTS } from '../../data/products.ts';
+      import { escapeHtml } from '../../lib/escape.ts';
+
+      const rows = [];
+      let lastCategory = null;
+      for (const product of PRODUCTS) {
+        if (product.category !== lastCategory) {
+          rows.push(`<product-category-row data-bascik-prop-category="${escapeHtml(product.category)}"></product-category-row>`);
+        }
+        rows.push(
+          `<product-row data-bascik-prop-name="${escapeHtml(product.name)}" ` +
+          `data-bascik-prop-price="${escapeHtml(product.price)}" ` +
+          `data-bascik-prop-stocked="${product.stocked}"></product-row>`,
+        );
+        lastCategory = product.category;
+      }
+      console.log(rows.join('\n'));
+    </script>
+  </tbody>
+</table>
+```
+
+<!-- demo:react-product-table-source-css -->
+```css
+/* src/components/product-table/product-table.css */
+th {
+  padding: 4px;
+}
+```
+
+<!-- demo:react-product-table-source-js -->
+```js
+// src/components/product-table/product-table.html (build-time script)
+import { PRODUCTS } from '../../data/products.ts';
+import { escapeHtml } from '../../lib/escape.ts';
+
+const rows = [];
+let lastCategory = null;
+for (const product of PRODUCTS) {
+  if (product.category !== lastCategory) {
+    rows.push(`<product-category-row data-bascik-prop-category="${escapeHtml(product.category)}"></product-category-row>`);
+  }
+  rows.push(
+    `<product-row data-bascik-prop-name="${escapeHtml(product.name)}" ` +
+    `data-bascik-prop-price="${escapeHtml(product.price)}" ` +
+    `data-bascik-prop-stocked="${product.stocked}"></product-row>`,
+  );
+  lastCategory = product.category;
+}
+console.log(rows.join('\n'));
+```
+
+<!-- demo:react-product-table-output-html -->
+```html
+<table>
+  <thead>
+    <tr>
+      <th class="bascik__product-table__el__th">Name</th>
+      <th class="bascik__product-table__el__th">Price</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr data-category="">
+      <th class="bascik__product-category-row__el__th" colspan="2">Fruits</th>
+    </tr>
+    <tr data-name="Apple" data-stocked="true">
+      <td class="bascik__product-row__el__td"><span class="bascik__product-row__name">Apple</span></td>
+      <td class="bascik__product-row__el__td">$1</td>
+    </tr>
+    <!-- Remaining product rows are emitted from PRODUCTS. -->
+  </tbody>
+</table>
+```
+
+<!-- demo:react-product-table-output-css -->
+```css
+.bascik__product-table__el__th {
+  padding: 4px;
+}
+```
+
 ## The Original and the Port
 
 | | |

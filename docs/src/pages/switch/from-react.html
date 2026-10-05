@@ -20,7 +20,7 @@
     console.log(await articleSchema());
   </script>
   <meta name="description"
-    content="Try a live Bascik port of React's Thinking in React product table, then compare how React components, props, events, and state map to Bascik." />
+    content="Learn how React components, props, events, and state map to Bascik, with a link to a complete searchable product table migration tutorial." />
   <title>From React - Bascik Docs</title>
 </head>
 
@@ -43,28 +43,6 @@
           import { renderMdRange } from '@/lib/md-renderer.ts';
           console.log(await renderMdRange('./content/switch/from-react.md', { to: 'When to Switch vs Keep React' }, { stripDemoBlocks: true }));
         </script>
-
-        <component-demo data-bascik-prop-file="migration-examples/ports/react-product-table/src/components/">
-          <div data-bascik-slot="example">
-            <filterable-product-table></filterable-product-table>
-          </div>
-          <div data-bascik-slot="source-usage">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/switch/from-react.md', 'react-demo-usage'));
-              </script>
-            </code-block>
-          </div>
-          <div data-bascik-slot="output-html">
-            <code-block data-bascik-prop-lang="html">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/switch/from-react.md', 'react-demo-output'));
-              </script>
-            </code-block>
-          </div>
-        </component-demo>
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';

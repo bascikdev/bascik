@@ -8,7 +8,7 @@
     import { getAllPosts } from '@/lib/api.ts';
     console.log(JSON.stringify(getAllPosts().map((post) => ({ params: { slug: post.slug } }))));
   </script>
-  <site-head></site-head>
+  <site-head />
   <script data-bascik-build>
     import { getPostBySlug } from '@/lib/api.ts';
     import { SITE_TITLE } from '@/lib/constants.ts';
@@ -20,12 +20,12 @@
 </head>
 
 <body class="dark:bg-slate-900 dark:text-slate-400">
-  <theme-switcher></theme-switcher>
+  <theme-switcher />
   <div class="min-h-screen">
     <main>
-      <post-alert></post-alert>
+      <post-alert />
       <page-container>
-        <site-header></site-header>
+        <site-header />
         <script data-bascik-build>
           import { getPostBySlug } from '@/lib/api.ts';
           import { renderPost } from '@/lib/render.ts';
@@ -35,7 +35,7 @@
       </page-container>
     </main>
   </div>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 
 </html>

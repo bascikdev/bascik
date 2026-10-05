@@ -31,7 +31,7 @@ Move your theme's footer into a Bascik component before touching any content:
 
 1. Create a new Bascik project with `npm create bascik@latest`.
 2. Create `src/components/site-footer/site-footer.html` and paste the rendered footer markup from your live site.
-3. Use `<site-footer></site-footer>` inside `src/pages/index.html`.
+3. Use `<site-footer />` inside `src/pages/index.html`.
 4. Run `npm run dev` to inspect the generated HTML.
 
 ## Theme Files → HTML Component Files
@@ -72,11 +72,11 @@ A WordPress template calls `get_header()` and `get_footer()` around the page con
 
 ```html
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
-<site-header></site-header>
+<site-header />
 <main>
   <div data-bascik-slot></div>
 </main>
-<site-footer></site-footer>
+<site-footer />
 ```
 
 ```html

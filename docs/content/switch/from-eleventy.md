@@ -21,7 +21,7 @@ Migrate a simple partial (like a header or footer) into a Bascik component:
 1. Create a project with `npm create bascik@latest my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
 2. Create `src/components/site-footer/site-footer.html`.
 3. Add your footer HTML markup inside it. Replace template values such as `{{ eleventy.generator }}` with fixed text.
-4. Use `<site-footer></site-footer>` inside `src/pages/index.html`.
+4. Use `<site-footer />` inside `src/pages/index.html`.
 5. Run `npm run dev` to inspect the generated HTML.
 
 ## Template Languages → HTML Component Files
@@ -119,7 +119,7 @@ In Bascik, the layout component wraps only the repeated inner structure. The `<h
 <main class="content">
   <div data-bascik-slot></div>
 </main>
-<site-footer></site-footer>
+<site-footer />
 ```
 
 ```html
@@ -308,7 +308,7 @@ export function renderHome(posts: Post[], latest = 3): string {
   <site-head data-bascik-prop-title="Home - Acme Blog"></site-head>
 </head>
 <body>
-  <site-header></site-header>
+  <site-header />
   <main id="main">
     <script data-bascik-build>
       import { loadPosts } from '@/lib/posts.ts';
@@ -316,7 +316,7 @@ export function renderHome(posts: Post[], latest = 3): string {
       console.log(renderHome(await loadPosts()));
     </script>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```

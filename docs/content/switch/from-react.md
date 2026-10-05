@@ -1,42 +1,6 @@
 # From React
 
-React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript. Try the searchable product table below, then open the [Product Table Tutorial](/switch/react-product-table-tutorial) for the full port and its source-to-output walkthrough.
-
-<!-- demo:react-demo-usage -->
-```html
-<filterable-product-table></filterable-product-table>
-```
-
-<!-- demo:react-demo-output -->
-```html
-<div id="bascik__filterable-product-table__311d3598__root">
-  <form id="bascik__search-bar__599fcfdf__form">
-    <input type="text" id="bascik__search-bar__599fcfdf__text" placeholder="Search..." aria-label="Search products">
-    <label class="bascik__search-bar__el__label">
-      <input type="checkbox" id="bascik__search-bar__599fcfdf__stock">
-      Only show products in stock
-    </label>
-  </form>
-  <table>
-    <thead>
-      <tr>
-        <th class="bascik__product-table__el__th">Name</th>
-        <th class="bascik__product-table__el__th">Price</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr data-category="">
-        <th class="bascik__product-category-row__el__th" colspan="2">Fruits</th>
-      </tr>
-      <tr data-name="Apple" data-stocked="true">
-        <td class="bascik__product-row__el__td"><span class="bascik__product-row__name">Apple</span></td>
-        <td class="bascik__product-row__el__td">$1</td>
-      </tr>
-      <!-- One row per product, with a category row before each new category -->
-    </tbody>
-  </table>
-</div>
-```
+React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript. The [Product Table Tutorial](/switch/react-product-table-tutorial) has the live example and a full source-to-output walkthrough.
 
 ## When to Switch vs Keep React
 
