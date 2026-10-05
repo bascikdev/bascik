@@ -271,9 +271,8 @@ test('a dynamic route template replaces one file per URL', async () => {
   assert.match(other, /<h1>Another post<\/h1><p>another-post<\/p>/);
 });
 
-// Needs the slot-forwarding fix (1.0.0-rc.3 or later). Registry 1.0.0-rc.2 left the marker in the
-// output and dropped the content, so this is the one test here that a tarball must satisfy.
-test('a slot inside another component\'s usage tag is filled by the outer usage', { skip: tarball ? false : 'needs 1.0.0-rc.3 or later (BASCIK_TARBALL)' }, async () => {
+// This assertion requires the local package tarball so it always targets the behavior under test.
+test('a slot inside another component\'s usage tag is filled by the outer usage', { skip: tarball ? false : 'requires BASCIK_TARBALL' }, async () => {
   await build();
   const html = await readFile(join(directory, 'dist/composed.html'), 'utf8');
   assert.match(html, /<section class="[^"]*"><p>given-forwarded<\/p><\/section>/, 'content given to the outer component is forwarded');

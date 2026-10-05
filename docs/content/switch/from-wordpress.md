@@ -302,11 +302,11 @@ await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot))
 
 The [tutorial](/switch/wordpress-blog-tutorial) has the complete version: pages, categories, tags, featured images with their resized copies, and links between posts rewritten to the new paths.
 
-> **Sanitize what you print.** `content.rendered` is HTML that an editor wrote, and administrators may save any markup, including `<script>`, `onerror` handlers, and `javascript:` links. Printed as is, it runs in every visitor's browser. Pass it through an allowlist such as `sanitize-html` before printing. Bascik 1.0.0-rc.3 or later also removes any `<script data-bascik-build>`, `data-bascik-server`, or `data-bascik-routes` tag found in a build script's output, with a warning, so CMS content can never run code during the build. Earlier versions ran it.
+> **Sanitize what you print.** `content.rendered` is HTML that an editor wrote, and administrators may save any markup, including `<script>`, `onerror` handlers, and `javascript:` links. Printed as is, it runs in every visitor's browser. Pass it through an allowlist such as `sanitize-html` before printing. Bascik also removes any `<script data-bascik-build>`, `data-bascik-server`, or `data-bascik-routes` tag found in a build script's output, with a warning. This is not a substitute for sanitizing CMS content.
 
 > **Rebuild on publish:** Static output only changes when you rebuild. Trigger a build from a WordPress webhook or your CI pipeline whenever content is published. List the pages that read the fetched data in `scripts.cache.exclude`: a build script's cache key does not include network responses, so without it a rebuild can reuse output from before the edit.
 
-> **Large posts:** Passing a whole post body as route `data` works on any size in 1.0.0-rc.3 or later. Earlier versions failed with `spawn E2BIG` once one route's data passed 128 KB on Linux (about 1 MB on macOS). Reading the snapshot file from the page avoids the question entirely.
+> **Large posts:** Passing a whole post body as route `data` works without an environment-size limit. Reading the snapshot file from the page is another option.
 
 ## Migration Checklist
 

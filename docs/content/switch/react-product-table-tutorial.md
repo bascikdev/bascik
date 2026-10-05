@@ -272,7 +272,7 @@ The bundle holds the React runtime and the app. The two inline blocks are the se
 
 - **No re-render.** Anything the page shows twice, for instance a count of matching rows, must be written to both places by your function. There is no diff.
 - **No props for functions or objects.** Events replace callbacks. Per-item values are separate text props, or an attribute.
-- **Passing `children` through a wrapper.** A default slot marker placed between a nested component's tags receives the outer component's content (1.0.0-rc.3 or later). This example does not need it. The [From React](/switch/from-react#composing-components) guide shows how.
+- **Passing `children` through a wrapper.** A default slot marker placed between a nested component's tags receives the outer component's content. This example does not need it. The [From React](/switch/from-react#composing-components) guide shows how.
 - **`bascik --check` cannot see components that only a build script prints.** `product-row` and `product-category-row` are used by the build script in `product-table`, so the check reports them as unused. The build works.
 - **No stable state across reloads.** Rebuilding the page, or reloading it, starts from the beginning. React state does too, but a React tool can keep it across hot updates.
 - **Script placement differs between modes.** Production HTML minification moves component scripts to the end of the document, and the development server leaves them in place. The port's scripts look elements up by id and run listeners later, so both behave the same.

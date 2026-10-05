@@ -8,7 +8,7 @@ This tutorial rebuilds a WordPress blog as a static Bascik site: the home listin
 | --- | --- |
 | Original | WordPress 7.1.2 with its default theme, Twenty Twenty-Five 1.5 |
 | Port | `migration-examples/ports/wordpress-blog/` in the Bascik repository |
-| Requires | Node 24 or later, `@bascik/bascik` 1.0.0-rc.3 or later |
+| Requires | Node 24 or later |
 | Libraries | `sanitize-html`, `entities`, `marked`, `gray-matter`, `image-size`, `zod` |
 
 WordPress and its theme are GPL. The port copies none of their code, markup, or styles: it is original code that reproduces what a visitor sees, and its CSS is new. The sample posts and images were written for it.
@@ -109,7 +109,7 @@ export function sanitizeContent(html, mapUrl) {
 
 The allowlist also removes unknown and custom elements, so a post cannot place a Bascik component tag such as `<site-header>` into the page.
 
-Bascik adds a second line of defense. Build script output is processed again so that it can contain component tags, which means a `<script data-bascik-build>` inside printed content would run during the build with the build's file and network access. From 1.0.0-rc.3, Bascik removes any directive script (`data-bascik-build`, `data-bascik-server`, `data-bascik-routes`) that a build script prints, and warns:
+Bascik adds a second line of defense. Build script output is processed again so that it can contain component tags, which means a `<script data-bascik-build>` inside printed content would run during the build with the build's file and network access. Bascik removes any directive script (`data-bascik-build`, `data-bascik-server`, `data-bascik-routes`) that a build script prints, and warns:
 
 ```text
 [bascik] warning: build script output in "pages/index.html" contained <script data-bascik-build>.

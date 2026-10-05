@@ -106,7 +106,7 @@ Printed directive scripts never run; they were removed. Write directives in sour
 sanitize HTML from a CMS or an API before printing it.
 ```
 
-Write directives in page and component source files. To run more build-time code for printed markup, call a helper from the script that prints it. This guard applies to 1.0.0-rc.3 or later; earlier versions ran a printed `data-bascik-build` script during the build and registered a printed `data-bascik-server` script.
+Write directives in page and component source files. To run more build-time code for printed markup, call a helper from the script that prints it. Bascik removes printed directive scripts before processing the generated markup, so they do not execute during the build or register as server scripts.
 
 ### Head Components & Dynamic Metadata
 
@@ -244,7 +244,7 @@ When a build script runs inside a dynamic route template (for example, `src/page
 </script>
 ```
 
-Route `data` can be as large as the routes script prints, such as a whole post body. Payloads over 32 KB reach the script through a temporary file instead of the process environment, and `process.env.BASCIK_ROUTE` reads the same either way (1.0.0-rc.3 or later; earlier versions failed with `spawn E2BIG` above 128 KB on Linux or about 1 MB on macOS).
+Route `data` can be as large as the routes script prints, such as a whole post body. Payloads over 32 KB reach the script through a temporary file instead of the process environment, and `process.env.BASCIK_ROUTE` reads the same either way.
 
 See [Dynamic Routes](/dynamic-routes) for the complete guide to dynamic route generation, and see [Environment Variables](/environment-variables) for the full reference of variables available to build scripts.
 

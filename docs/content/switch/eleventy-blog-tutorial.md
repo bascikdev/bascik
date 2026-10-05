@@ -8,7 +8,7 @@ This tutorial walks through a port of the official Eleventy base blog to Bascik:
 | --- | --- |
 | Original | `11ty/eleventy-base-blog`, commit `94bd3b71d454da5b88eb505b8db6aea1cd0e9754` (MIT) |
 | Port | `migration-examples/ports/eleventy-blog/` in the Bascik repository |
-| Requires | Node 24 or later, `@bascik/bascik` 1.0.0-rc.3 or later |
+| Requires | Node 24 or later |
 | Libraries | `gray-matter`, `marked`, `prismjs`, `zod`, `feed`, `image-size` |
 
 The port's code is adapted from the original under its MIT license, and its notice is kept in `NOTICE.md`. The posts and the image are new.

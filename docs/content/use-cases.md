@@ -5,7 +5,7 @@ Use Cases show how to build a particular kind of site with Bascik, from the page
 ## How the guides work
 
 - **A guide** explains one kind of site: which pages it needs, how content gets in, how it builds, and what to customize. It is useful even if you never install the starter.
-- **A starter** is a complete, runnable project that follows its guide. Install one with `npm create bascik@latest my-site -- --example <name>`.
+- **A starter** is a complete, runnable project that follows its guide. During prerelease testing, install one with `npm create bascik@rc my-site -- --example <name>`.
 - **The [Template Catalog](/use-cases/templates)** lists every starter with screenshots, version, license, source, and requirements.
 
 A guide appears in the navigation only when its starter exists and has been built and tested. The architecture is described separately from template availability, so a guide never promises a starter that is not there.

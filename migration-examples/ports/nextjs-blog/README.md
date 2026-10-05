@@ -52,10 +52,8 @@ zone, like the original; set `TZ` if they must not depend on the machine.
   and the route does not exist in the example.
 - The switch button has an `aria-label` and a visible focus ring. The original has neither.
 
-## Bascik version
+## Bascik behavior
 
-The port needs a Bascik build with the task 09 fixes: keyframe stops such as `40%` and `0%, 100%`
-left unscoped, the CSS minifier keeping the space in `.markdown :is(h2)`, and component tags inside
-template comments not expanded in development. Use `1.0.0-rc.3` or later; with `1.0.0-rc.2` the
-switch loses two animation stops, the post body loses its Markdown styles in production, and the
-development server fails to render the post pages.
+The port exercises scoped keyframe stops, minified descendant selectors, and HTML comments in
+development component templates. Use a package build that includes those behaviors when testing
+changes to the port.

@@ -25,9 +25,7 @@ Component templates can contain multiple `<script>` tags. Bascik processes each 
 - **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time in Node.js with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
 - **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
 
-> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories.
-
-> **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
+> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories. **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
 
 ## Multiple Instances
 

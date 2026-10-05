@@ -4,8 +4,8 @@ import { decodeHTML } from 'entities';
 // HTML that comes from WordPress (or from Markdown converted out of WordPress) is data, not
 // source code. WordPress lets administrators save any markup, including <script>, inline event
 // handlers, and `javascript:` links, so every body is passed through an allowlist before a build
-// script prints it. Bascik itself drops printed directive scripts (1.0.0-rc.3 or later); this
-// allowlist also removes ordinary scripts, handlers, embeds, and unknown or custom elements, so
+// script prints it. Bascik also drops printed directive scripts; this allowlist removes ordinary
+// scripts, handlers, embeds, and unknown or custom elements, so
 // CMS content can never place a Bascik component tag or run code in the visitor's browser.
 
 /** WordPress titles are HTML (`Fish &#038; Chips`). Reduce one to plain text, dropping any tags. */

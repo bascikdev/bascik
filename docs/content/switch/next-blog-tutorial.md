@@ -8,7 +8,7 @@ This tutorial walks through a port of the official Next.js `blog-starter` exampl
 | --- | --- |
 | Original | `vercel/next.js`, directory `examples/blog-starter`, commit `ba80ee48fc319735151c3ad6d9bb9a8180c9f09e` (MIT), built with Next.js 16.3.6 |
 | Port | `migration-examples/ports/nextjs-blog/` in the Bascik repository |
-| Requires | Node 24 or later, `@bascik/bascik` 1.0.0-rc.3 or later |
+| Requires | Node 24 or later |
 | Libraries | `gray-matter`, `remark`, `remark-html`, `date-fns`, `zod`, `tailwindcss`, `postcss`, `autoprefixer`, `feed` |
 
 The port's code is adapted from the original under its MIT license, and its notice is kept in `NOTICE.md`. The posts, cover images, avatars, and icons are new. The font is Inter under the SIL Open Font License.

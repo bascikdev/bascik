@@ -169,7 +169,7 @@ export function renderPagination(currentPath?: string): string {
   // styles belong to components (docs-pagination, pagination-link), so their
   // scoped CSS applies; build-script output is not scoped.
   const link = (item: { href: string; section: string; label: string }, dir: string, which: 'prev' | 'next'): string =>
-    `<pagination-link href="${escapeHtml(item.href)}" data-pg="${which}" ` +
+    `<pagination-link data-bascik-prop-href="${escapeHtml(item.href)}" data-pg="${which}" ` +
     `data-bascik-prop-dir="${dir}" ` +
     `data-bascik-prop-section="${escapeHtml(item.section)}" ` +
     `data-bascik-prop-label="${escapeHtml(item.label)}"></pagination-link>`;

@@ -195,7 +195,7 @@ export async function checkKeyboard(browser, site, label, { sortHeadersFocusable
     assertGrid(await readGrid(page), { rows: ['Jet Li|8000'] }, `${label} typing`);
     await search(page).fill('');
     const focusable = await page.evaluate(() => [...document.querySelectorAll('th')]
-      .some((th) => th.tabIndex >= 0 || th.querySelector('button, a[href], [tabindex]')));
+      .some((th) => th.tabIndex >= 0 || [...th.getElementsByTagName('*')].some((element) => element.tabIndex >= 0)));
     assert.equal(focusable, sortHeadersFocusable, `${label}: sort headers ${sortHeadersFocusable ? 'are' : 'are not'} keyboard focusable`);
     if (sortHeadersFocusable) {
       await page.keyboard.press('Tab');
@@ -273,7 +273,8 @@ export async function checkPortOnly(browser, site, label, { dev }) {
     await header(page, 'Power').click();
     assert.equal(await names.getAttribute('aria-sort'), null, `${label}: aria-sort moves with the sort`);
     assert.equal(await header(page, 'Power').getAttribute('aria-sort'), 'descending', `${label}: aria-sort on Power`);
-    const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((element) => element.id));
+    const ids = await page.evaluate(() => [...document.getElementsByTagName('*')]
+      .map((element) => element.id).filter((id) => id !== ''));
     assert.equal(new Set(ids).size, ids.length, `${label}: element ids are unique`);
     assert.deepEqual(problems.filter((problem) => !(dev && /live-reload|EventSource/.test(problem))), [], `${label}: port page problems`);
   });
@@ -309,7 +310,8 @@ export async function checkPortOnly(browser, site, label, { dev }) {
       ['Chuck Norris|Infinity', 'Bruce Lee|9000', 'Jet Li|8000', 'Jackie Chan|7000'], `${label}: sort state per grid`);
     assert.deepEqual((await readGrid(page, '[data-testid="planets-grid"]')).rows,
       ['Saturn|146', 'Jupiter|95', 'Mars|2', 'Earth|1', 'Mercury|0'], `${label}: the second grid keeps its own sort`);
-    const ids = await page.evaluate(() => [...document.querySelectorAll('[id]')].map((element) => element.id));
+    const ids = await page.evaluate(() => [...document.getElementsByTagName('*')]
+      .map((element) => element.id).filter((id) => id !== ''));
     assert.equal(new Set(ids).size, ids.length, `${label}: ids are unique across both instances`);
     assert.deepEqual(problems.filter((problem) => !(dev && /live-reload|EventSource/.test(problem))), [], `${label}: two-grid page problems`);
   });

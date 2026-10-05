@@ -7,7 +7,7 @@ A Bascik blog is a folder of Markdown files turned into static HTML at build tim
 The `blog` starter is a complete blog with sample posts that explain how each feature works. Create a project from it:
 
 ```sh
-npm create bascik@latest my-blog -- --example blog
+npm create bascik@rc my-blog -- --example blog
 cd my-blog
 cp .env.example .env
 npm run dev
@@ -15,7 +15,7 @@ npm run dev
 
 Open **http://localhost:8080**. Drafts are visible in development. Replace the sample posts and `content/about.md` with your own.
 
-The `--example` option needs the `create-bascik` and `@bascik/bascik` 1.0.0-rc.3 release or later. Earlier releases do not recognize the option, and the starter depends on fixes that are not in them. It also needs Node.js 24 or later and an internet connection, because the starter is downloaded from GitHub. See the [Template Catalog](/use-cases/templates#blog) for the screenshots, source, license, and version.
+Create it with a `create-bascik` release that supports `--example` and a compatible Bascik release. It also needs Node.js 24 or later and an internet connection because the starter is downloaded from GitHub. See the [Template Catalog](/use-cases/templates#blog) for the screenshots, source, license, and starter version.
 
 ## Page structure
 

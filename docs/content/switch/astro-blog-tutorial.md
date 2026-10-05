@@ -8,7 +8,7 @@ This tutorial walks through a port of the official Astro blog starter to Bascik:
 | --- | --- |
 | Original | `withastro/astro`, directory `examples/blog`, commit `4c1470a7f907fe678ef5e7dceaa972ca83d297da` (MIT) |
 | Port | `migration-examples/ports/astro-blog/` in the Bascik repository |
-| Requires | Node 24 or later, `@bascik/bascik` 1.0.0-rc.3 or later |
+| Requires | Node 24 or later |
 | Libraries | `gray-matter`, `marked`, `marked-footnote`, `marked-gfm-heading-id`, `zod`, `feed` |
 
 The port's code is adapted from the original under its MIT license, and its notice is kept in `NOTICE.md`. The posts, images, and icons are new. The fonts are Atkinson Hyperlegible under the SIL Open Font License.

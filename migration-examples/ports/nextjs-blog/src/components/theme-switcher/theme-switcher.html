@@ -1,10 +1,10 @@
 <!--
   Second half of theme-switcher.tsx: the button. Upstream keeps the mode in React state
   (`useState`) and writes it back in a `useEffect`. Here the stored value is the state: a click
-  writes the next mode to localStorage and calls window.updateDOM(), which <theme-init> defined in
+  writes the next mode to localStorage and calls window.updateDOM(), which site-head defines in
   the head. Bascik wraps this script in its own function scope and rewrites the button id.
 -->
-<button class="switch" id="switch" type="button" data-testid="theme-switch"></button>
+<button class="switch" id="switch" type="button" aria-label="Color scheme: system" data-testid="theme-switch"></button>
 <script>
   const STORAGE_KEY = "nextjs-blog-starter-theme";
   const modes = ["system", "dark", "light"];

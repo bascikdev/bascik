@@ -60,7 +60,7 @@ Use `data-bascik-slot="name"` in the component template to define named slot zon
 The first demo on this page combines named `eyebrow`, `title`, and `actions` slots with a default body slot. Open its Source tab to compare the component template with its usage.
 
 > **How it works:** Named slot wrappers in the usage inner HTML are extracted by name and injected into the matching `data-bascik-slot="name"` placeholder in the template. Everything left over goes into the default slot.
-
+>
 > **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.
 
 ## Forwarding a Slot into a Nested Component
@@ -82,7 +82,7 @@ A component template can use another component. To pass the outer component's de
 
 The `<p>` becomes the inner component's default slot content. When the outer tag is empty, the marker's own content is used. Each instance forwards its own content.
 
-Only the default slot is forwarded. A named wrapper written between the inner component's tags (`<div data-bascik-slot="head">`) fills the inner component's named slot, and the outer component's named slots are filled separately by the outer usage. Forwarding works through any depth of nesting. It needs 1.0.0-rc.3 or later. Earlier releases left the marker in the output and dropped the content.
+Only the default slot is forwarded. A named wrapper written between the inner component's tags (`<div data-bascik-slot="head">`) fills the inner component's named slot, and the outer component's named slots are filled separately by the outer usage. Forwarding works through any depth of nesting.
 
 ## Whitespace Handling
 

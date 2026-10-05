@@ -300,7 +300,7 @@ React's rule is that state lives in the closest common parent, which passes valu
 Because the event is dispatched from an element inside the child and bubbles, the parent's listener on its own root element hears it, and only the parent that contains that child hears it. Two copies of the parent on one page filter independently.
 
 > **Plain fields can disagree with the state.** A controlled React input always shows its state. A plain input can show something else after the browser restores typed values on Back or on a reload. Report the fields again on `pageshow` so the script and the page agree.
-
+>
 > **Pressing Enter in a form.** A form with one text box submits when the user presses Enter, which reloads the page. Call `preventDefault()` in a `submit` listener if the form only drives a script.
 
 ## Composing Components
@@ -317,8 +317,6 @@ A component template can use another component, and the nested component resolve
 ```
 
 The `<p>` lands in the inner component's slot. With no content between the `<outer-box>` tags, the marker's own text is used. Only the default slot is forwarded this way. A named wrapper written between the inner component's tags belongs to the inner component and fills its named slot.
-
-> **1.0.0-rc.3 or later.** Earlier releases left the marker in the output and dropped the content without a warning.
 
 ## React Router → One .html File Per Route
 

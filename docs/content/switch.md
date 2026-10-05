@@ -10,6 +10,7 @@ Switching an existing site to Bascik lets you replace complex client-side framew
 ## Transferable Knowledge
 
 Most of what you already know translates directly to Bascik:
+
 - **Component Thinking:** You still break UIs into reusable pieces like headers, cards, and footers.
 - **File-Based Routing:** Your URL structure maps directly to files under `src/pages/`.
 - **Standard Web APIs:** You write standard HTML tags, modern CSS, and vanilla DOM JavaScript without proprietary framework wrappers.
@@ -28,20 +29,26 @@ You do not need to convert your entire project at once. A good first step is mig
 The transition follows a consistent five-step workflow:
 
 ### 1. Extract Components
+
 Move repeating markup patterns (such as navigation, footers, cards, or buttons) into `.html` files in `src/components/`. The hyphenated filename becomes the component tag name.
 
 ### 2. Map Slots and Props
+
 Replace framework-specific slots and properties with Bascik equivalents:
+
 - Map `children` in React or `<slot>` in Vue/Svelte to `data-bascik-slot`.
 - Map plain text values to `data-bascik-prop-*` attributes. For element attributes, use `data-bascik-attr-*`. For rich HTML content, use named slots (`data-bascik-slot="name"`).
 
 ### 3. Handle Scoped Styles
+
 Write modern CSS in paired `.css` files (e.g. `src/components/post-card/post-card.css`) or inline `<style>` tags. Bascik scopes class names and deduplicates CSS automatically. If your project uses [Tailwind CSS](/libraries#tailwind-css), you can continue using Tailwind via PostCSS.
 
 ### 4. Set Up Pages and Routes
+
 Place static `.html` files in `src/pages/`. For parameterized routes like blogs, use [Dynamic Routes](/dynamic-routes) with `[slug].html` templates.
 
 ### 5. Retain Interactive JS
+
 Write standard vanilla JavaScript in `<script>` tags inside components for client interactivity. Bascik automatically isolates instance IDs so multiple components do not clash.
 
 > **AI-Assisted Migration:** If you use LLMs or AI coding assistants to help convert component templates, see the [Agent Skill](/tools/agent-skill) documentation for guidelines on providing context to AI tools.
@@ -64,13 +71,8 @@ Write standard vanilla JavaScript in `<script>` tags inside components for clien
 | Client interactivity / hooks | Vanilla JS in `<script>` tags | [Scoped JavaScript](/scoped-javascript) |
 
 > **Worked examples:** the [Astro Blog Tutorial](/switch/astro-blog-tutorial) and the [Eleventy Blog Tutorial](/switch/eleventy-blog-tutorial) port each framework's official blog starter end to end, including feeds, sitemaps, drafts, and tag pages.
-
 > **Worked example for Next.js:** the [Next.js Blog Tutorial](/switch/next-blog-tutorial) ports the official `blog-starter` example, an App Router site with Tailwind, a CSS Module, and a client theme switch, and shows how `generateStaticParams`, metadata, and client components translate.
-
 > **Worked example for React:** the [Product Table Tutorial](/switch/react-product-table-tutorial) ports the finished example from React's "Thinking in React", a lifted-state component, and shows how props, events instead of callbacks, and repeated instances translate.
-
 > **Worked example for Vue:** the [Vue Grid Tutorial](/switch/vue-grid-tutorial) ports the official sortable, filterable grid, a reusable stateful component, and shows how props with arrays, events, and script placement translate.
-
 > **Worked example for WordPress:** the [WordPress Blog Tutorial](/switch/wordpress-blog-tutorial) rebuilds a WordPress 7.1.2 blog on the default theme from the REST API or a converted export, and shows how date permalinks, pagination, categories, tags, pages, media, and sanitizing post bodies translate.
-
 > Choose where you are coming from: [Astro](/switch/from-astro) · [Eleventy](/switch/from-eleventy) · [Hugo](/switch/from-hugo) · [Next.js](/switch/from-next) · [React](/switch/from-react) · [Svelte](/switch/from-svelte) · [Vue](/switch/from-vue) · [WordPress](/switch/from-wordpress)

@@ -21,17 +21,17 @@ Pass a different name to use it as both the directory name and the site title. I
 Pass `--example` (or `-e`) to start from a complete example instead of the default starter:
 
 ```sh
-npm create bascik@latest my-blog -- --example blog
+npm create bascik@rc my-blog -- --example blog
 ```
 
-The official examples are developed in the [`templates/` folder](https://github.com/bascikdev/bascik/tree/main/templates) of the Bascik repository, and each is published as the branch `examples/<name>` when a Bascik version is released. `blog` is a Markdown blog with tags, a paginated archive, an Atom feed, and page metadata. Run `npm create bascik@latest` with no arguments to pick from a list.
+The official examples are developed in the [`templates/` folder](https://github.com/bascikdev/bascik/tree/main/templates) of the Bascik repository, and each is published as the branch `examples/<name>` when a Bascik version is released. `blog` is a Markdown blog with tags, a paginated archive, an Atom feed, and page metadata. Run `npm create bascik@rc` with no arguments to pick from a list during prerelease testing.
 
 An example can also be any public GitHub repository. Pass its link, and add `/tree/<branch-or-tag>/<folder>` to use a branch, a tag, a commit, or a subfolder:
 
 ```sh
-npm create bascik@latest my-app -- --example https://github.com/owner/repo
-npm create bascik@latest my-app -- --example https://github.com/owner/repo/tree/main/starter
-npm create bascik@latest my-app -- --example https://github.com/owner/repo --example-path starter
+npm create bascik@rc my-app -- --example https://github.com/owner/repo
+npm create bascik@rc my-app -- --example https://github.com/owner/repo/tree/main/starter
+npm create bascik@rc my-app -- --example https://github.com/owner/repo --example-path starter
 ```
 
 The folder must contain a `package.json`. The new project takes the name you chose, and nothing else in the example is changed.

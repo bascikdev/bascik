@@ -1,10 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2024",
+    "forceConsistentCasingInFileNames": true,
+    "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2024"],
-    "types": ["node"],
+    "lib": [
+      "ESNext"
+    ],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
@@ -13,5 +18,9 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "bascik.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "bascik.config.ts"
+  ]
 }

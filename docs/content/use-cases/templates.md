@@ -14,10 +14,10 @@ A Markdown blog with a paginated archive, tag pages, an Atom feed, canonical and
 | --- | --- |
 | Name | `blog` |
 | Version | 0.1.0 |
-| Install | `npm create bascik@latest my-blog -- --example blog` |
+| Install | `npm create bascik@rc my-blog -- --example blog` |
 | Source | [`templates/blog`](https://github.com/bascikdev/bascik/tree/main/templates/blog) |
 | License | MIT. See [`LICENSE`](https://github.com/bascikdev/bascik/blob/main/templates/blog/LICENSE) and [`NOTICE.md`](https://github.com/bascikdev/bascik/blob/main/templates/blog/NOTICE.md) |
-| Bascik | `@bascik/bascik` 1.0.0-rc.3 or later |
+| Bascik | Installed from the starter's package manifest |
 | Node.js | 24 or later |
 | Hosting | Any static host, served from the root of its domain |
 | Client JavaScript | None |
@@ -31,7 +31,7 @@ The sample text, images, and icon are original to the starter. Its dependencies 
 There is no hosted demo, so the quickest way to see the starter is to create it:
 
 ```sh
-npm create bascik@latest my-blog -- --example blog
+npm create bascik@rc my-blog -- --example blog
 cd my-blog
 npm run dev
 ```
@@ -45,11 +45,11 @@ BASCIK_SITE_URL=http://localhost:8080 npm run build
 npm run serve
 ```
 
-The `--example` option needs the `create-bascik` 1.0.0-rc.3 release or later. Earlier releases do not recognize it.
+Use a `create-bascik` release that supports `--example`.
 
 ## How starters are installed
 
-An official name such as `blog` downloads the branch `examples/blog` of the Bascik repository. That branch is updated after each Bascik release is published, so a starter never needs a Bascik version you cannot install yet. The same command can give a newer version of a starter later.
+An official name such as `blog` downloads the branch `examples/blog` of the Bascik repository. That branch is updated after a Bascik release is published. Each starter declares its own Bascik dependency and requirements; the same command can give a newer starter version later.
 
 Any public GitHub repository can also be used as a starter by passing its link. Third-party starters are not reviewed by Bascik and are not listed here. See [Getting Started](/getting-started#start-from-an-example) for every option, the safety checks, and the rules for third-party links.
 

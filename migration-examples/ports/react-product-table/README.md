@@ -48,8 +48,7 @@ npm run serve    # production server over dist/
 - Classes not defined in a component's own stylesheet stay global, so the page-level `body` rule
   keeps working.
 
-## Bascik version
+## Bascik behavior
 
-The port needs a Bascik build that includes the fixes listed in the Bascik repository's task 05
-record (`1.0.0-rc.3` or later). Until that ships, install a packed local build over the registry
-release: `npm install --ignore-scripts /path/to/bascik-1.0.0-rc.3.tgz`.
+The nested-component example uses default-slot forwarding. When checking changes to that behavior,
+install a fresh local package tarball with `npm install --ignore-scripts /path/to/bascik.tgz`.

@@ -65,7 +65,7 @@ test.describe('Use Cases and Template Catalog', () => {
   test('catalog tables and install command are usable on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/use-cases/templates');
-    await expect(page.getByRole('cell', { name: 'npm create bascik@latest my-blog -- --example blog' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'npm create bascik@rc my-blog -- --example blog' })).toBeVisible();
     expect(await pageWidth(page)).toBeLessThanOrEqual(0);
   });
 

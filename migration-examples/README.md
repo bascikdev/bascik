@@ -39,7 +39,7 @@ Chromium installation. It does not download tools through `npx` or silently
 install missing browsers. The harness itself has no npm dependencies.
 
 Tested on macOS with Node **24.21.0**, npm **11.19.0**, Yarn **4.18.0**,
-`@playwright/test` **1.62.1**, and local-source Bascik **1.0.0-rc.3**. The smoke test asserts the installed version equals
+`@playwright/test` **1.62.1**, and a local-source Bascik tarball. The smoke test asserts the installed version equals
 `pkg/package.json`. That catches a tarball from a different version, not one packed earlier from the
 same version, so run `yarn pkg:build` and a fresh pack before every run.
 Node 24 is the tested harness requirement, not an approved template support floor.

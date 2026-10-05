@@ -83,7 +83,7 @@ Tests run the real download code against a local HTTP server built from hand-ass
 3. Add `{ id, description }` to `OFFICIAL_EXAMPLES` in `create/src/catalog.ts`.
 4. Make sure nothing in the folder points outside it (no `../` imports, symlinks, or workspace links).
 
-Official examples are read from `examples/<id>` branches, not from `main`. `.github/scripts/sync-examples.sh` creates them: for each `templates/<id>` folder at a release tag it adds a commit whose tree is exactly that folder, on top of the branch's current tip (it never force-pushes, and skips a branch whose tree already matches). The `sync-examples` job in `release.yml` runs it after `@bascik/bascik` is published for a `v*` tag, so an example never reaches users before the Bascik version it needs. Prereleases such as `1.0.0-rc.3` publish too.
+Official examples are read from `examples/<id>` branches, not from `main`. `.github/scripts/sync-examples.sh` creates them: for each `templates/<id>` folder at a release tag it adds a commit whose tree is exactly that folder, on top of the branch's current tip (it never force-pushes, and skips a branch whose tree already matches). The `sync-examples` job in `release.yml` runs it after `@bascik/bascik` is published for a `v*` tag. Each template must declare a compatible Bascik dependency and lockfile. Prereleases publish too.
 
 Because each example is its own branch, `--example blog` downloads about 270 KB, not the whole repository. A CLI release is only needed to list a new example in the picker and in the error message; the example itself is live after the next `@bascik/bascik` release. To publish by hand, or to preview what a release would push, run `DRY_RUN=1 .github/scripts/sync-examples.sh <tag>`.
 

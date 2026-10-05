@@ -7,7 +7,7 @@ The sample content ("Lantern Log") explains how each feature works. Replace it w
 ## Requirements
 
 - Node 24 or later
-- `@bascik/bascik` `1.0.0-rc.3` or later. The template relies on fixes that are not in `1.0.0-rc.2`.
+- A Bascik release with large route payload support and printed-directive removal.
 
 ## Start
 

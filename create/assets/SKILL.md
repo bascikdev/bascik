@@ -828,9 +828,9 @@ Build scripts receive these `process.env` variables:
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
 
-`BASCIK_ROUTE` may be any size (1.0.0-rc.3 or later): over 32 KB it is delivered through a temporary file and set before the script runs, so reading `process.env.BASCIK_ROUTE` is unchanged.
+`BASCIK_ROUTE` may be any size: over 32 KB it is delivered through a temporary file and set before the script runs, so reading `process.env.BASCIK_ROUTE` is unchanged.
 
-**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, or `data-bascik-routes` script in the output is removed with a warning (1.0.0-rc.3 or later). Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
+**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, or `data-bascik-routes` script in the output is removed with a warning. Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
 
 ### The Fetch-Once Pattern
 
@@ -1343,9 +1343,9 @@ To start again:  cd my-site && npm run dev
 `--example` (or `-e`) starts from a complete example instead of the default starter:
 
 ```sh
-npm create bascik@latest my-blog -- --example blog
-npm create bascik@latest my-app -- --example https://github.com/owner/repo/tree/main/starter
-npm create bascik@latest my-app -- --example https://github.com/owner/repo --example-path starter
+npm create bascik@rc my-blog -- --example blog
+npm create bascik@rc my-app -- --example https://github.com/owner/repo/tree/main/starter
+npm create bascik@rc my-app -- --example https://github.com/owner/repo --example-path starter
 ```
 
 Official examples live in `templates/` of the Bascik repository (`blog` today) and are published as the branch `examples/<name>` when `@bascik/bascik` is released, so `--example <name>` never reads unreleased code. Any public GitHub repository also works: pass its link, with `/tree/<branch-or-tag>/<folder>` to pick a ref and folder, or use `--example-path`. Only `https://github.com` links are accepted. The folder must contain a `package.json`; the project takes the name you chose. Unknown options and unknown example names are errors.
@@ -1354,7 +1354,7 @@ Official examples live in `templates/` of the Bascik repository (`blog` today) a
 * Third-party examples are not reviewed by Bascik. Installing runs their scripts, so `--yes` copies a third-party example but does not install it. Official examples behave like the default starter (`--yes` installs and starts the dev server; `--no-dev` stops after install).
 * Symbolic links, hard links, and paths that leave the project are refused; the download is size and time limited; nothing is created if a check fails. The destination must not exist or must be empty.
 * An example may include `template.json` (`license`, `requires.node`, `requires.bascik`, `requirements`). The CLI prints it and refuses an example that needs a newer Node than the one running.
-* `--example` needs the `create-bascik` and `@bascik/bascik` 1.0.0-rc.3 release or later. The only official example today is `blog`; the Template Catalog (`/use-cases/templates`) lists each one with its version, license, and requirements, and the Blog guide (`/use-cases/blog`) explains its structure.
+* `--example` needs a `create-bascik` release with the option and a Bascik release compatible with the selected starter. The only official example today is `blog`; the Template Catalog (`/use-cases/templates`) lists each one with its version, license, and requirements, and the Blog guide (`/use-cases/blog`) explains its structure.
 
 ### Adding to an Existing Project
 
@@ -1985,7 +1985,7 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 
 ## 17. Use Cases and Starters
 
-Guides for building a kind of site live at `/use-cases/*`; a guide is published only when its starter exists and is tested. Today that is the Blog guide (`/use-cases/blog`) and the `blog` starter (`npm create bascik@latest my-blog -- --example blog`, needs 1.0.0-rc.3 or later and Node 24). Starter facts to rely on when helping a user with it:
+Guides for building a kind of site live at `/use-cases/*`; a guide is published only when its starter exists and is tested. Today that is the Blog guide (`/use-cases/blog`) and the `blog` starter (`npm create bascik@rc my-blog -- --example blog`, Node 24 or later). Starter facts to rely on when helping a user with it:
 
 - **No content collections or template language.** `src/lib/posts.ts` reads `content/blog` with `fs`, `gray-matter`, and `zod` (strict front matter: `title` and `date` required, unknown keys are errors); Markdown is rendered at build time; build scripts print escaped HTML.
 - **Routes.** Posts (`[slug]`), tags (`[tag]`), and archive pages 2 and up (`[page]`) are dynamic routes. The feed is a `phase: 'post'` exec script, post images are copied by a `phase: 'pre'` exec script, and sitemap and robots are built in.
@@ -2032,7 +2032,7 @@ Full guide: `/switch/from-react`. Worked example: `/switch/react-product-table-t
 React-specific gotchas:
 
 - **Escape every interpolated value in a build script.** JSX does it for you; a template string does not.
-- **Forwarding `children` to an inner component:** write a default slot marker between the inner component's tags, `<inner-box><div data-bascik-slot>fallback</div></inner-box>`. It receives the outer usage's default content (1.0.0-rc.3 or later; earlier releases left the marker and dropped the content silently). Named wrappers between the inner tags fill the inner component's named slots.
+- **Forwarding `children` to an inner component:** write a default slot marker between the inner component's tags, `<inner-box><div data-bascik-slot>fallback</div></inner-box>`. It receives the outer usage's default content. Named wrappers between the inner tags fill the inner component's named slots.
 - **Plain inputs can disagree with state after Back or reload.** Report the fields again on `pageshow`. A form with one text box submits on Enter; call `preventDefault()` in a `submit` listener when a script drives the form.
 - **Component scripts run once and are moved in production.** Minified production HTML moves them to the end of the document; the dev server leaves them in place. Look up elements inside handlers or after `DOMContentLoaded`.
 - **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.

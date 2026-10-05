@@ -8,4 +8,20 @@
 <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg">
 <link rel="manifest" href="/favicon/site.webmanifest">
 <meta name="theme-color" content="#000">
-<theme-init></theme-init>
+<script>
+     const STORAGE_KEY = "nextjs-blog-starter-theme";
+     const media = matchMedia("(prefers-color-scheme: dark)");
+     window.updateDOM = () => {
+          const css = document.createElement("style");
+          css.textContent = "*,*:after,*:before{transition:none !important;}";
+          document.head.appendChild(css);
+          const mode = localStorage.getItem(STORAGE_KEY) ?? "system";
+          const resolved = mode === "system" ? (media.matches ? "dark" : "light") : mode;
+          document.documentElement.classList.toggle("dark", resolved === "dark");
+          document.documentElement.setAttribute("data-mode", mode);
+          getComputedStyle(document.documentElement);
+          setTimeout(() => css.remove(), 1);
+     };
+     window.updateDOM();
+     media.addEventListener("change", window.updateDOM);
+</script>

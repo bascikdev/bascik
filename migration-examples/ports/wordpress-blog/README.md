@@ -9,7 +9,7 @@ Content comes from one of two places:
 | set | The site's public REST API (`/wp-json/wp/v2/`), media downloaded from `/wp-content/uploads/` | WordPress stays as the editor (headless) |
 | unset | Markdown in `content/`, converted from a WordPress export | You are leaving WordPress |
 
-Requires Node 24 and `@bascik/bascik` 1.0.0-rc.3 or later (earlier releases run directive scripts found in printed content and fail with `spawn E2BIG` on long posts).
+Requires Node 24 and a Bascik release with large route payload support and printed-directive removal.
 
 ## Run
 

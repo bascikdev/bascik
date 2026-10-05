@@ -214,9 +214,9 @@ describe('renderPagination', () => {
       // The <nav> and its styles belong to the docs-pagination component; the
       // script only emits the link components, whose styles are scoped too.
       expect(html).not.toContain('<nav');
-      expect(html).toContain('<pagination-link href="/use-cases/templates" data-pg="prev"');
-      expect(html).toContain('href="/use-cases/templates"');
-      expect(html).toContain('href="/scoped-styles"');
+      expect(html).toContain('<pagination-link data-bascik-prop-href="/use-cases/templates" data-pg="prev"');
+      expect(html).toContain('data-bascik-prop-href="/use-cases/templates"');
+      expect(html).toContain('data-bascik-prop-href="/scoped-styles"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }
