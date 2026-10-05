@@ -165,7 +165,7 @@ Aggregators (`unit:all`, `integration:all`, `e2e:all`, `coverage:all`, `typechec
 
 ### Format-on-Save Workflow
 
-`pkg/.vscode/settings.json` enables `editor.formatOnSave`. VS Code may therefore apply formatting shortly after an agent edits or creates a TypeScript, JavaScript, HTML, CSS, or JSON file.
+The root `.vscode/settings.json` enables `editor.formatOnSave` for the whole repository, with VS Code's built-in formatters for TypeScript, JavaScript, HTML, CSS, and JSON. Markdown is not formatted on save. VS Code may therefore apply formatting shortly after an agent edits or creates one of those files.
 
 - Treat formatter output in files intentionally touched for the current task as part of that task. Do not repeatedly restore those files to the agent's preformatted layout.
 - Before final validation, explicitly run VS Code's **Format Document** action on every touched file that has a configured formatter, then save it. If no formatter is registered for a file type, leave the file unchanged.

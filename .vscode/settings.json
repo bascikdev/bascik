@@ -1,4 +1,37 @@
 {
   "html.validate.scripts": false,
-  "vitest.nodeExecPath": "node"
+  "vitest.enable": true,
+  "vitest.nodeExecPath": "node",
+  "vitest.nodeExecutable": "node",
+  "bun.test.enable": false,
+  "search.exclude": {
+    "**/dist/**": true,
+    "**/node_modules/**": true
+  },
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "files.insertFinalNewline": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "vscode.css-language-features"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "vscode.html-language-features",
+    "files.insertFinalNewline": false
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[markdown]": {
+    "editor.formatOnSave": false
+  }
 }
