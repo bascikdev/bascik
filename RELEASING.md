@@ -29,7 +29,7 @@ The tag must equal the prefix plus the `version` in that package's `package.json
 
 Packages depend on each other, and `create-bascik` scaffolds projects that install the others from npm, so publish in this order and wait for each job to finish before starting the next group.
 
-1. **`@bascik/language-server` and `@bascik/bascik`.** Neither depends on the other, so either may go first. Both must be on npm before anything in step 2. Pushing a `v*` tag also runs the `sync-examples` job, which publishes each `templates/<id>` folder as the branch `examples/<id>` once `@bascik/bascik` is on npm. That is the moment `create-bascik --example <id>` starts serving the new version of an example. It needs no extra step, and `DRY_RUN=1 .github/scripts/sync-examples.sh <tag>` previews it.
+1. **`@bascik/language-server` and `@bascik/bascik`.** Neither depends on the other, so either may go first. Both must be on npm before anything in step 2.
 2. **`create-bascik` and `@bascik/adapter-cloudflare`.** The scaffold pins `@bascik/bascik` and `@bascik/language-server`, and the adapter has a peer dependency on `@bascik/bascik`. Their order relative to each other does not matter.
 3. **VS Code extension.** It does not depend on any npm package, so it can ship at any point, but release it last so it is tested against the published packages.
 

@@ -69,12 +69,12 @@ const x = 1;
 
   it('renderMd gives site images lazy loading and the real size of PNG files in src/pages', async () => {
     const mdFile = join(tempDir, 'images.md');
-    await writeFile(mdFile, '![Blog home](/assets/templates/blog-home-desktop.png)\n\n![Missing](/assets/templates/not-there.png)\n');
+    await writeFile(mdFile, '![Touch icon](/assets/apple-touch-icon.png)\n\n![Missing](/assets/not-there.png)\n');
 
     const html = await renderMd(mdFile);
-    expect(html).toMatch(/<img loading="lazy" decoding="async" width="1200" height="750" src="\/assets\/templates\/blog-home-desktop\.png" alt="Blog home"/);
+    expect(html).toMatch(/<img loading="lazy" decoding="async" width="180" height="180" src="\/assets\/apple-touch-icon\.png" alt="Touch icon"/);
     // A file that does not exist still renders, without invented dimensions.
-    expect(html).toMatch(/<img loading="lazy" decoding="async" src="\/assets\/templates\/not-there\.png"/);
+    expect(html).toMatch(/<img loading="lazy" decoding="async" src="\/assets\/not-there\.png"/);
   });
 
   it('renderMd supports skipFirstHeading option', async () => {

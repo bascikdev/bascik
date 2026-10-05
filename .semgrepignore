@@ -23,10 +23,6 @@ create/src/scaffold.ts
 docs/src/lib/md-renderer.ts
 docs/src/pages/libraries.html
 
-# Blog template uses controlled regexes and minimal standard HTML entity escaping without dependencies.
-templates/blog/src/lib/images.ts
-templates/blog/src/lib/format.ts
-
 # VS Code extension and language server rules intentionally compile regex patterns from controlled rule tables.
 extensions/vscode-bascik/src/extension.ts
 extensions/vscode-bascik/src/rules.ts

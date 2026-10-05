@@ -55,25 +55,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # `create-bascik --example <id>` downloads the branch examples/<id>. Those branches move only here,
-  # after @bascik/bascik has been published, so an example never reaches users before the release it
-  # needs. Prereleases publish too: the examples' dependency ranges accept them.
-  sync-examples:
-    name: Publish examples/* branches
-    needs: release
-    if: startsWith(github.ref_name, 'v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Sync templates/* to examples/* branches
-        run: .github/scripts/sync-examples.sh "$RELEASE_TAG"
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-
   release-create:
     name: Publish create-bascik to npm
     if: startsWith(github.ref_name, 'create-v')

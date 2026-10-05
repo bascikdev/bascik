@@ -27,17 +27,6 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Use Cases', pages: [
-      { href: '/use-cases', label: 'Overview' },
-      { href: '/use-cases/blog', label: 'Blog' },
-    ]
-  },
-  {
-    section: 'Templates', pages: [
-      { href: '/use-cases/templates', label: 'Template Catalog' },
-    ]
-  },
-  {
     section: 'Features', pages: [
       { href: '/components', label: 'Components' },
       { href: '/scoped-styles', label: 'Scoped Styles' },

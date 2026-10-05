@@ -124,7 +124,7 @@ The `create/` folder is intentionally separate from `pkg/`. Contributor work in 
 
 The editor package in `extensions/vscode-bascik/` is intentionally separate from `pkg/`. It provides context-aware IntelliSense (component, prop, and slot completions), command-click component navigation, rich hover details, syntax highlighting, and real-time scoping warnings. Linting and language server capabilities are powered by `@bascik/language-server`, which also runs standalone via CLI (`npm run lint` or `npx @bascik/language-server --check`) and implements LSP so it works in Neovim, Helix, Zed, and other editors. The compatibility rules are generated from `docs/content/compatibility.md` via `docs/scripts/generate-compatibility-rules.ts`, so the editor and the published capability table stay in sync automatically instead of drifting apart.
 
-The generator's entry point `create/src/index.ts` wires the terminal into `run()` in `create/src/run.ts`, which validates input, then calls `create/src/scaffold.ts` to write the project files (or `create/src/example.ts` to copy an example from GitHub). The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
+The generator in `create/src/index.ts` validates input, then calls `create/src/scaffold.ts` to write the project files. The generated app is not coupled to the monorepo layout. It just uses the published `@bascik/bascik` package and then runs as a normal Bascik site.
 
 For local contributor testing of the generator itself, rebuild from `create/`, link it with `npm link`, and invoke it via `npx create-bascik ...`; that remains the working flow for exercising the local scaffold end-to-end. `npm link` runs the `prepare` script, which copies the latest SKILL.md from `docs/` and rebuilds `dist/` automatically, so no separate build step is needed after a fresh checkout.
 
@@ -1338,24 +1338,6 @@ The scaffold creates a complete starter site: pages, components with unit tests,
 To start again:  cd my-site && npm run dev
 ```
 
-### Start from an Example
-
-`--example` (or `-e`) starts from a complete example instead of the default starter:
-
-```sh
-npm create bascik@rc my-blog -- --example blog
-npm create bascik@rc my-app -- --example https://github.com/owner/repo/tree/main/starter
-npm create bascik@rc my-app -- --example https://github.com/owner/repo --example-path starter
-```
-
-Official examples live in `templates/` of the Bascik repository (`blog` today) and are published as the branch `examples/<name>` when `@bascik/bascik` is released, so `--example <name>` never reads unreleased code. Any public GitHub repository also works: pass its link, with `/tree/<branch-or-tag>/<folder>` to pick a ref and folder, or use `--example-path`. Only `https://github.com` links are accepted. The folder must contain a `package.json`; the project takes the name you chose. Unknown options and unknown example names are errors.
-
-* It downloads from GitHub, so it needs the internet. Private repositories are not supported. Pin a third-party example with a tag or commit; its default branch can change.
-* Third-party examples are not reviewed by Bascik. Installing runs their scripts, so `--yes` copies a third-party example but does not install it. Official examples behave like the default starter (`--yes` installs and starts the dev server; `--no-dev` stops after install).
-* Symbolic links, hard links, and paths that leave the project are refused; the download is size and time limited; nothing is created if a check fails. The destination must not exist or must be empty.
-* An example may include `template.json` (`license`, `requires.node`, `requires.bascik`, `requirements`). The CLI prints it and refuses an example that needs a newer Node than the one running.
-* `--example` needs a `create-bascik` release with the option and a Bascik release compatible with the selected starter. The only official example today is `blog`; the Template Catalog (`/use-cases/templates`) lists each one with its version, license, and requirements, and the Blog guide (`/use-cases/blog`) explains its structure.
-
 ### Adding to an Existing Project
 
 ```sh
@@ -1983,18 +1965,7 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 
 ---
 
-## 17. Use Cases and Starters
-
-Guides for building a kind of site live at `/use-cases/*`; a guide is published only when its starter exists and is tested. Today that is the Blog guide (`/use-cases/blog`) and the `blog` starter (`npm create bascik@rc my-blog -- --example blog`, Node 24 or later). Starter facts to rely on when helping a user with it:
-
-- **No content collections or template language.** `src/lib/posts.ts` reads `content/blog` with `fs`, `gray-matter`, and `zod` (strict front matter: `title` and `date` required, unknown keys are errors); Markdown is rendered at build time; build scripts print escaped HTML.
-- **Routes.** Posts (`[slug]`), tags (`[tag]`), and archive pages 2 and up (`[page]`) are dynamic routes. The feed is a `phase: 'post'` exec script, post images are copied by a `phase: 'pre'` exec script, and sitemap and robots are built in.
-- **Drafts.** `draft: true` shows only in development (`BASCIK_BUILD` is `"0"`) and is excluded from pages, sitemap, feed, and copied images in a build.
-- **Site URL.** A production build needs `BASCIK_SITE_URL` as an origin with no path; a path is rejected because links are root-relative. Development does not need it.
-- **Content lives outside imports.** Pages read `content/`, so `scripts.cache.exclude` covers pages and components and `pipeline.watchPaths` lists `content/`, `src/lib/`, and `src/data/`.
-- **Not included, and not verified:** comments, analytics, search, automatic image resizing, any hosting provider, screen readers, and browsers other than Chromium. Do not claim them.
-
-## 18. Switch to Bascik
+## 17. Switch to Bascik
 
 Detailed per-framework migration guides live at `/switch/*`. Key patterns that apply across all migrations:
 
@@ -2144,7 +2115,7 @@ When migrating an existing website to Bascik, follow this procedure for existing
 
 ---
 
-## 19. Key Constraints & Rules for AI Code Generation (MUST FOLLOW)
+## 18. Key Constraints & Rules for AI Code Generation (MUST FOLLOW)
 
 When generating code, pages, or components for a Bascik project, the following conventions are strictly enforced:
 
@@ -2162,7 +2133,7 @@ When generating code, pages, or components for a Bascik project, the following c
 
 ---
 
-## 20. FAQ
+## 19. FAQ
 
 **How do you pronounce Bascik? Where does the name come from?** Just like "basic." The idea is basic, the implementation is basic in theory, and the usage is basic. The spelling comes from the author's maternal grandmother's maiden name, so it's unique and means something personal.
 

@@ -40,14 +40,6 @@ describe('docs-nav component', () => {
     expect(html).toContain("path !== '/press'");
   });
 
-  it('links Use Cases from the top navigation and keeps Docs from also claiming those pages', async () => {
-    const html = await readFile(componentPath, 'utf8');
-
-    expect(html).toContain('<li><a href="/use-cases">Use Cases</a></li>');
-    expect(html).toContain("href === '/use-cases' && a.closest('.dnav-links')");
-    expect(html).toContain('!inUseCases');
-  });
-
   it('constrains banner and dnav-inner to max-width', async () => {
     const css = await readFile(cssPath, 'utf8');
 

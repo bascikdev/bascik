@@ -87,26 +87,6 @@ describe('renderPagination', () => {
     expect(html).toContain('href="/press"');
   });
 
-  it('groups the template catalog separately from Use Cases', () => {
-    const sections = NAV.map(s => s.section);
-    expect(sections.indexOf('Use Cases')).toBe(sections.indexOf('Overview') + 1);
-    expect(sections.indexOf('Templates')).toBe(sections.indexOf('Use Cases') + 1);
-    expect(sections.indexOf('Features')).toBe(sections.indexOf('Templates') + 1);
-    const useCases = NAV.find(s => s.section === 'Use Cases')!;
-    expect(useCases.pages.map(p => p.href)).toEqual(['/use-cases', '/use-cases/blog']);
-    const templates = NAV.find(s => s.section === 'Templates')!;
-    expect(templates.pages.map(p => p.href)).toEqual(['/use-cases/templates']);
-
-    const first = renderPagination('/use-cases');
-    expect(first).toContain('href="/getting-started"');
-    expect(first).toContain('href="/use-cases/blog"');
-    const last = renderPagination('/use-cases/templates');
-    expect(last).toContain('data-bascik-prop-label="Blog"');
-    expect(last).toContain('href="/components"');
-    expect(renderSectionLabel('/use-cases/blog')).toBe('<p class="section-label">Use Cases</p>');
-    expect(renderSectionLabel('/use-cases/templates')).toBe('<p class="section-label">Templates</p>');
-  });
-
   it('links press to releases and to sponsor', () => {
     const html = renderPagination('/press');
     expect(html).toContain('data-bascik-prop-section="Community"');
@@ -188,8 +168,8 @@ describe('renderPagination', () => {
       // The <nav> and its styles belong to the docs-pagination component; the
       // script only emits the link components, whose styles are scoped too.
       expect(html).not.toContain('<nav');
-      expect(html).toContain('<pagination-link data-bascik-prop-href="/use-cases/templates" data-pg="prev"');
-      expect(html).toContain('data-bascik-prop-href="/use-cases/templates"');
+      expect(html).toContain('<pagination-link data-bascik-prop-href="/getting-started" data-pg="prev"');
+      expect(html).toContain('data-bascik-prop-href="/getting-started"');
       expect(html).toContain('data-bascik-prop-href="/scoped-styles"');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;

@@ -16,7 +16,6 @@
       <div class="dnav-links-wrapper">
         <ul class="dnav-links">
           <li><a href="/why-bascik">Why Bascik</a></li>
-          <li><a href="/use-cases">Use Cases</a></li>
           <li><a href="/getting-started">Docs</a></li>
           <li><a href="https://github.com/bascikdev/bascik" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
@@ -128,13 +127,10 @@
       var href = a.getAttribute('href');
       if (!href || href.startsWith('http')) return;
       var current = false;
-      var inUseCases = (path === '/use-cases' || path.indexOf('/use-cases/') === 0);
       if (href === '/why-bascik') {
         current = (path === '/why-bascik');
-      } else if (href === '/use-cases' && a.closest('.dnav-links')) {
-        current = inUseCases;
       } else if (href === '/getting-started' && a.closest('.dnav-links')) {
-        current = (path !== '' && path !== '/' && path !== '/why-bascik' && path !== '/sponsor' && path !== '/press' && !inUseCases);
+        current = (path !== '' && path !== '/' && path !== '/why-bascik' && path !== '/sponsor' && path !== '/press');
       } else {
         current = (href === path);
       }
