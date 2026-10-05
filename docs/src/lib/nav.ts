@@ -30,6 +30,10 @@ export const NAV: NavSection[] = [
     section: 'Use Cases', pages: [
       { href: '/use-cases', label: 'Overview' },
       { href: '/use-cases/blog', label: 'Blog' },
+    ]
+  },
+  {
+    section: 'Templates', pages: [
       { href: '/use-cases/templates', label: 'Template Catalog' },
     ]
   },
@@ -126,18 +130,22 @@ export const NAV: NavSection[] = [
     section: 'Switch to Bascik', pages: [
       { href: '/switch', label: 'Overview' },
       { href: '/switch/from-astro', label: 'From Astro' },
-      { href: '/switch/astro-blog-tutorial', label: 'Astro Blog Tutorial' },
       { href: '/switch/from-eleventy', label: 'From Eleventy' },
-      { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
       { href: '/switch/from-hugo', label: 'From Hugo' },
       { href: '/switch/from-next', label: 'From Next.js' },
-      { href: '/switch/next-blog-tutorial', label: 'Next.js Blog Tutorial' },
       { href: '/switch/from-react', label: 'From React' },
-      { href: '/switch/react-product-table-tutorial', label: 'Product Table Tutorial' },
       { href: '/switch/from-svelte', label: 'From Svelte' },
       { href: '/switch/from-vue', label: 'From Vue' },
-      { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },
       { href: '/switch/from-wordpress', label: 'From WordPress' },
+    ]
+  },
+  {
+    section: 'Migration Tutorials', pages: [
+      { href: '/switch/astro-blog-tutorial', label: 'Astro Blog Tutorial' },
+      { href: '/switch/eleventy-blog-tutorial', label: 'Eleventy Blog Tutorial' },
+      { href: '/switch/next-blog-tutorial', label: 'Next.js Blog Tutorial' },
+      { href: '/switch/react-product-table-tutorial', label: 'Product Table Tutorial' },
+      { href: '/switch/vue-grid-tutorial', label: 'Vue Grid Tutorial' },
       { href: '/switch/wordpress-blog-tutorial', label: 'WordPress Blog Tutorial' },
     ]
   },

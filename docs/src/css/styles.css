@@ -449,19 +449,21 @@ pre code { background: none; border: none; padding: 0; color: #cdd6f4; font-size
 }
 
 /* ── Tables ── */
-.docs-content table {
+/* Live demo previews ([data-demo-theme]) are skipped so a component's own table CSS
+   renders as written. :where() keeps these selectors at their original specificity. */
+.docs-content table:not(:where([data-demo-theme] *)) {
   width: 100%; border-collapse: collapse;
   font-size: 0.88rem; margin: 0;
 }
-.docs-content th {
+.docs-content th:not(:where([data-demo-theme] *)) {
   text-align: left; padding: 8px 12px;
   border-bottom: 2px solid var(--border);
   color: var(--text-muted); font-weight: 600; white-space: nowrap;
 }
-.docs-content td {
+.docs-content td:not(:where([data-demo-theme] *)) {
   padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top;
 }
-.docs-content tr:last-child td { border-bottom: none; }
+.docs-content tr:last-child td:not(:where([data-demo-theme] *)) { border-bottom: none; }
 
 /* ── Responsive ── */
 @media (max-width: 1200px) {

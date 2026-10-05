@@ -1,6 +1,39 @@
 # From Vue
 
-Vue and Bascik are both component-driven. Vue compiles Single-File Components (`.vue`) to JavaScript that runs in the browser with a reactive state system and a virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS and ships no framework runtime. A component that needs interactivity brings its own small vanilla script. For a worked port of an official Vue example, see the [Vue Grid Tutorial](/switch/vue-grid-tutorial).
+Vue and Bascik are both component-driven. Vue compiles Single-File Components (`.vue`) to JavaScript that runs in the browser with a reactive state system and a virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS and ships no framework runtime. Try the searchable, sortable grid below, then open the [Vue Grid Tutorial](/switch/vue-grid-tutorial) for the full port and its source-to-output walkthrough.
+
+<!-- demo:vue-demo-usage -->
+```html
+<grid-search data-bascik-prop-label="Search" data-bascik-prop-target="grid"></grid-search>
+<demo-grid id="grid">
+  <script data-bascik-build>
+    import { gridColumns, gridData } from '@/data/grid.ts';
+    import { renderGridData } from '@/lib/grid.ts';
+    console.log(renderGridData({ columns: gridColumns, rows: gridData }));
+  </script>
+</demo-grid>
+```
+
+<!-- demo:vue-demo-output -->
+```html
+<form id="bascik__grid-search__2ff4c658__search">
+  <label for="bascik__grid-search__2ff4c658__query">Search</label>
+  <input id="bascik__grid-search__2ff4c658__query" name="bascik__grid-search__2ff4c658__query" data-target="grid">
+</form>
+<div class="grid" id="grid">
+  <div id="bascik__demo-grid__3ea500b7__input" hidden>
+    <script type="application/json">{"columns":["name","power"],"rows":[{"name":"Chuck Norris","power":1e999},{"name":"Bruce Lee","power":9000},{"name":"Jackie Chan","power":7000},{"name":"Jet Li","power":8000}]}</script>
+  </div>
+  <table class="bascik__demo-grid__el__table" id="bascik__demo-grid__3ea500b7__table" hidden>
+    <thead>
+      <tr id="bascik__demo-grid__3ea500b7__head"></tr>
+    </thead>
+    <tbody id="bascik__demo-grid__3ea500b7__body"></tbody>
+  </table>
+  <p id="bascik__demo-grid__3ea500b7__empty" hidden>No matches found.</p>
+  <!-- Heading and cell <template> elements the script clones into the table -->
+</div>
+```
 
 ## When to Switch vs Keep Vue
 

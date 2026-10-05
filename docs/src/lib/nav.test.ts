@@ -82,63 +82,55 @@ describe('renderPagination', () => {
 
   it('links releases to the previous section and to press', () => {
     const html = renderPagination('/releases');
-    expect(html).toContain('data-bascik-prop-section="Switch to Bascik"');
+    expect(html).toContain('data-bascik-prop-section="Migration Tutorials"');
     expect(html).toContain('data-bascik-prop-label="WordPress Blog Tutorial"');
     expect(html).toContain('href="/press"');
   });
 
-  it('places each migration tutorial right after its switch guide', () => {
+  it('groups migration tutorials separately from switch guides', () => {
     const astro = renderPagination('/switch/astro-blog-tutorial');
-    expect(astro).toContain('href="/switch/from-astro"');
-    expect(astro).toContain('href="/switch/from-eleventy"');
-    const eleventy = renderPagination('/switch/eleventy-blog-tutorial');
-    expect(eleventy).toContain('href="/switch/from-eleventy"');
-    expect(eleventy).toContain('href="/switch/from-hugo"');
-    expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
-  });
+    expect(astro).toContain('data-bascik-prop-section="Migration Tutorials"');
+    expect(astro).toContain('href="/switch/eleventy-blog-tutorial"');
+    expect(renderSectionLabel('/switch/eleventy-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
 
-  it('places the React product table tutorial right after From React', () => {
     const react = renderPagination('/switch/react-product-table-tutorial');
-    expect(react).toContain('href="/switch/from-react"');
-    expect(react).toContain('href="/switch/from-svelte"');
-    expect(renderSectionLabel('/switch/react-product-table-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
-  });
+    expect(react).toContain('data-bascik-prop-section="Migration Tutorials"');
+    expect(react).toContain('href="/switch/vue-grid-tutorial"');
+    expect(renderSectionLabel('/switch/react-product-table-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
 
-  it('places the Next.js blog tutorial right after From Next.js', () => {
     const next = renderPagination('/switch/next-blog-tutorial');
-    expect(next).toContain('href="/switch/from-next"');
-    expect(next).toContain('href="/switch/from-react"');
-    expect(renderSectionLabel('/switch/next-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
-  });
+    expect(next).toContain('data-bascik-prop-section="Migration Tutorials"');
+    expect(renderSectionLabel('/switch/next-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
 
-  it('places the Vue grid tutorial right after From Vue', () => {
     const vue = renderPagination('/switch/vue-grid-tutorial');
-    expect(vue).toContain('href="/switch/from-vue"');
-    expect(vue).toContain('href="/switch/from-wordpress"');
-    expect(renderSectionLabel('/switch/vue-grid-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
-  });
+    expect(vue).toContain('data-bascik-prop-section="Migration Tutorials"');
+    expect(vue).toContain('href="/switch/wordpress-blog-tutorial"');
+    expect(renderSectionLabel('/switch/vue-grid-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
 
-  it('places the WordPress blog tutorial right after From WordPress', () => {
     const wordpress = renderPagination('/switch/wordpress-blog-tutorial');
-    expect(wordpress).toContain('href="/switch/from-wordpress"');
+    expect(wordpress).toContain('data-bascik-prop-section="Migration Tutorials"');
     expect(wordpress).toContain('href="/releases"');
-    expect(renderSectionLabel('/switch/wordpress-blog-tutorial')).toBe('<p class="section-label">Switch to Bascik</p>');
+    expect(renderSectionLabel('/switch/wordpress-blog-tutorial')).toBe('<p class="section-label">Migration Tutorials</p>');
   });
 
-  it('places Use Cases between Getting Started and Features, with the blog guide before the catalog', () => {
+  it('groups the template catalog separately from Use Cases', () => {
     const sections = NAV.map(s => s.section);
     expect(sections.indexOf('Use Cases')).toBe(sections.indexOf('Overview') + 1);
-    expect(sections.indexOf('Features')).toBe(sections.indexOf('Use Cases') + 1);
+    expect(sections.indexOf('Templates')).toBe(sections.indexOf('Use Cases') + 1);
+    expect(sections.indexOf('Features')).toBe(sections.indexOf('Templates') + 1);
     const useCases = NAV.find(s => s.section === 'Use Cases')!;
-    expect(useCases.pages.map(p => p.href)).toEqual(['/use-cases', '/use-cases/blog', '/use-cases/templates']);
+    expect(useCases.pages.map(p => p.href)).toEqual(['/use-cases', '/use-cases/blog']);
+    const templates = NAV.find(s => s.section === 'Templates')!;
+    expect(templates.pages.map(p => p.href)).toEqual(['/use-cases/templates']);
 
     const first = renderPagination('/use-cases');
     expect(first).toContain('href="/getting-started"');
     expect(first).toContain('href="/use-cases/blog"');
     const last = renderPagination('/use-cases/templates');
-    expect(last).toContain('href="/use-cases/blog"');
+    expect(last).toContain('data-bascik-prop-label="Blog"');
     expect(last).toContain('href="/components"');
     expect(renderSectionLabel('/use-cases/blog')).toBe('<p class="section-label">Use Cases</p>');
+    expect(renderSectionLabel('/use-cases/templates')).toBe('<p class="section-label">Templates</p>');
   });
 
   it('links press to releases and to sponsor', () => {
