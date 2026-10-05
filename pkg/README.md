@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/bascikdev/bascik/actions/workflows/ci.yml/badge.svg)](https://github.com/bascikdev/bascik/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/%40bascik%2Fbascik.svg)](https://www.npmjs.com/package/@bascik/bascik)
-[![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](https://bascik.dev/license)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://bascik.dev/license)
 [![Unit lines](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.lines.pct&label=unit%20lines&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
 [![Unit functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.functions.pct&label=unit%20functions&suffix=%25&color=brightgreen)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
 [![Unit branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Ftest-coverage.json&query=%24.total.branches.pct&label=unit%20branches&suffix=%25&color=blue)](https://github.com/bascikdev/bascik/blob/main/pkg/test-coverage.json)
@@ -10,7 +10,7 @@
 [![E2E functions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Fe2e-test-coverage.json&query=%24.total.functions.pct&label=e2e%20functions&suffix=%25&color=orange)](https://github.com/bascikdev/bascik/blob/main/pkg/e2e-test-coverage.json)
 [![E2E branches](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbascikdev%2Fbascik%2Fmain%2Fpkg%2Fe2e-test-coverage.json&query=%24.total.branches.pct&label=e2e%20branches&suffix=%25&color=orange)](https://github.com/bascikdev/bascik/blob/main/pkg/e2e-test-coverage.json)
 
-Bascik is a build tool for HTML components. It is **not** a JavaScript framework — you write vanilla HTML, CSS, and JavaScript.
+Bascik is a build tool for HTML components. It is **not** a JavaScript framework; you write vanilla HTML, CSS, and JavaScript.
 
 Bascik acts as a build-time find-and-replace: it resolves custom HTML tags to their component source, scopes CSS and JavaScript per component instance, and writes a `dist/` directory of vanilla HTML files. **Zero JavaScript is added to your pages.** Every script in the output was written by you.
 
@@ -55,8 +55,8 @@ pnpm add @bascik/bascik
 }
 ```
 
-`dev` — transpiles your project, starts the HTTP/2 dev server, and watches for changes.  
-`build` — transpiles to `dist/` only.
+`dev`: transpiles your project, starts the HTTP/2 dev server, and watches for changes.  
+`build`: transpiles to `dist/` only.
 
 ---
 
@@ -155,10 +155,10 @@ The tag must equal the prefix plus the package's `package.json` version. Prerele
 
 The `if:` condition on each workflow job ensures only the relevant package is published when a tag is pushed.
 
-### Release checklist — `@bascik/bascik`
+### Release checklist: `@bascik/bascik`
 
 1. **Update version** in `pkg/package.json` following [Semantic Versioning](https://semver.org/).
-2. **Update `CHANGELOG.md`** — move entries from `[Unreleased]` to the new version with today's date.
+2. **Update `CHANGELOG.md`**: move entries from `[Unreleased]` to the new version with today's date.
 3. **Run tests locally** with `yarn pkg:unit` or `yarn pkg:test:ci`.
 4. **Commit and tag**:
    ```sh
@@ -169,7 +169,7 @@ The `if:` condition on each workflow job ensures only the relevant package is pu
    ```
 5. The Release workflow picks up the `v*.*.*` tag, runs tests, builds, and publishes to npm.
 
-### Release checklist — `create-bascik`
+### Release checklist: `create-bascik`
 
 1. **Update version** in `create/package.json`.
 2. **Update `CHANGELOG.md`** if applicable.
@@ -247,15 +247,15 @@ yarn pkg:bench
 
 | Scenario                               | ops/sec | mean latency |
 | -------------------------------------- | ------- | ------------ |
-| `minifyHtml` — small HTML              | ~138K   | ~7.2µs       |
-| `minifyHtml` — large HTML (50×)        | ~81     | ~12.4ms      |
-| `getTag` — paired                      | ~778K   | ~1.3µs       |
-| `getTag` — self-closing                | ~1.07M  | ~0.9µs       |
-| `prefixClassesInCss` — realistic CSS   | ~14.1K  | ~70.7µs      |
-| `scopeCssCustomProperties` — 10 props  | ~69.4K  | ~14.4µs      |
-| `recursivelyTranspile` — 10 components | ~7.17K  | ~140µs       |
-| `recursivelyTranspile` — 50 components | ~809    | ~1.23ms      |
-| `deduplicateCss` — 20 entries          | ~1.28M  | ~0.8µs       |
+| `minifyHtml`: small HTML              | ~138K   | ~7.2µs       |
+| `minifyHtml`: large HTML (50×)        | ~81     | ~12.4ms      |
+| `getTag`: paired                      | ~778K   | ~1.3µs       |
+| `getTag`: self-closing                | ~1.07M  | ~0.9µs       |
+| `prefixClassesInCss`: realistic CSS   | ~14.1K  | ~70.7µs      |
+| `scopeCssCustomProperties`: 10 props  | ~69.4K  | ~14.4µs      |
+| `recursivelyTranspile`: 10 components | ~7.17K  | ~140µs       |
+| `recursivelyTranspile`: 50 components | ~809    | ~1.23ms      |
+| `deduplicateCss`: 20 entries          | ~1.28M  | ~0.8µs       |
 
 Run `yarn bench` after any change to the hot paths to catch regressions.
 
@@ -279,7 +279,7 @@ Page Phase  (pageProcessing)
 
 ### Page Phase
 
-Triggered by `pageProcessing(pagePath)` — once per `.html` file.
+Triggered by `pageProcessing(pagePath)`, once per `.html` file.
 
 ```
 1. Read source file → strip comments, collapse whitespace  (minifyHtml)
@@ -318,11 +318,11 @@ For each custom tag found:
   └───────────────────────────────────────────────────────────────┘
 
   ┌─ 2. TEMPLATE RESOLUTION ──────────────────────────────────────┐
-  │   a. injectProps         — fill data-bascik-prop-* markers    │
-  │   b. replaceNamedSlots   — fill data-bascik-slot="name" zones  │
-  │   c. default slot        — fill data-bascik-slot (no value)  │
+  │   a. injectProps         : fill data-bascik-prop-* markers    │
+  │   b. replaceNamedSlots   : fill data-bascik-slot="name" zones  │
+  │   c. default slot        : fill data-bascik-slot (no value)  │
   │                            with inner content or fallback      │
-  │   d. mergeAttributesOntoRoot — pass-through attrs to root     │
+  │   d. mergeAttributesOntoRoot : pass-through attrs to root     │
   └───────────────────────────────────────────────────────────────┘
 
   ┌─ 3. SUBSTITUTION ─────────────────────────────────────────────┐
@@ -350,7 +350,7 @@ For class attribute, also scopes the companion .css file:
   @keyframes spin       →  @keyframes bascik__comp__a1b2c3__keyframe__spin
   --brand: #d3ff8d      →  --bascik__comp__a1b2c3__brand: #d3ff8d
   var(--brand)          →  var(--bascik__comp__a1b2c3__brand)
-  [id] { }              →  (stripped — cannot be scoped without DOM wrapping)
+  [id] { }              →  (stripped: cannot be scoped without DOM wrapping)
 ```
 
 When `minify.identifiers: true` (the production default), all generated names are hashed to short hex strings: `bascik__comp__a1b2c3__nav` → `bab12cd3`.
@@ -359,7 +359,7 @@ When `minify.identifiers: true` (the production default), all generated names ar
 
 ### Adding a New Pipeline Step
 
-All scoping steps share the `ComponentTransform` signature — `(c: BascikComponent) => BascikComponent`. To add a new transform:
+All scoping steps share the `ComponentTransform` signature: `(c: BascikComponent) => BascikComponent`. To add a new transform:
 
 1. Write the transform function in the relevant `lib/` module.
 2. Add it to `buildScopingPipeline()` in `processing.ts`, guarded by a config flag if it should be opt-in.

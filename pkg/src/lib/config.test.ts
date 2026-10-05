@@ -32,6 +32,21 @@ describe("defaultConfig", () => {
     expect(defaultConfig.scoping.preserve).toEqual(["code"]);
   });
 
+  it("declares no external components by default", () => {
+    expect(defaultConfig.components.external).toEqual([]);
+  });
+
+  it("merges a user components.external list into the resolved config", () => {
+    const { BascikConfig: cfg } = initBascikConfig(
+      { components: { external: ["heading-anchors", "vendor-*"] } },
+      {},
+      {},
+      { fs: allowAllFs },
+    );
+    expect(cfg.components.external).toEqual(["heading-anchors", "vendor-*"]);
+    expect(defaultConfig.components.external).toEqual([]);
+  });
+
   it("has default directory paths including out", () => {
     expect(defaultConfig.directory.pages).toMatch(/src[/\\]pages$/);
     expect(defaultConfig.directory.components).toEqual(["src/components"]);
@@ -266,6 +281,22 @@ describe("dev vs build vs server mode overrides and defaults", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+
+  it("leaves pipeline.onExecError unset so the mode decides, and keeps a configured value", () => {
+    expect(initBascikConfig({}, {}, { isBuild: false }).BascikConfig.pipeline.onExecError).toBeUndefined();
+    expect(initBascikConfig({}, {}, { isBuild: true }).BascikConfig.pipeline.onExecError).toBeUndefined();
+    const flipped = initBascikConfig({ pipeline: { onExecError: "error" } }, {}, { isBuild: false }).BascikConfig;
+    expect(flipped.pipeline.onExecError).toBe("error");
+  });
+
+  it("lets the dev and build mode exports set pipeline.onExecError independently", () => {
+    const overrides = {
+      dev: { pipeline: { onExecError: "error" as const } },
+      build: { pipeline: { onExecError: "warn" as const } },
+    };
+    expect(initBascikConfig({}, overrides, { isBuild: false }).BascikConfig.pipeline.onExecError).toBe("error");
+    expect(initBascikConfig({}, overrides, { isBuild: true }).BascikConfig.pipeline.onExecError).toBe("warn");
   });
 
   it("keeps minify options off and defaults error actions to 'error' for scripts in dev mode", () => {

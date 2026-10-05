@@ -143,9 +143,59 @@ describe('source-owned phase cycles', () => {
     cycle.close();
   });
 
+  it('tells the owner about each exec failure after reporting it, for pre, parallel, and post alike', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    const emitter = new EventEmitter();
+    const errors: unknown[] = [];
+    emitter.on('build-error', error => errors.push(error));
+    const failures: Array<[string, string]> = [];
+    const cycle = createSourceCycle({
+      entries: [
+        { script: 'pre.ts', watch: ['content/'] },
+        { script: 'parallel.ts', phase: 'parallel', watch: ['content/'] },
+        { script: 'post.ts', phase: 'post', watch: ['content/'] },
+      ],
+      run: async entry => { if (entry.script === 'parallel.ts') throw new Error('parallel failed'); },
+      compile: vi.fn().mockResolvedValue(undefined),
+      emitter,
+      onExecFailure: (error, entry) => failures.push([entry.script, (error as Error).message]),
+    });
+    cycle.enqueue('content/a.md');
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(failures).toEqual([['parallel.ts', 'parallel failed']]);
+    expect(errors).toHaveLength(1);
+    cycle.close();
+    consoleSpy.mockRestore();
+  });
+
+  it('keeps the cycle alive and retries the failed paths after a post failure when the owner only observes', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    const run = vi.fn().mockRejectedValueOnce(new Error('post failed')).mockResolvedValue(undefined);
+    const compile = vi.fn().mockResolvedValue(undefined);
+    const cycle = createSourceCycle({
+      entries: [{ script: 'post.ts', phase: 'post', watch: ['content/'] }],
+      run, compile, emitter: new EventEmitter(), onExecFailure: vi.fn(),
+    });
+    cycle.enqueue('content/a.md');
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    cycle.enqueue('content/b.md');
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(compile.mock.calls[1][0]).toEqual(expect.arrayContaining([
+      `${process.cwd()}/content/a.md`, `${process.cwd()}/content/b.md`,
+    ]));
+    cycle.close();
+    consoleSpy.mockRestore();
+  });
+
   it('settles 100 repeated same-two-path cycles with exact publications, paths, baseline listeners, recovery, and zero timers', async () => {
     vi.useFakeTimers();
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     const emitter = new EventEmitter();
     const testErrorListener = vi.fn();

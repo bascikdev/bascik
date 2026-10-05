@@ -32,7 +32,7 @@ export const PACKAGE_JSON = (name: string): string =>
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.2",
+        "@bascik/bascik": "^1.0.0-rc.3",
       },
       devDependencies: {
         "@bascik/language-server": "^0.1.0-rc.1",
@@ -325,7 +325,7 @@ export const FAVICON_32_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0A
 
 export const APPLE_TOUCH_ICON_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAACXBIWXMAAAsTAAALEwEAmpwYAAAGKUlEQVR4nO2bzWqdVRSGN72AtqO0WicWJ1KtoTi0dGjTK8gFGGtnH1ghJpXOw1l0kHoTUvlIU6rQa9Dg2R9W8OcK2guwky0nkIGU0kTfsvZZ63nhnWWwz7ufnTwcSCmEEEIIIYQQQgghhBBCCCGEEEII6SG12Xptsyd0Fm2DrZIxtdlYmzVq0TYYSra0dvfUvM2edTA+bdoNpnZvtWTL4kMDU7zHNG+z54tfViVbFn+WvMen9iY2GEvG4M9hH9RQsgV/jtsJf/a/BGqSDfBnYGrBNsCfO7gE2mQb4M8AZWE2wJ87uARqkg3wZ2CK9pjGkjF8/xy2Q8kWvn+O24nvn/0vgZpkA/wZmKI9prFkDP4ctkPJFvw5bif82f8SqEk2wJ+BKdpjGkvG4M9hO5RswZ/jdsKf/S+BmmQD/BmYoj2msWQM/hy2Q8kW/DluJ/zZ/xKoSTbAn4Ep2mMaS8bgz2E7lGzBn+N2wp/9L4GaZAP8GZiiPaaxZAz+HLZDyRb8OW4n/Nn/EqhJNsCfgSnaYxpLxuDPYTuUbMGf43bCn5evj3/farsPNw77+I9t9/PUToo/L1n3ft1sn3z6YTt95uy/evX65bb3dNP9fNW/+POy9Lufvmzn3l55Ceajnr+w0h4c3HY/Z/Ut/rwM/fnvnfb+6ruvhPmol65cbAcvdtzPW52KPy9Jd/c+ey3MR72/v+F+3upQ/HmJenN77dhAf3Fnzf281af487J0/da1YwO9+Fnv81af4s8dXAJAN81G+HMHoAK0SfbBnzuAFKBNuRH+7A0pQJtyI/zZG1KANtk++HMHkAK0SbbBnzsAFKBNuQ/+7A0oQJtyH/zZG1CANtk2+HMHgAK0SXbBnzuAE6BNuQ3+7A0nQJtyG/zZG04ANtku+HMHcAK0STbBnzsAE6BNuQv+7A0mQJtyF/zZG0yANtkm+HMHYAK0SfbAnzuAEqBNuQn+7A0lQJtyE/zZG0qANtke+HMHUAK0SbbAnzsAEgBNuQf+7A0kQJtyD/zZG0iANtkW+HMHQAK0SXbAnzuAEaBNuQX+7A0jQJtyC/zZG0aANtkO+HMHMAK0STbAnzsAEQBNuQP+7A0iQJtyB/zZG0SANtkG+HMHIAK0ZgP8uQMIAdqUG+DP3hACtCk3wJ+9IQRok22AP3cAIUCbZAP8uQMAAdqUG+DP3gACtCk3wJ+9AQRok22AP3cAIECbZAP8uQP4ANqUG+DP3vABtCk3wJ+94QNok22AP3cAH0CbZAP8uQPwANqUG+DP3uABtCk3wJ+9wQNok22AP3cAHkCbZAP8uQPoANqUG+DP3tABtCk3wJ+9oQNok22AP3cAHUCbZAP8uQPgANqUG+DP3sABtCk3wJ+9gQNok22AP3cAHECbZAP8uQPYANqUG+DP3rABtCk3wJ+9YQNok22AP3cAG0CbZAP8uQPQANqUG+DP3qABtCk3wJ+9QQNok22AP3cAGkCbZAP8uQPIANqUG+DPmXpze62dPnP2WL31zQ3389aTF3/O1N2HG8cG+ttHn7uft56w+HOyHrzYaZeuXHwtzB98/N7hz3qft56g+HPSPji43c5fWHklzG+9c659/8tX7uesJy/+nLV7Tzfb1euXX4L52o2P2v5vX7ufr/634s/Z+8Of2+3+/sZhf/zrjvt56v8o/tzBJVCTbIA/A1O0xzSWjFl88A7Gp02+Af4MWHEe1tTurZZsWXxo7+GpyTfAnwEr2sMaS8bgz2E7lGxp7e6peZs962B82rQb4M9AFeZRzdvs+eKXVcmWxZ8l7/GpvYnW/d2iwC0CBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIEC`;
 
-/** Head component — charset, viewport, favicon, CSS link. */
+/** Head component: charset, viewport, favicon, CSS link. */
 export const SITE_META_HTML = `<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="description" content="A fast, modern website built with Bascik." />
@@ -583,7 +583,7 @@ export const MY_COUNTER_CSS = `.counter {
 }
 `;
 
-/** Interactive counter — two instances on a page stay fully independent. */
+/** Interactive counter: two instances on a page stay fully independent. */
 export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter">
@@ -718,7 +718,7 @@ ${body}
 `;
 
 export const indexPage = (brand: string): string =>
-  pageShell(`Home — ${brand}`, brand, `    <section class="hero">
+  pageShell(`Home - ${brand}`, brand, `    <section class="hero">
       <div class="container">
         <p class="section-label">Welcome</p>
         <h1>Build fast with <span>${brand}</span></h1>
@@ -762,7 +762,7 @@ export const indexPage = (brand: string): string =>
       <div class="container">
         <p class="section-label">Interactive</p>
         <h2>Counter component</h2>
-        <p>Each instance holds its own state. Place the same component twice — they stay independent.</p>
+        <p>Each instance holds its own state. Place the same component twice, and they stay independent.</p>
         <div style="display:flex;gap:48px;flex-wrap:wrap;margin-top:24px;">
           <my-counter />
           <my-counter />
@@ -771,7 +771,7 @@ export const indexPage = (brand: string): string =>
     </section>`);
 
 export const aboutPage = (brand: string): string =>
-  pageShell(`About — ${brand}`, brand, `    <div class="container">
+  pageShell(`About - ${brand}`, brand, `    <div class="container">
       <section class="section">
         <p class="section-label">About</p>
         <h1>About us</h1>
@@ -795,7 +795,7 @@ export const aboutPage = (brand: string): string =>
     </div>`);
 
 export const contactPage = (brand: string): string =>
-  pageShell(`Contact — ${brand}`, brand, `    <div class="container">
+  pageShell(`Contact - ${brand}`, brand, `    <div class="container">
       <section class="section">
         <p class="section-label">Contact</p>
         <h1>Get in touch</h1>
@@ -820,7 +820,7 @@ export const contactPage = (brand: string): string =>
     </div>`);
 
 export const notFoundPage = (brand: string): string =>
-  pageShell(`404 — ${brand}`, brand, `    <div class="container">
+  pageShell(`404 - ${brand}`, brand, `    <div class="container">
       <section class="section" style="text-align:center;">
         <p class="section-label">Error</p>
         <h1 style="font-size:clamp(4rem,12vw,8rem);color:var(--accent);margin-bottom:8px;">404</h1>

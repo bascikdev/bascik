@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    console.log(await canonical());
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    console.log(await openGraph());
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    console.log(await breadcrumbLd());
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    console.log(await articleSchema());
+  </script>
+  <meta name="description"
+    content="Use a custom element from npm on a Bascik page: publish its file into the output, load it with a module script, and declare the tag in components.external." />
+  <title>Third-Party Web Components - Bascik Docs</title>
+  <script type="module" src="/assets/vendor/heading-anchors.js"></script>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          console.log(renderSectionLabel('/how-to/third-party-web-components'));
+        </script>
+
+        <!-- Intro and "See it in action" heading come from the MD file. -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/how-to/third-party-web-components.md', { to: 'Install the package' }, { stripDemoBlocks: true }));
+        </script>
+
+        <component-demo>
+          <div data-bascik-slot="example">
+            <div data-testid="heading-anchors-demo">
+              <heading-anchors>
+                <h3 id="install">Install</h3>
+                <p>Add the package with your package manager.</p>
+                <h3 id="publish">Publish</h3>
+                <p>Copy its file into the output directory.</p>
+              </heading-anchors>
+            </div>
+          </div>
+          <div data-bascik-slot="source-usage">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-usage'));
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="source-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                console.log(await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-head'));
+              </script>
+            </code-block>
+          </div>
+        </component-demo>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          console.log(await renderMdRange('./content/how-to/third-party-web-components.md', { from: 'Install the package' }, { stripDemoBlocks: true }));
+        </script>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

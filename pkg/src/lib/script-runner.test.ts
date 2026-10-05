@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Semaphore, runModule } from "./script-runner.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { MAX_INLINE_ENV_BYTES, SPILLED_ENV_FILE_VAR, Semaphore, runModule } from "./script-runner.ts";
 
 /**
  * Prompt 103: child admission for `runModule` is a scoped resource released
@@ -93,6 +94,59 @@ describe("runModule permit ownership", () => {
       },
     );
     await expect(runModule("path", {}, [], 1, 1024, sem)).rejects.toThrow(/timed out|Command/);
+    expect(sem.getActiveCount()).toBe(0);
+  });
+
+  it("passes a small BASCIK_ROUTE inline with no preload", async () => {
+    const sem = new Semaphore(1);
+    execFileMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _opts: unknown, cb: (err: null, stdout: string, stderr: string) => void) => {
+        cb(null, "", "");
+      },
+    );
+    await runModule("script.mjs", { BASCIK_ROUTE: '{"params":{}}' }, [], 1000, 1024, sem);
+    const [, args, opts] = execFileMock.mock.calls[0] as [string, string[], { env: Record<string, string> }];
+    expect(args).toEqual(["script.mjs"]);
+    expect(opts.env.BASCIK_ROUTE).toBe('{"params":{}}');
+    expect(opts.env[SPILLED_ENV_FILE_VAR]).toBeUndefined();
+  });
+
+  it("moves an oversized BASCIK_ROUTE to a temp file read by a preload, and removes the file", async () => {
+    const sem = new Semaphore(1);
+    const route = JSON.stringify({ params: { slug: "long" }, data: { body: "é".repeat(MAX_INLINE_ENV_BYTES) } });
+    let seenFile = "";
+    let seenContent = "";
+    execFileMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, opts: { env: Record<string, string> }, cb: (err: null, stdout: string, stderr: string) => void) => {
+        seenFile = opts.env[SPILLED_ENV_FILE_VAR];
+        seenContent = readFileSync(seenFile, "utf8");
+        cb(null, "", "");
+      },
+    );
+    await runModule("script.mjs", { BASCIK_ROUTE: route }, ["x"], 1000, 1024, sem);
+    const [, args, opts] = execFileMock.mock.calls[0] as [string, string[], { env: Record<string, string> }];
+    expect(opts.env.BASCIK_ROUTE).toBeUndefined();
+    expect(args[0]).toBe("--import");
+    expect(args[1]).toMatch(/^data:text\/javascript,/);
+    expect(args.slice(2)).toEqual(["script.mjs", "x"]);
+    expect(JSON.parse(seenContent)).toEqual({ BASCIK_ROUTE: route });
+    expect(existsSync(seenFile)).toBe(false);
+    expect(sem.getActiveCount()).toBe(0);
+  });
+
+  it("removes the spilled file when the child fails", async () => {
+    const sem = new Semaphore(1);
+    let seenFile = "";
+    execFileMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, opts: { env: Record<string, string> }, cb: (err: Error) => void) => {
+        seenFile = opts.env[SPILLED_ENV_FILE_VAR];
+        cb(new Error("script crashed"));
+      },
+    );
+    const route = JSON.stringify({ data: "x".repeat(MAX_INLINE_ENV_BYTES + 1) });
+    await expect(runModule("script.mjs", { BASCIK_ROUTE: route }, [], 1000, 1024, sem)).rejects.toThrow("script crashed");
+    expect(seenFile).not.toBe("");
+    expect(existsSync(seenFile)).toBe(false);
     expect(sem.getActiveCount()).toBe(0);
   });
 

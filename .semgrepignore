@@ -3,15 +3,18 @@
 
 # CI workflow action tags are managed centrally; pinning policy handled separately.
 .github/workflows/ci.yml
+.github/workflows/codeql.yml
 .github/workflows/release.yml
 
-# Test files, test fixtures, and E2E suites across the workspace.
+# Test files, test fixtures, test helpers, and E2E suites across the workspace.
 **/*.test.ts
 **/*.test.js
 **/*.spec.ts
 **/*.spec.js
+**/*.test-helper.ts
 **/e2e/**
 docs/scripts/fixtures/**
+migration-examples/**
 
 # Scaffold generator writes static templates; false-positive script-tag heuristic.
 create/src/scaffold.ts
@@ -20,9 +23,12 @@ create/src/scaffold.ts
 docs/src/lib/md-renderer.ts
 docs/src/pages/libraries.html
 
-# VS Code extension rules intentionally compile regex patterns from controlled rule tables.
+# VS Code extension and language server rules intentionally compile regex patterns from controlled rule tables.
 extensions/vscode-bascik/src/extension.ts
 extensions/vscode-bascik/src/rules.ts
+lsp/src/analyzer.ts
+lsp/src/project.ts
+lsp/src/rules.ts
 
 # Local TLS bypass is required for localhost/self-signed HTTP/2 coverage probes.
 pkg/bin/update-e2e-coverage.ts

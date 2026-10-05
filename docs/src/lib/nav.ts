@@ -1,8 +1,8 @@
 /**
- * nav.ts — Single source of truth for docs navigation order.
+ * nav.ts: single source of truth for docs navigation order.
  *
  * Imported by render-nav.ts at build time. To add, remove, or reorder
- * pages, edit this file only — sidebar, pagination, and the top nav all
+ * pages, edit this file only. Sidebar, pagination, and the top nav all
  * derive from it automatically.
  */
 
@@ -52,6 +52,7 @@ export const NAV: NavSection[] = [
       { href: '/environment-variables', label: 'Environment Variables' },
       { href: '/compatibility', label: 'Compatibility' },
       { href: '/cli', label: 'Command Line Interface (CLI)' },
+      { href: '/package-exports', label: 'Package Exports' },
       { href: '/development-server', label: 'Development Server' },
       { href: '/production-server', label: 'Production Server' },
     ]
@@ -91,6 +92,7 @@ export const NAV: NavSection[] = [
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
       { href: '/how-to/templating', label: 'Templating' },
       { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
+      { href: '/how-to/third-party-web-components', label: 'Third-Party Web Components' },
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
       { href: '/how-to/sharing-components', label: 'Sharing Components' },
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
@@ -128,6 +130,7 @@ export const NAV: NavSection[] = [
   },
   {
     section: 'Community', pages: [
+      { href: '/releases', label: 'Releases' },
       { href: '/press', label: 'Press Resources' },
       { href: '/sponsor', label: 'Sponsor' },
     ]

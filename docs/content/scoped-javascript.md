@@ -25,15 +25,24 @@ Component templates can contain multiple `<script>` tags. Bascik processes each 
 - **Streaming scripts (`<script data-bascik-stream>`):** Executed on the server at request time in Node.js with chunked HTTP streaming. Can also use `src="..."` to run a local script file.
 - **Data scripts (e.g. `type="application/ld+json"`):** Left untouched without IIFE wrapping or minification.
 
-> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories.
-
-> **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
+> **Directory Isolation Rule:** Local `src="..."` script references are strictly confined to the component's own folder. A component in `src/components/demo-counter/` can only reference script files inside `src/components/demo-counter/`. It cannot access files across other component directories. **Recommended Pattern:** Keeping separate, unrelated logic in dedicated `<script>` tags (such as one script block for form validation and another for UI animation) is recommended for clean, readable code. You don't need to break code into tiny scripts arbitrarily, but isolating independent concerns into separate script blocks keeps your component's JavaScript organized and prevents variable name collisions.
 
 ## Multiple Instances
 
 Place the same component on a page more than once and each instance runs independently with no extra work needed:
 
 The two counters at the top of this page are the same component. Change either count, then inspect Output → HTML and Output → JS to compare their unique instance IDs.
+
+## Where Component Scripts Run
+
+A component script is an inline classic script, and where it sits in the page depends on the mode:
+
+- **Production (`bascik --build`).** HTML minification (`minify.html`, on by default) moves component scripts to the end of the document, just before `</body>`, in document order. Every element in the page exists when they run, even when the component is nested inside `<main>` or another container.
+- **Development server, or `minify.html: false`.** Each script stays directly after its component's markup. An element that comes later in the document does not exist yet when the script runs.
+
+Write scripts that behave the same in both. Use `getElementById` for the component's own elements, which are always earlier in the document. Look up any other element inside an event handler, or inside a `DOMContentLoaded` listener. A lookup at the top of the script can succeed in production and return `null` in development.
+
+There is no unmount step. A link loads a new document, so a script that must react to a page restored from the browser's back/forward cache listens for `pageshow`.
 
 ## HTML ID References
 
@@ -201,7 +210,7 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 </script>
 ```
 
-> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags.
+> **Component tags work too.** Build script output is processed in the component resolution step, so its output can contain Bascik component tags. Directive scripts in the output (`data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, `data-bascik-routes`) are removed with a warning and never run; see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write).
 
 ## Non-JavaScript Script Types
 

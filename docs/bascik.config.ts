@@ -1,6 +1,11 @@
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
+  components: {
+    // <heading-anchors> comes from @zachleat/heading-anchors and is demonstrated on
+    // /how-to/third-party-web-components. It is not a Bascik component file.
+    external: ['heading-anchors'],
+  },
   pipeline: {
     watchPaths: [
       'scripts/',
@@ -15,6 +20,8 @@ export default defineConfig({
       'test-coverage.json',
     ],
     exec: [
+      // Copies the npm custom element into dist/assets/vendor/. 'pre' so it exists before pages load it.
+      { script: 'scripts/publish-heading-anchors.ts', phase: 'pre' },
       {
         script: 'scripts/generate-search-index.ts',
         phase: 'parallel',
@@ -54,6 +61,7 @@ export const dev = defineConfig({
 export const build = defineConfig({
   pipeline: {
     exec: [
+      { script: 'scripts/publish-heading-anchors.ts', phase: 'pre' },
       { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
       { script: 'scripts/publish-agent-skill.ts', phase: 'parallel' },
       { script: 'scripts/generate-press-kit.ts', phase: 'parallel' },

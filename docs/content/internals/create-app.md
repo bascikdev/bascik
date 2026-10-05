@@ -103,12 +103,12 @@ From the repo root, run:
 yarn create:test-site
 ```
 
-This builds `create-bascik` (copying the latest `SKILL.md` from `docs/`), runs the scaffolding CLI to create a test project at `my-site/`, installs its dependencies, and boots the development server.
+This builds `create-bascik` (copying the latest `SKILL.md` from `docs/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
-The `-y` flag skips prompts for automatic setup. Within the monorepo workspace, Yarn links `@bascik/bascik` directly from `pkg/`, allowing end-to-end testing of the scaffolded templates and dev server without publishing to npm first.
+The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup.
 
 ```text
-Server running at http://localhost:8080
+Build complete
 ```
 
 ## Cleanup after local testing

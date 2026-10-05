@@ -1,0 +1,9 @@
+/* Class defined here, applied to a child component's usage tag in attr-parent.html. */
+.nav-link {
+  font-weight: 700;
+}
+
+/* Element selector: scoped to anchors written in this template, never a child's root. */
+nav a {
+  background-color: rgb(255, 255, 0);
+}

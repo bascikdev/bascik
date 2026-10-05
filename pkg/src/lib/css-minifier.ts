@@ -21,7 +21,12 @@ export const minifyCss = (css: string): string => {
   const minified = shielded
     .replace(/\n/g, " ")
     .replace(/\s\s+/g, " ")
-    .replace(/\s*([{}:;,])\s*/g, "$1")
+    .replace(/\s*([{};,])\s*/g, "$1")
+    .replace(/:\s+/g, ":")
+    // A space before `:` is a descendant combinator in a selector (`.a :hover`,
+    // `.a :is(h2)`), so only strip it in a declaration. Selector context is
+    // where a `{` comes before the next `;` or `}`.
+    .replace(/\s+:(?![^;{}]*\{)/g, ":")
     .trim();
   return restore(minified);
 };

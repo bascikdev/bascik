@@ -39,15 +39,25 @@ describe('renderPageTableOfContents', () => {
   it('nests h3 headings under their h2 and skips h1 and h4', async () => {
     const html = await toc('# Title\n\n## One\n\n### One A\n\n#### Too deep\n\n## Two\n');
     expect(html).toBe(
-      '<li><a href="#one" data-toc-level="2">One</a><ol class="docs-toc-subsections">' +
-      '<li><a href="#one-a" data-toc-level="3">One A</a></li></ol></li>' +
-      '<li><a href="#two" data-toc-level="2">Two</a></li>',
+      '<toc-entry data-bascik-prop-href="#one" data-bascik-prop-level="2" data-bascik-prop-text="One">' +
+      '<toc-sublist><toc-entry data-bascik-prop-href="#one-a" data-bascik-prop-level="3" data-bascik-prop-text="One A"></toc-entry></toc-sublist>' +
+      '</toc-entry>' +
+      '<toc-entry data-bascik-prop-href="#two" data-bascik-prop-level="2" data-bascik-prop-text="Two"></toc-entry>',
     );
+  });
+
+  it('emits only component tags, so every list item, link, and sublist is styled by a component', async () => {
+    const html = await toc('## One\n\n### One A\n\n## Two\n');
+    expect(html).not.toMatch(/<(li|ol|ul|a)[\s>]/);
+    expect(html).not.toContain('class=');
   });
 
   it('keeps an h3 that precedes any h2 as a flat item', async () => {
     const html = await toc('### Early\n\n## Later\n');
-    expect(html).toBe('<li><a href="#early" data-toc-level="3">Early</a></li><li><a href="#later" data-toc-level="2">Later</a></li>');
+    expect(html).toBe(
+      '<toc-entry data-bascik-prop-href="#early" data-bascik-prop-level="3" data-bascik-prop-text="Early"></toc-entry>' +
+      '<toc-entry data-bascik-prop-href="#later" data-bascik-prop-level="2" data-bascik-prop-text="Later"></toc-entry>',
+    );
   });
 
   it('resolves a relative content path against the working directory', async () => {

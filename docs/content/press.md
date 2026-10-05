@@ -115,4 +115,4 @@ These uses are fine without asking, as long as you follow the rules on this page
 
 If you want to do something this page does not cover, open an issue on [GitHub](https://github.com/bascikdev/bascik/issues) and ask first.
 
-The Bascik software itself is licensed under the [Elastic License 2.0](/license). Use of the licensor's trademarks is subject to applicable law.
+The Bascik software is licensed under the [MIT License](/license). The license does not grant rights to use Bascik's names, logos, or trademarks.

@@ -8,7 +8,7 @@ import { parse, type ParserError } from 'parse5';
  *
  * Parses every HTML file under docs/dist/ with the parse5 WHATWG-spec HTML5
  * parser and fails on any parse error. Because Bascik is a build tool, not a
- * browser, we hold output to the full spec — parse errors that browsers
+ * browser, we hold output to the full spec: parse errors that browsers
  * silently recover from are still defects we must fix before shipping.
  *
  * Additionally, every HTML, CSS, and JS file is scanned for unreplaced
@@ -86,7 +86,7 @@ const PIPELINE_TOKEN_RE = /\x00BASCIK_SHIELD_\d+\x00|BASCIK_COMMENT_\d+/;
 
 // ─── tests ────────────────────────────────────────────────────────────────────
 
-describe('dist sanity — HTML parse errors (parse5 WHATWG)', () => {
+describe('dist sanity: HTML parse errors (parse5 WHATWG)', () => {
   it('dist directory exists (build ran before tests)', async () => {
     const files = await walk(DIST_DIR, '.html');
     // If zero files found the dist just hasn't been built; skip gracefully.
@@ -96,14 +96,14 @@ describe('dist sanity — HTML parse errors (parse5 WHATWG)', () => {
           'Run `yarn docs:build` before `yarn docs:unit`.',
       );
     }
-    // The test itself doesn't fail — the per-file tests below will simply not
+    // The test itself doesn't fail: the per-file tests below will simply not
     // run. This avoids false-red on a fresh checkout with no build yet.
     expect(typeof files.length).toBe('number');
   });
 
   it('every dist HTML file is free of WHATWG parse errors', async () => {
     const files = await walk(DIST_DIR, '.html');
-    if (files.length === 0) return; // build not run yet — handled above
+    if (files.length === 0) return; // build not run yet, handled above
 
     const failures: string[] = [];
 
@@ -133,7 +133,7 @@ describe('dist sanity — HTML parse errors (parse5 WHATWG)', () => {
   }, 30_000);
 });
 
-describe('dist sanity — unreplaced pipeline tokens', () => {
+describe('dist sanity: unreplaced pipeline tokens', () => {
   it('no HTML file contains an unreplaced Bascik shield token', async () => {
     const files = await walk(DIST_DIR, '.html');
     if (files.length === 0) return;

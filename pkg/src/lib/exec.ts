@@ -5,6 +5,7 @@ import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
 import { getSiteUrl } from './environment.ts';
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
+import { getExecErrorAction, stopAfterExecFailure } from './exec-policy.ts';
 import type { ExecEntry, ExecPhase } from './types.ts';
 
 export interface ExecOptions {
@@ -316,6 +317,9 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
         // does not write to stderr, so this is the one terminal line.
         console.error('[bascik] exec error:', err);
         eventEmitter.emit('exec-failed', { entry, paths, error: err });
+        // A parallel script has no caller to reject to once boot has moved on,
+        // so `pipeline.onExecError: 'error'` ends the dev session here.
+        if (getExecErrorAction() === 'error') stopAfterExecFailure(err);
       });
   }
 };

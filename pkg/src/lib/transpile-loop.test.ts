@@ -44,6 +44,7 @@ describe("Prompt 34: Transpile loop performance & operation count guard", () => 
     const componentList: ComponentList = {
       "item-card": {
         fileContent: `<div class="card"><p data-bascik-prop-title></p></div>`,
+        cssFileContent: ".card { padding: 1rem; }",
       },
     };
 

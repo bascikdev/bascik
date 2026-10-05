@@ -67,6 +67,16 @@ const x = 1;
     expect(html).toContain('</table></doc-table>');
   });
 
+  it('renderMd gives site images lazy loading and the real size of PNG files in src/pages', async () => {
+    const mdFile = join(tempDir, 'images.md');
+    await writeFile(mdFile, '![Touch icon](/assets/apple-touch-icon.png)\n\n![Missing](/assets/not-there.png)\n');
+
+    const html = await renderMd(mdFile);
+    expect(html).toMatch(/<img loading="lazy" decoding="async" width="180" height="180" src="\/assets\/apple-touch-icon\.png" alt="Touch icon"/);
+    // A file that does not exist still renders, without invented dimensions.
+    expect(html).toMatch(/<img loading="lazy" decoding="async" src="\/assets\/not-there\.png"/);
+  });
+
   it('renderMd supports skipFirstHeading option', async () => {
     const mdContent = `# Title\n\nSecond heading text.\n\n## Subheading\n\nContent.`;
     const mdFile = join(tempDir, 'skip.md');
@@ -75,6 +85,26 @@ const x = 1;
     const html = await renderMd(mdFile, { skipFirstHeading: true });
     expect(html).not.toContain('<h2 id="title">');
     expect(html).toContain('<h2 id="subheading">');
+  });
+
+  it('renderMd supports skipToFirstH2 option', async () => {
+    const mdContent = `# Title\n\nIntro paragraph.\n\n## Section 1\nFirst content.\n\n## Section 2\nSecond content.`;
+    const mdFile = join(tempDir, 'skip-h2.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile, { skipToFirstH2: true });
+    expect(html).not.toContain('Intro paragraph.');
+    expect(html).toContain('<h2 id="section-1">');
+    expect(html).toContain('<h2 id="section-2">');
+  });
+
+  it('renderMd skipToFirstH2 returns empty when no h2 exists', async () => {
+    const mdContent = `# Title\n\nIntro paragraph.`;
+    const mdFile = join(tempDir, 'skip-h2-none.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile, { skipToFirstH2: true });
+    expect(html).toBe('');
   });
 
   it('renderMdRange renders content between headings', async () => {

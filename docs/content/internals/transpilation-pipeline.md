@@ -153,6 +153,12 @@ For bracket-parameter pages, `<script data-bascik-routes>` runs before page buil
 11. **Store and write output.** In build mode, the finished HTML is written to `dist/` before transpilation completes. In dev mode, the result is stored in the in-memory page store first, then written to `dist/` asynchronously so serving never waits for file I/O. Writes for repeated edits to the same page are serialized.
 12. **Emit transpiled event.** `eventEmitter.emit("transpiled")` triggers live-reload for any connected browser.
 
+### Printed Output Guards
+
+These apply to step 1. Before a build script's stdout is spliced into the page, `removeOutputDirectives` (`pkg/src/lib/output-directives.ts`) strips every `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, and `data-bascik-routes` script from it, and the page logs one warning naming them. Without this, the multi-pass loop in `processing.ts` would execute a printed build directive and register a printed server or stream directive, so data printed from a CMS body or an API response could run code. The script cache stores the raw stdout; the removal is reapplied on every use.
+
+A `BASCIK_ROUTE` payload over 32 KB is written to a temporary file and restored into `process.env` by a `--import` preload before the script and its imports run (`spillLargeEnv` in `script-runner.ts`). The OS rejects large environment strings with `E2BIG`: 128 KiB per string on Linux, about 1 MiB in total on macOS.
+
 ### Output Directory Lifecycle
 
 Dev and build runs remove `directory.out` before pre-phase lifecycle scripts execute, then repopulate it from the current source tree. This prevents deleted pages, renamed assets, and removed dynamic routes from surviving as stale deployment output. Cleaning happens before pre-phase scripts so files those scripts intentionally generate in `dist/` remain available to the rest of the run. Production server mode (`bascik --server`) reads an existing build and never cleans it.
@@ -253,7 +259,7 @@ Each step is skipped if disabled in `bascik.config.ts`.
 
 1. **Props.** `injectProps` replaces every `data-bascik-prop-*` placeholder in the component template with the corresponding attribute value from the usage tag.
 2. **Named slots.** `replaceNamedSlots` fills each `data-bascik-slot="name"` zone in the template with the matching `<div data-bascik-slot="name">` content from the usage site.
-3. **Default slot.** The inner content of the usage tag is placed into the element carrying `data-bascik-slot` (no value). If the usage tag has no inner content, the template's fallback content is preserved.
+3. **Default slot.** The inner content of the usage tag is placed into the element carrying `data-bascik-slot` (no value). If the usage tag has no inner content, the template's fallback content is preserved. Nested component tags in the template are set aside first so their own content is not mistaken for the template's, but the usage site's default slot content is also applied to a valueless marker written between a nested component's tags. That is how `children` is forwarded to an inner component.
 4. **Attribute inheritance.** `mergeAttributesOntoRoot` copies pass-through attributes (`aria-*`, `data-*`, `class`, etc.) from the usage tag onto the component's root element. If the component template contains multiple root elements (or leading comments, `<script>`, or `<style>` blocks), attributes are merged onto the first root HTML element.
 
 ### Step 3: Substitution

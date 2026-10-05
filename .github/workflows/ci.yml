@@ -308,6 +308,9 @@ jobs:
       - name: Run framework E2E tests (dev exec lifecycle)
         run: yarn pkg:e2e:dev:exec
 
+      - name: Run framework E2E tests (exec failure policy)
+        run: yarn pkg:e2e:exec:policy
+
   e2e-pkg-prod-http1:
     name: Framework E2E (Prod Server HTTP/1.1)
     runs-on: ubuntu-latest

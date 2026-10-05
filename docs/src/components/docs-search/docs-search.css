@@ -67,7 +67,7 @@
 .search-backdrop {
   position: fixed;
   inset: 0;
-  /* no background — transparent click-catcher only */
+  /* no background: transparent click-catcher only */
 }
 
 /* Panel */

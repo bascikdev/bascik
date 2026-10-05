@@ -1,0 +1,15 @@
+/* Defines every class the markup uses. Only `.wrapper` and `.text` are renamed: `.widget` and
+   `.label` sit inside the preserved vendor-* family, so they stay literal even though this
+   stylesheet defines them. */
+.wrapper {
+  display: block;
+}
+.text {
+  margin: 0;
+}
+.widget {
+  display: block;
+}
+.label {
+  font-style: normal;
+}

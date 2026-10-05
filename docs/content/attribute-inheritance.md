@@ -57,6 +57,49 @@ The `featured` class is a global class that you define in your page-level styles
 
 > **Self-closing syntax works too:** Attribute inheritance works with both paired and self-closing usage syntax: `<my-icon class="large" aria-hidden="true" />`
 
+## Styling a Child Component from Its Parent
+
+A component's CSS applies only to markup written in that component's own template. A child component's root element belongs to the child, so a parent's element selector such as `nav a { }` does not match an `<a>` that a child component renders as its root. Components stay isolated from each other.
+
+To style a child's root from the parent, put a class on the child's usage tag and define that class in the parent's CSS. Bascik scopes the class to the parent, then merges it onto the child's root element:
+
+```html
+<!-- site-nav.html: the parent -->
+<nav>
+  <nav-link class="item" href="/">Home</nav-link>
+  <nav-link class="item" href="/blog">Blog</nav-link>
+  <a href="/about">About</a>
+</nav>
+```
+
+```css
+/* site-nav.css: .item is scoped to site-nav and lands on each nav-link root */
+.item { padding: 1em 0.5em; border-bottom: 4px solid transparent; }
+nav a { color: inherit; }
+```
+
+```html
+<!-- nav-link.html: the child; its root is an anchor -->
+<a><span data-bascik-slot></span></a>
+```
+
+```html
+<!-- compiled output (identifier minification off) -->
+<nav class="bascik__site-nav__el__nav">
+  <a class="bascik__site-nav__item" href="/">Home</a>
+  <a class="bascik__site-nav__item" href="/blog">Blog</a>
+  <a class="bascik__site-nav__el__a" href="/about">About</a>
+</nav>
+```
+
+The `.item` class reaches both children because it is written in the parent's template. The `nav a` rule styles only the plain `<a href="/about">` the parent wrote itself, and it never matches the anchors rendered by `nav-link`.
+
+The same applies when a build script or a slot produces the markup. Anything that renders a child component should put the class on the usage tag, as in `<nav-link class="item" …>`.
+
+When a class is not defined in the parent's CSS, it passes through unscoped, so a page-level stylesheet can style it. That is the global-class behavior described above.
+
+> **Coming from Astro.** Astro's scoped `<style>` lets a parent selector such as `nav a` reach into a child component's root element. Bascik does not. Replace those selectors with a class on the child's usage tag, as shown above.
+
 **MDN reference.** Bascik forwards standard HTML attributes instead of inventing a new API. Use [MDN's HTML attribute reference](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes) as the primary guide for what each inherited attribute means.
 
 ## Disabling It

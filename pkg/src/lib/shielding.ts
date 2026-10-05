@@ -107,6 +107,7 @@ export const compilePreservedTags = (
   for (const tag of tags) {
     const entry = tag.toLowerCase();
     if (entry.includes("*")) {
+      // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       patterns.push(new RegExp(`^${tagNameFragment(entry)}$`));
     } else {
       exact.add(entry);

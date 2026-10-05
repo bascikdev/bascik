@@ -1,13 +1,13 @@
 {
   "name": "@bascik/bascik",
   "description": "HTML components. Zero runtime",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
     "directory": "pkg"
   },
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "homepage": "https://bascik.dev",
   "author": "Collin Thomas",
   "type": "module",
@@ -52,6 +52,7 @@
     "0x": "^6.0.0",
     "@mdn/browser-compat-data": "^8.0.13",
     "@playwright/test": "^1.62.0",
+    "@swc/core": "^1.16.2",
     "@types/css-tree": "^3",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^4.1.10",
@@ -62,6 +63,7 @@
     "c8": "^12.0.0",
     "clinic": "^13.0.0",
     "css-tree": "^3.2.1",
+    "dependency-cruiser": "^18.4.0",
     "esbuild": "^0.28.2",
     "fast-check": "^4.9.0",
     "postcss": "^8.5.26",
@@ -72,7 +74,8 @@
     "webidl2": "^24.5.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node bin/code-map.mjs --background",
+    "code-map": "node bin/code-map.mjs",
     "prepack": "cp ../LICENSE LICENSE",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "unit": "vitest run --project unit",
@@ -87,6 +90,7 @@
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
     "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts --reporter=line",
     "e2e:dev:exec": "playwright test --config e2e/playwright.dev-exec.config.ts --reporter=line && playwright test --config e2e/playwright.dev-exec-gated.config.ts --reporter=line",
+    "e2e:exec:policy": "playwright test --config e2e/playwright.exec-policy.config.ts --reporter=line",
     "e2e:prod": "yarn e2e:prod:http1 && yarn e2e:prod:http2",
     "e2e:prod:http1": "playwright test --config e2e/playwright.server.config.ts --reporter=line",
     "e2e:prod:http2": "playwright test --config e2e/playwright.server-http2.config.ts --reporter=line",

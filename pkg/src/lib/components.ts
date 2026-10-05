@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, relative } from "node:path";
 import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
 import { deepReadDirFlat } from "./file-system.ts";
@@ -164,16 +164,39 @@ export const deriveComponentName = (fileName: string): string => {
   return fileName.replace(/^.*[\\/]/, "").split(".")[0].toLowerCase();
 };
 
+const COMPONENT_FILE_RE = /\.(html|css|js|ts|mjs)$/;
+const DEFAULT_COMPONENT_ROOT = "src/components";
+
+/**
+ * Scan one components root. A missing `src/components` (the default) holds no
+ * components: a pages-only site is valid, and an unmatched tag is still
+ * reported. Any other missing root was named on purpose, so it is an error
+ * that names the path, most often a typo. Unreadable roots still fail with the
+ * original error.
+ */
+export const readComponentRoot = async (root: string, cwd = process.cwd()): Promise<string[]> => {
+  try {
+    return (await deepReadDirFlat(root, COMPONENT_FILE_RE)) ?? [];
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+    const display = relative(cwd, root).replace(/\\/g, "/") || ".";
+    if (code === "ENOENT" && display === DEFAULT_COMPONENT_ROOT) return [];
+    const problem = code === "ENOENT" ? "does not exist" : "is not a directory";
+    throw new Error(
+      `components directory "${display}" ${problem}.\n` +
+      `  It is listed in directory.components in your Bascik config. Create the directory, or fix or remove the entry.`,
+      { cause: error },
+    );
+  }
+};
+
 export const listComponents = async (): Promise<ComponentList> => {
   if (componentListCache) return componentListCache;
   // Every configured root is scanned; the union feeds one collision map so a
   // duplicate filename across roots is the same error as across subfolders.
   const componentFileNames = (
-    await Promise.all(
-      BascikConfig.directory.components.map(
-        async (root) => (await deepReadDirFlat(root, /\.(html|css|js|ts|mjs)$/)) ?? [],
-      ),
-    )
+    await Promise.all(BascikConfig.directory.components.map((root) => readComponentRoot(root)))
   ).flat();
   const componentHtmlFileNames = (componentFileNames as string[]).filter(
     (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
@@ -556,7 +579,13 @@ export const getFirstComponent = (
   __componentScanStatsForTests.prefixBytesExamined += match.index - searchFrom;
   const firstComponentName = match[1].toLowerCase();
   const tagInfo = getTag(htmlString, firstComponentName, componentList, maskedHtml, match.index);
-  const resultObj: Partial<BascikComponent> & { index?: number; startIndex?: number; endIndex?: number } = {
+  const resultObj: Partial<BascikComponent> & {
+    index?: number;
+    startIndex?: number;
+    endIndex?: number;
+    contentStart?: number;
+    closeIndex?: number;
+  } = {
     name: firstComponentName,
     index: match.index,
     ...tagInfo,
@@ -566,6 +595,14 @@ export const getFirstComponent = (
   }
   if (typeof tagInfo.endIndex === "number") {
     Object.defineProperty(resultObj, "endIndex", { value: tagInfo.endIndex, enumerable: false });
+  }
+  // Where the usage tag's inner content starts and its closing tag begins (-1 when the tag has
+  // no closing tag), so a caller can edit just the inner content.
+  if (typeof tagInfo.contentStart === "number") {
+    Object.defineProperty(resultObj, "contentStart", { value: tagInfo.contentStart, enumerable: false });
+  }
+  if (typeof tagInfo.closeIndex === "number") {
+    Object.defineProperty(resultObj, "closeIndex", { value: tagInfo.closeIndex, enumerable: false });
   }
   return resultObj;
 };

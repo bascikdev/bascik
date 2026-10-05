@@ -15,6 +15,8 @@ export const createSourceCycle = (options: {
   compile: (paths: string[], publish: PublishCompilation) => Promise<void>;
   emitter: EventEmitter;
   clock?: FrameworkClock;
+  /** Called for every exec script failure after it was reported as a build-error. */
+  onExecFailure?: (error: unknown, entry: ExecEntry) => void;
 }) => {
   const clock = options.clock ?? nativeClock;
   const pending = new Set<string>();
@@ -34,7 +36,7 @@ export const createSourceCycle = (options: {
   };
   const runEntry = async (entry: ExecEntry) => {
     try { await options.run(entry); }
-    catch (error) { report(error, entry); throw error; }
+    catch (error) { report(error, entry); options.onExecFailure?.(error, entry); throw error; }
   };
   const schedule = () => {
     if (closed || running || timer !== undefined || !pending.size) return;

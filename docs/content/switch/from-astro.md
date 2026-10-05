@@ -1,6 +1,6 @@
 # From Astro
 
-Astro and Bascik both compile component-based markup into zero-runtime HTML by default. The key conceptual difference lies in authoring: Astro uses custom `.astro` templates with JS frontmatter and an islands architecture for client hydration, whereas Bascik uses standard vanilla HTML files resolved by custom tag name, running build scripts in Node.js and scoping vanilla JavaScript and CSS automatically.
+Astro and Bascik both compile component-based markup into HTML that ships no framework runtime by default. The key conceptual difference lies in authoring: Astro uses custom `.astro` templates with JS frontmatter and an islands architecture for client hydration, whereas Bascik uses standard vanilla HTML files resolved by custom tag name, running build scripts in Node.js and scoping vanilla JavaScript and CSS automatically.
 
 ## Mental Model Comparison
 
@@ -17,14 +17,15 @@ Astro and Bascik both compile component-based markup into zero-runtime HTML by d
 
 Convert a single UI component, such as a card or navigation bar, to Bascik's HTML format:
 
-1. Create `src/components/site-nav/site-nav.html` with your navigation markup.
-2. Move any scoped styles into `src/components/site-nav/site-nav.css`.
-3. Include `<site-nav></site-nav>` inside `src/pages/index.html`.
-4. Run `yarn dev` to view the rendered page.
+1. Create a project with `npm create bascik@latest my-site`, or add Bascik to an existing folder with `npm install @bascik/bascik`.
+2. Create `src/components/site-nav/site-nav.html` with your navigation markup.
+3. Move any scoped styles into `src/components/site-nav/site-nav.css`.
+4. Include `<site-nav></site-nav>` inside `src/pages/index.html`.
+5. Run `npm run dev` to view the rendered page.
 
 ## .astro Files → .html Component Files
 
-Rename the file from `ComponentName.astro` to the hyphenated tag name `component-name.html`. Move it to `src/components/`. Remove the frontmatter fences (`---`) and convert the template HTML, the Bascik component file contains only the HTML markup of the component.
+Rename the file from `ComponentName.astro` to the hyphenated tag name `component-name.html` and give it its own directory under `src/components/`, so `SiteNav.astro` becomes `src/components/site-nav/site-nav.html`. Remove the frontmatter fences (`---`) and convert the template HTML. The Bascik component file contains only the HTML markup of the component, and the tag name is the file name.
 
 ```text
 Before (Astro)              After (Bascik)
@@ -59,23 +60,26 @@ const posts = await getCollection('blog');
 ```
 
 ```html
-<!-- src/pages/blog.html (Bascik - after) -->
+<!-- src/pages/blog/index.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
     import { readdir, readFile } from 'node:fs/promises';
     import matter from 'gray-matter';
+    const escape = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
     const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
     const items = await Promise.all(files.map(async f => {
       const { data } = matter(await readFile(`./content/blog/${f}`, 'utf8'));
-      const slug = f.replace('.md', '');
-      return `<li><a href="/blog/${slug}">${data.title}</a></li>`;
+      const slug = f.replace(/\.md$/, '');
+      return `<li><a href="/blog/${slug}/">${escape(data.title)}</a></li>`;
     }));
     console.log(items.join('\n'));
   </script>
 </ul>
 ```
 
-> **No Astro content helpers:** Bascik has no equivalent of `getCollection` or `astro:content`. Read Markdown files directly with Node.js `fs` and a Markdown parser such as `marked` or `gray-matter`.
+`gray-matter` is a normal npm dependency: install it with `npm install gray-matter`. Build scripts print HTML as text, so escape every value that comes from content before you interpolate it.
+
+> **No Astro content helpers:** Bascik has no equivalent of `getCollection`, `astro:content`, or the collection schema in `content.config.ts`. Read Markdown files directly with Node.js `fs`, parse front matter with `gray-matter`, and validate it yourself, for example with a `zod` schema in a shared helper under `src/lib/`.
 
 ## Astro.props → data-bascik-prop-*
 
@@ -115,7 +119,7 @@ const { title, description } = Astro.props;
 ```
 
 > **Text only:** Bascik props accept plain text strings. Passing JSX, objects, arrays, or HTML content as a prop has no equivalent, use a slot for rich HTML content instead.
-
+ See [Slots](/slots) for how fallback content behaves.
 ## `<slot />` → data-bascik-slot
 
 Astro's default `<slot />` maps to a Bascik element with the `data-bascik-slot` attribute. Fallback content goes inside that element, equivalent to Astro's `<slot>Fallback</slot>`.
@@ -178,7 +182,7 @@ Astro's `<slot name="header" />` maps to a receiver element with `data-bascik-sl
 
 ## Astro Scoped `<style>` → Paired .css Files
 
-Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's equivalent is a paired `.css` file in the same directory as the component HTML. Remove the `<style>` block from the component file and paste its contents into the `.css` file. Class names, element selectors, and `@keyframes` are scoped automatically at build time with no changes to selectors needed.
+Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's equivalent is a paired `.css` file in the same directory as the component HTML. Remove the `<style>` block from the component file and paste its contents into the `.css` file. Class names, element selectors (including descendant chains such as `nav a` and `ul li *`), and `@keyframes` are scoped automatically at build time, and selectors that only target markup in the same component need no changes. The exception is markup that belongs to another component, covered below.
 
 ```astro
 <!-- SiteNav.astro (Astro - before) -->
@@ -205,9 +209,15 @@ Astro scopes `<style>` blocks inside `.astro` files to that component. Bascik's 
 .logo { font-weight: bold; }
 ```
 
-## Content Collections → `<script data-bascik-build>`
+One difference: in Astro a parent's selector such as `nav a { }` can also style the root element of a child component placed inside that `nav`. In Bascik it cannot, because each component's CSS applies only to markup written in its own template. Put a class on the child's usage tag and define it in the parent's CSS instead. See [Styling a Child Component from Its Parent](/attribute-inheritance#styling-a-child-component-from-its-parent).
 
-Astro's Content Collections provide a typed, validated interface to Markdown and MDX files. In Bascik, read the same source files directly from the filesystem in a build script using Node.js `fs` and a Markdown/front-matter parser.
+### Build Script Output
+
+Markup that a component's build script prints is scoped like the rest of the template, including markup returned by a helper the script imports and markup from page-aware scripts (`data-bascik-build="page"`). So a helper in `src/lib/` can print a post card, and the component's `.card` and `h2 a` rules still match it. Classes the component's own stylesheet does not define are never scoped, so a global stylesheet listed in `assets.inlineStyles` can always style them.
+
+## Content Collections → Dynamic Routes
+
+Astro's Content Collections provide a typed, validated interface to Markdown and MDX files. In Bascik, read the same source files directly from the filesystem in a build script using Node.js `fs` and a Markdown/front-matter parser, and generate one page per entry with a [dynamic route](/dynamic-routes).
 
 ```astro
 <!-- src/pages/blog/[slug].astro (Astro - before) -->
@@ -226,49 +236,50 @@ const { Content } = await post.render();
 <Content />
 ```
 
-In Bascik, generate one page file per slug before running the build:
+In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html` lists the slugs in a `<script data-bascik-routes>` block, and each generated page reads its slug from `BASCIK_ROUTE`. The directory form produces trailing-slash URLs such as `/blog/first-post/`, matching Astro; `src/pages/blog/[slug].html` would produce `/blog/first-post.html` instead.
 
-```js
-// scripts/generate-blog.js
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import matter from 'gray-matter';
-import { marked } from 'marked';
-
-await mkdir('./src/pages/blog', { recursive: true });
-const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
-
-for (const file of files) {
-  const raw = await readFile(`./content/blog/${file}`, 'utf8');
-  const { data, content } = matter(raw);
-  const slug = file.replace('.md', '');
-  const body = marked(content);
-
-  await writeFile(`./src/pages/blog/${slug}.html`, `<!DOCTYPE html>
+```html
+<!-- src/pages/blog/[slug]/index.html (Bascik - after) -->
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>${data.title}</title>
-  <link rel="stylesheet" href="/css/styles.css" />
+  <script data-bascik-routes>
+    import { getPosts } from '@/lib/posts.ts';
+    console.log(JSON.stringify((await getPosts()).map((post) => ({ params: { slug: post.id } }))));
+  </script>
+  <script data-bascik-build>
+    import { getPost } from '@/lib/posts.ts';
+    import { escapeHtml } from '@/lib/site.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    const { data } = await getPost(params.slug);
+    console.log(`<title>${escapeHtml(data.title)}</title>`);
+  </script>
 </head>
 <body>
   <site-nav></site-nav>
-  <main class="prose">
-    <h1>${data.title}</h1>
-    ${body}
-  </main>
-  <site-footer></site-footer>
+  <script data-bascik-build>
+    import { getPost } from '@/lib/posts.ts';
+    import { renderPost } from '@/lib/render.ts';
+    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+    console.log(renderPost(await getPost(params.slug)));
+  </script>
+  <site-footer />
 </body>
-</html>`);
-}
+</html>
 ```
 
-```json
-{
-  "scripts": {
-    "generate": "node scripts/generate-blog.js",
-    "dev": "npm run generate && bascik",
-    "build": "npm run generate && bascik --build"
-  }
-}
+`getPosts`, `getPost`, and `renderPost` are your own helpers in `src/lib/`, imported with the `@/` alias. They read `content/blog/*.md`, validate the front matter, render the Markdown, and escape titles before printing them. Bascik adds every generated URL to `sitemap.xml`. Do not write generated page files into `src/pages/`.
+
+Because these scripts read `content/`, which Bascik cannot see as an import, exclude them from the build-script cache and watch the folder in development:
+
+```ts
+// bascik.config.ts
+import { defineConfig } from '@bascik/bascik';
+
+export default defineConfig({
+  pipeline: { watchPaths: ['content/', 'src/lib/'] },
+  scripts: { cache: { exclude: ['src/pages/blog/**'] } },
+});
 ```
 
 ## import.meta.env → process.env
@@ -291,9 +302,11 @@ const apiUrl = import.meta.env.API_URL;
 </script>
 ```
 
-## MDX → HTML Component + Build Script
+This fetch runs during the build, so the build machine needs network access to `API_URL`. Bascik itself provides `BASCIK_SITE_URL`, `BASCIK_PAGE_PATH`, `BASCIK_ROUTE`, and `BASCIK_BUILD` to build scripts; see [Environment Variables](/environment-variables).
 
-Astro supports `.mdx` files as pages with embedded component usage. Bascik has no native MDX support. Convert MDX pages by processing the Markdown content with a build script and adding any interactive sections as plain Bascik components around the generated HTML.
+## MDX → Markdown with Component Tags
+
+Astro supports `.mdx` files with embedded component usage. Bascik has no native MDX support, but Markdown parsers such as `marked` pass raw HTML through, and Bascik expands any component tag that a build script prints. So rename the file to `.md`, delete the `import` lines, and write the component as its tag, in the same place in the text.
 
 ```mdx
 <!-- src/content/blog/intro.mdx (Astro - before) -->
@@ -303,38 +316,37 @@ title: Introduction
 
 import CodeExample from '../components/CodeExample.astro';
 
-# Introduction
-
 Welcome to our docs.
 
 <CodeExample lang="js" code="console.log('hello')" />
+
+## Next steps
 ```
 
-```html
-<!-- src/pages/blog/intro.html (Bascik - after) -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <title>Introduction</title>
-  <link rel="stylesheet" href="/css/styles.css" />
-</head>
-<body>
-  <site-nav></site-nav>
-  <main class="prose">
-    <script data-bascik-build>
-      import { readFile } from 'node:fs/promises';
-      import { marked } from 'marked';
-      const md = await readFile('./content/blog/intro.md', 'utf8');
-      console.log(marked(md));
-    </script>
-    <code-example
-      data-bascik-prop-lang="js"
-      data-bascik-prop-code="console.log('hello')"
-    ></code-example>
-  </main>
-  <site-footer></site-footer>
-</body>
-</html>
+```md
+<!-- content/blog/intro.md (Bascik - after) -->
+---
+title: Introduction
+---
+
+Welcome to our docs.
+
+<code-example data-bascik-prop-lang="js" data-bascik-prop-code="console.log('hello')"></code-example>
+
+## Next steps
 ```
 
-The Markdown prose is rendered at build time by the build script and injected as HTML. Bascik component tags that follow (or are output by the build script) are then expanded in the next pass.
+The post page renders this Markdown in a build script, as in the dynamic route above. The `<code-example>` tag stays between the two paragraphs and is expanded into the component in the next pass. Props are text only, so JavaScript expressions in MDX props become literal strings. Client behavior is plain HTML and JavaScript in the component; there is no hydration step and no equivalent of `client:*` directives.
+
+## What Has No Built-In Equivalent
+
+These Astro integrations are not part of Bascik:
+
+| Astro | Bascik replacement |
+| --- | --- |
+| `@astrojs/rss` | A `pipeline.exec` script with `phase: 'post'` that writes `rss.xml` to the output directory, using a feed library such as `feed` |
+| `@astrojs/sitemap` | Built in. `sitemap.xml` and `robots.txt` are generated by `bascik --build` when a site URL is set. See [Sitemap & robots.txt](/sitemap) |
+| `astro:assets` image optimization | None. Ship images at the sizes you authored, with `width` and `height`, or resize them in your own exec script |
+| Shiki syntax highlighting | None. Highlight in your Markdown render step with a library such as `prismjs` |
+| `<Font>` and fallback metrics | None. Declare `@font-face` in a global stylesheet and preload the files yourself |
+| `Astro.url` for canonical and active links | `BASCIK_PAGE_PATH` and `BASCIK_SITE_URL`, read in a [page-aware script](/how-to/page-aware-scripts) |

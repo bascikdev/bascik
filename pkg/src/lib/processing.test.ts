@@ -414,6 +414,149 @@ describe("recursivelyTranspile – integration", () => {
     );
   });
 
+  describe("forwarding the default slot into a nested component", () => {
+    const innerBox = {
+      fileName: "components/inner-box.html",
+      fileContent: "<section><div data-bascik-slot>inner fallback</div></section>",
+    };
+
+    it("fills a default slot marker written inside a child's usage tag", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div class="outer"><inner-box><div data-bascik-slot>outer fallback</div></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>given</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe('<div class="outer"><section><p>given</p></section></div>');
+      expect(transpiledHtmlBody).not.toContain("data-bascik-slot");
+    });
+
+    it("uses the marker's own fallback when the outer tag has no content", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div class="outer"><inner-box><div data-bascik-slot>outer fallback</div></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile("<outer-box></outer-box>", componentList);
+      expect(transpiledHtmlBody).toBe('<div class="outer"><section>outer fallback</section></div>');
+    });
+
+    it("keeps the rest of the child's content around the forwarded slot", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div><inner-box class="x"><h2>Title</h2><div data-bascik-slot></div><p>after</p></inner-box></div>',
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><em>body</em></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        '<div><section class="x"><h2>Title</h2><em>body</em><p>after</p></section></div>',
+      );
+    });
+
+    it("forwards through two levels of nesting", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<main><mid-box><div data-bascik-slot></div></mid-box></main>",
+        },
+        "mid-box": {
+          fileName: "components/mid-box.html",
+          fileContent: "<div class='mid'><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><b>deep</b></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe("<main><div class='mid'><section><b>deep</b></section></div></main>");
+    });
+
+    it("keeps two instances with different content separate", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box>one</outer-box><outer-box>two</outer-box><outer-box></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        "<div><section>one</section></div><div><section>two</section></div><div><section>inner fallback</section></div>",
+      );
+    });
+
+    it("inserts content with replacement tokens literally", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box><div data-bascik-slot></div></inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>$& $1 $` $' $$</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe("<div><section><p>$& $1 $` $' $$</p></section></div>");
+    });
+
+    it("still routes named wrappers inside a child's usage tag to the child", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent:
+            '<div><named-box><div data-bascik-slot="head">child head</div><div data-bascik-slot></div></named-box></div>',
+        },
+        "named-box": {
+          fileName: "components/named-box.html",
+          fileContent: '<article><h1 data-bascik-slot="head">fallback head</h1><div data-bascik-slot>fallback body</div></article>',
+        },
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><i>forwarded body</i></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toBe(
+        "<div><article>child head<i>forwarded body</i></article></div>",
+      );
+    });
+
+    it("does not treat a valueless marker on the child's own usage tag as a slot", () => {
+      const componentList = {
+        "outer-box": {
+          fileName: "components/outer-box.html",
+          fileContent: "<div><inner-box data-bascik-slot>kept</inner-box></div>",
+        },
+        "inner-box": innerBox,
+      };
+      const { transpiledHtmlBody } = recursivelyTranspile(
+        "<outer-box><p>x</p></outer-box>",
+        componentList,
+      );
+      expect(transpiledHtmlBody).toContain("kept");
+      expect(transpiledHtmlBody).not.toContain("<p>x</p>");
+    });
+  });
+
   it("tracks usedComponents", () => {
     const componentList = {
       "my-btn": {
@@ -553,6 +696,31 @@ describe("recursivelyTranspile – recursion guard", () => {
       [],
       PAGE_PATH,
     )).toThrow(/component expansion.*safety limits/i);
+  });
+
+  it("does not expand a component tag written inside the template's own HTML comment", () => {
+    // Development keeps comments (no HTML minification). A comment that names the component,
+    // such as a usage note, is text and must never be expanded, or the component appears to
+    // include itself. Two comment shapes: the whole comment, and one whose text spans lines.
+    const componentList = {
+      "post-body": {
+        fileName: "components/post-body.html",
+        fileContent: "<!-- the page prints Markdown inside <post-body> -->\n" +
+          "<!-- a multi-line note\n     about <post-body>. -->" +
+          "<div class=\"markdown\"><div data-bascik-slot></div></div>",
+      },
+    };
+    const { transpiledHtmlBody, usedComponents } = recursivelyTranspile(
+      "<post-body><h2>Heading</h2></post-body><post-body><p>Second</p></post-body>",
+      componentList,
+      [],
+      PAGE_PATH,
+    );
+    expect(usedComponents).toHaveLength(2);
+    expect(transpiledHtmlBody).toContain("<h2>Heading</h2>");
+    expect(transpiledHtmlBody).toContain("<p>Second</p>");
+    // The comments survive as written.
+    expect(transpiledHtmlBody).toContain("<!-- the page prints Markdown inside <post-body> -->");
   });
 });
 
@@ -1161,7 +1329,7 @@ describe("processPageBatch – open page priority & instant reloading", () => {
   });
 
   it("reports only active per-page work time, excluding a shared batch wait", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => { });
     const nowSpy = vi.spyOn(performance, "now");
 
     try {
@@ -1568,6 +1736,68 @@ describe("transpilePage – unresolved component tag warning", () => {
     warnSpy.mockRestore();
   });
 
+  it("does not warn about tags declared in components.external, exact or wildcard", async () => {
+    const html = [
+      "<!DOCTYPE html><html><head></head><body>",
+      "<heading-anchors><h2>x</h2></heading-anchors>",
+      "<vendor-chart></vendor-chart>",
+      "</body></html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["Heading-Anchors", "vendor-*"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      await transpilePage(PAGE_PATH, {});
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("Unresolved component tag"));
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
+  });
+
+  it("still warns about an undeclared tag when others are external, and names only that tag", async () => {
+    const html = [
+      "<!DOCTYPE html><html><head></head><body>",
+      "<heading-anchors></heading-anchors><my-typo></my-typo>",
+      "</body></html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["heading-anchors"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      await transpilePage(PAGE_PATH, {});
+      const message = warnSpy.mock.calls.map((call) => String(call[0])).find((text) => text.includes("Unresolved"));
+      expect(message).toContain("<my-typo>");
+      expect(message).not.toContain("<heading-anchors>");
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
+  });
+
+  it("does not let an external declaration shadow a real component of the same name", async () => {
+    const componentList = {
+      "heading-anchors": {
+        fileName: "components/heading-anchors.html",
+        fileContent: "<section>from component</section>",
+      },
+    };
+    const html = "<!DOCTYPE html><html><head></head><body><heading-anchors></heading-anchors></body></html>";
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const original = (BascikConfig as any).components;
+    (BascikConfig as any).components = { external: ["heading-anchors"] };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    try {
+      const result = await transpilePage(PAGE_PATH, componentList);
+      expect(JSON.stringify(result)).toContain("from component");
+    } finally {
+      warnSpy.mockRestore();
+      (BascikConfig as any).components = original;
+    }
+  });
+
   it("does not warn about hyphenated tags inside script/style elements", async () => {
     const html = [
       "<!DOCTYPE html><html>",
@@ -1687,7 +1917,7 @@ describe("transpilePage – usedComponentsNames", () => {
         fileContent: "<header><p>title</p></header>",
       },
     };
-    const html = "<!DOCTYPE html><html><head></head><body><site-header></site-header></body></html>";
+    const html = "<!DOCTYPE html><html><head></head><body><site-header /></body></html>";
     (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
     const result = await transpilePage(PAGE_PATH, componentList);
     expect(result).not.toBeNull();

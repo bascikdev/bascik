@@ -98,7 +98,7 @@ describe('Modal component fallback contract', () => {
 
 ## Validating HTML Spec Compliance with parse5
 
-Bascik is a build tool, not a browser. Browsers silently recover from malformed HTML. Bascik's job is to deliver output that is correct by construction — so holding your dist to the full WHATWG HTML5 spec is the right bar.
+Bascik is a build tool, not a browser. Browsers silently recover from malformed HTML. Bascik's job is to deliver output that is correct by construction, so holding your dist to the full WHATWG HTML5 spec is the right bar.
 
 [parse5](https://parse5.js.org/) is the reference WHATWG-spec HTML5 parser used by jsdom and Playwright. Install it as a dev dependency and use its `onParseError` callback to fail your test on any spec violation:
 
@@ -127,7 +127,7 @@ async function walk(dir: string, ext: string): Promise<string[]> {
   return out;
 }
 
-describe('dist HTML — WHATWG spec compliance', () => {
+describe('dist HTML: WHATWG spec compliance', () => {
   it('every page is free of parse errors', async () => {
     const files = await walk(DIST_DIR, '.html');
     const failures: string[] = [];
@@ -156,9 +156,9 @@ describe('dist HTML — WHATWG spec compliance', () => {
 });
 ```
 
-The `onParseError` callback receives a `ParserError` with a `code` field — a WHATWG error code string like `eof-in-element-that-can-contain-only-text` or `unexpected-null-character` — plus `startLine` and `startCol` for actionable failure messages. `sourceCodeLocationInfo: true` is what unlocks line/column reporting.
+The `onParseError` callback receives a `ParserError` with a `code` field (a WHATWG error code string like `eof-in-element-that-can-contain-only-text` or `unexpected-null-character`) plus `startLine` and `startCol` for actionable failure messages. `sourceCodeLocationInfo: true` is what unlocks line/column reporting.
 
-This single test catches an entire class of compiler pipeline bugs — corrupted script bodies, mismatched tags, raw control characters from unreplaced internal tokens — that regex-based output checks miss entirely.
+This single test catches an entire class of compiler pipeline bugs, such as corrupted script bodies, mismatched tags, and raw control characters from unreplaced internal tokens, that regex-based output checks miss entirely.
 
 ## What to Test vs What to Avoid
 

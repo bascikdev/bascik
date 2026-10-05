@@ -1,5 +1,5 @@
 import { readdir, stat, unlink } from "node:fs/promises";
-import { matchesGlob, join } from "node:path";
+import { matchesGlob, join, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { nativeClock, type FrameworkClock } from "./clock.ts";
 
@@ -23,20 +23,20 @@ export const isScriptCacheEnabledForPath = (filePath?: string): boolean => {
   }
 
   const normalized = filePath.replace(/\\/g, "/");
+  const projectRelative = relative(process.cwd(), normalized).replace(/\\/g, "/");
+  const pathsToMatch = [normalized, normalized.replace(/^\.?\//, ""), projectRelative];
+  const matchesPath = (pattern: string): boolean =>
+    pathsToMatch.some((path) => matchesGlob(path, pattern));
 
   // Check include list
   if (cacheConfig.include && cacheConfig.include.length > 0) {
-    const included = cacheConfig.include.some((pattern) =>
-      matchesGlob(normalized, pattern) || matchesGlob(normalized.replace(/^\.?\//, ""), pattern),
-    );
+    const included = cacheConfig.include.some(matchesPath);
     if (!included) return false;
   }
 
   // Check exclude list
   if (cacheConfig.exclude && cacheConfig.exclude.length > 0) {
-    const excluded = cacheConfig.exclude.some((pattern) =>
-      matchesGlob(normalized, pattern) || matchesGlob(normalized.replace(/^\.?\//, ""), pattern),
-    );
+    const excluded = cacheConfig.exclude.some(matchesPath);
     if (excluded) return false;
   }
 

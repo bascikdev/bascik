@@ -261,7 +261,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories, pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion, and output directory or file write failures as hard errors. It waits for all page jobs, reports every failure together, exits nonzero, and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:
@@ -271,7 +271,7 @@ Build failed with 2 page errors:
     write output: EACCES: permission denied
 ```
 
-Unresolved component tags remain transpilation warnings. `bascik --check` reports them as errors, making that command the strict CI gate for component references.
+Unresolved component tags remain transpilation warnings and never fail a build. `bascik --check` lists them as warnings (exit code 0); pass `--strict` to make them fail, which turns that command into the CI gate for component references. Tags that belong to a custom element or library can be declared in [`components.external`](/configuration#componentsexternal) so neither the build warning nor `--check` reports them, which is what lets `--check --strict` pass on a site that uses them.
 
 Component transpilation failure:
 
@@ -316,6 +316,7 @@ bascik --check
 Components with no matching file (3)
   These are either typos, or third-party web components. Bascik does not
   transpile them; they are passed through to the browser unchanged.
+  Declare intentional ones in components.external to hide them.
 
   <model-viewer>     src/pages/gallery.html:42
   <ion-icon>         src/components/nav/nav.html:8, src/pages/index.html:14
@@ -353,7 +354,7 @@ Unused components (1)
 | Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
 | WHATWG HTML5 parse errors in compiled `dist/` HTML files | `dist-html-spec` | Error |
 
-The `dist-html-spec` check requires [parse5](https://parse5.js.org/) — the reference WHATWG HTML5 parser — to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
+The `dist-html-spec` check requires [parse5](https://parse5.js.org/), the reference WHATWG HTML5 parser, to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
 
 ```sh
 npm install --save-dev parse5

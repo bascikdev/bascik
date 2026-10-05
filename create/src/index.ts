@@ -6,7 +6,7 @@ import { parseCliOptions } from "./cli.js";
 import { scaffold, validateProjectName } from "./scaffold.js";
 
 const args = process.argv.slice(2);
-const { yesFlag, noDevFlag } = parseCliOptions(args);
+const { yesFlag, noDevFlag, noInstallFlag } = parseCliOptions(args);
 const nameArg = args.find((a) => !a.startsWith("-"));
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -35,7 +35,7 @@ let shouldInstall: boolean;
 let shouldDev: boolean;
 
 if (yesFlag) {
-  shouldInstall = true;
+  shouldInstall = !noInstallFlag;
   shouldDev = !noDevFlag;
 } else {
   const installAnswer = await rl.question("Install dependencies now? (Y/n) ");

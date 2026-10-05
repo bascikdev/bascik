@@ -122,6 +122,9 @@ export default defineConfig({
     out: 'dist',
     api: 'src/api',
   },
+  components: {
+    external: [],
+  },
   scoping: {
     scriptBlocks: true,
     inheritAttributes: true,
@@ -197,6 +200,7 @@ Here are just a few ways Bascik puts architectural choices back in your hands:
 - **Style Deduplication (`scoping.deduplicateCss`):** Choose between clean, single-definition scoped stylesheets for optimal payload sizes, or individual per-instance styling for seamless local script querying.
 - **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently, or plug in your own custom async minifiers (like esbuild or terser). TypeScript in referenced `.ts` companions and `type="text/typescript"` blocks is stripped automatically before minification, so no minifier configuration is needed for it.
 - **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
+- **Exec Failure Behavior (`pipeline.onExecError`):** Choose whether a failing `pipeline.exec` script stops the run (`'error'`) or is reported while it continues (`'warn'`). Defaults to `'warn'` in dev and `'error'` for `--build`.
 - **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
 - **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
 - **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
@@ -242,6 +246,7 @@ Rules that apply across all roots:
 - **`bascik add` targets the first listed root** and prints where the files landed. A team can keep vendored components separate from hand-written ones by listing a dedicated root first, for example `['src/vendor-components', 'src/components']`.
 - **Roots may not be nested inside one another.** `['src/components', 'src/components/shared']` is rejected at startup because the parent already includes the child.
 - **Duplicate roots are detected by real path**, so a symlink to an already-listed directory is rejected, not scanned twice.
+- **A listed root must exist.** A missing root fails the build and `bascik --check` with a message that names it, since a missing root is usually a typo. Only the default, `src/components`, may be absent: the project then has no components.
 - **Symlinks inside a root are followed.** A symlinked directory or file under a components root is discovered and watched like any other; a dangling link or a link cycle prints one warning and is skipped.
 
 `directory.pages` is the publish tree. Place images, fonts, downloads, standalone browser JavaScript, CSS, and other public assets beside pages or in subdirectories such as `src/pages/assets/`. Eligible files copy to `directory.out` with their relative paths preserved, while CSS and JavaScript are processed by the configured minifiers. In development, `assets.symlink: true` can link unchanged assets instead.
@@ -255,6 +260,30 @@ The following built-in exclusions always apply:
 - Stylesheets configured in `assets.inlineStyles`
 
 Files in `directory.components` are source-only and are never copied directly.
+
+### `components`
+
+```ts
+components: {
+  external: [], // hyphenated tags owned by a custom element or library, not a Bascik component
+}
+```
+
+### `components.external`
+
+An array of hyphenated tag names that belong to a browser custom element or a third-party library rather than a file in `directory.components`. Entries are exact tag names or `*` wildcard patterns, matched case-insensitively with the same rules as [`scoping.preserve`](#scopingpreserve).
+
+```ts
+export default defineConfig({
+  components: {
+    external: ['heading-anchors', 'model-viewer', 'vendor-*'],
+  },
+});
+```
+
+By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose.
+
+This option changes diagnostics only. A declared tag is passed to the browser unchanged. If a real component file has the same name, the component still expands. It does not stop `id`, `name`, or `class` scoping inside the element; use [`scoping.preserve`](#scopingpreserve) for that. The two options are independent, and most external elements need only `components.external`.
 
 ### `scoping`
 
@@ -310,7 +339,7 @@ export default defineConfig({
 
 Multiple tags are safe to preserve together. For example, `preserve: ['pre', 'code']` keeps each element's own content intact even when inline component styles trigger overlapping compiler passes.
 
-For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. See [Preserve Scoping](/preserve).
+For one element rather than every matching tag, use `data-bascik-preserve` or a space-separated subset such as `data-bascik-preserve="name"`. Preserve scopes inherit through descendants and nesting only widens. Preserving an `id` also stops Bascik from rewriting references inside the preserved region, so a link and its target must be both preserved or both scoped. Preserve does not silence unresolved-tag warnings; use [`components.external`](#componentsexternal) for that. See [Preserve Scoping](/preserve).
 
 ### `minify` (BYOMinifier)
 
@@ -396,8 +425,11 @@ pipeline: {
     },
   ],
   workers: false,                    // enable multi-threaded worker pool (defaults to false; dev advises true on large multi-core workloads)
+  onExecError: 'warn',               // 'warn' | 'error'. Default: 'warn' in dev, 'error' for --build
 }
 ```
+
+`pipeline.onExecError` sets what a failing exec script does. With `'error'`, a build stops and exits 1 and a dev session exits 1. With `'warn'`, the failure is reported and the run continues. The default is `'warn'` for the dev server (a typo in a script should not end your session) and `'error'` for `--build` (a failed script must not produce a build that looks successful). See [When a script fails](/exec-scripts#when-a-script-fails).
 
 `pipeline.exec[].watch` selects scripts after matching source edits. Pages, components, `pipeline.watchPaths`, and exec inputs share one phase-ordered rebuild when exec watches are configured: pre completes before compilation, parallel starts alongside it, and post starts after compilation and disk writes finish. Only matching scripts rerun; exec-only inputs can rebuild associated pages without duplicate `pipeline.watchPaths`. Completion never starts another compile. Write generated artifacts only to `dist/`, never sources or watched paths, and never watch generated outputs. There is no `outputs` option. Build helpers under `scripts.importRoot` and external `assets.inlineStyles` need a source watch. See [Exec Scripts](/exec-scripts).
 
@@ -407,7 +439,11 @@ Script execution configuration and error handling.
 
 ```ts
 scripts: {
-  cache: { enabled: true },     // cache build script output
+  cache: {
+    enabled: true,
+    include: ['src/pages/**'],  // optional project-root-relative globs
+    exclude: ['src/pages/live/**'],
+  },
   typescript: true,             // browser TS compiler: true | false | function
   onBuildScriptError: 'error',  // 'error' | 'warn' | 'ignore'
   onRoutesScriptError: 'error', // 'error' | 'warn' | 'ignore'
@@ -416,6 +452,8 @@ scripts: {
   importRoot: 'src',            // directory that @/ and / resolve against
 }
 ```
+
+`scripts.cache.include` and `scripts.cache.exclude` are matched against project-root-relative script source paths. For example, `src/pages/live/**` excludes scripts in that directory whether the compiler supplies a relative or absolute source path. A `**/src/pages/live/**` pattern remains supported for projects that already use that form.
 
 #### `scripts.typescript`
 

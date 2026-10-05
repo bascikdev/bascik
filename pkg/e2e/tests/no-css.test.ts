@@ -3,6 +3,9 @@
  *
  * Two instances of <no-css-comp> are rendered. Tests verify:
  *   - The component renders correctly without a paired CSS file
+ *   - Its classes stay literal, because only classes a component's own stylesheet
+ *     defines are scoped, and a component with no stylesheet defines none
+ *   - A class from the site's global stylesheet therefore styles it
  *   - No component-specific <style> rule is injected for no-css-comp
  *   - The inline JS counter works: starts at 0, increments on click
  *   - Multiple clicks accumulate correctly
@@ -14,12 +17,14 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // Helpers
 // ---------------------------------------------------------------------------
 
+// These are compiler assertions: they target the literal class names the component
+// authored, which stay unscoped because the component has no stylesheet.
 function getInstance(page: Page, n: number): Locator {
-  return page.locator('.bascik__no-css-comp__bare-wrapper').nth(n);
+  return page.locator('.bare-wrapper').nth(n);
 }
 
 function counter(inst: Locator): Locator {
-  return inst.locator('.bascik__no-css-comp__bare-counter');
+  return inst.locator('.bare-counter');
 }
 
 function incBtn(inst: Locator): Locator {
@@ -40,9 +45,18 @@ test.describe('no-css-test page', () => {
   test('component renders without CSS file', async ({ page }) => {
     await expect(getInstance(page, 0)).toBeVisible();
     await expect(getInstance(page, 1)).toBeVisible();
-    await expect(page.locator('.bascik__no-css-comp__bare-text').first()).toHaveText(
+    await expect(page.getByTestId('bare-text').first()).toHaveText(
       'This component has no CSS file.'
     );
+  });
+
+  // ── 1b. Classes are literal, so global stylesheet rules apply ────────────
+
+  test('a class with no definition in the component stays literal and the global rule applies', async ({ page }) => {
+    const text = page.getByTestId('bare-text').first();
+    await expect(text).toHaveAttribute('class', 'bare-text no-css-global-probe');
+    // src/css/inlined-global.css sets this color; scoping the class would break the match.
+    await expect(text).toHaveCSS('color', 'rgb(12, 34, 56)');
   });
 
   // ── 2. Counter starts at 0 ────────────────────────────────────────────────
@@ -100,8 +114,6 @@ test.describe('no-css-test page', () => {
         .map(s => s.textContent ?? '')
         .join('\n');
     });
-    expect(styleContents).not.toContain('bascik__no-css-comp__bare-wrapper');
-    expect(styleContents).not.toContain('bascik__no-css-comp__bare-counter');
-    expect(styleContents).not.toContain('bascik__no-css-comp__bare-text');
+    expect(styleContents).not.toContain('bascik__no-css-comp');
   });
 });

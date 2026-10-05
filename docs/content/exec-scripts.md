@@ -132,15 +132,50 @@ When running `bascik` in development mode:
 4. Edits arriving during pre, compilation, or post are retained for a following cycle. Failed-cycle paths are retained for retry when another source edit arrives, not retried endlessly without an edit.
 5. Successful compilation reloads are held until post succeeds. Pre, compilation, or post failure reports a build-error without a success reload for that cycle.
 
+## When a script fails
+
+`pipeline.onExecError` decides what a failing script does. It applies to every phase (`pre`, `parallel`, and `post`), at startup and on later edits.
+
+| `onExecError` | `bascik` (dev) | `bascik --build` |
+| :--- | :--- | :--- |
+| `'warn'` | Reports a build-error in the terminal and in open browsers, keeps serving, and retries on the next edit. **Default.** | Logs the failure and keeps building. The build can still exit 0. |
+| `'error'` | Reports the failure and exits 1. | Stops the build and exits 1, without printing "Build complete". **Default.** |
+
+The defaults are opposite on purpose. While you write a script, a typo should not take down the dev server every time. In a build, a script failure must never produce output that looks successful. Set the option to flip either one:
+
+```ts
+// bascik.config.ts
+export default defineConfig({
+  pipeline: {
+    onExecError: 'error', // dev also stops on a failing script
+    exec: [{ script: 'scripts/generate-feed.ts', phase: 'post' }],
+  },
+});
+```
+
+To change only one mode, use the [mode exports](/configuration#mode-overrides-dev-build-server), like any other option. This makes dev stop on a failing script and leaves builds on their default:
+
+```ts
+export const dev = defineConfig({
+  pipeline: { onExecError: 'error' },
+});
+```
+
+Setting it in the default export changes both modes. It does not change how page compile errors are handled: a page that fails to compile is reported in dev and fails a build either way.
+
+A `pre` failure under `'warn'` does not skip anything: pages still compile, so a page that reads the missing output may fail on its own. When a `post` script reads content that is still being written, wait for the "Server running" line before editing.
+
 ### Start-of-session behavior
 
 A watched exec script still runs once at startup as part of its `phase`. A `pre` script is awaited before any page compiles; a `parallel` script starts alongside the server and page compilation; a `post` script runs after the initial transpile. Registering the dev watcher does **not** re-run that startup work: each session runs an exec script exactly once for its phase plus debounced reruns for later matching edits.
+
+A failing script follows [When a script fails](#when-a-script-fails) the same way at startup as in a later edit cycle.
 
 ### Parallel scripts in dev
 
 A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
 
-In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and reports any failure with a nonzero exit status.
+In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and under the default `onExecError: 'error'` reports any failure with a nonzero exit status.
 
 ### Overlapping watches share one cycle
 

@@ -98,6 +98,7 @@ import {
   maskRawTextContent,
 } from "./components.ts";
 import { stripPreserveDirectives } from "./shielding.ts";
+import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
 
@@ -615,14 +616,34 @@ export const recursivelyTranspile = (
       const protectedChildren: Array<{ placeholder: string; content: string }> = [];
       let slotTemplate = component.fileContent;
       let childSearchFrom = 0;
+      // The usage site's default slot content, computed once. It is also what a default slot
+      // marker written inside a nested child's usage tag receives (see below).
+      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
       while (childSearchFrom < slotTemplate.length) {
         const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
           startIndex?: number;
           endIndex?: number;
+          contentStart?: number;
+          closeIndex?: number;
         };
         if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
         const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
-        const childContent = slotTemplate.slice(child.startIndex, child.endIndex);
+        let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
+        // Forward the default slot: a valueless `data-bascik-slot` marker written between a
+        // child's usage tags is this template's own marker (named wrappers stay with the
+        // child). Only the child's inner content is touched, never its opening tag.
+        if (
+          typeof child.contentStart === "number" &&
+          typeof child.closeIndex === "number" &&
+          child.closeIndex > child.contentStart
+        ) {
+          const innerStart = child.contentStart - child.startIndex;
+          const innerEnd = child.closeIndex - child.startIndex;
+          childContent =
+            childContent.slice(0, innerStart) +
+            replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
+            childContent.slice(innerEnd);
+        }
         protectedChildren.push({ placeholder, content: childContent });
         slotTemplate =
           slotTemplate.slice(0, child.startIndex) +
@@ -633,9 +654,6 @@ export const recursivelyTranspile = (
       // Resolve named slots from the usage inner HTML.
       const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
       slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
-
-      // Resolve the default slot: innerContent with named-slot wrappers stripped.
-      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
 
       // Replace <element data-bascik-slot> default slot markers.
       // Named slots were already handled above by replaceNamedSlots.
@@ -680,7 +698,10 @@ export const recursivelyTranspile = (
         // safe; without known indices, be conservative.
         searchFrom = typeof sIdx === "number" ? sIdx : 0;
       } else {
-        masked = masked.slice(0, sIdx) + transpiledTag + masked.slice(eIdx);
+        // Mask the inserted template too. Without HTML minification (the dev server, or
+        // `minify.html: false`) a template keeps its comments, and a component tag named in
+        // one, such as a usage note, must stay text instead of being expanded.
+        masked = masked.slice(0, sIdx) + maskRawTextContent(transpiledTag) + masked.slice(eIdx);
         searchFrom = sIdx;
       }
 
@@ -1553,6 +1574,7 @@ export const transpilePage = async (
   // matching component file and will appear unresolved in the output HTML.
   {
     const unresolved = new Set<string>();
+    const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
     for (const chunk of [transpiledHtmlBody, transpiledHeadContent]) {
       // Strip HTML comments as well as <script>, <style>, and <textarea> content
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
@@ -1568,6 +1590,7 @@ export const transpilePage = async (
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {
         const tag = m[1].toLowerCase();
+        if (isExternalTag(tag)) continue;
         unresolved.add(tag);
       }
     }

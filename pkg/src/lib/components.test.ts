@@ -3,6 +3,9 @@
  * Test may have been modified by hand.
  */
 import { describe, expect, it, vi } from "vitest";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ComponentList } from "./types.ts";
 
 import {
@@ -20,6 +23,7 @@ import {
   mergeAttributesOntoRoot,
   listComponents,
   invalidateComponentListCache,
+  readComponentRoot,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 
@@ -749,10 +753,77 @@ describe("extractDefaultSlotContent", () => {
 });
 
 describe("listComponents", () => {
-  it("rejects when the configured components directory is missing", async () => {
+  it("treats a missing default src/components directory as no components", async () => {
+    // The test cwd is pkg/, which has no src/components, and the config is the default.
     invalidateComponentListCache();
-    await expect(listComponents()).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(listComponents()).resolves.toEqual({});
   });
+});
+
+describe("readComponentRoot", () => {
+  const withProject = async (run: (cwd: string) => Promise<void>) => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-component-root-"));
+    try { await run(cwd); } finally { await rm(cwd, { recursive: true, force: true }); }
+  };
+
+  it("returns no files for a missing default root", async () => {
+    await withProject(async (cwd) => {
+      await expect(readComponentRoot(join(cwd, "src/components"), cwd)).resolves.toEqual([]);
+    });
+  });
+
+  it("names a missing configured root and the config key", async () => {
+    await withProject(async (cwd) => {
+      const error = await readComponentRoot(join(cwd, "src/widgets"), cwd).catch((caught) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain('components directory "src/widgets" does not exist');
+      expect(error.message).toContain("directory.components");
+      expect(error.cause).toMatchObject({ code: "ENOENT" });
+    });
+  });
+
+  it("names a missing root outside the project by its relative path", async () => {
+    await withProject(async (cwd) => {
+      const error = await readComponentRoot(join(cwd, "../shared-components-missing"), join(cwd, "site"))
+        .catch((caught) => caught);
+      expect(error.message).toContain('"../../shared-components-missing" does not exist');
+    });
+  });
+
+  it("rejects a default root that is a file rather than treating it as empty", async () => {
+    await withProject(async (cwd) => {
+      await mkdir(join(cwd, "src"), { recursive: true });
+      await writeFile(join(cwd, "src/components"), "not a directory");
+      await expect(readComponentRoot(join(cwd, "src/components"), cwd))
+        .rejects.toThrow('components directory "src/components" is not a directory');
+    });
+  });
+
+  it("lists component files in an existing root", async () => {
+    await withProject(async (cwd) => {
+      await mkdir(join(cwd, "src/components/cards"), { recursive: true });
+      await writeFile(join(cwd, "src/components/cards/promo-card.html"), "<div></div>");
+      await writeFile(join(cwd, "src/components/notes.md"), "ignored");
+      await expect(readComponentRoot(join(cwd, "src/components"), cwd))
+        .resolves.toEqual([join(cwd, "src/components/cards/promo-card.html")]);
+    });
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps the original error for an unreadable default root",
+    async () => {
+      await withProject(async (cwd) => {
+        const root = join(cwd, "src/components");
+        await mkdir(root, { recursive: true });
+        await chmod(root, 0o000);
+        try {
+          await expect(readComponentRoot(root, cwd)).rejects.toMatchObject({ code: "EACCES" });
+        } finally {
+          await chmod(root, 0o755);
+        }
+      });
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -71,9 +71,11 @@ During a build, Bascik emits a warning naming the unresolved tag, and the tag sh
 
 Similarly, `bascik --check` reports unmatched hyphenated tags as warnings (exit code 0). This allows third-party web components like `<model-viewer>` or `<ion-icon>` to pass without causing validation errors.
 
+To silence the warning for a tag you own on purpose, list it in [`components.external`](/configuration#componentsexternal), for example `components: { external: ['model-viewer', 'ion-icon', 'vendor-*'] }`. Typos stay reported. `scoping.preserve` does not do this: it only controls attribute scoping.
+
 ## Why does `--check` list my third-party web components?
 
-Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
+Bascik does not maintain a hardcoded allowlist of third-party custom element names. When you run `bascik --check`, any custom hyphenated tag without a matching file in `src/components/` is listed under "Components with no matching file" as a warning. Bascik passes these tags through to the output HTML unchanged so the browser or custom element library can handle them. Declare the ones you use in [`components.external`](/configuration#componentsexternal) to remove them from the report. If you want `--check` to fail whenever warnings are reported, pass `--strict`.
 
 ## What does `bascik --check` actually check?
 
@@ -340,6 +342,7 @@ The dev server is resilient to a bad page, while a production build fails rather
 - **Client-side / Browser-side JavaScript:** Standard scripts are wrapped in an IIFE for scoping, but they are not parsed or executed during the build. If there is a syntax error or a logical bug in your browser-side JavaScript, it is compiled as-is and sent to the client browser, where the error will be printed in the browser's developer console without affecting your server or build processes.
 - **CSS Syntax and File-Read Errors:** If a companion `.css` file or style block contains invalid syntax, Bascik's scoping engines skip the invalid patterns, scope the valid rules, and continue compiling. If a companion `.css` file cannot be read from the disk due to permissions or reference issues, Bascik handles the exception gracefully, logs a warning, and continues compilation.
 - **Source and Output I/O:** A missing or unreadable configured pages directory, failure to create an output directory, or failure to write a page is fatal in build mode. These errors are never discarded, including `ENOENT` write failures.
+- **Missing Components Directory:** A project without `src/components/` builds as a site with no components; create the directory when you add the first one, and the dev server picks it up without a restart. Any other directory listed in `directory.components` that does not exist is an error naming that path, because it is usually a typo.
 
 ## Can a server script slow down other requests?
 

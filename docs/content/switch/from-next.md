@@ -8,9 +8,10 @@ Switching to Bascik replaces framework abstractions with standard web platform p
 
 To evaluate Bascik on an existing Next.js codebase, migrate a single static marketing page (like an `/about` page) and a shared header component before touching complex application routes:
 
-1. Create `src/components/site-nav/site-nav.html` from your Next.js navigation component.
-2. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
-3. Run `yarn dev` to view your rendered zero-JS page.
+1. Create a project with `npm create bascik@latest`.
+2. Create `src/components/site-nav/site-nav.html` from your Next.js navigation component.
+3. Create `src/pages/about.html` containing your page structure and `<site-nav></site-nav>`.
+4. Run `npm run dev` to view your rendered page.
 
 ## Pages Router vs Bascik Routing
 
@@ -28,29 +29,40 @@ pages/                           src/pages/
 
 ### Dynamic Routes: [slug].html Templates
 
-In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that outputs the list of routes to generate at build time using `console.log()` (see [Dynamic Routes](/dynamic-routes)).
+In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` (Pages Router) and `app/blog/[slug]/page.tsx` uses `generateStaticParams` (App Router) to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that prints the list of routes to generate at build time (see [Dynamic Routes](/dynamic-routes)).
+
+A template is a full page, like every file in `src/pages/`: it needs `<html>`, `<head>`, and a non-empty `<body>`. The routes script can sit in the `<head>`. The template below writes `dist/blog/<slug>.html`, served at `/blog/<slug>`; use `src/pages/blog/[slug]/index.html` instead for `/blog/<slug>/` URLs.
 
 ```html
 <!-- src/pages/blog/[slug].html -->
-<script data-bascik-routes>
-  import { readdir } from 'node:fs/promises';
-  const files = await readdir('./content/posts');
-  const routes = files
-    .filter(f => f.endsWith('.md'))
-    .map(f => ({ params: { slug: f.replace('.md', '') } }));
-  console.log(JSON.stringify(routes));
-</script>
-
-<article>
-  <script data-bascik-build>
-    import { readFile } from 'node:fs/promises';
-    import { marked } from 'marked';
-    const { params } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-    const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
-    console.log(marked(md));
+<!doctype html>
+<html lang="en">
+<head>
+  <script data-bascik-routes>
+    import { readdir } from 'node:fs/promises';
+    const files = await readdir('./content/posts');
+    const routes = files
+      .filter((file) => file.endsWith('.md'))
+      .map((file) => ({ params: { slug: file.replace(/\.md$/, '') } }));
+    console.log(JSON.stringify(routes));
   </script>
-</article>
+  <title>Blog</title>
+</head>
+<body>
+  <article>
+    <script data-bascik-build>
+      import { readFile } from 'node:fs/promises';
+      import { marked } from 'marked';
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
+      console.log(marked(md));
+    </script>
+  </article>
+</body>
+</html>
 ```
+
+`marked` is not part of a new project: install it with `npm install marked`. A script that reads `content/` cannot be cached by its imports, so add the template to `scripts.cache.exclude` and `content/` to `pipeline.watchPaths` (see [Build Scripts](/build-scripts)). An unknown slug gets the site's 404 page.
 
 ## App Router Layouts → Shared Layout Components
 
@@ -85,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <h1>About</h1>
     <p>We build things.</p>
   </main>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```
@@ -98,7 +110,7 @@ If many pages share the same outer wrapper, extract it into a layout component t
 <main class="content">
   <div data-bascik-slot></div>
 </main>
-<site-footer></site-footer>
+<site-footer />
 ```
 
 ```html
@@ -118,9 +130,11 @@ If many pages share the same outer wrapper, extract it into a layout component t
 </html>
 ```
 
-## getStaticProps → Build Scripts
+## Server Components and getStaticProps → Build Scripts
 
-`getStaticProps` fetches data at build time and passes it as props. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are natively supported.
+`getStaticProps` (Pages Router) and an async server component (App Router) fetch data at build time. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are natively supported.
+
+A build script prints strings, not JSX, so escape every value you interpolate. The example below does not, which is fine only because it is illustrative; see [Escaping](#escaping-and-shared-helpers).
 
 ```jsx
 // pages/products.js (Next.js - before)
@@ -155,9 +169,42 @@ export default function Products({ products }) {
 </ul>
 ```
 
+### Escaping and Shared Helpers
+
+Move the code that turns data into markup into `src/lib/*.ts` helpers that return strings, and import them with the `@/` alias from any page. Two rules differ from Next.js:
+
+- **`@/` works only in the script tag.** Bascik resolves `@/lib/x.ts` inside `<script data-bascik-build>`. A helper file is run by Node as-is, so tsconfig `paths` do not apply there: a helper that imports another helper uses a relative path with its extension (`./site.ts`), and a type-only import must be `import type`.
+- **Escape every value.** JSX escapes text for you; a template string does not. Write one `escapeHtml` helper and call it on every interpolated value, including attribute values.
+
+```ts
+// src/lib/render.ts (illustrative)
+import type { Post } from '../interfaces/post.ts';
+import { escapeHtml as e } from './site.ts';
+
+export function renderPreview(post: Post): string {
+  return `<h3><a href="/posts/${e(post.slug)}">${e(post.title)}</a></h3>`;
+}
+```
+
+## Metadata → Head Build Scripts
+
+`export const metadata` and `generateMetadata` become a build script in the page `<head>` that prints `<title>` and `<meta>` tags. For absolute Open Graph URLs, read `BASCIK_SITE_URL` (set with `--site-url`, the environment, or `.env`). Fail the build when it is missing rather than falling back: Next.js falls back to `http://localhost:3000` with a warning when `metadataBase` is unset, which ships social URLs that point at a developer machine.
+
+```html
+<head>
+  <site-head></site-head>
+  <script data-bascik-build>
+    import { renderHead } from '@/lib/site.ts';
+    console.log(renderHead({ title: 'About - Acme' }));
+  </script>
+</head>
+```
+
+A dynamic route reads the same `BASCIK_ROUTE` in its head script as in its body.
+
 ## next/image → Standard img
 
-Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `height`, and `loading="lazy"` attributes where appropriate. Static assets in `src/pages/img/` or `src/public/` are copied to `dist/` automatically.
+Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `height`, and `loading="lazy"` attributes where appropriate. Files under `src/pages/` that are not pages or source code (images, fonts, `.webmanifest`, and similar) are copied to `dist/` at the same path, so `src/pages/assets/hero.jpg` is served at `/assets/hero.jpg`. Bascik has no `public/` directory, and it does not resize images or generate `srcset`.
 
 ```jsx
 // Before (Next.js)
@@ -172,6 +219,16 @@ Replace `<Image>` from `next/image` with a standard `<img>` tag. Add `width`, `h
 ## next/link → Standard a
 
 Replace `<Link href="...">` with a standard `<a href="...">`. Because Bascik sites do not require a heavy client router, navigation uses standard browser page requests.
+
+## next/font → @font-face
+
+`next/font` downloads a font, self-hosts it, and adds a preload. Do the same by hand: put the `.woff2` file and its license under `src/pages/assets/fonts/`, declare it with `@font-face` in your global stylesheet, and add `<link rel="preload" as="font" type="font/woff2" crossorigin>` to the head. Bascik does not generate fallback-metric adjustments.
+
+## Client Components → Component Scripts
+
+A `"use client"` component becomes a Bascik component with a plain `<script>`. There is no hydration: the HTML is final, and the script attaches behavior. `useState` becomes a variable or a DOM attribute, and `useEffect` becomes code that runs once when the script runs. Use `getElementById` for the component's own elements, because Bascik rewrites those ids per instance.
+
+A script that must run before the page paints (for example, applying a saved color scheme) goes in `<head>`. Production HTML minification moves scripts in the body to the end of the body, but leaves head scripts where they are.
 
 ## next/head → Inline head Tags
 
@@ -208,7 +265,7 @@ export default function About() {
 <body>
   <site-nav></site-nav>
   <h1>About</h1>
-  <site-footer></site-footer>
+  <site-footer />
 </body>
 </html>
 ```
@@ -231,12 +288,14 @@ export const POST = async (request: Request): Promise<Response> => {
 };
 ```
 
-Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). For serverless edge deployments, handlers use standard web fetch interfaces.
+The second argument differs. In Next.js 15 and later, `params` is a promise you `await`; in Bascik it is a plain object, `context.params.id`. Code that awaits it still works, because awaiting a plain object returns the object.
+
+Handlers run in-process on the production server (`bascik --server`) or during local dev (`bascik`). A static build (`bascik --build`) cannot serve them and prints a warning; see [Static Builds vs Production Server](/api-routes#static-builds-vs-production-server) and [Deployment](/deployment#serverless-hosting) for the supported serverless targets.
 
 ## CSS Modules & Tailwind CSS
 
-- **CSS Modules:** Create a plain `.css` file alongside the component HTML (e.g. `src/components/card/card.css`). Replace `className={styles.foo}` with `class="foo"`. Bascik scopes class names at build time without requiring PostCSS or Webpack configuration.
-- **Tailwind CSS:** If your Next.js project uses Tailwind, you can keep your Tailwind classes and run Tailwind via PostCSS as documented in [Libraries](/libraries#tailwind-css).
+- **CSS Modules:** Create a plain `.css` file alongside the component HTML (e.g. `src/components/card/card.css`). Replace `className={styles.foo}` with `class="foo"`. Bascik scopes class names at build time without requiring PostCSS or Webpack configuration. A rule such as `.markdown h2` matches only `h2` elements written in the component's template; to style HTML passed through a slot, such as rendered Markdown, write `.markdown :is(h2)`.
+- **Tailwind CSS:** Keep your Tailwind classes and run Tailwind as a `pipeline.exec` script with `phase: 'pre'` that writes the stylesheet into `BASCIK_OUT_DIR`, then link it from the head. Point Tailwind's `content` at `src/**/*.html` and at any `src/lib` helpers that return markup. Bascik leaves a class unscoped when the component's own stylesheet does not define it, so Tailwind utilities and a `dark` class toggled on `<html>` keep matching without `scoping.attributes.class: false`. `@apply` in a component's `.css` file is not processed, because Bascik does not run Tailwind on component stylesheets; write the CSS out or keep `@apply` in the Tailwind input file. See [Libraries](/libraries#tailwind-css) for the CDN option.
 
 ## TypeScript in Bascik
 

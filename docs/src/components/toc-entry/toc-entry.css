@@ -1,0 +1,50 @@
+li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0 4px 6px 17px;
+  position: relative;
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+a[aria-current="location"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A small diagonal slash carries the Bascik logo's parallelogram angle and
+   identifies the section currently in view without adding a full rail. */
+a[aria-current="location"]::before {
+  background: var(--accent);
+  content: '';
+  height: 1.1em;
+  left: 4px;
+  position: absolute;
+  top: 0.08em;
+  transform: skewX(-14deg);
+  transform-origin: center;
+  width: 3px;
+}
+
+a[data-toc-level="3"] {
+  font-size: 0.79rem;
+  padding-left: 20px;
+  padding-bottom: 5px;
+}
+
+a[data-toc-level="2"] {
+  padding-bottom: 9px;
+}

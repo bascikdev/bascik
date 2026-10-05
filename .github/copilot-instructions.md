@@ -42,7 +42,7 @@ Then inspect the relevant `docs/dist/` output to confirm the pkg change has the 
 
 - The testing docs (`docs/content/internals/testing.md`) describe the test approach, not an enumerated list of files. The "Test Files" section links to GitHub which is always current. You only need to update the prose if the testing *patterns* change (e.g. a new mock strategy, a new test runner, new helpers, or a new E2E server mode).
 - `pkg/` has two Vitest projects configured in `pkg/vite.config.js`: `unit` (fast, excludes `*.integration.test.ts`) and `integration` (only `*.integration.test.ts`). Integration tests spawn real processes, servers, and worker threads, so they run in their own project, their own command (`yarn pkg:integration`), and their own CI job. Run `yarn integration:all` (currently `pkg` only) when a change touches a real process, server, or worker boundary.
-- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Two additional `pkg` lanes cover exec lifecycle ownership: `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) and `playwright.exec-build.config.ts`. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
+- E2E tests support four Bascik server modes: static production (`playwright.config.ts`), HTTP/1.1 production server (`playwright.server.config.ts`), HTTP/2 production server (`playwright.server-http2.config.ts` via `yarn pkg:e2e:prod`), and live dev server (`playwright.dev.config.ts` via `yarn pkg:e2e:dev`). Two additional `pkg` lanes cover exec lifecycle ownership: `playwright.dev-exec.config.ts` plus `playwright.dev-exec-gated.config.ts` (via `yarn pkg:e2e:dev:exec`) and `playwright.exec-build.config.ts`. `playwright.exec-policy.config.ts` (via `yarn pkg:e2e:exec:policy`) covers `pipeline.onExecError` by spawning the CLI in temporary projects. The Cloudflare adapter lane lives in the `@bascik/adapter-cloudflare` workspace (`yarn adapter:cf:e2e`), not in `pkg/e2e/`.
 - The coverage numbers shown on the testing page are read from `pkg/test-coverage.json` (unit tests) and `pkg/e2e-test-coverage.json` (E2E build-step coverage) at docs build time. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage. Do not run `#pre-push.prompt.md` or pre-push scripts automatically after adding tests. The user handles running pre-push steps.
 
 **When changing server components in `pkg/src/lib/` (or adding to the live-reload / SSE / watch / request script systems):**
@@ -95,16 +95,15 @@ High unit test coverage numbers can create false confidence if tests only exerci
 
 ## License Source of Truth
 
-The license lives in **four places** that must stay in sync for the Elastic-2.0 packages (`@bascik/bascik` and `@bascik/adapter-cloudflare`). `create-bascik`, `@bascik/language-server`, and the VS Code extension are MIT: each keeps its own committed `LICENSE`, which is never overwritten by `prepack`.
+All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik` and `@bascik/adapter-cloudflare`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
 
-- `docs/content/license.md`: the web-formatted version rendered at `https://bascik.dev/license`
-- `LICENSE` (repo root): plain-text version; **required** for GitHub license detection and as the `prepack` source
-- `pkg/LICENSE` and `adapters/cloudflare/LICENSE`: copies for the npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
+- `docs/content/license.md`: the web-formatted MIT license rendered at `https://bascik.dev/license`
+- `LICENSE` (repo root): plain-text MIT license; **required** for GitHub license detection and as the `prepack` source
+- `pkg/LICENSE` and `adapters/cloudflare/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
 
 **When updating the license terms:**
-1. Edit `docs/content/license.md` (the human-readable web version)
-2. Mirror those changes to the root `LICENSE` (same terms, plain-text format). The license is the Elastic License 2.0 (`Elastic-2.0`); keep the canonical text intact
-3. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE` to sync the package copies immediately
+1. Update the root `LICENSE` and mirror the terms in `docs/content/license.md`
+2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE` to sync the package copies immediately
 
 Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE` or `adapters/cloudflare/LICENSE` directly; they are derived files.
 
@@ -121,6 +120,10 @@ This project runs on **Node 24**. Node natively strips TypeScript types, with no
 **Practical implication:** `data-bascik-build` and `data-bascik-server` scripts can import `.ts` helper files and Node handles them natively. Bascik does not need to add its own type-stripping layer for server-side or build-time scripts.
 
 ## Agent Environment Notes
+
+### Finding Code in pkg
+
+When locating behavior or tracing dependencies in `pkg/`, use the `bascik-code-navigation` skill before repeated broad searches. `yarn pkg:build` refreshes a gitignored module map in the background at `.code-map/pkg.json`. Run `yarn pkg:map` to refresh it synchronously when missing or after imports change; run `yarn pkg:map <path-fragment>` to print matching modules with their imports and importers. The map includes source tests, not function calls or runtime worker/script connections. Use it to choose nearby implementation and tests, then read those files.
 
 ### Customization Surface
 
@@ -162,7 +165,7 @@ Aggregators (`unit:all`, `integration:all`, `e2e:all`, `coverage:all`, `typechec
 
 ### Format-on-Save Workflow
 
-`pkg/.vscode/settings.json` enables `editor.formatOnSave`. VS Code may therefore apply formatting shortly after an agent edits or creates a TypeScript, JavaScript, HTML, CSS, or JSON file.
+The root `.vscode/settings.json` enables `editor.formatOnSave` for the whole repository, with VS Code's built-in formatters for TypeScript, JavaScript, HTML, CSS, and JSON. Markdown is not formatted on save. VS Code may therefore apply formatting shortly after an agent edits or creates one of those files.
 
 - Treat formatter output in files intentionally touched for the current task as part of that task. Do not repeatedly restore those files to the agent's preformatted layout.
 - Before final validation, explicitly run VS Code's **Format Document** action on every touched file that has a configured formatter, then save it. If no formatter is registered for a file type, leave the file unchanged.

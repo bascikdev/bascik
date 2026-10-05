@@ -113,6 +113,7 @@ const shieldSensitiveContent = (htmlString: string): {
   let rawTextMatch: RegExpExecArray | null;
   while ((rawTextMatch = rawTextTagRe.exec(masked)) !== null) {
     const tagName = rawTextMatch[1];
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "gi");
     closeRe.lastIndex = rawTextTagRe.lastIndex;
     const closeMatch = closeRe.exec(masked);

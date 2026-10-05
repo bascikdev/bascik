@@ -9,8 +9,8 @@
  * `targeted-build-owned-artifacts.integration.test.ts`.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -103,10 +103,12 @@ describe("reconcileOwnership", () => {
 });
 
 describe("ownership inventory persistence & integrity", () => {
-  const tempDir = join(tmpdir(), `bascik-ownership-${Date.now()}`);
+  // A fresh directory per test: unique even across concurrent runs, and removed
+  // afterward so repeated runs never accumulate files in the system temp dir.
+  let tempDir = "";
 
   beforeEach(async () => {
-    await rm(tempDir, { recursive: true, force: true });
+    tempDir = await mkdtemp(join(tmpdir(), "bascik-ownership-"));
     await mkdir(join(tempDir, ".bascik"), { recursive: true });
     ownershipTracker.clear();
     manifestCollector.clear();
@@ -117,6 +119,10 @@ describe("ownership inventory persistence & integrity", () => {
     (BascikConfig as any).generate.manifest = true;
     (BascikConfig as any).generate.cspHashes = true;
     (BascikConfig as any).only = ["blog/**"];
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
   });
 
   it("rejects corrupt ownership metadata by falling back to a safe additive build and warns", async () => {

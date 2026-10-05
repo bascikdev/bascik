@@ -2,3 +2,9 @@
 :root {
   --e2e-inlined-var: #123456;
 }
+
+/* Used by a component that has no stylesheet of its own (no-css-comp). A class the
+   component's own CSS does not define must stay global so this rule applies. */
+.no-css-global-probe {
+  color: rgb(12, 34, 56);
+}

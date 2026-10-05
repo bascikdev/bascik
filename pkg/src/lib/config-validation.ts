@@ -71,6 +71,7 @@ const isPlainObject = (val: unknown): val is Record<string, unknown> =>
 /** Nested map of every known config key. Leaf value is null. */
 const KNOWN_KEYS: Record<string, unknown> = {
   directory: { pages: null, components: null, out: null, api: null },
+  components: { external: null },
   scoping: {
     scriptBlocks: null,
     inheritAttributes: null,
@@ -81,7 +82,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
   minify: { html: null, css: null, js: null, identifiers: null },
   assets: { inlineStyles: null, exclude: null, symlink: null },
   generate: { sitemap: null, robots: null, sitemapLastmod: null, cspHashes: null, manifest: null },
-  pipeline: { watchPaths: null, exec: null, workers: null },
+  pipeline: { watchPaths: null, exec: null, workers: null, onExecError: null },
   scripts: {
     cache: { enabled: null, include: null, exclude: null, environment: null },
     typescript: null,
@@ -468,6 +469,9 @@ export const validateConfigShape = (
         push("pipeline.workers", workers, "expected true, false, or a positive integer");
       }
     }
+    if (pipeline.onExecError !== undefined && !VALID_MINIFY_ERROR_VALUES.has(pipeline.onExecError as string)) {
+      push("pipeline.onExecError", pipeline.onExecError, 'expected "warn" or "error"');
+    }
     if (pipeline.watchPaths !== undefined) {
       const watchPaths = pipeline.watchPaths;
       if (!Array.isArray(watchPaths)) {
@@ -530,6 +534,23 @@ export const validateConfigShape = (
     }
     if (assets.symlink !== undefined && typeof assets.symlink !== "boolean") {
       push("assets.symlink", assets.symlink, "expected a boolean");
+    }
+  }
+
+  /* components */
+  if (isPlainObject(raw.components) && raw.components.external !== undefined) {
+    const external = raw.components.external;
+    if (!Array.isArray(external)) {
+      push("components.external", external, "expected an array of tag names");
+    } else {
+      external.forEach((entry, index) => {
+        if (
+          typeof entry !== "string" ||
+          (!PLAUSIBLE_TAG_NAME.test(entry) && !PRESERVE_WILDCARD_PATTERN.test(entry))
+        ) {
+          push(`components.external[${index}]`, entry, 'expected a tag name or wildcard pattern like "heading-anchors" or "vendor-*"');
+        }
+      });
     }
   }
 

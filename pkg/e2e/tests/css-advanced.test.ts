@@ -59,6 +59,22 @@ test.describe('css-advanced-test page', () => {
     expect(borderColor).toBe('rgb(250, 204, 21)');
   });
 
+  test('percentage keyframe stops reach the browser unchanged', async ({ page }) => {
+    // An invalid stop selector is dropped by the CSS parser, so count the stops
+    // the browser actually kept for the scoped wobble animation.
+    const keyText = await page.evaluate(() => {
+      for (const sheet of [...document.styleSheets]) {
+        for (const rule of [...sheet.cssRules]) {
+          if (rule instanceof CSSKeyframesRule && rule.name.endsWith('__keyframe__wobble')) {
+            return [...rule.cssRules].map((stop) => (stop as CSSKeyframeRule).keyText);
+          }
+        }
+      }
+      return null;
+    });
+    expect(keyText).toEqual(['40%', '80%', '0%, 100%']);
+  });
+
   test('keyframe animation plays when toggle button is clicked', async ({ page }) => {
     const { a } = getInstances(page);
     await animBtn(a).click();

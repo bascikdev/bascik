@@ -135,6 +135,10 @@ Furthermore, cross-boundary selectors such as `html[data-theme="light"] .foo {}`
 <p><strong>Note:</strong> CSS custom properties defined in <code>:root</code> or at global scope are scoped by prefixing the variable name. Properties that should be intentionally global (design tokens consumed across components) should not be defined inside a component's CSS file.</p>
 </div>
 
+### Page-aware build script output
+
+A static component build script runs when the component is registered, so its output is part of the template before this pass runs. A page-aware script (`data-bascik-build="page"`) is deferred until each page is transpiled, after the pass. To keep its output consistent, the class pass records the component's mapping (defined classes and styled elements to their scoped names) on each deferred script tag as `data-bascik-output-scope`. When the script runs, `executeBuildScripts` applies that mapping to its stdout with `applyOutputScope` (`pkg/src/lib/output-scope.ts`), skipping comments, raw-text elements, and attribute values. The annotation is consumed with the script tag and never reaches the emitted HTML. The script cache stores the unscoped stdout, so scoping is reapplied on every use.
+
 ### What is NOT scoped
 
 `[id]` attribute selectors in CSS are stripped because they cannot be reliably scoped without wrapping the component HTML in a DOM container element. Use a class selector instead.
@@ -199,7 +203,7 @@ el.setAttribute("class", "bascik__site-nav__toggle-btn");
 
 ### JS-only class discovery
 
-The CSS pass scopes every class name it finds in the `.css` file regardless of whether that class appears in the HTML template. Without a corresponding discovery pass, class names used only in JavaScript (never in a `class="…"` attribute) would be scoped in CSS but left unscoped in JS, making them permanently out of sync.
+The set of classes to scope is the set the component's own stylesheet defines (companion `.css` plus inline `<style>`). A component with no stylesheet defines none, so no class in it is scoped. The CSS pass scopes every class name it finds in that stylesheet regardless of whether that class appears in the HTML template. Without a corresponding discovery pass, class names used only in JavaScript (never in a `class="…"` attribute) would be scoped in CSS but left unscoped in JS, making them permanently out of sync.
 
 To fix this, after the HTML attribute pass builds the initial class scope map, a second scan over every `<script>` block extracts class name string literals from all class-referencing JS patterns and adds any new names to the scope map before the JS rewrite runs:
 
@@ -346,7 +350,7 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
 .bascik__list > .bascik__list__el__li { padding: 0; }
 ```
 
-This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators (`div p {}`, `p + p {}`) with no class anchor on the left side are still not converted.
+This works because `bascik__` never appears in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.bascik__card__el__div .bascik__card__el__p {}` and matches only elements in the component's template.
 
 ### CSS nesting element selectors
 

@@ -172,6 +172,10 @@ Class names in a component's HTML template are only scoped if they are declared 
 
 If a class name is **not** defined in the component's CSS, Bascik leaves it unscoped. This allows global utility classes (such as `skip-link`, `flex`, `hidden`, or global design tokens) defined in your global stylesheet (e.g. `src/css/styles.css`) to pass through and match normally across any component.
 
+This applies to every component, including one with no stylesheet at all. A header or footer that relies entirely on a global stylesheet needs no `.css` file and no placeholder comment: none of its classes are defined by the component, so none are scoped. The same holds for class names a component's script passes to `classList`, `querySelector`, or `className`.
+
+> **A component without a stylesheet has no class isolation.** Scoping exists to keep a component's own rules from colliding with other components. With no rules of its own, there is nothing to isolate, so a script that queries `.item` in such a component matches every `.item` on the page. Add a stylesheet that defines the class to scope it.
+
 ```html
 <!-- src/components/site-nav.html -->
 <a href="#main-content" class="skip-link dnav-logo">Skip to main content</a>

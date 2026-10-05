@@ -60,6 +60,7 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "-y"])).toEqual({
       yesFlag: true,
       noDevFlag: false,
+      noInstallFlag: false,
     });
   });
 
@@ -67,6 +68,17 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["my-site", "--yes", "--no-dev"])).toEqual({
       yesFlag: true,
       noDevFlag: true,
+      noInstallFlag: false,
+    });
+  });
+
+  it("supports skipping install with --no-install", () => {
+    expect(
+      parseCliOptions(["my-site", "-y", "--no-install", "--no-dev"]),
+    ).toEqual({
+      yesFlag: true,
+      noDevFlag: true,
+      noInstallFlag: true,
     });
   });
 });
@@ -120,9 +132,9 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.devDependencies["@playwright/test"]).toBeDefined();
   });
 
-  it("includes @bascik/bascik as a dependency", () => {
+  it("uses the current Bascik prerelease dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.dependencies["@bascik/bascik"]).toBeDefined();
+    expect(pkg.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.3");
   });
 
   it("uses the supplied name", () => {

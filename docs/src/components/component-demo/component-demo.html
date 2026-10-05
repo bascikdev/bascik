@@ -319,49 +319,61 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   }
 
   /* Hide empty language tabs */
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty) .demo-language-tab[data-language="usage"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)) .demo-language-tab[data-language="usage"] {
     display: none;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="html"]:empty) .demo-language-tab[data-language="html"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="html"] code-block)) .demo-language-tab[data-language="html"] {
     display: none;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="css"]:empty) .demo-language-tab[data-language="css"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="css"] code-block)) .demo-language-tab[data-language="css"] {
     display: none;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="js"]:empty) .demo-language-tab[data-language="js"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="js"] code-block)) .demo-language-tab[data-language="js"] {
     display: none;
   }
 
   /* Hide tablist if all language panes are empty */
-  .demo-pane:not(:has(.demo-language-pane:not(:empty))) .demo-language-tabs {
+  .demo-pane:not(:has(.demo-language-pane code-block)) .demo-language-tabs {
     display: none;
   }
 
   /* Fallback activation when default checked tab is empty */
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="html"]:not(:empty) {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="html"]:has(code-block) {
     display: block;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"] {
     color: #18191b;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"]::before {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"]::before {
     background: var(--accent);
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-language-pane[data-language-pane="html"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="css"]:not(:empty) {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="css"]:has(code-block) {
     display: block;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-language-pane[data-language-pane="html"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"] {
     color: #18191b;
   }
 
-  .demo-pane:has(.demo-language-pane[data-language-pane="usage"]:empty):has(.demo-language-pane[data-language-pane="html"]:empty):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"]::before {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"]::before {
+    background: var(--accent);
+  }
+
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="js"]:has(code-block) {
+    display: block;
+  }
+
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"] {
+    color: #18191b;
+  }
+
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"]::before {
     background: var(--accent);
   }
 

@@ -70,8 +70,10 @@ export const convertCssElementSelectorsToClasses = (
   //   tr:nth-child(2n+1) { }
   //   p:not(.lead) { }
   // The context-aware lookahead confirms we are still in selector position.
+  // Element names start with a letter (`[a-z][a-z1-6]*`), so @keyframes stops
+  // such as `40%` or `0%, 100%` are never mistaken for element selectors.
   let result = css.replace(
-    /(^\s*|[;{}]\s*)([a-z1-6]+)(?=[^{};]*\{)/gim,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?=[^{};]*\{)/gim,
     (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
 
@@ -83,7 +85,7 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g, toClass);
+  result = result.replace(/(?<=,[ \t]*)[a-z][a-z1-6]*(?=[^{};)]*\{)/g, toClass);
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
@@ -91,11 +93,11 @@ export const convertCssElementSelectorsToClasses = (
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s*(?:[>+~]\s*)?)[a-z1-6]+(?=[^{};]*\{)/g,
+    /(?<=&\s*(?:[>+~]\s*)?)[a-z][a-z1-6]*(?=[^{};]*\{)/g,
     toClass,
   );
   result = result.replace(
-    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z1-6]+(?=[^{};]*\{)/g,
+    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z][a-z1-6]*(?=[^{};]*\{)/g,
     toClass,
   );
 
@@ -103,20 +105,20 @@ export const convertCssElementSelectorsToClasses = (
   // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
   // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
-  // After Pass 1 (class scoping), class names become `bascik__…__foo`. The
-  // `bascik__` prefix is a uniquely safe anchor — it never appears in CSS
-  // property value position. The negative lookahead `(?!__)` prevents
+  // After Pass 1 (class scoping), class names become `bascik__…__foo` or a
+  // 12-character hash when identifier minification is enabled. Matching the
+  // class selector itself keeps the anchor in selector position. The negative
+  // lookahead `(?!__)` prevents
   // matching the start of another scoped class name (e.g. `bascik__comp__bar`
   // starts with `b` which is in [a-z1-6] but is followed by `ascik__`, so
   // `(?!__)` stops the second `_` from matching after `bascik`).
   //
-  // Note: this pass only applies when CSS scoping has already run (Pass 1
-  // rewrites `.foo` → `.bascik__comp__foo`, making the anchor available).
+  // Note: this pass only applies after Pass 1 has scoped the class selector.
   let previousResult: string;
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=bascik__[\w-]+(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z1-6]+(?!__)(?=[^{};]*\{)/g,
+      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z][a-z1-6]*(?!__)(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);
@@ -191,7 +193,7 @@ export const addElementClassesInHtml = (
       `bascik__${componentName}__el__${element}`,
     );
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const elPattern = new RegExp(`<${element}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
+    const elPattern = new RegExp(`<${element}(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
     componentHtml = componentHtml.replace(
       elPattern,
       (openTag) => injectClassIntoTag(openTag, bascikClassName),
@@ -1010,17 +1012,17 @@ export const extractInlineStyles = (
   const commentPlaceholders: Array<{ token: string; original: string }> = [];
   const htmlWithMaskedComments = html.includes("<!--")
     ? html.replace(/<!--[\s\S]*?-->/g, (match) => {
-        const token = `\x00BASCIK_COMMENT_${commentPlaceholders.length}\x00`;
-        commentPlaceholders.push({ token, original: match });
-        return token;
-      })
+      const token = `\x00BASCIK_COMMENT_${commentPlaceholders.length}\x00`;
+      commentPlaceholders.push({ token, original: match });
+      return token;
+    })
     : html;
 
   const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
   const cleanedHtml = shielded.html.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_match, openTag: string, styleContent: string) => {
       let css = removeCommentsFromCss(styleContent).trim();
       if (!css) return "";
@@ -1073,7 +1075,7 @@ export const scopeInlineStyleTags = (
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
   const processedHtml = html.replace(
-    /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
       let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
       // Shield strings/url() so dots inside them aren't treated as class selectors

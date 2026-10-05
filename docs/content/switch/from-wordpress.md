@@ -20,16 +20,17 @@ WordPress is a PHP content management system that renders pages from a database 
 | `style.css` and enqueued assets | `wp_enqueue_style()` | Paired `.css` files (auto-scoped and deduplicated) |
 | `functions.php` hooks | `add_action()` and `add_filter()` | Build scripts, [Exec Scripts](/exec-scripts), and [API Routes](/api-routes) |
 | Plugins | PHP plugins | npm packages, build scripts, or hosted services |
-| Media Library | `wp-content/uploads/` | Image files in your site's assets directory |
+| Media Library | `wp-content/uploads/` | Image files copied into `dist/` by an [Exec Script](/exec-scripts) |
+| Permalinks (`/%year%/%monthnum%/%day%/%postname%/`) | Rewrite rules | One dynamic route template per URL shape, such as `src/pages/[year]/[month]/[day]/[slug]/index.html` |
 
 ## A Low-Risk First Step
 
 Move your theme's footer into a Bascik component before touching any content:
 
-1. Create a new Bascik workspace with `yarn create bascik`.
+1. Create a new Bascik project with `npm create bascik@latest`.
 2. Create `src/components/site-footer/site-footer.html` and paste the rendered footer markup from your live site.
-3. Use `<site-footer></site-footer>` inside `src/pages/index.html`.
-4. Run `yarn dev` to inspect the generated HTML.
+3. Use `<site-footer />` inside `src/pages/index.html`.
+4. Run `npm run dev` to inspect the generated HTML.
 
 ## Theme Files → HTML Component Files
 
@@ -69,11 +70,11 @@ A WordPress template calls `get_header()` and `get_footer()` around the page con
 
 ```html
 <!-- src/components/site-layout/site-layout.html (Bascik - after) -->
-<site-header></site-header>
+<site-header />
 <main>
   <div data-bascik-slot></div>
 </main>
-<site-footer></site-footer>
+<site-footer />
 ```
 
 ```html
@@ -149,19 +150,22 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
     import { readdir, readFile } from 'node:fs/promises';
     import matter from 'gray-matter';
 
+    const escape = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
     const posts = await Promise.all(files.map(async f => {
       const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
-      return { slug: f.replace('.md', ''), title: data.title, date: data.date };
+      return { slug: f.replace('.md', ''), title: data.title, date: new Date(data.date) };
     }));
-    posts.sort((a, b) => new Date(b.date) - new Date(a.date));
+    posts.sort((a, b) => b.date - a.date);
 
     console.log(posts.map(p =>
-      `<li><a href="/blog/${p.slug}">${p.title}</a><time>${p.date}</time></li>`
+      `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`
     ).join('\n'));
   </script>
 </ul>
 ```
+
+Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text, so escape it before printing. A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
 
 ## Single Posts → Dynamic Routes
 
@@ -179,7 +183,18 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
 </script>
 ```
 
-To keep existing permalinks, name files and folders to match your current URL structure (for example `src/pages/blog/[slug].html` for `/blog/my-post/`). Check the result against your live sitemap before launch.
+To keep existing permalinks, name files and folders to match your current URL structure. `src/pages/blog/[slug].html` writes `/blog/my-post.html`; for the trailing-slash URLs WordPress uses, put the template in a folder: `src/pages/blog/[slug]/index.html` gives `/blog/my-post/`. A route parameter cannot contain `/`, so a date permalink needs one bracket per segment:
+
+```text
+WordPress permalink                    Bascik template
+/2026/03/15/raised-beds/               src/pages/[year]/[month]/[day]/[slug]/index.html
+/about/  (top-level page)              src/pages/[pageslug]/index.html
+/about/colophon/  (child page)         src/pages/[parent]/[child]/index.html
+/category/notes/                       src/pages/category/[term]/index.html
+/page/2/                               src/pages/page/[page]/index.html
+```
+
+Templates at different depths can sit side by side at the root. Check the result against your live sitemap before launch.
 
 ## Shortcodes and Blocks → Components
 
@@ -237,42 +252,57 @@ Run `bascik --server` to serve API routes in production. Fully static hosting ca
 
 You have two options, and they can be combined:
 
-1. **Export to Markdown.** Export your content from WordPress (Tools → Export produces a WXR XML file), convert posts to Markdown with a community converter, and commit the `.md` files under `content/`. Then read them with a build script as shown above. Review the converted output, because page builders and shortcodes rarely convert cleanly.
+1. **Export to Markdown.** Export your content from WordPress (Tools → Export produces a WXR XML file), convert posts to Markdown with a community converter such as `wordpress-export-to-markdown`, and commit the `.md` files under `content/`. Then read them with a build script as shown above. Run the converter while the old site is still online, because it downloads the images. Review the output: page builders and shortcodes rarely convert cleanly; check page hierarchy, category names, image alt text, and draft dates.
 2. **Fetch at build time.** Read posts from the WordPress REST API in a build script. This keeps WordPress as your editor and Bascik as your renderer.
 
-Copy images from `wp-content/uploads/` into your assets directory and update the paths. WordPress generates resized variants such as `photo-300x200.jpg`; keep only the originals you still reference.
+The converter saves each post's images next to its Markdown, as originals only. Copy them into `dist/` with an [Exec Script](/exec-scripts) and point the Markdown at the copied path. The resized copies WordPress made (`photo-300x200.jpg`) are not in an export; if you want `srcset`, regenerate them or keep fetching through the REST API, which lists them.
 
 ## Keep WordPress as a Headless CMS
 
-A WordPress site exposes its content at `/wp-json/wp/v2/posts` and `/wp-json/wp/v2/pages`. A `<script data-bascik-routes>` block can fetch from there, so editors keep using the dashboard while visitors receive static HTML.
+A WordPress site exposes its published content at `/wp-json/wp/v2/posts` and `/wp-json/wp/v2/pages`. Drafts, private posts, and password-protected bodies are not public, so they never reach the build. Editors keep using the dashboard while visitors receive static HTML.
+
+Fetch everything once, in a `pre` [Exec Script](/exec-scripts), rather than in every page. The script follows the `X-WP-TotalPages` header (the API rejects `per_page` above 100 with a 400), sanitizes each body, downloads the media into `dist/`, and writes one JSON file that the pages read:
+
+```ts
+// scripts/sync-wordpress.ts (Bascik - a pre exec step; illustrative)
+import { mkdir, writeFile } from 'node:fs/promises';
+import sanitizeHtml from 'sanitize-html';
+
+const origin = process.env.WORDPRESS_URL;
+const posts = [];
+for (let page = 1, total = 1; page <= total; page++) {
+  const res = await fetch(`${origin}/wp-json/wp/v2/posts?per_page=100&page=${page}&_embed=wp:term`);
+  if (!res.ok) throw new Error(`WordPress returned ${res.status}`);
+  total = Number(res.headers.get('x-wp-totalpages') ?? 1);
+  posts.push(...await res.json());
+}
+const snapshot = posts.map((post) => ({
+  slug: post.slug,
+  date: post.date,
+  title: sanitizeHtml(post.title.rendered, { allowedTags: [] }),
+  html: sanitizeHtml(post.content.rendered),
+}));
+await mkdir('node_modules/.cache/site', { recursive: true });
+await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot));
+```
 
 ```html
-<!-- src/pages/blog/[slug].html (Bascik - after) -->
+<!-- src/pages/[year]/[month]/[day]/[slug]/index.html (Bascik - after) -->
 <script data-bascik-routes>
-  const res = await fetch('https://cms.example.com/wp-json/wp/v2/posts?per_page=100&_fields=slug,title,content');
-  const posts = await res.json();
-
-  console.log(JSON.stringify(posts.map(post => ({
-    params: { slug: post.slug },
-    data: { title: post.title.rendered, content: post.content.rendered }
-  }))));
+  import { readFile } from 'node:fs/promises';
+  const posts = JSON.parse(await readFile('node_modules/.cache/site/posts.json', 'utf8'));
+  console.log(JSON.stringify(posts.map((post) => {
+    const [year, month, day] = post.date.slice(0, 10).split('-');
+    return { params: { year, month, day, slug: post.slug } };
+  })));
 </script>
 ```
 
-```html
-<!-- Same file: render the route data in the page body -->
-<article>
-  <script data-bascik-build>
-    const { data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-    console.log(`<h1>${data.title}</h1>`);
-    console.log(data.content);
-  </script>
-</article>
-```
+> **Sanitize what you print.** `content.rendered` is HTML that an editor wrote, and administrators may save any markup, including `<script>`, `onerror` handlers, and `javascript:` links. Printed as is, it runs in every visitor's browser. Pass it through an allowlist such as `sanitize-html` before printing. Bascik also removes any `<script data-bascik-build>`, `data-bascik-server`, or `data-bascik-routes` tag found in a build script's output, with a warning. This is not a substitute for sanitizing CMS content.
 
-> **Rebuild on publish:** Static output only changes when you rebuild. Trigger a build from a WordPress webhook or your CI pipeline whenever content is published. The REST API returns up to 100 items per request, so paginate with the `page` parameter for larger sites.
+> **Rebuild on publish:** Static output only changes when you rebuild. Trigger a build from a WordPress webhook or your CI pipeline whenever content is published. List the pages that read the fetched data in `scripts.cache.exclude`: a build script's cache key does not include network responses, so without it a rebuild can reuse output from before the edit.
 
-> **Trusted content only:** The example prints `content.rendered` into the page as raw HTML. Only do this with content from a WordPress instance you control.
+> **Large posts:** Passing a whole post body as route `data` works without an environment-size limit. Reading the snapshot file from the page is another option.
 
 ## Migration Checklist
 
@@ -281,6 +311,7 @@ A WordPress site exposes its content at `/wp-json/wp/v2/posts` and `/wp-json/wp/
 3. Build the layout component and one page per template type.
 4. Move content into Markdown or wire up the REST API.
 5. Replace each plugin with a build script, API route, or service from the table above.
-6. Compare the built output against your old sitemap, and configure redirects on your host for any URLs that change.
+6. Compare the built output against your old sitemap, and configure redirects on your host for any URLs that change. WordPress serves its feed at `/feed/`; a static feed is usually a file such as `/feed.xml`, so redirect the old address.
+7. Decide what replaces the features a static site does not have: comments, search, and date and author archives.
 
 > **AI-Assisted Migration:** If you use LLMs or AI coding assistants to convert theme templates, see the [Agent Skill](/tools/agent-skill) documentation for guidelines on providing context to AI tools.

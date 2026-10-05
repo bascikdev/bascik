@@ -283,6 +283,22 @@ describe("pipeline.workers", () => {
   });
 });
 
+describe("pipeline.onExecError", () => {
+  it("accepts warn and error", () => {
+    expect(validateConfigShape({ pipeline: { onExecError: "warn" } })).toHaveLength(0);
+    expect(validateConfigShape({ pipeline: { onExecError: "error" } })).toHaveLength(0);
+  });
+
+  it("rejects ignore and typos, naming the allowed values", () => {
+    for (const value of ["ignore", "erorr", true]) {
+      const errors = validateConfigShape({ pipeline: { onExecError: value as any } });
+      expect(errors).toHaveLength(1);
+      expect(errors[0].key).toBe("pipeline.onExecError");
+      expect(errors[0].message).toContain('"warn" or "error"');
+    }
+  });
+});
+
 describe("pipeline.exec phase", () => {
   it("rejects an unknown exec phase, folded into the validation pass", () => {
     const errors = validateConfigShape({
@@ -568,6 +584,41 @@ describe("base normalization", () => {
     expect(validateConfigShape({ base: "/sub" })).toHaveLength(0);
     expect(validateConfigShape({ base: "sub" })).toHaveLength(0);
     expect(validateConfigShape({ base: "/" })).toHaveLength(0);
+  });
+});
+
+describe("components.external", () => {
+  it("accepts exact tag names and wildcard patterns", () => {
+    expect(
+      validateConfigShape({ components: { external: ["heading-anchors", "vendor-*", "*-widget"] } }),
+    ).toHaveLength(0);
+    expect(validateConfigShape({ components: { external: [] } })).toHaveLength(0);
+  });
+
+  it("rejects a non-array value, naming the key", () => {
+    const errors = validateConfigShape({ components: { external: "heading-anchors" as any } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("components.external");
+    expect(errors[0].message).toContain("array");
+  });
+
+  it("rejects malformed entries with the entry index in the key", () => {
+    const errors = validateConfigShape({
+      components: { external: ["heading-anchors", "div span", 42 as any, ""] },
+    });
+    expect(errors.map((e) => e.key)).toEqual([
+      "components.external[1]",
+      "components.external[2]",
+      "components.external[3]",
+    ]);
+    expect(errors[0].message).toContain("tag name or wildcard");
+  });
+
+  it("suggests the right key for a near miss", () => {
+    const errors = validateConfigShape({ components: { extrnal: ["heading-anchors"] } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("components.extrnal");
+    expect(errors[0].message).toContain('did you mean "components.external"');
   });
 });
 

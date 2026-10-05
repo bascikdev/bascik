@@ -286,7 +286,7 @@ Scoped CSS can live in a paired `.css` file or one or more inline `<style>` tags
 At build time, Bascik extracts all inline `<style>` blocks, combines them with any companion `.css` file, scopes them, and injects them into the document `<head>`. Using multiple `<style>` tags (or mixing them with a companion `.css` file) is supported but not recommended for readability and maintainability. Choose a single stylesheet pattern per component.
 
 ### Global Class Passthrough
-Bascik checks whether a class name in a component template is defined in the component's CSS (paired `.css` or inline `<style>`). Only class names defined in the component's stylesheet are scoped (prefixed/hashed). Classes in component HTML that are NOT defined in the component's stylesheet (such as global utility classes like `skip-link`, `flex`, `hidden`, or design system classes) pass through as unscoped global classes so global stylesheets continue to match them.
+Bascik checks whether a class name in a component template is defined in the component's CSS (paired `.css` or inline `<style>`). Only class names defined in the component's stylesheet are scoped (prefixed/hashed). Classes in component HTML that are NOT defined in the component's stylesheet (such as global utility classes like `skip-link`, `flex`, `hidden`, or design system classes) pass through as unscoped global classes so global stylesheets continue to match them. This includes a component with no stylesheet at all, such as a header or footer styled entirely by a global stylesheet: none of its classes are scoped, so it needs no `.css` file or placeholder comment. It also means such a component has no class isolation, so a script querying `.item` in it matches every `.item` on the page; define the class in a stylesheet to scope it.
 
 Pair a `.css` file alongside the HTML in a same-named directory:
 
@@ -406,7 +406,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
-* Compound element selectors: `.class element {}` and `.class > element {}` are scoped (element converted to class and injected on matching HTML elements); patterns with two bare elements (`div p {}`) still require a class anchor on the left
+* Compound element selectors: every element name in a chain is converted to a scoped class and injected on matching elements in the component's own template, with or without a class anchor (`.card p {}`, `div p {}`, `p + p {}`, `nav a {}`, `ul li * {}` all work); they never reach page markup or a child component's root
 * Element names inside `:is()`, `:where()`, and `:has()` are not converted; use class selectors inside those pseudo-classes instead
 
 ---
@@ -737,12 +737,28 @@ If a component template contains multiple root elements, inherited attributes ar
 
 Inherited class names are not scoped, they are treated as global page-level classes. To disable inheritance, set `scoping.inheritAttributes` to `false` in `bascik.config.ts`.
 
+### Styling a Child Component from Its Parent
+A component's CSS applies only to markup written in its own template. A parent's element selector such as `nav a { }` never matches the root element of a child component, so components stay isolated. To style a child's root from the parent, put a class on the child's usage tag and define that class in the parent's CSS. Bascik scopes it to the parent and merges it onto the child root. A class not defined in the parent's CSS passes through unscoped.
+
+```html
+<!-- illustrative: site-nav.html (parent) -->
+<nav>
+  <nav-link class="item" href="/">Home</nav-link>
+</nav>
+<!-- site-nav.css: .item { padding: 1em 0.5em; } -->
+<!-- nav-link.html (child, root is an anchor): <a><span data-bascik-slot></span></a> -->
+<!-- output: <a class="bascik__site-nav__item" href="/">Home</a> -->
+```
+
+The same applies to markup that a build script or slot produces: put the class on each child usage tag.
+
 ### Internal Masking vs. Preserving Element Contents
 
 These two mechanisms serve distinct purposes:
 
 * **Internal scanning mask (internal, hardcoded, not configurable):** Bascik temporarily blanks the contents of `<script>`, `<style>`, `<textarea>`, and HTML comments while scanning with regular expressions, so a component tag inside a JavaScript string, style block, or comment is not mistaken for real markup. The mask is discarded immediately after scanning. Authors never interact with or configure this behavior.
-* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Entries are exact tag names or `*` wildcard patterns (for example `vendor-*` preserves every tag whose name starts with `vendor-`); both use the same semantics. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names.
+* **Preserve scoping (authoring choice):** Keep scoping enabled by default. Use `scoping.preserve` (default `['code']`) when every matching tag and subtree must keep literal `id`, `name`, and `class` values. Entries are exact tag names or `*` wildcard patterns (for example `vendor-*` preserves every tag whose name starts with `vendor-`); both use the same semantics. Use bare `data-bascik-preserve` for one element and subtree, or list selected attributes such as `data-bascik-preserve="name"`. Nesting only widens. Preserving `name` gives up per-instance radio-group isolation, so reserve it for external form endpoints that require literal field names. Preserving an `id` also stops reference rewriting inside the preserved region: a link inside a preserved subtree stays literal even if its target is scoped, so a link and its target must be both preserved or both scoped (a scoped link to a preserved target works). Never preserve a skip link to "keep it working"; put the target `id` on the page shell. Preserve does not silence unresolved-tag warnings.
+* **External custom elements (`components.external`):** Hyphenated tags that belong to a browser custom element or library (for example `heading-anchors`) print `Unresolved component tag` on every page and appear in `bascik --check`. List them in `components: { external: ['heading-anchors', 'vendor-*'] }` (exact names or `*` wildcards, case-insensitive) to remove both. It changes diagnostics only: a real component of the same name still expands, scoping is unaffected, and typos stay reported. To use an npm custom element, copy its ready-to-use module into `dist/` with a `phase: 'pre'` exec script (files in `node_modules` are never copied, and bare specifiers in client scripts are not rewritten), load it with `<script type="module" src="/assets/vendor/name.js">`, and declare the tag here. Bundle it with esbuild instead if it imports other packages.
 
 ### Self-Closing Tags
 Components that do not contain inner slot content should always use self-closing void syntax:
@@ -811,6 +827,10 @@ Build scripts receive these `process.env` variables:
 | `BASCIK_ROUTE` | JSON string `{ params, data }` passed to build scripts inside dynamic route templates. |
 
 These are critical for scripts that generate per-page output. A script using `BASCIK_SOURCE_FILE`, `BASCIK_PAGE_FILE`, or `BASCIK_PAGE_PATH` gets a separate cache entry per page automatically.
+
+`BASCIK_ROUTE` may be any size: over 32 KB it is delivered through a temporary file and set before the script runs, so reading `process.env.BASCIK_ROUTE` is unchanged.
+
+**Printed directives never run.** Build script output is transpiled again (component tags expand, client scripts run in the browser), but any `data-bascik-build`, `data-bascik-server`, `data-bascik-stream`, or `data-bascik-routes` script in the output is removed with a warning. Write directives only in source files. This is not a sanitizer: HTML from a CMS or API must still go through an allowlist before printing, because its ordinary scripts, handlers, and component tags are kept.
 
 ### The Fetch-Once Pattern
 
@@ -901,14 +921,14 @@ Markdown stays comfortable for authors, while the published page stays **vanilla
 
 The parser emits ordinary HTML, so it can be styled by a global stylesheet or wrapped in a Bascik component. For reusable scoped styles, have the script emit `<markdown-content>${marked(md)}</markdown-content>` and give that component a default slot.
 
-Use wrapper descendant selectors for generated slot content:
+Use the wrapper class plus `:is()` around element names for generated slot content:
 
 ```css
-.markdown-content h2 { margin-block: 2.5rem 0.75rem; }
-.markdown-content blockquote { border-left: 4px solid currentColor; }
+.markdown-content :is(h2) { margin-block: 2.5rem 0.75rem; }
+.markdown-content :is(blockquote) { border-left: 4px solid currentColor; }
 ```
 
-Do not rely on a bare `h2 {}` component rule for Markdown passed through a slot. Bare element rules are transformed before slot content is inserted; a scoped wrapper selector continues to match the generated descendants.
+Do not write `h2 {}` or `.markdown-content h2 {}` for Markdown passed through a slot. Bascik scopes an element name by adding a class to the matching elements in the component's own template, also after a wrapper class, so slotted headings (plain tags) never match. Names inside `:is()` are left as written; the wrapper class stays scoped and specificity is unchanged.
 
 ### Page-Aware Scripts
 
@@ -1157,6 +1177,9 @@ export default defineConfig({
     out: 'dist',
     api: 'src/api',
   },
+  components: {
+    external: [],
+  },
   scoping: {
     scriptBlocks: true,
     inheritAttributes: true,
@@ -1189,6 +1212,7 @@ export default defineConfig({
     watchPaths: [],
     exec: [],
     workers: false,
+    onExecError: 'warn',    // 'warn' | 'error'. Default: 'warn' in dev, 'error' for --build
   },
   scripts: {
     cache: { enabled: true },
@@ -1246,6 +1270,7 @@ When creating or modifying `bascik.config.ts`:
 * **Do NOT invent non-existent `pipeline.exec` scripts:** `pipeline.exec` is only for executing existing custom lifecycle script files. If no custom script file exists in the workspace, omit it.
 * **Array Replacement in `build`:** Array properties like `pipeline.exec`, `pipeline.watchPaths`, and `assets.inlineStyles` are replaced as atomic values (not concatenated) when specified in `export const build`. When defining `build.pipeline.exec`, include all scripts that should run in production builds.
 * **Write artifacts to `dist/`:** Lifecycle scripts must write generated artifacts only to the output directory, never source files or watched paths. Never configure `pipeline.watchPaths` or `pipeline.exec[].watch` for generated outputs. There is no `outputs` option. Exec receives `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_OUT_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`. Use `pre` for required generated dependencies, not `parallel`.
+* **Exec failures (`pipeline.onExecError`):** `'warn'` reports a failing script (terminal and browser overlay) and keeps going; `'error'` stops and exits 1. Applies to pre, parallel, and post, at startup and on edits. Default is `'warn'` for the dev server (a typo must not end the session) and `'error'` for `--build` (a failed script must never produce a build that looks successful). Set it explicitly to flip either mode. Page compile errors are unaffected.
 * **Source-owned exec phases:** `pipeline.exec[].watch` selects matching scripts after a source edit. One cycle coalesces overlap with pages, components, and `pipeline.watchPaths`: pre finishes before compilation, parallel starts alongside it, post starts after compilation and disk writes. Known source dependents rebuild once; unknown external dependencies conservatively rebuild all pages without rerunning unmatched scripts. Exec-only inputs need no duplicate `pipeline.watchPaths`. Completion never queues another compile or reload. Edits during work are retained; failed paths retry on the next source edit. Pre/compile/post failures discard success reloads. Dev parallel stays nonblocking and reports every failure; build joins parallel and compilation/post before success. Never suppress watched script edits as presumed self-writes. Bascik cannot safely identify source-writing loops. `scripts.importRoot` and `assets.inlineStyles` do not add compilation watches.
 * **Stick to recommended defaults without restating them:** Preserve `scoping.deduplicateCss: true`, `scoping.scriptBlocks: true`, and `scoping.inheritAttributes: true` unless specifically instructed otherwise or integrating global utility frameworks like Tailwind CSS. Do not write these values into a config just to preserve them.
 * **Set `BASCIK_SITE_URL` for production features:** Provide the site URL via the environment (e.g. `BASCIK_SITE_URL=https://example.com bascik --build`) when page-aware canonical scripts, sitemaps, or `robots.txt` generation are enabled. Never put `siteUrl` in `bascik.config.ts`.
@@ -1457,7 +1482,7 @@ While the dev server is active, Bascik watches your file system and incrementall
 #### 3. Transpilation & Build Errors
 Development and production builds handle page failures differently. The dev server logs a failed page, completes boot, continues serving healthy pages, and retries the failed page on the next save. A production `bascik --build` waits for every page job, reports all failures together, and exits nonzero rather than reporting success with missing output.
 
-Hard build failures include a missing or unreadable configured pages directory, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored.
+Hard build failures include a missing or unreadable configured pages directory, a missing or unreadable components root listed in `directory.components`, a page without a non-empty `<body>`, runaway component expansion, output directory creation failure, and page write failure. `ENOENT` write errors are not ignored. A missing default `src/components/` is not an error: the project has no components until the directory is created.
 
 ```terminal
 Build failed with 2 page errors:
@@ -1482,7 +1507,7 @@ Build failed with 2 page errors:
   ```terminal
   [bascik] Unresolved component tag in "pages/about.html": <my-mistyped> - no matching component file found. Run `bascik --check` for a full report.
   ```
-  Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics.
+  Use `bascik --check` (or `bascik --check --strict`) as the CI gate for project references and diagnostics. Tags that belong to a custom element or library can be declared in `components.external` so neither the warning nor `--check` reports them.
 
 #### 4. Static Analysis (`bascik --check`)
 Run `bascik --check` from your project root to validate pages, component files, config, and API route files without starting the dev server or writing any output:
@@ -1827,7 +1852,7 @@ async function walk(dir: string, ext: string): Promise<string[]> {
   return out;
 }
 
-describe('dist HTML — WHATWG spec compliance', () => {
+describe('dist HTML: WHATWG spec compliance', () => {
   it('every page is free of parse errors', async () => {
     const files = await walk(DIST_DIR, '.html');
     const failures: string[] = [];
@@ -1844,7 +1869,7 @@ describe('dist HTML — WHATWG spec compliance', () => {
 });
 ```
 
-Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool — hold output to the full spec, not browser recovery behavior.
+Run after `bascik --build`. Catches corrupted script bodies, mismatched tags, and unreplaced internal tokens that string-based assertions miss. Bascik is a build tool, so hold output to the full spec, not browser recovery behavior.
 
 ### Testing Site Logic in a Bascik Project
 
@@ -1949,8 +1974,66 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 - **Slots:** `<slot />` / `children` → `data-bascik-slot` (no value) for default, `data-bascik-slot="name"` for named slots.
 - **Props:** `defineProps` / component props → `data-bascik-prop-*` attributes (text only).
 - **Reactive state:** `ref`, `useState`, etc. → plain `<script>` with vanilla JS. Bascik scopes `id` values so multiple instances stay independent.
-- **Routing:** Client-side router → one `.html` file per URL in `src/pages/`. No dynamic segments; generate static files for parameterized routes.
+- **Routing:** Client-side router → one `.html` file per URL in `src/pages/`. For parameterized routes (`[slug].astro`, `getStaticPaths`, Eleventy pagination), use a dynamic route template such as `src/pages/blog/[slug]/index.html` (trailing-slash URLs) with a `<script data-bascik-routes>` block. Do not generate page files into `src/pages/`. A route param cannot contain `/`; use one template per depth.
 - **Build-time data:** `onMounted` / `getStaticProps` / frontmatter → `<script data-bascik-build>` (Node.js ESM, stdout injected).
+- **Content collections (Astro `getCollection`, Eleventy `collections`):** No built-in equivalent. Write a `src/lib/posts.ts` helper that reads `content/` with `fs`, parses front matter with `gray-matter`, validates with `zod`, and sorts by the parsed date (not the file name). Escape every interpolated value. Drafts: skip them when `process.env.BASCIK_BUILD === '1'`. Exclude scripts that read `content/` from `scripts.cache` and add `content/` to `pipeline.watchPaths`.
+- **Template logic (Nunjucks/Liquid loops, filters, includes with variables):** Becomes TypeScript helpers in `src/lib/` that return HTML. Only static includes become components. Pages keep `<html>`/`<head>`/`<body>`; a component cannot own them.
+- **Feeds, sitemaps, images:** RSS/Atom is a `pipeline.exec` script (`phase: 'post'`) writing to `BASCIK_OUT_DIR`. Sitemap and robots are built in. No image optimization or syntax highlighting built in; do it in your own build step.
+- **Component scripts that print styled markup:** Output of a component build script, page-aware or not, is scoped like the template, including markup returned by imported helpers. Classes the component stylesheet does not define stay global.
+
+### From React
+
+Full guide: `/switch/from-react`. Key React-specific mappings:
+
+| React | Bascik |
+|-------|--------|
+| Function component | `.html` file in `src/components/<name>/`, folder name is the hyphenated tag |
+| `children` | `data-bascik-slot` (no value), fallback inside it |
+| Render prop / named children | `<div data-bascik-slot="x">` wrapper at the usage site and in the component |
+| `props.x` | `data-bascik-prop-x` (text only; booleans and numbers arrive as strings) |
+| Prop used as an attribute | `data-bascik-attr-<attribute>="propName"` |
+| Object, array, or function prop | Not possible. Print one component per item from a build script; use a bubbling `CustomEvent` instead of a callback |
+| `useState` in the common parent | Variables in the parent component's `<script>`; a function applies them to the DOM |
+| `onChange` callback prop | Child dispatches `new CustomEvent('x', { bubbles: true, detail })` from its own element; the parent listens on its root |
+| Re-render of a filtered list | One function sets `hidden` on existing rows; there is no diff, so write every place a value shows |
+| `.map()` over data | `<script data-bascik-build>` that prints component tags with escaped props |
+| Conditional style | A `data-` attribute and a CSS selector, in the component's own CSS |
+| React Router `/blog/:slug` | `src/pages/blog/[slug]/index.html` with `<script data-bascik-routes>` |
+
+React-specific gotchas:
+
+- **Escape every interpolated value in a build script.** JSX does it for you; a template string does not.
+- **Forwarding `children` to an inner component:** write a default slot marker between the inner component's tags, `<inner-box><div data-bascik-slot>fallback</div></inner-box>`. It receives the outer usage's default content. Named wrappers between the inner tags fill the inner component's named slots.
+- **Plain inputs can disagree with state after Back or reload.** Report the fields again on `pageshow`. A form with one text box submits on Enter; call `preventDefault()` in a `submit` listener when a script drives the form.
+- **Component scripts run once and are moved in production.** Minified production HTML moves them to the end of the document; the dev server leaves them in place. Look up elements inside handlers or after `DOMContentLoaded`.
+- **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.
+- **Tag names need a hyphen.** `Card.jsx` becomes `info-card`.
+
+### From Next.js
+
+Full guide: `/switch/from-next`. Key Next.js-specific mappings:
+
+| Next.js | Bascik |
+|---------|--------|
+| `app/page.tsx`, `app/posts/[slug]/page.tsx` | `src/pages/index.html`, `src/pages/posts/[slug].html` (`/posts/<slug>`, also served with a trailing slash) |
+| `generateStaticParams` | `<script data-bascik-routes>` printing `[{ "params": { "slug": "..." } }]` |
+| `generateMetadata` / `metadata` export | A build script in `<head>` that prints `<title>` and `<meta>` from a `src/lib` helper; absolute URLs from `BASCIK_SITE_URL` |
+| `app/layout.tsx` | Pages keep `<html>`/`<head>`/`<body>`; a head component plus header/footer components |
+| Server component that maps data to JSX | A `src/lib` helper returning escaped HTML strings, printed by a build script |
+| `"use client"` component with `useState`/`useEffect` | A component with a plain `<script>`; persistent state lives in the DOM or `localStorage` |
+| `next/link`, `next/image`, `next/font` | `<a>`, `<img>` with `width`/`height`, a self-hosted `@font-face` plus `<link rel="preload">` |
+| CSS Modules (`styles.x`) | Paired component `.css`; a class written in the template is scoped |
+| Tailwind via PostCSS | A `pipeline.exec` `pre` script running PostCSS + Tailwind into `BASCIK_OUT_DIR`; Tailwind `content` lists `src/**/*.html` and `src/lib/**/*.ts` |
+| `app/api/x/route.ts` | `src/api/x.ts` exporting `GET`/`POST`; `context.params` is a plain object, not a promise; `bascik --server` only |
+
+Next.js-specific gotchas:
+
+- **`@/` in a helper that imports a helper fails.** tsconfig `paths` do not apply; Node runs `src/lib/*.ts` directly. Inside helpers use relative paths with the `.ts` extension, and `import type` for type-only imports.
+- **Tailwind `@apply` in component CSS is not processed.** Write the CSS out, or keep `@apply` in the global Tailwind input file.
+- **Tailwind's `dark` class works unscoped** when it is toggled on `<html>` and the component's own CSS does not define it.
+- **A pre-paint script (theme, FOUC) goes in `<head>`.** Production HTML minification moves body scripts to the end of the body; head scripts stay put.
+- **Style slotted Markdown with `.wrapper :is(h2)`**, not `.wrapper h2` (see Markdown above).
+- **Unknown slugs return 404.** The upstream example answers 500 for them, because `getPostBySlug` throws before `notFound()`.
 
 ### From Svelte
 
@@ -1977,12 +2060,47 @@ Full guide: `/switch/from-vue`. Key Vue-specific mappings:
 |-----|--------|
 | `<template>` + `<style scoped>` | `.html` + `.css` paired files |
 | `<slot />` | `data-bascik-slot` (no value) |
-| `<slot name="x" />` | `data-bascik-slot="x"` |
-| `defineProps` | `data-bascik-prop-*` attributes |
-| `ref` / `reactive` | Vanilla JS `<script>` |
-| `v-if` / `v-show` | CSS `display:none` or JS toggle |
-| `vue-router` | One `.html` per route in `src/pages/` |
-| `onMounted` data fetch | `<script data-bascik-build>` |
+| `<slot name="x" />` / `<template #x>` | `<div data-bascik-slot="x">` wrapper around the content, in the component and at the usage site |
+| `defineProps` | `data-bascik-prop-*` attributes (text only) |
+| Array or object prop (`:data="rows"`) | JSON in a `<script type="application/json">` that fills the default slot; a build script prints it from a `src/lib` helper, and `<` is escaped as `\u003c` |
+| `$emit`, `v-model` | DOM events: `dispatchEvent(new CustomEvent(...))` and `addEventListener` |
+| `ref` / `reactive` | Vanilla JS `<script>`; the script updates the DOM itself |
+| `v-if` / `v-show` | Build-time: a build script prints one branch. Runtime: toggle the `hidden` attribute |
+| `v-for` | Build-time loop in a build script, or clone a `<template>` from a script |
+| `vue-router` | One `.html` per route in `src/pages/`; parameterized routes use `src/pages/blog/[slug].html` with `<script data-bascik-routes>` |
+| `onMounted` data fetch | `<script data-bascik-build>` for data that is the same for everyone, `fetch()` in a component script otherwise |
+
+Vue-specific gotchas:
+
+- **Named-slot wrappers are removed.** `<h1 data-bascik-slot="header">Title</h1>` at the usage site produces `Title` with no `<h1>` (an `<a>` loses its `href` too). Write `<div data-bascik-slot="header"><h1>Title</h1></div>`.
+- **Component tag names need a hyphen.** `Card.vue` becomes `info-card`; a tag named `card` warns.
+- **Script-created elements get no element-selector styles.** CSS such as `td { }` applies to template markup. Put the markup in a `<template>` inside the component and clone it, instead of `document.createElement('td')`.
+- **Script placement differs between modes.** Production HTML minification moves component scripts to the end of the document; the development server and `minify.html: false` leave them in place. Never rely on a later element existing when the script starts: look it up inside an event handler or after `DOMContentLoaded`. Use `pageshow` to resync a form value the browser restored on Back.
+- **`bascik --check` cannot see a component that only a build script prints** and reports it as unused.
+
+### From WordPress
+
+Full guide: `/switch/from-wordpress`. Key WordPress-specific mappings:
+
+| WordPress | Bascik |
+|-----------|--------|
+| The Loop, `WP_Query` | A `src/lib` helper returning escaped HTML, printed by a build script |
+| `single.php` at `/%year%/%monthnum%/%day%/%postname%/` | `src/pages/[year]/[month]/[day]/[slug]/index.html` (one bracket per segment; a param cannot contain `/`) |
+| Pages and child pages | `src/pages/[pageslug]/index.html` and `src/pages/[parent]/[child]/index.html` |
+| Category, tag, and `/page/2/` archives | `category/[term]/`, `tag/[term]/`, `page/[page]/` templates, each paged archive its own template |
+| REST API (`/wp-json/wp/v2/`) | One `pre` exec script fetches everything (follow `X-WP-TotalPages`; `per_page` above 100 is a 400), sanitizes it, downloads media into `BASCIK_OUT_DIR`, and writes a JSON snapshot pages read |
+| Tools > Export (WXR) | `wordpress-export-to-markdown`, then restore page parents, menu order, term names, and image alt text by hand |
+| `wp-content/uploads/` | Same path under `dist/`, so content URLs keep working |
+| `/feed/` | A `post` exec script writing `/feed.xml`; redirect `/feed/` on the host |
+
+WordPress-specific gotchas:
+
+- **Sanitize every post body before printing it.** `content.rendered` can hold `<script>`, `on*` handlers, and `javascript:` links; administrators may save any markup. Use an allowlist such as `sanitize-html`, which also drops custom elements so content cannot place a component tag. Bascik itself only removes printed directive scripts.
+- **Exclude pages that read fetched data from the script cache** (`scripts.cache.exclude`). Network responses are not part of the cache key, so a rebuild after an edit in WordPress otherwise reuses old output.
+- **Keep page helpers light.** Every build script is its own Node process; import `zod` and `sanitize-html` in the sync step, not in helpers every page loads.
+- **Raise the exec `timeout` for media downloads.** The default is 60 seconds.
+- **Titles are HTML over REST** (`&#038;`, curly quotes); convert to text, then escape. WXR titles are the raw text.
+- **No comments, search, or date and author archives** in a static build; use services or add templates.
 
 ### Migrating Existing Sitemap & Robots Files
 

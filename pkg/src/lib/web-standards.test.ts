@@ -113,6 +113,8 @@ describe('Web Standards Validation via @webref & MDN BCD', () => {
         directory: '/src/components',
         componentFileExtension: '.html',
         id: '1',
+        // Only classes a component's own stylesheet defines are renamed.
+        cssFileContent: '.item { margin: 0; } .highlight { color: red; } .active { font-weight: 700; } .container { display: block; }',
       };
 
       const scopedId = prefixElementAttribute(comp, 'id', 'inst123');

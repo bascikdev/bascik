@@ -58,6 +58,8 @@ import {
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
 import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
 import { getImportRoot } from "./import-root.ts";
+import { applyOutputScope, decodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
+import { removeOutputDirectives } from "./output-directives.ts";
 import {
   ATTR,
   BUILD_FLAG,
@@ -525,6 +527,7 @@ export const executeBuildScripts = async (
     startLine: number;
     tmpPath: string;
     sourceFile: string;
+    outputScope: OutputScope | null;
     output?: string;
   }
 
@@ -655,6 +658,7 @@ export const executeBuildScripts = async (
       cacheKey,
       startLine,
       tmpPath,
+      outputScope: decodeOutputScope(getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE)),
       sourceFile,
     });
   }
@@ -751,8 +755,25 @@ export const executeBuildScripts = async (
   // so earlier indices stay valid. Index splicing is inherently safe against
   // `$`-style replacement patterns and against duplicate identical tags.
   tasks.sort((a, b) => b.index - a.index);
-  for (const { fullTag, index, output } of tasks) {
-    result = result.slice(0, index) + (output ?? "") + result.slice(index + fullTag.length);
+  const removedDirectives = new Set<string>();
+  for (const { fullTag, index, output, outputScope } of tasks) {
+    // Printed output is transpiled again, so a directive script inside it (for
+    // example in CMS HTML) would run at build time or become a server script.
+    // Only directives written in source files run; printed ones are dropped.
+    const { html: safeOutput, removed } = removeOutputDirectives(output ?? "");
+    for (const name of removed) removedDirectives.add(name);
+    // A deferred page-aware component script carries its component's scope so
+    // its page-time output matches the component's scoped CSS. Applied after
+    // caching, so the cache stores the script's own stdout.
+    const emitted = outputScope ? applyOutputScope(safeOutput, outputScope) : safeOutput;
+    result = result.slice(0, index) + emitted + result.slice(index + fullTag.length);
+  }
+  if (removedDirectives.size > 0) {
+    const where = filePath ? ` in "${getRelativePath(filePath, "pages")}"` : "";
+    const tags = [...removedDirectives].map((name) => `<script ${name}>`).join(", ");
+    console.warn(
+      `[bascik] warning: build script output${where} contained ${tags}. Printed directive scripts never run; they were removed. Write directives in source files, and sanitize HTML from a CMS or an API before printing it.`,
+    );
   }
 
   return result;
