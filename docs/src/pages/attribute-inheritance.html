@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Any attribute on a component usage tag that is not a Bascik-specific attribute is forwarded to the root element automatically." />
@@ -35,14 +35,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/attribute-inheritance'));
+          export default async () => renderSectionLabel('/attribute-inheritance');
         </script>
 
         <!-- Intro and demo context rendered from docs/content/attribute-inheritance.md. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/attribute-inheritance.md', { to: 'How It Works' }));
-          console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
+          export default async () => (await renderMdRange('./content/attribute-inheritance.md', { to: 'How It Works' })) + (await renderMdRange('./content/attribute-inheritance.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
         </script>
 
         <component-demo data-bascik-prop-file="src/components/inherit-demo-card/">
@@ -54,7 +53,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-usage'));
+                export default async () => await extractDemoBlock('./content/attribute-inheritance.md', 'source-usage');
               </script>
             </code-block>
           </div>
@@ -62,7 +61,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-html'));
+                export default async () => await extractDemoBlock('./content/attribute-inheritance.md', 'source-html');
               </script>
             </code-block>
           </div>
@@ -70,7 +69,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'source-css'));
+                export default async () => await extractDemoBlock('./content/attribute-inheritance.md', 'source-css');
               </script>
             </code-block>
           </div>
@@ -78,7 +77,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/attribute-inheritance.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/attribute-inheritance.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -86,7 +85,7 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/attribute-inheritance.md', { from: 'How It Works', to: 'See it in action' }));
+          export default async () => await renderMdRange('./content/attribute-inheritance.md', { from: 'How It Works', to: 'See it in action' });
         </script>
 
         <docs-pagination />

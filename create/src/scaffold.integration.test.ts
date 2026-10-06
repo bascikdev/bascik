@@ -145,6 +145,9 @@ describe("scaffold-to-compiler integration", () => {
     const currentYear = String(new Date().getFullYear());
     expect(indexHtml).toContain(`&copy; ${currentYear}`);
     expect(aboutHtml).toContain(`&copy; ${currentYear}`);
+    // Confirm default export handler was scaffolded in site-footer
+    const footerHtml = await readFile(join(projectDir, "src/components/site-footer/site-footer.html"), "utf8");
+    expect(footerHtml).toContain("export default () => String(new Date().getFullYear())");
 
     // 6. Verify representative assets copied to dist
     await expect(access(join(distDir, "favicon.ico"))).resolves.toBeUndefined();
@@ -206,5 +209,29 @@ describe("scaffold-to-compiler integration", () => {
     // Verifier rejected the corrupted page
     const combinedOutput = `${buildResult.stdout}\n${buildResult.stderr}`;
     expect(combinedOutput.toLowerCase()).toMatch(/error|failed|syntaxerror/);
+  }, 45_000);
+
+  it("negative control: rejects compilation when a build script relies on legacy stdout console.log", async () => {
+    const parentDir = await createTempDir("stdout-control");
+    const projectName = "legacy-stdout-site";
+    const projectDir = join(parentDir, projectName);
+
+    await scaffold(projectName, parentDir);
+
+    const legacyStdoutPage = `<!DOCTYPE html>
+<html>
+<head><title>Legacy Stdout</title></head>
+<body>
+  <script data-bascik-build>
+    console.log("<p>legacy</p>");
+  </script>
+</body>
+</html>`;
+    await writeFile(join(projectDir, "src/pages/index.html"), legacyStdoutPage, "utf8");
+
+    const buildResult = await runBascikBuild(projectDir);
+    expect(buildResult.exitCode).not.toBe(0);
+    const combinedOutput = `${buildResult.stdout}\n${buildResult.stderr}`;
+    expect(combinedOutput).toContain("missing default export");
   }, 45_000);
 });

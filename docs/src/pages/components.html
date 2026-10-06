@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Components are the core building block in Bascik. Learn to write HTML-only components, add scoped CSS or JavaScript, and split into separate files as they grow." />
@@ -35,19 +35,19 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/components'));
+          export default async () => renderSectionLabel('/components');
         </script>
 
         <!-- Intro through end of first section heading, from docs/content/components.md -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { to: 'HTML-Only Components' }));
+          export default async () => await renderMdRange('./content/components.md', { to: 'HTML-Only Components' });
         </script>
 
         <!-- Section: HTML-only -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'HTML-Only Components', to: 'HTML with CSS' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'HTML-Only Components', to: 'HTML with CSS' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/hello-card/">
@@ -58,7 +58,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-usage-hello'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-hello');
               </script>
             </code-block>
           </div>
@@ -66,7 +66,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-html-hello'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-hello');
               </script>
             </code-block>
           </div>
@@ -74,7 +74,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-html-hello'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-hello');
               </script>
             </code-block>
           </div>
@@ -83,7 +83,7 @@
         <!-- Section: HTML with CSS -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'HTML with CSS', to: 'HTML with JavaScript' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'HTML with CSS', to: 'HTML with JavaScript' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/comp-badge/">
@@ -94,7 +94,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-usage-badge'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-badge');
               </script>
             </code-block>
           </div>
@@ -102,7 +102,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-html-badge'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-badge');
               </script>
             </code-block>
           </div>
@@ -110,7 +110,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-html-badge'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-badge');
               </script>
             </code-block>
           </div>
@@ -118,7 +118,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-css-badge'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-css-badge');
               </script>
             </code-block>
           </div>
@@ -127,7 +127,7 @@
         <!-- Section: HTML with JavaScript -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'HTML with JavaScript', to: 'HTML, CSS, and JavaScript Together' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'HTML with JavaScript', to: 'HTML, CSS, and JavaScript Together' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/comp-toggle/">
@@ -138,7 +138,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-usage-toggle'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-toggle');
               </script>
             </code-block>
           </div>
@@ -146,7 +146,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-html-toggle'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-toggle');
               </script>
             </code-block>
           </div>
@@ -154,7 +154,7 @@
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-js-toggle'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-js-toggle');
               </script>
             </code-block>
           </div>
@@ -162,7 +162,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-html-toggle'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-toggle');
               </script>
             </code-block>
           </div>
@@ -170,7 +170,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-css-toggle'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-css-toggle');
               </script>
             </code-block>
           </div>
@@ -179,7 +179,7 @@
         <!-- Section: HTML, CSS, and JavaScript Together -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'HTML, CSS, and JavaScript Together', to: 'Companion CSS and Script Files' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'HTML, CSS, and JavaScript Together', to: 'Companion CSS and Script Files' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/comp-alert/">
@@ -190,7 +190,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-usage-alert'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-alert');
               </script>
             </code-block>
           </div>
@@ -198,7 +198,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-html-alert'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-alert');
               </script>
             </code-block>
           </div>
@@ -206,7 +206,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-html-alert'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-alert');
               </script>
             </code-block>
           </div>
@@ -214,7 +214,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-css-alert'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-css-alert');
               </script>
             </code-block>
           </div>
@@ -223,7 +223,7 @@
         <!-- Section: Companion CSS and Script Files -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'Companion CSS and Script Files', to: 'Subfolder Layout' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'Companion CSS and Script Files', to: 'Subfolder Layout' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/feature-card/">
@@ -235,7 +235,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-usage-card'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-card');
               </script>
             </code-block>
           </div>
@@ -243,7 +243,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-html-card'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-card');
               </script>
             </code-block>
           </div>
@@ -251,7 +251,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'source-css-card'));
+                export default async () => await extractDemoBlock('./content/components.md', 'source-css-card');
               </script>
             </code-block>
           </div>
@@ -259,7 +259,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-html-card'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-card');
               </script>
             </code-block>
           </div>
@@ -267,7 +267,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/components.md', 'output-css-card'));
+                export default async () => await extractDemoBlock('./content/components.md', 'output-css-card');
               </script>
             </code-block>
           </div>
@@ -276,7 +276,7 @@
         <!-- Section: Subfolder Layout (plain prose, no demo) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/components.md', { from: 'Subfolder Layout' }));
+          export default async () => await renderMdRange('./content/components.md', { from: 'Subfolder Layout' });
         </script>
 
         <docs-pagination />

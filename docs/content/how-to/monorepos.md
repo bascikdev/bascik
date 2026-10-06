@@ -60,8 +60,11 @@ With `scripts.importRoot` pointing at the shared scripts directory, `@/` reaches
   import { renderMd } from '@/md-renderer.ts';        // shared/scripts/md-renderer.ts
   import { pricingTable } from './helpers/pricing.ts'; // sites/marketing/src/pages/helpers/pricing.ts
 
-  console.log(await renderMd('./content/pricing.md'));
-  console.log(pricingTable());
+  export default async function () {
+    const md = await renderMd('./content/pricing.md');
+    const table = pricingTable();
+    return `${md}\n${table}`;
+  }
 </script>
 ```
 

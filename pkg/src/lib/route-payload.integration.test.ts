@@ -32,13 +32,17 @@ describe("large dynamic route payloads", () => {
     // 2 MiB of content, beyond both the Linux per-string and macOS total limits.
     await writeFixtureFile(root, "src/pages/[slug].html", `<!doctype html><html lang="en"><head><title>Post</title></head><body>
 <script data-bascik-routes>
-  const body = 'é'.repeat(1024 * 1024);
-  console.log(JSON.stringify([{ params: { slug: 'long' }, data: { body } }]));
+  export default async function () {
+    const body = 'é'.repeat(1024 * 1024);
+    return [{ params: { slug: 'long' }, data: { body } }];
+  }
 </script>
 <p><script data-bascik-build>
-  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
-  const ok = data.body.length === 1024 * 1024 && /^é+$/.test(data.body);
-  console.log(params.slug + ':' + data.body.length + ':' + ok);
+  export default async function () {
+    const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
+    const ok = data.body.length === 1024 * 1024 && /^é+$/.test(data.body);
+    return params.slug + ':' + data.body.length + ':' + ok;
+  }
 </script></p>
 </body></html>`);
 
@@ -60,14 +64,16 @@ describe("directive scripts inside printed build output", () => {
     // Stand-in for CMS HTML: a post body that carries directive scripts.
     await writeFixtureFile(root, "content/post.html", [
       "<p>From the CMS</p>",
-      "<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('CANARY', 'ran'); console.log('<p>BUILD RAN</p>');</script>",
+      "<script data-bascik-build>import { writeFileSync } from 'node:fs'; writeFileSync('CANARY', 'ran'); export default () => '<p>BUILD RAN</p>';</script>",
       "<script data-bascik-server>export default () => 'SERVER RAN';</script>",
       "<post-note></post-note>",
     ].join("\n"));
     await writeFixtureFile(root, "src/pages/index.html", `<!doctype html><html lang="en"><head><title>P</title></head><body>
 <article><script data-bascik-build>
   import { readFile } from 'node:fs/promises';
-  console.log(await readFile('content/post.html', 'utf8'));
+  export default async function () {
+    return await readFile('content/post.html', 'utf8');
+  }
 </script></article>
 </body></html>`);
 

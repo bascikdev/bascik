@@ -730,13 +730,13 @@ export async function runRetentionExperiment(directory: string, changing: boolea
   await writeFile(join(project, "scripts/post.mjs"), 'import { mkdir, writeFile } from "node:fs/promises"; await mkdir("dist", {recursive:true}); await writeFile("dist/post.json", "{\\"complete\\":true}");');
   if (buildDepOptions) {
     await writeFile(join(project, "src/lib/build-helper.ts"), "export const buildNumber = 0;");
-    await writeFile(join(project, "src/pages/inline.html"), `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep"><script data-bascik-build>import { buildNumber } from '@/lib/build-helper.ts'; console.log('build-' + buildNumber);</script></p><script data-bascik-server>export default function retentionInline129(request, context) { ${requestObservation} return "inline-0:" + new URL(request.url).searchParams.get("request"); }</script></body></html>`);
+    await writeFile(join(project, "src/pages/inline.html"), `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep"><script data-bascik-build>import { buildNumber } from '@/lib/build-helper.ts'; export default () => 'build-' + buildNumber;</script></p><script data-bascik-server>export default function retentionInline129(request, context) { ${requestObservation} return "inline-0:" + new URL(request.url).searchParams.get("request"); }</script></body></html>`);
   } else {
     await writeFile(join(project, "src/pages/inline.html"), inlineSource(0, 0));
   }
   if (staticAssetOptions) await writeFile(join(project, "src/pages/asset.txt"), assetSource(0));
   await writeFile(join(project, "src/pages/external.html"), externalPageSource); // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag -- `project` is the private fixture destination path; the HTML is a literal constant
-  if (externalHelper) await writeFile(join(project, "src/pages/external.html"), '<!DOCTYPE html><html><head></head><body><script data-bascik-build>import { revision } from "@/lib/helper.mjs"; console.log("src-" + revision);</script></body></html>');
+  if (externalHelper) await writeFile(join(project, "src/pages/external.html"), '<!DOCTYPE html><html><head></head><body><script data-bascik-build>import { revision } from "@/lib/helper.mjs"; export default () => "src-" + revision;</script></body></html>');
   await writeFile(join(project, "src/lib/handler.mjs"), `import {revision} from "./helper.mjs"; export default function retentionSrc129(request, context) { ${requestObservation} return "src-" + revision + ":" + new URL(request.url).searchParams.get("request"); }`);
   await writeFile(join(project, "api/probe.mjs"), `import {revision} from "./helper.mjs"; export function GET(request, context) { ${requestObservation} return new Response("api-" + revision + ":" + new URL(request.url).searchParams.get("request")); }`);
   const originalApiRoute = apiRouteSource(0);
@@ -1147,15 +1147,15 @@ export default function retentionShared129(request, context) { ${requestObservat
   }
   const depObservations: InlinePageObservation[] = [];
   // Exact served output for the build-dependency fixture. The data-bascik-build script's
-  // console.log output (with trailing newline) replaces the script tag; the live-reload script
+  // Default export return value replaces the script tag; the live-reload script
   // is appended. The data-bascik-server script is NOT executed on disk (inert placeholder), but
   // IS executed at request time (its output replaces the placeholder). Never derived from a
   // received page.
   const expectedBuildDepDiskOutput = (revision: number) => Buffer.from(
-    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}\n</p><script type="text/bascik-server" data-bascik-server-id="server_script_70616765732f696e6c696e652e68746d6c3a3a31"></script>${getLiveReloadScript()}</body></html>`,
+    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}</p><script type="text/bascik-server" data-bascik-server-id="server_script_70616765732f696e6c696e652e68746d6c3a3a31"></script>${getLiveReloadScript()}</body></html>`,
   );
   const expectedBuildDepHttpOutput = (revision: number) => Buffer.from(
-    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}\n</p>inline-0:test-dep${getLiveReloadScript()}</body></html>`,
+    `<!DOCTYPE html><html><head></head><body><p data-testid="generation">generation-0</p><p data-testid="build-dep">build-${revision}</p>inline-0:test-dep${getLiveReloadScript()}</body></html>`,
   );
   async function verifyBuildDep(revision: number, deleted = false) {
     const response = await readResponse("/inline?request=test-dep");
@@ -1280,7 +1280,7 @@ export default function retentionShared129(request, context) { ${requestObservat
   }
   const externalStageObservations: { observation: DevChurnStageObservation; held?: DevChurnStage; sseGeneration?: number; }[] = [];
   let lastExternalSseGeneration = 0;
-  const expectedExternalOutput = (revision: number) => Buffer.from(`<!DOCTYPE html><html><head></head><body>src-${revision}\n${getLiveReloadScript()}</body></html>`);
+  const expectedExternalOutput = (revision: number) => Buffer.from(`<!DOCTYPE html><html><head></head><body>src-${revision}${getLiveReloadScript()}</body></html>`);
   let externalPublishedRevision = 0;
   async function verifyDevModule(revision: number, deleted = false) {
     if (devModuleOptions?.input === "dev-module-inline") {

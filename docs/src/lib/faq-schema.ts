@@ -4,10 +4,8 @@
  *
  * Usage inside a <script data-bascik-build> block:
  *
- *   const { faqSchema } = await import(
- *     pathToFileURL(join(process.cwd(), 'src/lib/faq-schema.ts')).href
- *   );
- *   console.log(await faqSchema('content/faq.md'));
+ *   import { faqSchema } from '@/lib/faq-schema.ts';
+ *   export default async () => await faqSchema('content/faq.md');
  */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';

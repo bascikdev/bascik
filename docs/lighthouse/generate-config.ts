@@ -14,8 +14,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const lighthouseDir = resolve(__dirname);
 
 export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:8080'): Promise<string[]> {
-  // Collect all page hrefs from NAV
-  const navHrefs = NAV.flatMap((section) => section.pages.map((page) => page.href));
+  // Collect all page hrefs from NAV. External nav entries (e.g. Merch) are
+  // off-site and can't be audited against the local server, so they are skipped.
+  const navHrefs = NAV.flatMap((section) => section.pages.filter((page) => !page.external).map((page) => page.href));
 
   // Standalone pages not listed in main nav hierarchy
   const extraPages = ['/', '/license', '/sponsor'];

@@ -2,15 +2,18 @@
      <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
           <script data-bascik-build>
                import { NAV } from '@/lib/nav.ts';
-               let html = '';
-               for (const section of NAV) {
-                    html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
-                    for (const page of section.pages) {
-                         html += `<li><a href="${page.href}">${page.label}</a></li>`;
+               import { renderNavListItem } from '@/lib/nav-helpers.ts';
+               export default async function () {
+                    let html = '';
+                    for (const section of NAV) {
+                         html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
+                         for (const page of section.pages) {
+                              html += renderNavListItem(page);
+                         }
+                         html += '</ul>';
                     }
-                    html += '</ul>';
-               }
-               console.log(html);
+                    return html;
+               };
           </script>
      </aside>
      <nav class="docs-toc" aria-label="On this page" hidden>
@@ -18,11 +21,13 @@
           <ol class="docs-toc-list">
                <script data-bascik-build="page">
                     import { renderPageTableOfContents } from '@/lib/render-nav.ts';
-                    const pageContentPath = process.env.BASCIK_PAGE_FILE
-                         ?.replace(/\\/g, '/')
-                         .replace(/^.*\/pages\//, '')
-                         .replace(/\.html$/, '.md');
-                    console.log(pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '');
+                    export default async function () {
+                         const pageContentPath = process.env.BASCIK_PAGE_FILE
+                              ?.replace(/\\/g, '/')
+                              .replace(/^.*\/pages\//, '')
+                              .replace(/\.html$/, '.md');
+                         return pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '';
+                    };
                </script>
           </ol>
      </nav>
@@ -215,6 +220,18 @@
                     navigationMaxTimer = window.setTimeout(releaseNavigationTarget, reducedMotion ? 0 : 4000);
                });
 
+               var headingUpdatePending = false;
+               function scheduleHeadingUpdate() {
+                    if (headingUpdatePending) return;
+                    headingUpdatePending = true;
+                    window.requestAnimationFrame(function () {
+                         headingUpdatePending = false;
+                         updateCurrentHeading();
+                    });
+               }
+
+               window.addEventListener('scroll', scheduleHeadingUpdate, { passive: true });
+               window.addEventListener('resize', scheduleHeadingUpdate);
                updateCurrentHeading();
                if ('IntersectionObserver' in window) {
                     var observer = new IntersectionObserver(updateCurrentHeading, {
@@ -222,8 +239,6 @@
                          threshold: 0,
                     });
                     headings.forEach(function (heading) { observer.observe(heading); });
-               } else {
-                    window.addEventListener('scroll', updateCurrentHeading, { passive: true });
                }
                window.addEventListener('hashchange', updateCurrentHeading);
                window.addEventListener('scrollend', checkNavigationArrived);

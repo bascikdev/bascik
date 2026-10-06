@@ -5,11 +5,11 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <meta name="description"
     content="Download the official Bascik logos, colors, and press kit, with usage guidelines and recommended image sizes for articles, talks, videos, and social profiles." />
@@ -109,7 +109,7 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/press'));
+          export default async () => renderSectionLabel('/press');
         </script>
 
         <!-- Content rendered from docs/content/press.md at build time.
@@ -117,7 +117,7 @@
         <div data-testid="press-intro">
           <script data-bascik-build>
             import { renderMdRange } from '@/lib/md-renderer.ts';
-            console.log(await renderMdRange('./content/press.md', { to: 'Kit Contents' }));
+            export default async () => await renderMdRange('./content/press.md', { to: 'Kit Contents' });
           </script>
         </div>
 
@@ -211,7 +211,7 @@
         <div data-testid="press-guidelines">
           <script data-bascik-build>
             import { renderMdRange } from '@/lib/md-renderer.ts';
-            console.log(await renderMdRange('./content/press.md', { from: 'Kit Contents' }));
+            export default async () => await renderMdRange('./content/press.md', { from: 'Kit Contents' });
           </script>
         </div>
 

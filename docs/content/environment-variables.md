@@ -76,15 +76,16 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 ```html
 <!-- src/pages/posts/[slug].html -->
 <script data-bascik-build>
-  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
-  console.log(`<h1>${params.slug}</h1>`);
-  console.log(`<article>${data.contentHtml}</article>`);
+  export default function () {
+    const { params, data } = JSON.parse(process.env.BASCIK_ROUTE);
+    return `<h1>${params.slug}</h1><article>${data.contentHtml}</article>`;
+  }
 </script>
 ```
 
 > **Dynamic Route Safety.** `process.env.BASCIK_ROUTE` is only defined when transpiling dynamic routes. For static pages, the variable is omitted from the environment.
 
-> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Printing `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write)).
+> **Large payloads.** `data` can be any size, such as a whole post body. Above 32 KB, Bascik passes the value through a temporary file and sets `process.env.BASCIK_ROUTE` before your script and its imports run, so reading it is unchanged. Returning `data.contentHtml` from a CMS places that HTML in the page as is; sanitize it first (see [Printing HTML You Did Not Write](/build-scripts#printing-html-you-did-not-write)).
 
 ## Dynamic Route Scripts (`data-bascik-routes`)
 
@@ -93,11 +94,13 @@ When rendering dynamic pages from parameterized templates (such as `src/pages/po
 ```html
 <!-- src/pages/products/[category]/[id].html -->
 <script data-bascik-routes>
-  // Access template file location and pages directory
-  const templatePath = process.env.BASCIK_SOURCE_FILE;
+  export default async function () {
+    // Access template file location and pages directory
+    const templatePath = process.env.BASCIK_SOURCE_FILE;
 
-  const routes = await fetchProductManifest();
-  console.log(JSON.stringify(routes));
+    const routes = await fetchProductManifest();
+    return routes;
+  }
 </script>
 ```
 

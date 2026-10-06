@@ -32,10 +32,10 @@ export const PACKAGE_JSON = (name: string): string =>
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.3",
+        "@bascik/bascik": "^1.0.0-rc.4",
       },
       devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.1",
+        "@bascik/language-server": "^0.1.0-rc.2",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",
@@ -491,7 +491,7 @@ ${SITE_FOOTER_CSS}</style>
   <div class="container">
     <div class="footer-inner">
       <span class="footer-copy">
-        &copy; <script data-bascik-build>console.log(new Date().getFullYear())</script>
+        &copy; <script data-bascik-build>export default () => String(new Date().getFullYear());</script>
         <span data-bascik-prop-brand>My Site</span>
       </span>
       <nav class="footer-nav" aria-label="Footer navigation">

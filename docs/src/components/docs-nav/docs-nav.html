@@ -22,15 +22,18 @@
         <div class="mobile-only-sections">
           <script data-bascik-build>
             import { NAV } from '@/lib/nav.ts';
-            let html = '';
-            for (const section of NAV) {
-              html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
-              for (const page of section.pages) {
-                html += `<li><a href="${page.href}">${page.label}</a></li>`;
+            import { renderNavListItem } from '@/lib/nav-helpers.ts';
+            export default async function () {
+              let html = '';
+              for (const section of NAV) {
+                html += `<p class="mobile-sec-heading">${section.section}</p><ul class="mobile-sec-nav">`;
+                for (const page of section.pages) {
+                  html += renderNavListItem(page);
+                }
+                html += '</ul>';
               }
-              html += '</ul>';
-            }
-            console.log(html);
+              return html;
+            };
           </script>
           <hr class="mobile-sep" />
           <ul class="mobile-sec-nav">

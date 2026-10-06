@@ -140,7 +140,7 @@ Hugo's `{{ .Title }}` and `{{ .Params.description }}` pull values from front mat
 
 ## `{{ range }}` Loops → `<script data-bascik-build>`
 
-Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equivalent is a `<script data-bascik-build>` block that reads files with Node.js and prints HTML to stdout.
+Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equivalent is a `<script data-bascik-build>` block that reads files with Node.js and returns HTML from its default export.
 
 ```html
 <!-- layouts/_default/list.html (Hugo - before) -->
@@ -162,16 +162,19 @@ Hugo's `{{ range .Pages }}` iterates over content at build time. The Bascik equi
   <script data-bascik-build>
     import { readdir, readFile } from 'node:fs/promises';
     import matter from 'gray-matter';
-    const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
-    const posts = await Promise.all(files.map(async f => {
-      const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
-      const slug = f.replace('.md', '');
-      return { slug, title: data.title, date: data.date };
-    }));
-    posts.sort((a, b) => new Date(b.date) - new Date(a.date));
-    console.log(posts.map(p =>
-      `<li><a href="/posts/${p.slug}">${p.title}</a><span>${p.date}</span></li>`
-    ).join('\n'));
+
+    export default async function () {
+      const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
+      const posts = await Promise.all(files.map(async f => {
+        const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
+        const slug = f.replace('.md', '');
+        return { slug, title: data.title, date: data.date };
+      }));
+      posts.sort((a, b) => new Date(b.date) - new Date(a.date));
+      return posts.map(p =>
+        `<li><a href="/posts/${p.slug}">${p.title}</a><span>${p.date}</span></li>`
+      ).join('\n');
+    }
   </script>
 </ul>
 ```
@@ -236,12 +239,15 @@ Post body here.
   import { readFile } from 'node:fs/promises';
   import matter from 'gray-matter';
   import { marked } from 'marked';
-  const src = await readFile('./content/posts/my-post.md', 'utf8');
-  const { data, content } = matter(src);
-  console.log(`
-    <h1>${data.title}</h1>
-    <p class="description">${data.description}</p>
-    ${await marked.parse(content)}
-  `);
+
+  export default async function () {
+    const src = await readFile('./content/posts/my-post.md', 'utf8');
+    const { data, content } = matter(src);
+    return `
+      <h1>${data.title}</h1>
+      <p class="description">${data.description}</p>
+      ${await marked.parse(content)}
+    `;
+  }
 </script>
 ```

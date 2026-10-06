@@ -135,13 +135,11 @@ The copied files belong to your project and are meant to be customized. When you
 
 **Handlebars** is the recommended option. It is small, its logic-less design fits a build-time system where the template is evaluated once and the result is static HTML, and it escapes values by default. For a single interpolated value on a single page, a roughly fifteen-line dependency-free helper is enough; when it grows past about twenty lines, that is the signal to reach for Handlebars. If your team already knows EJS or Nunjucks, keep using it. See [Templating](/how-to/templating) for the full guide.
 
-## Why do build scripts use console.log() instead of return?
+## Why do build scripts export a function instead of using console.log()?
 
-Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standalone Node.js ECMAScript modules, not as function bodies. In JavaScript, a top-level `return` outside a function is a `SyntaxError`.
+Build scripts (`<script data-bascik-build>`) and dynamic route scripts (`<script data-bascik-routes>`) run as standard ECMAScript modules outside the browser. They export a callable default function that returns their result: an HTML string for build scripts, or an array of route entries for dynamic route scripts.
 
-Because the script runs in Node.js as an independent process, standard output (`stdout`) is the natural Unix mechanism for returning data to the compiler. Calling `console.log()` or `process.stdout.write()` prints markup or JSON directly to stdout without needing artificial compiler wrappers.
-
-If you prefer returning markup from a function, server scripts (`<script data-bascik-server>`) do exactly that: they export a default request handler function (`export default function(request) { return ... }`). But for build-time and route-generation scripts running at top-level module scope, `console.log()` is standard JavaScript. See [Build Scripts](/build-scripts#why-consolelog-instead-of-return).
+Standard console methods (`console.log()`, `console.error()`) write diagnostic logs to the terminal for debugging only. By separating the result channel from standard output, diagnostic messages from user code and third-party dependencies never leak into generated HTML markup or corrupt route payloads. If you need request-time server rendering with access to the incoming request, server scripts (`<script data-bascik-server>`) export a default request handler function (`export default function(request) { return ... }`). See [Build Scripts](/build-scripts#handler-contract--console-logging).
 
 ## Why is my build script returning stale data?
 
@@ -251,7 +249,7 @@ The `src/components/` directory is treated strictly as source-only files:
 - Component `.html` templates are resolved and inlined into pages at build time.
 - Companion `.css` files are scoped and deduplicated into page `<style>` blocks.
 - Client `.ts`, `.js`, or `.mjs` scripts referenced via `<script src="...">` are inlined and scoped into page `<script>` blocks.
-- Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their stdout replaces the script tag.
+- Build-time (`data-bascik-build`) and server-time (`data-bascik-server`) scripts run in Node.js, and their returned markup replaces the script tag.
 - Any other files (helper modules, JSON data files, tests, READMEs) stay in `src/components/` and are never copied to `dist/`.
 
 Static assets intended to be served directly as public URLs should be placed in `src/pages/` instead.
@@ -313,7 +311,7 @@ Declare the gradient ID and its CSS `url(#id)` reference in the same component. 
 
 Use [Dynamic Routes](/dynamic-routes). Create a template file with bracket parameter syntax in its filename (such as `src/pages/blog/[slug].html` or `src/pages/products/[id].html`) and add a `<script data-bascik-routes>` script.
 
-The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and prints a JSON array of `{ params, data }` route objects using `console.log()`. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
+The script runs in Node.js at build time, queries your headless CMS, database, or REST API, and exports a default callable function returning an array of `{ params, data? }` route objects. Bascik expands the single template into concrete static HTML pages in `dist/`. Inside the template, `<script data-bascik-build>` blocks read the route params and data from `process.env.BASCIK_ROUTE`.
 
 ## What does Bascik output?
 

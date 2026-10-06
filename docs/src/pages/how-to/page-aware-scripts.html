@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Use BASCIK_SOURCE_FILE and other env vars to write shared build scripts that emit page-specific head tags (such as canonical URLs, Open Graph, and JSON-LD) without hardcoding anything per page." />
@@ -35,13 +35,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/how-to/page-aware-scripts'));
+          export default async () => renderSectionLabel('/how-to/page-aware-scripts');
         </script>
         <!-- Content rendered from docs/content/how-to/page-aware-scripts.md at build time.
              To update page content, edit the MD file, not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/how-to/page-aware-scripts.md'));
+          export default async () => await renderMd('./content/how-to/page-aware-scripts.md');
         </script>
 
         <div class="callout">

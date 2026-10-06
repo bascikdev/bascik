@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Bascik gives you an enormous head start on Lighthouse scores. Learn responsive images, lazy loading, preload hints, and SEO best practices." />
@@ -184,7 +184,7 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/performance'));
+          export default async () => renderSectionLabel('/performance');
         </script>
 
         <!-- Content rendered from docs/content/performance.md at build time.
@@ -192,7 +192,7 @@
              The MD file also feeds into llms.txt via scripts/generate-llms-txt.ts. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/performance.md'));
+          export default async () => await renderMd('./content/performance.md');
         </script>
 
         <h2>Technique Summary</h2>

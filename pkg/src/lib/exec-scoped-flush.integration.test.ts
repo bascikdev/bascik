@@ -48,7 +48,7 @@ import {
 const PAGE_A = "src/pages/a.html";
 const PAGE_B = "src/pages/b.html";
 const buildScript = (file: string): string =>
-  `<!DOCTYPE html><html><body><script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('${file}', 'utf8'));</script></body></html>`;
+  `<!DOCTYPE html><html><body><script data-bascik-build>import { readFileSync } from 'node:fs'; export default () => readFileSync('${file}', 'utf8');</script></body></html>`;
 
 describe("exec outcomes preserve dependency caches", () => {
   let workDir: string;

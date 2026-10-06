@@ -9,6 +9,13 @@
 export interface NavPage {
   href: string;
   label: string;
+  /**
+   * When true, `href` points off-site. External entries render with an
+   * "opens in a new tab" indicator in the sidebar, mobile nav, and footer,
+   * and are excluded from pagination, the search index, llms.txt, OG images,
+   * and the Lighthouse audit (they have no local page or content MD).
+   */
+  external?: boolean;
 }
 
 export interface NavSection {
@@ -133,6 +140,7 @@ export const NAV: NavSection[] = [
       { href: '/releases', label: 'Releases' },
       { href: '/press', label: 'Press Resources' },
       { href: '/sponsor', label: 'Sponsor' },
+      { href: 'https://shop.bascik.dev', label: 'Merch', external: true },
     ]
   },
 ];

@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Bascik adds zero JavaScript to your pages by default, but you are free to bundle any library - Alpine.js, HTMX, or a custom bundle." />
@@ -37,13 +37,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/libraries'));
+          export default async () => renderSectionLabel('/libraries');
         </script>
 
         <!-- Intro and concise demo context first. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { to: 'How to Include a Library' }));
+          export default async () => (await renderMdRange('./content/libraries.md', { to: 'How to Include a Library' }));
         </script>
 
         <style>
@@ -137,7 +137,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'source-usage'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'source-usage');
               </script>
             </code-block>
           </div>
@@ -145,7 +145,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'source-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'source-html');
               </script>
             </code-block>
           </div>
@@ -153,7 +153,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'source-css'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'source-css');
               </script>
             </code-block>
           </div>
@@ -161,7 +161,7 @@
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'source-js'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'source-js');
               </script>
             </code-block>
           </div>
@@ -169,7 +169,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -177,7 +177,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'output-css'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'output-css');
               </script>
             </code-block>
           </div>
@@ -186,14 +186,13 @@
         <!-- General setup details follow the first playable example. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'How to Include a Library', to: 'petite-vue' }));
-          console.log(await renderMdRange('./content/libraries.md', { from: 'petite-vue', to: 'Reactive Counter' }));
+          export default async () => (await renderMdRange('./content/libraries.md', { from: 'How to Include a Library', to: 'petite-vue' })) + (await renderMdRange('./content/libraries.md', { from: 'petite-vue', to: 'Reactive Counter' }));
         </script>
 
         <!-- Slice 2: Live Filter section (demo block stripped; filter demo follows) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Live Filter', to: 'Shared State Across Components' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Live Filter', to: 'Shared State Across Components' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo>
@@ -214,7 +213,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'filter-usage'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'filter-usage');
               </script>
             </code-block>
           </div>
@@ -222,7 +221,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'filter-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'filter-html');
               </script>
             </code-block>
           </div>
@@ -231,13 +230,13 @@
         <!-- Slice 3: Shared State section (plain code blocks, no demo markers) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Shared State Across Components', to: 'Alpine.js' }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Shared State Across Components', to: 'Alpine.js' });
         </script>
 
         <!-- Slice 4: Alpine.js section (demo block stripped; Alpine demo follows) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Alpine.js', to: 'Tailwind CSS' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Alpine.js', to: 'Tailwind CSS' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo>
@@ -253,7 +252,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'alpine-usage'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'alpine-usage');
               </script>
             </code-block>
           </div>
@@ -261,7 +260,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'alpine-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'alpine-html');
               </script>
             </code-block>
           </div>
@@ -270,7 +269,7 @@
         <!-- Slice 5: Tailwind CSS section (demo blocks stripped; Tailwind demo follows) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Tailwind CSS', to: 'Any Library Works' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Tailwind CSS', to: 'Any Library Works' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo>
@@ -292,7 +291,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'tailwind-usage'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'tailwind-usage');
               </script>
             </code-block>
           </div>
@@ -300,7 +299,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'tailwind-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'tailwind-html');
               </script>
             </code-block>
           </div>
@@ -308,7 +307,7 @@
             <code-block data-bascik-prop-lang="js">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'tailwind-source-js'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'tailwind-source-js');
               </script>
             </code-block>
           </div>
@@ -316,7 +315,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'tailwind-output-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'tailwind-output-html');
               </script>
             </code-block>
           </div>
@@ -325,13 +324,13 @@
         <!-- Slice 6a: Any Library Works section -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Any Library Works', to: 'Scoping Compatibility' }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Any Library Works', to: 'Scoping Compatibility' });
         </script>
 
         <!-- Slice 6b: Scoping Compatibility (demo blocks stripped; component-demo follows) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/libraries.md', { from: 'Scoping Compatibility' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/libraries.md', { from: 'Scoping Compatibility' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/state-tab/">
@@ -342,7 +341,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'state-usage'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'state-usage');
               </script>
             </code-block>
           </div>
@@ -350,7 +349,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'state-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'state-html');
               </script>
             </code-block>
           </div>
@@ -358,7 +357,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'state-css'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'state-css');
               </script>
             </code-block>
           </div>
@@ -366,7 +365,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'state-output-html'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'state-output-html');
               </script>
             </code-block>
           </div>
@@ -374,7 +373,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/libraries.md', 'state-output-css'));
+                export default async () => await extractDemoBlock('./content/libraries.md', 'state-output-css');
               </script>
             </code-block>
           </div>

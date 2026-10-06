@@ -5,7 +5,7 @@ import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
-import { runModule } from "./script-runner.ts";
+import { runDirectiveHandler } from "./script-runner.ts";
 import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
@@ -80,36 +80,24 @@ export const computePagePath = (
   return getHttpPath(resolvedPagePath, pagesDir);
 };
 
-/** Parse + validate routes-script stdout. Returns valid entries and warning strings. */
-export const parseRouteList = (
-  stdout: string,
+/** Validate route entries returned by a routes script. Returns valid entries and warning strings. */
+export const validateRouteList = (
+  rawRoutes: unknown,
   paramNames: string[],
 ): { routes: RouteEntry[]; warnings: string[]; error?: string } => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout);
-  } catch {
-    const preview = stdout.trim().slice(0, 200);
+  if (!Array.isArray(rawRoutes)) {
     return {
       routes: [],
       warnings: [],
-      error: `Invalid JSON returned by routes script: "${preview}"`,
-    };
-  }
-
-  if (!Array.isArray(parsed)) {
-    return {
-      routes: [],
-      warnings: [],
-      error: `Routes script stdout must be an array of route objects, received: ${typeof parsed}`,
+      error: `Routes script must return an array of route objects, received: ${rawRoutes === null ? "null" : typeof rawRoutes}`,
     };
   }
 
   const routes: RouteEntry[] = [];
   const warnings: string[] = [];
 
-  for (let i = 0; i < parsed.length; i++) {
-    const item = parsed[i];
+  for (let i = 0; i < rawRoutes.length; i++) {
+    const item = rawRoutes[i];
     if (
       item === null ||
       typeof item !== "object" ||
@@ -423,15 +411,16 @@ export const executeRoutesScript = async (
     return rethrowLeadingSlash(err);
   }
 
-  let stdout = "";
-  let stderr = "";
+  let handlerResult: unknown = [];
   try {
     await writeFile(tmpPath, preparedScript + sourceUrlComment, "utf8");
-    const result = await runModule(tmpPath, extraEnv);
-    stdout = result.stdout;
-    stderr = result.stderr;
+    const { result, stdout, stderr } = await runDirectiveHandler<unknown[]>(tmpPath, "routes", { extraEnv });
+    if (stdout) process.stdout.write(stdout);
     if (stderr) process.stderr.write(stderr);
-  } catch (err) {
+    handlerResult = result;
+  } catch (err: any) {
+    if (err?.stdout) process.stdout.write(err.stdout);
+    if (err?.stderr) process.stderr.write(err.stderr);
     const msg = err instanceof Error ? err.message : String(err);
     const cleanedMsg = cleanStackTrace(msg, tmpPath, relPath, startLine);
     let errorMsg = `[bascik] routes script error`;
@@ -457,7 +446,7 @@ export const executeRoutesScript = async (
     routes: parsedRoutes,
     warnings: parseWarnings,
     error: parseError,
-  } = parseRouteList(stdout, paramNames);
+  } = validateRouteList(handlerResult, paramNames);
 
   if (parseError) {
     let errorMsg = `[bascik] routes script error`;

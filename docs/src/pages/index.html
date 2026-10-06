@@ -5,11 +5,11 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <meta name="description"
     content="Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote." />
@@ -692,7 +692,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-card-usage'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-usage');
                 </script>
               </code-block>
             </div>
@@ -700,7 +700,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-card-component'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-component');
                 </script>
               </code-block>
             </div>
@@ -708,7 +708,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-card-output'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-output');
                 </script>
               </code-block>
             </div>
@@ -757,7 +757,7 @@
             <code-block data-bascik-prop-lang="text">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/index.md', 'home-build-output'));
+                export default async () => await extractDemoBlock('./content/index.md', 'home-build-output');
               </script>
             </code-block>
           </div>
@@ -806,7 +806,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-counter-usage'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-counter-usage');
                 </script>
               </code-block>
             </div>
@@ -814,7 +814,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-counter-html'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-counter-html');
                 </script>
               </code-block>
             </div>
@@ -822,7 +822,7 @@
               <code-block data-bascik-prop-lang="css">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-counter-css'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-counter-css');
                 </script>
               </code-block>
             </div>
@@ -830,7 +830,7 @@
               <code-block data-bascik-prop-lang="ts">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-counter-js'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-counter-js');
                 </script>
               </code-block>
             </div>
@@ -838,7 +838,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/index.md', 'home-counter-output-html'));
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-counter-output-html');
                 </script>
               </code-block>
             </div>

@@ -19,7 +19,9 @@ import {
 describe("scripts.cache.environment invalidates build-script cache (real CLI)", () => {
   const pageTemplate = (): string => `<!DOCTYPE html><html lang="en"><head><title>env</title></head><body>
 <script data-bascik-build>
-console.log('<span data-testid="flag">' + process.env.MY_FEATURE_FLAG + '</span>');
+export default function () {
+  return '<span data-testid="flag">' + process.env.MY_FEATURE_FLAG + '</span>';
+}
 </script>
 </body></html>`;
 

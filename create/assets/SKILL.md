@@ -787,25 +787,28 @@ Components work inside `<head>` to organize metadata and shared links:
 
 ## 8. Build-time Scripts
 
-`<script data-bascik-build>` blocks are executed at transpile time as Node.js ESM modules. The script's stdout is injected in place of the tag. Runs in both dev and build modes.
+`<script data-bascik-build>` blocks are executed at transpile time as Node.js ESM modules. The script exports a default callable function whose returned HTML string replaces the tag. Runs in both dev and build modes.
 
 ```html
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
   import { marked } from 'marked';
-  const md = await readFile('./content/intro.md', 'utf8');
-  console.log(marked(md));
+
+  export default async function () {
+    const md = await readFile('./content/intro.md', 'utf8');
+    return marked(md);
+  }
 </script>
 ```
 
-* Top-level `import` and top-level `await` are supported.
+* Top-level `import` and top-level `await` are supported at module scope.
 * CWD is the project root. Quoted data paths (`readFile('./content/x.md')`) resolve from there.
 * **Importing shared helpers: use `@/` by default.** `import { renderMd } from '@/lib/md-renderer.ts'` resolves against `scripts.importRoot` (default `src`), so the identical import line works from any page or component at any nesting depth. Relative `./` and `../` specifiers still work and resolve against the file that contains the script; use them for helpers that live next to the page or component. Both forms also apply to `data-bascik-server`, `data-bascik-routes`, and the `src="…"` attribute on those tags.
 * **Never use a bare leading `/`.** `import x from '/lib/x.ts'` or `src="/lib/x.ts"` inside a Bascik script is a hard compile error (and a red diagnostic in the VS Code extension), regardless of `onBuildScriptError`. A bare slash is ambiguous between filesystem root and site root. The error names the two valid rewrites: `@/lib/x.ts` (import root) or `./lib/x.ts` (relative). Plain client `<script>` tags are unaffected.
 * **Alias gotchas:** only the exact `@/` prefix is an alias (`@scope/pkg` is a normal package). Aliases are rewritten only inside script blocks; a helper file importing another helper must use `./` or `../`. Add shared build helpers to `pipeline.watchPaths` when outside the pages/components directories. The import-root watcher only invalidates request-time modules, not page compilation caches.
-* Use `console.log()` or `process.stdout.write()` to output HTML. Build scripts execute as top-level Node.js ESM modules rather than wrapped functions, so top-level `return` is a JavaScript syntax error; output is sent to stdout instead.
+* Define a callable default export function (`export default async function () { return ...; }`) that returns an HTML string. Standard console methods (`console.log()`, `console.error()`) log to the terminal for debugging only and never become generated markup.
 * Build scripts run before component resolution, so their output can contain component tags.
-* Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Output is assembled in document order once all scripts complete. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor.
+* Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Results travel across a dedicated result transport. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor.
 * On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'`, `'error'`, or `'ignore'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`. For `data-bascik-stream` scripts, an error cannot produce an HTTP 500 because headers are already committed; the slot is emitted empty, the failure is logged at the configured severity, and the document completes.
 * **Stack Trace Remapping:** For `<script data-bascik-build>`, `<script data-bascik-server>`, and `<script data-bascik-stream>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
 * **Hard error:** combining any of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` on the same tag throws and aborts the build. Directives are mutually exclusive.
@@ -887,15 +890,17 @@ With `pipeline.workers: true`, multiple workers share the same cache directory. 
 
 ### Rendering and Styling Markdown
 
-Install a Markdown parser such as `marked`, read the source in a build script, and write the resulting HTML to stdout:
+Install a Markdown parser such as `marked`, read the source in a build script, and return the resulting HTML from the default export:
 
 ```html
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
   import { marked } from 'marked';
 
-  const md = await readFile('./content/article.md', 'utf8');
-  console.log(marked(md));
+  export default async function () {
+    const md = await readFile('./content/article.md', 'utf8');
+    return marked(md);
+  }
 </script>
 ```
 
@@ -963,8 +968,8 @@ Use it from any page's `<head>`:
 ```html
 <head>
   <script data-bascik-build>
-    import { canonical } from '../../scripts/canonical.ts';
-    console.log(await canonical());
+    import { canonical } from '@/lib/canonical.ts';
+    export default async () => await canonical();
   </script>
 </head>
 ```
@@ -1016,25 +1021,28 @@ Dynamic routes allow you to generate multiple static HTML files from a single te
 ```html
 <!-- src/pages/blog/[slug].html -->
 <script data-bascik-routes>
-  const posts = [
-    { slug: 'hello-world', title: 'Hello World' },
-    { slug: 'second-post', title: 'Second Post' }
-  ];
-  const routes = posts.map(p => ({
-    params: { slug: p.slug },
-    data: p
-  }));
-  console.log(JSON.stringify(routes));
+  export default async function () {
+    const posts = [
+      { slug: 'hello-world', title: 'Hello World' },
+      { slug: 'second-post', title: 'Second Post' }
+    ];
+    return posts.map(p => ({
+      params: { slug: p.slug },
+      data: p
+    }));
+  }
 </script>
 
 <script data-bascik-build>
-  const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-  console.log(`<h1>${data.title}</h1>`);
+  export default function () {
+    const { params, data } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    return `<h1>${data.title}</h1>`;
+  }
 </script>
 ```
 
 Rules:
-* Script must output a valid JSON array of route objects with required `params` (matching all bracket names in the template path) and optional `data`.
+* Script must export a callable default function returning an array of route objects with required `params` (matching all bracket names in the template path) and optional `data`. To generate zero routes, return `[]`.
 * Route parameters must be URL-safe tokens; characters like `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows device names are disallowed.
 * In build scripts, `process.env.BASCIK_ROUTE` provides the current `{ params, data }` payload.
 * Dynamic route templates are expanded into concrete static HTML files during `bascik --build` and dev server startup. Route collisions with static pages or other templates cause build errors.
@@ -1576,7 +1584,7 @@ What to check in compiled output:
 * **Component resolution:** every custom tag (e.g. `<site-nav>`) should be replaced with expanded HTML. A hyphenated tag still present in `dist/` means no component file matched.
 * **Scoped class names:** attributes like `class="bascik__site-nav__nav"` (or a short hash with `minify.identifiers`) confirm CSS scoping ran correctly.
 * **Injected `<style>` block:** the `<head>` should contain one combined `<style>` with CSS from all components used on that page.
-* **Build script output:** `<script data-bascik-build>` is replaced with stdout; if missing, check the terminal for a `[bascik] build script error` line.
+* **Build script output:** `<script data-bascik-build>` is replaced with the returned HTML string; if missing, check the terminal for a `[bascik] build script error` line.
 * **Server script output:** `<script data-bascik-server>` is replaced at request time; if output is missing on a live request, check the terminal for a `[bascik] server script error` line. Remember these scripts run in Node.js, not the browser, they require `bascik --server` or the dev server to execute.
 * **Slot and prop values:** verify fallback and injected text appear in the right place.
 
@@ -1975,7 +1983,7 @@ Detailed per-framework migration guides live at `/switch/*`. Key patterns that a
 - **Props:** `defineProps` / component props → `data-bascik-prop-*` attributes (text only).
 - **Reactive state:** `ref`, `useState`, etc. → plain `<script>` with vanilla JS. Bascik scopes `id` values so multiple instances stay independent.
 - **Routing:** Client-side router → one `.html` file per URL in `src/pages/`. For parameterized routes (`[slug].astro`, `getStaticPaths`, Eleventy pagination), use a dynamic route template such as `src/pages/blog/[slug]/index.html` (trailing-slash URLs) with a `<script data-bascik-routes>` block. Do not generate page files into `src/pages/`. A route param cannot contain `/`; use one template per depth.
-- **Build-time data:** `onMounted` / `getStaticProps` / frontmatter → `<script data-bascik-build>` (Node.js ESM, stdout injected).
+- **Build-time data:** `onMounted` / `getStaticProps` / frontmatter → `<script data-bascik-build>` (Node.js ESM, returned HTML string replaces the tag).
 - **Content collections (Astro `getCollection`, Eleventy `collections`):** No built-in equivalent. Write a `src/lib/posts.ts` helper that reads `content/` with `fs`, parses front matter with `gray-matter`, validates with `zod`, and sorts by the parsed date (not the file name). Escape every interpolated value. Drafts: skip them when `process.env.BASCIK_BUILD === '1'`. Exclude scripts that read `content/` from `scripts.cache` and add `content/` to `pipeline.watchPaths`.
 - **Template logic (Nunjucks/Liquid loops, filters, includes with variables):** Becomes TypeScript helpers in `src/lib/` that return HTML. Only static includes become components. Pages keep `<html>`/`<head>`/`<body>`; a component cannot own them.
 - **Feeds, sitemaps, images:** RSS/Atom is a `pipeline.exec` script (`phase: 'post'`) writing to `BASCIK_OUT_DIR`. Sitemap and robots are built in. No image optimization or syntax highlighting built in; do it in your own build step.
@@ -2016,10 +2024,10 @@ Full guide: `/switch/from-next`. Key Next.js-specific mappings:
 | Next.js | Bascik |
 |---------|--------|
 | `app/page.tsx`, `app/posts/[slug]/page.tsx` | `src/pages/index.html`, `src/pages/posts/[slug].html` (`/posts/<slug>`, also served with a trailing slash) |
-| `generateStaticParams` | `<script data-bascik-routes>` printing `[{ "params": { "slug": "..." } }]` |
-| `generateMetadata` / `metadata` export | A build script in `<head>` that prints `<title>` and `<meta>` from a `src/lib` helper; absolute URLs from `BASCIK_SITE_URL` |
+| `generateStaticParams` | `<script data-bascik-routes>` returning `[{ params: { slug: "..." } }]` |
+| `generateMetadata` / `metadata` export | A build script in `<head>` that returns `<title>` and `<meta>` from a `src/lib` helper; absolute URLs from `BASCIK_SITE_URL` |
 | `app/layout.tsx` | Pages keep `<html>`/`<head>`/`<body>`; a head component plus header/footer components |
-| Server component that maps data to JSX | A `src/lib` helper returning escaped HTML strings, printed by a build script |
+| Server component that maps data to JSX | A `src/lib` helper returning escaped HTML strings, returned by a build script |
 | `"use client"` component with `useState`/`useEffect` | A component with a plain `<script>`; persistent state lives in the DOM or `localStorage` |
 | `next/link`, `next/image`, `next/font` | `<a>`, `<img>` with `width`/`height`, a self-hosted `@font-face` plus `<link rel="preload">` |
 | CSS Modules (`styles.x`) | Paired component `.css`; a class written in the template is scoped |

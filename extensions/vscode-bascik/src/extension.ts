@@ -745,9 +745,59 @@ class ComponentCompletionItemProvider
     const start = document.positionAt(offset - prefix.length);
     const replacementRange = new vscode.Range(start, position);
 
+    const scriptShorthands = [
+      {
+        label: 'bascik-build',
+        detail: 'Bascik build-time script block',
+        documentation:
+          'Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.',
+        snippet: `<script data-bascik-build>\n  export default async function () {\n    return \`$0\`;\n  }\n</script>`,
+      },
+      {
+        label: 'bascik-routes',
+        detail: 'Bascik dynamic routes script block',
+        documentation:
+          'Executes in Node.js at build time. The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.',
+        snippet: `<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>`,
+      },
+      {
+        label: 'bascik-server',
+        detail: 'Bascik server-side request script block',
+        documentation:
+          'Executes in Node.js per request on production and dev servers. The default exported handler function replaces this script tag.',
+        snippet: `<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
+      },
+      {
+        label: 'bascik-stream',
+        detail: 'Bascik server-side streaming script block',
+        documentation:
+          'Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.',
+        snippet: `<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
+      },
+    ];
+
+    const shorthandItems: vscode.CompletionItem[] = scriptShorthands
+      .filter((shorthand) => shorthand.label.startsWith(prefix))
+      .map((shorthand) => {
+        const item = new vscode.CompletionItem(
+          shorthand.label,
+          vscode.CompletionItemKind.Snippet,
+        );
+        item.sortText = `0_${shorthand.label}`;
+        item.range = new vscode.Range(
+          document.positionAt(tagStart),
+          replacementRange.end,
+        );
+        item.insertText = new vscode.SnippetString(shorthand.snippet);
+        item.filterText = shorthand.label;
+        item.detail = shorthand.detail;
+        item.documentation = new vscode.MarkdownString(shorthand.documentation);
+        return item;
+      });
+
     return project.getSnapshot().then((snapshot) => {
       if (token.isCancellationRequested) return undefined;
-      return Array.from(snapshot.componentMap)
+      const componentItems = Array.from(snapshot.componentMap)
         .filter(([componentName]) => componentName.startsWith(prefix))
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([componentName, componentPath]) => {
@@ -781,6 +831,8 @@ class ComponentCompletionItemProvider
           );
           return item;
         });
+
+      return [...shorthandItems, ...componentItems];
     });
   }
 }
@@ -790,13 +842,13 @@ const SCRIPT_DIRECTIVES = [
     name: 'data-bascik-build',
     detail: 'Bascik build-time script',
     documentation:
-      'Executes in Node.js at build time. Standard output from console.log() replaces this script tag in the generated HTML.',
+      'Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.',
   },
   {
     name: 'data-bascik-routes',
     detail: 'Bascik dynamic routes script',
     documentation:
-      'Executes in Node.js at build time. Outputs a JSON array of dynamic route parameters to generate multiple pages from a template.',
+      'Executes in Node.js at build time. The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.',
   },
   {
     name: 'data-bascik-server',
@@ -1664,8 +1716,22 @@ async function createDiagnosticsForDocument(
         }
       }
 
-      if (attrs.has('data-bascik-server') || attrs.has('data-bascik-stream')) {
-        const directive = attrs.has('data-bascik-stream') ? 'stream' : 'server';
+      const hasServerDirective =
+        attrs.has('data-bascik-server') ||
+        attrs.has('data-bascik-stream') ||
+        attrs.has('data-bascik-build') ||
+        attrs.has('data-bascik-routes');
+
+      if (hasServerDirective) {
+        const directive: 'stream' | 'server' | 'build' | 'routes' = attrs.has(
+          'data-bascik-stream',
+        )
+          ? 'stream'
+          : attrs.has('data-bascik-server')
+            ? 'server'
+            : attrs.has('data-bascik-build')
+              ? 'build'
+              : 'routes';
         const hasSrcAttribute = /\ssrc\s*=/i.test(openTag);
         const serverDiags = analyzeServerScriptSource(scriptBody, {
           hasSrcAttribute,

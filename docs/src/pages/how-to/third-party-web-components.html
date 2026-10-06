@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Use a custom element from npm on a Bascik page: publish its file into the output, load it with a module script, and declare the tag in components.external." />
@@ -37,13 +37,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/how-to/third-party-web-components'));
+          export default async () => renderSectionLabel('/how-to/third-party-web-components');
         </script>
 
         <!-- Intro and "See it in action" heading come from the MD file. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/how-to/third-party-web-components.md', { to: 'Install the package' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/how-to/third-party-web-components.md', { to: 'Install the package' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo>
@@ -61,7 +61,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-usage'));
+                export default async () => await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-usage');
               </script>
             </code-block>
           </div>
@@ -69,7 +69,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-head'));
+                export default async () => await extractDemoBlock('./content/how-to/third-party-web-components.md', 'heading-anchors-head');
               </script>
             </code-block>
           </div>
@@ -77,7 +77,7 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/how-to/third-party-web-components.md', { from: 'Install the package' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/how-to/third-party-web-components.md', { from: 'Install the package' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

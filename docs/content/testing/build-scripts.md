@@ -52,8 +52,10 @@ export function generateNavList(items: NavItem[], activeHref?: string): string {
     import { readFile } from 'node:fs/promises';
     import { generateNavList } from '../lib/nav-generator.js';
 
-    const items = JSON.parse(await readFile('./src/data/nav.json', 'utf8'));
-    console.log(generateNavList(items, '/'));
+    export default async function () {
+      const items = JSON.parse(await readFile('./src/data/nav.json', 'utf8'));
+      return generateNavList(items, '/');
+    }
   </script>
 </nav>
 ```

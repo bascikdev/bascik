@@ -10,7 +10,9 @@
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
   import { join } from 'node:path';
-  const logoPath = join(process.cwd(), 'src/pages/assets/bascik-logo.svg');
-  const rawSvg = await readFile(logoPath, 'utf8');
-  console.log(rawSvg.replace('<svg ', '<svg class="dlogo" height="26" '));
+  export default async function () {
+    const logoPath = join(process.cwd(), 'src/pages/assets/bascik-logo.svg');
+    const rawSvg = await readFile(logoPath, 'utf8');
+    return rawSvg.replace('<svg ', '<svg class="dlogo" height="26" ');
+  };
 </script>

@@ -10,7 +10,13 @@ describe('NAV structure', () => {
       expect(section.pages.length).toBeGreaterThan(0);
       for (const page of section.pages) {
         expect(page.label).toBeTruthy();
-        expect(page.href).toMatch(/^\//);
+        // Internal pages are root-relative; external pages are absolute URLs
+        // and must be flagged so the nav renders them with an external indicator.
+        if (page.external) {
+          expect(page.href).toMatch(/^https?:\/\//);
+        } else {
+          expect(page.href).toMatch(/^\//);
+        }
       }
     }
   });
@@ -96,9 +102,26 @@ describe('renderPagination', () => {
 
   it('keeps social profile links out of the nav data', () => {
     const hrefs = NAV.flatMap(s => s.pages.map(p => p.href));
-    expect(hrefs.filter(h => /^https?:\/\//.test(h))).toEqual([]);
+    // The only off-site nav entry is the Merch shop. Social profiles stay in
+    // social-links.ts and must never appear here.
+    const external = hrefs.filter(h => /^https?:\/\//.test(h));
+    expect(external).toEqual(['https://shop.bascik.dev']);
+    for (const social of ['youtube.com', 'instagram.com', 'x.com', '/discord']) {
+      expect(hrefs.some(h => h.includes(social))).toBe(false);
+    }
     expect(hrefs).toContain('/press');
     expect(hrefs).toContain('/sponsor');
+  });
+
+  it('marks the Merch nav entry as external and excludes it from pagination', () => {
+    const merch = NAV.flatMap(s => s.pages).find(p => p.href === 'https://shop.bascik.dev');
+    expect(merch?.external).toBe(true);
+    expect(merch?.label).toBe('Merch');
+    // Sponsor is the last internal page, so it stays the pagination tail: the
+    // external Merch entry must not appear as a prev/next link.
+    const html = renderPagination('/sponsor');
+    expect(html).not.toContain('shop.bascik.dev');
+    expect(html).not.toContain('data-pg="next"');
   });
 
   it('includes section names and labels for prev and next across section transitions', () => {

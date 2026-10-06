@@ -3,11 +3,11 @@
  *
  * Renders a Markdown file to HTML for use inside a Bascik docs page.
  * Call this from a `data-bascik-build` script block in a page using a
- * standard relative ESM import:
+ * standard ESM import:
  *
  *   <script data-bascik-build>
- *     import { renderMd } from '../../lib/md-renderer.ts';
- *     console.log(await renderMd('./content/16-performance.md'));
+ *     import { renderMd } from '@/lib/md-renderer.ts';
+ *     export default async () => await renderMd('./content/16-performance.md');
  *   </script>
  *
  * Transformations applied on top of standard marked output:

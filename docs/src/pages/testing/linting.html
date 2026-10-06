@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Guide to linting in Bascik: configuring Webhint and .hintrc for accessibility auditing, HTML validity, and component partials." />
@@ -36,11 +36,11 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/testing/linting'));
+          export default async () => renderSectionLabel('/testing/linting');
         </script>
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/testing/linting.md'));
+          export default async () => await renderMd('./content/testing/linting.md');
         </script>
 
         <docs-pagination />

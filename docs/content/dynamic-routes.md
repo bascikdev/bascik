@@ -10,35 +10,35 @@ During the build or development startup:
 
 1. Bascik discovers the dynamic route template and extracts all parameter placeholders inside brackets.
 2. Bascik executes the `<script data-bascik-routes>` script inside the template.
-3. The script outputs a JSON list of route objects defining parameters and optional payload data.
+3. The script returns an array of route objects defining parameters and optional payload data.
 4. Bascik expands the single template into multiple concrete HTML files, writing them to `dist/` and updating the sitemap.
 
 ## data-bascik-routes
 
-To define the routes to generate, place a `<script data-bascik-routes>` element inside the template file. The script runs in Node.js at build time and must print a valid JSON array to standard output using `console.log()`.
+To define the routes to generate, place a `<script data-bascik-routes>` element inside the template file. The script runs in Node.js at build time and must export a callable default function that returns an array of route objects directly (or a promise resolving to an array).
 
 ```html
 <script data-bascik-routes>
-  const posts = [
-    { slug: 'hello-world', title: 'Hello World', date: '2026-01-15' },
-    { slug: 'second-post', title: 'Second Post', date: '2026-02-01' }
-  ];
+  export default async function () {
+    const posts = [
+      { slug: 'hello-world', title: 'Hello World', date: '2026-01-15' },
+      { slug: 'second-post', title: 'Second Post', date: '2026-02-01' }
+    ];
 
-  const routes = posts.map(post => ({
-    params: { slug: post.slug },
-    data: post
-  }));
-
-  console.log(JSON.stringify(routes));
+    return posts.map(post => ({
+      params: { slug: post.slug },
+      data: post
+    }));
+  }
 </script>
 ```
 
 ### Route Object Format
 
-Each element in the emitted array must be an object with:
+Each element in the returned array must be an object with:
 
 - `params` (required): An object whose keys match the bracket names in the template filename. For `[slug].html`, `params` must contain `{ slug: "..." }`. Values are automatically converted to strings.
-- `data` (optional): Any serializable value (object, array, string, number, or boolean) to pass directly to build scripts without re-fetching.
+- `data` (optional): Any JSON-serializable value (object, array, string, number, or boolean) to pass directly to build scripts across the process boundary without re-fetching.
 
 ```json
 [
@@ -53,7 +53,7 @@ Each element in the emitted array must be an object with:
 ]
 ```
 
-> **Strict validation.** Every required bracket parameter in the filename must be present in `params`. If a bracket name is missing, or if the output is not a valid JSON array, the build halts with a descriptive error.
+> **Strict validation.** Every required bracket parameter in the filename must be present in `params`. If a bracket name is missing, or if the default export does not return a valid array of route entries, the build halts with a descriptive error. To generate no pages from a template, return an explicit empty array `return []`.
 
 ## Accessing Route Data in Build Scripts
 
@@ -64,19 +64,25 @@ Inside your template, `<script data-bascik-build>` blocks can read the current r
 <html lang="en">
 <head>
   <script data-bascik-build>
-    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-    const { title } = route.data || {};
-    console.log(`<title>${title || 'Blog'} - My Site</title>`);
+    export default function () {
+      const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+      const { title } = route.data || {};
+      return `<title>${title || 'Blog'} - My Site</title>`;
+    }
   </script>
 </head>
 <body>
   <article>
     <script data-bascik-build>
-      const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-      const { params, data } = route;
-      console.log(`<h1>${data.title}</h1>`);
-      console.log(`<p class="slug">Slug: ${params.slug}</p>`);
-      console.log(`<p class="date">Published: ${data.date}</p>`);
+      export default function () {
+        const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+        const { params, data } = route;
+        return `
+          <h1>${data.title}</h1>
+          <p class="slug">Slug: ${params.slug}</p>
+          <p class="date">Published: ${data.date}</p>
+        `;
+      }
     </script>
   </article>
 </body>
@@ -119,7 +125,7 @@ Bascik validates routes scripts, route parameters, and output destinations durin
 - **URL-Safe Route Parameters:** Route parameter values must be valid filename and URL tokens. Characters such as `#`, `%`, `&`, `'`, `+`, spaces, leading dots, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`) are rejected with descriptive warnings.
 - **Zero Routes:** If a routes script returns an empty array `[]`, Bascik emits a warning indicating the template produced 0 routes.
 - **Missing Parameters:** If a template is named `[category]/[id].html` and a route object only provides `{ category: "news" }`, Bascik throws an error indicating that parameter `id` was not supplied.
-- **Invalid Output Format:** If the script prints text that is not valid JSON or does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the received output.
+- **Invalid Output Format:** If the default export does not resolve to an array of objects with `params`, Bascik throws a descriptive error detailing the invalid return value.
 - **Conflicting Directives:** Specifying `data-bascik-routes` alongside `data-bascik-build` or `data-bascik-server` on a single script tag is prevented with a validation error.
 
 ## Common How-to Examples
@@ -133,20 +139,22 @@ Generate blog posts from local Markdown files:
   import { readdir, readFile } from 'node:fs/promises';
   import { join } from 'node:path';
 
-  const files = await readdir('./content/posts');
-  const posts = [];
+  export default async function () {
+    const files = await readdir('./content/posts');
+    const posts = [];
 
-  for (const file of files) {
-    if (!file.endsWith('.md')) continue;
-    const slug = file.replace(/\.md$/, '');
-    const content = await readFile(join('./content/posts', file), 'utf8');
-    posts.push({
-      params: { slug },
-      data: { content }
-    });
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue;
+      const slug = file.replace(/\.md$/, '');
+      const content = await readFile(join('./content/posts', file), 'utf8');
+      posts.push({
+        params: { slug },
+        data: { content }
+      });
+    }
+
+    return posts;
   }
-
-  console.log(JSON.stringify(posts));
 </script>
 ```
 
@@ -156,15 +164,15 @@ Fetch product listings from a CMS or REST API:
 
 ```html
 <script data-bascik-routes>
-  const res = await fetch('https://api.example.com/products');
-  const products = await res.json();
+  export default async function () {
+    const res = await fetch('https://api.example.com/products');
+    const products = await res.json();
 
-  const routes = products.map(product => ({
-    params: { id: String(product.id) },
-    data: product
-  }));
-
-  console.log(JSON.stringify(routes));
+    return products.map(product => ({
+      params: { id: String(product.id) },
+      data: product
+    }));
+  }
 </script>
 ```
 
@@ -174,19 +182,21 @@ Generate localized pages using multiple parameters in filenames such as `src/pag
 
 ```html
 <script data-bascik-routes>
-  const languages = ['en', 'es', 'fr', 'de'];
-  const pages = ['about', 'pricing', 'contact'];
+  export default async function () {
+    const languages = ['en', 'es', 'fr', 'de'];
+    const pages = ['about', 'pricing', 'contact'];
 
-  const routes = [];
-  for (const lang of languages) {
-    for (const page of pages) {
-      routes.push({
-        params: { lang, page },
-        data: { lang, page }
-      });
+    const routes = [];
+    for (const lang of languages) {
+      for (const page of pages) {
+        routes.push({
+          params: { lang, page },
+          data: { lang, page }
+        });
+      }
     }
-  }
 
-  console.log(JSON.stringify(routes));
+    return routes;
+  }
 </script>
 ```

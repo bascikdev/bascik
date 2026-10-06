@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Build-time scripts let you run Node.js code at transpile time and inject the output directly into your HTML. No runtime overhead." />
@@ -35,13 +35,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/build-scripts'));
+          export default async () => renderSectionLabel('/build-scripts');
         </script>
 
         <!-- Intro rendered from docs/content/build-scripts.md. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/build-scripts.md', { to: 'data-bascik-build' }));
+          export default async () => await renderMdRange('./content/build-scripts.md', { to: 'data-bascik-build' });
         </script>
 
         <component-demo data-bascik-prop-file="src/pages/build-scripts.html">
@@ -49,22 +49,24 @@
             <script data-bascik-build>
               import { readFile } from 'node:fs/promises';
               import { marked } from 'marked';
-              const md = await readFile('./content/why-bascik.md', 'utf8');
-              const [heading, paragraph] = md.split('\n\n');
-              const title = heading.replace(/^#\s*/, '');
-              console.log(`
+              export default async function () {
+                const md = await readFile('./content/why-bascik.md', 'utf8');
+                const [heading, paragraph] = md.split('\n\n');
+                const title = heading.replace(/^#\s*/, '');
+                return `
                 <feature-card
                   data-bascik-prop-title="${title}"
                   data-bascik-prop-desc="${marked.parseInline(paragraph).replace(/"/g, '&quot;')}">
                 </feature-card>
-              `);
+              `;
+              };
             </script>
           </div>
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/build-scripts.md', 'source-usage'));
+                export default async () => await extractDemoBlock('./content/build-scripts.md', 'source-usage');
               </script>
             </code-block>
           </div>
@@ -72,7 +74,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/build-scripts.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/build-scripts.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -80,7 +82,7 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

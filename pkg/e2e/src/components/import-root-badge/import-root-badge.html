@@ -3,7 +3,7 @@
        rejected by the compiler; only @/ and ./ are valid. -->
   <script data-bascik-build>
     import { importRootMarker } from '@/lib/import-root-helper.ts';
-    console.log(`<span data-testid="import-root-alias">${importRootMarker()}</span>`);
+    export default () => `<span data-testid="import-root-alias">${importRootMarker()}</span>`;
   </script>
 
   <!-- src= attribute honors the same alias. -->

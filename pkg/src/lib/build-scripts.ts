@@ -46,7 +46,7 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
-import { runModule, stripAnsiEscapeCodes } from "./script-runner.ts";
+import { runDirectiveHandler } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   classifySpecifier,
@@ -97,7 +97,7 @@ const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 10;
+export const SCRIPT_CACHE_VERSION = 11;
 
 export interface ImportRootOptions {
   /** Absolute import root that `@/` specifiers resolve against. */
@@ -720,12 +720,15 @@ export const executeBuildScripts = async (
       };
       try {
         await writeFile(task.tmpPath, task.preparedScript + taskSourceUrlComment, "utf8");
-        const { stdout, stderr } = await runModule(task.tmpPath, taskEnv);
+        const { result, stdout, stderr } = await runDirectiveHandler<string>(task.tmpPath, "build", { extraEnv: taskEnv });
+        if (stdout) process.stdout.write(stdout);
         if (stderr) process.stderr.write(stderr);
-        const output = stripAnsiEscapeCodes(stdout);
+        const output = result;
         if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
         task.output = output;
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.stdout) process.stdout.write(err.stdout);
+        if (err?.stderr) process.stderr.write(err.stderr);
         const msg = err instanceof Error ? err.message : String(err);
         let errorMsg = `[bascik] build script error`;
         const cleanedMsg = cleanStackTrace(msg, task.tmpPath, taskRelPath, task.startLine);

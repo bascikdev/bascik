@@ -92,13 +92,17 @@ export const twoScriptPageTemplate = (extraComment = ""): string =>
   `<!DOCTYPE html><html lang="en"><head><title>iso</title></head><body>
 <script data-bascik-build>
 import { next } from '../lib/helper.js';
-const n = next();
-console.log('<span data-testid="count-a">first:' + n + '</span>');
+export default function () {
+  const n = next();
+  return '<span data-testid="count-a">first:' + n + '</span>';
+}
 </script>
 <script data-bascik-build>
 import { next } from '../lib/helper.js';
-const n = next();
-console.log('<span data-testid="count-b">second:' + n + '</span>');${extraComment}
+export default function () {
+  const n = next();
+  return '<span data-testid="count-b">second:' + n + '</span>';
+}${extraComment}
 </script>
 </body></html>`;
 

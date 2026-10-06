@@ -5,15 +5,15 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <meta name="description" content="Bascik is licensed under the MIT License." />
   <title>MIT License - Bascik Docs</title>
@@ -33,7 +33,7 @@
              To update page content, edit the MD file, not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/license.md'));
+          export default async () => await renderMd('./content/license.md');
         </script>
 
       </main>

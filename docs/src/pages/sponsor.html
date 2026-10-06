@@ -5,15 +5,15 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <meta name="description"
     content="Support the independent development and maintenance of Bascik through GitHub Sponsors." />
@@ -47,13 +47,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/sponsor'));
+          export default async () => renderSectionLabel('/sponsor');
         </script>
 
         <!-- Intro rendered from docs/content/sponsor.md at build time. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/sponsor.md', { to: 'Why Sponsor?' }));
+          export default async () => await renderMdRange('./content/sponsor.md', { to: 'Why Sponsor?' });
         </script>
 
         <div class="sponsor-actions">
@@ -70,7 +70,7 @@
         <!-- Remaining content rendered from docs/content/sponsor.md at build time. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/sponsor.md', { from: 'Why Sponsor?' }));
+          export default async () => await renderMdRange('./content/sponsor.md', { from: 'Why Sponsor?' });
         </script>
 
       </main>

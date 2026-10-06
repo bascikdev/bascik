@@ -282,7 +282,7 @@ The `<p>` lands in the inner component's slot. With no content between the `<out
 
 ## React Router → One .html File Per Route
 
-Replace client-side route definitions with files in `src/pages/`. There is no client-side navigation, every link triggers a full page load. Static routes are one `.html` file per URL. A parameterized route such as `/blog/:slug` is a [dynamic route](/dynamic-routes): one template with a bracketed folder name and a `<script data-bascik-routes>` block that prints the list of slugs.
+Replace client-side route definitions with files in `src/pages/`. There is no client-side navigation, every link triggers a full page load. Static routes are one `.html` file per URL. A parameterized route such as `/blog/:slug` is a [dynamic route](/dynamic-routes): one template with a bracketed folder name and a `<script data-bascik-routes>` block that returns the list of slugs.
 
 ```text
 Before (React Router)        After (Bascik)
@@ -295,14 +295,18 @@ src/App.jsx                  src/pages/
 ```html
 <!-- src/pages/blog/[slug]/index.html -->
 <script data-bascik-routes>
-  console.log(JSON.stringify([
-    { params: { slug: 'my-first-post' }, data: { title: 'My first post' } },
-    { params: { slug: 'another-post' }, data: { title: 'Another post' } },
-  ]));
+  export default async function () {
+    return [
+      { params: { slug: 'my-first-post' }, data: { title: 'My first post' } },
+      { params: { slug: 'another-post' }, data: { title: 'Another post' } },
+    ];
+  }
 </script>
 <script data-bascik-build>
-  const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-  console.log(`<h1>${route.data.title}</h1>`);
+  export default function () {
+    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    return `<h1>${route.data.title}</h1>`;
+  }
 </script>
 ```
 
@@ -315,11 +319,11 @@ Bascik has no build-time equivalent of `{condition && <Comp />}`. Choose one of 
 - **Build-time decision:** Include the correct markup in each page's `.html` file directly. If two pages differ, they have different HTML. This is the right choice for things like per-page hero sections or feature flags.
 - **Runtime toggle:** Render both branches, then show or hide them with the `hidden` attribute, CSS (`display: none`), or vanilla JS toggling a `data-` attribute or class. An element with `hidden` is also removed from the accessibility tree.
 
-A React `.map()` that renders a list from data is the same split. When the data is known at build time, print the items from a build script. When the user decides which items show, print them all and hide the ones that do not match.
+A React `.map()` that renders a list from data is the same split. When the data is known at build time, render the items from a build script. When the user decides which items show, render them all and hide the ones that do not match.
 
 ## useEffect for Data → `<script data-bascik-build>`
 
-Data fetched at component mount time in React becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script's stdout is injected into the page in place of the tag.
+Data fetched at component mount time in React becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script exports a default callable function returning HTML that replaces the tag.
 
 ```html
 <!-- src/pages/blog.html -->
@@ -328,24 +332,28 @@ Data fetched at component mount time in React becomes a `<script data-bascik-bui
   <ul>
     <script data-bascik-build>
       import { readdir } from 'node:fs/promises';
-      const files = await readdir('./content/posts');
+
       const escape = (text) => text.replace(/[&<>"']/g, (character) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-      const items = files
-        .filter(f => f.endsWith('.md'))
-        .map(f => {
-          const slug = f.replace('.md', '');
-          return `<li><a href="/blog/${escape(slug)}">${escape(slug)}</a></li>`;
-        });
-      console.log(items.join('\n'));
+
+      export default async function () {
+        const files = await readdir('./content/posts');
+        const items = files
+          .filter(f => f.endsWith('.md'))
+          .map(f => {
+            const slug = f.replace('.md', '');
+            return `<li><a href="/blog/${escape(slug)}">${escape(slug)}</a></li>`;
+          });
+        return items.join('\n');
+      }
     </script>
   </ul>
 </main>
 ```
 
-JSX escapes interpolated values for you. A template string does not, so escape every value that comes from a file name, a CMS, or an API before you print it.
+JSX escapes interpolated values for you. A template string does not, so escape every value that comes from a file name, a CMS, or an API before you return it.
 
-> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. A component that only a build script prints is reported as unused by `bascik --check`.
+> **Build scripts run first:** The output of a `<script data-bascik-build>` block can itself contain Bascik component tags. They are resolved in the next pass. A component that only a build script emits is reported as unused by `bascik --check`.
 
 The script runs once at build time, so the data is in the HTML that ships. A page that needs data which changes after the build fetches it with `fetch()` in a component `<script>`, which is the browser-side `useEffect`.
 
