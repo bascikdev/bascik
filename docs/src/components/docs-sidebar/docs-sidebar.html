@@ -219,6 +219,18 @@
                     navigationMaxTimer = window.setTimeout(releaseNavigationTarget, reducedMotion ? 0 : 4000);
                });
 
+               var headingUpdatePending = false;
+               function scheduleHeadingUpdate() {
+                    if (headingUpdatePending) return;
+                    headingUpdatePending = true;
+                    window.requestAnimationFrame(function () {
+                         headingUpdatePending = false;
+                         updateCurrentHeading();
+                    });
+               }
+
+               window.addEventListener('scroll', scheduleHeadingUpdate, { passive: true });
+               window.addEventListener('resize', scheduleHeadingUpdate);
                updateCurrentHeading();
                if ('IntersectionObserver' in window) {
                     var observer = new IntersectionObserver(updateCurrentHeading, {
@@ -226,8 +238,6 @@
                          threshold: 0,
                     });
                     headings.forEach(function (heading) { observer.observe(heading); });
-               } else {
-                    window.addEventListener('scroll', updateCurrentHeading, { passive: true });
                }
                window.addEventListener('hashchange', updateCurrentHeading);
                window.addEventListener('scrollend', checkNavigationArrived);

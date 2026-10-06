@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { test, expect } from '@playwright/test';
 
 test.describe('"On this page" table of contents', () => {
@@ -26,6 +28,29 @@ test.describe('"On this page" table of contents', () => {
     await target.click();
 
     await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await expect(target).toHaveAttribute('aria-current', 'location');
+    await expect(toc.locator('[aria-current="location"]')).toHaveCount(1);
+  });
+
+  test('tracks the anchor offset after opening a search result', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Search docs' }).first().click();
+    await page.getByPlaceholder('Search docs…').fill('@/');
+    await page.getByRole('listbox', { name: 'Search results' })
+      .getByRole('link', { name: /Build Scripts › Import Root Aliases/ }).click();
+
+    await expect(page).toHaveURL(/\/build-scripts#import-root-aliases$/);
+    const toc = page.getByRole('navigation', { name: 'On this page' });
+    const target = toc.getByRole('link', { name: 'Import Root Aliases (@/)', exact: true });
+    await expect(target).toHaveAttribute('aria-current', 'location');
+
+    const destination = await page.getByRole('heading', { name: /Import Root Aliases/ }).evaluate((heading) => {
+      const offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--anchor-scroll-offset'));
+      return heading.getBoundingClientRect().top + window.scrollY - offset;
+    });
+    await page.evaluate((top) => window.scrollTo({ top: top - 12, behavior: 'instant' }), destination);
+    await expect(target).not.toHaveAttribute('aria-current', 'location');
+    await page.evaluate((top) => window.scrollTo({ top: top + 12, behavior: 'instant' }), destination);
     await expect(target).toHaveAttribute('aria-current', 'location');
     await expect(toc.locator('[aria-current="location"]')).toHaveCount(1);
   });
