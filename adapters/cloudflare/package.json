@@ -1,6 +1,6 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",

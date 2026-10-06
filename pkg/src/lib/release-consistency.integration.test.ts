@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, symlink, writeFile, rm } from "node:fs/promises";
+import { mkdir, symlink, writeFile, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -792,11 +792,12 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         void heldReq.then(() => {
           heldSettled = true;
         });
+        await writeFile(join(rootA, "gate.pending"), "A-RESPONSE", "utf8");
         await new Promise((r) => setTimeout(r, 200));
         expect(heldSettled).toBe(false);
 
         // Release the gate; the held request completes with the exact response.
-        await writeFile(join(rootA, "gate"), "A-RESPONSE", "utf8");
+        await rename(join(rootA, "gate.pending"), join(rootA, "gate"));
         const held = await heldReq;
         expect(held.status).toBe(200);
         expect(held.body).toContain("A-RESPONSE");
@@ -921,10 +922,11 @@ describe("packet L2: rejected candidate, activation, drain, rollback", () => {
         void heldReq.then(() => {
           heldSettled = true;
         });
+        await writeFile(join(rootA, "gate.pending"), "A-H2", "utf8");
         await new Promise((r) => setTimeout(r, 200));
         expect(heldSettled).toBe(false);
 
-        await writeFile(join(rootA, "gate"), "A-H2", "utf8");
+        await rename(join(rootA, "gate.pending"), join(rootA, "gate"));
         const held = await heldReq;
         expect(held.status).toBe(200);
         expect(held.body).toContain("A-H2");
