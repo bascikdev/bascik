@@ -192,14 +192,6 @@ export const validateRouteList = (
   return { routes, warnings };
 };
 
-/** @deprecated Alias for validateRouteList; accepts an array or throws/errors if not an array. */
-export const parseRouteList = (
-  rawRoutes: unknown,
-  paramNames: string[],
-): { routes: RouteEntry[]; warnings: string[]; error?: string } => {
-  return validateRouteList(rawRoutes, paramNames);
-};
-
 /** Detect exact and case-insensitive duplicate output paths. */
 export const dedupeRoutes = (
   pagePath: string,

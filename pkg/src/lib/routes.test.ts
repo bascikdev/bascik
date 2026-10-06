@@ -5,7 +5,6 @@ import {
   resolveRoutePath,
   computePagePath,
   validateRouteList,
-  parseRouteList,
   dedupeRoutes,
 } from "./routes.ts";
 
@@ -271,11 +270,6 @@ describe("validateRouteList", () => {
     expect(warnings.length).toBe(6);
   });
 
-  it("parseRouteList retains backwards compatibility as alias to validateRouteList", () => {
-    const rawRoutes = [{ params: { slug: "compat" } }];
-    const res = parseRouteList(rawRoutes, ["slug"]);
-    expect(res.routes).toEqual([{ params: { slug: "compat" } }]);
-  });
 });
 
 describe("dedupeRoutes", () => {
