@@ -29,7 +29,7 @@ Each docs page that has a corresponding MD file uses a `<script data-bascik-buil
      To update page content, edit the MD file, not this file. -->
 <script data-bascik-build>
   import { renderMd } from '@/lib/md-renderer.ts';
-  console.log(await renderMd('./content/topic.md'));
+  export default async () => await renderMd('./content/topic.md');
 </script>
 ```
 
@@ -55,7 +55,7 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
       <main class="docs-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/topic'));
+          export default async () => renderSectionLabel('/topic');
         </script>
         <!-- h1, page-intro p, and all content come from MD -->
         <script data-bascik-build>…</script>
@@ -143,7 +143,7 @@ Use `extractDemoBlock` from `src/lib/md-renderer.ts` inside a `data-bascik-build
   <code-block data-bascik-prop-lang="html">
     <script data-bascik-build>
       import { extractDemoBlock } from '@/lib/md-renderer.ts';
-      console.log(await extractDemoBlock('./content/03-scoped-css.md', 'source-html'));
+      export default async () => await extractDemoBlock('./content/03-scoped-css.md', 'source-html');
     </script>
   </code-block>
 </div>

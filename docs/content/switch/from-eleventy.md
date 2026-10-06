@@ -184,7 +184,7 @@ const visible = posts.filter((post) => includeDrafts || post.data.draft !== true
 
 ## Collections → `<script data-bascik-build>`
 
-Eleventy's Collections API reads a directory of Markdown files and makes them available as a sorted array in templates. In Bascik, use a `<script data-bascik-build>` block that reads the same directory and outputs a list of HTML links directly into the page. Sort by the parsed `date`, as Eleventy does, not by file name: file names such as `firstpost`, `secondpost`, `thirdpost` sort alphabetically into the wrong order.
+Eleventy's Collections API reads a directory of Markdown files and makes them available as a sorted array in templates. In Bascik, use a `<script data-bascik-build>` block that reads the same directory and returns a list of HTML links directly into the page. Sort by the parsed `date`, as Eleventy does, not by file name: file names such as `firstpost`, `secondpost`, `thirdpost` sort alphabetically into the wrong order.
 
 ```njk
 {# src/blog/index.njk (Eleventy - before) #}
@@ -193,19 +193,34 @@ Eleventy's Collections API reads a directory of Markdown files and makes them av
   <li>
     <a href="{{ post.url }}">{{ post.data.title }}</a>
     <time>{{ post.date | dateFilter }}</time>
-  </li>escape = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
-    const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
+  </li>
+  {%- endfor -%}
+</ul>
+```
 
-    const posts = await Promise.all(files.map(async file => {
-      const { data } = matter(await readFile(`./content/blog/${file}`, 'utf8'));
-      return { slug: file.replace(/\.md$/, ''), title: data.title, date: new Date(data.date) };
-    }));
-    posts.sort((a, b) => b.date - a.date); // newest first, like `| reverse`
+```html
+<!-- src/pages/blog/index.html (Bascik - after) -->
+<ul>
+  <script data-bascik-build>
+    import { readdir, readFile } from 'node:fs/promises';
+    import matter from 'gray-matter';
 
-    console.log(posts.map(post => `<li>
-      <a href="/blog/${post.slug}/">${escape(post.title)}</a>
-      <time datetime="${post.date.toISOString().slice(0, 10)}">${post.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</time>
-    </li>`).join('\n'));
+    const escape = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+
+    export default async function () {
+      const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
+
+      const posts = await Promise.all(files.map(async file => {
+        const { data } = matter(await readFile(`./content/blog/${file}`, 'utf8'));
+        return { slug: file.replace(/\.md$/, ''), title: data.title, date: new Date(data.date) };
+      }));
+      posts.sort((a, b) => b.date - a.date); // newest first, like `| reverse`
+
+      return posts.map(post => `<li>
+        <a href="/blog/${post.slug}/">${escape(post.title)}</a>
+        <time datetime="${post.date.toISOString().slice(0, 10)}">${post.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</time>
+      </li>`).join('\n');
+    }
   </script>
 </ul>
 ```
@@ -220,19 +235,7 @@ Eleventy's pagination over `collections` becomes a [dynamic route](/dynamic-rout
 
 ## Passthrough File Copy → Automatic
 
-In Eleventy, non-template files (CSS, images, fonts) must be explicitly added to the passthrough copy list in `.eleventy.js`. In Bascik, asset files in `src/pages/` are copied to `dist/` automatically at build time with no configuration needed. Source files are never copied: dotfiles and `.html`, `.md`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and test files are on a built-in deny-list (see [`directory`](/configuration#directory)). Images that live beside Markdown in `content/` are outside `src/pages/`, so copy them with a `pipeline.exec` script that writes into the output directory
-    }));
-
-    console.log(items.join('\n'));
-  </script>
-</ul>
-```
-
-> **Build scripts run first:** A build script's output can itself contain Bascik component tags. They are resolved in the next pass, so you can output `<post-card>` tags from a build script and Bascik will expand them.
-
-## Passthrough File Copy → Automatic
-
-In Eleventy, non-template files (CSS, images, fonts) must be explicitly added to the passthrough copy list in `.eleventy.js`. In Bascik, all non-`.html` files in `src/pages/` are copied to `dist/` automatically at build time with no configuration needed.
+In Eleventy, non-template files (CSS, images, fonts) must be explicitly added to the passthrough copy list in `.eleventy.js`. In Bascik, all non-`.html` files in `src/pages/` are copied to `dist/` automatically at build time with no configuration needed. Source files are never copied: dotfiles and `.html`, `.md`, `.ts`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.map`, and test files are on a built-in deny-list (see [`directory`](/configuration#directory)). Images that live beside Markdown in `content/` are outside `src/pages/`, so copy them with a `pipeline.exec` script that writes into the output directory.
 
 ```text
 src/pages/
@@ -311,7 +314,10 @@ export function renderHome(posts: Post[], latest = 3): string {
     <script data-bascik-build>
       import { loadPosts } from '@/lib/posts.ts';
       import { renderHome } from '@/lib/render.ts';
-      console.log(renderHome(await loadPosts()));
+
+      export default async function () {
+        return renderHome(await loadPosts());
+      }
     </script>
   </main>
   <site-footer />

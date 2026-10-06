@@ -8,7 +8,7 @@ Traditional web frameworks often bundle proprietary templating languages, custom
 
 - **Standard web technologies:** Bascik treats HTML as standard HTML. Rather than introducing a custom DSL that requires dedicated parser plugins, custom syntax highlighters, and bespoke IDE tooling, your markup remains standard vanilla HTML.
 - **Node.js as the execution environment:** Both build-time scripts (`data-bascik-build`) and request-time scripts (`data-bascik-server`) run as standard Node.js processes. This means you have full, direct access to the entire JavaScript language and the npm package ecosystem without needing framework-specific adapters.
-- **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and printed to standard output via `console.log`.
+- **Transparent data flow:** There are no hidden global contexts, magic lifecycle hooks, or implicit reactive state trees. Data is retrieved, transformed into standard HTML strings using your preferred method, and returned from the default export function.
 - **Ecosystem flexibility:** Simple sites often only need native JavaScript template literals and a small helper module. Content-heavy publications or complex applications might prefer EJS, Nunjucks, or Handlebars. You choose the right tool for your project without framework lock-in.
 
 ## Handlebars
@@ -30,15 +30,17 @@ Keep the template in a `.hbs` file so editors can highlight it and the script st
   import { readFile } from 'node:fs/promises';
   import Handlebars from 'handlebars';
 
-  const src = await readFile('./templates/article-list.hbs', 'utf8');
-  const template = Handlebars.compile(src);
+  export default async function () {
+    const src = await readFile('./templates/article-list.hbs', 'utf8');
+    const template = Handlebars.compile(src);
 
-  const items = [
-    { title: 'First article', href: '/posts/first' },
-    { title: 'Second article', href: '/posts/second' },
-  ];
+    const items = [
+      { title: 'First article', href: '/posts/first' },
+      { title: 'Second article', href: '/posts/second' },
+    ];
 
-  console.log(template({ items, page: 2 }));
+    return template({ items, page: 2 });
+  }
 </script>
 ```
 
@@ -88,14 +90,16 @@ Use it from a build or server script:
 <script data-bascik-build>
   import { interpolate } from './lib/interpolate.mjs';
 
-  const data = { article: { title: 'Hello, Bascik' } };
-  console.log(interpolate('<h2>${article.title}</h2>', data));
+  export default function () {
+    const data = { article: { title: 'Hello, Bascik' } };
+    return interpolate('<h2>${article.title}</h2>', data);
+  }
 </script>
 ```
 
 If the helper grows past about twenty lines, that is the signal to reach for Handlebars. A helper that keeps growing new features is a template engine you now have to maintain yourself.
 
-> **Why nothing escapes automatically.** Bascik injects the standard output of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping untrusted inputs before interpolating them into HTML strings keeps data flow safe and explicit.
+> **Why nothing escapes automatically.** Bascik injects the returned HTML string of your script directly into the HTML document. If Bascik automatically escaped script output, scripts could not emit raw HTML elements or component tags. Escaping untrusted inputs before interpolating them into HTML strings keeps data flow safe and explicit.
 
 ## EJS and Nunjucks, if you already know them
 
@@ -112,13 +116,15 @@ npm install ejs
   import { readFile } from 'node:fs/promises';
   import ejs from 'ejs';
 
-  const rows = [
-    { title: 'First post', href: '/posts/first' },
-    { title: 'Second post', href: '/posts/second' },
-  ];
+  export default async function () {
+    const rows = [
+      { title: 'First post', href: '/posts/first' },
+      { title: 'Second post', href: '/posts/second' },
+    ];
 
-  const template = await readFile('./templates/post-list.ejs', 'utf8');
-  console.log(ejs.render(template, { rows }));
+    const template = await readFile('./templates/post-list.ejs', 'utf8');
+    return ejs.render(template, { rows });
+  }
 </script>
 ```
 
@@ -144,12 +150,12 @@ npm install nunjucks
 <script data-bascik-build>
   import nunjucks from 'nunjucks';
 
-  const html = nunjucks.render('./templates/page.njk', {
-    title: 'Projects',
-    items: ['Alpha', 'Bravo', 'Charlie'],
-  });
-
-  console.log(html);
+  export default function () {
+    return nunjucks.render('./templates/page.njk', {
+      title: 'Projects',
+      items: ['Alpha', 'Bravo', 'Charlie'],
+    });
+  }
 </script>
 ```
 
@@ -177,17 +183,19 @@ When a data-driven page needs the same data in several places, fetch or read it 
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
 
-  // One read at page level; every block below reuses this data.
-  const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
+  export default async function () {
+    // One read at page level; every block below reuses this data.
+    const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
 
-  const list = data.articles
-    .map(a => `<li><a href="${a.href}">${a.title}</a></li>`)
-    .join('');
+    const list = data.articles
+      .map(a => `<li><a href="${a.href}">${a.title}</a></li>`)
+      .join('');
 
-  console.log(`<section>
-    <h2>${data.site}</h2>
-    <ul>${list}</ul>
-  </section>`);
+    return `<section>
+      <h2>${data.site}</h2>
+      <ul>${list}</ul>
+    </section>`;
+  }
 </script>
 ```
 
@@ -222,11 +230,13 @@ This is the one approach on this page that **requires client-side JavaScript**, 
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
 
-  const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
+  export default async function () {
+    const data = JSON.parse(await readFile('./content/data.json', 'utf8'));
 
-  console.log(`<script type="application/json" id="page-data">
-    ${JSON.stringify({ site: data.site, articles: data.articles })}
-  </script>`);
+    return `<script type="application/json" id="page-data">
+      ${JSON.stringify({ site: data.site, articles: data.articles })}
+    </script>`;
+  }
 </script>
 ```
 

@@ -113,10 +113,10 @@ const writeOwnedFixture = async (root: string, opts: { workers: boolean }) => {
     root,
     "src/pages/blog/[slug].html",
     `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([
+  <script data-bascik-routes>export default async () => [
     { params: { slug: "one" }, data: { title: "One" } },
     { params: { slug: "two" }, data: { title: "Two" } },
-  ]));</script></head>
+  ];</script></head>
   <body><h1 data-testid="post">post</h1></body></html>`,
   );
 };
@@ -150,9 +150,9 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           root,
           "src/pages/blog/[slug].html",
           `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([
+  <script data-bascik-routes>export default async () => [
     { params: { slug: "one" }, data: { title: "One" } },
-  ]));</script></head>
+  ];</script></head>
   <body><h1 data-testid="post">post</h1></body></html>`,
         );
         const targeted = await runBuild(root, ["--only", "a.html", "--only", "blog/*.html"]);
@@ -228,10 +228,10 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           root,
           "src/pages/blog/[slug].html",
           `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([
+  <script data-bascik-routes>export default async () => [
     { params: { slug: "one" }, data: { title: "One" } },
     { params: { slug: "two" }, data: { title: "Two" } },
-  ]));</script></head>
+  ];</script></head>
   <body><h1>post</h1></body></html>`,
         );
         const full = await runBuild(root);
@@ -244,7 +244,7 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           root,
           "src/pages/blog/[slug].html",
           `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([]));</script></head>
+  <script data-bascik-routes>export default async () => [];</script></head>
   <body><h1>post</h1></body></html>`,
         );
         const targeted = await runBuild(root, ["--only", "blog/*.html"]);
@@ -284,10 +284,10 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           root,
           "src/pages/blog/[slug].html",
           `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([
+  <script data-bascik-routes>export default async () => [
     { params: { slug: "one" }, data: { title: "One" } },
     { params: { slug: "two" }, data: { title: "Two" } },
-  ]));</script></head>
+  ];</script></head>
   <body><h1 data-testid="post">post</h1>
   <script data-bascik-server>export default () => '<div data-testid="blog-server">Blog server</div>';</script>
   </body></html>`,
@@ -302,7 +302,7 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
           root,
           "src/pages/blog/[slug].html",
           `<!DOCTYPE html><html><head><title>Blog</title>
-  <script data-bascik-routes>console.log(JSON.stringify([]));</script></head>
+  <script data-bascik-routes>export default async () => [];</script></head>
   <body><h1 data-testid="post">post</h1>
   <script data-bascik-server>export default () => '<div data-testid="blog-server">Blog server</div>';</script>
   </body></html>`,

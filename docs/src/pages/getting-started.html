@@ -5,15 +5,15 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <meta name="description"
     content="Bascik recommends Node.js 24 LTS (minimum v22.18). Install the CLI and build your first HTML component with scoped CSS and JS in under five minutes." />
@@ -62,14 +62,14 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/getting-started'));
+          export default async () => renderSectionLabel('/getting-started');
         </script>
 
         <!-- Content rendered from docs/content/getting-started.md at build time.
              To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          console.log(await renderMd('./content/getting-started.md'));
+          export default async () => await renderMd('./content/getting-started.md');
         </script>
 
         <h2>Your First Component</h2>
@@ -83,7 +83,7 @@
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/components/site-nav.html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/getting-started.md', 'component-html'));
+                  export default async () => await extractDemoBlock('./content/getting-started.md', 'component-html');
                 </script>
               </code-block>
             </div>
@@ -97,7 +97,7 @@
               <code-block data-bascik-prop-lang="html" data-bascik-prop-file="src/pages/index.html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  console.log(await extractDemoBlock('./content/getting-started.md', 'page-html'));
+                  export default async () => await extractDemoBlock('./content/getting-started.md', 'page-html');
                 </script>
               </code-block>
             </div>

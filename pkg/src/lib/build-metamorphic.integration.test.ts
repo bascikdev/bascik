@@ -463,7 +463,7 @@ export const circularFromA = () => "from-A-circle";
     <script data-bascik-build>
       import { getValueA } from '@/lib/a.ts';
       // Emit special replacement tokens: $1, $2, $&, $\`, plus SQL placeholder syntax
-      console.log("<p>" + getValueA() + " tokens: $1 $2 $& $\` $param1: " + JSON.stringify({ tag: "<div>html</div>" }) + "</p>");
+      export default () => "<p>" + getValueA() + " tokens: $1 $2 $& $\` $param1: " + JSON.stringify({ tag: "<div>html</div>" }) + "</p>";
     </script>
   </div>
   </body></html>`,

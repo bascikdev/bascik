@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="A complete audit of which CSS and JavaScript patterns Bascik's build-time scoping engine supports, with notes on known edge cases." />
@@ -118,27 +118,29 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/compatibility'));
+          export default async () => renderSectionLabel('/compatibility');
         </script>
         <!-- Content rendered from docs/content/compatibility.md at build time.
              To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          let html = await renderMd('./content/compatibility.md');
-          const statuses = {
-            '✓': { badge: 'badge-ok', label: 'Supported and tested', shape: '<path d="m5 12 4 4L19 6" />' },
-            '△': { badge: 'badge-partial', label: 'Partially supported', shape: '<path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v4m0 4h.01" />' },
-            '✕': { badge: 'badge-no', label: 'Intentionally unsupported', shape: '<path d="m6 6 12 12M6 18 18 6" />' },
-            '–': { badge: 'badge-intentional', label: 'Not yet supported', shape: '<path d="M5 12h14" />' },
+          export default async function () {
+            let html = await renderMd('./content/compatibility.md');
+            const statuses = {
+              '✓': { badge: 'badge-ok', label: 'Supported and tested', shape: '<path d="m5 12 4 4L19 6" />' },
+              '△': { badge: 'badge-partial', label: 'Partially supported', shape: '<path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v4m0 4h.01" />' },
+              '✕': { badge: 'badge-no', label: 'Intentionally unsupported', shape: '<path d="m6 6 12 12M6 18 18 6" />' },
+              '–': { badge: 'badge-intentional', label: 'Not yet supported', shape: '<path d="M5 12h14" />' },
+            };
+            const statusIcon = ({ badge, label, shape }) =>
+              `<span class="status-icon ${badge}" role="img" aria-label="${label}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg></span>`;
+            html = html
+              .replace(/<td>\s*([✓△✕–])\s*<\/td>/g, (_, marker) =>
+                `<td class="${statuses[marker].badge}">${statusIcon(statuses[marker])}</td>`)
+              .replace(/<li>([✓△✕–]) /g, (_, marker) =>
+                `<li>${statusIcon(statuses[marker])} `);
+            return html;
           };
-          const statusIcon = ({ badge, label, shape }) =>
-            `<span class="status-icon ${badge}" role="img" aria-label="${label}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg></span>`;
-          html = html
-            .replace(/<td>\s*([✓△✕–])\s*<\/td>/g, (_, marker) =>
-              `<td class="${statuses[marker].badge}">${statusIcon(statuses[marker])}</td>`)
-            .replace(/<li>([✓△✕–]) /g, (_, marker) =>
-              `<li>${statusIcon(statuses[marker])} `);
-          console.log(html);
         </script>
 
         <docs-pagination />

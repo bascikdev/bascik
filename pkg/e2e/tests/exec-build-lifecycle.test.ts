@@ -25,7 +25,7 @@ for (const workers of [false, true]) {
         await writeFile(join(root, 'pre.mjs'), `import { mkdir, writeFile } from 'node:fs/promises';
           await mkdir('dist', { recursive: true }); await writeFile('dist/pre.json', 'ready');`);
         await writeFile(join(root, 'src/pages/index.html'), `<!DOCTYPE html><html lang="en"><head><title>Phases</title></head><body>
-          <p data-testid="pre"><script data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('dist/pre.json','utf8'));</script></p>
+          <p data-testid="pre"><script data-bascik-build>import { readFileSync } from 'node:fs'; export default () => readFileSync('dist/pre.json','utf8');</script></p>
           </body></html>`);
         await writeFile(join(root, 'post.mjs'), `import { readFile, writeFile } from 'node:fs/promises';
           const html = await readFile('dist/index.html','utf8');

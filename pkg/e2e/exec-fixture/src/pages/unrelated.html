@@ -12,7 +12,7 @@
        its outputs must not recompile this page (prompt 139). -->
   <p data-testid="unrelated-marker">
     <script
-      data-bascik-build>import { readFileSync } from 'node:fs'; console.log(readFileSync('data/unrelated.txt', 'utf8').trim());</script>
+      data-bascik-build>import { readFileSync } from 'node:fs'; export default () => readFileSync('data/unrelated.txt', 'utf8').trim();</script>
   </p>
 </body>
 

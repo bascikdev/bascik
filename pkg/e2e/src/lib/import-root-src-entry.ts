@@ -2,4 +2,4 @@
 // Its own relative import re-bases to this file's directory.
 import { importRootMarker } from './import-root-helper.ts';
 
-console.log(`<span data-testid="import-root-src">${importRootMarker()}</span>`);
+export default () => `<span data-testid="import-root-src">${importRootMarker()}</span>`;

@@ -330,7 +330,7 @@ describe("checkProject", () => {
     it("TDD step 1 anchor: unknown tags (<model-viewer>) are warnings not errors, and unused component is detected despite build script", async () => {
       await setupProject({
         "pages/index.html":
-          '<model-viewer src="model.gltf"></model-viewer>\n<script data-bascik-build>console.log("build")</script>',
+          '<model-viewer src="model.gltf"></model-viewer>\n<script data-bascik-build>export default () => "build";</script>',
         "components/unused-card/unused-card.html": "<div>unused</div>",
       });
       listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);

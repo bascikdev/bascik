@@ -47,12 +47,9 @@ Use it from any page's `<head>`:
 ```html
 <head>
   <script data-bascik-build>
-    import { join } from 'node:path';
-    import { pathToFileURL } from 'node:url';
-    const { canonical } = await import(
-      pathToFileURL(join(process.cwd(), 'scripts/canonical.ts')).href
-    );
-    console.log(await canonical());
+    import { canonical } from '@/lib/canonical.ts';
+
+    export default async () => await canonical();
   </script>
 </head>
 ```
@@ -112,7 +109,8 @@ Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to
 <!-- src/components/docs-pagination/docs-pagination.html -->
 <script data-bascik-build="page">
   import { pagePath, siteOrigin } from '@/lib/site.ts';
-  console.log(`<link rel="canonical" href="${siteOrigin()}${pagePath()}">`);
+
+  export default () => `<link rel="canonical" href="${siteOrigin()}${pagePath()}">`;
 </script>
 ```
 

@@ -137,7 +137,7 @@ Furthermore, cross-boundary selectors such as `html[data-theme="light"] .foo {}`
 
 ### Page-aware build script output
 
-A static component build script runs when the component is registered, so its output is part of the template before this pass runs. A page-aware script (`data-bascik-build="page"`) is deferred until each page is transpiled, after the pass. To keep its output consistent, the class pass records the component's mapping (defined classes and styled elements to their scoped names) on each deferred script tag as `data-bascik-output-scope`. When the script runs, `executeBuildScripts` applies that mapping to its stdout with `applyOutputScope` (`pkg/src/lib/output-scope.ts`), skipping comments, raw-text elements, and attribute values. The annotation is consumed with the script tag and never reaches the emitted HTML. The script cache stores the unscoped stdout, so scoping is reapplied on every use.
+A static component build script runs when the component is registered, so its output is part of the template before this pass runs. A page-aware script (`data-bascik-build="page"`) is deferred until each page is transpiled, after the pass. To keep its output consistent, the class pass records the component's mapping (defined classes and styled elements to their scoped names) on each deferred script tag as `data-bascik-output-scope`. When the script runs, `executeBuildScripts` applies that mapping to its returned HTML with `applyOutputScope` (`pkg/src/lib/output-scope.ts`), skipping comments, raw-text elements, and attribute values. The annotation is consumed with the script tag and never reaches the emitted HTML. The script cache stores the unscoped returned HTML, so scoping is reapplied on every use.
 
 ### What is NOT scoped
 

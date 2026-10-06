@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Props let you pass text values into a component template at usage time using data-bascik-prop-* attributes on the component tag." />
@@ -35,19 +35,19 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/props'));
+          export default async () => renderSectionLabel('/props');
         </script>
 
         <!-- Intro rendered from docs/content/props.md. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/props.md', { to: 'Define and pass props' }));
+          export default async () => await renderMdRange('./content/props.md', { to: 'Define and pass props' });
         </script>
 
         <!-- Present the demo section before the detailed reference. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/props.md', { from: 'See it in action' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/props.md', { from: 'See it in action' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/feature-card/">
@@ -59,7 +59,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'source-usage'));
+                export default async () => await extractDemoBlock('./content/props.md', 'source-usage');
               </script>
             </code-block>
           </div>
@@ -67,7 +67,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'source-html'));
+                export default async () => await extractDemoBlock('./content/props.md', 'source-html');
               </script>
             </code-block>
           </div>
@@ -75,7 +75,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'source-css'));
+                export default async () => await extractDemoBlock('./content/props.md', 'source-css');
               </script>
             </code-block>
           </div>
@@ -83,7 +83,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/props.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -91,7 +91,7 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/props.md', { from: 'Define and pass props', to: 'Props with Existing Attributes' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/props.md', { from: 'Define and pass props', to: 'Props with Existing Attributes' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/alert-box/">
@@ -102,7 +102,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'basic-props-usage'));
+                export default async () => await extractDemoBlock('./content/props.md', 'basic-props-usage');
               </script>
             </code-block>
           </div>
@@ -110,7 +110,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'basic-props-html'));
+                export default async () => await extractDemoBlock('./content/props.md', 'basic-props-html');
               </script>
             </code-block>
           </div>
@@ -118,7 +118,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'basic-props-css'));
+                export default async () => await extractDemoBlock('./content/props.md', 'basic-props-css');
               </script>
             </code-block>
           </div>
@@ -126,7 +126,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/props.md', 'basic-props-output-html'));
+                export default async () => await extractDemoBlock('./content/props.md', 'basic-props-output-html');
               </script>
             </code-block>
           </div>
@@ -135,7 +135,7 @@
         <!-- Remaining reference follows the runnable examples. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/props.md', { from: 'Props with Existing Attributes', to: 'See it in action' }));
+          export default async () => await renderMdRange('./content/props.md', { from: 'Props with Existing Attributes', to: 'See it in action' });
         </script>
 
         <docs-pagination />

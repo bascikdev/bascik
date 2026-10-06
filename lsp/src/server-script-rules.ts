@@ -106,7 +106,69 @@ export interface ServerScriptDiagnostic {
 
 export interface AnalyzeOptions {
   hasSrcAttribute: boolean;
-  directive: 'server' | 'stream';
+  directive: 'server' | 'stream' | 'build' | 'routes';
+}
+
+function hasDefaultExport(source: string): boolean {
+  let cleaned = '';
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === '/' && source[i + 1] === '/') {
+      i += 2;
+      while (i < source.length && source[i] !== '\n') i++;
+      cleaned += ' ';
+    } else if (source[i] === '/' && source[i + 1] === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i = Math.min(i + 2, source.length);
+      cleaned += ' ';
+    } else if (source[i] === '"' || source[i] === "'") {
+      const q = source[i];
+      i++;
+      while (i < source.length) {
+        if (source[i] === '\\') i += 2;
+        else if (source[i] === q) {
+          i++;
+          break;
+        } else i++;
+      }
+      cleaned += ' ';
+    } else if (source[i] === '`') {
+      i++;
+      let depth = 0;
+      while (i < source.length) {
+        if (source[i] === '\\') i += 2;
+        else if (source[i] === '`' && depth === 0) {
+          i++;
+          break;
+        } else if (source[i] === '$' && source[i + 1] === '{') {
+          depth++;
+          i += 2;
+        } else if (source[i] === '}' && depth > 0) {
+          depth--;
+          i++;
+        } else i++;
+      }
+      cleaned += ' ';
+    } else {
+      cleaned += source[i];
+      i++;
+    }
+  }
+
+  if (/\bexport\s+default\b/.test(cleaned)) return true;
+  if (/\bexport\s*\*\s*as\s+default\b/.test(cleaned)) return true;
+  const exportClauseMatch = /\bexport\s*\{([^}]+)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = exportClauseMatch.exec(cleaned)) !== null) {
+    const specifiers = match[1].split(',');
+    for (const spec of specifiers) {
+      const trimmed = spec.trim();
+      if (trimmed === 'default') return true;
+      if (/\bas\s+default\s*$/.test(trimmed)) return true;
+    }
+  }
+  return false;
 }
 
 export function analyzeServerScriptSource(
@@ -117,18 +179,33 @@ export function analyzeServerScriptSource(
 
   // Rule 2: server-script-missing-default-export
   if (body.trim().length > 0 && !opts.hasSrcAttribute) {
-    if (!/^\s*export\s+default\b/m.test(body)) {
+    if (!hasDefaultExport(body)) {
       const match = /\S+/.exec(body);
       const start = match ? match.index : 0;
       const end = match ? match.index + match[0].length : 0;
+      let message: string;
+      if (opts.directive === 'build') {
+        message =
+          'A data-bascik-build script must `export default` a function returning a string. Expected: export default async function() { ... }';
+      } else if (opts.directive === 'routes') {
+        message =
+          'A data-bascik-routes script must `export default` a function returning an array. Expected: export default async function() { ... }';
+      } else {
+        message = `A data-bascik-${opts.directive} script must \`export default\` a function \`(request, context, { signal })\`. Bascik loads it as an ES module and calls the default export on each request.`;
+      }
       diagnostics.push({
         code: 'server-script-missing-default-export',
-        message: `A data-bascik-${opts.directive} script must \`export default\` a function \`(request, context, { signal })\`. Bascik loads it as an ES module and calls the default export on each request.`,
+        message,
         severity: 'error',
         start,
         end,
       });
     }
+  }
+
+  // Server-specific rules (import and sinks) only apply to server and stream scripts
+  if (opts.directive !== 'server' && opts.directive !== 'stream') {
+    return diagnostics;
   }
 
   // server-script-bascik-import

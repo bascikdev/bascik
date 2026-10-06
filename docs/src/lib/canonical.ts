@@ -8,12 +8,8 @@
  *
  * Usage inside a <script data-bascik-build> block:
  *
- *   import { join } from 'node:path';
- *   import { pathToFileURL } from 'node:url';
- *   const { canonical } = await import(
- *     pathToFileURL(join(process.cwd(), 'src/lib/canonical.ts')).href
- *   );
- *   console.log(await canonical());
+ *   import { canonical } from '@/lib/canonical.ts';
+ *   export default async () => await canonical();
  */
 
 import { composeSiteUrl } from '@bascik/bascik';

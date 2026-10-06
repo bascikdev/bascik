@@ -134,7 +134,7 @@ describe("PACKAGE_JSON", () => {
 
   it("uses the current Bascik prerelease dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.3");
+    expect(pkg.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.4");
   });
 
   it("uses the supplied name", () => {
@@ -286,6 +286,7 @@ describe("SITE_FOOTER_HTML", () => {
 
   it("uses a build-time script for the year", () => {
     expect(SITE_FOOTER_HTML).toContain("data-bascik-build");
+    expect(SITE_FOOTER_HTML).toContain("export default () =>");
     expect(SITE_FOOTER_HTML).toContain("getFullYear");
   });
 });

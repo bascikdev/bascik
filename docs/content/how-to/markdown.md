@@ -21,8 +21,10 @@ Read a Markdown file and output the HTML:
   import { readFile } from 'node:fs/promises';
   import { marked } from 'marked';
 
-  const md = await readFile('./content/intro.md', 'utf8');
-  console.log(marked(md));
+  export default async function () {
+    const md = await readFile('./content/intro.md', 'utf8');
+    return marked(md);
+  }
 </script>
 ```
 
@@ -64,8 +66,10 @@ Wrap the generated content with a stable class and link a regular stylesheet fro
       import { readFile } from 'node:fs/promises';
       import { marked } from 'marked';
 
-      const md = await readFile('./content/article.md', 'utf8');
-      console.log(marked(md));
+      export default async function () {
+        const md = await readFile('./content/article.md', 'utf8');
+        return marked(md);
+      }
     </script>
   </main>
 </body>
@@ -159,8 +163,10 @@ Have the build script emit the component tag around the parsed Markdown:
   import { readFile } from 'node:fs/promises';
   import { marked } from 'marked';
 
-  const md = await readFile('./content/article.md', 'utf8');
-  console.log(`<markdown-content>${marked(md)}</markdown-content>`);
+  export default async function () {
+    const md = await readFile('./content/article.md', 'utf8');
+    return `<markdown-content>${marked(md)}</markdown-content>`;
+  }
 </script>
 ```
 
@@ -218,16 +224,18 @@ This is the post body.
   import { marked } from 'marked';
   import matter from 'gray-matter';
 
-  const raw = await readFile('./content/post.md', 'utf8');
-  const { data, content } = matter(raw);
+  export default async function () {
+    const raw = await readFile('./content/post.md', 'utf8');
+    const { data, content } = matter(raw);
 
-  console.log(`
-    <article>
-      <h1>${data.title}</h1>
-      <time datetime="${data.date}">${new Date(data.date).toLocaleDateString('en-US', { dateStyle: 'long' })}</time>
-      ${marked(content)}
-    </article>
-  `);
+    return `
+      <article>
+        <h1>${data.title}</h1>
+        <time datetime="${data.date}">${new Date(data.date).toLocaleDateString('en-US', { dateStyle: 'long' })}</time>
+        ${marked(content)}
+      </article>
+    `;
+  }
 </script>
 ```
 
@@ -240,26 +248,28 @@ Read an entire folder of Markdown files and generate a list or index page:
   import { readdir, readFile } from 'node:fs/promises';
   import matter from 'gray-matter';
 
-  const files = (await readdir('./content/posts'))
-    .filter(f => f.endsWith('.md'))
-    .sort()
-    .reverse(); // newest first if files are date-prefixed
+  export default async function () {
+    const files = (await readdir('./content/posts'))
+      .filter(f => f.endsWith('.md'))
+      .sort()
+      .reverse(); // newest first if files are date-prefixed
 
-  const posts = await Promise.all(files.map(async file => {
-    const raw = await readFile(`./content/posts/${file}`, 'utf8');
-    const { data } = matter(raw);
-    const slug = file.replace(/\.md$/, '');
-    return { slug, ...data };
-  }));
+    const posts = await Promise.all(files.map(async file => {
+      const raw = await readFile(`./content/posts/${file}`, 'utf8');
+      const { data } = matter(raw);
+      const slug = file.replace(/\.md$/, '');
+      return { slug, ...data };
+    }));
 
-  const items = posts.map(p => `
-    <li>
-      <a href="/posts/${p.slug}">${p.title}</a>
-      <time>${p.date}</time>
-    </li>
-  `).join('\n');
+    const items = posts.map(p => `
+      <li>
+        <a href="/posts/${p.slug}">${p.title}</a>
+        <time>${p.date}</time>
+      </li>
+    `).join('\n');
 
-  console.log(`<ul class="post-list">\n${items}\n</ul>`);
+    return `<ul class="post-list">\n${items}\n</ul>`;
+  }
 </script>
 ```
 
@@ -278,9 +288,11 @@ npm install markdown-it
   import { readFile } from 'node:fs/promises';
   import MarkdownIt from 'markdown-it';
 
-  const md = new MarkdownIt({ html: true, typographer: true });
-  const source = await readFile('./content/article.md', 'utf8');
-  console.log(md.render(source));
+  export default async function () {
+    const md = new MarkdownIt({ html: true, typographer: true });
+    const source = await readFile('./content/article.md', 'utf8');
+    return md.render(source);
+  }
 </script>
 ```
 
@@ -296,17 +308,19 @@ npm install markdown-it highlight.js
   import MarkdownIt from 'markdown-it';
   import hljs from 'highlight.js';
 
-  const md = new MarkdownIt({
-    highlight(code, lang) {
-      if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(code, { language: lang }).value;
+  export default async function () {
+    const md = new MarkdownIt({
+      highlight(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          return hljs.highlight(code, { language: lang }).value;
+        }
+        return '';
       }
-      return '';
-    }
-  });
+    });
 
-  const source = await readFile('./content/article.md', 'utf8');
-  console.log(md.render(source));
+    const source = await readFile('./content/article.md', 'utf8');
+    return md.render(source);
+  }
 </script>
 ```
 
@@ -332,13 +346,15 @@ npm install unified remark-parse remark-html
   import remarkParse from 'remark-parse';
   import remarkHtml from 'remark-html';
 
-  const md = await readFile('./content/article.md', 'utf8');
-  const file = await unified()
-    .use(remarkParse)
-    .use(remarkHtml)
-    .process(md);
+  export default async function () {
+    const md = await readFile('./content/article.md', 'utf8');
+    const file = await unified()
+      .use(remarkParse)
+      .use(remarkHtml)
+      .process(md);
 
-  console.log(String(file));
+    return String(file);
+  }
 </script>
 ```
 
@@ -352,11 +368,13 @@ If your content comes from a headless CMS that returns Markdown via an API, fetc
 <script data-bascik-build>
   import { marked } from 'marked';
 
-  const res = await fetch('https://your-cms.example.com/api/page/home', {
-    headers: { Authorization: `Bearer ${process.env.CMS_TOKEN}` }
-  });
-  const { body } = await res.json();
-  console.log(marked(body));
+  export default async function () {
+    const res = await fetch('https://your-cms.example.com/api/page/home', {
+      headers: { Authorization: `Bearer ${process.env.CMS_TOKEN}` }
+    });
+    const { body } = await res.json();
+    return marked(body);
+  }
 </script>
 ```
 

@@ -3,17 +3,47 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { executeRoutesScript } from "./routes.ts";
 
+// ─── Mocks ───────────────────────────────────────────────────────────────────
+
+const { state, routesIoMocks } = vi.hoisted(() => {
+  const state = {
+    activeHandlerResult: [] as unknown,
+    userReadFileMock: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  };
+  const mocks = {
+    execFile: vi.fn(),
+    writeFile: vi.fn(async () => { }),
+    unlink: vi.fn(async () => { }),
+    mkdir: vi.fn(async () => { }),
+    mkdtemp: vi.fn(async () => "/tmp/bascik-mock-routes-dir"),
+    rm: vi.fn(async () => { }),
+    stat: vi.fn(async () => ({ size: 100 })),
+    readFile: vi.fn(async (filePath: string, ...args: any[]) => {
+      if (String(filePath).endsWith("result.json")) {
+        return JSON.stringify({
+          version: 1,
+          kind: "routes",
+          result: state.activeHandlerResult,
+        });
+      }
+      return state.userReadFileMock(filePath, ...args);
+    }),
+  };
+  return { state, routesIoMocks: mocks };
+});
+
 vi.mock("node:child_process", () => ({
-  execFile: vi.fn(),
+  execFile: routesIoMocks.execFile,
 }));
 
 vi.mock("node:fs/promises", () => ({
-  writeFile: vi.fn(async () => { }),
-  unlink: vi.fn(async () => { }),
-  mkdir: vi.fn(async () => { }),
-  readFile: vi.fn(async () => {
-    throw new Error("ENOENT");
-  }),
+  writeFile: routesIoMocks.writeFile,
+  unlink: routesIoMocks.unlink,
+  mkdir: routesIoMocks.mkdir,
+  mkdtemp: routesIoMocks.mkdtemp,
+  rm: routesIoMocks.rm,
+  stat: routesIoMocks.stat,
+  readFile: routesIoMocks.readFile,
 }));
 
 vi.mock("./config.js", () => ({
@@ -27,14 +57,14 @@ vi.mock("./config.js", () => ({
 }));
 
 import { execFile } from "node:child_process";
-import { writeFile, readFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as unknown as ReturnType<typeof vi.fn>;
-const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
+const mockReadFile = state.userReadFileMock;
 
-const resolveWith = (stdout: string) =>
+const resolveWith = (result: unknown = [], stdout: string = "", stderr: string = "") => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -42,9 +72,11 @@ const resolveWith = (stdout: string) =>
       _opts: unknown,
       cb: (err: null, stdout: string, stderr: string) => void,
     ) => {
-      cb(null, stdout, "");
+      cb(null, stdout, stderr);
     },
   );
+  state.activeHandlerResult = result;
+};
 
 const rejectWith = (message: string) =>
   mockExecFile.mockImplementation(
@@ -60,6 +92,9 @@ const rejectWith = (message: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.activeHandlerResult = [];
+  state.userReadFileMock.mockReset();
+  state.userReadFileMock.mockRejectedValue(new Error("ENOENT"));
   (BascikConfig as any).scripts = { onRoutesScriptError: "error" };
   (BascikConfig as any).isBuild = false;
 });
@@ -91,12 +126,18 @@ describe("executeRoutesScript", () => {
       { params: { slug: "post-1" }, data: { title: "Post 1" } },
       { params: { slug: "post-2" }, data: { title: "Post 2" } },
     ];
-    resolveWith(JSON.stringify(routesData));
+    resolveWith(routesData);
 
     const html = `<html>
 <head>
   <script data-bascik-routes>
-    console.log("...");
+    export default async function () {
+      console.log("diagnostic log");
+      return [
+        { params: { slug: "post-1" }, data: { title: "Post 1" } },
+        { params: { slug: "post-2" }, data: { title: "Post 2" } },
+      ];
+    }
   </script>
 </head>
 <body><h1>Posts</h1></body>
@@ -110,10 +151,10 @@ describe("executeRoutesScript", () => {
   });
 
   it("rewrites relative imports against the routes script file before execution", async () => {
-    resolveWith(JSON.stringify([{ params: { slug: "post-1" } }]));
+    resolveWith([{ params: { slug: "post-1" } }]);
 
     await executeRoutesScript(
-      `<script data-bascik-routes>import { routes } from '../../lib/routes-data.ts'; console.log(JSON.stringify(routes));</script>`,
+      `<script data-bascik-routes>import { routes } from '../../lib/routes-data.ts'; export default async () => routes;</script>`,
       "src/pages/blog/[slug].html",
     );
 
@@ -124,9 +165,9 @@ describe("executeRoutesScript", () => {
   });
 
   it("rewrites imports in external routes scripts against the src file", async () => {
-    resolveWith(JSON.stringify([{ params: { slug: "post-1" } }]));
+    resolveWith([{ params: { slug: "post-1" } }]);
     mockReadFile.mockResolvedValueOnce(
-      "import { routes } from './routes-data.ts'; console.log(JSON.stringify(routes));",
+      "import { routes } from './routes-data.ts'; export default async () => routes;",
     );
 
     await executeRoutesScript(
@@ -141,8 +182,8 @@ describe("executeRoutesScript", () => {
   });
 
   it("never reads from or writes to a script cache file", async () => {
-    resolveWith(JSON.stringify([{ params: { slug: "a" } }]));
-    const html = `<script data-bascik-routes>console.log('[]');</script>`;
+    resolveWith([{ params: { slug: "a" } }]);
+    const html = `<script data-bascik-routes>export default () => [];</script>`;
     await executeRoutesScript(html, "src/pages/blog/[slug].html");
 
     // Only the temp script should be written, no .json cache files
@@ -169,7 +210,7 @@ describe("executeRoutesScript", () => {
   });
 
   it("throws hard error on routes + server conflict on same tag", async () => {
-    const html = `<script data-bascik-routes data-bascik-server>console.log("conflict")</script>`;
+    const html = `<script data-bascik-routes data-bascik-server>export default () => []</script>`;
     await expect(
       executeRoutesScript(html, "src/pages/blog/[slug].html"),
     ).rejects.toThrow(/both data-bascik-routes and data-bascik-server/);
@@ -184,7 +225,7 @@ describe("executeRoutesScript", () => {
 
   it("warns and ignores routes script inside component", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    const html = `<script data-bascik-routes>console.log("[]")</script><div>Component</div>`;
+    const html = `<script data-bascik-routes>export default () => []</script><div>Component</div>`;
     const result = await executeRoutesScript(html, "src/components/card.html");
     expect(result.routes).toBeNull();
     expect(result.cleanedHtml).not.toContain("data-bascik-routes");
@@ -197,7 +238,7 @@ describe("executeRoutesScript", () => {
 
   it("warns and ignores routes script in file without brackets", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    const html = `<script data-bascik-routes>console.log("[]")</script><div>Static</div>`;
+    const html = `<script data-bascik-routes>export default () => []</script><div>Static</div>`;
     const result = await executeRoutesScript(html, "src/pages/about.html");
     expect(result.routes).toBeNull();
     expect(result.cleanedHtml).not.toContain("data-bascik-routes");
@@ -232,16 +273,16 @@ describe("executeRoutesScript", () => {
     warnSpy.mockRestore();
   });
 
-  it("honors onRoutesScriptError: 'warn' when stdout is invalid JSON", async () => {
+  it("honors onRoutesScriptError: 'warn' when returned value is not an array", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
-    resolveWith("Invalid JSON Output");
+    resolveWith("Invalid String Output");
     (BascikConfig as any).scripts = { onRoutesScriptError: "warn" };
 
-    const html = `<script data-bascik-routes>console.log('not json')</script>`;
+    const html = `<script data-bascik-routes>export default () => 'not array';</script>`;
     const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");
     expect(result.routes).toEqual([]);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid JSON returned by routes script"),
+      expect.stringContaining("Routes script must return an array"),
     );
     warnSpy.mockRestore();
   });

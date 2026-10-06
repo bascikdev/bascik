@@ -46,7 +46,9 @@ describe("build-script package dependency identity (real fresh-process CLI build
         await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>
 <script data-bascik-build>
 import { value } from 'audit-dependency';
-console.log('<span data-testid="pkg">' + value + '</span>');
+export default function () {
+  return '<span data-testid="pkg">' + value + '</span>';
+}
 </script>
 </body></html>`);
 
@@ -89,7 +91,9 @@ console.log('<span data-testid="pkg">' + value + '</span>');
         await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>l</title></head><body>
 <script data-bascik-build>
 import { value } from 'renderer';
-console.log('<span data-testid="pkg">' + value + '</span>');
+export default function () {
+  return '<span data-testid="pkg">' + value + '</span>';
+}
 </script>
 </body></html>`);
 
@@ -134,7 +138,9 @@ console.log('<span data-testid="pkg">' + value + '</span>');
 <script data-bascik-build>
 import { top } from 'audit-lib';
 import { sub } from 'audit-lib/sub';
-console.log('<span data-testid="pkg">' + top + '|' + sub + '</span>');
+export default function () {
+  return '<span data-testid="pkg">' + top + '|' + sub + '</span>';
+}
 </script>
 </body></html>`);
 
@@ -166,7 +172,9 @@ console.log('<span data-testid="pkg">' + top + '|' + sub + '</span>');
           await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>u</title></head><body>
 <script data-bascik-build>
 import { value } from 'stable-pkg';
-console.log('<span data-testid="pkg">' + value + '</span>');
+export default function () {
+  return '<span data-testid="pkg">' + value + '</span>';
+}
 </script>
 </body></html>`);
 
@@ -193,7 +201,9 @@ console.log('<span data-testid="pkg">' + value + '</span>');
         await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html lang="en"><head><title>m</title></head><body>
 <script data-bascik-build>
 import { value } from 'not-installed-pkg';
-console.log('<span data-testid="pkg">' + value + '</span>');
+export default function () {
+  return '<span data-testid="pkg">' + value + '</span>';
+}
 </script>
 </body></html>`);
 

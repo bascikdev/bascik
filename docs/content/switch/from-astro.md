@@ -43,7 +43,7 @@ src/                        src/components/
 
 ## Frontmatter → `<script data-bascik-build>`
 
-Astro's frontmatter block (`---`) runs on the server at build time. The direct equivalent in Bascik is `<script data-bascik-build>`. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are supported.
+Astro's frontmatter block (`---`) runs on the server at build time. The direct equivalent in Bascik is `<script data-bascik-build>`. The script runs as a Node.js ESM module at build time, exporting a callable default function whose returned HTML replaces the tag in the page. Top-level `import` and top-level `await` are supported at module scope.
 
 ```astro
 <!-- src/pages/blog.astro (Astro - before) -->
@@ -65,14 +65,18 @@ const posts = await getCollection('blog');
   <script data-bascik-build>
     import { readdir, readFile } from 'node:fs/promises';
     import matter from 'gray-matter';
+
     const escape = (s) => String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
-    const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
-    const items = await Promise.all(files.map(async f => {
-      const { data } = matter(await readFile(`./content/blog/${f}`, 'utf8'));
-      const slug = f.replace(/\.md$/, '');
-      return `<li><a href="/blog/${slug}/">${escape(data.title)}</a></li>`;
-    }));
-    console.log(items.join('\n'));
+
+    export default async function () {
+      const files = (await readdir('./content/blog')).filter(f => f.endsWith('.md'));
+      const items = await Promise.all(files.map(async f => {
+        const { data } = matter(await readFile(`./content/blog/${f}`, 'utf8'));
+        const slug = f.replace(/\.md$/, '');
+        return `<li><a href="/blog/${slug}/">${escape(data.title)}</a></li>`;
+      }));
+      return items.join('\n');
+    }
   </script>
 </ul>
 ```
@@ -245,14 +249,21 @@ In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html`
 <head>
   <script data-bascik-routes>
     import { getPosts } from '@/lib/posts.ts';
-    console.log(JSON.stringify((await getPosts()).map((post) => ({ params: { slug: post.id } }))));
+
+    export default async function () {
+      const posts = await getPosts();
+      return posts.map((post) => ({ params: { slug: post.id } }));
+    }
   </script>
   <script data-bascik-build>
     import { getPost } from '@/lib/posts.ts';
     import { escapeHtml } from '@/lib/site.ts';
-    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
-    const { data } = await getPost(params.slug);
-    console.log(`<title>${escapeHtml(data.title)}</title>`);
+
+    export default async function () {
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      const { data } = await getPost(params.slug);
+      return `<title>${escapeHtml(data.title)}</title>`;
+    }
   </script>
 </head>
 <body>
@@ -260,15 +271,18 @@ In Bascik, the same job is one template file. `src/pages/blog/[slug]/index.html`
   <script data-bascik-build>
     import { getPost } from '@/lib/posts.ts';
     import { renderPost } from '@/lib/render.ts';
-    const { params } = JSON.parse(process.env.BASCIK_ROUTE);
-    console.log(renderPost(await getPost(params.slug)));
+
+    export default async function () {
+      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+      return renderPost(await getPost(params.slug));
+    }
   </script>
   <site-footer />
 </body>
 </html>
 ```
 
-`getPosts`, `getPost`, and `renderPost` are your own helpers in `src/lib/`, imported with the `@/` alias. They read `content/blog/*.md`, validate the front matter, render the Markdown, and escape titles before printing them. Bascik adds every generated URL to `sitemap.xml`. Do not write generated page files into `src/pages/`.
+`getPosts`, `getPost`, and `renderPost` are your own helpers in `src/lib/`, imported with the `@/` alias. They read `content/blog/*.md`, validate the front matter, render the Markdown, and escape titles before returning them. Bascik adds every generated URL to `sitemap.xml`. Do not write generated page files into `src/pages/`.
 
 Because these scripts read `content/`, which Bascik cannot see as an import, exclude them from the build-script cache and watch the folder in development:
 
@@ -297,8 +311,11 @@ const apiUrl = import.meta.env.API_URL;
 <!-- After (Bascik build script) -->
 <script data-bascik-build>
   const apiUrl = process.env.API_URL;
-  const data = await fetch(apiUrl).then(r => r.json());
-  console.log(`<p>${data.message}</p>`);
+
+  export default async function () {
+    const data = await fetch(apiUrl).then(r => r.json());
+    return `<p>${data.message}</p>`;
+  }
 </script>
 ```
 

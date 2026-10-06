@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical('/how-to/markdown'));
+    export default async () => await canonical('/how-to/markdown');
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="Bascik does not ship a Markdown pipeline, but build-time scripts are Node.js - so any Markdown library works out of the box." />
@@ -35,13 +35,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/using-markdown'));
+          export default async () => renderSectionLabel('/using-markdown');
         </script>
 
         <!-- Intro rendered from docs/content/how-to/markdown.md. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/how-to/markdown.md', { to: 'marked' }));
+          export default async () => await renderMdRange('./content/how-to/markdown.md', { to: 'marked' });
         </script>
 
         <component-demo>
@@ -59,7 +59,7 @@
             <code-block data-bascik-prop-lang="md">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/how-to/markdown.md', 'source-md'));
+                export default async () => await extractDemoBlock('./content/how-to/markdown.md', 'source-md');
               </script>
             </code-block>
           </div>
@@ -67,7 +67,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/how-to/markdown.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/how-to/markdown.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -75,7 +75,7 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/how-to/markdown.md', { from: 'marked' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/how-to/markdown.md', { from: 'marked' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

@@ -5,10 +5,8 @@
  *
  * Usage inside a <script data-bascik-build> block:
  *
- *   const { openGraph } = await import(
- *     pathToFileURL(join(process.cwd(), 'src/lib/open-graph.ts')).href
- *   );
- *   console.log(await openGraph());
+ *   import { openGraph } from '@/lib/open-graph.ts';
+ *   export default async () => await openGraph();
  */
 import { readFile } from 'node:fs/promises';
 import { NAV } from './nav.ts';

@@ -604,7 +604,7 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('suggests mutually exclusive script directives on <script > tags', async () => {
+    test('suggests mutually exclusive script directives on <script > tags with updated guidance', async () => {
       const scriptCompletions = await completionsInFile(
         'primary',
         'src/component-nav.html',
@@ -621,6 +621,26 @@ suite('Extension Integration Suite', () => {
       ]) {
         assert.ok(scriptLabels.includes(dir), `Expected ${dir} in script completions`);
       }
+
+      const buildItem = scriptCompletions.items.find((i) => completionLabel(i) === 'data-bascik-build');
+      assert.ok(buildItem?.documentation, 'Expected documentation for data-bascik-build');
+      const buildDoc = buildItem.documentation instanceof vscode.MarkdownString
+        ? buildItem.documentation.value
+        : String(buildItem.documentation);
+      assert.ok(
+        buildDoc.includes('The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.'),
+        `Expected updated build doc, got: ${buildDoc}`
+      );
+
+      const routesItem = scriptCompletions.items.find((i) => completionLabel(i) === 'data-bascik-routes');
+      assert.ok(routesItem?.documentation, 'Expected documentation for data-bascik-routes');
+      const routesDoc = routesItem.documentation instanceof vscode.MarkdownString
+        ? routesItem.documentation.value
+        : String(routesItem.documentation);
+      assert.ok(
+        routesDoc.includes('The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.'),
+        `Expected updated routes doc, got: ${routesDoc}`
+      );
 
       // If one directive exists, none should be suggested
       const existingCompletions = await completionsInFile(
@@ -642,6 +662,65 @@ suite('Extension Integration Suite', () => {
           `Did not expect ${dir} when build directive is already present`,
         );
       }
+    });
+
+    test('suggests script shorthands (<bascik-...) expanding to complete script blocks', async () => {
+      const shorthandCompletions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<bascik-',
+        8,
+        '-',
+      );
+      const labels = shorthandCompletions.items.map(completionLabel);
+      for (const shorthand of [
+        'bascik-build',
+        'bascik-routes',
+        'bascik-server',
+        'bascik-stream',
+      ]) {
+        assert.ok(labels.includes(shorthand), `Expected ${shorthand} in completions`);
+      }
+
+      const buildShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-build');
+      assert.ok(buildShorthand, 'Expected bascik-build item');
+      const buildInsert = buildShorthand.insertText instanceof vscode.SnippetString
+        ? buildShorthand.insertText.value
+        : String(buildShorthand.insertText);
+      assert.strictEqual(
+        buildInsert,
+        '<script data-bascik-build>\n  export default async function () {\n    return `$0`;\n  }\n</script>'
+      );
+
+      const routesShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-routes');
+      assert.ok(routesShorthand, 'Expected bascik-routes item');
+      const routesInsert = routesShorthand.insertText instanceof vscode.SnippetString
+        ? routesShorthand.insertText.value
+        : String(routesShorthand.insertText);
+      assert.strictEqual(
+        routesInsert,
+        '<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>'
+      );
+
+      const serverShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-server');
+      assert.ok(serverShorthand, 'Expected bascik-server item');
+      const serverInsert = serverShorthand.insertText instanceof vscode.SnippetString
+        ? serverShorthand.insertText.value
+        : String(serverShorthand.insertText);
+      assert.strictEqual(
+        serverInsert,
+        '<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+      );
+
+      const streamShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-stream');
+      assert.ok(streamShorthand, 'Expected bascik-stream item');
+      const streamInsert = streamShorthand.insertText instanceof vscode.SnippetString
+        ? streamShorthand.insertText.value
+        : String(streamShorthand.insertText);
+      assert.strictEqual(
+        streamInsert,
+        '<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+      );
     });
 
     for (const [context, cursorOffset] of [
@@ -2143,6 +2222,76 @@ suite('Extension Integration Suite', () => {
         'Expected server-script-missing-default-export diagnostic',
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+      assert.ok(
+        match.message.includes('A data-bascik-server script must `export default` a function `(request, context, { signal })`.'),
+        `Expected server script message, got: ${match.message}`
+      );
+    });
+
+    test('reports build script missing default export error', async () => {
+      const doc = await openWorkspaceDocument({
+        language: 'html',
+        content: '<script data-bascik-build>\nconsole.log(1);\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find(
+        (d) => d.code === 'server-script-missing-default-export',
+      );
+      assert.ok(
+        match,
+        'Expected server-script-missing-default-export diagnostic for build script',
+      );
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+      assert.ok(
+        match.message.includes('A data-bascik-build script must `export default` a function returning a string. Expected: export default async function() { ... }'),
+        `Expected build script message, got: ${match.message}`
+      );
+    });
+
+    test('reports routes script missing default export error', async () => {
+      const doc = await openWorkspaceDocument({
+        language: 'html',
+        content: '<script data-bascik-routes>\nconsole.log(1);\n</script>',
+      });
+      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
+      const match = diagnostics.find(
+        (d) => d.code === 'server-script-missing-default-export',
+      );
+      assert.ok(
+        match,
+        'Expected server-script-missing-default-export diagnostic for routes script',
+      );
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
+      assert.ok(
+        match.message.includes('A data-bascik-routes script must `export default` a function returning an array. Expected: export default async function() { ... }'),
+        `Expected routes script message, got: ${match.message}`
+      );
+    });
+
+    test('accepts clean build script with default export and console.log without diagnostics', async () => {
+      const doc = await openWorkspaceDocument({
+        language: 'html',
+        content: '<script data-bascik-build>\nconsole.log("building");\nexport default async function () {\n  return "<div>build</div>";\n}\n</script>',
+      });
+      const diagnostics = vscode.languages
+        .getDiagnostics(doc.uri)
+        .filter((d) => d.source === 'bascik');
+      assert.strictEqual(
+        diagnostics.length,
+        0,
+        `Expected 0 diagnostics for clean build script, got: ${JSON.stringify(diagnostics.map((d) => d.message))}`
+      );
+    });
+
+    test('does not report missing default export on build script with external src', async () => {
+      const doc = await openWorkspaceDocument({
+        language: 'html',
+        content: '<script data-bascik-build src="@/lib/nav-helper.ts"></script>',
+      });
+      const diagnostics = vscode.languages
+        .getDiagnostics(doc.uri)
+        .filter((d) => d.code === 'server-script-missing-default-export');
+      assert.strictEqual(diagnostics.length, 0);
     });
 
     test('reports stream script href sink warning', async () => {

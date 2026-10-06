@@ -4,6 +4,7 @@ import {
   extractRouteParamNames,
   resolveRoutePath,
   computePagePath,
+  validateRouteList,
   parseRouteList,
   dedupeRoutes,
 } from "./routes.ts";
@@ -114,13 +115,13 @@ describe("resolveRoutePath", () => {
   });
 });
 
-describe("parseRouteList", () => {
-  it("parses valid full-form route list", () => {
-    const stdout = JSON.stringify([
+describe("validateRouteList", () => {
+  it("validates valid full-form route list", () => {
+    const rawRoutes = [
       { params: { slug: "hello-world" }, data: { title: "Hello World" } },
       { params: { slug: "second-post" } },
-    ]);
-    const { routes, warnings, error } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
     expect(routes).toEqual([
@@ -130,11 +131,11 @@ describe("parseRouteList", () => {
   });
 
   it("handles numeric param values", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { n: 1 } },
       { params: { n: 2 } },
-    ]);
-    const { routes, warnings, error } = parseRouteList(stdout, ["n"]);
+    ];
+    const { routes, warnings, error } = validateRouteList(rawRoutes, ["n"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
     expect(routes).toEqual([
@@ -144,52 +145,58 @@ describe("parseRouteList", () => {
   });
 
   it("rejects shorthand [{ slug: 'a' }] with descriptive error / warning", () => {
-    const stdout = JSON.stringify([{ slug: "a" }]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    const rawRoutes = [{ slug: "a" }];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([]);
     expect(warnings.length).toBeGreaterThan(0);
     expect(warnings[0]).toMatch(/missing required "params"/i);
   });
 
-  it("returns error on invalid JSON", () => {
-    const stdout = "Not JSON at all!";
-    const { routes, error } = parseRouteList(stdout, ["slug"]);
+  it("returns error when returned value is a string (e.g. JSON string)", () => {
+    const rawRoutes = "Not an array at all!";
+    const { routes, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([]);
-    expect(error).toMatch(/Invalid JSON/i);
-    expect(error).toContain("Not JSON at all!");
+    expect(error).toMatch(/must return an array/i);
+    expect(error).toContain("string");
   });
 
-  it("returns error when JSON is not an array", () => {
-    const stdout = JSON.stringify({ params: { slug: "a" } });
-    const { routes, error } = parseRouteList(stdout, ["slug"]);
+  it("returns error when returned value is not an array (e.g. object)", () => {
+    const rawRoutes = { params: { slug: "a" } };
+    const { routes, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([]);
-    expect(error).toMatch(/must be an array/i);
+    expect(error).toMatch(/must return an array/i);
+    expect(error).toContain("object");
+  });
+
+  it("returns error when returned value is null or undefined", () => {
+    expect(validateRouteList(null, ["slug"]).error).toMatch(/must return an array.*null/);
+    expect(validateRouteList(undefined, ["slug"]).error).toMatch(/must return an array.*undefined/);
   });
 
   it("returns empty routes with no warnings for empty array", () => {
-    const stdout = JSON.stringify([]);
-    const { routes, warnings, error } = parseRouteList(stdout, ["slug"]);
+    const rawRoutes: any[] = [];
+    const { routes, warnings, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
     expect(routes).toEqual([]);
   });
 
   it("warns and skips item missing required params key", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { other: "val" } },
       { params: { slug: "valid" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/missing required param "slug"/i);
   });
 
   it("allows extra params beyond the path", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: "post", extra: "val", id: 123 } },
-    ]);
-    const { routes, warnings, error } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings, error } = validateRouteList(rawRoutes, ["slug"]);
     expect(error).toBeUndefined();
     expect(warnings).toEqual([]);
     expect(routes).toEqual([
@@ -198,42 +205,42 @@ describe("parseRouteList", () => {
   });
 
   it("warns and skips item with non-string/non-number param value", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: null } },
       { params: { slug: true } },
       { params: { slug: { nested: "obj" } } },
       { params: { slug: "valid" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(3);
   });
 
   it("warns and skips item with empty string param value", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: "" } },
       { params: { slug: "valid" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/empty/i);
   });
 
   it("warns and skips item with path traversal characters (/, \\, ..)", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: "a/b" } },
       { params: { slug: "a\\b" } },
       { params: { slug: "../escape" } },
       { params: { slug: "valid-slug" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid-slug" } }]);
     expect(warnings.length).toBe(3);
   });
 
   it("warns and skips item with Windows-illegal filename characters (<>:\"|?*) or control chars", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: "bad<name" } },
       { params: { slug: "bad>name" } },
       { params: { slug: "bad:name" } },
@@ -243,14 +250,14 @@ describe("parseRouteList", () => {
       { params: { slug: "bad*name" } },
       { params: { slug: "bad\x00control" } },
       { params: { slug: "valid-name" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid-name" } }]);
     expect(warnings.length).toBe(8);
   });
 
   it("warns and skips item with leading dots, #, %, and Windows reserved device names", () => {
-    const stdout = JSON.stringify([
+    const rawRoutes = [
       { params: { slug: ".hidden" } },
       { params: { slug: "hash#frag" } },
       { params: { slug: "con" } },
@@ -258,10 +265,16 @@ describe("parseRouteList", () => {
       { params: { slug: "aux" } },
       { params: { slug: "nul" } },
       { params: { slug: "valid" } },
-    ]);
-    const { routes, warnings } = parseRouteList(stdout, ["slug"]);
+    ];
+    const { routes, warnings } = validateRouteList(rawRoutes, ["slug"]);
     expect(routes).toEqual([{ params: { slug: "valid" } }]);
     expect(warnings.length).toBe(6);
+  });
+
+  it("parseRouteList retains backwards compatibility as alias to validateRouteList", () => {
+    const rawRoutes = [{ params: { slug: "compat" } }];
+    const res = parseRouteList(rawRoutes, ["slug"]);
+    expect(res.routes).toEqual([{ params: { slug: "compat" } }]);
   });
 });
 

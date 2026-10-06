@@ -188,7 +188,7 @@ Prop values are escaped when they are written, so `<b>` and `&` in a value show 
 
 ### Arrays and objects
 
-Vue passes an array to a component with `:data="rows"`. In Bascik, a build script prints the data as JSON inside a `<script type="application/json">` that fills the component's default slot, and the component's script parses it:
+Vue passes an array to a component with `:data="rows"`. In Bascik, a build script returns the data as JSON inside a `<script type="application/json">` that fills the component's default slot, and the component's script parses it:
 
 ```html
 <!-- usage in a page -->
@@ -196,7 +196,8 @@ Vue passes an array to a component with `:data="rows"`. In Bascik, a build scrip
   <script data-bascik-build>
     import { rows } from '@/data/rows.ts';
     import { jsonScript } from '@/lib/json-script.ts';
-    console.log(jsonScript({ rows }));
+
+    export default () => jsonScript({ rows });
   </script>
 </data-grid>
 ```
@@ -323,15 +324,19 @@ src/router/index.js          src/pages/
 ```html
 <!-- src/pages/blog/[slug].html -->
 <script data-bascik-routes>
-  console.log(JSON.stringify([
-    { params: { slug: 'my-first-post' }, data: { title: 'My First Post' } },
-    { params: { slug: 'another-post' }, data: { title: 'Another Post' } },
-  ]));
+  export default async function () {
+    return [
+      { params: { slug: 'my-first-post' }, data: { title: 'My First Post' } },
+      { params: { slug: 'another-post' }, data: { title: 'Another Post' } },
+    ];
+  }
 </script>
 <h1>Post</h1>
 <script data-bascik-build>
-  const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
-  console.log(`<p>${route.params.slug}</p>`);
+  export default function () {
+    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+    return `<p>${route.params.slug}</p>`;
+  }
 </script>
 ```
 
@@ -341,7 +346,7 @@ Route guards, nested layouts with `<RouterView>`, and `<RouterLink>` active clas
 
 ## Computed / Watch for Data → `<script data-bascik-build>`
 
-Data you load once for a page becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script's stdout is injected into the page in place of the tag. Escape every value you print, because the output is markup:
+Data you load once for a page becomes a `<script data-bascik-build>` block that runs as a Node.js ESM module at build time. The script exports a default callable function whose returned HTML replaces the tag in the page. Escape every value you return, because the output is markup:
 
 ```ts
 // src/lib/escape.ts
@@ -358,12 +363,15 @@ export const escapeHtml = (text: string) =>
     <script data-bascik-build>
       import { readdir } from 'node:fs/promises';
       import { escapeHtml } from '@/lib/escape.ts';
-      const files = await readdir('./content/posts');
-      const slugs = files
-        .filter((file) => file.endsWith('.md'))
-        .map((file) => file.slice(0, -3))
-        .filter((slug) => /^[a-z0-9-]+$/.test(slug));
-      console.log(slugs.map((slug) => `<li><a href="/blog/${escapeHtml(slug)}">${escapeHtml(slug)}</a></li>`).join('\n'));
+
+      export default async function () {
+        const files = await readdir('./content/posts');
+        const slugs = files
+          .filter((file) => file.endsWith('.md'))
+          .map((file) => file.slice(0, -3))
+          .filter((slug) => /^[a-z0-9-]+$/.test(slug));
+        return slugs.map((slug) => `<li><a href="/blog/${escapeHtml(slug)}">${escapeHtml(slug)}</a></li>`).join('\n');
+      }
     </script>
   </ul>
 </main>

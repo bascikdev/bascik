@@ -18,7 +18,7 @@ export function assetBytes(index = 0) {
   }));
 }
 export function pageSource(index: number, edited = false) {
-  return `<!DOCTYPE html><html><head></head><body><h1 data-testid="page">page-${index}${edited ? "-edited" : ""}</h1>${Array.from({ length: componentsPerPage }, (_, component) => `<profile-card><span>slot-${component}</span></profile-card>`).join("")}<script data-bascik-build>console.log('<p data-testid="build">build-128</p>');</script></body></html>`;
+  return `<!DOCTYPE html><html><head></head><body><h1 data-testid="page">page-${index}${edited ? "-edited" : ""}</h1>${Array.from({ length: componentsPerPage }, (_, component) => `<profile-card><span>slot-${component}</span></profile-card>`).join("")}<script data-bascik-build>export default () => '<p data-testid="build">build-128</p>';</script></body></html>`;
 }
 export async function createFixture(root: string, workers: boolean, port: number, tls: boolean) {
   for (const directory of ["src/pages", "src/components", "src/api"]) await mkdir(join(root, directory), { recursive: true });

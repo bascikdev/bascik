@@ -7,15 +7,16 @@
 </head>
 
 <body>
-  <script data-bascik-build>import { readFileSync } from 'node:fs'; readFileSync('content/doc.md', 'utf8');</script>
+  <script
+    data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { readFileSync('content/doc.md', 'utf8'); return ''; };</script>
   <h1>Exec producer/consumer</h1>
   <p data-testid="generated-value">
     <script
-      data-bascik-build>import { readFileSync } from 'node:fs'; try { console.log(JSON.parse(readFileSync('dist/generated.json', 'utf8')).value); } catch (e) { console.log('missing'); }</script>
+      data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { try { return JSON.parse(readFileSync('dist/generated.json', 'utf8')).value; } catch (e) { return 'missing'; } };</script>
   </p>
   <p data-testid="parallel-value">
     <script
-      data-bascik-build>import { readFileSync } from 'node:fs'; try { console.log(JSON.parse(readFileSync('dist/parallel.json', 'utf8')).value); } catch (e) { console.log('missing'); }</script>
+      data-bascik-build>import { readFileSync } from 'node:fs'; export default () => { try { return JSON.parse(readFileSync('dist/parallel.json', 'utf8')).value; } catch (e) { return 'missing'; } };</script>
   </p>
 </body>
 

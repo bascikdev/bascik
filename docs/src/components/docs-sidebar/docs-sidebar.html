@@ -2,15 +2,17 @@
      <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
           <script data-bascik-build>
                import { NAV } from '@/lib/nav.ts';
-               let html = '';
-               for (const section of NAV) {
-                    html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
-                    for (const page of section.pages) {
-                         html += `<li><a href="${page.href}">${page.label}</a></li>`;
+               export default async function () {
+                    let html = '';
+                    for (const section of NAV) {
+                         html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
+                         for (const page of section.pages) {
+                              html += `<li><a href="${page.href}">${page.label}</a></li>`;
+                         }
+                         html += '</ul>';
                     }
-                    html += '</ul>';
-               }
-               console.log(html);
+                    return html;
+               };
           </script>
      </aside>
      <nav class="docs-toc" aria-label="On this page" hidden>
@@ -18,11 +20,13 @@
           <ol class="docs-toc-list">
                <script data-bascik-build="page">
                     import { renderPageTableOfContents } from '@/lib/render-nav.ts';
-                    const pageContentPath = process.env.BASCIK_PAGE_FILE
-                         ?.replace(/\\/g, '/')
-                         .replace(/^.*\/pages\//, '')
-                         .replace(/\.html$/, '.md');
-                    console.log(pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '');
+                    export default async function () {
+                         const pageContentPath = process.env.BASCIK_PAGE_FILE
+                              ?.replace(/\\/g, '/')
+                              .replace(/^.*\/pages\//, '')
+                              .replace(/\.html$/, '.md');
+                         return pageContentPath ? await renderPageTableOfContents(`content/${pageContentPath}`) : '';
+                    };
                </script>
           </ol>
      </nav>

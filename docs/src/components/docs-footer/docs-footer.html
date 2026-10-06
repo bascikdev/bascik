@@ -6,28 +6,30 @@
         <p class="dfooter-desc">HTML components.<br>Zero runtime.</p>
         <script data-bascik-build>
           import { renderSocialLinks } from '@/lib/social-links.ts';
-          console.log(renderSocialLinks());
+          export default async () => renderSocialLinks();
         </script>
       </div>
       <div class="dfooter-sitemap">
         <script data-bascik-build>
           import { NAV } from '@/lib/nav.ts';
-          let html = '';
-          for (const section of NAV) {
-            html += `<div class="dfooter-col"><p class="dfooter-col-heading">${section.section}</p><ul class="dfooter-col-links">`;
-            for (const page of section.pages) {
-              html += `<li><a href="${page.href}">${page.label}</a></li>`;
+          export default async function () {
+            let html = '';
+            for (const section of NAV) {
+              html += `<div class="dfooter-col"><p class="dfooter-col-heading">${section.section}</p><ul class="dfooter-col-links">`;
+              for (const page of section.pages) {
+                html += `<li><a href="${page.href}">${page.label}</a></li>`;
+              }
+              html += '</ul></div>';
             }
-            html += '</ul></div>';
-          }
-          console.log(html);
+            return html;
+          };
         </script>
       </div>
     </div>
     <div class="dfooter-bottom">
       <span class="dfooter-copy">Built with <a href="/">Bascik</a>.</span>
       <span class="dfooter-copy">&copy;
-        <script data-bascik-build>console.log(new Date().getFullYear())</script> <a
+        <script data-bascik-build>export default () => String(new Date().getFullYear());</script> <a
           href="https://github.com/collin-thomas" target="_blank" rel="noopener noreferrer">Collin Thomas</a>. All
         rights reserved.
       </span>

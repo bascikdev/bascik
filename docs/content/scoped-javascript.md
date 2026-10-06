@@ -199,14 +199,17 @@ Additional rewritten forms include `element.closest()`, `element.matches()`, `el
 
 ## Build-time Scripts
 
-`<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. Their stdout replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
+`<script data-bascik-build>` blocks run at transpile time as Node.js ESM modules. The script exports a default callable function returning an HTML string, which replaces the tag in the page, useful for pulling in Markdown, JSON, or other external content at build time:
 
 ```html
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
   import { marked } from 'marked';
-  const md = await readFile('./content/posts/intro.md', 'utf8');
-  console.log(marked(md));
+
+  export default async function () {
+    const md = await readFile('./content/posts/intro.md', 'utf8');
+    return marked(md);
+  }
 </script>
 ```
 

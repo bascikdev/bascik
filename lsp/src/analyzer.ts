@@ -149,13 +149,13 @@ export const SCRIPT_DIRECTIVES = [
     name: 'data-bascik-build',
     detail: 'Bascik build-time script',
     documentation:
-      'Executes in Node.js at build time. Standard output from console.log() replaces this script tag in the generated HTML.',
+      'Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.',
   },
   {
     name: 'data-bascik-routes',
     detail: 'Bascik dynamic routes script',
     documentation:
-      'Executes in Node.js at build time. Outputs a JSON array of dynamic route parameters to generate multiple pages from a template.',
+      'Executes in Node.js at build time. The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.',
   },
   {
     name: 'data-bascik-server',
@@ -747,8 +747,22 @@ export function createDiagnostics(
         }
       }
 
-      if (attrs.has('data-bascik-server') || attrs.has('data-bascik-stream')) {
-        const directive = attrs.has('data-bascik-stream') ? 'stream' : 'server';
+      const hasServerDirective =
+        attrs.has('data-bascik-server') ||
+        attrs.has('data-bascik-stream') ||
+        attrs.has('data-bascik-build') ||
+        attrs.has('data-bascik-routes');
+
+      if (hasServerDirective) {
+        const directive: 'stream' | 'server' | 'build' | 'routes' = attrs.has(
+          'data-bascik-stream',
+        )
+          ? 'stream'
+          : attrs.has('data-bascik-server')
+            ? 'server'
+            : attrs.has('data-bascik-build')
+              ? 'build'
+              : 'routes';
         const hasSrcAttribute = /\ssrc\s*=/i.test(openTag);
         const serverDiags = analyzeServerScriptSource(scriptBody, {
           hasSrcAttribute,
@@ -1208,7 +1222,58 @@ export function createCompletions(
   const start = document.positionAt(offset - prefix.length);
   const replacementRange: Range = { start, end: position };
 
-  return Array.from(snapshot.componentMap)
+  const scriptShorthands = [
+    {
+      label: 'bascik-build',
+      detail: 'Bascik build-time script block',
+      documentation:
+        'Executes in Node.js at build time. The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.',
+      insertText: `<script data-bascik-build>\n  export default async function () {\n    return \`$0\`;\n  }\n</script>`,
+    },
+    {
+      label: 'bascik-routes',
+      detail: 'Bascik dynamic routes script block',
+      documentation:
+        'Executes in Node.js at build time. The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.',
+      insertText: `<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>`,
+    },
+    {
+      label: 'bascik-server',
+      detail: 'Bascik server-side request script block',
+      documentation:
+        'Executes in Node.js per request on production and dev servers. The default exported handler function replaces this script tag.',
+      insertText: `<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
+    },
+    {
+      label: 'bascik-stream',
+      detail: 'Bascik server-side streaming script block',
+      documentation:
+        'Executes in Node.js per request on production servers. Streams chunked HTML responses to the client as data becomes available.',
+      insertText: `<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return \`$0\`;\n  }\n</script>`,
+    },
+  ];
+
+  const shorthandItems: CompletionItem[] = scriptShorthands
+    .filter((shorthand) => shorthand.label.startsWith(prefix))
+    .map((shorthand) => ({
+      label: shorthand.label,
+      kind: CompletionItemKind.Snippet,
+      sortText: `0_${shorthand.label}`,
+      range: {
+        start: document.positionAt(tagStart),
+        end: replacementRange.end,
+      },
+      insertText: shorthand.insertText,
+      insertTextFormat: 2, // Snippet
+      filterText: shorthand.label,
+      detail: shorthand.detail,
+      documentation: {
+        kind: MarkupKind.Markdown,
+        value: shorthand.documentation,
+      },
+    }));
+
+  const componentItems: CompletionItem[] = Array.from(snapshot.componentMap)
     .filter(([componentName]) => componentName.startsWith(prefix))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([componentName, componentPath]) => {
@@ -1237,6 +1302,8 @@ export function createCompletions(
         },
       };
     });
+
+  return [...shorthandItems, ...componentItems];
 }
 
 export function createHover(

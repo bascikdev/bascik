@@ -30,6 +30,77 @@ suite('Server Script Diagnostics', () => {
         const diags = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'stream' });
         assert.ok(diags[0].message.includes('A data-bascik-stream script must `export default` a function `(request, context, { signal })`.'));
       });
+
+      test('diagnoses missing default export for build directive', () => {
+        const body = `console.log("hello");`;
+        const diags = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'build' });
+        assert.strictEqual(diags.length, 1);
+        assert.strictEqual(diags[0].code, 'server-script-missing-default-export');
+        assert.strictEqual(
+          diags[0].message,
+          'A data-bascik-build script must `export default` a function returning a string. Expected: export default async function() { ... }'
+        );
+      });
+
+      test('diagnoses missing default export for routes directive', () => {
+        const body = `console.log("hello");`;
+        const diags = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'routes' });
+        assert.strictEqual(diags.length, 1);
+        assert.strictEqual(diags[0].code, 'server-script-missing-default-export');
+        assert.strictEqual(
+          diags[0].message,
+          'A data-bascik-routes script must `export default` a function returning an array. Expected: export default async function() { ... }'
+        );
+      });
+
+      test('recognizes various export forms and ignores export in comments/strings', () => {
+        const validCases = [
+          'export default async function () {}',
+          'export default function () {}',
+          'export default function named() {}',
+          'export default async () => ""',
+          'export default () => []',
+          'const h = () => ""; export default h;',
+          'export { handler as default };',
+          'export { default } from "./helper.js";',
+          'export { a, b as default } from "./helper.js";',
+          'export * as default from "./helper.js";',
+        ];
+        for (const valid of validCases) {
+          const diags = analyzeServerScriptSource(valid, { hasSrcAttribute: false, directive: 'build' });
+          assert.strictEqual(
+            diags.filter((d) => d.code === 'server-script-missing-default-export').length,
+            0,
+            `Expected valid export form to produce no missing-export error: ${valid}`
+          );
+        }
+
+        const invalidCases = [
+          '// export default function () {}\nconsole.log(1);',
+          '/* export default function () {} */\nconsole.log(1);',
+          'const str = "export default function () {}";',
+          'const tmpl = `export default function () {}`;',
+          'export { default as named } from "./helper.js";',
+        ];
+        for (const invalid of invalidCases) {
+          const diags = analyzeServerScriptSource(invalid, { hasSrcAttribute: false, directive: 'build' });
+          assert.strictEqual(
+            diags.filter((d) => d.code === 'server-script-missing-default-export').length,
+            1,
+            `Expected invalid export form to produce missing-export error: ${invalid}`
+          );
+        }
+      });
+
+      test('does not apply server-specific import or sink rules to build or routes', () => {
+        const body = `import { escapeHtml } from '@bascik/bascik';
+export default async () => \`<a href="\${request.query}"></a>\`;`;
+        const diagsBuild = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'build' });
+        assert.strictEqual(diagsBuild.length, 0);
+
+        const diagsRoutes = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'routes' });
+        assert.strictEqual(diagsRoutes.length, 0);
+      });
     });
 
     suite('server-script-bascik-import', () => {

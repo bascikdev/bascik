@@ -96,7 +96,7 @@ The same gesture works for relative imports, the `@/` import-root alias, and `sr
 <!-- Hold Cmd/Ctrl and click the path to open src/lib/canonical.ts -->
 <script data-bascik-build>
   import { canonical } from '@/lib/canonical.ts';
-  console.log(await canonical());
+  export default async () => await canonical();
 </script>
 
 <script data-bascik-server src="./scripts/greet.ts"></script>

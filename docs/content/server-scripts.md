@@ -194,8 +194,11 @@ Top-level `await` and ESM imports work seamlessly:
 <!-- runs once at build time: static navigation -->
 <script data-bascik-build>
   import { readFile } from 'node:fs/promises';
-  const links = JSON.parse(await readFile('./data/nav.json', 'utf8'));
-  console.log(links.map(l => `<a href="${l.href}">${l.label}</a>`).join(''));
+
+  export default async function () {
+    const links = JSON.parse(await readFile('./data/nav.json', 'utf8'));
+    return links.map(l => `<a href="${l.href}">${l.label}</a>`).join('');
+  }
 </script>
 
 <!-- runs on every request: personalized greeting -->

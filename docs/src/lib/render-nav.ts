@@ -4,7 +4,8 @@
  * Usage in a page's `<script data-bascik-build>` block:
  *
  *   <script data-bascik-build>
- *     console.log(renderPagination('/getting-started'));
+ *     import { renderPagination } from '@/lib/render-nav.ts';
+ *     export default () => renderPagination('/getting-started');
  *   </script>
  *
  * Nav, sidebar, and footer are bascik components; see src/components/.

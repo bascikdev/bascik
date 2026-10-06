@@ -114,6 +114,13 @@ export { Semaphore };
 
 export const sharedChildSemaphore = new Semaphore(MAX_CHILD_PROCESSES);
 
+export {
+  runDirectiveHandler,
+  type DirectiveKind,
+  type DirectiveHandlerResult,
+  type DirectiveHandlerOptions,
+} from "./handler-runner.ts";
+
 /**
  * Run one Node.js module in a bounded fresh child process and return its stdout
  * and stderr, cleaned of ANSI escape codes.

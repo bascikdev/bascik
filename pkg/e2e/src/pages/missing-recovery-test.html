@@ -10,7 +10,7 @@
   <main>
     <script data-bascik-build>
       import { recoveryMarker } from '@/lib/failed-import-helper.ts';
-      console.log(`<p data-testid="failed-import-marker">${recoveryMarker()}</p>`);
+      export default () => `<p data-testid="failed-import-marker">${recoveryMarker()}</p>`;
     </script>
   </main>
 </body>

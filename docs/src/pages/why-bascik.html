@@ -5,19 +5,19 @@
   <docs-head />
   <script data-bascik-build>
     import { canonical } from '@/lib/canonical.ts';
-    console.log(await canonical());
+    export default async () => await canonical();
   </script>
   <script data-bascik-build>
     import { openGraph } from '@/lib/open-graph.ts';
-    console.log(await openGraph());
+    export default async () => await openGraph();
   </script>
   <script data-bascik-build>
     import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
-    console.log(await breadcrumbLd());
+    export default async () => await breadcrumbLd();
   </script>
   <script data-bascik-build>
     import { articleSchema } from '@/lib/article-schema.ts';
-    console.log(await articleSchema());
+    export default async () => await articleSchema();
   </script>
   <meta name="description"
     content="The guiding principle behind Bascik is simple: use what already exists. Do not invent new abstractions where vanilla HTML already works." />
@@ -36,12 +36,12 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          console.log(renderSectionLabel('/why-bascik'));
+          export default async () => renderSectionLabel('/why-bascik');
         </script>
         <!-- Intro and demo context rendered from docs/content/why-bascik.md. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/why-bascik.md', { to: 'The Problem Bascik Solves' }, { stripDemoBlocks: true }));
+          export default async () => await renderMdRange('./content/why-bascik.md', { to: 'The Problem Bascik Solves' }, { stripDemoBlocks: true });
         </script>
 
         <component-demo data-bascik-prop-file="src/components/hello-card/">
@@ -52,7 +52,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/why-bascik.md', 'source-usage'));
+                export default async () => await extractDemoBlock('./content/why-bascik.md', 'source-usage');
               </script>
             </code-block>
           </div>
@@ -60,7 +60,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/why-bascik.md', 'source-html'));
+                export default async () => await extractDemoBlock('./content/why-bascik.md', 'source-html');
               </script>
             </code-block>
           </div>
@@ -68,7 +68,7 @@
             <code-block data-bascik-prop-lang="css">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/why-bascik.md', 'source-css'));
+                export default async () => await extractDemoBlock('./content/why-bascik.md', 'source-css');
               </script>
             </code-block>
           </div>
@@ -76,7 +76,7 @@
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                console.log(await extractDemoBlock('./content/why-bascik.md', 'output-html'));
+                export default async () => await extractDemoBlock('./content/why-bascik.md', 'output-html');
               </script>
             </code-block>
           </div>
@@ -85,7 +85,7 @@
         <!-- The existing argument follows the concrete example. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          console.log(await renderMdRange('./content/why-bascik.md', { from: 'The Problem Bascik Solves' }));
+          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'The Problem Bascik Solves' });
         </script>
 
         <docs-pagination />

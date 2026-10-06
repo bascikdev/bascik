@@ -29,7 +29,7 @@ pages/                           src/pages/
 
 ### Dynamic Routes: [slug].html Templates
 
-In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` (Pages Router) and `app/blog/[slug]/page.tsx` uses `generateStaticParams` (App Router) to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that prints the list of routes to generate at build time (see [Dynamic Routes](/dynamic-routes)).
+In Next.js, `pages/blog/[slug].js` uses `getStaticPaths` (Pages Router) and `app/blog/[slug]/page.tsx` uses `generateStaticParams` (App Router) to define dynamic routes. In Bascik, you create a dynamic route template file like `src/pages/blog/[slug].html` with a `<script data-bascik-routes>` block that returns the array of routes to generate at build time (see [Dynamic Routes](/dynamic-routes)).
 
 A template is a full page, like every file in `src/pages/`: it needs `<html>`, `<head>`, and a non-empty `<body>`. The routes script can sit in the `<head>`. The template below writes `dist/blog/<slug>.html`, served at `/blog/<slug>`; use `src/pages/blog/[slug]/index.html` instead for `/blog/<slug>/` URLs.
 
@@ -40,11 +40,13 @@ A template is a full page, like every file in `src/pages/`: it needs `<html>`, `
 <head>
   <script data-bascik-routes>
     import { readdir } from 'node:fs/promises';
-    const files = await readdir('./content/posts');
-    const routes = files
-      .filter((file) => file.endsWith('.md'))
-      .map((file) => ({ params: { slug: file.replace(/\.md$/, '') } }));
-    console.log(JSON.stringify(routes));
+
+    export default async function () {
+      const files = await readdir('./content/posts');
+      return files
+        .filter((file) => file.endsWith('.md'))
+        .map((file) => ({ params: { slug: file.replace(/\.md$/, '') } }));
+    }
   </script>
   <title>Blog</title>
 </head>
@@ -53,9 +55,12 @@ A template is a full page, like every file in `src/pages/`: it needs `<html>`, `
     <script data-bascik-build>
       import { readFile } from 'node:fs/promises';
       import { marked } from 'marked';
-      const { params } = JSON.parse(process.env.BASCIK_ROUTE);
-      const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
-      console.log(marked(md));
+
+      export default async function () {
+        const { params } = JSON.parse(process.env.BASCIK_ROUTE);
+        const md = await readFile(`./content/posts/${params.slug}.md`, 'utf8');
+        return marked(md);
+      }
     </script>
   </article>
 </body>
@@ -132,9 +137,9 @@ If many pages share the same outer wrapper, extract it into a layout component t
 
 ## Server Components and getStaticProps → Build Scripts
 
-`getStaticProps` (Pages Router) and an async server component (App Router) fetch data at build time. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time; its stdout is injected into the page in place of the tag. Top-level `import` and top-level `await` are natively supported.
+`getStaticProps` (Pages Router) and an async server component (App Router) fetch data at build time. In Bascik, use a `<script data-bascik-build>` block. The script runs as a Node.js ESM module at build time, exporting a callable default function whose returned HTML replaces the tag in the page. Top-level `import` and top-level `await` are natively supported at module scope.
 
-A build script prints strings, not JSX, so escape every value you interpolate. The example below does not, which is fine only because it is illustrative; see [Escaping](#escaping-and-shared-helpers).
+A build script returns strings, not JSX, so escape every value you interpolate. The example below does not, which is fine only because it is illustrative; see [Escaping](#escaping-and-shared-helpers).
 
 ```jsx
 // pages/products.js (Next.js - before)
@@ -159,12 +164,13 @@ export default function Products({ products }) {
 <!-- src/pages/products.html (Bascik - after) -->
 <ul>
   <script data-bascik-build>
-    const res = await fetch('https://api.example.com/products');
-    const products = await res.json();
-    const items = products
-      .map(p => `<li>${p.name} - $${p.price}</li>`)
-      .join('\n');
-    console.log(items);
+    export default async function () {
+      const res = await fetch('https://api.example.com/products');
+      const products = await res.json();
+      return products
+        .map(p => `<li>${p.name} - $${p.price}</li>`)
+        .join('\n');
+    }
   </script>
 </ul>
 ```
@@ -188,14 +194,15 @@ export function renderPreview(post: Post): string {
 
 ## Metadata → Head Build Scripts
 
-`export const metadata` and `generateMetadata` become a build script in the page `<head>` that prints `<title>` and `<meta>` tags. For absolute Open Graph URLs, read `BASCIK_SITE_URL` (set with `--site-url`, the environment, or `.env`). Fail the build when it is missing rather than falling back: Next.js falls back to `http://localhost:3000` with a warning when `metadataBase` is unset, which ships social URLs that point at a developer machine.
+`export const metadata` and `generateMetadata` become a build script in the page `<head>` that returns `<title>` and `<meta>` tags. For absolute Open Graph URLs, read `BASCIK_SITE_URL` (set with `--site-url`, the environment, or `.env`). Fail the build when it is missing rather than falling back: Next.js falls back to `http://localhost:3000` with a warning when `metadataBase` is unset, which ships social URLs that point at a developer machine.
 
 ```html
 <head>
   <site-head></site-head>
   <script data-bascik-build>
     import { renderHead } from '@/lib/site.ts';
-    console.log(renderHead({ title: 'About - Acme' }));
+
+    export default () => renderHead({ title: 'About - Acme' });
   </script>
 </head>
 ```

@@ -82,7 +82,7 @@ describe('Bascik Language Server Analyzer', () => {
     expect(propTitle).toBeDefined();
   });
 
-  it('provides script directive completions', () => {
+  it('provides script directive completions with updated documentation', () => {
     const doc = TextDocument.create(
       'file:///test-project/src/pages/index.html',
       'html',
@@ -97,6 +97,48 @@ describe('Bascik Language Server Analyzer', () => {
       'data-bascik-server',
       'data-bascik-stream',
     ]);
+    const buildItem = completions?.find((c) => c.label === 'data-bascik-build');
+    expect((buildItem?.documentation as { value: string })?.value).toContain(
+      'The default exported handler function returns HTML markup that replaces this script tag in the generated HTML.'
+    );
+    const routesItem = completions?.find((c) => c.label === 'data-bascik-routes');
+    expect((routesItem?.documentation as { value: string })?.value).toContain(
+      'The default exported handler function returns an array of dynamic route parameters to generate multiple pages from a template.'
+    );
+  });
+
+  it('provides script shorthand completions (<bascik-...) expanding to script blocks', () => {
+    const doc = TextDocument.create(
+      'file:///test-project/src/pages/index.html',
+      'html',
+      1,
+      '<bascik-',
+    );
+    const completions = createCompletions(doc, { line: 0, character: 8 }, mockSnapshot);
+    expect(completions).toBeDefined();
+    const buildShorthand = completions?.find((c) => c.label === 'bascik-build');
+    expect(buildShorthand).toBeDefined();
+    expect(buildShorthand?.insertText).toBe(
+      '<script data-bascik-build>\n  export default async function () {\n    return `$0`;\n  }\n</script>'
+    );
+
+    const routesShorthand = completions?.find((c) => c.label === 'bascik-routes');
+    expect(routesShorthand).toBeDefined();
+    expect(routesShorthand?.insertText).toBe(
+      '<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>'
+    );
+
+    const serverShorthand = completions?.find((c) => c.label === 'bascik-server');
+    expect(serverShorthand).toBeDefined();
+    expect(serverShorthand?.insertText).toBe(
+      '<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+    );
+
+    const streamShorthand = completions?.find((c) => c.label === 'bascik-stream');
+    expect(streamShorthand).toBeDefined();
+    expect(streamShorthand?.insertText).toBe(
+      '<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
+    );
   });
 
   it('provides hover documentation on components', () => {

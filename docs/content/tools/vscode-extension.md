@@ -163,7 +163,7 @@ Cmd/Ctrl-click relative imports, the `@/` alias, and `src` values in `data-basci
 ```html
 <script data-bascik-build>
   import { canonical } from '@/lib/canonical.ts';
-  console.log(await canonical());
+  export default async () => await canonical();
 </script>
 
 <script data-bascik-server src="./scripts/profile.ts"></script>

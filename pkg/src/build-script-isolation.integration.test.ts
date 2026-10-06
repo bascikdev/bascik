@@ -71,28 +71,25 @@ describe("build-script per-script output isolation (real child processes)", () =
       // output must never be captured by B's transport envelope.
       await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html><head><title>d</title></head><body>
 <script data-bascik-build>
-console.log('<span data-testid="early">A-early</span>');
 setImmediate(() => console.log('A-LATE'));
+export default function () {
+  return '<span data-testid="early">A-early</span>';
+}
 </script>
 <script data-bascik-build>
-await new Promise((resolve) => setImmediate(resolve));
-console.log('<span data-testid="b">B</span>');
+export default async function () {
+  await new Promise((resolve) => setImmediate(resolve));
+  return '<span data-testid="b">B</span>';
+}
 </script>
 </body></html>`);
-      await runRealBuildScriptBuild(root);
+      const { stdout } = await runRealBuildScriptBuild(root);
+      expect(stdout).toContain("A-LATE");
       const html = await readDistHtml(root, "index.html");
       expect(html).toContain('data-testid="early">A-early</span>');
       expect(html).toContain('data-testid="b">B</span>');
-      // A's detached late output is A's own: it must be attributed to A (appear
-      // before B's span), never captured by B. In the pre-103 shared-process
-      // batch, B's transport envelope captured A-LATE, so it appeared after
-      // A's early output AND leaked into B's slot. After isolation, A-LATE is
-      // the last content before B's span (A owns it) and never follows B.
-      const bIndex = html.indexOf('data-testid="b"');
-      const aLateIndex = html.indexOf("A-LATE");
-      expect(aLateIndex).toBeGreaterThanOrEqual(0);
-      expect(bIndex).toBeGreaterThan(aLateIndex);
-      expect(html.slice(bIndex)).not.toContain("A-LATE");
+      // In the new contract, console.log does NOT enter HTML at all!
+      expect(html).not.toContain("A-LATE");
     } finally {
       await cleanupFixture(root);
     }
@@ -104,8 +101,12 @@ console.log('<span data-testid="b">B</span>');
       await createFixtureDirs(root);
       await writeBuildScriptConfig(root, false, "warn");
       await writeFixtureFile(root, "src/pages/index.html", `<!DOCTYPE html><html><head><title>t</title></head><body>
-<script data-bascik-build>console.log('<span data-testid="ok">healthy</span>');</script>
-<script data-bascik-build>throw new Error('sibling failure');</script>
+<script data-bascik-build>export default () => '<span data-testid="ok">healthy</span>';</script>
+<script data-bascik-build>
+export default function () {
+  throw new Error('sibling failure');
+}
+</script>
 </body></html>`);
       const { stderr } = await runRealBuildScriptBuild(root);
       expect(stderr).toContain("sibling failure");

@@ -129,7 +129,7 @@ Template tags such as `the_title()` and `the_permalink()` print values from the 
 
 ## The Loop → `<script data-bascik-build>`
 
-The Loop iterates over posts from the database. The Bascik equivalent is a `<script data-bascik-build>` block that reads Markdown files with Node.js and prints HTML to stdout.
+The Loop iterates over posts from the database. The Bascik equivalent is a `<script data-bascik-build>` block that reads Markdown files with Node.js and returns HTML from its default export.
 
 ```php
 <?php /* archive.php (WordPress - before) */ ?>
@@ -151,21 +151,24 @@ The Loop iterates over posts from the database. The Bascik equivalent is a `<scr
     import matter from 'gray-matter';
 
     const escape = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-    const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
-    const posts = await Promise.all(files.map(async f => {
-      const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
-      return { slug: f.replace('.md', ''), title: data.title, date: new Date(data.date) };
-    }));
-    posts.sort((a, b) => b.date - a.date);
 
-    console.log(posts.map(p =>
-      `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`
-    ).join('\n'));
+    export default async function () {
+      const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
+      const posts = await Promise.all(files.map(async f => {
+        const { data } = matter(await readFile(`./content/posts/${f}`, 'utf8'));
+        return { slug: f.replace('.md', ''), title: data.title, date: new Date(data.date) };
+      }));
+      posts.sort((a, b) => b.date - a.date);
+
+      return posts.map(p =>
+        `<li><a href="/blog/${p.slug}/">${escape(p.title)}</a> <time datetime="${p.date.toISOString()}">${p.date.toISOString().slice(0, 10)}</time></li>`
+      ).join('\n');
+    }
   </script>
 </ul>
 ```
 
-Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text, so escape it before printing. A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
+Install `gray-matter` (`npm install gray-matter`): the scaffold does not include it. A title is text, so escape it before returning. A page that reads files Bascik cannot see as imports (here `readdir`) must be listed in `scripts.cache.exclude`, or a rebuild reuses the old output; see [Build Scripts](/build-scripts#invalidation-limits-cache-exclusions).
 
 ## Single Posts → Dynamic Routes
 
@@ -176,10 +179,14 @@ Install `gray-matter` (`npm install gray-matter`): the scaffold does not include
 <script data-bascik-routes>
   import { readdir } from 'node:fs/promises';
 
-  const files = (await readdir('./content/posts')).filter(f => f.endsWith('.md'));
-  console.log(JSON.stringify(files.map(f => ({
-    params: { slug: f.replace('.md', '') }
-  }))));
+  export default async function () {
+    const files = await readdir('./content/posts');
+    return files
+      .filter(f => f.endsWith('.md'))
+      .map(f => ({
+        params: { slug: f.replace('.md', '') }
+      }));
+  }
 </script>
 ```
 
@@ -290,11 +297,14 @@ await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot))
 <!-- src/pages/[year]/[month]/[day]/[slug]/index.html (Bascik - after) -->
 <script data-bascik-routes>
   import { readFile } from 'node:fs/promises';
-  const posts = JSON.parse(await readFile('node_modules/.cache/site/posts.json', 'utf8'));
-  console.log(JSON.stringify(posts.map((post) => {
-    const [year, month, day] = post.date.slice(0, 10).split('-');
-    return { params: { year, month, day, slug: post.slug } };
-  })));
+
+  export default async function () {
+    const posts = JSON.parse(await readFile('node_modules/.cache/site/posts.json', 'utf8'));
+    return posts.map((post) => {
+      const [year, month, day] = post.date.slice(0, 10).split('-');
+      return { params: { year, month, day, slug: post.slug } };
+    });
+  }
 </script>
 ```
 

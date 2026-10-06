@@ -7,10 +7,8 @@
  *
  * Usage inside a <script data-bascik-build> block:
  *
- *   const { breadcrumbLd } = await import(
- *     pathToFileURL(join(process.cwd(), 'src/lib/breadcrumb-ld.ts')).href
- *   );
- *   console.log(await breadcrumbLd());
+ *   import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+ *   export default async () => await breadcrumbLd();
  */
 import { readFile } from 'node:fs/promises';
 

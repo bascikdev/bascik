@@ -239,7 +239,8 @@ For static lists and conditional content, write the HTML directly. For dynamic d
 <ul>
   <script data-bascik-build>
     const items = ['Home', 'About', 'Contact'];
-    console.log(items.map(item => `<li>${item}</li>`).join('\n'));
+
+    export default () => items.map(item => `<li>${item}</li>`).join('\n');
   </script>
 </ul>
 ```

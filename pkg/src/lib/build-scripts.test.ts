@@ -15,14 +15,33 @@ import { cleanStackTrace } from "./stack-trace.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const buildScriptMocks = vi.hoisted(() => ({
-  execFile: vi.fn(),
-  writeFile: vi.fn(),
-  unlink: vi.fn(),
-  mkdir: vi.fn(),
-  readFile: vi.fn(),
-  computePackageIdentity: vi.fn(),
-}));
+const { state, buildScriptMocks } = vi.hoisted(() => {
+  const state = {
+    activeHandlerResult: "",
+    userReadFileMock: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  };
+  const mocks = {
+    execFile: vi.fn(),
+    writeFile: vi.fn(),
+    unlink: vi.fn(),
+    mkdir: vi.fn(),
+    mkdtemp: vi.fn(),
+    rm: vi.fn(),
+    stat: vi.fn(),
+    readFile: vi.fn(async (filePath: string, ...args: any[]) => {
+      if (String(filePath).endsWith("result.json")) {
+        return JSON.stringify({
+          version: 1,
+          kind: "build",
+          result: state.activeHandlerResult,
+        });
+      }
+      return state.userReadFileMock(filePath, ...args);
+    }),
+    computePackageIdentity: vi.fn(),
+  };
+  return { state, buildScriptMocks: mocks };
+});
 
 vi.mock("node:child_process", () => ({
   execFile: buildScriptMocks.execFile,
@@ -32,7 +51,9 @@ vi.mock("node:fs/promises", () => ({
   writeFile: buildScriptMocks.writeFile,
   unlink: buildScriptMocks.unlink,
   mkdir: buildScriptMocks.mkdir,
-  // readFile: cache reads + dep-file reads always miss in tests (no disk state).
+  mkdtemp: buildScriptMocks.mkdtemp,
+  rm: buildScriptMocks.rm,
+  stat: buildScriptMocks.stat,
   readFile: buildScriptMocks.readFile,
 }));
 
@@ -70,9 +91,74 @@ const mockPackageIdentity = computePackageIdentity as unknown as ReturnType<type
 
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
-// Helper: make execFile resolve with given stdout
-// Signature: execFile(cmd, args, opts, cb) where cb = (err, stdout, stderr)
-const resolveWith = (stdout: string) =>
+const resetReadFileMock = (fn?: (path: string) => Promise<string> | string) => {
+  if (fn) {
+    origMockImplementation(async (path: string) => {
+      if (String(path).endsWith("result.json")) {
+        return JSON.stringify({
+          version: 1,
+          kind: "build",
+          result: state.activeHandlerResult,
+        });
+      }
+      return fn(path);
+    });
+  } else {
+    origMockImplementation(async (path: string) => {
+      if (String(path).endsWith("result.json")) {
+        return JSON.stringify({
+          version: 1,
+          kind: "build",
+          result: state.activeHandlerResult,
+        });
+      }
+      throw new Error("ENOENT");
+    });
+  }
+};
+
+const mockReadFile = buildScriptMocks.readFile;
+const origMockImplementation = mockReadFile.mockImplementation.bind(mockReadFile);
+mockReadFile.mockImplementation = (fn: any) => {
+  resetReadFileMock(fn);
+  return mockReadFile;
+};
+const origMockReset = mockReadFile.mockReset.bind(mockReadFile);
+mockReadFile.mockReset = () => {
+  origMockReset();
+  resetReadFileMock();
+  return mockReadFile;
+};
+mockReadFile.mockRejectedValue = (err: any) => {
+  resetReadFileMock(() => Promise.reject(err));
+  return mockReadFile;
+};
+mockReadFile.mockResolvedValueOnce = (val: any) => {
+  let used = false;
+  const prevImpl = mockReadFile.getMockImplementation();
+  mockReadFile.mockImplementation(async (path: string) => {
+    if (String(path).endsWith("result.json")) {
+      return JSON.stringify({
+        version: 1,
+        kind: "build",
+        result: state.activeHandlerResult,
+      });
+    }
+    if (!used) {
+      used = true;
+      return val;
+    }
+    if (prevImpl) return prevImpl(path);
+    throw new Error("ENOENT");
+  });
+  return mockReadFile;
+};
+
+// Helper: make execFile resolve with given result
+// When execFile runs, runner.mjs writes result.json. In mocked tests, runner.mjs
+// does not actually execute in Node unless execFile is real. Handler runner
+// expects stat(resultFilePath) and readFile(resultFilePath) to return the envelope.
+const resolveWith = (result: string, stdout: string = "", stderr: string = "") => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -80,9 +166,11 @@ const resolveWith = (stdout: string) =>
       _opts: unknown,
       cb: (err: null, stdout: string, stderr: string) => void,
     ) => {
-      cb(null, stdout, "");
+      cb(null, stdout, stderr);
     },
   );
+  state.activeHandlerResult = result;
+};
 
 const rejectWith = (message: string) =>
   mockExecFile.mockImplementation(
@@ -97,9 +185,9 @@ const rejectWith = (message: string) =>
   );
 
 // With per-script isolation (prompt 103), each uncached script maps to its own
-// execFile call. `resolveSequence` registers one successful execFile response
+// execFile call. `resolveSequence` registers one successful response
 // per script, in order.
-const resolveSequence = (outputs: Array<{ stdout: string; stderr?: string }>) =>
+const resolveSequence = (outputs: Array<{ result?: string; stdout?: string; stderr?: string }>) => {
   mockExecFile.mockImplementation(
     (
       _cmd: unknown,
@@ -107,19 +195,25 @@ const resolveSequence = (outputs: Array<{ stdout: string; stderr?: string }>) =>
       _opts: unknown,
       cb: (err: null, stdout: string, stderr: string) => void,
     ) => {
-      const next = outputs.shift() ?? { stdout: "" };
-      cb(null, next.stdout, next.stderr ?? "");
+      const next = outputs.shift() ?? { result: "", stdout: "", stderr: "" };
+      state.activeHandlerResult = next.result ?? next.stdout ?? "";
+      cb(null, next.stdout ?? "", next.stderr ?? "");
     },
   );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  state.activeHandlerResult = "";
+  resetReadFileMock();
   buildScriptMocks.execFile.mockReset();
   buildScriptMocks.writeFile.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.unlink.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.mkdir.mockReset().mockResolvedValue(undefined);
-  buildScriptMocks.readFile.mockReset().mockRejectedValue(new Error("ENOENT"));
+  buildScriptMocks.mkdtemp.mockReset().mockImplementation(async (prefix: string) => `${prefix}mockdir`);
+  buildScriptMocks.rm.mockReset().mockResolvedValue(undefined);
+  buildScriptMocks.stat.mockReset().mockResolvedValue({ size: 100 });
   buildScriptMocks.computePackageIdentity.mockReset().mockResolvedValue("pkgid:mock");
   clearBuildScriptCaches();
   (BascikConfig as any).scripts = { ...BascikConfig.scripts, onBuildScriptError: "error" };
@@ -133,10 +227,10 @@ describe("executeBuildScripts", () => {
     expect(mockExecFile).not.toHaveBeenCalled();
   });
 
-  it("replaces a data-bascik-build script tag with script stdout", async () => {
+  it("replaces a data-bascik-build script tag with handler returned markup", async () => {
     resolveWith("<h1>Generated heading</h1>\n");
     const html =
-      "<header><script data-bascik-build>console.log('<h1>Generated heading</h1>');</script></header>";
+      "<header><script data-bascik-build>export default () => '<h1>Generated heading</h1>\\n';</script></header>";
     const result = await executeBuildScripts(html);
     expect(result).toContain("<h1>Generated heading</h1>");
     expect(result).not.toContain("data-bascik-build");
@@ -233,7 +327,7 @@ describe("executeBuildScripts", () => {
     );
 
     const tempWrites = (writeFile as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([path]) => String(path).endsWith(".mjs"));
+      .filter(([path]) => String(path).includes("build-") && String(path).endsWith(".mjs"));
     expect(tempWrites).toHaveLength(2);
     expect(tempWrites[0][1]).toContain("//# sourceURL=src/pages/index.html");
     expect(tempWrites[1][1]).toContain("//# sourceURL=src/components/page-badge.html");
@@ -495,11 +589,12 @@ describe("executeBuildScripts", () => {
     expect(result).toBe("price: $& and $1");
   });
 
-  it("strips ANSI color escape codes from script stdout before injecting HTML", async () => {
-    resolveWith("\u001B[33m2026\u001B[39m Built with Bascik");
-    const html = "<span>&copy; <script data-bascik-build>console.log(1)</script></span>";
+  it("preserves exact bytes: Unicode, quotes, backslashes, literal $1/$&, ANSI bytes in returned HTML", async () => {
+    const specialString = "<span>&copy; \u001B[33m2026\u001B[39m Built with Bascik $1 $&</span>";
+    resolveWith(specialString);
+    const html = `<script data-bascik-build>x</script>`;
     const result = await executeBuildScripts(html);
-    expect(result).toBe("<span>&copy; 2026 Built with Bascik</span>");
+    expect(result).toBe(specialString);
   });
 
   it("forwards stderr output to process.stderr", async () => {
@@ -866,6 +961,9 @@ describe("import-root alias (@/)", () => {
     const entryPath = resolve(process.cwd(), "src/lib/entry.ts");
     mockReadFile.mockImplementation(async (path: string) => {
       if (String(path) === entryPath) return "import './sibling.ts';";
+      if (String(path).endsWith("result.json")) {
+        return JSON.stringify({ version: 1, kind: "build", result: "" });
+      }
       throw new Error("ENOENT");
     });
     resolveWith("");
@@ -984,7 +1082,6 @@ describe("collectAllScriptDeps", () => {
 
 // ─── script output cache ─────────────────────────────────────────────────────
 
-const mockReadFile = readFile as unknown as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as unknown as ReturnType<typeof vi.fn>;
 
 describe("build-script output cache", () => {
@@ -1455,7 +1552,8 @@ describe("build-script output cache", () => {
         cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
         call++;
         if (call === 1) {
-          cb(null, "<span>Success</span>", "");
+          state.activeHandlerResult = "<span>Success</span>";
+          cb(null, "", "");
         } else {
           cb(new Error("ReferenceError: foo is not defined"));
         }
@@ -1802,5 +1900,79 @@ describe("packet R6: supplementary build script memoization limits and missing d
     assertRetainedOutput(cacheHooks.outputCacheSize, 0);
     expect(cacheHooks.depContentSize).toBe(0);
     expect(cacheHooks.reverseIndexKeyCount(depPath)).toBe(0);
+  });
+});
+
+describe("Prompt 02: Build script default-export handler contract", () => {
+  it("handler returning string markup while console.log logs sentinels to stdout: logs do not enter output", async () => {
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    resolveWith("<article><h1>Rendered Article</h1></article>", "sentinel-stdout-log\n");
+
+    const html = `<main>
+      <script data-bascik-build>
+        console.log("sentinel-stdout-log");
+        export default async function () {
+          return "<article><h1>Rendered Article</h1></article>";
+        }
+      </script>
+    </main>`;
+
+    const result = await executeBuildScripts(html);
+    expect(result).toContain("<article><h1>Rendered Article</h1></article>");
+    expect(result).not.toContain("sentinel-stdout-log");
+    expect(stdoutSpy).toHaveBeenCalledWith("sentinel-stdout-log\n");
+    stdoutSpy.mockRestore();
+  });
+
+  it("missing default export causes build script error", async () => {
+    rejectWith("Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }");
+    const html = `<script data-bascik-build>
+      const a = 1;
+    </script>`;
+    await expect(executeBuildScripts(html)).rejects.toThrow(/missing default export/);
+  });
+
+  it("legacy console.log('<p>old</p>') without handler export errors out", async () => {
+    rejectWith("Directive script (data-bascik-build) missing default export. Expected: export default async function() { ... }");
+    const html = `<script data-bascik-build>
+      console.log("<p>old</p>");
+    </script>`;
+    await expect(executeBuildScripts(html)).rejects.toThrow(/missing default export/);
+  });
+
+  it("cached handlers do not log again on cache hits", async () => {
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    resolveWith("<p>first-run</p>", "logged-on-run\n");
+
+    const tag = `<script data-bascik-build>
+      console.log("logged-on-run");
+      export default function() { return "<p>first-run</p>"; }
+    </script>`;
+
+    const res1 = await executeBuildScripts(tag);
+    expect(res1).toBe("<p>first-run</p>");
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    expect(stdoutSpy).toHaveBeenCalledWith("logged-on-run\n");
+
+    // Second execution is a cache hit
+    stdoutSpy.mockClear();
+    const res2 = await executeBuildScripts(tag);
+    expect(res2).toBe("<p>first-run</p>");
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    stdoutSpy.mockRestore();
+  });
+
+  it("preserves exact bytes: Unicode, quotes, backslashes, literal $1/$&, ANSI bytes in returned string", async () => {
+    const rawMarkup = "<div title=\"hello 'world'\">日本語 \u001b[31mRed\u001b[0m $1 $& \\n \\\\</div>\n";
+    resolveWith(rawMarkup);
+
+    const html = `<section>
+      <script data-bascik-build>
+        export default () => ${JSON.stringify(rawMarkup)};
+      </script>
+    </section>`;
+
+    const result = await executeBuildScripts(html);
+    expect(result).toContain(rawMarkup);
   });
 });
