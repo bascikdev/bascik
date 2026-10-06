@@ -175,6 +175,35 @@ export default function Products({ products }) {
 </ul>
 ```
 
+### Passing Props to Client Scripts (Hydration)
+
+In Next.js Pages Router, props returned from `getStaticProps` or `getServerSideProps` are serialized by the framework into an internal `<script id="__NEXT_DATA__" type="application/json">` tag so client-side React components can hydrate.
+
+In Bascik, you do not need a runtime framework or synthetic data payloads. When client JavaScript needs data for browser filtering or interactivity, return a `<script type="application/json">` tag directly:
+
+- **Static build data (`getStaticProps` equivalent):** Return the `<script type="application/json">` block from `<script data-bascik-build>`.
+- **Per-request server data (`getServerSideProps` equivalent):** Return the `<script type="application/json">` block from `<script data-bascik-server>`.
+
+```html
+<script data-bascik-build>
+  export default async function () {
+    const res = await fetch('https://api.example.com/products');
+    const products = await res.json();
+    const safeJson = JSON.stringify(products).replaceAll('<', () => '\\u003c');
+    return `<script type="application/json" id="products-data">${safeJson}<\/script>`;
+  }
+</script>
+
+<script>
+  // Browser JavaScript reads the payload directly:
+  const products = JSON.parse(
+    document.getElementById('products-data').textContent
+  );
+</script>
+```
+
+See [Passing Data to Client Scripts](/build-scripts#passing-data-to-client-scripts-json-hydration) for safety details and scoping rules.
+
 ### Escaping and Shared Helpers
 
 Move the code that turns data into markup into `src/lib/*.ts` helpers that return strings, and import them with the `@/` alias from any page. Two rules differ from Next.js:

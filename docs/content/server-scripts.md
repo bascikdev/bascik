@@ -212,6 +212,45 @@ Top-level `await` and ESM imports work seamlessly:
 </script>
 ```
 
+### Passing Request Data to Client Scripts (Hydration)
+
+When browser JavaScript needs request-specific context (such as an authenticated user profile, session token, cart preview, or feature flags), return a `<script type="application/json">` block from your server script.
+
+This parallels Next.js `getServerSideProps` client hydration, but emits clean standard HTML without an external framework runtime or synthetic bundle:
+
+```html
+<!-- src/pages/dashboard.html -->
+<script data-bascik-server>
+  import { getUserFromRequest } from '@/lib/auth.ts';
+
+  export default async function (request) {
+    const user = await getUserFromRequest(request);
+    const session = {
+      id: user?.id ?? null,
+      name: user?.name ?? 'Guest',
+      roles: user?.roles ?? []
+    };
+
+    // Escape < to prevent any closing script tag breakout
+    const safeJson = JSON.stringify(session).replaceAll('<', () => '\\u003c');
+    return `<script type="application/json" id="session-data">${safeJson}<\/script>`;
+  }
+</script>
+
+<script>
+  // Browser client script reads the per-request session
+  const session = JSON.parse(
+    document.getElementById('session-data').textContent
+  );
+
+  if (session.id) {
+    console.log('Logged in as', session.name);
+  }
+</script>
+```
+
+> **Build vs. Server Hydration.** Use `<script data-bascik-build>` when hydrating static content that stays identical across all visitors. Use `<script data-bascik-server>` when the hydrated client data depends on the incoming request, cookies, headers, or real-time database state.
+
 ## Server Scripts vs API Routes
 
 Both `data-bascik-server` script blocks and [API Routes](/api-routes) run in-process through Bascik's script registry at request time, receiving the same `Request` object, but they serve different architectural purposes:

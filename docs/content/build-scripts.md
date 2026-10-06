@@ -110,6 +110,39 @@ Node.js includes a global `fetch`. Use it to pull remote data at build time so t
 
 A network response is invisible to the [output cache](#invalidation-limits-cache-exclusions), so list the page in `scripts.cache.exclude` or a rebuild reuses the old response.
 
+### Passing Data to Client Scripts (JSON Hydration)
+
+A build script must return a string (not a raw object). When client JavaScript needs structured build-time data for interactivity, search, or filtering, return a `<script type="application/json">` block.
+
+This gives the same client hydration capability as `getStaticProps` in Next.js (which serialized props into a `<script id="__NEXT_DATA__">` tag), but without a framework runtime. You control the exact tag, ID, and schema:
+
+```html
+<!-- src/pages/products.html -->
+<script data-bascik-build>
+  import { readFile } from 'node:fs/promises';
+
+  export default async function () {
+    const raw = await readFile('./content/products.json', 'utf8');
+    const catalog = JSON.parse(raw);
+
+    // Escape < to prevent closing script tags in JSON strings from breaking out
+    const safeJson = JSON.stringify(catalog).replaceAll('<', () => '\\u003c');
+    return `<script type="application/json" id="catalog-data">${safeJson}<\/script>`;
+  }
+</script>
+
+<script>
+  // Browser client script parses the static payload
+  const catalog = JSON.parse(
+    document.getElementById('catalog-data').textContent
+  );
+
+  console.log('Hydrated products:', catalog);
+</script>
+```
+
+> **Safety and Scoping.** Always escape `<` as `\u003c` in the serialized JSON to prevent strings containing `</script>` from breaking out of the tag. When this pattern lives inside a component, write `document.getElementById('catalog-data')` with the source ID as usual. Bascik automatically rewrites both the element ID and the selector at build time to the same scoped identifier.
+
 ### Printing HTML You Did Not Write
 
 Build script output is transpiled again, so it can contain component tags and client scripts. When a script prints HTML from somewhere else, such as a CMS post body, an API response, or converted Markdown, that HTML lands in the page with the same power as your own markup:
