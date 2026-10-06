@@ -70,6 +70,9 @@ describe('nav label / h1 naming convention', () => {
 
     for (const section of NAV) {
       for (const page of section.pages) {
+        // External nav entries (e.g. Merch) are off-site with no local content
+        // MD or page shell, so the h1/title convention does not apply to them.
+        if (page.external) continue;
         const h1 = await readContentH1(page.href);
         if (h1 === null) {
           missing.push({ href: page.href, label: page.label });
@@ -96,6 +99,9 @@ describe('nav label / h1 naming convention', () => {
 
     for (const section of NAV) {
       for (const page of section.pages) {
+        // External nav entries have no local page shell, so there is no
+        // <title> to check against the h1 convention.
+        if (page.external) continue;
         const title = await readPageTitle(page.href);
         if (title === null) {
           missing.push({ href: page.href });

@@ -424,10 +424,12 @@ export async function generateOgImages(): Promise<void> {
 
   const pagesMap = new Map<string, PageMeta>();
 
-  // Process home page + all documentation pages listed in NAV
+  // Process home page + all documentation pages listed in NAV. External nav
+  // entries (e.g. Merch) are off-site with no local page or Markdown, so they
+  // are skipped here.
   const allNavPages = [
     { href: '/', label: 'Bascik', section: 'Overview' },
-    ...NAV.flatMap((sec) => sec.pages.map((p) => ({ ...p, section: sec.section }))),
+    ...NAV.flatMap((sec) => sec.pages.filter((p) => !p.external).map((p) => ({ ...p, section: sec.section }))),
   ];
 
   for (const { href, label, section } of allNavPages) {

@@ -100,6 +100,9 @@ const entries: SearchEntry[] = [];
 
 for (const { section, pages } of NAV) {
   for (const { href, label } of pages) {
+    // External nav entries (e.g. Merch) are off-site and have no local content
+    // Markdown, so they are not indexed for search.
+    if (/^https?:\/\//i.test(href)) continue;
     const md = await readMd(href);
     if (!md) {
       entries.push({ title: label, navLabel: label, section, path: href, heading: null, text: '' });

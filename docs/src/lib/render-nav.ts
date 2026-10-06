@@ -160,7 +160,9 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
 export function renderPagination(currentPath?: string): string {
   const path = resolveRoutePath(currentPath);
   if (!path) return '';
-  const flat = NAV.flatMap(s => s.pages.map(p => ({ ...p, section: s.section })));
+  // External nav entries (e.g. Merch) are off-site and have no local page, so
+  // they are skipped in the prev/next sequence.
+  const flat = NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => ({ ...p, section: s.section })));
   const idx = flat.findIndex(p => p.href === path);
   if (idx === -1) return '';
   const prev = idx > 0 ? flat[idx - 1] : null;

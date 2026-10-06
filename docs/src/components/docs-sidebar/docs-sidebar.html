@@ -2,12 +2,13 @@
      <aside class="docs-sidebar-nav" aria-label="Documentation navigation">
           <script data-bascik-build>
                import { NAV } from '@/lib/nav.ts';
+               import { renderNavListItem } from '@/lib/nav-helpers.ts';
                export default async function () {
                     let html = '';
                     for (const section of NAV) {
                          html += `<p class="sidebar-heading">${section.section}</p><ul class="sidebar-nav">`;
                          for (const page of section.pages) {
-                              html += `<li><a href="${page.href}">${page.label}</a></li>`;
+                              html += renderNavListItem(page);
                          }
                          html += '</ul>';
                     }

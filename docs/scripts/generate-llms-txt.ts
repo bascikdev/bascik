@@ -97,6 +97,9 @@ for (const { section, pages } of NAV) {
   lines.push(`## ${section}`);
   lines.push('');
   for (const { href, label } of pages) {
+    // External nav entries (e.g. Merch) are off-site and have no local content
+    // Markdown, so they are left out of the llms.txt page index.
+    if (/^https?:\/\//i.test(href)) continue;
     const md = await readMd(href);
     const desc = md ? extractDescription(md) : '';
     const url = `${siteUrl}${href}`;
