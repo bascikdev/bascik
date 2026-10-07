@@ -355,7 +355,7 @@ pre {
   overflow-x: auto;
   margin: 0;
 }
-pre code { background: none; border: none; padding: 0; color: #cdd6f4; font-size: 0.82rem; }
+pre code { background: none; border: none; padding: 0; color: var(--pre-text); font-size: 0.82rem; }
 
 /* ── Cards ── */
 .card {
