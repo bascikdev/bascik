@@ -19,7 +19,7 @@
  */
 
 /** Match dynamic bracket segments like `[slug]` or `[category]`. */
-const DYNAMIC_ROUTE_RE = /\[([^\]/\\\s]+)\]/g;
+const DYNAMIC_ROUTE_RE = /\[([^\[\]/\\\s]+)\]/g;
 
 /** A whole path segment that is a catch-all: `[...name]`. Capture 1 is the name. */
 const CATCH_ALL_SEGMENT_RE = /^\[\.\.\.([^\]/\\\s.][^\]/\\\s]*)\]$/;
