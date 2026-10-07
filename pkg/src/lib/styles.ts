@@ -73,7 +73,7 @@ export const convertCssElementSelectorsToClasses = (
   // Element names start with a letter (`[a-z][a-z1-6]*`), so @keyframes stops
   // such as `40%` or `0%, 100%` are never mistaken for element selectors.
   let result = css.replace(
-    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?=[^{};]*\{)/gim,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/gim,
     (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
 
@@ -85,7 +85,7 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(/(?<=,[ \t]*)[a-z][a-z1-6]*(?=[^{};)]*\{)/g, toClass);
+  result = result.replace(/(?<=,[ \t]*)[a-z][a-z1-6]*(?![\w-])(?=[^{};)]*\{)/g, toClass);
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
@@ -93,11 +93,11 @@ export const convertCssElementSelectorsToClasses = (
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s*(?:[>+~]\s*)?)[a-z][a-z1-6]*(?=[^{};]*\{)/g,
+    /(?<=&\s*(?:[>+~]\s*)?)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
     toClass,
   );
   result = result.replace(
-    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z][a-z1-6]*(?=[^{};]*\{)/g,
+    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
     toClass,
   );
 
@@ -108,17 +108,16 @@ export const convertCssElementSelectorsToClasses = (
   // After Pass 1 (class scoping), class names become `bascik__…__foo` or a
   // 12-character hash when identifier minification is enabled. Matching the
   // class selector itself keeps the anchor in selector position. The negative
-  // lookahead `(?!__)` prevents
-  // matching the start of another scoped class name (e.g. `bascik__comp__bar`
-  // starts with `b` which is in [a-z1-6] but is followed by `ascik__`, so
-  // `(?!__)` stops the second `_` from matching after `bascik`).
+  // lookahead `(?![\w-])` prevents
+  // matching the start of another scoped class name (e.g. `bascik__comp__bar`)
+  // or a prefix of a hyphenated custom element such as `code-block`.
   //
   // Note: this pass only applies after Pass 1 has scoped the class selector.
   let previousResult: string;
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z][a-z1-6]*(?!__)(?=[^{};]*\{)/g,
+      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);

@@ -984,9 +984,24 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
     expect(css).toContain(".bascik__my-comp__el__li");
     expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["div", "ul", "li"]));
   });
+
+  it.each([
+    [".bascik__my-comp__pane code-block { margin: 0; }"],
+    [".bascik__my-comp__pane:not(:has(.bascik__my-comp__lang[data-x=\"a\"] code-block)) .bascik__my-comp__tab { display: none; }"],
+    ["code-block .bascik__my-comp__x { color: red; }"],
+    [".bascik__my-comp__a, code-block { color: red; }"],
+    ["& > code-block { color: red; }"],
+    ["> code-block { color: red; }"],
+  ])("leaves hyphenated custom element selectors untouched: %s", (pre) => {
+    const { css, elementsConvertedClasses } = convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(elementsConvertedClasses).not.toContain("code");
+    expect(css).toContain("code-block");
+    expect(css).not.toContain("__el__code");
+  });
 });
 
 // ─── addElementClassesInHtml — multiline content ─────────────────────────────
+
 
 describe("addElementClassesInHtml – multiline content", () => {
   it("injects the class into a multi-line element", () => {
