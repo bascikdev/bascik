@@ -986,6 +986,17 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
   });
 
   it.each([
+    [".bascik__my-comp__list>li { color: red; }", ".bascik__my-comp__list>.bascik__my-comp__el__li"],
+    [".bascik__my-comp__list >li { color: red; }", ".bascik__my-comp__list >.bascik__my-comp__el__li"],
+    [".bascik__my-comp__list> li { color: red; }", ".bascik__my-comp__list> .bascik__my-comp__el__li"],
+    [".bascik__my-comp__title+p { color: red; }", ".bascik__my-comp__title+.bascik__my-comp__el__p"],
+    [".bascik__my-comp__title~span { color: red; }", ".bascik__my-comp__title~.bascik__my-comp__el__span"],
+  ])("converts element after a combinator without surrounding spaces: %s", (pre, expected) => {
+    const { css } = convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toContain(expected);
+  });
+
+  it.each([
     [".bascik__my-comp__pane code-block { margin: 0; }"],
     [".bascik__my-comp__pane:not(:has(.bascik__my-comp__lang[data-x=\"a\"] code-block)) .bascik__my-comp__tab { display: none; }"],
     ["code-block .bascik__my-comp__x { color: red; }"],

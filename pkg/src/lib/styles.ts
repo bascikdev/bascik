@@ -102,7 +102,7 @@ export const convertCssElementSelectorsToClasses = (
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
-  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
+  // Handles `.foo p {}`, `.foo > h2 {}`, `.foo>h2 {}`, `.foo + li {}`, `.foo ~ span {}`,
   // and elements following pseudo-classes/attributes (`.foo:checked + label {}`).
   //
   // After Pass 1 (class scoping), class names become `bascik__…__foo` or a
@@ -117,7 +117,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*\s+(?:[>+~]\s+)?)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
+      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+))[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);
