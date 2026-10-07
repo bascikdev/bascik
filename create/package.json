@@ -1,7 +1,7 @@
 {
   "name": "create-bascik",
   "description": "Create a new Bascik project",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.5",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
