@@ -27,8 +27,33 @@ API route files live in `directory.api` (default: `src/api`). The URL path prefi
 | `src/api/users/index.ts` | `/api/users` |
 | `src/api/users/[id].ts` | `/api/users/:id` |
 | `src/api/[org]/repos/[id].ts` | `/api/:org/repos/:id` |
+| `src/api/[...path].ts` | `/api/*` (one or more segments) |
+| `src/api/files/[...path].ts` | `/api/files/*` (one or more segments) |
 
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
+
+### Catch-all routes
+
+A final `[...name]` segment is a **required catch-all**. It matches **one or more** remaining path segments and never zero: `src/api/files/[...path].ts` handles `/api/files/a` and `/api/files/a/b/c`, but not `/api/files`. Add `src/api/files/index.ts` (or `files.ts`) to serve the bare path.
+
+```ts
+// src/api/files/[...path].ts   GET /api/files/reports/2026/q1.pdf
+export const GET = async (
+  request: Request,
+  context: { params: Record<string, string | string[]>; remoteIp: string }
+): Promise<Response> => {
+  const segments = context.params.path as string[]; // ["reports", "2026", "q1.pdf"]
+  return Response.json({ segments });
+};
+```
+
+- **Captured value:** `context.params.<name>` is a `string[]`, one entry per path segment, so segment boundaries are preserved. `[param]` values stay `string`.
+- **Decoding:** the raw request path is split on `/` first, then each segment is percent-decoded exactly once. `/api/files/a%2541` yields `["a%41"]`, never `["aA"]`.
+- **Rejected with `400 Bad Request` (handler never runs):** malformed percent-encoding (`%E0%A4%A`), an encoded separator (`%2F`, `%5C`), `.` or `..` segments, control characters (`%00`, `%0A`), and empty interior segments (`/api/files/a//b`). A single trailing slash is ignored. Dot-prefixed segments (`/.env`) still return `404`, as for every other route.
+- **Precedence:** compared segment by segment from the left: a static segment beats a `[param]`, which beats a catch-all. The result never depends on file discovery order. A catch-all only receives requests no more specific route matched.
+- **Pattern errors:** the catch-all must be a whole, named, final segment. `[...]`, `x[...a]`, and `[...a]/b.ts` are errors. Two catch-alls at the same position (`[...a].ts` and `[...b].ts`, or `[x]/[...a].ts` and `[y]/[...b].ts`) are ambiguous. Both fail the build or server start naming every file, and `bascik --check` reports them (`invalid-catch-all`, `route-collision`). Catch-alls at different depths or prefixes may coexist.
+- **Methods, security, limits:** method dispatch, `405` with `Allow`, derived `HEAD`, auto `OPTIONS`, path-traversal and hidden-path guards, `http.maxBodySize`, and `http.apiTimeout` apply exactly as for any other route. Catch-all routes are API-only; page routing is unchanged.
+- **Forwarding upstream:** treat the captured segments as untrusted input. If a handler forwards them to another service, allow-list the first segment or the full path, re-encode each segment with `encodeURIComponent`, build the URL from a fixed origin, and never accept a caller-supplied origin.
 
 When configuring a custom `base` in `bascik.config.ts`, API routes compose cleanly (e.g. `base: '/app/'` routes to `/app/api/...`).
 
@@ -68,7 +93,7 @@ export const GET = async (
 };
 ```
 
-- `context.params`: Key-value map of extracted dynamic route segments (`[param]`).
+- `context.params`: Key-value map of extracted dynamic route segments. `[param]` values are `string`; a `[...name]` catch-all value is a decoded `string[]`.
 - `context.remoteIp`: The client IP address. When `http.trustProxy` is enabled in configuration, this value reflects the real client IP forwarded by upstream reverse proxies or CDNs.
 
 ## Request Body Handling and Streaming

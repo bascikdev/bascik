@@ -201,9 +201,16 @@ export const server = defineConfig({
 
 When `trustProxy: true` is enabled:
 - **Rate limiting** derives client IP from the rightmost (immediate proxy) entry of `X-Forwarded-For`, preventing a single active visitor from exhausting the rate-limit budget for all visitors behind the proxy.
+- **Request URL origin reconstruction** (`request.url` in API routes and server scripts) reconstructs the public scheme (`http` or `https`) and authority from the rightmost entries of `X-Forwarded-Proto` and `X-Forwarded-Host`. If headers are omitted or malformed, Bascik safely falls back to local transport parameters.
 - **HSTS security headers** recognize `X-Forwarded-Proto: https` forwarded by the proxy.
 
-When `trustProxy: false` (the default), `X-Forwarded-For` and `X-Forwarded-Proto` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
+When `trustProxy: false` (the default), `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` headers are strictly ignored to prevent client spoofing. Do not enable `trustProxy` if the server is directly exposed to the public Internet without a trusted reverse proxy.
+
+#### Security Model and Reverse Proxy Contract
+
+Enabling `trustProxy: true` is only secure when ingress is strictly controlled so all client traffic flows through the reverse proxy, and the proxy sanitizes or strips untrusted client-supplied forwarded headers.
+
+Because `http.trustProxy` is a boolean flag, Bascik trusts the immediate upstream proxy and reads the rightmost forwarded header entries. If the proxy does not sanitize untrusted inbound headers, a client could potentially send conflicting headers. Additionally, `request.url.origin` reflects the reconstructed external target address and is not an authorization decision. Application handlers that validate CORS, webhooks, or CSRF must compare incoming requests against an explicit configured canonical origin or allowlist rather than trusting `request.url.origin` as an authorization policy.
 
 ### Health checks and zero-downtime deployments
 

@@ -7,8 +7,11 @@
  * Scans and matches routes in `directory.api` (default 'src/api').
  * Route paths map to `/api/...`, respecting `base` prefix if set.
  * Dynamic segments use the same `[param]` syntax as page routes.
- * Static segments take precedence over dynamic segments.
- * Duplicate route definitions throw an explicit error naming both files.
+ * A final `[...name]` segment is a required catch-all (one or more remaining
+ * segments, captured as `string[]`).
+ * Precedence: static, then `[param]`, then catch-all.
+ * Duplicate route definitions, malformed catch-alls, and ambiguous catch-all
+ * pairs throw an explicit error naming the files involved.
  */
 
 import { readdir } from "node:fs/promises";
@@ -16,19 +19,22 @@ import { join, relative, extname } from "node:path";
 import { existsSync } from "node:fs";
 import { withBasePath } from "./base-path.ts";
 import {
-  extractRouteParamNames,
+  extractApiRouteParamNames,
+  findApiRoutePatternProblems,
+  InvalidApiPathError,
   isDynamicRoute,
   matchApiRoute,
   normalizeApiRouteDefinition,
   sortApiRoutes,
   type ApiRouteDefinition,
   type ApiRouteMatch,
+  type ApiRouteParams,
 } from "./route-matching.ts";
 
 // The matcher itself is host-neutral and lives in `route-matching.ts` so a
 // serverless function can run it without this module's filesystem imports.
-export { matchApiRoute, normalizeApiRouteDefinition, sortApiRoutes };
-export type { ApiRouteDefinition, ApiRouteMatch };
+export { matchApiRoute, normalizeApiRouteDefinition, sortApiRoutes, findApiRoutePatternProblems, InvalidApiPathError };
+export type { ApiRouteDefinition, ApiRouteMatch, ApiRouteParams };
 
 /**
  * Normalizes an API route file path relative to the api directory into a route path.
@@ -36,6 +42,7 @@ export type { ApiRouteDefinition, ApiRouteMatch };
  * - 'health.ts' -> '/api/health'
  * - 'users/index.ts' -> '/api/users'
  * - 'users/[id].ts' -> '/api/users/[id]'
+ * - '[...path].ts' -> '/api/[...path]'
  * - 'index.ts' -> '/api'
  */
 export const fileToApiRoutePath = (relPath: string, basePath = "/"): string => {
@@ -81,7 +88,7 @@ export const buildApiRouteTree = (
     const routePath = fileToApiRoutePath(rel, basePath);
 
     const isDynamic = isDynamicRoute(routePath);
-    const paramNames = isDynamic ? extractRouteParamNames(routePath) : [];
+    const paramNames = isDynamic ? extractApiRouteParamNames(routePath) : [];
 
     const routeDef: ApiRouteDefinition = {
       path: routePath,
@@ -109,6 +116,17 @@ export const buildApiRouteTree = (
   }
 
   const routes = Array.from(routesByPath.values()).map((e) => e.route);
+
+  // Catch-all validity and ambiguity are checked on the whole table so the
+  // error is the same regardless of discovery order.
+  const problems = findApiRoutePatternProblems(routes);
+  if (problems.length > 0) {
+    const detail = problems
+      .map((p) => `${p.message}\n${p.filePaths.map((f) => `  - ${f}`).join("\n")}`)
+      .join("\n");
+    throw new Error(`Invalid API route patterns:\n${detail}`);
+  }
+
   return sortApiRoutes(routes);
 };
 

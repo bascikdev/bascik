@@ -954,5 +954,270 @@ describe("API runtime execution", () => {
       // @ts-ignore
       expect(requestOrigin(req3, config2)).toBe("http://localhost");
     });
+
+    describe("proxy trust origin reconstruction", () => {
+      const trustConfig = {
+        http: {
+          trustProxy: true,
+          tls: { enabled: false },
+        },
+      } as any;
+
+      const noTrustConfig = {
+        http: {
+          trustProxy: false,
+          tls: { enabled: false },
+        },
+      } as any;
+
+      it("handles direct HTTP and direct HTTPS (no proxy headers)", () => {
+        const httpReq: BascikRequest = {
+          method: "GET",
+          headers: { host: "app.internal:3000" },
+          remoteIp: "127.0.0.1",
+        };
+        expect(requestOrigin(httpReq, noTrustConfig)).toBe("http://app.internal:3000");
+
+        const directHttpsConfig = {
+          http: {
+            trustProxy: false,
+            tls: { enabled: true },
+          },
+        } as any;
+        expect(requestOrigin(httpReq, directHttpsConfig)).toBe("https://app.internal:3000");
+      });
+
+      it("reconstructs HTTPS terminated at trusted proxy forwarded over local HTTP", () => {
+        const req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "10.0.0.5:8080",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "public.example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(req, trustConfig)).toBe("https://public.example.com");
+      });
+
+      it("reconstructs external hostname and non-default port", () => {
+        const req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "10.0.0.5",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "api.example.com:8443",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(req, trustConfig)).toBe("https://api.example.com:8443");
+
+        const httpReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "10.0.0.5",
+            "x-forwarded-proto": "http",
+            "x-forwarded-host": "api.example.com:8080",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(httpReq, trustConfig)).toBe("http://api.example.com:8080");
+      });
+
+      it("ignores forwarded headers when proxy trust is disabled", () => {
+        const req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "attacker.com",
+          },
+          remoteIp: "127.0.0.1",
+        };
+        expect(requestOrigin(req, noTrustConfig)).toBe("http://app.internal:3000");
+      });
+
+      it("never uses the browser Origin header to reconstruct the target URL", () => {
+        const req: BascikRequest = {
+          method: "POST",
+          headers: {
+            host: "app.internal:3000",
+            origin: "https://evil-cors-origin.com",
+          },
+          remoteIp: "127.0.0.1",
+        };
+        expect(requestOrigin(req, trustConfig)).toBe("http://app.internal:3000");
+        expect(requestOrigin(req, noTrustConfig)).toBe("http://app.internal:3000");
+      });
+
+      it("handles multi-value and chained proxy headers using the rightmost (immediate proxy) entry", () => {
+        // Untrusted client sent spoofed X-Forwarded-Host / X-Forwarded-Proto,
+        // and reverse proxy appended its genuine forwarded values.
+        const req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "127.0.0.1:3000",
+            "x-forwarded-proto": "http, https",
+            "x-forwarded-host": "spoofed.attacker.com, trusted.example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(req, trustConfig)).toBe("https://trusted.example.com");
+
+        // Array-valued headers (e.g. from multiple header lines)
+        const reqArray: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "127.0.0.1:3000",
+            "x-forwarded-proto": ["http", "https"],
+            "x-forwarded-host": ["spoofed.attacker.com", "trusted.example.com"],
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(reqArray, trustConfig)).toBe("https://trusted.example.com");
+      });
+
+      it("falls back safely on missing, malformed, or untrusted schemes", () => {
+        // Disallowed scheme (e.g. javascript:, ftp:, ws:)
+        const badSchemeReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "ftp",
+            "x-forwarded-host": "example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        // Falls back to local transport scheme (http)
+        expect(requestOrigin(badSchemeReq, trustConfig)).toBe("http://example.com");
+
+        // Empty/whitespace proto
+        const emptyProtoReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "   ",
+            "x-forwarded-host": "example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(emptyProtoReq, trustConfig)).toBe("http://example.com");
+      });
+
+      it("rejects malformed authorities and falls back to host/:authority/localhost", () => {
+        // Space, newline, path injection in x-forwarded-host
+        const malformedReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "bad host/with/path",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(malformedReq, trustConfig)).toBe("https://app.internal:3000");
+
+        // Userinfo (@) in host
+        const userinfoReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "user:pass@evil.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(userinfoReq, trustConfig)).toBe("https://app.internal:3000");
+
+        // Invalid port in x-forwarded-host
+        const invalidPortReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "example.com:99999",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(invalidPortReq, trustConfig)).toBe("https://app.internal:3000");
+
+        // Even if local host is also malformed or missing, falls back to localhost
+        const totalFallbackReq: BascikRequest = {
+          method: "GET",
+          headers: {
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "evil\r\nheader",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(totalFallbackReq, trustConfig)).toBe("https://localhost");
+      });
+
+      it("supports IPv6 bracketed hosts and ports in authority", () => {
+        const ipv6Req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "127.0.0.1:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "[2001:db8::1]:8443",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(ipv6Req, trustConfig)).toBe("https://[2001:db8::1]:8443");
+      });
+
+      it("preserves HTTP/1.1 and HTTP/2 parity", () => {
+        // HTTP/2 uses :authority and lowercase pseudo-headers
+        const h2Req: BascikRequest = {
+          method: "GET",
+          headers: {
+            ":authority": "internal-h2:8080",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "h2.example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(h2Req, trustConfig)).toBe("https://h2.example.com");
+
+        // When no proxy header, uses :authority
+        expect(requestOrigin(h2Req, noTrustConfig)).toBe("http://internal-h2:8080");
+
+        // HTTP/1.1 uses host
+        const h1Req: BascikRequest = {
+          method: "GET",
+          headers: {
+            host: "internal-h1:8080",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "h1.example.com",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(requestOrigin(h1Req, trustConfig)).toBe("https://h1.example.com");
+      });
+
+      it("preserves pathname and query-string in createWebRequest", () => {
+        const req: BascikRequest = {
+          method: "GET",
+          path: "/api/users?sort=desc&limit=10",
+          headers: {
+            host: "127.0.0.1:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "example.com:8443",
+          },
+          remoteIp: "10.0.0.1",
+        };
+        const origin = requestOrigin(req, trustConfig);
+        const webReq = createWebRequest(req, origin);
+        const url = new URL(webReq.url);
+
+        expect(url.origin).toBe("https://example.com:8443");
+        expect(url.protocol).toBe("https:");
+        expect(url.host).toBe("example.com:8443");
+        expect(url.pathname).toBe("/api/users");
+        expect(url.search).toBe("?sort=desc&limit=10");
+        expect(url.searchParams.get("sort")).toBe("desc");
+        expect(url.searchParams.get("limit")).toBe("10");
+      });
+    });
   });
 });

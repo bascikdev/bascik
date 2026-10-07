@@ -334,6 +334,33 @@ describe("serverless parity: Node oracle versus local workerd", () => {
       expect(head.node.body).toBe("");
     });
 
+    it("catch-all captures segments, keeps precedence, and rejects unsafe paths identically", async () => {
+      const many = await both("/api/files/a/b%20c/caf%C3%A9");
+      expect(many.cf.status).toBe(200);
+      expect(JSON.parse(many.cf.body).path).toEqual(["a", "b c", "café"]);
+      expect(JSON.parse(many.node.body).path).toEqual(["a", "b c", "café"]);
+
+      // A static route still wins over the sibling catch-all prefix.
+      const health = await both("/api/health");
+      expect(JSON.parse(health.cf.body)).toEqual(JSON.parse(health.node.body));
+
+      // Required catch-all: no remaining segment is not a handler match.
+      const none = await both("/api/files");
+      expect(none.cf.body).toBe(none.node.body);
+      expect(none.cf.status).toBe(none.node.status);
+
+      for (const unsafe of ["/api/files/a%2Fb", "/api/files/a%5Cb", "/api/files/%E0%A4%A", "/api/files/a//b"]) {
+        const res = await both(unsafe);
+        expect(res.cf.status, `cf ${unsafe}`).toBe(400);
+        expect(res.node.status, `node ${unsafe}`).toBe(400);
+      }
+
+      const put = await both("/api/files/a", { method: "PUT" });
+      expect(put.cf.status).toBe(405);
+      expect(put.node.status).toBe(405);
+      expect(put.cf.headers.allow).toBe(put.node.headers.allow);
+    });
+
     it("POST body, status, and multiple Set-Cookie headers", async () => {
       const nodeRes = await fetch(new URL("/api/echo", node.url), { method: "POST", body: "hello ünï" });
       const cfRes = await cloudflare.fetch("/api/echo", { method: "POST", body: "hello ünï" });

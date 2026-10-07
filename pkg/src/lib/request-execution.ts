@@ -372,7 +372,8 @@ export type HttpMethod = (typeof ALLOWED_METHODS)[number];
 
 /** Context every API route handler receives as its second argument. */
 export interface ApiHandlerContext {
-  params: Record<string, string>;
+  /** `[param]` values are strings; a `[...rest]` catch-all value is a decoded `string[]`. */
+  params: Record<string, string | string[]>;
   remoteIp: string;
   /** Host capabilities (prompt 131 decision). `undefined` on hosts that offer none. */
   platform?: PlatformContext;

@@ -48,6 +48,7 @@ import {
   GENERATED_CONTROL_PATHS,
   hasHiddenSegment,
   isUnsafePathname,
+  InvalidApiPathError,
   matchApiRoute,
   pageLookupCandidates,
   type ApiRouteDefinition,
@@ -95,7 +96,7 @@ export interface SiteGraph {
   onServerScriptError: "error" | "warn" | "ignore";
   /** Dynamic pages by canonical path. */
   pages: Record<string, GraphPage>;
-  /** Sorted API routes (static before dynamic). */
+  /** Sorted API routes (static, then `[param]`, then catch-all). */
   apiRoutes: GraphApiRoute[];
   /** Optional authored 500 page body. */
   custom500?: string;
@@ -248,7 +249,15 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
     const remoteIp = cloudflareRemoteIp(request);
 
     // ── API routes (before the method guard so every method reaches them) ──
-    const apiMatch = matchApiRoute(graph.apiRoutes, pathname);
+    let apiMatch: ReturnType<typeof matchApiRoute<GraphApiRoute>>;
+    try {
+      // Catch-all routes split and decode the raw path themselves, so an
+      // encoded separator cannot forge a segment boundary.
+      apiMatch = matchApiRoute(graph.apiRoutes, pathname, url.pathname);
+    } catch (err) {
+      if (!(err instanceof InvalidApiPathError)) throw err;
+      return errorResponse(400, "Bad Request", { https });
+    }
     if (apiMatch) {
       const route = apiMatch.route as GraphApiRoute;
       let mod: ApiHandlerModule;

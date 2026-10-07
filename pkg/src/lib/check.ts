@@ -21,7 +21,7 @@ import { listComponents } from "./components.ts";
 import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
-import { scanApiRouteFiles, fileToApiRoutePath } from "./api-routes.ts";
+import { scanApiRouteFiles, fileToApiRoutePath, findApiRoutePatternProblems } from "./api-routes.ts";
 import { getHttpPath } from "./paths.ts";
 import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
@@ -822,6 +822,17 @@ export const checkProject = async (): Promise<CheckFindings> => {
         });
       }
     }
+
+    // Catch-all patterns: malformed `[...name]` segments and ambiguous pairs.
+    const uniqueRoutes = [...routesByUrl.entries()].map(([path, files]) => ({ path, filePath: files[0] }));
+    for (const problem of findApiRoutePatternProblems(uniqueRoutes)) {
+      items.push({
+        category: problem.kind === "ambiguous" ? "route-collision" : "invalid-catch-all",
+        severity: "error",
+        message: problem.message,
+        locations: problem.filePaths.map((f) => ({ filePath: toDisplay(f) })),
+      });
+    }
   }
 
   // Unused components -> warnings
@@ -915,7 +926,11 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
   "route-collision": {
     title: "API route collisions",
-    description: "Multiple API route files resolve to the same URL path.",
+    description: "Multiple API route files resolve to the same URL path, or to ambiguous catch-all patterns.",
+  },
+  "invalid-catch-all": {
+    title: "Invalid API catch-all routes",
+    description: "A catch-all must be a named, whole, final segment such as [...path].",
   },
   "config-validation": {
     title: "Configuration validation",

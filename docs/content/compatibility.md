@@ -115,6 +115,7 @@ When an `id` declaration is scoped, Bascik rewrites references that resolve to t
 | Multiple `Set-Cookie` headers | ✓ | Preserved via `Headers.getSetCookie()` without comma-flattening. |
 | Streaming responses | ✓ | WHATWG `ReadableStream` bodies stream directly to clients. |
 | Dynamic API route parameters | ✓ | Extracted from `[param]` path segments into `context.params`. |
+| Catch-all API routes (`[...path].ts`) | ✓ | Required catch-all: one or more remaining segments as a decoded `string[]`. Static beats `[param]` beats catch-all. Unsafe captures return 400. API routes only; same behavior on `--server`, HTTP/2, and the Cloudflare adapter. |
 | Client IP resolution | ✓ | Forwarded client IP provided via `context.remoteIp`, respecting `http.trustProxy`. |
 | Request body streaming | ✓ | Standard WHATWG `request.body` stream with `duplex: 'half'` support. |
 | Streaming body size limit | ✓ | `http.maxBodySize` counts bytes on the fly (defaults to 1 MB) and aborts with 413 without buffering. |

@@ -58,6 +58,36 @@ test.describe('cloudflare adapter: request-time pages', () => {
     expect(options.headers()['allow']).toBe('GET, HEAD, OPTIONS');
   });
 
+  test('a catch-all API route captures decoded segments and respects precedence in the worker', async ({ page }) => {
+    const many = await page.request.get('/api/files/reports/2026/caf%C3%A9%20menu?x=1');
+    expect(many.status()).toBe(200);
+    expect(await many.json()).toEqual({
+      route: 'catch-all',
+      segments: ['reports', '2026', 'café menu'],
+      platform: 'cloudflare',
+    });
+
+    const once = await page.request.get('/api/files/%2541');
+    expect((await once.json()).segments).toEqual(['%41']);
+
+    const staticRoute = await page.request.get('/api/files/latest');
+    expect(await staticRoute.json()).toEqual({ route: 'static' });
+
+    // Required catch-all: nothing remains, so the worker does not run the handler.
+    const none = await page.request.get('/api/files');
+    expect(await none.text()).not.toContain('"segments"');
+  });
+
+  test('a catch-all API route rejects unsafe paths with 400 and answers methods like any other route', async ({ page }) => {
+    for (const unsafe of ['/api/files/a%2Fb', '/api/files/a%5Cb', '/api/files/%E0%A4%A', '/api/files/a%00b', '/api/files/a//b']) {
+      const res = await page.request.get(unsafe);
+      expect(res.status(), unsafe).toBe(400);
+    }
+    const put = await page.request.put('/api/files/a/b');
+    expect(put.status()).toBe(405);
+    expect(put.headers()['allow']).toBe('GET, HEAD, OPTIONS');
+  });
+
   test('progressive append stream page paints chunks in order', async ({ page }) => {
     const res = await page.goto('/stream-append?delay=500');
     expect(res?.status()).toBe(200);

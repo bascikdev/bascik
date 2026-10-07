@@ -73,7 +73,7 @@ export default defineConfig({
 | `http.port` | `number` | `8080` / `8443` | TCP port to listen on |
 | `http.hostname` | `string` | `'localhost'` | Network interface to bind |
 | `http.compression` | `boolean` | `true` | Enables automatic Gzip and Brotli compression |
-| `http.trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For` and `X-Forwarded-Proto` proxy headers |
+| `http.trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` proxy headers |
 | `http.rateLimit` | `boolean \| object` | `false` | In-memory sliding-window IP rate limiter |
 | `http.cacheControl` | `Record<string, string>` | `{}` | Custom `Cache-Control` headers matched by file extension |
 | `http.timeouts` | `object` | `{}` | Socket request, headers, and keep-alive timeout values |
