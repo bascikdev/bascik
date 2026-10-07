@@ -101,32 +101,19 @@ export const getRightmostHeaderValue = (
  */
 const isValidAuthority = (authority: string): boolean => {
   if (!authority || authority.length > 255) return false;
-  // Disallow userinfo, paths, queries, fragments, whitespace, controls
-  if (/[\s/@?#\\:]/.test(authority.replace(/:\d+$/, ""))) {
-    // Check if bracketed IPv6
-    if (authority.startsWith("[")) {
-      const closeBracket = authority.indexOf("]");
-      if (closeBracket === -1) return false;
-      const portPart = authority.slice(closeBracket + 1);
-      if (portPart !== "" && !/^:\d{1,5}$/.test(portPart)) return false;
-      if (portPart !== "") {
-        const portNum = Number(portPart.slice(1));
-        if (portNum < 1 || portNum > 65535) return false;
-      }
-      const ip = authority.slice(1, closeBracket);
-      return /^[0-9a-fA-F:]+$/.test(ip);
-    }
-    return false;
-  }
-  const match = /^([a-zA-Z0-9.-]+)(?::(\d{1,5}))?$/.exec(authority);
+  const match = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::(\d{1,5}))?$/.exec(authority);
   if (!match) return false;
   const [, host, port] = match;
-  if (!host || host.startsWith(".") || host.endsWith(".")) return false;
+  if (host.startsWith(".")) return false;
   if (port !== undefined) {
     const portNum = Number(port);
     if (portNum < 1 || portNum > 65535) return false;
   }
-  return true;
+  try {
+    return new URL(`http://${authority}`).hostname !== "";
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -285,7 +272,7 @@ export const executeApiRoute = async (
     let loadedModule: any;
     try {
       const loadPromise = Promise.resolve(scriptRegistry.load(filePath));
-      loadPromise.catch(() => {});
+      loadPromise.catch(() => { });
 
       const abortDuringLoadPromise = new Promise<never>((_, reject) => {
         if (abortController.signal.aborted) {
@@ -303,7 +290,7 @@ export const executeApiRoute = async (
         };
         abortController.signal.addEventListener("abort", onAbortListener, { once: true });
       });
-      abortDuringLoadPromise.catch(() => {});
+      abortDuringLoadPromise.catch(() => { });
 
       const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as any;
       if (onAbortListener) {

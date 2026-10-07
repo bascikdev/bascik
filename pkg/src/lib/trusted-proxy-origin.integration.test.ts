@@ -90,7 +90,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch {}
+        } catch { }
       });
     });
     await new Promise<void>((r) => h1.listen(0, "127.0.0.1", r));
@@ -103,7 +103,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         try {
           res.respond(500, { "content-type": "text/plain" });
           res.end("Internal Server Error");
-        } catch {}
+        } catch { }
       });
     });
     await new Promise<void>((r) => h2.listen(0, "127.0.0.1", r));
@@ -136,7 +136,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
             let data: any;
             try {
               data = JSON.parse(body);
-            } catch {}
+            } catch { }
             resolve({ status: res.statusCode ?? 0, body, data });
           });
         }
@@ -166,7 +166,7 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
         let data: any;
         try {
           data = JSON.parse(body);
-        } catch {}
+        } catch { }
         resolve({ status, body, data });
       });
       req.on("error", reject);
@@ -202,6 +202,36 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
       expect(res.data.origin).toBe(`http://127.0.0.1:${h2Port}`);
       expect(res.data.pathname).toBe("/api/origin");
       expect(res.data.search).toBe("?test=2");
+    });
+
+    it.each(["[::::]", "[1:2:3]", "999.999.999.999", "256.0.0.1"])(
+      "falls back without HTTP 500 for invalid direct authority %s on both transports",
+      async (authority) => {
+        const replies = [
+          await viaHttp1("/api/origin?active=true", { host: authority }),
+          await viaHttp2("/api/origin?active=true", { ":authority": authority }),
+        ];
+        for (const reply of replies) {
+          expect(reply.status).toBe(200);
+          expect(reply.data.url).toBe("http://localhost/api/origin?active=true");
+        }
+      },
+    );
+
+    it.each([
+      { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
+      { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
+      { authority: "public.example.com.", expectedHost: "public.example.com." },
+      { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
+    ])("preserves direct authority $authority on both transports", async ({ authority, expectedHost }) => {
+      const replies = [
+        await viaHttp1("/api/origin?active=true", { host: authority }),
+        await viaHttp2("/api/origin?active=true", { ":authority": authority }),
+      ];
+      for (const reply of replies) {
+        expect(reply.status).toBe(200);
+        expect(reply.data.url).toBe(`http://${expectedHost}/api/origin?active=true`);
+      }
     });
   });
 
@@ -270,6 +300,36 @@ describe("trusted proxy origin reconstruction over HTTP/1.1 and HTTP/2", () => {
       expect(res.data.protocol).toBe("https:");
       expect(res.data.host).toBe(`127.0.0.1:${h1Port}`);
       expect(res.data.origin).toBe(`https://127.0.0.1:${h1Port}`);
+    });
+
+    it.each(["[::::]", "[1:2:3]", "999.999.999.999", "256.0.0.1"])(
+      "falls back without HTTP 500 for invalid forwarded authority %s on both transports",
+      async (authority) => {
+        const headers = { "x-forwarded-proto": "https", "x-forwarded-host": authority };
+        const http1Reply = await viaHttp1("/api/origin?active=true", headers);
+        const http2Reply = await viaHttp2("/api/origin?active=true", headers);
+        expect(http1Reply.status).toBe(200);
+        expect(http1Reply.data.url).toBe(`https://127.0.0.1:${h1Port}/api/origin?active=true`);
+        expect(http2Reply.status).toBe(200);
+        expect(http2Reply.data.url).toBe(`https://127.0.0.1:${h2Port}/api/origin?active=true`);
+      },
+    );
+
+    it.each([
+      { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
+      { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
+      { authority: "public.example.com.", expectedHost: "public.example.com." },
+      { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
+    ])("preserves forwarded authority $authority on both transports", async ({ authority, expectedHost }) => {
+      const headers = { "x-forwarded-proto": "https", "x-forwarded-host": authority };
+      const replies = [
+        await viaHttp1("/api/origin?active=true", headers),
+        await viaHttp2("/api/origin?active=true", headers),
+      ];
+      for (const reply of replies) {
+        expect(reply.status).toBe(200);
+        expect(reply.data.url).toBe(`https://${expectedHost}/api/origin?active=true`);
+      }
     });
 
     it("server scripts share the exact same reconstructed request origin", async () => {

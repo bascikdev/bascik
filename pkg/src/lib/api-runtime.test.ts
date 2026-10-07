@@ -1153,6 +1153,66 @@ describe("API runtime execution", () => {
         expect(requestOrigin(totalFallbackReq, trustConfig)).toBe("https://localhost");
       });
 
+      it.each(["[::::]", "[1:2:3]", "999.999.999.999", "256.0.0.1"])(
+        "constructs a safe fallback Request URL for invalid authority %s",
+        (authority) => {
+          const forwardedReq: BascikRequest = {
+            method: "GET",
+            path: "/api/users?active=true",
+            headers: {
+              host: "app.internal:3000",
+              "x-forwarded-proto": "https",
+              "x-forwarded-host": authority,
+            },
+            remoteIp: "10.0.0.1",
+          };
+          expect(createWebRequest(forwardedReq, requestOrigin(forwardedReq, trustConfig)).url)
+            .toBe("https://app.internal:3000/api/users?active=true");
+
+          for (const header of ["host", ":authority"]) {
+            const directReq: BascikRequest = {
+              method: "GET",
+              path: "/api/users?active=true",
+              headers: { [header]: authority },
+              remoteIp: "127.0.0.1",
+            };
+            expect(createWebRequest(directReq, requestOrigin(directReq, noTrustConfig)).url)
+              .toBe("http://localhost/api/users?active=true");
+          }
+        },
+      );
+
+      it.each([
+        { authority: "[::ffff:192.0.2.1]", expectedHost: "[::ffff:c000:201]" },
+        { authority: "[::ffff:192.0.2.1]:8443", expectedHost: "[::ffff:c000:201]:8443" },
+        { authority: "public.example.com.", expectedHost: "public.example.com." },
+        { authority: "public.example.com.:8443", expectedHost: "public.example.com.:8443" },
+      ])("preserves valid authority $authority in the Request URL", ({ authority, expectedHost }) => {
+        const forwardedReq: BascikRequest = {
+          method: "GET",
+          path: "/api/users?active=true",
+          headers: {
+            host: "app.internal:3000",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": authority,
+          },
+          remoteIp: "10.0.0.1",
+        };
+        expect(createWebRequest(forwardedReq, requestOrigin(forwardedReq, trustConfig)).url)
+          .toBe(`https://${expectedHost}/api/users?active=true`);
+
+        for (const header of ["host", ":authority"]) {
+          const directReq: BascikRequest = {
+            method: "GET",
+            path: "/api/users?active=true",
+            headers: { [header]: authority },
+            remoteIp: "127.0.0.1",
+          };
+          expect(createWebRequest(directReq, requestOrigin(directReq, noTrustConfig)).url)
+            .toBe(`http://${expectedHost}/api/users?active=true`);
+        }
+      });
+
       it("supports IPv6 bracketed hosts and ports in authority", () => {
         const ipv6Req: BascikRequest = {
           method: "GET",
