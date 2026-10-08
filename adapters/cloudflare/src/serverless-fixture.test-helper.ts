@@ -156,6 +156,12 @@ export const DELETE = async () => new Response(null, { status: 204 });`,
   );
   await write(
     root,
+    "src/api/files/[...path].ts",
+    `export const GET = async (_req: Request, ctx: { params: Record<string, string | string[]> }) =>
+  Response.json({ path: ctx.params.path });`,
+  );
+  await write(
+    root,
     "src/api/echo.ts",
     `export const POST = async (req: Request) => {
   const body = await req.text();

@@ -180,11 +180,13 @@ export class ApiRouteRegistry {
   }
 
   /**
-   * Match an incoming request pathname.
+   * Match an incoming request pathname. `rawPathname` is the undecoded path
+   * (query and fragment removed); catch-all routes split and decode it
+   * themselves. Throws `InvalidApiPathError` for an unsafe catch-all capture.
    */
-  match(pathname: string): ApiRouteMatch | null {
+  match(pathname: string, rawPathname: string = pathname): ApiRouteMatch | null {
     if (this.routes.length === 0) return null;
-    return matchApiRoute(this.routes, pathname);
+    return matchApiRoute(this.routes, pathname, rawPathname);
   }
 
   /**

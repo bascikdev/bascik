@@ -66,11 +66,19 @@ test.describe('data-bascik-server — request-time script execution', () => {
     await expect(page.getByTestId('from-query')).toHaveText('red');
   });
 
-  // ─── Request path ────────────────────────────────────────────────────────
+  // ─── Request path and origin ──────────────────────────────────────────────
 
   test('provides the URL path (without query string) to the script', async ({ page }) => {
     await page.goto('/server-scripts-test?color=green');
     await expect(page.getByTestId('from-path')).toHaveText('/server-scripts-test');
+  });
+
+  test('provides valid request origin in server script matching the transport', async ({ page }) => {
+    await page.goto('/server-scripts-test');
+    const originText = await page.getByTestId('from-origin').textContent();
+    expect(originText).toMatch(/^https?:\/\//);
+    const parsed = new URL(originText ?? '');
+    expect(['http:', 'https:']).toContain(parsed.protocol);
   });
 
   // ─── Async scripts ───────────────────────────────────────────────────────

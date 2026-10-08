@@ -137,4 +137,103 @@ test.describe('API routes core functionality', () => {
     const res = await request.get('/api/.hidden');
     expect(res.status()).toBe(404);
   });
+
+  test('GET /api/request-origin reconstructs scheme and authority conforming to protocol', async ({ request }) => {
+    const res = await request.get('/api/request-origin');
+    expect(res.status()).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.url).toMatch(/^https?:\/\/[^/]+\/api\/request-origin$/);
+    expect(['http:', 'https:']).toContain(data.protocol);
+    expect(data.origin).toMatch(/^https?:\/\//);
+    expect(data.host).toBeTruthy();
+  });
+});
+
+test.describe('API catch-all routes ([...path])', () => {
+  test('captures one remaining segment as a one element array', async ({ request }) => {
+    const res = await request.get('/api/files/readme.txt');
+    expect(res.status()).toBe(200);
+    const data = await res.json();
+    expect(data.route).toBe('catch-all');
+    expect(data.segments).toEqual(['readme.txt']);
+  });
+
+  test('captures many remaining segments preserving boundaries, ignoring the query string', async ({ request }) => {
+    const res = await request.get('/api/files/reports/2026/q1.pdf?download=1');
+    expect(res.status()).toBe(200);
+    const data = await res.json();
+    expect(data.segments).toEqual(['reports', '2026', 'q1.pdf']);
+  });
+
+  test('ignores one trailing slash', async ({ request }) => {
+    const res = await request.get('/api/files/a/b/');
+    expect(res.status()).toBe(200);
+    expect((await res.json()).segments).toEqual(['a', 'b']);
+  });
+
+  test('decodes each segment exactly once', async ({ request }) => {
+    const res = await request.get('/api/files/hello%20world/caf%C3%A9/%2541');
+    expect(res.status()).toBe(200);
+    expect((await res.json()).segments).toEqual(['hello world', 'café', '%41']);
+  });
+
+  test('static route beats the catch-all', async ({ request }) => {
+    const res = await request.get('/api/files/latest');
+    expect(res.status()).toBe(200);
+    expect((await res.json()).route).toBe('static');
+  });
+
+  test('[param] route beats the catch-all for exactly one segment, catch-all takes deeper paths', async ({ request }) => {
+    const param = await request.get('/api/files/v/2');
+    expect((await param.json())).toEqual({ route: 'param', version: '2' });
+
+    const deeper = await request.get('/api/files/v/2/extra');
+    expect(deeper.status()).toBe(200);
+    const data = await deeper.json();
+    expect(data.route).toBe('catch-all');
+    expect(data.segments).toEqual(['v', '2', 'extra']);
+  });
+
+  test('zero remaining segments goes to the index route, not the catch-all', async ({ request }) => {
+    const res = await request.get('/api/files');
+    expect(res.status()).toBe(200);
+    expect((await res.json()).route).toBe('index');
+  });
+
+  test('POST dispatches with the captured segments', async ({ request }) => {
+    const res = await request.post('/api/files/up/load', { data: 'payload', headers: { 'content-type': 'text/plain' } });
+    expect(res.status()).toBe(201);
+    const data = await res.json();
+    expect(data.segments).toEqual(['up', 'load']);
+    expect(data.echoed).toBe('payload');
+  });
+
+  test('unsupported method returns 405 with Allow, OPTIONS and HEAD keep their behavior', async ({ request }) => {
+    const put = await request.put('/api/files/a/b');
+    expect(put.status()).toBe(405);
+    expect(put.headers()['allow']).toBe('GET, HEAD, OPTIONS, POST');
+
+    const options = await request.fetch('/api/files/a/b', { method: 'OPTIONS' });
+    expect(options.status()).toBe(204);
+    expect(options.headers()['allow']).toBe('GET, HEAD, OPTIONS, POST');
+    expect(options.headers()['access-control-allow-origin']).toBeUndefined();
+
+    const head = await request.head('/api/files/a/b');
+    expect(head.status()).toBe(200);
+    expect(await head.text()).toBe('');
+  });
+
+  for (const unsafe of ['/api/files/a%2Fb', '/api/files/a%2fb', '/api/files/a%5Cb', '/api/files/%E0%A4%A', '/api/files/a%00b', '/api/files/a//b']) {
+    test(`rejects ${unsafe} with 400 and never runs the handler`, async ({ request }) => {
+      const res = await request.get(unsafe);
+      expect(res.status()).toBe(400);
+      expect(await res.text()).not.toContain('segments');
+    });
+  }
+
+  test('hidden segments under a catch-all are 404', async ({ request }) => {
+    const res = await request.get('/api/files/a/.env');
+    expect(res.status()).toBe(404);
+  });
 });

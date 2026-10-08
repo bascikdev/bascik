@@ -31,6 +31,13 @@
     }
   </script>
 
+  <!-- output the reconstructed origin from request.url -->
+  <script data-bascik-server>
+    export default function (request) {
+      return `<p id="from-origin" data-testid="from-origin">${new URL(request.url).origin}</p>`;
+    }
+  </script>
+
   <!-- top-level await works in server scripts -->
   <script data-bascik-server>
     export default async function () {

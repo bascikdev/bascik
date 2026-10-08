@@ -318,62 +318,62 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     display: block;
   }
 
-  /* Hide empty language tabs */
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)) .demo-language-tab[data-language="usage"] {
+  /* Hide empty language tabs. Components expand to their root markup, so test for any child element. */
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)) .demo-language-tab[data-language="usage"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="html"] code-block)) .demo-language-tab[data-language="html"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="html"] > *)) .demo-language-tab[data-language="html"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="css"] code-block)) .demo-language-tab[data-language="css"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="css"] > *)) .demo-language-tab[data-language="css"] {
     display: none;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="js"] code-block)) .demo-language-tab[data-language="js"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="js"] > *)) .demo-language-tab[data-language="js"] {
     display: none;
   }
 
   /* Hide tablist if all language panes are empty */
-  .demo-pane:not(:has(.demo-language-pane code-block)) .demo-language-tabs {
+  .demo-pane:not(:has(.demo-language-pane > *)) .demo-language-tabs {
     display: none;
   }
 
   /* Fallback activation when default checked tab is empty */
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="html"]:has(code-block) {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="html"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"]::before {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="html"]::before {
     background: var(--accent);
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="css"]:has(code-block) {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="css"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"]::before {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="css"]::before {
     background: var(--accent);
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="js"]:has(code-block) {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-pane[data-language-pane="js"]:has(> *) {
     display: block;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"] {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"] {
     color: #18191b;
   }
 
-  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] code-block)):not(:has(.demo-language-pane[data-language-pane="html"] code-block)):not(:has(.demo-language-pane[data-language-pane="css"] code-block)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"]::before {
+  .demo-pane:not(:has(.demo-language-pane[data-language-pane="usage"] > *)):not(:has(.demo-language-pane[data-language-pane="html"] > *)):not(:has(.demo-language-pane[data-language-pane="css"] > *)):has(.demo-lang-radio[value="usage"]:checked) .demo-language-tab[data-language="js"]::before {
     background: var(--accent);
   }
 

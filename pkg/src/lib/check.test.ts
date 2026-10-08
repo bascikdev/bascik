@@ -311,6 +311,27 @@ describe("checkProject", () => {
       expect(findings.items.some((i) => i.category === "route-collision")).toBe(true);
     });
 
+    it("reports ambiguous catch-all pairs as route-collision and malformed catch-alls as invalid-catch-all", async () => {
+      await setupProject({
+        "pages/index.html": "<p>hello</p>",
+        "src/api/[...a].ts": "export const GET = () => new Response('a');",
+        "src/api/[...b].ts": "export const GET = () => new Response('b');",
+        "src/api/bad/[...x]/y.ts": "export const GET = () => new Response('y');",
+        "src/api/ok/[...rest].ts": "export const GET = () => new Response('ok');",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const collisions = findings.items.filter((i) => i.category === "route-collision");
+      expect(collisions).toHaveLength(1);
+      expect(collisions[0].message).toContain("Ambiguous");
+      expect(collisions[0].locations).toHaveLength(2);
+      const invalid = findings.items.filter((i) => i.category === "invalid-catch-all");
+      expect(invalid).toHaveLength(1);
+      expect(invalid[0].message).toContain("must be the last segment");
+    });
+
     it("reports warning when an exported name looks like a method but is not uppercase (e.g. Post or get)", async () => {
       await setupProject({
         "pages/index.html": "<p>hello</p>",

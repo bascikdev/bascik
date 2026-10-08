@@ -1256,7 +1256,7 @@ export default defineConfig({
 });
 ```
 
-> **Reverse Proxy & CDN Note (`trustProxy`):** When deploying `bascik --server` behind a CDN or load balancer, set `http.trustProxy: true` in `bascik.config.ts`. This ensures per-IP rate limiting and HSTS headers accurately resolve the client from `X-Forwarded-For` and `X-Forwarded-Proto`. Do not enable `trustProxy` if the server is exposed directly to the Internet without a reverse proxy.
+> **Reverse Proxy & CDN Note (`trustProxy`):** When deploying `bascik --server` behind a CDN or load balancer, set `http.trustProxy: true` in `bascik.config.ts`. This ensures per-IP rate limiting, request URL origin reconstruction, and HSTS headers accurately resolve the client and public origin from `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host`. Do not enable `trustProxy` if the server is exposed directly to the Internet without a reverse proxy.
 
 > **Health Endpoints & Port Conflicts:** `bascik --server` provides `GET /_health` (returns 200 when ready, 503 during boot or drain). Under `--server`, port conflicts (`EADDRINUSE`) fail fast rather than binding an unexpected port.
 
@@ -1401,6 +1401,7 @@ export const POST = async (request: Request): Promise<Response> => {
 
 * **Method exports:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`. Unexported methods return `405 Method Not Allowed` with an accurate `Allow` header.
 * **Derived HEAD & Auto OPTIONS:** `HEAD` auto-derives from `GET` (headers only, body stripped); `OPTIONS` auto-responds 204 with `Allow`.
+* **Catch-all:** a final `[...path]` segment (`src/api/files/[...path].ts`) matches one or more remaining segments (never zero) and gives `params.path` as a decoded `string[]`. Precedence: static, then `[param]`, then catch-all, independent of file order. Malformed encoding, `%2F`/`%5C`, `..` traversal, control characters, and empty interior segments return 400. Single-dot and hidden segments return 404 before matching. It must be a named, final segment; two catch-alls at one position are an error. API routes only.
 * **Context argument:** `(request, { params, remoteIp }, { signal })`. Route params are parsed from `[param]` segments. `remoteIp` is proxy-aware when `http.trustProxy` is true. `signal` provides cooperative abort on `http.apiTimeout`.
 * **Streaming request body:** `request.body` is a WHATWG stream with `duplex: 'half'`. Handlers call `.json()`, `.text()`, etc. `http.maxBodySize` (default 1 MB) counts streamed bytes and aborts with 413 without memory buffering.
 * **Security & secrets:** Handlers run in-process with access to `process.env`. Handler source files in `src/api/` are never served or copied to static builds. Thrown errors return 500 with zero stack/path info leaked to clients. No CORS headers are added by default.

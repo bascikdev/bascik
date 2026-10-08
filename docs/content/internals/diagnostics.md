@@ -126,7 +126,8 @@ To add a new validation check:
 | Script Mode Conflict | `script-mode-conflict` | Error | 1 | A script tag has both `data-bascik-build` and `data-bascik-server`. |
 | Duplicate Route Resolution | `duplicate-route-resolution` | Error | 1 | Multiple pages resolve to the same route path. |
 | API Route Missing Handler | `missing-method-handler` | Error | 1 | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.). |
-| API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path. |
+| API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests. |
+| API Invalid Catch-All | `invalid-catch-all` | Error | 1 | A `[...name]` segment is unnamed, partial, repeated, or not the final segment. |
 | API Route Invalid Case | `invalid-method-case` | Warning | 0 | Method export name is not uppercase (e.g. `get` instead of `GET`). |
 | Component Order Convention | `component-structure-order` | Warning | 0 | Advises `<style>` above markup and `<script>` below markup in component templates. |
 

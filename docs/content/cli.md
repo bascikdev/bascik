@@ -347,7 +347,8 @@ Unused components (1)
 | A script tag with both `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
 | Duplicate route resolution from page paths | `duplicate-route-resolution` | Error |
 | API route file with no recognized method export | `missing-method-handler` | Error |
-| Multiple API route files resolving to one URL | `route-collision` | Error |
+| Multiple API route files resolving to one URL, or ambiguous catch-all pairs | `route-collision` | Error |
+| Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`) | `invalid-catch-all` | Error |
 | Method-like API export with wrong casing (`get`, `Post`) | `invalid-method-case` | Warning |
 | Unmatched component tag usage | `unmatched-tag` | Warning |
 | Unused component file | `unused-component` | Warning |

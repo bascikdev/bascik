@@ -35,7 +35,7 @@ export type ApiRouteContext = ApiHandlerContext;
 export interface ExecuteApiRouteOptions {
   filePath: string;
   request: Request;
-  params: Record<string, string>;
+  params: Record<string, string | string[]>;
   remoteIp: string;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -73,13 +73,90 @@ export const createByteLimitTransform = (
 };
 
 /**
+ * Extract the rightmost (immediate proxy) entry from a header that may be
+ * comma-delimited or an array of strings.
+ */
+export const getRightmostHeaderValue = (
+  value: string | string[] | undefined
+): string | undefined => {
+  if (typeof value === "string") {
+    const parts = value.split(",").map((p) => p.trim()).filter(Boolean);
+    return parts.length > 0 ? parts[parts.length - 1] : undefined;
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const lastItem = value[value.length - 1];
+    if (typeof lastItem === "string") {
+      const parts = lastItem.split(",").map((p) => p.trim()).filter(Boolean);
+      return parts.length > 0 ? parts[parts.length - 1] : undefined;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Validate that an authority (host[:port]) is syntactically well-formed:
+ * - May be a domain name or IPv4 address, optionally followed by :port (1-65535)
+ * - May be an IPv6 address enclosed in brackets [::1], optionally followed by :port
+ * - Must not contain URI delimiters like /, ?, #, @, spaces, or control characters.
+ */
+const isValidAuthority = (authority: string): boolean => {
+  if (!authority || authority.length > 255) return false;
+  const match = /^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9.-]+)(?::(\d{1,5}))?$/.exec(authority);
+  if (!match) return false;
+  const [, host, port] = match;
+  if (host.startsWith(".")) return false;
+  if (port !== undefined) {
+    const portNum = Number(port);
+    if (portNum < 1 || portNum > 65535) return false;
+  }
+  try {
+    return new URL(`http://${authority}`).hostname !== "";
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Derive the truthful origin (scheme + authority) for a request.
+ *
+ * When http.trustProxy is enabled (true), safely reconstructs the external
+ * scheme and authority from supported proxy headers (X-Forwarded-Proto and
+ * X-Forwarded-Host), taking the rightmost (immediate proxy) entry.
+ *
+ * When http.trustProxy is disabled (false), proxy headers are strictly ignored
+ * to prevent spoofing, and the origin is derived from local TLS configuration
+ * and HTTP/2 :authority or HTTP/1.1 Host headers.
  */
 export const requestOrigin = (rawReq: BascikRequest, config = BascikConfig): string => {
-  const scheme = config.http.tls?.enabled ? "https" : "http";
-  const authority = rawReq.headers[":authority"] ?? rawReq.headers.host ?? "localhost";
-  const authorityStr = Array.isArray(authority) ? authority[0] : authority;
-  return `${scheme}://${authorityStr}`;
+  const localScheme = config.http.tls?.enabled ? "https" : "http";
+  const rawAuthority = rawReq.headers[":authority"] ?? rawReq.headers.host;
+  const rawAuthorityStr = Array.isArray(rawAuthority) ? rawAuthority[0] : rawAuthority;
+  const fallbackAuthority =
+    typeof rawAuthorityStr === "string" && isValidAuthority(rawAuthorityStr.trim())
+      ? rawAuthorityStr.trim()
+      : "localhost";
+
+  if (config.http.trustProxy === true) {
+    const protoHeader = getRightmostHeaderValue(rawReq.headers["x-forwarded-proto"]);
+    const hostHeader = getRightmostHeaderValue(rawReq.headers["x-forwarded-host"]);
+
+    let scheme = localScheme;
+    if (protoHeader) {
+      const lowerProto = protoHeader.toLowerCase();
+      if (lowerProto === "https" || lowerProto === "http") {
+        scheme = lowerProto;
+      }
+    }
+
+    let authority = fallbackAuthority;
+    if (hostHeader && isValidAuthority(hostHeader)) {
+      authority = hostHeader;
+    }
+
+    return `${scheme}://${authority}`;
+  }
+
+  return `${localScheme}://${fallbackAuthority}`;
 };
 
 /**
@@ -195,7 +272,7 @@ export const executeApiRoute = async (
     let loadedModule: any;
     try {
       const loadPromise = Promise.resolve(scriptRegistry.load(filePath));
-      loadPromise.catch(() => {});
+      loadPromise.catch(() => { });
 
       const abortDuringLoadPromise = new Promise<never>((_, reject) => {
         if (abortController.signal.aborted) {
@@ -213,7 +290,7 @@ export const executeApiRoute = async (
         };
         abortController.signal.addEventListener("abort", onAbortListener, { once: true });
       });
-      abortDuringLoadPromise.catch(() => {});
+      abortDuringLoadPromise.catch(() => { });
 
       const loaded = (await Promise.race([loadPromise, abortDuringLoadPromise])) as any;
       if (onAbortListener) {

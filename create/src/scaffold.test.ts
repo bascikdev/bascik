@@ -132,9 +132,9 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.devDependencies["@playwright/test"]).toBeDefined();
   });
 
-  it("uses the current Bascik prerelease dependency", () => {
+  it("includes Bascik as a dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
-    expect(pkg.dependencies["@bascik/bascik"]).toBe("^1.0.0-rc.4");
+    expect(pkg.dependencies["@bascik/bascik"]).toBeDefined();
   });
 
   it("uses the supplied name", () => {

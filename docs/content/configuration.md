@@ -518,7 +518,7 @@ http: {
     certFile: undefined,    // path to TLS certificate
   },
   rateLimit: true,          // boolean or { window?: number, max?: number } (default: 500 req / 10s)
-  trustProxy: false,        // trust X-Forwarded-For and X-Forwarded-Proto behind reverse proxy/CDN
+  trustProxy: false,        // trust X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host behind reverse proxy/CDN
   cacheControl: 'public, max-age=3600',
   compression: true,
   precompress: false,       // emit .br/.gz sidecars with .bmeta provenance at build time

@@ -45,7 +45,8 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import { createWebRequest, requestOrigin } from "./api-runtime.ts";
+import { InvalidApiPathError } from "./route-matching.ts";
+import { createWebRequest, getRightmostHeaderValue, requestOrigin } from "./api-runtime.ts";
 import { NODE_PLATFORM } from "./request-execution.ts";
 
 export { setServerHealthState, getServerHealthState, isHealthEndpoint, handleHealthCheck };
@@ -88,7 +89,8 @@ const SECURITY_HEADERS: Record<string, string> = {
 export const getSecurityHeaders = (req?: BascikRequest): Record<string, string> => {
   const isHttps = req && req.headers
     ? req.headers[":scheme"] === "https" ||
-    (BascikConfig.http.trustProxy === true && req.headers["x-forwarded-proto"] === "https")
+    (BascikConfig.http.trustProxy === true &&
+      getRightmostHeaderValue(req.headers["x-forwarded-proto"])?.toLowerCase() === "https")
     : false;
   if (isHttps || (BascikConfig.isProdServer && BascikConfig.http.tls.enabled)) {
     return {
@@ -489,7 +491,16 @@ export const createRequestHandler = () => {
 
       // ── API route matching and dispatch ──────────────────────────────────
       // Runs before the GET/HEAD method guard so POST, PUT, DELETE, etc. work.
-      const apiMatch = apiRouteRegistry.match(pathname);
+      let apiMatch: ReturnType<typeof apiRouteRegistry.match>;
+      try {
+        apiMatch = apiRouteRegistry.match(pathname, rawPathname);
+      } catch (err) {
+        if (!(err instanceof InvalidApiPathError)) throw err;
+        responseStatus = 400;
+        res.respond(400, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
+        res.end("Bad Request");
+        return;
+      }
       if (apiMatch) {
         responseStatus = await apiRouteRegistry.dispatch(req, res, apiMatch, secHeaders);
         return;
