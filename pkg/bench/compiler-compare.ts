@@ -12,7 +12,7 @@ import { cpus } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
-import { distDigest } from './compiler-timeline.ts';
+import { distDigest, encodeEditPlan } from './compiler-timeline.ts';
 import { execute } from './profile-runner.ts';
 import { cleanGeneratorEnvironment, validatePrivateDirectory } from './profile-workload.ts';
 
@@ -116,7 +116,7 @@ export async function runCompilerCompare(options: CompareOptions) {
         await mkdir(directory, { recursive: true, mode: 0o700 });
         const resultPath = join(directory, 'subject.json');
         console.log(`Paired ${options.mode} ${label}`);
-        await execute([process.execPath, fileURLToPath(new URL('./compiler-timeline-subject.ts', import.meta.url)), compilers[name].path, options.mode, resultPath, 'false'], project, join(directory, 'capture'), {
+        await execute([process.execPath, fileURLToPath(new URL('./compiler-timeline-subject.ts', import.meta.url)), compilers[name].path, options.mode, resultPath, encodeEditPlan([])], project, join(directory, 'capture'), {
           ...cleanGeneratorEnvironment(process.env), ...(options.siteUrl ? { BASCIK_SITE_URL: options.siteUrl } : {}),
         });
         const result = JSON.parse(await readFile(resultPath, 'utf8'));

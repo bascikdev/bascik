@@ -12,8 +12,11 @@ import { digest, profilerFreeEnvironment } from './profile-workload.ts';
 // Bump when subject.json fields change meaning. This module is a process entry point and is never imported.
 const SUBJECT_SCHEMA_VERSION = 1;
 
-const [compiler, mode, resultPath, editFlag] = process.argv.slice(2);
+const [compiler, mode, resultPath, editPlan] = process.argv.slice(2);
 assert(['dev', 'build'].includes(mode));
+// base64url JSON: Clinic's subarg parser would rewrite a literal `[...]` argument.
+const editTargets = JSON.parse(Buffer.from(editPlan ?? '', 'base64url').toString('utf8') || '[]') as { kind: 'page' | 'content' | 'helper'; path: string; outputPath: string }[];
+assert(Array.isArray(editTargets), 'edit plan must be a JSON array');
 process.argv = [process.execPath, join(compiler, 'bin/bascik.js'), ...(mode === 'build' ? ['--build'] : [])];
 // Reuse docs authoring/config without TLS setup or conflicts with existing servers.
 const reservation = net.createServer();
@@ -41,15 +44,26 @@ for (const name of ['readFile', 'stat', 'readdir'] as const) {
   });
 }
 let childStarts = 0;
+let execStarts = 0;
+// execFile/spawn(file[, args][, options][, callback]): profiler preloads must not reach any Node descendant.
+// Build-script children use execFile; config `exec` entries use spawn with an explicit `{ ...process.env }`.
+function withProfilerFreeEnvironment(args: unknown[]) {
+  const index = Array.isArray(args[1]) ? 2 : 1;
+  const options = args[index];
+  if (options && typeof options === 'object') args[index] = { ...options, env: profilerFreeEnvironment((options as { env?: NodeJS.ProcessEnv }).env ?? process.env) };
+  else args.splice(index, 0, { env: profilerFreeEnvironment(process.env) });
+  return args;
+}
 children.execFile = new Proxy(children.execFile, {
   apply(target, receiver, args) {
     childStarts++;
-    // execFile(file[, args][, options][, callback]): profiler preloads must not reach script children.
-    const index = Array.isArray(args[1]) ? 2 : 1;
-    const options = args[index];
-    if (options && typeof options === 'object') args[index] = { ...options, env: profilerFreeEnvironment((options as { env?: NodeJS.ProcessEnv }).env ?? process.env) };
-    else args.splice(index, 0, { env: profilerFreeEnvironment(process.env) });
-    return Reflect.apply(target, receiver, args);
+    return Reflect.apply(target, receiver, withProfilerFreeEnvironment(args));
+  }
+});
+children.spawn = new Proxy(children.spawn, {
+  apply(target, receiver, args) {
+    execStarts++;
+    return Reflect.apply(target, receiver, withProfilerFreeEnvironment(args));
   }
 });
 // A Worker parses NODE_OPTIONS from its env, so without an explicit env every page worker would load the
@@ -58,11 +72,28 @@ children.execFile = new Proxy(children.execFile, {
 const threads = require('node:worker_threads') as typeof import('node:worker_threads');
 const OriginalWorker = threads.Worker;
 let workerStarts = 0;
+let profiledWorkerStarts = 0;
+// all: every worker inherits --cpu-prof; first: only the first worker; none: main isolate only;
+// inspector: workers drop --cpu-prof and start the inspector Profiler from an --import preload, after bootstrap.
+const workerCpu = process.env.BASCIK_TIMELINE_WORKER_CPU ?? 'none';
+assert(['all', 'first', 'none', 'inspector'].includes(workerCpu), 'BASCIK_TIMELINE_WORKER_CPU must be all, first, none, or inspector');
+const workerProfileDirectory = process.env.BASCIK_TIMELINE_WORKER_PROFILE_DIR;
+assert(workerCpu !== 'inspector' || workerProfileDirectory, 'inspector worker profiling requires BASCIK_TIMELINE_WORKER_PROFILE_DIR');
+const isolatePreload = new URL('./profile-isolate.ts', import.meta.url).href;
+const isCpuProfileFlag = (flag: string) => flag === '--cpu-prof' || flag.startsWith('--cpu-prof-');
+const cpuProfiling = process.execArgv.some(isCpuProfileFlag);
 threads.Worker = class extends OriginalWorker {
   constructor(filename: string | URL, options: WorkerOptions = {}) {
     assert(typeof options.env !== 'symbol', 'SHARE_ENV workers cannot be isolated from profiler instrumentation');
-    super(filename, { ...options, env: profilerFreeEnvironment((options.env as NodeJS.ProcessEnv | undefined) ?? process.env) });
+    const nativeProfile = workerCpu === 'all' || (workerCpu === 'first' && workerStarts === 0);
+    const inspectorProfile = cpuProfiling && workerCpu === 'inspector';
+    const unprofiled = (options.execArgv ?? process.execArgv).filter(flag => !isCpuProfileFlag(flag));
+    const execArgv = nativeProfile ? options.execArgv : inspectorProfile ? [...unprofiled, `--import=${isolatePreload}`] : unprofiled;
+    const env = profilerFreeEnvironment((options.env as NodeJS.ProcessEnv | undefined) ?? process.env);
+    if (inspectorProfile) env.BASCIK_PROFILE_CAPTURE_DIR = workerProfileDirectory;
+    super(filename, { ...options, execArgv, env });
     workerStarts++;
+    if (cpuProfiling && (nativeProfile || inspectorProfile)) profiledWorkerStarts++;
   }
 };
 syncBuiltinESMExports();
@@ -91,13 +122,12 @@ const { pageWriteIdle } = await load('lib/processing.js');
 for (const page of pages) await pageWriteIdle(resolve('src', page.path));
 const bootPages = [...pages];
 const edits: object[] = [];
-if (mode === 'dev' && editFlag === 'true') {
+if (mode === 'dev') {
   // Visible markers survive Markdown and HTML minification; a comment-only edit is not a content oracle.
-  for (const [kind, path] of [['page', 'src/pages/index.html'], ['content', 'content/getting-started.md'], ['helper', 'src/lib/md-renderer.ts']] as const) {
+  for (const { kind, path, outputPath } of editTargets) {
     const before = pages.length;
     const source = await readFile(path, 'utf8');
     const marker = `timeline-${kind}-${Date.now()}`;
-    const outputPath = kind === 'page' ? 'dist/index.html' : 'dist/getting-started.html';
     const changed = kind === 'page' ? source.replace('</body>', `<p>${marker}</p></body>`)
       : kind === 'content' ? `${source}\n\n${marker}\n`
         : source.replace("let html = marked.parse(md, { async: false });", `let html = marked.parse(md, { async: false }); html += '<p>${marker}</p>';`);
@@ -138,9 +168,9 @@ if (mode === 'build') {
 }
 delay.disable();
 await writeFile(resultPath, JSON.stringify({
-  schemaVersion: SUBJECT_SCHEMA_VERSION, pid: process.pid, workerStarts,
+  schemaVersion: SUBJECT_SCHEMA_VERSION, pid: process.pid, workerStarts, profiledWorkerStarts, workerCpu,
   mode, importMs, readyMs, batchMs, totalMs: performance.now() - start,
-  pages: bootPages, outputs, edits, operations, childStarts, cpu: process.cpuUsage(cpuStart), memory: process.memoryUsage(),
+  pages: bootPages, outputs, edits, operations, childStarts, execStarts, cpu: process.cpuUsage(cpuStart), memory: process.memoryUsage(),
   eventLoopP95Ms: delay.count ? delay.percentile(95) / 1e6 : null,
   limitations: ['Filesystem elapsed sums include async overlap, not CPU time', 'Counts exclude worker isolates', 'Edits observed at disk output, not browser refresh'],
 }, null, 2), { mode: 0o600 });
