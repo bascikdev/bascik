@@ -770,7 +770,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
         }
       }
 
-      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:\s+[^>]*)?\s*>/gi;
       let scriptMatch: RegExpExecArray | null;
       while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
         const openTag = scriptMatch[1];
