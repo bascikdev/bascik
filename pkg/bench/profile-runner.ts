@@ -12,7 +12,7 @@ import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { createFixture, seed } from "./profile-fixture.ts";
 import { profileJournal } from "./profile-diagnostics.ts";
-import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, summarizeAllocationProfile, workerCpuLimitation, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
+import { cleanGeneratorEnvironment, descendantClinicDatasets, digest, mainClinicDataset, summarizeCpuProfile, summarizeAllocationProfile, workerCpuLimitation, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const subject = fileURLToPath(new URL("./profile-subject.ts", import.meta.url));
@@ -227,22 +227,22 @@ export async function runProfiles() {
       const environment = clinicTool ? clinicEnvironment() : { ...cleanGeneratorEnvironment(process.env), ...(tool === "cpu" ? { BASCIK_PROFILE_CAPTURE_DIR: profiles } : {}) };
       await execute(command, project, join(directory, "capture"), environment);
       let decoded;
+      const mainDataset = clinicTool ? mainClinicDataset(await readFile(join(directory, "capture/process.log"), "utf8"), profiles, tool) : undefined;
+      const descendantDatasets = mainDataset ? await descendantClinicDatasets(profiles, tool, mainDataset) : [];
       if (tool === "bubbleprof" || tool === "heapprofiler") {
-        const datasets = (await readdir(profiles)).filter((name) => name.endsWith(`.clinic-${tool}`));
-        assert.equal(datasets.length, 1, `missing or ambiguous ${tool} dataset`);
-        const dataset = join(profiles, datasets[0]);
+        assert.equal(descendantDatasets.length, 0, `descendant ${tool} datasets: ${descendantDatasets.join(", ")}`);
+        const dataset = mainDataset!;
         decoded = await decodeClinicDataset(tool, dataset);
         await execute([process.execPath, clinicCli, tool, "--visualize-only", dataset, "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
       }
       if (tool === "doctor") {
-        const dataset = (await readdir(profiles)).find((name) => name.endsWith(".clinic-doctor"));
-        assert(dataset, "Doctor dataset missing");
+        const dataset = mainDataset!;
         for (const suffix of ["systeminfo", "traceevent", "processstat"]) {
-          const matches: string[] = (await filesUnder(join(profiles, dataset))).filter((path) => path.endsWith(suffix));
+          const matches: string[] = (await filesUnder(dataset)).filter((path) => path.endsWith(suffix));
           assert.equal(matches.length, 1, `missing Doctor ${suffix}`);
           await validateArtifact(matches[0], "binary");
         }
-        await execute([process.execPath, clinicCli, "doctor", "--visualize-only", join(profiles, dataset), "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
+        await execute([process.execPath, clinicCli, "doctor", "--visualize-only", dataset, "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
       }
       const artifact = await validateArtifact(join(directory, "result.json"), "json");
       const result = JSON.parse(await readFile(artifact.path, "utf8"));
@@ -279,7 +279,7 @@ export async function runProfiles() {
       else for (const event of result.subjectEvents ?? []) coverage.push({ ...event, tool: "none", captured: false, limitation: "separate Node CPU capture required" });
       if (clinicTool || tool === "0x") assert(artifacts.some((item) => item.path.endsWith(".html")), "missing rendered capture");
       const config = await readFile(join(project, "bascik.config.ts"), "utf8");
-      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution, decoded });
+      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution, decoded, mainDataset, descendantDatasets });
     } catch (error) {
       if (error instanceof CaptureCanceled) throw error;
       failures.push({ label, error: String(error) });

@@ -118,6 +118,22 @@ const depContentCache = new Map<string, string>();
 export const MAX_IN_MEMORY_SCRIPT_OUTPUTS = 512;
 
 const inMemoryScriptOutputCache = new Map<string, string>();
+
+/**
+ * Entry cap (distinct source texts) for the dependency scan memo. Every cache
+ * key walks the script's full local dependency graph, and the same helpers are
+ * reached from every page, so without the memo each key re-tokenizes every
+ * helper. FIFO like the output memo; an evicted entry costs one rescan.
+ */
+export const MAX_DEPENDENCY_SCANS = 1024;
+// Per-text cap on distinct resolution contexts (base directory, import root, cwd).
+const MAX_DEPENDENCY_SCAN_CONTEXTS = 64;
+// source text -> resolution context -> extracted dependencies. A scan is a pure
+// function of exactly these inputs (`resolveSpecifierPath` does no I/O), so a
+// hit can never be stale: changed file content is a different key. Clears only
+// reclaim memory. Keying by the text itself lets lookups of a dependency's
+// content (the string `depContentCache` retains) reuse its cached string hash.
+const dependencyScanCache = new Map<string, Map<string, readonly string[]>>();
 // Reverse index: dependency (project-relative key) -> the output cache keys
 // whose hash folded that dependency's content in. Lets a per-path clear drop
 // exactly the memoized outputs that read the changed file (prompt 139). Kept
@@ -204,6 +220,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   inMemoryScriptOutputCache.clear();
   outputKeysByDependency.clear();
   dependenciesByOutputKey.clear();
+  dependencyScanCache.clear();
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */
@@ -217,6 +234,9 @@ export const _buildScriptCacheTestHooks = {
   },
   get outputCacheSize(): number {
     return inMemoryScriptOutputCache.size;
+  },
+  get dependencyScanSize(): number {
+    return dependencyScanCache.size;
   },
   /** Number of memo keys the reverse index holds for a dependency. */
   reverseIndexKeyCount(filePath: string): number {
@@ -312,8 +332,27 @@ export const extractScriptDeps = (
   esmBaseDir: string = process.cwd(),
   options: ImportRootOptions = {},
 ): string[] => {
-  const seen = new Set<string>();
   const importRoot = options.importRoot ?? getImportRoot();
+  const context = `${esmBaseDir}\0${importRoot}\0${process.cwd()}`;
+  let contexts = dependencyScanCache.get(script);
+  const hit = contexts?.get(context);
+  // Callers own the returned array; the memoized one is never exposed.
+  if (hit) return [...hit];
+  const deps = scanScriptDeps(script, esmBaseDir, importRoot);
+  if (!contexts) {
+    while (dependencyScanCache.size >= MAX_DEPENDENCY_SCANS) {
+      dependencyScanCache.delete(dependencyScanCache.keys().next().value as string);
+    }
+    contexts = new Map();
+    dependencyScanCache.set(script, contexts);
+  }
+  if (contexts.size >= MAX_DEPENDENCY_SCAN_CONTEXTS) contexts.delete(contexts.keys().next().value as string);
+  contexts.set(context, deps);
+  return [...deps];
+};
+
+const scanScriptDeps = (script: string, esmBaseDir: string, importRoot: string): string[] => {
+  const seen = new Set<string>();
 
   // One tokenization pass serves both extractions (prompt 82).
   const { moduleSpecifiers, callArgumentLiterals } = scanScript(script);

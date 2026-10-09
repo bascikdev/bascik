@@ -101,6 +101,8 @@
     "update-e2e-coverage": "node bin/update-e2e-coverage.ts",
     "bench": "vitest bench",
     "dev": "bascik",
-    "profile:workload": "node bench/profile-workload.ts"
+    "profile:workload": "node bench/profile-workload.ts",
+    "profile:compiler": "node bench/compiler-timeline.ts",
+    "profile:compare": "node bench/compiler-compare.ts"
   }
 }

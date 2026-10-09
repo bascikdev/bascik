@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHook } from "node:async_hooks";
-import { fstatSync, readdirSync } from "node:fs";
+import { createReadStream, fstatSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -133,6 +133,59 @@ export async function validatePrivateDirectory(path: string, forbidden: string[]
 export function cleanGeneratorEnvironment(environment: NodeJS.ProcessEnv) {
   return Object.fromEntries(Object.entries(environment).filter(([key]) =>
     !/^(NODE_OPTIONS|NODE_V8_COVERAGE|NODE_CLINIC_.*|HEAP_PROFILER_.*|BASCIK_PROFILE_.*|CLINIC_.*|ZEROX_.*|VITEST(?:_.*)?)$/.test(key)));
+}
+/**
+ * Environment for a profiled subject's own descendants (page workers and script children).
+ *
+ * Clinic instruments its target through `NODE_OPTIONS` preloads and trace flags, plus a `NODE_PATH` entry for its
+ * inject directory. Every Node descendant that inherits them runs its own sampler: script children write extra
+ * `<pid>.clinic-*` datasets and `node_trace.*.log` rotations into the shared cwd, and worker threads (same PID as
+ * the target) write into the target's own dataset files. Descendants must run unprofiled unless a harness opts
+ * them into a separately labeled capture.
+ */
+export function profilerFreeEnvironment(environment: NodeJS.ProcessEnv) {
+  const clean = cleanGeneratorEnvironment(environment);
+  if (clean.NODE_PATH !== undefined) {
+    const kept = clean.NODE_PATH.split(delimiter).filter((entry) => entry && !/[\\/]@clinic[\\/]/.test(entry));
+    if (kept.length) clean.NODE_PATH = kept.join(delimiter);
+    else delete clean.NODE_PATH;
+  }
+  return clean;
+}
+/**
+ * Clinic's CLI announces exactly one dataset for its profiled command. Instrumented descendants can leave further
+ * `<pid>.clinic-<tool>` datasets beside it; those never represent the target and must not be decoded or visualized
+ * in its place (directory order sorts PIDs as text, so "first dataset" is arbitrary).
+ */
+export function mainClinicDataset(log: string, profiles: string, tool: string): string {
+  const owner = resolve(profiles);
+  const announced = new Set([...log.matchAll(/^Output file is (.+)$/gm)].map((match) => resolve(match[1].trim())));
+  const owned = [...announced].filter((path) => dirname(path) === owner && /^\d+\.clinic-/.test(basename(path)) && basename(path).endsWith(`.clinic-${tool}`));
+  assert.equal(owned.length, 1, `missing or ambiguous main Clinic ${tool} dataset`);
+  return owned[0];
+}
+/** Datasets in `profiles` other than the announced main dataset; nonzero means descendants were instrumented. */
+export async function descendantClinicDatasets(profiles: string, tool: string, main: string): Promise<string[]> {
+  return (await readdir(profiles)).filter((name) => name.endsWith(`.clinic-${tool}`) && join(resolve(profiles), name) !== resolve(main)).sort();
+}
+/** Distinct `"pid"` values in a Chrome trace-event file, streamed so large Bubbleprof/Doctor traces stay bounded. */
+export async function traceEventPids(path: string): Promise<Set<number>> {
+  const pids = new Set<number>();
+  const pattern = /"pid"\s*:\s*(\d+)/g;
+  let carry = "";
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    const text = carry + (chunk as string);
+    // A field split across chunks is matched once it is complete; keep only an unfinished tail.
+    let consumed = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match.index! + match[0].length === text.length) break;
+      pids.add(Number(match[1]));
+      consumed = match.index! + match[0].length;
+    }
+    carry = text.slice(Math.max(consumed, text.length - 32));
+  }
+  for (const match of carry.matchAll(pattern)) pids.add(Number(match[1]));
+  return pids;
 }
 
 interface AllocationNode { id: number; selfSize: number; callFrame: { functionName: string; url: string; lineNumber: number }; children: AllocationNode[] }

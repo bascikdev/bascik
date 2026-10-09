@@ -8,6 +8,7 @@ import {
   resolveBuildScriptImports,
   SCRIPT_CACHE_VERSION,
   MAX_IN_MEMORY_SCRIPT_OUTPUTS,
+  MAX_DEPENDENCY_SCANS,
   clearBuildScriptCaches,
   _buildScriptCacheTestHooks as cacheHooks,
 } from "./build-scripts.ts";
@@ -39,8 +40,16 @@ const { state, buildScriptMocks } = vi.hoisted(() => {
       return state.userReadFileMock(filePath, ...args);
     }),
     computePackageIdentity: vi.fn(),
+    // Wraps the real tokenizer so tests can count dependency scans by input.
+    scanScript: vi.fn(),
   };
   return { state, buildScriptMocks: mocks };
+});
+
+vi.mock("./module-specifiers.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./module-specifiers.ts")>();
+  buildScriptMocks.scanScript.mockImplementation(actual.scanScript);
+  return { ...actual, scanScript: buildScriptMocks.scanScript };
 });
 
 vi.mock("node:child_process", () => ({
@@ -1974,5 +1983,110 @@ describe("Prompt 02: Build script default-export handler contract", () => {
 
     const result = await executeBuildScripts(html);
     expect(result).toContain(rawMarkup);
+  });
+});
+
+describe("dependency scan memo", () => {
+  const scans = buildScriptMocks.scanScript;
+  const scansOf = (source: string) => scans.mock.calls.filter(([input]) => input === source).length;
+  const helperPath = "src/lib/helper.ts";
+  const sharedPath = "src/lib/shared.ts";
+  const files = new Map<string, string>();
+  const serveFiles = () => {
+    (readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      for (const [relPath, content] of files) if (String(path).endsWith(relPath)) return content;
+      throw new Error("ENOENT");
+    });
+  };
+  const inline = "import { h } from '@/lib/helper.ts'; console.log(h);";
+  const tag = `<script data-bascik-build>${inline}</script>`;
+
+  beforeEach(() => {
+    scans.mockClear();
+    files.clear();
+    files.set(helperPath, "import { s } from './shared.ts'; export const h = s;");
+    files.set(sharedPath, "export const s = 1;");
+    serveFiles();
+  });
+
+  it("tokenizes each dependency's content once across cache keys, pages, and watch dependency collection", async () => {
+    resolveWith("<p>h</p>");
+    const pages = ["src/pages/a.html", "src/pages/b.html", "src/pages/nested/c.html"];
+    for (const page of pages) {
+      // Each page folds its own source file into the key, so every page walks the dependency graph.
+      expect(await executeBuildScripts(tag, page)).toBe("<p>h</p>");
+      expect(await collectAllScriptDeps(tag, page)).toEqual(expect.arrayContaining([helperPath, sharedPath]));
+    }
+    expect(mockExecFile).toHaveBeenCalledTimes(pages.length);
+    expect(scansOf(files.get(helperPath)!)).toBe(1);
+    expect(scansOf(files.get(sharedPath)!)).toBe(1);
+  });
+
+  it("rescans changed content, follows its new imports, and keys the output by the new bytes", async () => {
+    resolveWith("<p>first</p>");
+    await executeBuildScripts(tag, "src/pages/a.html");
+    files.set(helperPath, "import { s } from './shared.ts'; import { t } from './added.ts'; export const h = s + t;");
+    files.set("src/lib/added.ts", "export const t = 2;");
+    clearBuildScriptCaches(helperPath);
+    resolveWith("<p>second</p>");
+    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe("<p>second</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(2);
+    expect(scansOf(files.get(helperPath)!)).toBe(1);
+    expect(await collectAllScriptDeps(tag, "src/pages/a.html")).toEqual(expect.arrayContaining([helperPath, sharedPath, "src/lib/added.ts"]));
+  });
+
+  it("keeps a missing dependency missing in the key even when its importer's scan is memoized", async () => {
+    files.delete(sharedPath);
+    resolveWith("<p>missing</p>");
+    await executeBuildScripts(tag, "src/pages/a.html");
+    await executeBuildScripts(tag, "src/pages/b.html");
+    expect(scansOf(files.get(helperPath)!)).toBe(1);
+    // The dependency appears; its importer's memoized scan still names it, so the key changes.
+    files.set(sharedPath, "export const s = 3;");
+    clearBuildScriptCaches(sharedPath);
+    resolveWith("<p>present</p>");
+    expect(await executeBuildScripts(tag, "src/pages/a.html")).toBe("<p>present</p>");
+    expect(mockExecFile).toHaveBeenCalledTimes(3);
+  });
+
+  it("separates identical source text by base directory, import root, and working directory", () => {
+    const source = "import './x.ts'; import '@/y.ts'; read('./data/z.json');";
+    const a = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") });
+    const b = extractScriptDeps(source, resolve("src/b"), { importRoot: resolve("src") });
+    const otherRoot = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("lib") });
+    expect(a).toEqual(["src/a/x.ts", "src/y.ts", "./data/z.json"]);
+    expect(b).toEqual(["src/b/x.ts", "src/y.ts", "./data/z.json"]);
+    expect(otherRoot).toEqual(["src/a/x.ts", "lib/y.ts", "./data/z.json"]);
+    // Resolve paths before replacing cwd: path.resolve itself reads process.cwd().
+    const [baseDir, importRoot] = [resolve("src/a"), resolve("src")];
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(importRoot);
+    try {
+      expect(extractScriptDeps(source, baseDir, { importRoot })).toEqual(["a/x.ts", "y.ts", "./data/z.json"]);
+    } finally {
+      cwd.mockRestore();
+    }
+    expect(scansOf(source)).toBe(4);
+    // A repeated context is a hit, and callers receive their own array.
+    const again = extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") });
+    expect(again).toEqual(a);
+    again.push("mutated");
+    expect(extractScriptDeps(source, resolve("src/a"), { importRoot: resolve("src") })).toEqual(a);
+    expect(scansOf(source)).toBe(4);
+  });
+
+  it("drops memoized scans on a full clear and stays bounded", () => {
+    const source = "import './x.ts';";
+    extractScriptDeps(source, resolve("src"));
+    extractScriptDeps(source, resolve("src"));
+    expect(scansOf(source)).toBe(1);
+    clearBuildScriptCaches();
+    expect(cacheHooks.dependencyScanSize).toBe(0);
+    extractScriptDeps(source, resolve("src"));
+    expect(scansOf(source)).toBe(2);
+    for (let index = 0; index < MAX_DEPENDENCY_SCANS + 10; index++) extractScriptDeps(`import './x${index}.ts';`, resolve("src"));
+    expect(cacheHooks.dependencyScanSize).toBe(MAX_DEPENDENCY_SCANS);
+    // FIFO: the oldest entry was evicted and is scanned again.
+    extractScriptDeps(source, resolve("src"));
+    expect(scansOf(source)).toBe(3);
   });
 });

@@ -6,7 +6,11 @@ import net from 'node:net';
 import { join, resolve } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { digest } from './profile-workload.ts';
+import type { WorkerOptions } from 'node:worker_threads';
+import { digest, profilerFreeEnvironment } from './profile-workload.ts';
+
+// Bump when subject.json fields change meaning. This module is a process entry point and is never imported.
+const SUBJECT_SCHEMA_VERSION = 1;
 
 const [compiler, mode, resultPath, editFlag] = process.argv.slice(2);
 assert(['dev', 'build'].includes(mode));
@@ -37,7 +41,30 @@ for (const name of ['readFile', 'stat', 'readdir'] as const) {
   });
 }
 let childStarts = 0;
-children.execFile = new Proxy(children.execFile, { apply(target, receiver, args) { childStarts++; return Reflect.apply(target, receiver, args); } });
+children.execFile = new Proxy(children.execFile, {
+  apply(target, receiver, args) {
+    childStarts++;
+    // execFile(file[, args][, options][, callback]): profiler preloads must not reach script children.
+    const index = Array.isArray(args[1]) ? 2 : 1;
+    const options = args[index];
+    if (options && typeof options === 'object') args[index] = { ...options, env: profilerFreeEnvironment((options as { env?: NodeJS.ProcessEnv }).env ?? process.env) };
+    else args.splice(index, 0, { env: profilerFreeEnvironment(process.env) });
+    return Reflect.apply(target, receiver, args);
+  }
+});
+// A Worker parses NODE_OPTIONS from its env, so without an explicit env every page worker would load the
+// profiler's sampler under the main PID and write into the main dataset. execArgv is untouched: --cpu-prof
+// remains inherited through WorkerPool's execArgv for the `cpu` tool.
+const threads = require('node:worker_threads') as typeof import('node:worker_threads');
+const OriginalWorker = threads.Worker;
+let workerStarts = 0;
+threads.Worker = class extends OriginalWorker {
+  constructor(filename: string | URL, options: WorkerOptions = {}) {
+    assert(typeof options.env !== 'symbol', 'SHARE_ENV workers cannot be isolated from profiler instrumentation');
+    super(filename, { ...options, env: profilerFreeEnvironment((options.env as NodeJS.ProcessEnv | undefined) ?? process.env) });
+    workerStarts++;
+  }
+};
 syncBuiltinESMExports();
 const pages: { path: string; workMs: number; atMs: number }[] = [];
 const log = console.log.bind(console);
@@ -111,6 +138,7 @@ if (mode === 'build') {
 }
 delay.disable();
 await writeFile(resultPath, JSON.stringify({
+  schemaVersion: SUBJECT_SCHEMA_VERSION, pid: process.pid, workerStarts,
   mode, importMs, readyMs, batchMs, totalMs: performance.now() - start,
   pages: bootPages, outputs, edits, operations, childStarts, cpu: process.cpuUsage(cpuStart), memory: process.memoryUsage(),
   eventLoopP95Ms: delay.count ? delay.percentile(95) / 1e6 : null,

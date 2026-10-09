@@ -351,7 +351,7 @@ The bounded profiling runner is separate from Vitest throughput benchmarks. Run 
 yarn workspace @bascik/bascik profile:workload --report-dir /private/tmp/bascik-profile-run
 ```
 
-The default matrix runs unprofiled controls, Clinic Doctor, top-level 0x, and Node CPU sampling across HTTP/1.1, HTTP/2 with TLS, static file serving, live development, serial builds, and worker builds. Use `--tools control,cpu`, `--scenarios http1,workers`, or `--rounds 20` to select a bounded subset. Rounds must be between 1 and 100. Every capture command has a 110-second deadline, leaving cleanup time before the worker profiling test's 120-second limit; failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run. On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome: remaining descendants receive termination, get 500ms to exit, are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
+The default matrix runs unprofiled controls, Clinic Doctor, top-level 0x, and Node CPU sampling across HTTP/1.1, HTTP/2 with TLS, static file serving, live development, serial builds, and worker builds. Use `--tools control,cpu`, `--scenarios http1,workers`, or `--rounds 20` to select a bounded subset. Rounds must be between 1 and 100. Every capture command has a 150-second deadline, leaving cleanup time before the worker profiling test's 180-second limit; failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run. On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome: remaining descendants receive termination, get 500ms to exit, are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
 
 Clinic commands (collection, visualization, and help) run with Clinic's supported `NO_INSIGHT` opt-out set in the child environment only. Without it, a fresh non-interactive environment never starts collection and exits zero with no dataset. The runner never writes or reads the user's saved consent, and the fresh-environment unit tests use a disposable `HOME` and XDG directories so an existing consent file cannot mask a false start.
 
@@ -361,9 +361,31 @@ The fixtures check byte-identical asset delivery, API responses, complete stream
 
 Manifests record runtime/profiler versions, hardware, source hashes, configuration, commands, task counts, response hashes, phase timings, memory, and artifact hashes. Keep manifests and raw captures private: they can contain source code and filesystem paths. Profiler and target must use the same stable project working directory.
 
-CPU captures append owner-only event journals as worker dispatch, listener entry, inspector operations, artifact writes, replies, and termination occur. Build and shutdown markers do not depend on a successful final result. At 90 seconds, responsive runner and subject event loops record resource snapshots before the capture deadline. Profiling unit tests retain failed report directories and print their private paths; successful test reports are removed. Event journals diagnose incomplete work but do not replace the required task counts or CPU attribution checks.
+CPU captures append owner-only event journals as worker dispatch, listener entry, inspector operations, artifact writes, replies, and termination occur. Build and shutdown markers do not depend on a successful final result. At 120 seconds, responsive runner and subject event loops record resource snapshots before the capture deadline. Profiling unit tests retain failed report directories and print their private paths; successful test reports are removed. Event journals diagnose incomplete work but do not replace the required task counts or CPU attribution checks.
 
 Compare controls with profiled runs using completed useful work and validated response bytes. Consult separate startup and workload timings before attributing CPU samples. Worker and build-script child profiles are labeled independently; a main-isolate profile cannot establish their CPU cost. Native helpers and libuv threads require separate low-level profiling. Inclusive samples describe ancestry, while self samples identify the sampled leaf. Instrumentation adds overhead, and a finite fixture does not establish a universal memory or latency budget.
+
+Clinic instruments its target through `NODE_OPTIONS`, which every Node descendant would otherwise inherit. Profiling subjects therefore start page workers and build-script children without Clinic's preloads, trace flags, or inject path. Only the dataset Clinic announces for the main target is decoded and visualized; any other `<pid>.clinic-<tool>` dataset beside it fails the capture.
+
+### Compiler Timelines
+
+`profile:compiler` copies a real Bascik project into a private fixture and times complete dev and build runs against an immutable snapshot of the built compiler. It defaults to the repository docs site; pass `--source` for another project and `--site-url` to set `BASCIK_SITE_URL`. Tools are `control`, `cpu`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `flame`. Each fixture gets a real, private cache directory, so a capture never reads or clears the original project's script cache.
+
+```sh
+yarn workspace @bascik/bascik profile:compiler --tools control,cpu --modes build --rounds 3 --report-dir /private/tmp/bascik-compiler-run
+```
+
+`timeline-manifest.json` records the compiler `dist` digest, runtime, options, every run, and any failure; `complete` stays `false` unless the whole matrix finished. The `cpu` tool requires the main isolate's profile and records page-worker profiles against observed worker starts. Build-script children are not covered by that tool. `--edits` (docs site only) measures page, Markdown, and shared-helper edits until validated output reaches disk, not until a browser refreshes.
+
+### Paired Compiler Comparisons
+
+`profile:compare` alternates a baseline and a candidate compiler on one prepared private fixture. Deterministic instance IDs hash absolute source paths, so emitted HTML is only comparable between builds of the same fixture path. Before each build the fixture's `node_modules/@bascik/bascik` symlink is pointed at the compiler under test, so config imports and exec scripts use the same snapshot as the compile. Both compilers need `dist`, `bin`, and `package.json`; a `git worktree` checkout also records its revision.
+
+```sh
+yarn workspace @bascik/bascik profile:compare --project /private/tmp/fixture/docs --baseline /private/tmp/baseline/pkg --candidate /private/tmp/candidate/pkg --mode build --rounds 5 --site-url https://bascik.dev --report-dir /private/tmp/bascik-compare-run
+```
+
+Rounds swap which compiler runs first. Cold runs remove the fixture's application cache before each build; warm runs reuse whatever cache the previous build left, which may come from the other compiler. Any change in emitted HTML between the two compilers stops the comparison. `comparison.json` reports per-compiler, per-cache-state medians with their samples, and keeps partial results and the failure when a run stops early.
 
 Performance benchmarks live in `pkg/bench/` and use Vitest's built-in `bench` API. They measure the transpilation pipeline on fixed, repeatable inputs:
 
