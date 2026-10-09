@@ -1,11 +1,12 @@
 # From WordPress
 
-WordPress is a PHP content management system that renders pages from a database on each request; Bascik is a build tool for HTML components that produces static pages. The main conceptual shift is that a Bascik site has no database or admin dashboard at runtime. Theme templates become HTML component files, The Loop becomes a Node.js build script, and your posts and pages become Markdown files or build-time fetches from the WordPress REST API.
+WordPress is a PHP content management system that renders pages from a database on each request; Bascik is a build tool for HTML components. Theme templates become HTML component files, The Loop becomes a Node.js build script, and your posts and pages become Markdown files or build-time fetches from the WordPress REST API.
 
-## Is This the Right Move?
+## Why Switch to Bascik
 
-- **Great fit:** Brochure sites, marketing sites, blogs, and documentation that are updated by developers or a small team comfortable with Markdown or a Git workflow.
-- **Keep WordPress, or go headless:** Sites where non-technical editors need a visual dashboard, or that depend on plugins such as WooCommerce memberships or comment moderation. You can still get a static front end by keeping WordPress as a headless CMS and fetching content at build time (see [Keep WordPress as a Headless CMS](#keep-wordpress-as-a-headless-cms)).
+- **Streamlined Architecture:** Clean HTML, CSS, and scoped JavaScript without the weight, vulnerabilities, or maintenance overhead of a database-backed CMS.
+- **Flexible Content Workflows:** Manage content via Markdown, headless CMS APIs, or build scripts, deploying to any host or serverless platform.
+- **Headless Option:** You can keep WordPress as a headless CMS for authoring while letting Bascik render fast, modern front ends (see [Keep WordPress as a Headless CMS](#keep-wordpress-as-a-headless-cms)).
 
 ## Mental Model Comparison
 
@@ -322,6 +323,6 @@ await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot))
 4. Move content into Markdown or wire up the REST API.
 5. Replace each plugin with a build script, API route, or service from the table above.
 6. Compare the built output against your old sitemap, and configure redirects on your host for any URLs that change. WordPress serves its feed at `/feed/`; a static feed is usually a file such as `/feed.xml`, so redirect the old address.
-7. Decide what replaces the features a static site does not have: comments, search, and date and author archives.
+7. Choose your approach for dynamic features such as comments, search, and archives using Bascik API routes, server scripts, or dedicated services.
 
 > **AI-Assisted Migration:** If you use LLMs or AI coding assistants to convert theme templates, see the [Agent Skill](/tools/agent-skill) documentation for guidelines on providing context to AI tools.
