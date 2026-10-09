@@ -1396,6 +1396,17 @@ async function createDiagnosticsForDocument(
     (languageId === 'typescript' || languageId === 'javascript');
 
   if (isApiRouteDocument) {
+    if (path.basename(normalizedDocumentPath).startsWith('_middleware.')) {
+      const start = new vscode.Position(0, 0);
+      const end = new vscode.Position(0, Math.min(text.length, 10));
+      const vdiag = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        'Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.',
+        vscode.DiagnosticSeverity.Error,
+      );
+      vdiag.source = 'bascik';
+      diagnostics.push(vdiag);
+    }
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
       let severity = vscode.DiagnosticSeverity.Warning;
@@ -1456,12 +1467,16 @@ async function createDiagnosticsForDocument(
       const end = document.positionAt(
         offset + match.index + Math.max(match[0].length, 1),
       );
+      const severity = rule.severity === 'warning'
+        ? vscode.DiagnosticSeverity.Warning
+        : vscode.DiagnosticSeverity.Error;
       const diag = new vscode.Diagnostic(
         new vscode.Range(start, end),
         `${rule.message} ${rule.suggestion}`,
-        vscode.DiagnosticSeverity.Warning,
+        severity,
       );
       diag.source = 'bascik';
+      diag.code = rule.id;
       diagnostics.push(diag);
     }
   };

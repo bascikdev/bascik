@@ -53,6 +53,19 @@ describe('Scoping Compatibility Rules', () => {
       const matches = matchCompatibilityRules(js, 'js');
       expect(matches.some((m) => m.id === 'js-style-setproperty')).toBe(true);
     });
+
+    it('detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)', () => {
+      const js = 'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
+      const matches = matchCompatibilityRules(js, 'js');
+      expect(matches.some((m) => m.id === 'js-unsupported-dom-methods')).toBe(true);
+    });
+
+    it('sets error severity on unsupported compatibility rules', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      const rule = matches.find((m) => m.id === 'css-id-attribute-selector');
+      expect(rule?.severity).toBe('error');
+    });
   });
 });
 

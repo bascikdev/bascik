@@ -988,7 +988,7 @@ describe("checkProject", () => {
     });
 
     describe("Scoping compatibility checks", () => {
-      it("flags [id] attribute selectors and element names in :is in component CSS without flagging valid #id selectors or colors", async () => {
+      it("flags [id] attribute selectors and element names in :is in component CSS with error severity", async () => {
         await setupProject({
           "pages/index.html": "<my-form></my-form>",
           "components/my-form.html": `<style>
@@ -1008,20 +1008,23 @@ describe("checkProject", () => {
         });
 
         const findings = await checkProject();
-        const compatWarnings = findings.items.filter((i) => i.category === "compatibility");
-        expect(compatWarnings.length).toBe(2);
-        expect(compatWarnings.some((w) => w.message.includes("[id] attribute selectors"))).toBe(true);
-        expect(compatWarnings.some((w) => w.message.includes("Element names inside :is()"))).toBe(true);
-        // Valid #id selector and hex color #fff must NOT produce a false-positive warning
-        expect(compatWarnings.some((w) => w.message.includes("#report-form") && !w.message.includes("[id"))).toBe(false);
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors.length).toBe(2);
+        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("[id] attribute selectors"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Element names inside :is()"))).toBe(true);
+        // Valid #id selector and hex color #fff must NOT produce a false-positive warning or error
+        expect(compatErrors.some((w) => w.message.includes("#report-form") && !w.message.includes("[id"))).toBe(false);
+        expect(findings.errors).toBeGreaterThanOrEqual(2);
       });
 
-      it("flags runtime .id setter and attribute querySelector in component scripts", async () => {
+      it("flags runtime .id setter, attribute querySelector, and unsupported DOM methods with error severity", async () => {
         await setupProject({
           "pages/index.html": "<my-comp></my-comp>",
           "components/my-comp.html": `<div id="box"></div><script>
             el.id = "new-id";
             document.querySelector("[data-active]");
+            el.removeAttribute("class");
           </script>`,
         });
 
@@ -1035,10 +1038,29 @@ describe("checkProject", () => {
         });
 
         const findings = await checkProject();
-        const compatWarnings = findings.items.filter((i) => i.category === "compatibility");
-        expect(compatWarnings.length).toBe(2);
-        expect(compatWarnings.some((w) => w.message.includes("Runtime .id assignment"))).toBe(true);
-        expect(compatWarnings.some((w) => w.message.includes("Attribute selectors are not rewritten"))).toBe(true);
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors.length).toBe(3);
+        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Runtime .id assignment"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Attribute selectors are not rewritten"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("removeAttribute"))).toBe(true);
+      });
+
+      it("flags _middleware.ts in API routes as an error", async () => {
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "src/api/_middleware.ts": "export default function middleware() {}",
+          "src/api/hello.ts": "export async function GET() { return new Response('hello'); }",
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        const middlewareError = findings.items.find((i) => i.category === "middleware-unsupported");
+        expect(middlewareError).toBeDefined();
+        expect(middlewareError?.severity).toBe("error");
+        expect(middlewareError?.message).toContain("Middleware chains (_middleware.ts) are not supported by design");
       });
     });
   });

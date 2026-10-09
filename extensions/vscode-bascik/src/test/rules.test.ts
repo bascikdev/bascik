@@ -115,6 +115,19 @@ suite('Compatibility Rules Suite', () => {
       assert.ok(matches.some((r) => r.id === 'js-style-setproperty'));
     });
 
+    test('detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)', () => {
+      const js = 'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
+      const matches = matchCompatibilityRules(js, 'js');
+      assert.ok(matches.some((r) => r.id === 'js-unsupported-dom-methods'));
+    });
+
+    test('sets error severity on unsupported compatibility rules', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      const rule = matches.find((r) => r.id === 'css-id-attribute-selector');
+      assert.strictEqual(rule?.severity, 'error');
+    });
+
     test('returns empty array for clean JS', () => {
       const js = 'const btn = document.getElementById("submit"); btn.classList.add("active");';
       const matches = matchCompatibilityRules(js, 'js');

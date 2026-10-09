@@ -10,14 +10,80 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
 - – Not yet supported
 
 <!-- bascik-compatibility-rules [
-  {"id":"css-id-attribute-selector","kind":"css","pattern":"(^|[,{}\\s])\\[id(?:\\s*[~|^$*]?=[^\\]]+)?\\]","flags":"gm","message":"[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.","suggestion":"Use a CSS #id selector or class selector instead."},
-  {"id":"css-attribute-selector","kind":"css","pattern":"(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]","flags":"gm","message":"Standalone attribute selectors are not scoped by Bascik and may leak globally.","suggestion":"Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector."},
-  {"id":"css-is-element-names","kind":"css","pattern":":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)","flags":"gi","message":"Element names inside :is(), :where(), or :has() are not converted by Bascik.","suggestion":"Use a class selector inside the pseudo-class instead of bare element names."},
-  {"id":"js-id-setter","kind":"js","pattern":"\\.id\\s*=\\s*(?:[\"'`]|\\w)","flags":"g","message":"Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.","suggestion":"Capture the element once with getElementById() and operate on that reference."},
-  {"id":"js-attribute-selector","kind":"js","pattern":"querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)","flags":"g","message":"Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.","suggestion":"Use getElementById() or a static class selector that Bascik can rewrite."},
-  {"id":"js-template-classname","kind":"js","pattern":"className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)","flags":"g","message":"Template-literal class names are not rewritten safely at build time.","suggestion":"Use classList.add(), classList.remove(), or a static string instead."},
-  {"id":"js-style-setproperty","kind":"js","pattern":"style\\.setProperty\\s*\\(\\s*[\"']--","flags":"g","message":"Runtime CSS custom property names are not rewritten by Bascik.","suggestion":"Use the scoped property name explicitly or keep the runtime logic on the resulting element reference."}
-] -->
+  {
+    "id": "css-id-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|[,{}\\s])\\[id(?:\\s*[~|^$*]?=[^\\]]+)?\\]",
+    "flags": "gm",
+    "message": "[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.",
+    "suggestion": "Use a CSS #id selector or class selector instead.",
+    "severity": "error"
+  },
+  {
+    "id": "css-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]",
+    "flags": "gm",
+    "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
+    "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector.",
+    "severity": "error"
+  },
+  {
+    "id": "css-is-element-names",
+    "kind": "css",
+    "pattern": ":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)",
+    "flags": "gi",
+    "message": "Element names inside :is(), :where(), or :has() are not converted by Bascik.",
+    "suggestion": "Use a class selector inside the pseudo-class instead of bare element names.",
+    "severity": "error"
+  },
+  {
+    "id": "js-id-setter",
+    "kind": "js",
+    "pattern": "\\.id\\s*=\\s*(?:[\"'`]|\\w)",
+    "flags": "g",
+    "message": "Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.",
+    "suggestion": "Capture the element once with getElementById() and operate on that reference.",
+    "severity": "error"
+  },
+  {
+    "id": "js-attribute-selector",
+    "kind": "js",
+    "pattern": "querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)",
+    "flags": "g",
+    "message": "Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.",
+    "suggestion": "Use getElementById() or a static class selector that Bascik can rewrite.",
+    "severity": "error"
+  },
+  {
+    "id": "js-template-classname",
+    "kind": "js",
+    "pattern": "className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)",
+    "flags": "g",
+    "message": "Template-literal class names are not rewritten safely at build time.",
+    "suggestion": "Use classList.add(), classList.remove(), or a static string instead.",
+    "severity": "error"
+  },
+  {
+    "id": "js-style-setproperty",
+    "kind": "js",
+    "pattern": "style\\.setProperty\\s*\\(\\s*[\"']--",
+    "flags": "g",
+    "message": "Runtime CSS custom property names are not rewritten by Bascik.",
+    "suggestion": "Use the scoped property name explicitly or keep the runtime logic on the resulting element reference.",
+    "severity": "error"
+  },
+  {
+    "id": "js-unsupported-dom-methods",
+    "kind": "js",
+    "severity": "error",
+    "pattern": "\\.(?:removeAttribute|hasAttribute|toggleAttribute)\\s*\\(\\s*[\"'`](?:class|id|name)[\"'`]",
+    "flags": "g",
+    "message": "DOM methods taking attribute names (removeAttribute, hasAttribute, toggleAttribute) are not value-scoped by Bascik.",
+    "suggestion": "Operate directly on element classList or property references."
+  }
+]
+-->
 
 ---
 

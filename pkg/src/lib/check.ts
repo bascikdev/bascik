@@ -762,7 +762,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
         for (const m of matches) {
           items.push({
             category: "compatibility",
-            severity: "warning",
+            severity: (m.rule.severity as FindingSeverity) ?? "error",
             message: `${m.rule.message} ${m.rule.suggestion}`,
             locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, styleOffset + m.index) }],
             suggestion: m.rule.suggestion,
@@ -784,7 +784,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
           for (const m of matches) {
             items.push({
               category: "compatibility",
-              severity: "warning",
+              severity: (m.rule.severity as FindingSeverity) ?? "error",
               message: `${m.rule.message} ${m.rule.suggestion}`,
               locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, scriptOffset + m.index) }],
               suggestion: m.rule.suggestion,
@@ -802,7 +802,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
           for (const m of matches) {
             items.push({
               category: "compatibility",
-              severity: "warning",
+              severity: (m.rule.severity as FindingSeverity) ?? "error",
               message: `${m.rule.message} ${m.rule.suggestion}`,
               locations: [{ filePath: toDisplay(companionCssPath), line: getLineAt(cssContent, m.index) }],
               suggestion: m.rule.suggestion,
@@ -824,6 +824,14 @@ export const checkProject = async (): Promise<CheckFindings> => {
     const routesByUrl = new Map<string, string[]>();
 
     for (const filePath of apiFiles) {
+      if (filePath.replace(/\\/g, "/").split("/").pop()?.startsWith("_middleware.")) {
+        items.push({
+          category: "middleware-unsupported",
+          severity: "error",
+          message: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.",
+          locations: [{ filePath: toDisplay(filePath) }],
+        });
+      }
       const normalizedApiDir = apiDir.replace(/\\/g, "/");
       const normalizedFilePath = filePath.replace(/\\/g, "/");
       let rel = normalizedFilePath.startsWith(normalizedApiDir + "/")
@@ -1031,8 +1039,12 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     description: "Component templates should place styles above markup and scripts below markup.",
   },
   compatibility: {
-    title: "Scoping compatibility warnings",
+    title: "Scoping compatibility errors",
     description: "CSS or JavaScript patterns that cannot be reliably scoped by Bascik.",
+  },
+  "middleware-unsupported": {
+    title: "Unsupported API middleware files",
+    description: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Handlers compose plain functions directly.",
   },
   "component-list": {
     title: "Component scan failures",

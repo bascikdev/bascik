@@ -436,6 +436,18 @@ export function createDiagnostics(
     (languageId === 'typescript' || languageId === 'javascript');
 
   if (isApiRouteDocument) {
+    if (path.basename(normalizedDocumentPath).startsWith('_middleware.')) {
+      diagnostics.push({
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: Math.min(text.length, 10) },
+        },
+        message:
+          'Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.',
+        severity: DiagnosticSeverity.Error,
+        source: 'bascik',
+      });
+    }
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
       let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
@@ -493,11 +505,15 @@ export function createDiagnostics(
       const end = document.positionAt(
         offset + match.index + Math.max(match[0].length, 1),
       );
+      const severity = rule.severity === 'warning'
+        ? DiagnosticSeverity.Warning
+        : DiagnosticSeverity.Error;
       diagnostics.push({
         range: { start, end },
         message: `${rule.message} ${rule.suggestion}`,
-        severity: DiagnosticSeverity.Warning,
+        severity,
         source: 'bascik',
+        code: rule.id,
       });
     }
   };
