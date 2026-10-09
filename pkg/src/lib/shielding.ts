@@ -22,13 +22,16 @@ export const createContentShield = (source: string): {
 } => {
   const values = new Map<string, string>();
   const ownedTokens = new Set<string>();
+  // Scan the source once: most inputs contain no token prefix, so per-token
+  // collision checks would rescan the whole source on every hide.
+  const sourceMayCollide = source.includes("\x00BASCIK_SHIELD_");
 
   const hide = (value: string): string => {
     __shieldStatsForTests.hiddenValues++;
     let token: string;
     do {
       token = `\x00BASCIK_SHIELD_${nextShieldToken++}\x00`;
-    } while (source.includes(token) || values.has(token));
+    } while ((sourceMayCollide && source.includes(token)) || values.has(token));
     values.set(token, value);
     ownedTokens.add(token);
     return token;

@@ -25,62 +25,82 @@ const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\
  *   - While inside a `<script>` body, `<!--` is NOT treated as a comment.
  *   - While inside a comment, `<script` is NOT treated as a tag opener.
  */
+const isTagNameCode = (code: number): boolean =>
+  (code >= 97 && code <= 122) || // a-z
+  (code >= 65 && code <= 90) || // A-Z
+  (code >= 48 && code <= 57) || // 0-9
+  code === 45; // -
+
 const buildSensitiveMask = (html: string): string => {
   if (!html.includes("<")) return html;
-  const chars = html.split("");
-  const n = chars.length;
+  const n = html.length;
   // Reuse the exact same search representation for every raw-text block.
   // Rebuilding it per block makes code-example-heavy pages quadratic in size.
   // Keep it lazy so ordinary markup pays no full-input normalization cost.
   let lowercaseHtml: string | undefined;
-  let i = 0;
-  while (i < n) {
+  // Blanked ranges are found in ascending, non-overlapping order, so the mask
+  // is assembled from source slices and space runs in one pass.
+  const parts: string[] = [];
+  let copiedUntil = 0;
+  const blank = (start: number, end: number): void => {
+    if (end <= start) return;
+    parts.push(html.slice(copiedUntil, start), " ".repeat(end - start));
+    copiedUntil = end;
+  };
+  let trailingBlank = 0;
+  let i = html.indexOf("<");
+  while (i !== -1) {
     // HTML comment
-    if (chars[i] === "<" && html.startsWith("!--", i + 1)) {
+    if (html.startsWith("!--", i + 1)) {
       const end = html.indexOf("-->", i + 4);
       const commentEnd = end === -1 ? n : end + 3;
-      for (let j = i; j < commentEnd; j++) chars[j] = " ";
-      i = commentEnd;
+      blank(i, commentEnd);
+      i = html.indexOf("<", commentEnd);
       continue;
     }
-    // Opening tag — check for script/pre/textarea/style
-    if (chars[i] === "<") {
-      // Parse tag name
-      let nameStart = i + 1;
-      const isClosingTag = nameStart < n && chars[nameStart] === "/";
-      if (isClosingTag) nameStart++;
-      let nameEnd = nameStart;
-      while (nameEnd < n && /[a-zA-Z0-9-]/.test(chars[nameEnd])) nameEnd++;
-      const tagName = html.slice(nameStart, nameEnd).toLowerCase();
-      if (!isClosingTag && (tagName === "script" || tagName === "pre" || tagName === "textarea" || tagName === "style")) {
-        // Find the end of the opening tag (skip attributes, respecting quotes)
-        let j = nameEnd;
-        while (j < n && chars[j] !== ">") {
-          if (chars[j] === '"' || chars[j] === "'") {
-            const q = chars[j];
-            j++;
-            while (j < n && chars[j] !== q) j++;
-          }
+    // Opening tag: check for script/pre/textarea/style
+    let nameStart = i + 1;
+    const isClosingTag = nameStart < n && html.charCodeAt(nameStart) === 47; // /
+    if (isClosingTag) nameStart++;
+    let nameEnd = nameStart;
+    while (nameEnd < n && isTagNameCode(html.charCodeAt(nameEnd))) nameEnd++;
+    const nameLength = nameEnd - nameStart;
+    const tagName = !isClosingTag && nameLength >= 3 && nameLength <= 8
+      ? html.slice(nameStart, nameEnd).toLowerCase()
+      : "";
+    if (tagName === "script" || tagName === "pre" || tagName === "textarea" || tagName === "style") {
+      // Find the end of the opening tag (skip attributes, respecting quotes)
+      let j = nameEnd;
+      while (j < n && html[j] !== ">") {
+        if (html[j] === '"' || html[j] === "'") {
+          const q = html[j];
           j++;
+          while (j < n && html[j] !== q) j++;
         }
-        const bodyStart = j < n ? j + 1 : n; // position after ">"
-        // Find the matching close tag
-        const closeTag = `</${tagName}`;
-        lowercaseHtml ??= html.toLowerCase();
-        const closeIdx = lowercaseHtml.indexOf(closeTag, bodyStart);
-        if (closeIdx === -1) {
-          i = bodyStart;
-          continue;
-        }
-        // Blank out from after the open tag's ">" to the start of close tag
-        for (let k = bodyStart; k < closeIdx; k++) chars[k] = " ";
-        i = closeIdx;
+        j++;
+      }
+      const bodyStart = j < n ? j + 1 : n; // position after ">"
+      // Find the matching close tag
+      const closeTag = `</${tagName}`;
+      lowercaseHtml ??= html.toLowerCase();
+      const closeIdx = lowercaseHtml.indexOf(closeTag, bodyStart);
+      if (closeIdx === -1) {
+        i = html.indexOf("<", bodyStart);
         continue;
       }
+      // Blank out from after the open tag's ">" to the start of close tag.
+      // Characters whose lowercase form is longer (U+0130) shift the index
+      // past the source end; the mask keeps the historical trailing spaces.
+      blank(bodyStart, Math.min(closeIdx, n));
+      if (closeIdx > n) trailingBlank = closeIdx - n;
+      i = html.indexOf("<", closeIdx);
+      continue;
     }
-    i++;
+    i = html.indexOf("<", i + 1);
   }
-  return chars.join("");
+  if (copiedUntil === 0 && trailingBlank === 0) return html;
+  parts.push(html.slice(copiedUntil), " ".repeat(trailingBlank));
+  return parts.join("");
 };
 
 const shieldSensitiveContent = (htmlString: string): {
@@ -95,10 +115,8 @@ const shieldSensitiveContent = (htmlString: string): {
   // mistaken for a comment opener (script bodies are masked before comments).
   const masked = buildSensitiveMask(htmlString);
 
-  let html = htmlString;
-
-  // Collect ranges to shield from the masked string, apply right-to-left to
-  // the real `html` so that earlier offsets remain valid.
+  // Collect ranges to shield from the masked string; offsets index the
+  // original `htmlString`.
   const ranges: Array<{ start: number; end: number }> = [];
 
   // script bodies
@@ -127,14 +145,46 @@ const shieldSensitiveContent = (htmlString: string): {
     rawTextTagRe.lastIndex = closeMatch.index + closeMatch[0].length;
   }
 
-  // Sort descending by start so splicing doesn't shift later offsets.
+  // Tokens are assigned in descending start order.
   ranges.sort((a, b) => b.start - a.start);
 
-  for (const { start, end } of ranges) {
-    html = html.slice(0, start) + shield.hide(html.slice(start, end)) + html.slice(end);
+  // Malformed markup can produce overlapping ranges, for example a <pre> the
+  // mask closes at `</prex` while the range scan closes it at a later `</pre>`.
+  // Keep the earliest-starting range of each overlapping run; a range it
+  // contains is already shielded as part of it. `kept` is ascending.
+  const kept: Array<{ start: number; end: number }> = [];
+  let keptEnd = -1;
+  for (let k = ranges.length - 1; k >= 0; k--) {
+    const range = ranges[k];
+    if (range.start < keptEnd) continue;
+    kept.push(range);
+    keptEnd = range.end;
   }
+  if (kept.length === 0) return { html: htmlString, restore: shield.restore };
 
-  return { html, restore: shield.restore };
+  const tokens = new Array<string>(kept.length);
+  for (let k = kept.length - 1; k >= 0; k--) {
+    tokens[k] = shield.hide(htmlString.slice(kept[k].start, kept[k].end));
+  }
+  // Assemble once instead of re-slicing the whole page for every range.
+  const parts: string[] = [];
+  let cursor = 0;
+  for (let k = 0; k < kept.length; k++) {
+    parts.push(htmlString.slice(cursor, kept[k].start), tokens[k]);
+    cursor = kept[k].end;
+  }
+  parts.push(htmlString.slice(cursor));
+
+  return { html: parts.join(""), restore: shield.restore };
+};
+
+/**
+ * Test-only access to the shielding internals, used by the differential
+ * parity tests in html-minifier-shield.test.ts. Never read on production paths.
+ */
+export const __htmlMinifierInternalsForTests = {
+  buildSensitiveMask,
+  shieldSensitiveContent,
 };
 
 // Whole-attribute-name match: `data-bascik-server-foo` is NOT a directive.
