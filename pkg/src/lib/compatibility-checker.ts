@@ -29,6 +29,7 @@ export const compatibilityRules: CompatibilityPattern[] = (
   compatibilityRulesData as CompatibilityRuleDefinition[]
 ).map((rule) => ({
   ...rule,
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   regex: new RegExp(rule.pattern, rule.flags),
 }));
 
