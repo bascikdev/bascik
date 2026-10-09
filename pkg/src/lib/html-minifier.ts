@@ -29,6 +29,10 @@ const buildSensitiveMask = (html: string): string => {
   if (!html.includes("<")) return html;
   const chars = html.split("");
   const n = chars.length;
+  // Reuse the exact same search representation for every raw-text block.
+  // Rebuilding it per block makes code-example-heavy pages quadratic in size.
+  // Keep it lazy so ordinary markup pays no full-input normalization cost.
+  let lowercaseHtml: string | undefined;
   let i = 0;
   while (i < n) {
     // HTML comment
@@ -62,7 +66,8 @@ const buildSensitiveMask = (html: string): string => {
         const bodyStart = j < n ? j + 1 : n; // position after ">"
         // Find the matching close tag
         const closeTag = `</${tagName}`;
-        const closeIdx = html.toLowerCase().indexOf(closeTag, bodyStart);
+        lowercaseHtml ??= html.toLowerCase();
+        const closeIdx = lowercaseHtml.indexOf(closeTag, bodyStart);
         if (closeIdx === -1) {
           i = bodyStart;
           continue;

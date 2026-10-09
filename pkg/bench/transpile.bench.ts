@@ -10,12 +10,18 @@
 
 import { bench, describe } from "vitest";
 import { vi } from "vitest";
+import assert from "node:assert/strict";
 
 // ── Mock config so benchmarks run without a project root ─────────────────────
 vi.mock("../src/lib/config.ts", () => ({
   BascikConfig: {
-    scopeScriptBlocks: true,
-    scopeAttribute: { class: true, id: true, name: true },
+    scoping: {
+      scriptBlocks: true,
+      attributes: { class: true, id: true, name: true },
+      deduplicateCss: true,
+      inheritAttributes: true,
+      preserve: ["code"],
+    },
     isBuild: true,
     minify: {
       html: false,
@@ -26,10 +32,9 @@ vi.mock("../src/lib/config.ts", () => ({
   },
 }));
 
-vi.mock("../src/lib/names.ts", () => ({
+vi.mock(import("../src/lib/names.ts"), async (importOriginal) => ({
+  ...await importOriginal(),
   getUniqueId: () => "bench1234",
-  minifyAttributeName: (n: string) => n,
-  getAttributeNameHash: (n: string) => n,
 }));
 
 import {
@@ -122,6 +127,23 @@ const FLAT_800 = flatPage(800);
 const FLAT_1600 = flatPage(1600);
 const FLAT_3200 = flatPage(3200);
 const NESTED_800 = nestedPage(800);
+
+// Fail before timing if a stale mock turns an expansion benchmark into error handling.
+for (const [html, list, expected] of [
+  [PAGE_BODY_10, COMPONENT_LIST_10, 10],
+  [PAGE_BODY_50, COMPONENT_LIST_50, 50],
+  [FLAT_800, FLAT_LIST, 800],
+  [FLAT_1600, FLAT_LIST, 1600],
+  [FLAT_3200, FLAT_LIST, 3200],
+  [NESTED_800, NESTED_LIST, 2400],
+] as const) {
+  const result = recursivelyTranspile(html, list);
+  assert.equal(result.usedComponents.length, expected, "benchmark component expansion must succeed");
+  // Expansion-only fixtures have no stylesheet, so their unreferenced classes stay authored.
+  if (list === COMPONENT_LIST_10 || list === COMPONENT_LIST_50) {
+    assert(result.transpiledHtmlBody.includes("bascik__"), "CSS benchmark must exercise scoping");
+  }
+}
 
 // JS minifier scaling inputs (prompt 62). Slash-heavy exercises regex/division/
 // comment disambiguation on every `/`; slash-light is the common case. Sizes

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fc from "fast-check";
 import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 
@@ -41,6 +41,27 @@ describe("extractScriptTags", () => {
 });
 
 describe("minifyHtml", () => {
+  it("normalizes each full safety-mask input at most once regardless of raw-text block count", () => {
+    const html = "<main>" + Array.from({ length: 40 }, (_, i) =>
+      `<PRE data-note="quoted > delimiter">  item ${i}\n<!-- literal -->\n<script>example()</script></PRE>`,
+    ).join("\n") + "</main>";
+    const original = String.prototype.toLowerCase;
+    let fullInputNormalizations = 0;
+    const spy = vi.spyOn(String.prototype, "toLowerCase").mockImplementation(function(this: string) {
+      const value = String(this);
+      if (value === html) fullInputNormalizations++;
+      return original.call(value);
+    });
+    let result: string;
+    try {
+      result = minifyHtml(html);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result).toContain("<!-- literal -->\n<script>example()</script>");
+    expect(fullInputNormalizations).toBeLessThanOrEqual(1);
+  });
+
   it("preserves sensitive content with whitespace in closing tags", () => {
     const script =
       "<div><script>const value = 1;\n// keep newline\nwindow.done = true;</script ></div>";
