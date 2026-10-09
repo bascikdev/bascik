@@ -31,6 +31,12 @@ suite('Bascik HTML Grammar', () => {
 
 suite('Compatibility Rules Suite', () => {
   suite('CSS Rules', () => {
+    test('detects [id] attribute selectors', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      assert.ok(matches.some((r) => r.id === 'css-id-attribute-selector'));
+    });
+
     test('detects standalone attribute selectors', () => {
       const css = '[data-state] { color: red; }';
       const matches = matchCompatibilityRules(css, 'css');

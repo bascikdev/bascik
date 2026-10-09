@@ -1,8 +1,16 @@
 [
   {
+    "id": "css-id-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|[,{}\\s])\\[id(?:\\s*[~|^$*]?=[^\\]]+)?\\]",
+    "flags": "gm",
+    "message": "[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.",
+    "suggestion": "Use a CSS #id selector or class selector instead."
+  },
+  {
     "id": "css-attribute-selector",
     "kind": "css",
-    "pattern": "(^|,)\\s*\\[[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]",
+    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]",
     "flags": "gm",
     "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
     "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector."

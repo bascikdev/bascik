@@ -307,20 +307,25 @@ export const convertCssIdSelectorsToClasses = (
 
 /**
  * Inject the generated id-class onto every HTML element whose `id` attribute
- * matches.  Works for both unscoped (`id="idName"`) and already-scoped
- * (`id="bascik__comp__instanceId__idName"`) forms.
+ * matches. Works for unscoped (`id="idName"`), already-scoped
+ * (`id="bascik__comp__instanceId__idName"`), and minified (`id="b..."`) forms.
  */
 export const addIdClassesInHtml = (
   html: string,
   idsConverted: { idName: string; className: string }[],
+  scopedIdNames?: Record<string, string>,
 ): string => {
   if (idsConverted.length === 0) return html;
   idsConverted.forEach(({ idName, className }) => {
-    if (!html.includes(idName)) return;
+    const scopedId = scopedIdNames?.[idName];
+    if (!html.includes(idName) && (!scopedId || !html.includes(scopedId))) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedScoped = scopedId
+      ? `|${scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+      : "";
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:(?:[^"]*__)?${escaped}${escapedScoped})"|'(?:(?:[^']*__)?${escaped}${escapedScoped})')(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
     );
     html = html.replace(idPattern, (openTag) =>

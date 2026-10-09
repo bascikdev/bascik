@@ -33,6 +33,7 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -750,6 +751,67 @@ export const checkProject = async (): Promise<CheckFindings> => {
           locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
         });
       }
+
+      // ── Scoping compatibility analysis in component HTML, inline styles & scripts ──
+      const styleBlockRegex = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
+      let styleMatch: RegExpExecArray | null;
+      while ((styleMatch = styleBlockRegex.exec(html)) !== null) {
+        const styleBody = styleMatch[2] ?? "";
+        const styleOffset = styleMatch.index + styleMatch[1].length;
+        const matches = findCompatibilityMatches(styleBody, "css");
+        for (const m of matches) {
+          items.push({
+            category: "compatibility",
+            severity: "warning",
+            message: `${m.rule.message} ${m.rule.suggestion}`,
+            locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, styleOffset + m.index) }],
+            suggestion: m.rule.suggestion,
+          });
+        }
+      }
+
+      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+      let scriptMatch: RegExpExecArray | null;
+      while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
+        const openTag = scriptMatch[1];
+        const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+        const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
+        const isJs = !typeVal || typeVal === "module" || typeVal === "text/javascript" || typeVal === "application/javascript";
+        if (isJs) {
+          const scriptBody = scriptMatch[2] ?? "";
+          const scriptOffset = scriptMatch.index + openTag.length;
+          const matches = findCompatibilityMatches(scriptBody, "js");
+          for (const m of matches) {
+            items.push({
+              category: "compatibility",
+              severity: "warning",
+              message: `${m.rule.message} ${m.rule.suggestion}`,
+              locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, scriptOffset + m.index) }],
+              suggestion: m.rule.suggestion,
+            });
+          }
+        }
+      }
+
+      // Check companion .css file if it exists
+      const companionCssPath = filePath.replace(/\.html$/i, ".css");
+      if (existsSync(companionCssPath)) {
+        try {
+          const cssContent = await readFile(companionCssPath, "utf8");
+          const matches = findCompatibilityMatches(cssContent, "css");
+          for (const m of matches) {
+            items.push({
+              category: "compatibility",
+              severity: "warning",
+              message: `${m.rule.message} ${m.rule.suggestion}`,
+              locations: [{ filePath: toDisplay(companionCssPath), line: getLineAt(cssContent, m.index) }],
+              suggestion: m.rule.suggestion,
+            });
+          }
+        } catch {
+          // ignore unreadable companion css
+        }
+      }
     } catch {
       // Ignore unreadable component files here.
     }
@@ -967,6 +1029,10 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "component-structure-order": {
     title: "Component style and script order",
     description: "Component templates should place styles above markup and scripts below markup.",
+  },
+  compatibility: {
+    title: "Scoping compatibility warnings",
+    description: "CSS or JavaScript patterns that cannot be reliably scoped by Bascik.",
   },
   "component-list": {
     title: "Component scan failures",

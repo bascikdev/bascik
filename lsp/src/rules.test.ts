@@ -4,6 +4,12 @@ import { analyzeApiRouteSource } from './api-rules.js';
 
 describe('Scoping Compatibility Rules', () => {
   describe('CSS rules', () => {
+    it('detects [id] attribute selectors', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      expect(matches.some((m) => m.id === 'css-id-attribute-selector')).toBe(true);
+    });
+
     it('detects unanchored standalone attribute selector', () => {
       const css = '[data-state] { color: red; }';
       const matches = matchCompatibilityRules(css, 'css');

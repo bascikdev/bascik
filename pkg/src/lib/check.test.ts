@@ -986,6 +986,61 @@ describe("checkProject", () => {
         expect(findings.distHtmlSpecHintNeeded).toBe(false);
       });
     });
+
+    describe("Scoping compatibility checks", () => {
+      it("flags [id] attribute selectors and element names in :is in component CSS without flagging valid #id selectors or colors", async () => {
+        await setupProject({
+          "pages/index.html": "<my-form></my-form>",
+          "components/my-form.html": `<style>
+            #report-form { display: grid; color: #fff; }
+            [id="report-form"] { color: red; }
+            :is(div, span) { font-size: 14px; }
+          </style><form id="report-form"></form>`,
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-form": {
+            name: "my-form",
+            fileName: join(workDir, "components/my-form.html"),
+            fileContent: "",
+          },
+        });
+
+        const findings = await checkProject();
+        const compatWarnings = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatWarnings.length).toBe(2);
+        expect(compatWarnings.some((w) => w.message.includes("[id] attribute selectors"))).toBe(true);
+        expect(compatWarnings.some((w) => w.message.includes("Element names inside :is()"))).toBe(true);
+        // Valid #id selector and hex color #fff must NOT produce a false-positive warning
+        expect(compatWarnings.some((w) => w.message.includes("#report-form") && !w.message.includes("[id"))).toBe(false);
+      });
+
+      it("flags runtime .id setter and attribute querySelector in component scripts", async () => {
+        await setupProject({
+          "pages/index.html": "<my-comp></my-comp>",
+          "components/my-comp.html": `<div id="box"></div><script>
+            el.id = "new-id";
+            document.querySelector("[data-active]");
+          </script>`,
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-comp": {
+            name: "my-comp",
+            fileName: join(workDir, "components/my-comp.html"),
+            fileContent: "",
+          },
+        });
+
+        const findings = await checkProject();
+        const compatWarnings = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatWarnings.length).toBe(2);
+        expect(compatWarnings.some((w) => w.message.includes("Runtime .id assignment"))).toBe(true);
+        expect(compatWarnings.some((w) => w.message.includes("Attribute selectors are not rewritten"))).toBe(true);
+      });
+    });
   });
 });
 

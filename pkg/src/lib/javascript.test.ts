@@ -1082,6 +1082,58 @@ describe("prefixElementAttribute – CSS #id selector scoping", () => {
     expect(result.fileContent).toContain("bascik__my-comp__id__panel");
   });
 
+  it("converts #id and injects class onto element when minify.identifiers is enabled across both id and class passes", () => {
+    const identifiers = BascikConfig.minify?.identifiers;
+    BascikConfig.minify!.identifiers = true;
+    try {
+      let c = makeComponent(
+        '<form id="report-form"><label>Assigned employee</label></form>',
+        '#report-form { display: grid; gap: 16px 20px; }',
+      );
+      // Simulates buildScopingPipeline: id scoping runs first, then class scoping
+      c = prefixElementAttribute(c, "id", "test1234");
+      c = prefixElementAttribute(c, "class", "test1234");
+
+      // CSS must have converted #report-form to a minified class (b...)
+      expect(c.cssFileContent).toBeDefined();
+      expect(c.cssFileContent).not.toContain("#report-form");
+      const classMatch = c.cssFileContent!.match(/\.(b[0-9a-zA-Z]{11})/);
+      expect(classMatch).not.toBeNull();
+      const scopedClass = classMatch![1];
+
+      // HTML form must have the generated class and minified ID
+      expect(c.fileContent).toContain(`class="${scopedClass}"`);
+      const minifiedId = c.scopedIdNames?.["report-form"];
+      expect(minifiedId).toBeTruthy();
+      expect(c.fileContent).toContain(`id="${minifiedId}"`);
+    } finally {
+      BascikConfig.minify!.identifiers = Boolean(identifiers);
+    }
+  });
+
+  it("converts #id inside @media query and paired stylesheet under minification", () => {
+    const identifiers = BascikConfig.minify?.identifiers;
+    BascikConfig.minify!.identifiers = true;
+    try {
+      let c = makeComponent(
+        '<form id="report-form" class="existing"><input></form>',
+        '@media (min-width: 600px) { #report-form { display: grid; } }',
+      );
+      c = prefixElementAttribute(c, "id", "test1234");
+      c = prefixElementAttribute(c, "class", "test1234");
+
+      expect(c.cssFileContent).toBeDefined();
+      expect(c.cssFileContent).toContain('@media (min-width: 600px)');
+      expect(c.cssFileContent).not.toContain('#report-form');
+      const classMatch = c.cssFileContent!.match(/\.(b[0-9a-zA-Z]{11})/);
+      expect(classMatch).not.toBeNull();
+      const scopedClass = classMatch![1];
+      expect(c.fileContent).toContain(scopedClass);
+    } finally {
+      BascikConfig.minify!.identifiers = Boolean(identifiers);
+    }
+  });
+
   // ── Literal preservation (prompt 105) ────────────────────────────────
 
   it("preserves literal hashes in attribute-selector values through the component pipeline", () => {

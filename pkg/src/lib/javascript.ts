@@ -882,6 +882,7 @@ export const prefixElementAttribute = (
     component.fileContent = addIdClassesInHtml(
       component.fileContent,
       allIdsConverted,
+      component.scopedIdNames,
     );
 
     // Deferred page-aware build scripts print their markup at page time, after

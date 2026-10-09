@@ -1523,6 +1523,18 @@ describe("addIdClassesInHtml", () => {
     expect(result).toContain('class="bascik__my-comp__id__btn"');
   });
 
+  it("injects class onto element with minified scoped id via scopedIdNames mapping", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id="${minifiedId}"><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).toContain(`class="bclasshash123"`);
+    expect(result).toContain(`id="${minifiedId}"`);
+  });
+
   it("appends to existing class attribute", () => {
     const html = '<button id="btn" class="primary">Click</button>';
     const result = addIdClassesInHtml(html, [
