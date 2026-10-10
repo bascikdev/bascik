@@ -1459,6 +1459,30 @@ throw new Error("component failure");
     );
   });
 
+  it("runs a component build script whose quoted attribute value contains >", async () => {
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(
+      async (html: string) => html.replace(
+        /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-build(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script>/gi,
+        "<strong>ran</strong>",
+      ),
+    );
+    const componentList = {
+      "note-card": {
+        fileName: "src/components/note-card.html",
+        fileContent: '<section><script data-note="a > b" data-bascik-build="page">console.log("x")</script></section>',
+      },
+    };
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "<!DOCTYPE html><html><head></head><body><note-card></note-card></body></html>",
+    );
+
+    const html = (await transpilePage("src/pages/notes.html", componentList))!.distHtml;
+
+    expect(html).toContain("<strong>ran</strong>");
+    expect(html).not.toContain("data-bascik-build");
+  });
+
   it("executes a page-aware build script inside a nested child named slot", async () => {
     const { executeBuildScripts } = await import("./build-scripts.ts");
     (executeBuildScripts as ReturnType<typeof vi.fn>).mockImplementation(

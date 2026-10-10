@@ -589,6 +589,26 @@ describe("checkProject", () => {
       expect(item?.severity).toBe("error");
     });
 
+    it("reads script directives after a quoted attribute value containing >", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<script data-note="a > b" data-bascik-build data-bascik-server>console.log(1)</script>',
+          '<script data-note="x > y" data-bascik-build>\n  const comp = "dynamic-card";\n</script>',
+        ].join("\n"),
+        "components/dynamic-card/dynamic-card.html": "<div>dynamic</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
+      });
+
+      const findings = await checkProject();
+      const conflicts = findings.items.filter((i) => i.category === "script-mode-conflict");
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].locations).toEqual([{ filePath: "pages/index.html", line: 1 }]);
+      expect(findings.items.find((i) => i.message.includes("dynamic-card"))).toBeUndefined();
+    });
+
     it("reports duplicate component names with both file paths", async () => {
       await setupProject({
         "pages/index.html": "<p>ok</p>",

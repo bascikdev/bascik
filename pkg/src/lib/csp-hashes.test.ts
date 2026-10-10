@@ -27,6 +27,22 @@ describe("computePageCspHashes end tags", () => {
     expect(hashes.styles).toEqual([sha(".a{}"), sha(".b{}")].sort());
   });
 
+  it("hashes the body after an open tag whose quoted attribute value contains >", () => {
+    const hashes = computePageCspHashes(
+      '<script data-x="1>2">run()</script><style media="(width > 1px)">.a{}</style>',
+    );
+    expect(hashes.scripts).toEqual([sha("run()")]);
+    expect(hashes.styles).toEqual([sha(".a{}")]);
+  });
+
+  it("treats src and type as whole attribute names", () => {
+    const hashes = computePageCspHashes(
+      '<script data-src="a.js">one()</script><script data-type="text/bascik-server">two()</script>' +
+      '<script src="b.js"></script><script type="text/bascik-server" data-bascik-server-id="x"></script>',
+    );
+    expect(hashes.scripts).toEqual([sha("one()"), sha("two()")].sort());
+  });
+
   it("does not end a script at a lookalike tag", () => {
     expect(computePageCspHashes("<script>a('</scripts>')</script>").scripts).toEqual([sha("a('</scripts>')")]);
   });

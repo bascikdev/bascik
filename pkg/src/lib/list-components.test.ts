@@ -285,6 +285,37 @@ describe("listComponents – companion scripts", () => {
     expect(result["demo-counter"].fileContent).not.toContain('src="demo-counter.ts"');
   });
 
+  it("inlines a companion whose <script> tag has a quoted attribute value containing >", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/demo-counter/demo-counter.html",
+      "src/components/demo-counter/demo-counter.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script data-note="a > b" src="demo-counter.ts" defer></script>'))
+      .mockResolvedValueOnce(Buffer.from("const x = 1;"));
+
+    const content = (await listComponents())["demo-counter"].fileContent;
+
+    expect(content).toContain("const x = 1;");
+    expect(content).toMatch(/<script data-note="a > b" defer data-bascik-source="[^"]*demo-counter\.ts">/);
+    expect(content).not.toContain('src="demo-counter.ts"');
+  });
+
+  it("does not treat data-src as a companion script reference", async () => {
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/demo-counter/demo-counter.html",
+      "src/components/demo-counter/demo-counter.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script data-src="demo-counter.ts"></script>'))
+      .mockResolvedValueOnce(Buffer.from("const x = 1;"));
+
+    const content = (await listComponents())["demo-counter"].fileContent;
+
+    expect(content).not.toContain("const x = 1;");
+    expect(content).toContain('data-src="demo-counter.ts"');
+  });
+
   it("does not auto-inline companion scripts unless explicitly referenced with <script src=\"...\">", async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/my-counter/my-counter.html",

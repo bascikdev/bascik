@@ -70,6 +70,23 @@ describe("server-script regexes treat hyphen-suffixed attributes as unrelated", 
     expect(minifyHtml('<div><script data-bascik-server>var a = 1;</script></div>').startsWith("<div><script")).toBe(true);
   });
 
+  it("javascript scoping sees a directive after a quoted attribute value containing >", () => {
+    const html = '<div><script data-note="a > b" data-bascik-server>export default () => document.title;</script></div>';
+    expect(namespaceScriptTags({ name: "my-comp", fileContent: html } as any).fileContent).toBe(html);
+  });
+
+  it("javascript scoping wraps a client script whose quoted attribute value contains > without corrupting its body", () => {
+    const out = namespaceScriptTags({
+      name: "my-comp",
+      fileContent: '<div><script data-note="a > b">window.ran = true;</script></div>',
+    } as any).fileContent as string;
+    expect(out).toContain('<script data-note="a > b">');
+    expect(out).toContain("(function() {");
+    expect(out).not.toContain('b">window');
+    const body = /<script data-note="a > b">([\s\S]*?)<\/script>/.exec(out)![1];
+    expect(() => new Function(body)).not.toThrow();
+  });
+
   it("javascript scoping treats a hyphen-suffixed script as an ordinary client script", () => {
     const component = {
       name: "my-comp",
