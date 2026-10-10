@@ -98,9 +98,6 @@
   --hl-comment:     #7e8190;
   --hl-scoped:      var(--accent);
   --hl-num:         #f9e2af;
-  /* ── Live indicator dot ── */
-  --live-dot-bg:     var(--accent);
-  --live-dot-shadow: 0 0 8px rgba(211,255,141,0.45);
   /* ── Homepage hero glow ── */
   --hero-glow:   rgba(211,255,141,0.14);
   --hero-glow-2: rgba(211,255,141,0.06);
@@ -151,8 +148,6 @@ html[data-theme="light"] {
   --hl-comment:     #6b7280;
   --hl-scoped:      var(--accent-fg);
   --hl-num:         #9a3412;
-  --live-dot-bg:    var(--text);
-  --live-dot-shadow: 0 0 0 2px var(--accent);
   --hero-glow:   rgba(100,160,30,0.22);
   --hero-glow-2: rgba(100,160,30,0.11);
 }
@@ -383,16 +378,6 @@ pre code { background: none; border: none; padding: 0; color: var(--pre-text); f
 
 /* Live-demo callout: rendered from MD blockquotes that open with **See it live** */
 .callout-live { border-left: 4px solid var(--accent); }
-.callout-live > p:first-child strong::before {
-  content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px;
-  border-radius: 50%; background: var(--accent); vertical-align: 0.1em;
-  box-shadow: 0 0 0 3px var(--accent-dim);
-  animation: callout-live-pulse 1.6s ease-in-out infinite;
-}
-@keyframes callout-live-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .callout-live > p:first-child strong::before { animation: none; }
-}
 .docs-content .callout-live ul { margin: 10px 0 0; padding-left: 20px; }
 .docs-content .callout-live li { font-size: 0.9rem; margin-bottom: 4px; }
 .callout-live li a { font-weight: 600; }

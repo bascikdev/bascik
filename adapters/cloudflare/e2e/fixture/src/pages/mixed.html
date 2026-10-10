@@ -240,28 +240,6 @@
       font-weight: 700;
     }
 
-    .pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #fef08a;
-      animation: dot-glow 1.2s ease-in-out infinite;
-    }
-
-    @keyframes dot-glow {
-
-      0%,
-      100% {
-        opacity: 0.4;
-        transform: scale(0.85);
-      }
-
-      50% {
-        opacity: 1;
-        transform: scale(1.15);
-      }
-    }
-
     .stream-resolved {
       background: rgba(211, 255, 141, 0.08);
       border: 1px solid rgba(211, 255, 141, 0.22);
@@ -432,7 +410,6 @@
             <div class="skeleton-header">
               <div class="skeleton-bar" style="width: 45%; height: 0.9rem;"></div>
               <span class="skeleton-status">
-                <span class="pulse-dot"></span>
                 Pending Stream…
               </span>
             </div>

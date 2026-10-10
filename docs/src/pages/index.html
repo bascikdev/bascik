@@ -312,16 +312,6 @@
       margin: 0;
     }
 
-    .how-result-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--live-dot-bg);
-      box-shadow: var(--live-dot-shadow);
-      flex-shrink: 0;
-      animation: livepulse 2.5s ease-in-out infinite;
-    }
-
     .how-result-card {
       background: var(--elevated);
       border: 1px solid var(--border);
@@ -406,28 +396,6 @@
       gap: 8px;
       font-size: 0.82rem;
       color: var(--text-muted);
-    }
-
-    .demo-live-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--live-dot-bg);
-      box-shadow: var(--live-dot-shadow);
-      flex-shrink: 0;
-      animation: livepulse 2s ease-in-out infinite;
-    }
-
-    @keyframes livepulse {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0.35;
-      }
     }
 
     .demo-instances {
@@ -717,7 +685,6 @@
           <!-- Live rendered result -->
           <div class="how-result">
             <p class="how-result-eyebrow">
-              <span class="how-result-dot"></span>
               Live Example
             </p>
             <div class="how-result-card" id="how-demo-card">
@@ -847,7 +814,6 @@
           <!-- Live instances -->
           <div class="demo-live">
             <div class="demo-live-label">
-              <span class="demo-live-dot"></span>
               <span>Multiple instances of a component on the same page</span>
             </div>
             <div class="demo-instances" data-demo-theme="dark">
