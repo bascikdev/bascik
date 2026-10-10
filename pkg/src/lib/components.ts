@@ -574,7 +574,7 @@ const findOpenTag = (
   // A fresh `g` instance per call so `lastIndex` is invocation-local (pages
   // may transpile concurrently); V8 caches the compiled pattern by source.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const openTagRegexp = new RegExp(`<${tn}(?![\w-])(?:${ATTR_VALUE})>`, "gi");
+  const openTagRegexp = new RegExp(`<${tn}(?![\\w-])(?:${ATTR_VALUE})>`, "gi");
   openTagRegexp.lastIndex = searchFrom;
   const maskedHtml = masked !== undefined ? masked : maskRawTextContent(htmlString);
   const openTagMatch = openTagRegexp.exec(maskedHtml);

@@ -129,6 +129,7 @@ function escapeXml(str: string): string {
 }
 
 function stripMd(text: string): string {
+  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
   return text
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/```[\s\S]*?```/gm, '')
@@ -195,6 +196,7 @@ function extractMetaFromMd(
   fallbackLabel: string
 ): { title: string; description: string; codeSnippet?: string; codeLang?: string } {
   // Strip multiline HTML comments before line scanning
+  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
   const cleanMd = md.replace(/<!--[\s\S]*?-->/g, '');
   const lines = cleanMd.split('\n');
   const h1Line = lines.find((l) => /^# /.test(l));
@@ -230,6 +232,7 @@ function extractMetaFromMd(
   }
 
   // Preserve raw content with inline backticks, just strip other block MD structures
+  // codeql[js/incomplete-multi-character-sanitization] Plain text from first-party Markdown; escapeXml runs before it reaches the SVG.
   const description = paragraphLines.join(' ')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')

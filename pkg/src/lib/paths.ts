@@ -1,5 +1,6 @@
 import { relative } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
 
 /** Convert a page filename to its canonical decoded URL path. Directory indexes use a trailing slash. */
 export const getHttpPath = (
@@ -7,7 +8,7 @@ export const getHttpPath = (
   pagesDir: string = BascikConfig.directory.pages,
 ): string => {
   let normalized = pagePath.replace(/\\/g, "/").replace(/\/+/g, "/");
-  const normalizedPagesDir = pagesDir.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPagesDir = trimTrailingSlashes(pagesDir.replace(/\\/g, "/"));
   const configuredRelativeDir = relative(process.cwd(), normalizedPagesDir).replace(/\\/g, "/");
   const sourceRoots = new Set([
     normalizedPagesDir,
@@ -17,7 +18,7 @@ export const getHttpPath = (
 
   let leadingRootLength = -1;
   for (const sourceRoot of sourceRoots) {
-    const variants = [sourceRoot.replace(/\/+$/g, ""), sourceRoot.replace(/^\/+|\/+$/g, "")];
+    const variants = [trimTrailingSlashes(sourceRoot), trimSlashes(sourceRoot)];
     for (const root of variants) {
       if (root && normalized.startsWith(`${root}/`)) {
         leadingRootLength = Math.max(leadingRootLength, root.length + 1);
@@ -30,7 +31,7 @@ export const getHttpPath = (
   } else {
     let relativeStart = -1;
     for (const sourceRoot of sourceRoots) {
-      const root = sourceRoot.replace(/^\/+|\/+$/g, "");
+      const root = trimSlashes(sourceRoot);
       if (!root) continue;
       const marker = `/${root}/`;
       const markerIndex = normalized.lastIndexOf(marker);

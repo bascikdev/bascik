@@ -525,6 +525,7 @@ const waitForHealth = async (
           port: target.port,
           path: "/_health/ready",
           method: "GET",
+          // codeql[js/disabling-certificate-validation] Test-only probe of a localhost server with a self-signed cert.
           rejectUnauthorized: false,
         } as http.RequestOptions,
         (res) => {

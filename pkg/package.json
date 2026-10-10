@@ -55,7 +55,7 @@
     "@swc/core": "^1.16.2",
     "@types/css-tree": "^3",
     "@types/node": "^24.0.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "@webref/css": "^8.7.3",
     "@webref/elements": "^2.8.0",
     "@webref/idl": "^3.83.0",
@@ -69,7 +69,7 @@
     "postcss": "^8.5.26",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "web-features": "^3.36.0",
     "webidl2": "^24.5.0"
   },

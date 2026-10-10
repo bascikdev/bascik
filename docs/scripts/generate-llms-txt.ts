@@ -24,6 +24,7 @@ const outputFile = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'll
 const siteUrl = 'https://bascik.dev';
 
 function stripMd(text: string): string {
+  // codeql[js/incomplete-multi-character-sanitization] Writes plain text to llms.txt from first-party Markdown.
   return text
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/```[\s\S]*?```/gm, '')

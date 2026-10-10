@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { breadcrumbLd } from './breadcrumb-ld.js';
 
+/** The JSON between the opening `<script ...>` tag and the closing tag. */
+const jsonLdBody = (html: string): string => html.slice(html.indexOf('>') + 1, html.lastIndexOf('</'));
+
 describe('breadcrumbLd', () => {
   let tempDir: string;
   const originalEnv = { ...process.env };
@@ -56,7 +59,7 @@ describe('breadcrumbLd', () => {
     expect(result).toContain('"@type": "BreadcrumbList"');
     expect(result).toContain('"name": "Bascik"');
     expect(result).toContain('"name": "Server Scripts"');
-    const parsed = JSON.parse(result.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''));
+    const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.itemListElement).toHaveLength(2);
     expect(parsed.itemListElement[0].name).toBe('Bascik');
     expect(parsed.itemListElement[1].name).toBe('Server Scripts');
@@ -77,7 +80,7 @@ describe('breadcrumbLd', () => {
     process.env.BASCIK_SITE_URL = 'https://bascik.dev';
 
     const result = await breadcrumbLd();
-    const parsed = JSON.parse(result.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''));
+    const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.itemListElement).toHaveLength(3);
     expect(parsed.itemListElement[0].name).toBe('Bascik');
     expect(parsed.itemListElement[1].name).toBe('Internals');

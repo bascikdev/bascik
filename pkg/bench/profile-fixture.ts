@@ -32,6 +32,7 @@ export async function createFixture(root: string, workers: boolean, port: number
   await writeFile(join(root, "src/components/profile-card.html"), '<style>.card { color: red; }</style><article class="card"><p>component-128</p><div data-bascik-slot></div></article>');
   for (let index = 0; index < pageCount; index++) await writeFile(join(root, `src/pages/page-${index}.html`), pageSource(index));
   await writeFile(join(root, "src/pages/stream.html"), streamBody.replace("<p>stream-128</p>", () => '<script data-bascik-stream>export default async () => "<p>stream-128</p>";</script>'));
+  // codeql[js/bad-code-sanitization] Writes a benchmark fixture module from a constant.
   await writeFile(join(root, "src/api/probe.ts"), `export const GET = () => new Response(${JSON.stringify(apiBody)}, { headers: { "content-type": "application/json" } });`);
   await writeFile(join(root, "src/pages/asset.txt"), assetBytes());
   for (let index = 0; index < 8; index++) await writeFile(join(root, `src/pages/asset-${index}.txt`), assetBytes(index + 1));

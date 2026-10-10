@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeBasePath } from "./config-validation.ts";
 import {
+  composeSiteUrl,
   rewriteCssBasePaths,
   rewriteHtmlBasePaths,
   rewriteManifestBasePaths,
@@ -18,6 +19,24 @@ describe("base path normalization", () => {
     ["", "/"],
   ])("normalizes %j to %j", (input, expected) => {
     expect(normalizeBasePath(input)).toBe(expected);
+  });
+});
+
+describe("composeSiteUrl", () => {
+  it.each([
+    ["https://bascik.dev", "/", "/about", "https://bascik.dev/about"],
+    ["https://bascik.dev///", "/", "about", "https://bascik.dev/about"],
+    ["https://bascik.dev/", "/docs/", "/about", "https://bascik.dev/docs/about"],
+  ])("composes %j + %j + %j", (siteUrl, base, pathname, expected) => {
+    expect(composeSiteUrl(siteUrl, base, pathname)).toBe(expected);
+  });
+
+  it("runs in linear time when the site URL holds a long slash run", () => {
+    // `/\/+$/` is quadratic on a slash run that does not end the string.
+    const siteUrl = `https://bascik.dev${"/".repeat(50_000)}x`;
+    const start = performance.now();
+    expect(composeSiteUrl(siteUrl, "/", "/a")).toBe(`${siteUrl}/a`);
+    expect(performance.now() - start).toBeLessThan(250);
   });
 });
 

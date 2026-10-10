@@ -65,7 +65,7 @@ test.describe('browser TypeScript is stripped on supported paths', () => {
 
     // Every inline script body in the page must be parseable JavaScript, and
     // any sourceURL directive must be the final line of its script.
-    for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)) {
       const attrs = m[1];
       const body = m[2];
       if (/\bsrc\s*=/.test(attrs)) continue;

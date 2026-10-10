@@ -198,12 +198,19 @@ async function readConfigSource(
   return undefined;
 }
 
+/** Drops trailing "/" in linear time; the regex `/\/+$/` is quadratic on long slash runs. */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
+}
+
 function resolveComponentRoots(
   workspaceRoot: string,
   configuredRoots: string[],
 ): string[] {
   return configuredRoots.map((root) =>
-    path.resolve(workspaceRoot, root).replace(/\\/g, '/').replace(/\/+$/, ''),
+    trimTrailingSlashes(path.resolve(workspaceRoot, root).replace(/\\/g, '/')),
   );
 }
 
@@ -958,18 +965,83 @@ function createSlotCompletionItems(
   });
 }
 
+const isTagNameStart = (code: number): boolean =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isTagNameChar = (code: number): boolean =>
+  isTagNameStart(code) || (code >= 48 && code <= 57) || code === 95 || code === 45;
+
+/**
+ * Tag tokens in source order, matching what
+ * `/<\/?([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/g` finds, in linear time.
+ * Mirrors `scanTags` in lsp/src/analyzer.ts, which is covered by an exhaustive
+ * parity test against that regex (lsp/src/parent-component.test.ts).
+ */
+function* scanTags(source: string): Generator<{ name: string; closing: boolean; text: string }> {
+  const length = source.length;
+  // 0 = not scanned yet, -1 = no closing `>`, otherwise the index after `>`.
+  const tagEndFrom = new Int32Array(length + 1);
+  const visited: number[] = [];
+  const findTagEnd = (from: number): number => {
+    let position = from;
+    let end = -1;
+    visited.length = 0;
+    while (position < length) {
+      const known = tagEndFrom[position];
+      if (known !== 0) {
+        end = known;
+        break;
+      }
+      visited.push(position);
+      const code = source.charCodeAt(position);
+      if (code === 62 /* > */) {
+        end = position + 1;
+        break;
+      }
+      if (code === 34 /* " */ || code === 39 /* ' */) {
+        const close = source.indexOf(source[position], position + 1);
+        if (close < 0) break;
+        position = close + 1;
+        continue;
+      }
+      position++;
+    }
+    for (const index of visited) tagEndFrom[index] = end;
+    return end;
+  };
+
+  let cursor = 0;
+  while (cursor < length) {
+    const open = source.indexOf('<', cursor);
+    if (open < 0) return;
+    const closing = source.charCodeAt(open + 1) === 47; /* / */
+    const nameStart = open + (closing ? 2 : 1);
+    if (!isTagNameStart(source.charCodeAt(nameStart))) {
+      cursor = open + 1;
+      continue;
+    }
+    let nameEnd = nameStart + 1;
+    while (nameEnd < length && isTagNameChar(source.charCodeAt(nameEnd))) nameEnd++;
+    const end = findTagEnd(nameEnd);
+    if (end < 0) {
+      cursor = open + 1;
+      continue;
+    }
+    yield { name: source.slice(nameStart, nameEnd), closing, text: source.slice(open, end) };
+    cursor = end;
+  }
+}
+
 function findNearestParentComponent(
   source: string,
   componentMap: Map<string, string>,
 ): string | undefined {
   const stack: string[] = [];
-  const tagRegex = /<\/?([A-Za-z][\w-]*)(?:[^>"']|"[^"]*"|'[^']*')*>/g;
-  for (const match of source.matchAll(tagRegex)) {
-    const name = match[1].toLowerCase();
-    if (match[0].startsWith('</')) {
+  for (const tag of scanTags(source)) {
+    const name = tag.name.toLowerCase();
+    if (tag.closing) {
       const matchingIndex = stack.lastIndexOf(name);
       if (matchingIndex >= 0) stack.splice(matchingIndex);
-    } else if (!/\/\s*>$/.test(match[0])) {
+    } else if (!/\/\s*>$/.test(tag.text)) {
       stack.push(name);
     }
   }

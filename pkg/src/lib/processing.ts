@@ -1585,6 +1585,7 @@ export const transpilePage = async (
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
       // doesn't produce false unresolved component warnings.
       // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
+      // codeql[js/incomplete-multi-character-sanitization] Only feeds the unresolved-component warning scan; never emitted.
       const scannable = chunk
         .replace(/<!--[\s\S]*?-->/g, () => "")
         .replace(
