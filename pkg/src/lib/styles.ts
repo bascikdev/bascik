@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
 import { shieldElementContents } from "./shielding.ts";
+import { readStartTagAttributes } from "./html-scanner.ts";
 import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
@@ -1106,18 +1107,16 @@ export const extractInlineStyles = (
 
   const cssBlocks: string[] = [];
   const cleanedHtml = shielded.html.replace(
-    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, openTag: string, styleContent: string) => {
       let css = removeCommentsFromCss(styleContent).trim();
       if (!css) return "";
-      const mediaMatch = openTag.match(/\bmedia\s*=\s*["']?([^"'>]+)["']?/i);
-      if (
-        mediaMatch &&
-        mediaMatch[1].trim() &&
-        mediaMatch[1].toLowerCase() !== "all" &&
-        mediaMatch[1].toLowerCase() !== "screen"
-      ) {
-        css = `@media ${mediaMatch[1].trim()} {\n${css}\n}`;
+      // Read `media` the way the browser does, so a range query such as
+      // `(width > 600px)` is read whole. The first `media` attribute counts.
+      const media = readStartTagAttributes(openTag, 0)
+        .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
+      if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
+        css = `@media ${media} {\n${css}\n}`;
       }
       cssBlocks.push(css);
       return "";
@@ -1159,7 +1158,7 @@ export const scopeInlineStyleTags = (
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
   const processedHtml = html.replace(
-    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
       let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
       // Shield strings/url() so dots inside them aren't treated as class selectors

@@ -264,9 +264,9 @@ export function analyzeServerScriptSource(
 
     // 4. Inline <script> body
     // An unclosed <script tag precedes the placeholder within the literal: last <script\b[^>]*> after the last </script>
-    const scriptOpenMatches = [...precedingInLiteral.matchAll(/<script\b[^>]*>/gi)];
+    const scriptOpenMatches = [...precedingInLiteral.matchAll(/<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)];
     const lastScriptOpen = scriptOpenMatches.length > 0 ? (scriptOpenMatches[scriptOpenMatches.length - 1].index ?? -1) : -1;
-    const scriptCloseMatches = [...precedingInLiteral.matchAll(/<\/script>/gi)];
+    const scriptCloseMatches = [...precedingInLiteral.matchAll(/<\/script(?:[\t\n\f\r /][^>]*)?>/gi)];
     const lastScriptClose = scriptCloseMatches.length > 0 ? (scriptCloseMatches[scriptCloseMatches.length - 1].index ?? -1) : -1;
     if (lastScriptOpen !== -1 && lastScriptOpen > lastScriptClose) {
       diagnostics.push({
@@ -282,9 +282,9 @@ export function analyzeServerScriptSource(
     // 5. Style context
     // Inside a quoted style attribute or an unclosed <style tag
     const styleAttrRegex = /\bstyle\s*=\s*["'][^"']*$/i;
-    const styleOpenMatches = [...precedingInLiteral.matchAll(/<style\b[^>]*>/gi)];
+    const styleOpenMatches = [...precedingInLiteral.matchAll(/<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>/gi)];
     const lastStyleOpen = styleOpenMatches.length > 0 ? (styleOpenMatches[styleOpenMatches.length - 1].index ?? -1) : -1;
-    const styleCloseMatches = [...precedingInLiteral.matchAll(/<\/style>/gi)];
+    const styleCloseMatches = [...precedingInLiteral.matchAll(/<\/style(?:[\t\n\f\r /][^>]*)?>/gi)];
     const lastStyleClose = styleCloseMatches.length > 0 ? (styleCloseMatches[styleCloseMatches.length - 1].index ?? -1) : -1;
     const isInsideStyleTag = lastStyleOpen !== -1 && lastStyleOpen > lastStyleClose;
 

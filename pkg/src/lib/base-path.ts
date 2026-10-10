@@ -192,7 +192,7 @@ export const rewriteHtmlBasePaths = (html: string, base: string): string => {
     (comment) => commentShield.hide(comment),
   );
   const withCss = withoutComments.replace(
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, css: string, close: string) =>
       `${rewriteTagAttributes(open, base)}${rewriteCssBasePaths(css, base)}${close}`,
   );

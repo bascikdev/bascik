@@ -1066,6 +1066,25 @@ describe("checkProject", () => {
         expect(compatErrors.some((w) => w.message.includes("removeAttribute"))).toBe(true);
       });
 
+      it("checks inline style blocks whatever their end tag spelling, and skips <style-guide> elements", async () => {
+        await setupProject({
+          "pages/index.html": "<my-comp></my-comp>",
+          "components/my-comp.html":
+            '<style-guide>[data-a] text</style-guide><div class="x"></div>' +
+            "<style>[data-b] { color: red; }</style/>" +
+            "<style>[data-c] { color: red; }</style\n foo>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-comp": { name: "my-comp", fileName: join(workDir, "components/my-comp.html"), fileContent: "" },
+        });
+
+        const findings = await checkProject();
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors).toHaveLength(2);
+        expect(compatErrors.every((e) => e.message.includes("Standalone attribute selectors"))).toBe(true);
+      });
+
       it("flags _middleware.ts in API routes as an error", async () => {
         await setupProject({
           "pages/index.html": "<p>ok</p>",

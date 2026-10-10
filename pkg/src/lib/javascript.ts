@@ -174,7 +174,7 @@ const rewriteIdReferencesInStyleTags = (
   const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
   let changed = false;
   const rewrittenHtml = shielded.html.replace(
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style\s*>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, openTag: string, css: string, closeTag: string) => {
       const rewrittenCss = rewriteIdReferencesInCss(css, resolve);
       changed ||= rewrittenCss !== css;

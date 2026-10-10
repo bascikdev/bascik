@@ -189,4 +189,47 @@ describe('Bascik Language Server Analyzer', () => {
     const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
     expect(diags.some((d) => d.message.includes('only valid on <script> tags'))).toBe(true);
   });
+
+  describe('script and style blocks follow the browser tag rules', () => {
+    const componentPath = '/test-project/src/components/demo-card.html';
+    const diagnose = (source: string) =>
+      createDiagnostics(
+        TextDocument.create(`file://${componentPath}`, 'html', 1, source),
+        componentPath,
+        mockSnapshot,
+      ).map((d) => d.code);
+
+    it('reports compatibility errors inside an inline <style> block', () => {
+      // The body was read from text with style contents blanked, so nothing matched.
+      expect(diagnose('<div class="a"></div><style>[data-x] { color: red; }</style>')).toContain('css-attribute-selector');
+    });
+
+    it.each([['</style/>'], ['</style foo>'], ['</style\t\n bar>'], ['</STYLE >']])(
+      'checks a <style> block ending in %j',
+      (endTag) => {
+        expect(diagnose(`<div class="a"></div><style>[data-x] { color: red; }${endTag}`)).toContain('css-attribute-selector');
+      },
+    );
+
+    it.each([['</script/>'], ['</script foo>'], ['</script\t\n bar>']])(
+      'checks a <script> block ending in %j',
+      (endTag) => {
+        expect(diagnose(`<div class="a"></div><script>el.id = "x";${endTag}`)).toContain('js-id-setter');
+      },
+    );
+
+    it('does not end a <script> block at </script followed by a no-break space', () => {
+      // `</script\u00a0>` is script text, so the block runs to the real end tag.
+      expect(diagnose('<div class="a"></div><script>a();</script\u00a0>el.id = "x";</script>')).toContain('js-id-setter');
+    });
+
+    it('does not read a <style-guide> or <script-loader> element as a style or script block', () => {
+      const codes = diagnose(
+        '<style-guide>[data-x] text</style-guide><style>.a { color: red; }</style>' +
+        '<script-loader>el.id = "x";</script-loader><script>run();</script>',
+      );
+      expect(codes).not.toContain('css-attribute-selector');
+      expect(codes).not.toContain('js-id-setter');
+    });
+  });
 });

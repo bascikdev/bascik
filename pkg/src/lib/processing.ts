@@ -1648,7 +1648,7 @@ export const transpilePage = async (
 
   if (cssMinifier) {
     // Also minify any inline <style> blocks that came from the page source
-    const styleBlockRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+    const styleBlockRegex = /<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
     const matches: Array<{ full: string; css: string; index: number }> = [];
     let match: RegExpExecArray | null;
     while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {

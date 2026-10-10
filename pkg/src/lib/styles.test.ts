@@ -1152,6 +1152,18 @@ describe("scopeContainerNames", () => {
 // ─── scopeInlineStyleTags ────────────────────────────────────────────────────
 
 describe("scopeInlineStyleTags", () => {
+  it.each([["</style >"], ["</style\n>"], ["</style/>"]])("scopes a <style> tag ending in %j", (endTag) => {
+    const { html: result } = scopeInlineStyleTags(`<style>.foo { color: red; }${endTag}<div class="foo"></div>`, "my-comp");
+    expect(result).toContain(".bascik__my-comp__foo");
+    expect(result).toContain('<div class="foo"></div>');
+  });
+
+  it("scopes a <style> tag whose start tag has a quoted >", () => {
+    const { html: result } = scopeInlineStyleTags('<style media="(width > 1px)">.foo { color: red; }</style>', "my-comp");
+    expect(result).toContain('<style media="(width > 1px)">');
+    expect(result).toContain(".bascik__my-comp__foo");
+  });
+
   it("scopes class names inside a <style> tag", () => {
     const html = '<style>.foo { color: red; }</style><div class="foo"></div>';
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
@@ -1952,6 +1964,28 @@ describe("shieldCssStrings – perfect round-trip", () => {
 });
 
 describe("extractInlineStyles", () => {
+  it("reads a media attribute whole when it contains >, such as a range query", () => {
+    const { html, css } = extractInlineStyles('<div class="a">x</div><style media="(width > 600px)">.a { color: red; }</style>');
+    expect(html).toBe('<div class="a">x</div>');
+    expect(css).toBe("@media (width > 600px) {\n.a { color: red; }\n}");
+  });
+
+  it.each([["</style >"], ["</style\n>"], ["</style foo>"], ["</style/>"], ["</STYLE>"]])(
+    "ends a style at %j without taking the markup after it",
+    (endTag) => {
+      const { html, css } = extractInlineStyles(`<div class="a">x</div><style>.a { color: red; }${endTag}<p>after</p><style>.b{}</style>`);
+      expect(html).toBe('<div class="a">x</div><p>after</p>');
+      expect(css).toBe(".a { color: red; }\n.b{}");
+    },
+  );
+
+  it("leaves a <style-guide> custom element alone", () => {
+    const input = "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toBe("<style-guide>.a { color: red; }</style-guide>");
+    expect(css).toBe(".b{}");
+  });
+
   it("extracts inline <style> tags and strips them from HTML", () => {
     const input = '<style>.badge { color: red; }</style><span class="badge">Badge</span>';
     const { html, css } = extractInlineStyles(input);

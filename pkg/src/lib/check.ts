@@ -365,7 +365,7 @@ const canonicalPath = (filePath: string): string => resolve(process.cwd(), fileP
 
 const maskPreservedSubtrees = (html: string): string => {
   let result = html;
-  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi;
+  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
   let previous = "";
   while (previous !== result) {
     previous = result;
@@ -753,7 +753,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
       }
 
       // ── Scoping compatibility analysis in component HTML, inline styles & scripts ──
-      const styleBlockRegex = /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
+      const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
       let styleMatch: RegExpExecArray | null;
       while ((styleMatch = styleBlockRegex.exec(html)) !== null) {
         const styleBody = styleMatch[2] ?? "";
