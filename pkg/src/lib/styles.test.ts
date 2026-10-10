@@ -1986,6 +1986,72 @@ describe("extractInlineStyles", () => {
     expect(css).toBe(".a{}\n.b{}");
   });
 
+  it("keeps extracting until no block is left when joins are nested several levels deep", () => {
+    // Each pass removes the innermost block and joins the next one, so this
+    // input needs three passes before the HTML stops changing.
+    const { html, css } = extractInlineStyles("<p>x</p><sty<sty<style>.a{}</style>le>.b{}</style>le>.c{}</style>");
+    expect(html).toBe("<p>x</p>");
+    expect(css).toBe(".a{}\n.b{}\n.c{}");
+  });
+
+  it("ends the loop on deeply nested joins and collects every block in order", () => {
+    const depth = 50;
+    const input = "<sty".repeat(depth) + "<style>.n0{}</style>" +
+      Array.from({ length: depth }, (_, i) => `le>.n${i + 1}{}</style>`).join("");
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toBe("");
+    expect(css).toBe(Array.from({ length: depth + 1 }, (_, i) => `.n${i}{}`).join("\n"));
+  });
+
+  it("reads the media attribute of a block formed by a join", () => {
+    const { html, css } = extractInlineStyles('<sty<style>.a{}</style>le media="print">.b{}</style>');
+    expect(html).toBe("");
+    expect(css).toBe(".a{}\n@media print {\n.b{}\n}");
+  });
+
+  it("removes a block formed by joining around an empty <style> block", () => {
+    const { html, css } = extractInlineStyles("<sty<style></style>le>.b{}</style><p>x</p>");
+    expect(html).toBe("<p>x</p>");
+    expect(css).toBe(".b{}");
+  });
+
+  it("stops when a join forms a <style-guide> custom element instead of a style tag", () => {
+    const { html, css } = extractInlineStyles("<sty<style>.a{}</style>le-guide>x</style-guide>");
+    expect(html).toBe("<style-guide>x</style-guide>");
+    expect(css).toBe(".a{}");
+  });
+
+  it("keeps shielded <pre> content intact while extracting joined blocks", () => {
+    const { html, css } = extractInlineStyles("<pre><style>.keep{}</style></pre><sty<style>.a{}</style>le>.b{}</style>");
+    expect(html).toBe("<pre><style>.keep{}</style></pre>");
+    expect(css).toBe(".a{}\n.b{}");
+  });
+
+  it("returns HTML that has no extractable <style> block left (property)", () => {
+    const body = fc.constantFrom("", ".a{}", " ", "x");
+    const noise = fc.constantFrom("", "<p>", "</p>", "x", "<sty", "le>", "</sty", "<style>", "</style>");
+    // A block whose `<style` opener only forms once the block nested inside
+    // it is removed, mixed with stray fragments that may or may not join.
+    const { block } = fc.letrec<{ block: string }>((tie) => ({
+      block: fc.oneof(
+        { depthSize: "small", withCrossShrink: true },
+        fc.tuple(body).map(([css]) => `<style>${css}</style>`),
+        fc.tuple(tie("block"), fc.constantFrom("le>", 'le media="print">'), body)
+          .map(([inner, tail, css]) => `<sty${inner}${tail}${css}</style>`),
+      ),
+    }));
+    const input = fc.array(fc.oneof(block, noise), { maxLength: 12 }).map((parts) => parts.join(""));
+    fc.assert(
+      fc.property(input, (source) => {
+        const first = extractInlineStyles(source);
+        const second = extractInlineStyles(first.html);
+        expect(second.html).toBe(first.html);
+        expect(second.css).toBe("");
+      }),
+      { numRuns: 300 },
+    );
+  });
+
   it("leaves a <style-guide> custom element alone", () => {
     const input = "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
     const { html, css } = extractInlineStyles(input);

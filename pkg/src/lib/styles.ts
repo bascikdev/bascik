@@ -1106,32 +1106,33 @@ export const extractInlineStyles = (
   const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
-  const extractStyleBlocks = (source: string): string => source.replace(
-    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (_match, openTag: string, styleContent: string) => {
-      let css = removeCommentsFromCss(styleContent).trim();
-      if (!css) return "";
-      // Read `media` the way the browser does, so a range query such as
-      // `(width > 600px)` is read whole. The first `media` attribute counts.
-      const media = readStartTagAttributes(openTag, 0)
-        .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
-      if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
-        css = `@media ${media} {\n${css}\n}`;
-      }
-      cssBlocks.push(css);
-      return "";
-    },
-  );
+  const collectStyleBlock = (_match: string, openTag: string, styleContent: string): string => {
+    let css = removeCommentsFromCss(styleContent).trim();
+    if (!css) return "";
+    // Read `media` the way the browser does, so a range query such as
+    // `(width > 600px)` is read whole. The first `media` attribute counts.
+    const media = readStartTagAttributes(openTag, 0)
+      .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
+    if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
+      css = `@media ${media} {\n${css}\n}`;
+    }
+    cssBlocks.push(css);
+    return "";
+  };
 
   // Removing a block can join the text around it into a new `<style>` block
   // (for example `<sty<style>a{}</style>le>b{}</style>`), so repeat until the
   // HTML stops changing. Every pass that changes the HTML shortens it, so the
-  // loop always ends.
+  // loop always ends. The `replace` call stays inline, with its result fed
+  // back into its own receiver, so static analysis can see the fixpoint loop.
   let cleanedHtml = shielded.html;
   let previousHtml: string;
   do {
     previousHtml = cleanedHtml;
-    cleanedHtml = extractStyleBlocks(previousHtml);
+    cleanedHtml = cleanedHtml.replace(
+      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
+      collectStyleBlock,
+    );
   } while (cleanedHtml !== previousHtml);
 
   // Restore shielded element content first, then restore masked HTML comments.
