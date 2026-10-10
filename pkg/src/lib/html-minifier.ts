@@ -19,7 +19,7 @@
  * Known limits, inherent to minifying HTML without its CSS:
  * - Whitespace is collapsed in any element that is not `<pre>` or
  *   `<listing>`, so an element styled `white-space: pre` (or `pre-wrap`,
- *   `break-spaces`) loses its extra spaces and line breaks.
+ *   `pre-line`, `break-spaces`) loses its extra spaces and line breaks.
  * - Whitespace between two tags is kept as one space only when both are
  *   inline elements by default (`INLINE_TAGS`); elsewhere it is removed. An
  *   element made inline with CSS can lose the space next to it.

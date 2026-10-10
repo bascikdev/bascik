@@ -38,7 +38,7 @@ The goal is that the minified page parses to the same document, with the same sc
 
 ### Known HTML Limits
 
-- **CSS-dependent whitespace**: The minifier does not read your CSS. An element other than `<pre>` or `<listing>` styled `white-space: pre`, `pre-wrap`, or `break-spaces` loses its extra spaces and line breaks, and an element made inline with CSS can lose the space next to it. Use `<pre>` for preformatted text, or set `minify.html: false`.
+- **CSS-dependent whitespace**: The minifier does not read your CSS. An element other than `<pre>` or `<listing>` styled `white-space: pre`, `pre-wrap`, `pre-line`, or `break-spaces` loses its extra spaces and line breaks, and an element made inline with CSS can lose the space next to it. Use `<pre>` for preformatted text, or set `minify.html: false`.
 - **Malformed markup the scan cannot follow**: In a few rare constructs, such as raw text or SVG elements inside `<select>`, `<frameset>`, CDATA inside SVG `<title>`, or SVG and MathML end tags that close elements outside them, the scan stops and the rest of the document is left as written. Inside `<pre>` after a `<table>` or `<select>`, it keeps treating the content as preformatted until the next `<template>` boundary, which only keeps more whitespace.
 
 JavaScript minification applies to scripts with no `type` and to `text/javascript`, `module`, `application/javascript`, `text/ecmascript`, and `application/ecmascript`. External `src` scripts and non-JavaScript data scripts are not minified.
