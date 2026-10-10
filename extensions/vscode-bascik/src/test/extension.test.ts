@@ -456,6 +456,21 @@ suite('Extension Integration Suite', () => {
       ]);
     });
 
+    test('filters on the leading "<" that the replacement range covers', async () => {
+      // The range replaces "<my-", so VS Code filters the typed "<my-" against filterText.
+      // Without the "<", the editor hides every item even though the provider returned it.
+      const completions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<my-',
+      );
+      const items = completions.items.filter((item) => item.detail === 'Bascik component');
+      assert.ok(items.length > 0, 'Expected component items');
+      for (const item of items) {
+        assert.strictEqual(item.filterText, `<${completionLabel(item)}`);
+      }
+    });
+
     test('includes components from every configured root', async () => {
       const completions = await completionsInFile(
         'primary',
@@ -684,6 +699,7 @@ suite('Extension Integration Suite', () => {
 
       const buildShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-build');
       assert.ok(buildShorthand, 'Expected bascik-build item');
+      assert.strictEqual(buildShorthand.filterText, '<bascik-build');
       const buildInsert = buildShorthand.insertText instanceof vscode.SnippetString
         ? buildShorthand.insertText.value
         : String(buildShorthand.insertText);

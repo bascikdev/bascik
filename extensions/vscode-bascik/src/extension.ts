@@ -796,7 +796,8 @@ class ComponentCompletionItemProvider
           replacementRange.end,
         );
         item.insertText = new vscode.SnippetString(shorthand.snippet);
-        item.filterText = shorthand.label;
+        // The replacement range starts at "<", so the filter text must too or VS Code hides the item.
+        item.filterText = `<${shorthand.label}`;
         item.detail = shorthand.detail;
         item.documentation = new vscode.MarkdownString(shorthand.documentation);
         return item;
@@ -827,7 +828,7 @@ class ComponentCompletionItemProvider
               `<${componentName} />$0`,
             );
           }
-          item.filterText = componentName;
+          item.filterText = `<${componentName}`;
           item.detail = 'Bascik component';
           const relativePath = path
             .relative(project.projectRoot, componentPath)

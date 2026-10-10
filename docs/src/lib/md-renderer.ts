@@ -26,20 +26,45 @@ import { join } from 'node:path';
 import { marked } from 'marked';
 import { slugFromHeadingHtml } from './heading-slug.ts';
 
+/** Pixel size of a PNG or WebP header, or null when the bytes are neither. */
+function readImageHeader(header: Buffer): { width: number; height: number } | null {
+  if (header.length >= 24 && header.toString('latin1', 1, 4) === 'PNG' && header.toString('latin1', 12, 16) === 'IHDR') {
+    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+  }
+  if (header.length >= 30 && header.toString('latin1', 0, 4) === 'RIFF' && header.toString('latin1', 8, 12) === 'WEBP') {
+    const format = header.toString('latin1', 12, 16);
+    if (format === 'VP8 ') {
+      return { width: header.readUInt16LE(26) & 0x3fff, height: header.readUInt16LE(28) & 0x3fff };
+    }
+    if (format === 'VP8L') {
+      const bits = header.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (format === 'VP8X') {
+      return { width: header.readUIntLE(24, 3) + 1, height: header.readUIntLE(27, 3) + 1 };
+    }
+  }
+  return null;
+}
+
 /**
- * Width and height of a PNG in docs/src/pages, read from its header, or null when the file is
- * missing or is not a PNG. Giving the browser both numbers reserves the space before the image
- * loads, so the page does not shift.
+ * Display size of a PNG or WebP in docs/src/pages, read from its header, or null when the file is
+ * missing or is neither. Giving the browser both numbers reserves the space before the image loads,
+ * so the page does not shift. A file name ending in `@2x` holds twice the pixels it displays, so its
+ * size is halved: the image then renders at its intended size on high-density screens and is only
+ * ever scaled down to fit the column.
  */
-function pngSize(sitePath: string): { width: number; height: number } | null {
+function imageSize(sitePath: string): { width: number; height: number } | null {
   if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
   let descriptor: number | undefined;
   try {
     descriptor = openSync(join(process.cwd(), 'src/pages', sitePath), 'r');
-    const header = Buffer.alloc(24);
-    if (readSync(descriptor, header, 0, 24, 0) < 24) return null;
-    if (header.toString('latin1', 1, 4) !== 'PNG' || header.toString('latin1', 12, 16) !== 'IHDR') return null;
-    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+    const header = Buffer.alloc(32);
+    const bytesRead = readSync(descriptor, header, 0, 32, 0);
+    const size = readImageHeader(header.subarray(0, bytesRead));
+    if (!size) return null;
+    const density = /@2x\.[a-z]+$/i.test(sitePath) ? 2 : 1;
+    return { width: Math.round(size.width / density), height: Math.round(size.height / density) };
   } catch {
     return null;
   } finally {
@@ -228,9 +253,9 @@ function _transformMd(
   html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
 
-  // Images: lazy loading, and the real size when the file is a PNG that ships with the docs.
+  // Images: lazy loading, and the display size when the file is a PNG or WebP that ships with the docs.
   html = html.replace(/<img src="(\/[^"]+)"/g, (_, src: string) => {
-    const size = pngSize(src);
+    const size = imageSize(src);
     const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
     return `<img loading="lazy" decoding="async"${dimensions} src="${src}"`;
   });

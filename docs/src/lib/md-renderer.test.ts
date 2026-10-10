@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderMd, renderMdRange, extractDemoBlock } from './md-renderer.js';
@@ -94,6 +94,32 @@ const x = 1;
     expect(html).toMatch(/<img loading="lazy" decoding="async" width="180" height="180" src="\/assets\/apple-touch-icon\.png" alt="Touch icon"/);
     // A file that does not exist still renders, without invented dimensions.
     expect(html).toMatch(/<img loading="lazy" decoding="async" src="\/assets\/not-there\.png"/);
+  });
+
+  it('renderMd reads WebP headers and halves the size of @2x files', async () => {
+    // 1x and 2x copies of the same 8x4 lossy WebP header: only the file name differs.
+    const webp = Buffer.alloc(32);
+    webp.write('RIFF', 0, 'latin1');
+    webp.write('WEBP', 8, 'latin1');
+    webp.write('VP8 ', 12, 'latin1');
+    webp.writeUInt16LE(40, 26);
+    webp.writeUInt16LE(20, 28);
+    // The renderer resolves site paths from process.cwd(), so point it at a temporary site.
+    const assets = join(tempDir, 'src/pages/assets');
+    await mkdir(assets, { recursive: true });
+    await writeFile(join(assets, 'plain.webp'), webp);
+    await writeFile(join(assets, 'dense@2x.webp'), webp);
+    const mdFile = join(tempDir, 'webp.md');
+    await writeFile(mdFile, '![Plain](/assets/plain.webp)\n\n![Dense](/assets/dense@2x.webp)\n');
+
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    try {
+      const html = await renderMd(mdFile);
+      expect(html).toMatch(/width="40" height="20" src="\/assets\/plain\.webp"/);
+      expect(html).toMatch(/width="20" height="10" src="\/assets\/dense@2x\.webp"/);
+    } finally {
+      cwd.mockRestore();
+    }
   });
 
   it('renderMd supports skipFirstHeading option', async () => {
