@@ -1535,6 +1535,30 @@ describe("addIdClassesInHtml", () => {
     expect(result).toContain(`id="${minifiedId}"`);
   });
 
+  it("injects class onto element with single-quoted minified scoped id", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id='${minifiedId}'><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).toContain(`class="bclasshash123"`);
+    expect(result).toContain(`id='${minifiedId}'`);
+  });
+
+  it("does not match an unrelated element whose id only shares a prefix with the minified id", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id="other__${minifiedId}"><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).not.toContain("bclasshash123");
+    expect(result).toBe(html);
+  });
+
   it("appends to existing class attribute", () => {
     const html = '<button id="btn" class="primary">Click</button>';
     const result = addIdClassesInHtml(html, [

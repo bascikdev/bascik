@@ -321,11 +321,17 @@ export const addIdClassesInHtml = (
     if (!html.includes(idName) && (!scopedId || !html.includes(scopedId))) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const escapedScoped = scopedId
-      ? `|${scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+      ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       : "";
+    const idGroup = escapedScoped
+      ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
+      : `(?:[^"]*__)?${escaped}`;
+    const idGroupSingle = escapedScoped
+      ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
+      : `(?:[^']*__)?${escaped}`;
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:(?:[^"]*__)?${escaped}${escapedScoped})"|'(?:(?:[^']*__)?${escaped}${escapedScoped})')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"${idGroup}"|'${idGroupSingle}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
     );
     html = html.replace(idPattern, (openTag) =>
