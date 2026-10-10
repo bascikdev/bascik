@@ -8,12 +8,29 @@ vi.mock("./config.js", () => ({
   },
 }));
 
-import { cspHashCollector } from "./csp-hashes.ts";
+import { computePageCspHashes, cspHashCollector } from "./csp-hashes.ts";
 import { BascikConfig } from "./config.ts";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
+
+describe("computePageCspHashes end tags", () => {
+  const sha = (body: string) => `sha256-${createHash("sha256").update(body, "utf8").digest("base64")}`;
+
+  it("hashes exactly the body the browser sees for every accepted end tag spelling", () => {
+    const html =
+      "<script>a()</script\n><p>x</p><script>b()</script/><script>c()</script\t foo>" +
+      "<style>.a{}</style ><style>.b{}</style\n>";
+    const hashes = computePageCspHashes(html);
+    expect(hashes.scripts).toEqual([sha("a()"), sha("b()"), sha("c()")].sort());
+    expect(hashes.styles).toEqual([sha(".a{}"), sha(".b{}")].sort());
+  });
+
+  it("does not end a script at a lookalike tag", () => {
+    expect(computePageCspHashes("<script>a('</scripts>')</script>").scripts).toEqual([sha("a('</scripts>')")]);
+  });
+});
 
 describe("csp-hashes manifest", () => {
   beforeEach(() => {

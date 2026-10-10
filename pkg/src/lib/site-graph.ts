@@ -27,7 +27,7 @@ import type {
 export type { DistPageSegment };
 
 const PLACEHOLDER_RE =
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>\s*<\/script>/gi;
+  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>\s*<\/script(?:[\s/][^>]*)?>/gi;
 
 /** Split built placeholder HTML into static text and script ids, in document order. */
 export const splitDistPageIntoSegments = (

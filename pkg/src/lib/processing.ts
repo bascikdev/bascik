@@ -75,11 +75,15 @@ import {
 } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
-import { SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { BUILD_ATTR_NAME, OPEN_TAG_ATTRS, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
 
 // Request-time script directives as whole attribute names (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const SERVER_OR_STREAM_SCRIPT_RE = new RegExp(String.raw`\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})`, "i");
+// A build script still pending after a transpile pass: `data-bascik-build` as a
+// whole attribute name of the open tag, never text inside a quoted value.
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const PENDING_BUILD_SCRIPT_RE = new RegExp(String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`, "i");
 import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
@@ -308,7 +312,7 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
-  const regex = /(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi;
+  const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi;
   const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {
@@ -1524,7 +1528,7 @@ export const transpilePage = async (
   );
 
   let bodyPasses = 0;
-  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHtmlBody) && bodyPasses < 10) {
+  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
     const pendingBodyBuild = executeBuildScripts(transpiledHtmlBody, pagePath, route, {
       pageFile: pagePath,
@@ -1552,7 +1556,7 @@ export const transpilePage = async (
   } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath, instanceState);
 
   let headPasses = 0;
-  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
+  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) && headPasses < 10) {
     headPasses++;
     const pendingHeadBuild = executeBuildScripts(transpiledHeadContent, pagePath, route, {
       pageFile: pagePath,

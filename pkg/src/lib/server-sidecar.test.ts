@@ -39,6 +39,13 @@ describe("server-scripts sidecar", () => {
     expect(htmlHasServerScripts(extracted)).toBe(true);
   });
 
+  it("ends each server script at its own end tag when the end tag carries whitespace", () => {
+    const rawHtml = "<script data-bascik-server>one()</script\n><p>keep</p><script data-bascik-server>two()</script>";
+    const extracted = extractServerScriptsToSidecar(rawHtml, "src/pages/two.html");
+    expect(extracted).toContain("<p>keep</p>");
+    expect(Object.values(serverSidecarRegistry.getAllScripts()).map((entry) => entry.source)).toEqual(["one()", "two()"]);
+  });
+
   it("writes dist/.bascik/server-scripts.json and loads it back", async () => {
     const outDir = join(tmpdir(), `bascik-sidecar-test-${Date.now()}`);
     (serverSidecarRegistry as any).loadedSidecar = null;

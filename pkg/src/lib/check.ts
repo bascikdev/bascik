@@ -237,7 +237,7 @@ const toDisplay = (filePath: string): string => {
  */
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
-  const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(html)) !== null) {
     const attrs = match[1];
@@ -609,7 +609,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
       unknownBascikAttrs.set(unknown.attr, list);
     }
 
-    const scriptTagRegex = /<script\b([^>]*)>/gi;
+    const scriptTagRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
     let scriptMatch: RegExpExecArray | null;
     while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
       if (hasBuildServerConflict(scriptMatch[1] ?? "")) {
@@ -770,7 +770,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
         }
       }
 
-      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:\s+[^>]*)?\s*>/gi;
+      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
       let scriptMatch: RegExpExecArray | null;
       while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
         const openTag = scriptMatch[1];

@@ -65,14 +65,16 @@ import {
   BUILD_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
+  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
+  scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -263,7 +265,7 @@ const readCachedFile = async (absPath: string, relKey: string): Promise<string> 
 };
 
 const ALL_PAGE_SCRIPTS_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+(?:${BUILD_FLAG}|${ROUTES_FLAG})(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -576,7 +578,7 @@ export const executeBuildScripts = async (
     const [fullTag, scriptContent] = match;
     const index = match.index ?? 0;
 
-    const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+    const openTag = scriptOpenTag(fullTag, scriptContent);
     const annotatedSourceFile = getHtmlAttributeValue(openTag, "data-bascik-source-file");
     const sourceFile = annotatedSourceFile
       ? decodeURIComponent(annotatedSourceFile)

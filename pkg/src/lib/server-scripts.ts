@@ -43,10 +43,12 @@ import {
   ROUTES_FLAG,
   SERVER_FLAG,
   STREAM_FLAG,
+  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   SERVER_ATTR_NAME,
   STREAM_ATTR_NAME,
   getHtmlAttributeValue,
+  scriptOpenTag,
 } from "./html-patterns.ts";
 import type { ServerScriptMode } from "./server-sidecar.ts";
 
@@ -67,7 +69,7 @@ export { STREAM_LOOKAHEAD };
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const createServerScriptRegex = (): RegExp =>
   new RegExp(
-    String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script>`,
+    String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}|<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)${SCRIPT_END_TAG}`,
     "gi",
   );
 
@@ -180,7 +182,7 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
     let scriptContent = match[1] ?? match[2] ?? "";
     const index = match.index!;
     const length = fullTag.length;
-    const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+    const openTag = scriptOpenTag(fullTag, scriptContent);
 
     const conflict = findDirectiveConflict(openTag);
     if (conflict) {

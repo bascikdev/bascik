@@ -21,7 +21,7 @@ export const LIVE_RELOAD_SCRIPT_ATTR = "data-bascik-live-reload";
  * can never start at an unrelated `<script>` or run across several elements.
  */
 export const LIVE_RELOAD_SCRIPT_TAG_RE =
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-live-reload(?=[\s=/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script>/gi;
+  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-live-reload(?=[\s=/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi;
 
 /** Remove every injected live-reload script from `html`, leaving all other scripts intact. */
 export const stripLiveReloadScript = (html: string): string =>

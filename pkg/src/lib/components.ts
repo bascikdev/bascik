@@ -9,6 +9,7 @@ import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
+import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -155,7 +156,7 @@ const ATTR_SPEC = String.raw`${BARE_TOKEN_SPEC}(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
 const BUILD_FLAG_SPEC = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
 
 const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
-  `<script\\b(?:\\s+${ATTR_SPEC})*\\s+${BUILD_FLAG_SPEC}(?:\\s+${ATTR_SPEC})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `<script\\b(?:\\s+${ATTR_SPEC})*\\s+${BUILD_FLAG_SPEC}(?:\\s+${ATTR_SPEC})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -309,7 +310,7 @@ export const listComponents = async (): Promise<ComponentList> => {
           const match = buildMatches[i];
           const [fullTag, scriptContent] = match;
           const index = match.index ?? 0;
-          const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+          const openTag = scriptOpenTag(fullTag, scriptContent);
 
           if (isPageAwareBuildScript(openTag, scriptContent)) {
             const placeholder = `<!--__BASCIK_DEFERRED_BUILD_SCRIPT_${i}__-->`;
@@ -333,7 +334,8 @@ export const listComponents = async (): Promise<ComponentList> => {
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
         resolvedContent = resolvedContent.replace(
-          /<script\b([^>]*)\bsrc=["']([^"']+)["']([^>]*)>\s*<\/script>/gi,
+          // Quote-aware attributes around a whole-name `src` (never `data-src`).
+          /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>\s*<\/script(?:[\s/][^>]*)?>/gi,
           (match, preSrc, srcVal, postSrc) => {
             const baseSrc = basename(srcVal);
             const scriptInfo = companionScripts!.scriptMap.get(baseSrc) ?? companionScripts!.scriptMap.get(srcVal);

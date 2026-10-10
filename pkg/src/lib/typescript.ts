@@ -43,7 +43,7 @@ const TYPESCRIPT_FILE_RE = /\.m?ts$/i;
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 
-const SCRIPT_TAG_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
+const SCRIPT_TAG_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi;
 
 const TYPE_ATTR_RE = /\s*\btype\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
 

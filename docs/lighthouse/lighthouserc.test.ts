@@ -21,6 +21,7 @@ describe('Lighthouse CI configuration', () => {
 
     const collect = config.ci.collect;
     expect(collect.startServerCommand).toBe('bascik --server');
+    expect(collect.startServerReadyPattern).toBe('Server running at http://localhost:8080');
     expect(Array.isArray(collect.url)).toBe(true);
     expect(collect.url).toEqual([
       'http://localhost:8080/',
@@ -38,6 +39,7 @@ describe('Lighthouse CI configuration', () => {
 
     const collect = config.ci.collect;
     expect(collect.startServerCommand).toBe('bascik --server');
+    expect(collect.startServerReadyPattern).toBe('Server running at http://localhost:8080');
     expect(collect.url).toEqual([
       'http://localhost:8080/?theme=light',
       'http://localhost:8080/getting-started?theme=light',
@@ -61,10 +63,12 @@ describe('Lighthouse CI configuration', () => {
     const allConfigRaw = await readFile(join(process.cwd(), 'lighthouse/lighthouserc.all.json'), 'utf8');
     const allConfig = JSON.parse(allConfigRaw);
     expect(allConfig.ci.collect.url).toHaveLength(urls.length);
+    expect(allConfig.ci.collect.startServerReadyPattern).toBe('Server running at http://localhost:8080');
 
     const allLightConfigRaw = await readFile(join(process.cwd(), 'lighthouse/lighthouserc.all-light.json'), 'utf8');
     const allLightConfig = JSON.parse(allLightConfigRaw);
     expect(allLightConfig.ci.collect.url).toHaveLength(urls.length);
+    expect(allLightConfig.ci.collect.startServerReadyPattern).toBe('Server running at http://localhost:8080');
     expect(allLightConfig.ci.collect.url[0]).toContain('?theme=light');
     expect(allLightConfig.ci.collect.settings.onlyCategories).toEqual(['accessibility']);
   });
