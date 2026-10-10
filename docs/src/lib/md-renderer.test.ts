@@ -122,6 +122,36 @@ const x = 1;
     }
   });
 
+  it('renderMd wraps an animated image that has a -still copy in <picture> for reduced motion', async () => {
+    const webp = Buffer.alloc(32);
+    webp.write('RIFF', 0, 'latin1');
+    webp.write('WEBP', 8, 'latin1');
+    webp.write('VP8 ', 12, 'latin1');
+    webp.writeUInt16LE(40, 26);
+    webp.writeUInt16LE(20, 28);
+    const assets = join(tempDir, 'src/pages/assets');
+    await mkdir(assets, { recursive: true });
+    await writeFile(join(assets, 'demo@2x.webp'), webp);
+    await writeFile(join(assets, 'demo-still@2x.webp'), webp);
+    await writeFile(join(assets, 'solo@2x.webp'), webp);
+    const mdFile = join(tempDir, 'still.md');
+    await writeFile(mdFile, '![Demo](/assets/demo@2x.webp)\n\n![Solo](/assets/solo@2x.webp)\n');
+
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    try {
+      const html = await renderMd(mdFile);
+      expect(html).toContain(
+        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demo-still@2x.webp">' +
+          '<img loading="lazy" decoding="async" width="20" height="10" src="/assets/demo@2x.webp" alt="Demo"></picture>',
+      );
+      // An image with no still copy stays a plain <img>.
+      expect(html.match(/<picture>/g)).toHaveLength(1);
+      expect(html).toContain('<img loading="lazy" decoding="async" width="20" height="10" src="/assets/solo@2x.webp" alt="Solo">');
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
   it('renderMd supports skipFirstHeading option', async () => {
     const mdContent = `# Title\n\nSecond heading text.\n\n## Subheading\n\nContent.`;
     const mdFile = join(tempDir, 'skip.md');

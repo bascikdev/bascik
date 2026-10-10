@@ -20,7 +20,7 @@
  * the emitted <code-block> tags are resolved normally by Bascik.
  */
 
-import { closeSync, openSync, readSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { marked } from 'marked';
@@ -70,6 +70,17 @@ function imageSize(sitePath: string): { width: number; height: number } | null {
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+/**
+ * Site path of the still copy that goes with an animated image, or null when there is none. The copy sits
+ * beside the animation with `-still` before the density suffix: `demo@2x.webp` pairs with `demo-still@2x.webp`.
+ */
+function stillCopyPath(sitePath: string): string | null {
+  if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
+  const still = sitePath.replace(/(@\dx)?(\.[a-z0-9]+)$/i, '-still$1$2');
+  if (still === sitePath) return null;
+  return existsSync(join(process.cwd(), 'src/pages', still)) ? still : null;
 }
 
 interface RenderMdOptions {
@@ -254,10 +265,15 @@ function _transformMd(
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
 
   // Images: lazy loading, and the display size when the file is a PNG or WebP that ships with the docs.
-  html = html.replace(/<img src="(\/[^"]+)"/g, (_, src: string) => {
+  // An animated image with a `-still` copy is wrapped in <picture> so visitors who prefer reduced motion
+  // get the still instead. The animation loops forever and cannot be paused, so it must not be their default.
+  html = html.replace(/<img src="(\/[^"]+)"([^>]*)>/g, (_, src: string, rest: string) => {
     const size = imageSize(src);
     const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
-    return `<img loading="lazy" decoding="async"${dimensions} src="${src}"`;
+    const image = `<img loading="lazy" decoding="async"${dimensions} src="${src}"${rest}>`;
+    const still = stillCopyPath(src);
+    if (!still) return image;
+    return `<picture><source media="(prefers-reduced-motion: reduce)" srcset="${still}">${image}</picture>`;
   });
 
   // Open external links in a new tab
