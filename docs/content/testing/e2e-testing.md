@@ -91,7 +91,7 @@ Depending on the features under test, configure Playwright to run against the ap
 | Environment Mode | Command | What to Verify |
 | --- | --- | --- |
 | **Static Production** | `bascik --build` | Static HTML rendering, slot replacement, compiled assets, client JS interactivity |
-| **Dev Server (Live)** | `bascik --dev` | SSE live-reload connection, fast recompilation, open-page prioritization |
+| **Dev Server (Live)** | `bascik` | SSE live-reload connection, fast recompilation, open-page prioritization |
 | **HTTP/1.1 Production** | `bascik --server` | Request-time `<script data-bascik-server>` scripts, query parameters, cookies |
 | **HTTP/2 Production** | `bascik --server` (TLS) | TLS termination, HTTP/2 multiplexed streaming, encrypted server scripts |
 

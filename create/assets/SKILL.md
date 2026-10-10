@@ -209,7 +209,7 @@ src/components/
 ```
 
 ### Companion CSS and Script Files
-Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Path resolution is strictly scoped to the component directory or base filename.
+Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Inline content inside that `<script src>` tag is dropped with a warning, matching the browser, so keep the code in the companion file. Path resolution is strictly scoped to the component directory or base filename.
 
 ### Component Metadata Comments (`<!-- @bascik ... -->`)
 To document a component's public contract and provide rich hover and autocomplete information in editor tooling (such as the Bascik VS Code extension), add an optional leading `@bascik` metadata comment block at the very top of the component file:
@@ -403,7 +403,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@scope` (native): class names in `@scope (.foo)` argument and optional `to (.clause)` are scoped normally, and class names inside the `@scope` block are scoped
 * `:nth-child(An+B of .selector)`: class names in the `of <selector>` argument are scoped (same global `(?<=\.)` pass as `:is()`, `:where()`, `:has()`); works for `:nth-child` and `:nth-last-child`
 * `@font-face`: passed through untouched; declare in a shared stylesheet to avoid duplicate injections
-* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
+* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet. In dev, editing an imported file rebuilds the pages of every component that imports it
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
 * Compound element selectors: every element name in a chain is converted to a scoped class and injected on matching elements in the component's own template, with or without a class anchor (`.card p {}`, `div p {}`, `p + p {}`, `nav a {}`, `ul li * {}` all work); they never reach page markup or a child component's root
@@ -808,7 +808,7 @@ Components work inside `<head>` to organize metadata and shared links:
 * **Alias gotchas:** only the exact `@/` prefix is an alias (`@scope/pkg` is a normal package). Aliases are rewritten only inside script blocks; a helper file importing another helper must use `./` or `../`. Add shared build helpers to `pipeline.watchPaths` when outside the pages/components directories. The import-root watcher only invalidates request-time modules, not page compilation caches.
 * Define a callable default export function (`export default async function () { return ...; }`) that returns an HTML string. Standard console methods (`console.log()`, `console.error()`) log to the terminal for debugging only and never become generated markup.
 * Build scripts run before component resolution, so their output can contain component tags.
-* Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Results travel across a dedicated result transport. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor.
+* Each uncached build script executes in its own fresh child process, isolated from every other script, regardless of how many siblings are cache misses. Results travel across a dedicated result transport. Bounded concurrency is enforced by a memory-aware semaphore, but scripts never share a process or global ESM registry, so detached async output from one script can never bleed into a neighbor. Children share only Node's on-disk compile cache (`node_modules/.cache/bascik/compile-cache/`, compiled code, never module state); a user-set `NODE_COMPILE_CACHE` is kept and `NODE_DISABLE_COMPILE_CACHE=1` turns it off.
 * On error, behavior is controlled by three script-specific options in `bascik.config.ts`: `scripts.onBuildScriptError`, `scripts.onRoutesScriptError`, and `scripts.onServerScriptError` (each supports `'warn'`, `'error'`, or `'ignore'`). Defaults are mode-aware: `'warn'` in dev, `'error'` during `--build` and `--server`. For `data-bascik-stream` scripts, an error cannot produce an HTTP 500 because headers are already committed; the slot is emitted empty, the failure is logged at the configured severity, and the document completes.
 * **Stack Trace Remapping:** For `<script data-bascik-build>`, `<script data-bascik-server>`, and `<script data-bascik-stream>` blocks, Bascik automatically intercepts child-process stack traces, filters out noisy Node.js internal files, stack frames, and `Command failed:` headers, and remaps temporary execution files back to your source HTML file and line offset (e.g., `src/pages/dashboard.html:25`). This filters out the noise of internal V8 loader frames and child process execution headers, leaving only the clean, actionable stack trace of your template and helper scripts. In VS Code or terminal emulators, you can Cmd+Click (or Ctrl+Click) the file reference in the error log to jump directly to the failing script's exact line.
 * **Hard error:** combining any of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, or `data-bascik-stream` on the same tag throws and aborts the build. Directives are mutually exclusive.
@@ -1708,9 +1708,12 @@ Each `pkg/src/lib/*.ts` module has a paired `*.test.ts`. Because modules depend 
 
 ### Runtime Profiling and Retention
 
-Use `yarn workspace @bascik/bascik profile:workload --report-dir <private-directory>` for bounded runtime captures, separate from throughput benchmarks. Replace the illustrative placeholder with a new, empty, absolute directory outside the repository and all served or watched trees; existing roots must be user-owned and mode `0700`. Run tools sequentially and keep manifests, profiles, and snapshots private.
+Bascik's profiling harness lives in `pkg/bench/` (`profile:workload`, `profile:compiler`, `profile:compare`), separate from throughput benchmarks. `pkg/bench/README.md` documents commands, options, and report directory rules. Key constraints:
 
-Captures require complete byte-checked work and valid artifacts, not merely exit code zero. Main-isolate CPU profiles do not establish worker or child-process coverage. Worker CPU recording is unsupported on Node v24.17.0/macOS; unprofiled workers remain available. Allocation samples do not prove reclamation: use the separate module-retention experiments and heap retainer paths described in the testing docs. Failed profiling tests retain private diagnostic paths; do not retry failures into success or infer Node ESM eviction from framework cache cleanup.
+- Pass `--report-dir` a new, empty, absolute directory outside the repository and all served or watched trees (existing roots must be user-owned and mode `0700`). Do not copy example paths literally. Keep manifests, profiles, and snapshots private.
+- Run tools sequentially. Captures require complete byte-checked work and valid artifacts, not merely exit code zero. Failed profiling tests keep private diagnostic paths; do not retry failures into success.
+- Main-isolate CPU profiles do not establish worker or child-process coverage. Worker CPU recording is unsupported on Node 24 on macOS; unprofiled workers remain available.
+- Allocation samples do not prove reclamation, and framework cache cleanup does not evict Node's ESM cache. Use the module-retention experiments and heap retainer paths for retention questions.
 
 ### End-to-End Tests (Playwright)
 
@@ -1727,7 +1730,7 @@ The E2E suite lives in `pkg/e2e/` and supports four execution modes:
 1. **Static production suite (`playwright.config.ts`)**: builds the fixture site with `bascik --build` and serves static files via `server.ts` on port 4200.
 2. **HTTP/1.1 production server suite (`playwright.server.config.ts`)**: boots cleartext `bascik --server` over HTTP/1.1 on port 9443 to test `data-bascik-server` request-time script execution and cleartext server behavior.
 3. **HTTP/2 production server suite (`playwright.server-http2.config.ts`)**: boots TLS-enabled `bascik --server` over HTTP/2 on port 9444 to test `data-bascik-server` request-time script execution and encrypted server behavior.
-4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots `bascik --dev` on port 8080 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
+4. **Dev server watch suite (`playwright.dev.config.ts`)**: boots the dev server (`bascik` with no mode flag) on port 9443 to run the full test suite and live-reload watcher tests directly against the live dev server with SSE tracking and open-page priority re-transpilation.
 
 Keep each mode's `testIgnore` list on its `default` project. Playwright project arrays replace matching top-level arrays instead of extending them, which can silently select server-only tests in the wrong mode. The config-selection unit test must cover all four project exclusion lists.
 
@@ -1960,7 +1963,7 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 ### What Bascik Does
 * **Zero runtime:** The most impactful thing Bascik does is what it does not add: no framework bundle, no hydration script, and no client-side router. The only JavaScript on any page is what you wrote.
 * **CSS deduplication:** When a component appears multiple times on a page, Bascik emits a single `<style>` block regardless of instance count.
-* **HTML minification:** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>` blocks is left intact.
+* **HTML minification:** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>`, `<textarea>`, `<script>`, and `<style>`, every attribute value, and non-breaking spaces are left intact. CSS is not read: an element styled `white-space: pre` that is not a `<pre>` loses its extra whitespace, so use `<pre>` for preformatted text.
 * **Script minification:** `minify.js` is `true` by default, stripping comments and whitespace.
 * **Inline styles:** Set `assets.inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request.
 

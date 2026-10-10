@@ -120,7 +120,9 @@ const cpu = {
 describe("capture artifact integrity", () => {
   it("reports the affected native worker CPU recorder without disabling actual workers", () => {
     expect(workerCpuLimitation("darwin", "v24.17.0")).toMatch(/unsupported.*worker CPU/i);
+    expect(workerCpuLimitation("darwin", "v24.21.0")).toMatch(/unsupported.*worker CPU.*v24\.21\.0/i);
     expect(workerCpuLimitation("linux", "v24.17.0")).toBeUndefined();
+    expect(workerCpuLimitation("darwin", "v25.0.0")).toBeUndefined();
   });
   it("keeps sampled allocation separate from retained bytes and rejects unattributed samples", () => {
     const head = { id: 1, callFrame: { functionName: "allocate", url: "fixture.mjs", lineNumber: 0 }, selfSize: 64, children: [] };

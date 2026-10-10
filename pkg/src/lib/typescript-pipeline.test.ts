@@ -214,6 +214,22 @@ describe("browser TypeScript pipeline", () => {
     assertAllInlineScriptsParse(html);
   });
 
+  it("minifies an inline script whose quoted attribute value contains >", async () => {
+    (BascikConfig as any).minify = { html: false, css: false, js: true, identifiers: false };
+    vi.mocked(readFile).mockResolvedValue(`<!DOCTYPE html><html><head></head><body>
+      <script data-note="a > b">
+        // comment to be minified away
+        console.log(1);
+      </script>
+    </body></html>`);
+
+    const html = (await transpilePage("src/pages/index.html", {}))!.distHtml;
+
+    expect(html).toContain('<script data-note="a > b">');
+    expect(html).not.toContain("comment to be minified");
+    expect(html).toContain("console.log(1)");
+  });
+
   it("does not emit a sourceURL line when the minified body is empty", async () => {
     (BascikConfig as any).minify = { html: false, css: false, js: true, identifiers: false };
     vi.mocked(readFile).mockResolvedValue(

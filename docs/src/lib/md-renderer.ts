@@ -13,6 +13,8 @@
  * Transformations applied on top of standard marked output:
  *   - Fenced code blocks  →  <code-block data-bascik-prop-lang="..."> component
  *   - Blockquotes         →  <div class="callout">
+ *   - Blockquotes opening with **See it live** → <div class="callout callout-live">
+ *     (a more prominent link box pointing at a running deployment)
  *
  * Because `data-bascik-build` output is processed before component resolution,
  * the emitted <code-block> tags are resolved normally by Bascik.
@@ -216,7 +218,9 @@ function _transformMd(
     '<div class="prose-codeblock">$1</div>'
   );
 
-  // Convert <blockquote> → <div class="callout">
+  // Convert <blockquote> → <div class="callout">. A blockquote whose first paragraph opens with
+  // **See it live** gets the live-demo variant so links to running deployments stand out.
+  html = html.replace(/<blockquote>\n?(?=<p><strong>See it live\b)/g, '<div class="callout callout-live">');
   html = html.replace(/<blockquote>\n?/g, '<div class="callout">');
   html = html.replace(/\n?<\/blockquote>/g, '</div>');
 

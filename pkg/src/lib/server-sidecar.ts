@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
-import { SERVER_ATTR_NAME, STREAM_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
+import { SCRIPT_END_TAG, SERVER_ATTR_NAME, STREAM_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -215,7 +215,7 @@ export const extractServerScriptsToSidecar = (
   // empty placeholder body over the real source.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const serverScriptRe = new RegExp(
-    String.raw`<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>`,
+    String.raw`<script\b((?:[^>"']|"[^"]*"|'[^']*')*\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})(?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)${SCRIPT_END_TAG}`,
     "gi",
   );
   return html.replace(

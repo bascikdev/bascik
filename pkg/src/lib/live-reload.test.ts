@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import fc from "fast-check";
 import {
   LIVE_RELOAD_SCRIPT,
   LIVE_RELOAD_SCRIPT_ATTR,
@@ -6,6 +7,29 @@ import {
   stripLiveReloadScript,
 } from "./live-reload.ts";
 import { BOOT_PAGE_HTML } from "./boot-page.ts";
+import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
+import { scanHtml } from "./html-scanner.ts";
+
+const isLiveReloadScript = (script: { attrs: Array<{ name: string }> }) =>
+  script.attrs.some((attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR);
+
+/**
+ * Stripping must remove the live-reload script elements and change nothing
+ * else. Where malformed SVG or MathML stops the scan, later ones may stay,
+ * but stripping still never adds or alters anything. Whitespace is set aside
+ * because a parser drops whitespace that becomes leading once a script
+ * before it is gone; stripping itself never edits text.
+ */
+const expectOnlyLiveReloadRemoved = (html: string): string => {
+  const stripped = stripLiveReloadScript(html);
+  const options = { ignoreWhitespace: true, collectScript: isLiveReloadScript };
+  const before = domSnapshot(html, options);
+  const after = domSnapshot(stripped, options);
+  expect(after.structure).toBe(before.structure);
+  if (scanHtml(html).stoppedAt === html.length) expect(after.scripts).toEqual([]);
+  else for (const script of after.scripts) expect(before.scripts).toContain(script);
+  return stripped;
+};
 
 describe("LIVE_RELOAD_SCRIPT", () => {
   it("contains script tag wrapper marked with the owned attribute", () => {
@@ -200,6 +224,70 @@ describe("stripLiveReloadScript", () => {
   it("does not treat data-bascik-live-reload-* variants as the injected script", () => {
     const html = `<script data-bascik-live-reload-note="x">window.c = 3</script>`;
     expect(stripLiveReloadScript(html)).toBe(html);
+  });
+
+  it("keeps look-alike text that is one odd start tag, which runs nothing", () => {
+    // `<scr<script data-bascik-live-reload>` is a single start tag named
+    // `scr<script`. Deleting the look-alike would join `<scr` and `ipt>` into
+    // an executable `<script>alert(1)</script>`.
+    const inner = getLiveReloadScript().trim();
+    for (const tail of [`ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x()</script>`, "ipt>alert(1)</script>"]) {
+      const html = `<p>a</p><scr${inner}${tail}<p>b</p>`;
+      expect(expectOnlyLiveReloadRemoved(html)).toBe(html);
+    }
+  });
+
+  it("removes a real live-reload script after a text < without joining the < to what follows", () => {
+    const html = `<p>a</p><${getLiveReloadScript().trim()}script>alert(1)</script>`;
+    expect(expectOnlyLiveReloadRemoved(html)).toBe("<p>a</p><<!---->script>alert(1)</script>");
+  });
+
+  it("ignores the attribute name inside another attribute's value", () => {
+    const html = `<script data-note=" ${LIVE_RELOAD_SCRIPT_ATTR}">user()</script>`;
+    expect(expectOnlyLiveReloadRemoved(html)).toBe(html);
+  });
+
+  it("removes live-reload scripts in <template> and SVG too, where they could still run", () => {
+    const html =
+      `<template><script ${LIVE_RELOAD_SCRIPT_ATTR}>t()</script></template>` +
+      `<svg><script ${LIVE_RELOAD_SCRIPT_ATTR}>s()</script></svg><p>x</p>`;
+    expect(expectOnlyLiveReloadRemoved(html)).toBe("<template></template><svg></svg><p>x</p>");
+  });
+
+  it("removes the whole script when its body escapes a nested <script>", () => {
+    const html = `<p>a</p><script ${LIVE_RELOAD_SCRIPT_ATTR}><!--<script>x()</script>y()--></script><p>b</p>`;
+    expect(expectOnlyLiveReloadRemoved(html)).toBe("<p>a</p><p>b</p>");
+  });
+
+  it("stays linear on deeply nested look-alikes", () => {
+    let html = getLiveReloadScript().trim();
+    for (let i = 0; i < 1000; i++) html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
+    const started = performance.now();
+    stripLiveReloadScript(html);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("removes exactly the live-reload scripts and nothing else, on random malformed markup", () => {
+    const fragment = fc.constantFrom(
+      `<script ${LIVE_RELOAD_SCRIPT_ATTR}>lr()</script>`, `<script ${LIVE_RELOAD_SCRIPT_ATTR}>`, "<script>keep()</script>",
+      "<scr", `ipt ${LIVE_RELOAD_SCRIPT_ATTR}>`, "ipt>", "x()", "</script>", "<!--", "-->", "<!-- c -->", "<", ">",
+      '"', "&am", "p;", "<p>", "</p>", '<div title="', '">', "<template>", "</template>", "<textarea>",
+      "</textarea>", "<svg>", "</svg>", "<foreignObject>", "<noscript>", "</noscript>", "<![CDATA[", "]]>",
+    );
+    fc.assert(
+      fc.property(fc.array(fragment, { maxLength: 14 }), (parts) => {
+        const result = expectOnlyLiveReloadRemoved(parts.join(""));
+        expect(stripLiveReloadScript(result)).toBe(result);
+      }),
+      { numRuns: 3000 },
+    );
+  });
+
+  it("strips a live-reload script whose end tag carries whitespace or junk", () => {
+    const body = getLiveReloadScript().trim().replace(/<\/script>$/, "");
+    for (const endTag of ["</script >", "</SCRIPT>", "</script\t\n foo>", "</script/>"]) {
+      expect(stripLiveReloadScript(`<p>a</p>${body}${endTag}<p>b</p>`)).toBe("<p>a</p><p>b</p>");
+    }
   });
 
   it("handles regex replacement tokens in surrounding content", () => {

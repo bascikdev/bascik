@@ -4,6 +4,12 @@ import { analyzeApiRouteSource } from './api-rules.js';
 
 describe('Scoping Compatibility Rules', () => {
   describe('CSS rules', () => {
+    it('detects [id] attribute selectors', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      expect(matches.some((m) => m.id === 'css-id-attribute-selector')).toBe(true);
+    });
+
     it('detects unanchored standalone attribute selector', () => {
       const css = '[data-state] { color: red; }';
       const matches = matchCompatibilityRules(css, 'css');
@@ -46,6 +52,19 @@ describe('Scoping Compatibility Rules', () => {
       const js = 'el.style.setProperty("--theme-color", "red");';
       const matches = matchCompatibilityRules(js, 'js');
       expect(matches.some((m) => m.id === 'js-style-setproperty')).toBe(true);
+    });
+
+    it('detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)', () => {
+      const js = 'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
+      const matches = matchCompatibilityRules(js, 'js');
+      expect(matches.some((m) => m.id === 'js-unsupported-dom-methods')).toBe(true);
+    });
+
+    it('sets error severity on unsupported compatibility rules', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      const rule = matches.find((m) => m.id === 'css-id-attribute-selector');
+      expect(rule?.severity).toBe('error');
     });
   });
 });

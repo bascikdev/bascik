@@ -33,6 +33,98 @@ describe("splitDistPageIntoSegments", () => {
     expect(result.segments).toEqual([{ kind: "static", text: "<p>static</p>" }]);
   });
 
+  it("matches the type attribute as a whole name, any quote style or case, and only with an empty body", () => {
+    const html =
+      `<script TYPE='Text/Bascik-Server' data-bascik-server-id="a"></script>` +
+      `<script data-type="text/bascik-server" data-bascik-server-id="b"></script>` +
+      `<script type="text/bascik-server" data-bascik-server-id="c">body()</script>` +
+      `<script type="text/bascik-server" data-note="a > b" data-bascik-server-id="d">\n</script >`;
+    const { segments, scriptIds } = splitDistPageIntoSegments(html);
+    expect(scriptIds).toEqual(["a", "d"]);
+    expect(segments).toEqual([
+      { kind: "script", id: "a" },
+      {
+        kind: "static",
+        text:
+          `<script data-type="text/bascik-server" data-bascik-server-id="b"></script>` +
+          `<script type="text/bascik-server" data-bascik-server-id="c">body()</script>`,
+      },
+      { kind: "script", id: "d" },
+    ]);
+  });
+
+  it("accepts every end tag spelling the browser accepts, case-insensitively", () => {
+    const ends = ["</script>", "</SCRIPT>", "</Script >", "</script/>", "</script\t\n bar>"];
+    const html = ends.map((end, i) => `<p>${i}</p><script type="text/bascik-server" data-bascik-server-id="e${i}">${end}`).join("");
+    expect(splitDistPageIntoSegments(html).scriptIds).toEqual(["e0", "e1", "e2", "e3", "e4"]);
+    const lookalike = '<script type="text/bascik-server" data-bascik-server-id="x"></scripts><p>after</p>';
+    expect(splitDistPageIntoSegments(lookalike)).toEqual({ segments: [{ kind: "static", text: lookalike }], scriptIds: [] });
+  });
+
+  it("reads unquoted type and id values", () => {
+    expect(splitDistPageIntoSegments("<script type=text/bascik-server data-bascik-server-id=u></script>").scriptIds).toEqual(["u"]);
+  });
+
+  it("leaves a placeholder without an id in the static text and keeps scanning after it", () => {
+    const html = '<p>a</p><script type="text/bascik-server"></script><p>b</p><script type="text/bascik-server" data-bascik-server-id="s"></script>';
+    expect(splitDistPageIntoSegments(html)).toEqual({
+      segments: [
+        { kind: "static", text: '<p>a</p><script type="text/bascik-server"></script><p>b</p>' },
+        { kind: "script", id: "s" },
+      ],
+      scriptIds: ["s"],
+    });
+  });
+
+  it("reassembles the page exactly from its static segments and placeholders", () => {
+    const placeholder = (id: string) => `<script type="text/bascik-server" data-bascik-server-id="${id}"></script>`;
+    const html = `<p>a</p>${placeholder("s1")}${placeholder("s2")}<p>b</p><script>client()</script>${placeholder("s3")}`;
+    const rebuilt = splitDistPageIntoSegments(html).segments
+      .map((segment) => (segment.kind === "static" ? segment.text : placeholder(segment.id!)))
+      .join("");
+    expect(rebuilt).toBe(html);
+  });
+
+  it("stays linear on many placeholders and many unterminated placeholder open tags", () => {
+    const started = performance.now();
+    const many = '<p>a</p><script type="text/bascik-server" data-bascik-server-id="s"></script>'.repeat(50_000);
+    expect(splitDistPageIntoSegments(many).scriptIds).toHaveLength(50_000);
+    expect(splitDistPageIntoSegments('<script type="text/bascik-server" data-bascik-server-id="s">'.repeat(50_000)).scriptIds).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it.each([
+    ["a bare end tag", "</script>", ["p"]],
+    ["whitespace before the end tag", " \n\t</script>", ["p"]],
+    ["whitespace inside the end tag", "</script \t>", ["p"]],
+    ["a slash inside the end tag", "</script/>", ["p"]],
+    ["an uppercase end tag", "</SCRIPT>", ["p"]],
+    ["a body before the end tag", "x</script>", []],
+    ["a longer tag name", "</scriptx>", []],
+    ["an unterminated end tag", "</script ", []],
+    ["a truncated end tag", "</scri", []],
+  ])("matches the placeholder end tag for %s", (_case, tail, expected) => {
+    const html = `<script type="text/bascik-server" data-bascik-server-id="p">${tail}`;
+    expect(splitDistPageIntoSegments(html).scriptIds).toEqual(expected);
+  });
+
+  it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
+    const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
+    const started = performance.now();
+    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds).toEqual([]);
+    expect(splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`).scriptIds).toEqual([]);
+    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`).scriptIds).toEqual(["s"]);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("stays fast on many repeated type attributes in an unterminated tag", () => {
+    const html = `<script ${'type="text/bascik-server"'.repeat(20_000)}`;
+    const started = performance.now();
+    const { scriptIds } = splitDistPageIntoSegments(html);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(scriptIds).toEqual([]);
+  });
+
   it("preserves multi-byte text exactly", () => {
     const html = `日本 🚀<script type="text/bascik-server" data-bascik-server-id="x"></script>ünï`;
     const { segments } = splitDistPageIntoSegments(html);

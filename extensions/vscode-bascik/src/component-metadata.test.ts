@@ -2,6 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { analyzeComponentSource } from './component-metadata';
 
 describe('analyzeComponentSource', () => {
+  it('ignores prop-like text in raw text bodies, whatever their end tag spelling', () => {
+    for (const endTag of ['</script>', '</script foo>', '</script/>', '</SCRIPT\n>']) {
+      const metadata = analyzeComponentSource(
+        `<script>const s = "data-bascik-prop-fake";${endTag}<p data-bascik-text="real"></p>`,
+      );
+      expect(metadata.props.map((prop) => prop.name), endTag).toEqual(['real']);
+    }
+  });
+
+  it('does not count custom elements named like style or script as styles or scripts', () => {
+    const metadata = analyzeComponentSource('<style-guide></style-guide><script-loader></script-loader>');
+    expect(metadata.hasStyles).toBe(false);
+    expect(metadata.hasScripts).toBe(false);
+    expect(analyzeComponentSource('<style>.a{}</style>').hasStyles).toBe(true);
+    expect(analyzeComponentSource('<script\n>x()</script>').hasScripts).toBe(true);
+  });
+
   it('infers every prop form in source order and deduplicates names', () => {
     const metadata = analyzeComponentSource(`
       <p data-bascik-text="label"></p>

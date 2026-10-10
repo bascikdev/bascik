@@ -64,28 +64,6 @@
             color: var(--text-muted, #6b7280);
           }
 
-          .stream-demo-pulse-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent, #6366f1);
-            animation: stream-dot-pulse 1.2s ease-in-out infinite;
-          }
-
-          @keyframes stream-dot-pulse {
-
-            0%,
-            100% {
-              opacity: 0.4;
-              transform: scale(0.9);
-            }
-
-            50% {
-              opacity: 1;
-              transform: scale(1.15);
-            }
-          }
-
           .stream-demo-card-stage {
             position: relative;
             min-block-size: 5.5rem;
@@ -199,10 +177,6 @@
               content: "Stage 1 & Stage 2 Overview";
               animation: none;
             }
-
-            .stream-demo-pulse-dot {
-              animation: none;
-            }
           }
         </style>
 
@@ -210,7 +184,6 @@
           <div data-bascik-slot="example">
             <div class="stream-demo-wrap">
               <div class="stream-demo-timeline">
-                <span class="stream-demo-pulse-dot"></span>
                 <span class="stream-badge-text"></span>
               </div>
               <div class="stream-demo-card-stage">

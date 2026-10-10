@@ -36,10 +36,33 @@ export const getAttributeNameHash = (attributeName: string): string => {
   return hash;
 };
 
+// Observer for every generated scoped name, set only while scoping-template.ts
+// records one synchronous scoping run. Never set on any other path.
+let attributeNameObserver: ((input: string, output: string) => void) | null = null;
+
 export const minifyAttributeName = (attributeName: string): string => {
-  return BascikConfig.minify.identifiers
+  const output = BascikConfig.minify.identifiers
     ? getAttributeNameHash(attributeName)
     : attributeName;
+  attributeNameObserver?.(attributeName, output);
+  return output;
+};
+
+/**
+ * Run `run` synchronously while reporting every `minifyAttributeName` call to
+ * `observer`, in call order. The previous observer is restored afterwards.
+ */
+export const observeAttributeNames = <T>(
+  observer: (input: string, output: string) => void,
+  run: () => T,
+): T => {
+  const previous = attributeNameObserver;
+  attributeNameObserver = observer;
+  try {
+    return run();
+  } finally {
+    attributeNameObserver = previous;
+  }
 };
 
 export const getUniqueId = (length: number): string => {

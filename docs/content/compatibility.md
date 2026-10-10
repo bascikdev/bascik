@@ -10,13 +10,80 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
 - – Not yet supported
 
 <!-- bascik-compatibility-rules [
-  {"id":"css-attribute-selector","kind":"css","pattern":"(^|,)\\s*\\[[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]","flags":"gm","message":"Standalone attribute selectors are not scoped by Bascik and may leak globally.","suggestion":"Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector."},
-  {"id":"css-is-element-names","kind":"css","pattern":":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)","flags":"gi","message":"Element names inside :is(), :where(), or :has() are not converted by Bascik.","suggestion":"Use a class selector inside the pseudo-class instead of bare element names."},
-  {"id":"js-id-setter","kind":"js","pattern":"\\.id\\s*=\\s*(?:[\"'`]|\\w)","flags":"g","message":"Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.","suggestion":"Capture the element once with getElementById() and operate on that reference."},
-  {"id":"js-attribute-selector","kind":"js","pattern":"querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)","flags":"g","message":"Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.","suggestion":"Use getElementById() or a static class selector that Bascik can rewrite."},
-  {"id":"js-template-classname","kind":"js","pattern":"className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)","flags":"g","message":"Template-literal class names are not rewritten safely at build time.","suggestion":"Use classList.add(), classList.remove(), or a static string instead."},
-  {"id":"js-style-setproperty","kind":"js","pattern":"style\\.setProperty\\s*\\(\\s*[\"']--","flags":"g","message":"Runtime CSS custom property names are not rewritten by Bascik.","suggestion":"Use the scoped property name explicitly or keep the runtime logic on the resulting element reference."}
-] -->
+  {
+    "id": "css-id-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|[,{}\\s])\\[id(?:\\s*[~|^$*]?=[^\\]]+)?\\]",
+    "flags": "gm",
+    "message": "[id] attribute selectors cannot be scoped without DOM wrapping and are stripped at compile time.",
+    "suggestion": "Use a CSS #id selector or class selector instead.",
+    "severity": "error"
+  },
+  {
+    "id": "css-attribute-selector",
+    "kind": "css",
+    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\]",
+    "flags": "gm",
+    "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
+    "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector.",
+    "severity": "error"
+  },
+  {
+    "id": "css-is-element-names",
+    "kind": "css",
+    "pattern": ":(?:is|where|has)\\s*\\((?:[^)]*\\b(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])\\b[^)]*)\\)",
+    "flags": "gi",
+    "message": "Element names inside :is(), :where(), or :has() are not converted by Bascik.",
+    "suggestion": "Use a class selector inside the pseudo-class instead of bare element names.",
+    "severity": "error"
+  },
+  {
+    "id": "js-id-setter",
+    "kind": "js",
+    "pattern": "\\.id\\s*=\\s*(?:[\"'`]|\\w)",
+    "flags": "g",
+    "message": "Runtime .id assignment is not rewritten by Bascik. That will not match the scoped attribute.",
+    "suggestion": "Capture the element once with getElementById() and operate on that reference.",
+    "severity": "error"
+  },
+  {
+    "id": "js-attribute-selector",
+    "kind": "js",
+    "pattern": "querySelector\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)|querySelectorAll\\s*\\(\\s*[\"'][^\"']*\\[[^\\]]+\\][^\"']*[\"']\\s*\\)",
+    "flags": "g",
+    "message": "Attribute selectors are not rewritten by Bascik. Use an id or class selector instead.",
+    "suggestion": "Use getElementById() or a static class selector that Bascik can rewrite.",
+    "severity": "error"
+  },
+  {
+    "id": "js-template-classname",
+    "kind": "js",
+    "pattern": "className\\s*=\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`|classList\\.replace\\s*\\(\\s*[^,]+,\\s*`[^`]*\\$\\{[^}]+\\}[^`]*`\\s*\\)",
+    "flags": "g",
+    "message": "Template-literal class names are not rewritten safely at build time.",
+    "suggestion": "Use classList.add(), classList.remove(), or a static string instead.",
+    "severity": "error"
+  },
+  {
+    "id": "js-style-setproperty",
+    "kind": "js",
+    "pattern": "style\\.setProperty\\s*\\(\\s*[\"']--",
+    "flags": "g",
+    "message": "Runtime CSS custom property names are not rewritten by Bascik.",
+    "suggestion": "Use the scoped property name explicitly or keep the runtime logic on the resulting element reference.",
+    "severity": "error"
+  },
+  {
+    "id": "js-unsupported-dom-methods",
+    "kind": "js",
+    "severity": "error",
+    "pattern": "\\.(?:removeAttribute|hasAttribute|toggleAttribute)\\s*\\(\\s*[\"'`](?:class|id|name)[\"'`]",
+    "flags": "g",
+    "message": "DOM methods taking attribute names (removeAttribute, hasAttribute, toggleAttribute) are not value-scoped by Bascik.",
+    "suggestion": "Operate directly on element classList or property references."
+  }
+]
+-->
 
 ---
 
@@ -73,7 +140,7 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | External custom elements | WHATWG HTML §4.13 | ✓ | `components.external` lists hyphenated tags owned by a custom element or library (exact names or `*` wildcards, case-insensitive). Matching tags are omitted from the `Unresolved component tag` build warning and the `--check` unmatched-tag findings. A real component of the same name still expands, and attribute scoping is unaffected. |
 | Element-level preserve | WHATWG HTML §3.2.6.6 | ✓ | `data-bascik-preserve` applies to one subtree. A bare directive preserves `id`, `name`, and `class`; a space-separated value preserves only listed attributes. The directive is removed from output. |
 | Internal raw-text mask | WHATWG HTML §13.1.2 | ✓ | Internal scans use a hardcoded same-length discard mask for scripts, styles, textareas, and comments. It is not configurable and is distinct from author-facing preservation. |
-| Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. |
+| Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. Only spaces, tabs, and line breaks collapse: U+00A0 and other Unicode spaces, attribute values, and `<pre>`, `<textarea>`, `<script>`, and `<style>` content are kept. CSS is not read, so `white-space: pre` on another element is not detected. |
 | `<meta>` tag preservation | WHATWG HTML §4.2.5 | ✓ | Standard metadata attributes on `<meta>` tags (e.g. `name="viewport"`, `name="description"`) are shielded from attribute scoping. |
 
 ---
@@ -150,13 +217,13 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | `@media` query                                     | `@media (max-width: 600px) {}`          | ✓     | Media condition untouched; class names inside scoped normally                                                                                                                                                                                                                             |
 | `@supports`                                        | `@supports (display: grid) { .foo {} }` | ✓     | Class names inside `@supports` blocks are scoped normally.                                                                                                                                                                                                                                |
 | `@layer`                                           | `@layer base { .foo {} }`               | ✓     | Layer names are scoped in declaration blocks and single-name or comma-list ordering statements, including leading-hyphen names such as `--utils`.                                                                                                                                          |
-| `@container`                                       | `@container sidebar (min-width: …) {}`  | ✓     | Container names declared via `container-name:` or the `container:` shorthand are scoped; `@container name (…)` queries updated to match. Unnamed queries untouched.                                                                                                                       |
+| `@container`                                       | `@container sidebar (min-width: …) {}`  | ✓     | Container names declared via `container-name:` or the `container:` shorthand are scoped; `@container name (…)` queries updated to match. Only whole names match, so `a` never rewrites part of `a-b` or of another scoped name. Unnamed queries untouched.                                                                                                                       |
 | CSS custom properties                              | `--brand: #d3ff8d` / `var(--brand)`     | ✓     | Declarations and all `var()` references in the same file scoped together. `var(--prop, fallback)` is fully supported, the fallback value is preserved and the property name is scoped.                                                                                                   |
 | Multiple `animation:` values                       | `animation: a 1s, b 2s`                 | ✓     | Both keyframe name references are scoped when an `animation:` shorthand lists more than one animation.                                                                                                                                                                                    |
 | Child / sibling combinators                        | `.a > .b`, `.a + .b`, `.a ~ .b`         | ✓     | All class names on both sides of `>`, `+`, and `~` are scoped. An element after a combinator (`.a > p`, `.a>p`) is scoped with or without surrounding spaces. |
 | `:is()` / `:where()` / `:has()` with class args   | `:is(.foo, .bar) {}`                    | ✓     | Class names inside `:is()`, `:where()`, and `:has()` are scoped normally. Element names inside these functions are **not** converted (see below).                                                                                                                                          |
 | Inline `<style>` in component HTML                 | `<style>.foo {}</style>`                | ✓     | Full CSS scoping pipeline applied to inline `<style>` blocks. Extracted from component HTML into component CSS, deduplicated across component instances, and injected into page `<head>`. |
-| CSS `#id` selector                                 | `#btn {}`                               | ✓     | Converted to a component-scoped class selector (`.bascik__comp__id__btn {}`) using a context-aware lookahead that correctly distinguishes selector position from hex color values. The generated class is injected onto the HTML element. Specificity drops from (0,1,0,0) to (0,0,1,0). String literals, comments, and attribute-selector values (`a[href="#tab"]`) are never treated as ID selectors; their contents are preserved byte-for-byte. |
+| CSS `#id` selector                                 | `#btn {}`                               | ✓     | Converted to a component-scoped class selector (`.bascik__comp__id__btn {}`) using a context-aware lookahead that correctly distinguishes selector position from hex color values. The generated class is injected onto the HTML element across development and production builds with identifier minification, inside `@media` and paired stylesheets. Specificity drops from (0,1,0,0) to (0,0,1,0). String literals, comments, and attribute-selector values (`a[href="#tab"]`) are never treated as ID selectors; their contents are preserved byte-for-byte. |
 | `[id]` / `[id="…"]` attribute selector             | `[id] {}`                               | ✕     | Stripped at compile time. Attribute-selector forms cannot be scoped without DOM wrapping.                                                                                                                                                                                                 |
 | Attribute selector                                 | `[data-foo="bar"] {}`                   | △     | Passed through untouched, not scoped. Will apply globally. Avoid in component CSS or use a class-based selector alongside it. Attribute-selector values containing `#` (e.g. `a[href="#tab"]`) remain literal and are not rewritten as selector syntax.                                                                                                                    |
 | Compound / descendant element selectors            | `div p {}`, `.card p {}`, `.list > li {}` | ✓     | Every element name in the chain is converted to a component-scoped class and injected onto the matching elements in the component's own template, whether or not a class anchors the left side. Descendant, child (`>`), adjacent (`+`), and general sibling (`~`) combinators work, as do longer chains with pseudo-classes and the universal selector (`nav a`, `p + p`, `ul li *`, `ul li:first-child img`, `ul a:hover img`). Scoped in dev and production, including with identifier minification. The rules never match page markup or a child component's root element; see [Styling a Child Component from Its Parent](/attribute-inheritance#styling-a-child-component-from-its-parent). Element names inside `:is()`, `:where()`, and `:has()` are a separate case, listed below. |
@@ -182,10 +249,10 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | Comments                  | ✓     | Ordinary HTML comments (`<!-- ... -->`) are stripped from the page head and body. Comment-like content inside `<pre>`, `<textarea>`, `<style>`, and scripts is preserved. The development server and `minify.html: false` keep comments; a component tag named inside a comment, in a page or a component template, stays text and is never expanded. |
 | SVG elements in component HTML | ✓ | `class` attributes on SVG elements (`<svg>`, `<circle>`, `<path>`, `<rect>`, etc.) are scoped with the same pipeline as HTML elements. JS `classList` and `querySelector` calls targeting SVG children are rewritten. |
 | `@font-face`              | △     | Passed through untouched, the `font-family` name is not scoped. Both the declaration and all usage sites remain unmodified, so the font resolves correctly within the page. Declare `@font-face` in a shared global stylesheet rather than a component `.css` file to avoid duplicate declarations when a component is used multiple times. |
-| `@import`                 | ✓     | Local file imports (`@import "./file.css"`) are inlined recursively at build time and scoped to the component. Remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet per W3C CSS spec requirements. |
+| `@import`                 | ✓     | Local file imports (`@import "./file.css"`) are inlined recursively at build time and scoped to the component. Remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet per W3C CSS spec requirements. A missing file becomes a `not found` comment and the rules after it are kept. `@import` text inside comments and strings is ignored. In dev, editing an imported file rebuilds the pages of every component that imports it. |
 | `@property`               | ✓     | `@property --name { }` declaration names are scoped. Any matching `--name:` element declarations and `var(--name)` references in the same component file are scoped to match. |
 | `@starting-style`         | ✓     | Class names and element selectors inside `@starting-style` blocks are scoped by the same passes that handle other at-rules. Both standalone `@starting-style { .foo { } }` and nested `.foo { @starting-style { } }` forms are handled. |
-| `@counter-style`          | ✓     | `@counter-style name { }` declaration names are scoped. References in `list-style`, `list-style-type`, `counter(counter, name)`, and `counters(counter, sep, name)` in the same component file are updated to match. |
+| `@counter-style`          | ✓     | `@counter-style name { }` declaration names are scoped. References in `list-style`, `list-style-type`, `counter(counter, name)`, and `counters(counter, sep, name)` in the same component file are updated to match. Only whole names match, so `a` never rewrites part of `a-b` or of another scoped name. |
 | `view-transition-name`    | ✓     | `view-transition-name: name` values are scoped to the component. Matching `::view-transition-old(name)`, `::view-transition-new(name)`, `::view-transition-group(name)`, and `::view-transition-image-pair(name)` pseudo-element references in the same file are updated to match. The keywords `none` and `auto` are not scoped. |
 | `anchor-name` / `@position-try` | ✓  | `anchor-name: --name` declarations are scoped per component. Matching `position-anchor: --name` references and `@position-try --name { }` at-rules in the same CSS file are updated to match. Only anchors declared in the component's own CSS are scoped, external anchor references are left untouched. |
 

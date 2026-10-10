@@ -1,5 +1,5 @@
 /**
- * E2E tests for the Bascik Dev Server (`bascik --dev`).
+ * E2E tests for the Bascik Dev Server (`bascik` with no mode flag).
  *
  * Exercises:
  *   1. Live-reload script injection in dev mode (`/bascik-live-reload` SSE)
@@ -38,6 +38,7 @@ const scopeTestCssPath = join(e2eDir, 'src/components/scope-test/scope-test.css'
 const dynamicCreatedPagePath = join(e2eDir, 'src/pages/dynamic-created-page.html');
 const tempUnlinkCompPath = join(e2eDir, 'src/components/temp-unlink-comp.html');
 const missingHelperPath = join(e2eDir, 'src/lib/failed-import-helper.ts');
+const importedPartialPath = join(e2eDir, 'src/components/css-import/import-base.css');
 
 /**
  * Resolve once the page has navigated to a document whose inlined <head>
@@ -162,6 +163,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   let originalInlinedGlobalCss: string;
   let originalScopeTestCss: string;
   let originalMissingHelper: string;
+  let originalImportedPartial: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, 'utf8');
@@ -172,6 +174,7 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     originalInlinedGlobalCss = await readFile(inlinedGlobalCssPath, 'utf8');
     originalScopeTestCss = await readFile(scopeTestCssPath, 'utf8');
     originalMissingHelper = await readFile(missingHelperPath, 'utf8');
+    originalImportedPartial = await readFile(importedPartialPath, 'utf8');
   });
 
   test.afterEach(async () => {
@@ -193,6 +196,14 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
       await reload;
     }
     await restoreFileIfChanged(scopeTestCssPath, originalScopeTestCss);
+    // Restoring the imported partial rebuilds /css-import-test; consume that
+    // reload here so it cannot land on a later test's page.
+    const partialChanged = (await readFile(importedPartialPath, 'utf8').catch(() => null)) !== originalImportedPartial;
+    if (partialChanged) {
+      const { reload } = await subscribeToServerReload('/css-import-test');
+      await restoreFileIfChanged(importedPartialPath, originalImportedPartial);
+      await reload;
+    }
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
     await rm(dynamicHeadMetaCompPath, { force: true });
@@ -525,6 +536,19 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     );
 
     await expect(target).toHaveCSS('color', 'rgb(12, 34, 56)', { timeout: 15000 });
+  });
+
+  test('rebuilds a component page when a stylesheet its CSS imports changes', async ({ page }) => {
+    await page.goto('/css-import-test');
+    const text = page.locator('p[id$="__text"]');
+    await expect(text).toHaveCSS('font-size', '18px');
+
+    // import-base.css is not a component of its own: only css-import.css
+    // imports it, so this edit reaches the page through that import alone.
+    const reloaded = waitForReloadWithStyle(page, '23px');
+    await writeFile(importedPartialPath, originalImportedPartial.replace('18px', '23px'), 'utf8');
+    await reloaded;
+    await expect(text).toHaveCSS('font-size', '23px');
   });
 
   test('transpiles and serves newly created page with component tags during dev server session', async ({ page }) => {

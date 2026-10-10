@@ -30,7 +30,7 @@ export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:80
     ci: {
       collect: {
         startServerCommand: 'bascik --server',
-        startServerReadyPattern: 'Loaded \\d+ pages? from dist/',
+        startServerReadyPattern: 'Server running at http://localhost:8080',
         url: allUrls,
         numberOfRuns: 1,
         settings: {
@@ -57,7 +57,7 @@ export async function generateLighthouseAllConfig(baseUrl = 'http://localhost:80
     ci: {
       collect: {
         startServerCommand: 'bascik --server',
-        startServerReadyPattern: 'Loaded \\d+ pages? from dist/',
+        startServerReadyPattern: 'Server running at http://localhost:8080',
         url: lightUrls,
         numberOfRuns: 1,
         settings: {

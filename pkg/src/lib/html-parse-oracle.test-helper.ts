@@ -1,0 +1,140 @@
+/**
+ * Test oracle backed by parse5, a spec-compliant HTML parser: what a browser
+ * parses from a document, to compare the input and output of steps that
+ * remove or move markup. Test-only; never imported by production code.
+ */
+import { parse, type DefaultTreeAdapterTypes } from "parse5";
+import type { HtmlRange } from "./html-scanner.ts";
+
+type ParentNode = DefaultTreeAdapterTypes.ParentNode;
+type ChildNode = DefaultTreeAdapterTypes.ChildNode;
+type Element = DefaultTreeAdapterTypes.Element;
+
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+const isElement = (node: ChildNode): node is Element => "tagName" in node;
+const isTemplate = (node: Element): node is DefaultTreeAdapterTypes.Template =>
+  node.tagName === "template" && node.namespaceURI === HTML_NAMESPACE && "content" in node;
+
+export interface ParsedLocations {
+  /** HTML-namespace script elements with an end tag, outside `<template>` and SVG/MathML. */
+  scripts: HtmlRange[];
+  /** Comment nodes written as `<!--`, anywhere in the document. */
+  comments: HtmlRange[];
+}
+
+/** Script and comment source ranges as parse5 parses `html`, in document order. */
+export const parsedLocations = (html: string): ParsedLocations => {
+  const scripts: HtmlRange[] = [];
+  const comments: HtmlRange[] = [];
+  const visit = (parent: ParentNode, ordinary: boolean): void => {
+    for (const node of parent.childNodes) {
+      if (node.nodeName === "#comment") {
+        const location = node.sourceCodeLocation;
+        if (location && html.startsWith("<!--", location.startOffset)) {
+          comments.push({ start: location.startOffset, end: location.endOffset });
+        }
+        continue;
+      }
+      if (!isElement(node)) continue;
+      const html5 = node.namespaceURI === HTML_NAMESPACE;
+      if (ordinary && html5 && node.tagName === "script") {
+        const location = node.sourceCodeLocation;
+        if (location?.endTag) scripts.push({ start: location.startOffset, end: location.endTag.endOffset });
+      }
+      if (isTemplate(node)) visit(node.content, false);
+      else visit(node, ordinary && html5);
+    }
+  };
+  visit(parse(html, { sourceCodeLocationInfo: true }), true);
+  const byStart = (a: HtmlRange, b: HtmlRange) => a.start - b.start;
+  return { scripts: scripts.sort(byStart), comments: comments.sort(byStart) };
+};
+
+/** HTML formatting elements, which the parser re-creates after misnested end tags. */
+const FORMATTING_ELEMENTS = new Set([
+  "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+]);
+
+/** HTML elements whose text keeps its whitespace: preformatted, form, or code text. */
+const VERBATIM_ELEMENTS = new Set([
+  "pre", "listing", "xmp", "plaintext", "textarea", "script", "style", "noscript", "iframe", "noembed", "noframes",
+]);
+
+export interface SnapshotOptions {
+  /** Drop ASCII whitespace from text and attribute values before comparing. */
+  ignoreWhitespace?: boolean;
+  /**
+   * Compare whitespace the way it renders: in ordinary text, drop the
+   * whitespace CSS collapses (spaces, tabs, line breaks), which a minifier may
+   * change. Attribute values, preformatted, form, and code text, and every
+   * other character (U+00A0, form feed, ...) must match exactly.
+   */
+  renderedWhitespace?: boolean;
+  /**
+   * Leave out formatting elements with no content. After a misnested end tag
+   * (`<b><p></b>`), the parser re-creates open formatting elements at the next
+   * text, whitespace included, so adding or collapsing whitespace there adds
+   * or drops an empty copy. Content never moves.
+   */
+  ignoreEmptyFormattingElements?: boolean;
+  /** Script elements to take out of the structure and collect separately. */
+  collectScript?: (script: Element, inTemplate: boolean) => boolean;
+}
+
+export interface DomSnapshot {
+  /** Elements, attributes, and text in tree order. Comments are left out. */
+  structure: string;
+  /** Collected scripts as `namespace:attributes:text`, sorted. */
+  scripts: string[];
+}
+
+const ASCII_WHITESPACE_RE = /[\t\n\f\r ]+/g;
+const COLLAPSIBLE_WHITESPACE_RE = /[\t\n\r ]+/g;
+
+/**
+ * What a browser builds from `html`, as comparable strings. Adjacent text
+ * merges across removed comments and scripts, the way a page renders it.
+ */
+export const domSnapshot = (html: string, options: SnapshotOptions = {}): DomSnapshot => {
+  const clean = (text: string) => (options.ignoreWhitespace ? text.replace(ASCII_WHITESPACE_RE, "") : text);
+  const cleanText = (text: string, verbatim: boolean) =>
+    options.renderedWhitespace ? (verbatim ? text : text.replace(COLLAPSIBLE_WHITESPACE_RE, "")) : clean(text);
+  const cleanAttribute = (value: string) => (options.renderedWhitespace ? value : clean(value));
+  const scripts: string[] = [];
+  const out: string[] = [];
+  const textOf = (element: Element): string =>
+    element.childNodes.map((child) => ("value" in child && child.nodeName === "#text" ? child.value : "")).join("");
+  const attributesOf = (element: Element): string =>
+    element.attrs.map((attribute) => `${attribute.name}=${JSON.stringify(cleanAttribute(attribute.value))}`).join(" ");
+  const visit = (parent: ParentNode, inTemplate: boolean, verbatim: boolean): void => {
+    for (const node of parent.childNodes) {
+      if (node.nodeName === "#text" && "value" in node) {
+        // Text directly in `<html>` or `<head>` is whitespace that never renders.
+        const outsideBody = "tagName" in parent && (parent.tagName === "head" || parent.tagName === "html");
+        out.push(options.renderedWhitespace && outsideBody ? node.value.replace(ASCII_WHITESPACE_RE, "") : cleanText(node.value, verbatim));
+        continue;
+      }
+      if (!isElement(node)) continue;
+      const namespace = node.namespaceURI === HTML_NAMESPACE ? "html" : node.namespaceURI.split("/").pop();
+      if (node.tagName === "script" && options.collectScript?.(node, inTemplate)) {
+        scripts.push(`${namespace}:${attributesOf(node)}:${cleanText(textOf(node), true)}`);
+        continue;
+      }
+      const keepsWhitespace = verbatim ||
+        (namespace === "html" ? VERBATIM_ELEMENTS.has(node.tagName) : node.tagName === "script" || node.tagName === "style");
+      const openIndex = out.length;
+      out.push(`<${namespace}:${node.tagName} ${attributesOf(node)}>`);
+      if (isTemplate(node)) visit(node.content, true, keepsWhitespace);
+      else visit(node, inTemplate, keepsWhitespace);
+      const isEmpty = out.slice(openIndex + 1).every((part) => part === "");
+      if (options.ignoreEmptyFormattingElements && isEmpty && namespace === "html" && FORMATTING_ELEMENTS.has(node.tagName)) {
+        out.length = openIndex;
+        continue;
+      }
+      out.push(`</${node.tagName}>`);
+    }
+  };
+  visit(parse(html), false, false);
+  return { structure: out.join(""), scripts: scripts.sort() };
+};

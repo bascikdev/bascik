@@ -91,7 +91,7 @@
     "lsp:typecheck": "yarn workspace @bascik/language-server typecheck",
     "lsp:coverage": "yarn workspace @bascik/language-server coverage",
     "lsp:cover": "yarn lsp:coverage",
-    "check:spelling": "codespell -L teY,directroy,scirpt,erorr,buld,afterAll,caf --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
+    "check:spelling": "codespell --ignore-regex \"Analysing data\" -L teY,directroy,scirpt,erorr,buld,afterAll,caf --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",
     "check:all": "yarn check:spelling && yarn check:standards",

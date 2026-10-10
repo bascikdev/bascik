@@ -1070,7 +1070,7 @@ function appendMetadataMembers(
 }
 
 const SCRIPT_BLOCK_RE =
-  /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+  /(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 
 /**
  * Resolve a script specifier or `src=` value the way Bascik's runtime does
@@ -1352,7 +1352,7 @@ function findMatchingClose(
 
 function maskHtmlRawTextContents(html: string): string {
   return html.replace(
-    /(<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+    /(<(script|style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
     (
       _match,
       openTag: string,
@@ -1396,6 +1396,17 @@ async function createDiagnosticsForDocument(
     (languageId === 'typescript' || languageId === 'javascript');
 
   if (isApiRouteDocument) {
+    if (path.basename(normalizedDocumentPath).startsWith('_middleware.')) {
+      const start = new vscode.Position(0, 0);
+      const end = new vscode.Position(0, Math.min(text.length, 10));
+      const vdiag = new vscode.Diagnostic(
+        new vscode.Range(start, end),
+        'Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.',
+        vscode.DiagnosticSeverity.Error,
+      );
+      vdiag.source = 'bascik';
+      diagnostics.push(vdiag);
+    }
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
       let severity = vscode.DiagnosticSeverity.Warning;
@@ -1456,12 +1467,16 @@ async function createDiagnosticsForDocument(
       const end = document.positionAt(
         offset + match.index + Math.max(match[0].length, 1),
       );
+      const severity = rule.severity === 'warning'
+        ? vscode.DiagnosticSeverity.Warning
+        : vscode.DiagnosticSeverity.Error;
       const diag = new vscode.Diagnostic(
         new vscode.Range(start, end),
         `${rule.message} ${rule.suggestion}`,
-        vscode.DiagnosticSeverity.Warning,
+        severity,
       );
       diag.source = 'bascik';
+      diag.code = rule.id;
       diagnostics.push(diag);
     }
   };
@@ -1487,7 +1502,7 @@ async function createDiagnosticsForDocument(
     SCRIPT_BLOCK_RE.flags,
   );
   const styleBlockRe =
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
 
   if (languageId === 'html') {
     if (isComponentDocument) {
@@ -1780,7 +1795,7 @@ async function createDiagnosticsForDocument(
 
     const maskedText = text
       .replace(
-        /(<(style|textarea|script)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+        /(<(style|textarea|script)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
         (_m, open: string, _tag: string, content: string, close: string) =>
           open + ' '.repeat(content.length) + close,
       )

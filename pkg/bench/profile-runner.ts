@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { createReadStream, createWriteStream } from "node:fs";
 import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -12,7 +13,7 @@ import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { createFixture, seed } from "./profile-fixture.ts";
 import { profileJournal } from "./profile-diagnostics.ts";
-import { cleanGeneratorEnvironment, digest, summarizeCpuProfile, summarizeAllocationProfile, workerCpuLimitation, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, type ProcessCoverage } from "./profile-workload.ts";
+import { cleanGeneratorEnvironment, descendantClinicDatasets, digest, mainClinicDataset, summarizeCpuProfile, summarizeAllocationProfile, workerCpuLimitation, validatePrivateDirectory, validateArtifact, validateProcessCoverage, validateCpuCaptureArtifacts, validateCompression, validateDoctorProcessStat, type ProcessCoverage } from "./profile-workload.ts";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const subject = fileURLToPath(new URL("./profile-subject.ts", import.meta.url));
@@ -22,6 +23,30 @@ const require = createRequire(import.meta.url);
 // headroom for a profiled HTTP/2 subject to initialize under contention.
 const CAPTURE_DIAGNOSTIC_DELAY_MS = 120_000;
 const CAPTURE_DEADLINE_MS = 150_000;
+const STALL_SAMPLE_SECONDS = 3;
+const MAX_STALL_SAMPLES = 4;
+
+/**
+ * macOS only: before the deadline cancels a stalled capture, record native and JS-thread stacks of up to
+ * MAX_STALL_SAMPLES processes in the subject's group. Page workers are threads of the subject process, so its
+ * sample includes them. Best effort: a missing `sample` binary or permission failure is journaled, not thrown.
+ */
+export async function sampleProcessGroup(group: number, directory: string, run = promisify(execFile)) {
+  if (process.platform !== "darwin") return { skipped: "sample is macOS only" };
+  const { stdout } = await run("/bin/ps", ["-A", "-o", "pid=,pgid="], { timeout: 5000 });
+  const members = stdout.split("\n").map((line) => line.trim().split(/\s+/).map(Number))
+    .filter(([pid, pgid]) => Number.isSafeInteger(pid) && pgid === group).map(([pid]) => pid).slice(0, MAX_STALL_SAMPLES);
+  const samples = await Promise.all(members.map(async (pid) => {
+    const file = join(directory, `sample-${pid}.txt`);
+    try {
+      await run("/usr/bin/sample", [String(pid), String(STALL_SAMPLE_SECONDS), "-mayDie", "-file", file], { timeout: (STALL_SAMPLE_SECONDS + 10) * 1000 });
+      return { pid, file };
+    } catch (error) {
+      return { pid, error: String(error).slice(0, 300) };
+    }
+  }));
+  return { members, samples };
+}
 async function decodeClinicDataset(tool: string, dataset: string) {
   if (tool === "heapprofiler") {
     const profile = JSON.parse(await readFile(dataset, "utf8"));
@@ -144,7 +169,13 @@ export async function execute(command: string[], cwd: string, directory: string,
   const terminate = () => { process.exitCode = 143; cancel(new CaptureCanceled("capture interrupted by SIGTERM")); };
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", terminate);
-  const diagnosticDeadline = setTimeout(() => journal("capture-pre-deadline", { childPid: child.pid, cpu: process.cpuUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage() }), CAPTURE_DIAGNOSTIC_DELAY_MS);
+  const diagnosticDeadline = setTimeout(() => {
+    journal("capture-pre-deadline", { childPid: child.pid, cpu: process.cpuUsage(), resources: process.getActiveResourcesInfo(), usage: process.resourceUsage() });
+    if (groups && child.pid) void sampleProcessGroup(child.pid, directory).then(
+      (result) => journal("capture-stall-samples", { childPid: child.pid, ...result }),
+      (error) => journal("capture-stall-samples", { childPid: child.pid, error: String(error) }),
+    );
+  }, CAPTURE_DIAGNOSTIC_DELAY_MS);
   const deadline = setTimeout(() => cancel(new Error(`capture deadline exceeded; private diagnostics: ${directory}`)), CAPTURE_DEADLINE_MS);
   let outcome: { code: number | null; signal: NodeJS.Signals | null } | undefined;
   let failure: Error | undefined;
@@ -227,22 +258,23 @@ export async function runProfiles() {
       const environment = clinicTool ? clinicEnvironment() : { ...cleanGeneratorEnvironment(process.env), ...(tool === "cpu" ? { BASCIK_PROFILE_CAPTURE_DIR: profiles } : {}) };
       await execute(command, project, join(directory, "capture"), environment);
       let decoded;
+      const mainDataset = clinicTool ? mainClinicDataset(await readFile(join(directory, "capture/process.log"), "utf8"), profiles, tool) : undefined;
+      const descendantDatasets = mainDataset ? await descendantClinicDatasets(profiles, tool, mainDataset) : [];
       if (tool === "bubbleprof" || tool === "heapprofiler") {
-        const datasets = (await readdir(profiles)).filter((name) => name.endsWith(`.clinic-${tool}`));
-        assert.equal(datasets.length, 1, `missing or ambiguous ${tool} dataset`);
-        const dataset = join(profiles, datasets[0]);
+        assert.equal(descendantDatasets.length, 0, `descendant ${tool} datasets: ${descendantDatasets.join(", ")}`);
+        const dataset = mainDataset!;
         decoded = await decodeClinicDataset(tool, dataset);
         await execute([process.execPath, clinicCli, tool, "--visualize-only", dataset, "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
       }
       if (tool === "doctor") {
-        const dataset = (await readdir(profiles)).find((name) => name.endsWith(".clinic-doctor"));
-        assert(dataset, "Doctor dataset missing");
+        const dataset = mainDataset!;
         for (const suffix of ["systeminfo", "traceevent", "processstat"]) {
-          const matches: string[] = (await filesUnder(join(profiles, dataset))).filter((path) => path.endsWith(suffix));
+          const matches: string[] = (await filesUnder(dataset)).filter((path) => path.endsWith(suffix));
           assert.equal(matches.length, 1, `missing Doctor ${suffix}`);
           await validateArtifact(matches[0], "binary");
+          if (suffix === "processstat") validateDoctorProcessStat(await readFile(matches[0]), matches[0]);
         }
-        await execute([process.execPath, clinicCli, "doctor", "--visualize-only", join(profiles, dataset), "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
+        await execute([process.execPath, clinicCli, "doctor", "--visualize-only", dataset, "--open=false", "--dest", profiles], project, join(directory, "visualize"), clinicEnvironment());
       }
       const artifact = await validateArtifact(join(directory, "result.json"), "json");
       const result = JSON.parse(await readFile(artifact.path, "utf8"));
@@ -279,7 +311,7 @@ export async function runProfiles() {
       else for (const event of result.subjectEvents ?? []) coverage.push({ ...event, tool: "none", captured: false, limitation: "separate Node CPU capture required" });
       if (clinicTool || tool === "0x") assert(artifacts.some((item) => item.path.endsWith(".html")), "missing rendered capture");
       const config = await readFile(join(project, "bascik.config.ts"), "utf8");
-      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution, decoded });
+      captures.push({ label, tool, scenario, encoding, config, configSha256: digest(config), result, artifacts, coverage, cpuAttribution, decoded, mainDataset, descendantDatasets });
     } catch (error) {
       if (error instanceof CaptureCanceled) throw error;
       failures.push({ label, error: String(error) });

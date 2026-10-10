@@ -1,6 +1,6 @@
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
-import { cleanGeneratorEnvironment, workerCpuLimitation, type ProcessCoverage } from "./profile-workload.ts";
+import { profilerFreeEnvironment, workerCpuLimitation, type ProcessCoverage } from "./profile-workload.ts";
 import type { WorkerOptions } from "node:worker_threads";
 import { profileJournal } from "./profile-diagnostics.ts";
 
@@ -13,7 +13,7 @@ export function observeSubjects(directory: string | undefined) {
   const originalExecFile = children.execFile;
   const preload = fileURLToPath(new URL("./profile-isolate.ts", import.meta.url));
   const events: object[] = [];
-  const environment = () => ({ ...cleanGeneratorEnvironment(process.env), ...(directory && !workerCpuLimitation() ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) });
+  const environment = () => ({ ...profilerFreeEnvironment(process.env), ...(directory && !workerCpuLimitation() ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) });
   threads.Worker = class extends OriginalWorker {
     sequence = 0;
     pending?: ProcessCoverage;
@@ -51,7 +51,7 @@ export function observeSubjects(directory: string | undefined) {
     const options = args[2];
     if (options && typeof options === "object") {
       const original = options as { env?: NodeJS.ProcessEnv };
-      args[2] = { ...original, env: { ...cleanGeneratorEnvironment(original.env ?? process.env), ...(directory ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) } };
+      args[2] = { ...original, env: { ...profilerFreeEnvironment(original.env ?? process.env), ...(directory ? { BASCIK_PROFILE_CAPTURE_DIR: directory, NODE_OPTIONS: `--import=${preload}` } : {}) } };
     }
     const child = Reflect.apply(originalExecFile, children, args) as import("node:child_process").ChildProcess;
     events.push({ role: args[0] === process.execPath ? "script-child" : "native-child", pid: child.pid, parentPid: process.pid, command: args.slice(0, 2), startedAt: Date.now() });

@@ -1946,7 +1946,7 @@ suite('Extension Integration Suite', () => {
         d.message.includes('Runtime .id assignment'),
       );
       assert.ok(match, 'Expected JS compatibility warning in script block');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('reports CSS compatibility warning in an inline style tag', async () => {
@@ -2088,7 +2088,7 @@ suite('Extension Integration Suite', () => {
         d.message.includes('Standalone attribute selectors are not scoped'),
       );
       assert.ok(match, 'Expected CSS warning in standalone CSS file');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('reports compatibility warning in standalone JS file', async () => {
@@ -2101,7 +2101,7 @@ suite('Extension Integration Suite', () => {
         d.message.includes('Attribute selectors are not rewritten'),
       );
       assert.ok(match, 'Expected JS warning in standalone JS file');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('reports compatibility warning in standalone TypeScript file', async () => {

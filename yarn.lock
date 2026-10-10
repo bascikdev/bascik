@@ -138,7 +138,7 @@ __metadata:
     typescript: "npm:^7.0.2"
     vitest: "npm:^4.1.10"
   peerDependencies:
-    "@bascik/bascik": ^1.0.0-rc.5
+    "@bascik/bascik": ^1.0.0-rc.6
   languageName: unknown
   linkType: soft
 

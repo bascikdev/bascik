@@ -34,7 +34,7 @@ Both are compatible with Bascik. Bascik resolves components at build time and pr
 
 Full-featured frameworks like Vue and React solve a different problem: client-side applications with complex reactive state, component trees, and client-side routing. They ship a significant JavaScript runtime (~40–100+ KB), require a bundler, and introduce a complete component model with lifecycle hooks, reactivity systems, and state management conventions.
 
-For documents, marketing sites, docs portals, blogs, portfolios, most of that machinery is unused. The framework runtime loads and runs on every page visit in exchange for features the page does not use.
+On many pages, much of that client machinery is unneeded. The framework runtime loads and runs on every page visit in exchange for features the page may not require.
 
 Bascik's component model lives entirely at build time. There is no runtime equivalent. A `<site-nav>` tag in source becomes a `<nav>` element in output, no JavaScript involved.
 
@@ -58,9 +58,9 @@ For content sites and documentation portals, the closest Svelte analog is Svelte
 
 Next.js is a React meta-framework that adds routing, server-side rendering, static site generation, and a full bundling pipeline on top of React. It is a powerful and complete system, and most of that power is aimed at applications with complex client-side state, authentication, API routes, and real-time data.
 
-Many teams reach for Next.js on content sites, landing pages, and documentation portals because it is familiar and well-supported. The tradeoff is that every page ships 80+ KB or more of React runtime regardless of whether the page uses any client-side reactivity. Its conventions also gradually pull projects toward client-side patterns even for pages that were always static, and auditing what actually reaches the browser gets harder over time.
+Many teams reach for Next.js because it is familiar and well-supported. The tradeoff is that every page ships 80+ KB or more of React runtime regardless of whether the page uses any client-side reactivity. Its conventions also gradually pull projects toward client-side patterns even for pages that could remain simple HTML, and auditing what actually reaches the browser gets harder over time.
 
-For a lot of what people build, that is simply more framework than the project needs. Bascik is built for exactly this kind of work. You write vanilla HTML, CSS, and JavaScript. Components are reused at build time. The output is a dist folder of static files you can open and verify file by file. There is no runtime to load, nothing to hydrate, letting you write the standard HTML, CSS, and JavaScript you already know. Google's Core Web Vitals (LCP, INP, CLS) are directly affected by JavaScript that blocks rendering; Bascik's output has none of that overhead.
+For many projects, that is simply more client framework than needed. Bascik gives you a streamlined, high-performance alternative. You write vanilla HTML, CSS, and JavaScript. Components are reused at build time. The output is a dist folder of clean files you can open and verify file by file. There is no client runtime to load, nothing to hydrate, letting you write the standard HTML, CSS, and JavaScript you already know. Google's Core Web Vitals (LCP, INP, CLS) are directly affected by JavaScript that blocks rendering; Bascik's output has none of that overhead.
 
 **What Bascik offers for these projects:**
 
@@ -100,6 +100,6 @@ Bascik supports this same unified edge deployment model via deployment adapters 
 
 The crucial difference lies in the client footprint. Frameworks like Next.js or SvelteKit require client-side runtimes to hydrate components, manage routing, and handle DOM reconciliations. Bascik streams clean, final HTML from the edge worker directly to the browser. Visitors receive live dynamic data and progressive rendering with zero client hydration overhead.
 
-Most of what people build, content sites, marketing pages, docs portals, company blogs, landing pages, does not require a framework runtime in the browser. Knowing what each tool is optimized for is the best basis for choosing. Bascik fills the gap they leave open: component reuse and predictable build output, without a runtime or a new programming model to adopt. You write vanilla HTML, CSS, and JavaScript, get the organizational benefits you would expect from a framework, and ship a dist folder you can fully audit. For the parts of a project that do need client-side behavior, Bascik composes cleanly with HTMX or Alpine.
+A vast range of websites and web applications do not require a client framework runtime in the browser. Knowing what each tool is optimized for is the best basis for choosing. Bascik provides component reuse and predictable build output, without a runtime or a new programming model to adopt. You write vanilla HTML, CSS, and JavaScript, get the organizational benefits you would expect from a framework, and ship a dist folder you can fully audit. For the parts of a project that do need client-side behavior, Bascik composes cleanly with HTMX or Alpine.
 
 > **Combining tools.** A common pattern is Bascik for layout components (nav, footer, hero sections) and HTMX or Alpine for specific interactive elements. Each tool does what it is best at, and neither one intrudes on the other's domain.

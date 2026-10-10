@@ -43,7 +43,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | Module | Responsibility |
 | --- | --- |
 | `boot-page.ts` | In-memory dev-server boot page shown during initial transpile. Connects to live reload and refreshes once the build finishes. |
-| `build-scripts.ts` | Executes `<script data-bascik-build>` blocks as Node.js ESM modules at transpile time, rewrites relative and import-root (`@/`) ESM imports to absolute file URLs, runs each uncached script in its own fresh child process bounded by a memory-aware semaphore, caches results on disk, cleans child-process stack traces, and appends sourceURL comments for debugging. The output cache key folds in resolved package identity (see `package-identity.ts`) so package upgrades and linked-package edits invalidate cached output. |
+| `build-scripts.ts` | Executes `<script data-bascik-build>` blocks as Node.js ESM modules at transpile time, rewrites relative and import-root (`@/`) ESM imports to absolute file URLs, runs each uncached script in its own fresh child process bounded by a memory-aware semaphore (children share Node's on-disk compile cache unless the user sets or disables `NODE_COMPILE_CACHE`), caches results on disk, cleans child-process stack traces, and appends sourceURL comments for debugging. The output cache key folds in resolved package identity (see `package-identity.ts`) so package upgrades and linked-package edits invalidate cached output. |
 | `package-identity.ts` | Resolves the external (bare, scoped, subpath) packages a build script imports using Node ESM semantics via a resolver stub in `node_modules/.cache/bascik/` (the directory the child executes from), realpaths each resolved entry, and hashes its content and manifest. The package graph is walked deterministically with a bounded depth and a visited-set cycle guard; Node builtins contribute only their runtime name. This is distinct from local file dependency tracking and ensures cache keys reflect package changes. |
 | `check.ts` | Static analysis for `bascik --check`. Scans all pages and components for unresolved custom tags (errors) and unused component files (warnings). Exits with code 1 when errors are found so it can gate CI pipelines. |
 | `cli.ts` | Command-line argument parser for the `bascik` binary, resolving CLI flags into actions that `index.ts` can execute. |
@@ -57,6 +57,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `exec.ts` | Runs commands from the `exec` configuration list sequentially on build or during file-watching changes. |
 | `file-system.ts` | File-system helpers: recursive directory listing, path resolution between source and dist, copying static assets. |
 | `html-minifier.ts` | Built-in HTML minifier that strips HTML comments and collapses unnecessary whitespace between tags in production builds. |
+| `html-scanner.ts` | One linear scan that follows the WHATWG HTML tokenizer to find the comments and `<script>` elements a browser actually parses, including in malformed markup. The minifier and the production live-reload strip remove or move only what it reports, so they never make text or dead markup run, never stop a script from running, and never join the text around a removal into new markup. |
 | `http.ts` | Plaintext HTTP/1.1 server (`node:http`) used by default in development and cleartext environments. |
 | `http2.ts` | TLS-enabled HTTP/2 server (`node:http2`) used when `enableTls: true` is configured. |
 | `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html` and `src/components/`, ensures `.gitignore` includes `dist/` and `node_modules/.cache/bascik/`, and patches `package.json` with `"type": "module"` (when absent), an `@bascik/bascik` dependency, and dev/build scripts. |
@@ -80,6 +81,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks at request time, remapping stack traces to the authored file and line before emitting markup into the page stream. |
 | `server-sidecar.ts` | Production sidecar manager for server script registry serialization and startup loading. |
 | `server.ts` | Shared server core used by both dev and production. Dispatches to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs the request handler, and manages server instances. |
+| `scoping-template.ts` | Runs the attribute and script scoping pipeline per component instance (`runScopingPipeline`) and reuses a verified result for repeated identical inputs by renaming instance-dependent names (`scopeComponentInstance`). Output is byte-identical to scoping every instance in full. |
 | `shielding.ts` | Central string shielding utility protecting raw-text elements, comments, and preserved blocks from scoping regex transforms. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `sse.ts` | Server-Sent Events (SSE) connection manager powering live reload and dev server notifications. |
@@ -115,6 +117,7 @@ index.ts
         │           │     └── typescript.ts
         │           ├── styles.ts
         │           ├── html-minifier.ts, css-minifier.ts, js-minifier.ts
+        │           │     └── html-scanner.ts
         │           ├── build-scripts.ts
         │           ├── worker-pool.ts → page-worker.ts
         │           │     └── (transpilePage - no side effects)
@@ -176,7 +179,7 @@ To maintain accurate debugging diagnostics across execution boundaries, Bascik a
 
 ### Incremental rebuilds via reverse component index
 
-To keep the development server instantaneous, Bascik avoids full site rebuilds on change. The in-memory store (`mem.ts`) maintains a reverse dependency index mapping each custom component tag to the exact list of pages that consume it. When a component file is modified, the file-system watcher resolves the component's name, checks the reverse index, and schedules only the affected pages for re-transpilation. Unaffected pages remain cached in memory.
+To keep the development server instantaneous, Bascik avoids full site rebuilds on change. The in-memory store (`mem.ts`) maintains a reverse dependency index mapping each custom component tag to the exact list of pages that consume it. When a component file is modified, the file-system watcher resolves the component's name, checks the reverse index, and schedules only the affected pages for re-transpilation. A stylesheet that component CSS `@import`s is mapped to its importing components at listing time (`componentsImportingStylesheet`), so editing it rebuilds those components' pages too. Unaffected pages remain cached in memory.
 
 ### Custom lightweight JS minifier
 

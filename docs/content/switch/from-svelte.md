@@ -2,10 +2,11 @@
 
 Svelte and Bascik share an intuitive single-file authoring feel, combining markup, logic, and scoped styles. Svelte compiles components to client-side JavaScript that manages reactive state trees in the browser. Bascik compiles components at build time to vanilla HTML and CSS, leaving zero client runtime.
 
-## When to Switch vs Keep Svelte
+## Why Switch to Bascik
 
-- **Switch to Bascik:** For content sites, blogs, portfolios, marketing pages, and documentation where fast initial paint and zero client runtime matter.
-- **Keep Svelte:** For complex client applications requiring continuous fine-grained reactive state updates (such as interactive dashboards, media players, or real-time web tools).
+- **Zero Runtime:** Deliver lightning-fast experiences with zero client-side framework overhead.
+- **Natural Web Authoring:** Compose reusable components with standard HTML, CSS, and DOM JavaScript without needing proprietary compiler runes or template DSLs.
+- **Complete Architecture:** Build anything from simple multi-page layouts to dynamic server-scripted applications and streaming edge workers.
 
 ## Mental Model Comparison
 

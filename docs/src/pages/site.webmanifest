@@ -1,7 +1,7 @@
 {
   "name": "Bascik Documentation",
   "short_name": "Bascik Docs",
-  "description": "Bascik static site generator documentation. Zero runtime.",
+  "description": "Bascik documentation. HTML components with automatically scoped CSS and JS. Zero runtime.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#18191b",

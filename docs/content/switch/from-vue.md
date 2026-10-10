@@ -2,12 +2,13 @@
 
 Vue and Bascik are both component-driven. Vue compiles Single-File Components (`.vue`) to JavaScript that runs in the browser with a reactive state system and a virtual DOM. Bascik compiles components at build time to vanilla HTML and CSS and ships no framework runtime.
 
-## When to Switch vs Keep Vue
+## Why Switch to Bascik
 
-- **Switch to Bascik:** For marketing portals, blogs, documentation sites, and content-rich pages where performance, fast loading, and minimal complexity are paramount.
-- **Keep Vue:** For complex single-page applications with heavy client-side state, form wizards, or dynamic reactive workflows that depend on Vue's reactivity system (`ref`, `reactive`, Pinia).
+- **Zero Framework Footprint:** Keep your pages fast and light by eliminating the virtual DOM and reactive runtime bundle.
+- **Direct Web Standards:** Work directly with standard HTML templates, companion stylesheets, and scoped vanilla scripts instead of custom template directives.
+- **Versatile Full-Stack Features:** Build everything from simple sites to full dynamic applications with server scripts, streaming, and API routes.
 
-A client widget in Bascik ships only the inline script it needs, with no framework runtime. That figure says nothing about a large application, where Vue's state tools do work you would otherwise write yourself.
+A client widget in Bascik ships only the inline script it needs, with no framework runtime.
 
 ## Mental Model Comparison
 

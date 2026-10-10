@@ -172,11 +172,11 @@ export const SCRIPT_DIRECTIVES = [
 ];
 
 export const SCRIPT_BLOCK_RE =
-  /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\s*>/gi;
+  /(<script(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
 
 export function maskHtmlRawTextContents(html: string): string {
   return html.replace(
-    /(<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+    /(<(script|style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
     (
       _match,
       openTag: string,
@@ -436,6 +436,18 @@ export function createDiagnostics(
     (languageId === 'typescript' || languageId === 'javascript');
 
   if (isApiRouteDocument) {
+    if (path.basename(normalizedDocumentPath).startsWith('_middleware.')) {
+      diagnostics.push({
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: Math.min(text.length, 10) },
+        },
+        message:
+          'Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.',
+        severity: DiagnosticSeverity.Error,
+        source: 'bascik',
+      });
+    }
     const apiDiags = analyzeApiRouteSource(text);
     for (const diag of apiDiags) {
       let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
@@ -493,11 +505,15 @@ export function createDiagnostics(
       const end = document.positionAt(
         offset + match.index + Math.max(match[0].length, 1),
       );
+      const severity = rule.severity === 'warning'
+        ? DiagnosticSeverity.Warning
+        : DiagnosticSeverity.Error;
       diagnostics.push({
         range: { start, end },
         message: `${rule.message} ${rule.suggestion}`,
-        severity: DiagnosticSeverity.Warning,
+        severity,
         source: 'bascik',
+        code: rule.id,
       });
     }
   };
@@ -521,7 +537,7 @@ export function createDiagnostics(
     SCRIPT_BLOCK_RE.flags,
   );
   const styleBlockRe =
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style\s*>/gi;
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
 
   if (languageId === 'html') {
     if (isComponentDocument) {
@@ -809,7 +825,7 @@ export function createDiagnostics(
 
     const maskedText = text
       .replace(
-        /(<(style|textarea|script)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+        /(<(style|textarea|script)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
         (_m, open: string, _tag: string, content: string, close: string) =>
           open + ' '.repeat(content.length) + close,
       )
@@ -1043,8 +1059,12 @@ export function createDiagnostics(
 
     for (const match of styleMatches) {
       const openTag = match[1];
-      const styleBody = match[2] ?? '';
       const styleBodyOffset = (match.index ?? 0) + openTag.length;
+      // maskedText blanks style bodies (same length), so read the real body from text.
+      const styleBody = text.slice(
+        styleBodyOffset,
+        styleBodyOffset + (match[2] ?? '').length,
+      );
 
       if (hasCompanionCss) {
         const start = document.positionAt(match.index ?? 0);

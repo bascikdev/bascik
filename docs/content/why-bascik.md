@@ -74,9 +74,9 @@ Building a website has never been simpler at the language level. HTML structures
 
 The problem is organization, not language. Once a project grows past a handful of pages, copy-pasting the same navigation markup into every file becomes painful. Styles that were meant to be local start bleeding across the page. Script variables in one section collide with variables in another.
 
-Frameworks like React and Vue solve this problem well, for interactive applications that genuinely need component state, client-side routing, and reactive data binding. Most websites are not that. A marketing site, a documentation portal, a portfolio, a blog, an account dashboard, these are mostly static documents with a handful of interactive moments sprinkled in. Reaching for a full framework for these projects means paying the runtime cost, the build complexity, and the mental overhead of an entire abstraction layer when the underlying platform already has everything needed.
+Frameworks like React and Vue introduce complex component models, virtual DOMs, and client-side runtimes. But for many projects, reaching for a full client runtime means paying the bundle cost, the build complexity, and the mental overhead of an entire abstraction layer when the underlying web platform already has everything needed.
 
-> Frameworks were built for people writing large interactive applications. Bascik was built for everyone else, and for the tools that write code on their behalf.
+> Bascik gives you clean component organization at build time, with full power across static and dynamic web architectures.
 
 ## The Component Convention
 
@@ -100,9 +100,9 @@ The only gap that remains is component organization, a way to write a navigation
 
 ## Why Not Web Components?
 
-Web Components are a browser-native component model, and they are a legitimate answer to the organization problem. But they come with trade-offs that make them a poor fit for statically rendered sites.
+Web Components are a browser-native component model, and they are a legitimate answer to the organization problem. But they come with trade-offs when aiming for zero-runtime delivery.
 
-Every Web Component requires JavaScript to be parsed, evaluated, and registered before the component renders. On a page with ten components, that is ten class definitions loading at runtime just to display static content. Search engines, accessibility tools, and users on slow connections all pay that cost.
+Every Web Component requires JavaScript to be parsed, evaluated, and registered before the component renders. On a page with ten components, that is ten class definitions loading at runtime just to display content. Search engines, accessibility tools, and users on slow connections all pay that cost.
 
 Web Components also introduce a non-trivial API surface: custom element registries, shadow DOM, light DOM, lifecycle callbacks, slot distribution rules. For a developer writing a navigation bar, none of that is relevant. It is framework complexity without the framework ecosystem.
 

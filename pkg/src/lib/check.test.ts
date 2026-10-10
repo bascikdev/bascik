@@ -589,6 +589,26 @@ describe("checkProject", () => {
       expect(item?.severity).toBe("error");
     });
 
+    it("reads script directives after a quoted attribute value containing >", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<script data-note="a > b" data-bascik-build data-bascik-server>console.log(1)</script>',
+          '<script data-note="x > y" data-bascik-build>\n  const comp = "dynamic-card";\n</script>',
+        ].join("\n"),
+        "components/dynamic-card/dynamic-card.html": "<div>dynamic</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "dynamic-card": { fileName: join(workDir, "components/dynamic-card/dynamic-card.html") },
+      });
+
+      const findings = await checkProject();
+      const conflicts = findings.items.filter((i) => i.category === "script-mode-conflict");
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].locations).toEqual([{ filePath: "pages/index.html", line: 1 }]);
+      expect(findings.items.find((i) => i.message.includes("dynamic-card"))).toBeUndefined();
+    });
+
     it("reports duplicate component names with both file paths", async () => {
       await setupProject({
         "pages/index.html": "<p>ok</p>",
@@ -984,6 +1004,102 @@ describe("checkProject", () => {
         const findings = await checkProject();
         expect(findings.distHtmlChecked).toBeNull();
         expect(findings.distHtmlSpecHintNeeded).toBe(false);
+      });
+    });
+
+    describe("Scoping compatibility checks", () => {
+      it("flags [id] attribute selectors and element names in :is in component CSS with error severity", async () => {
+        await setupProject({
+          "pages/index.html": "<my-form></my-form>",
+          "components/my-form.html": `<style>
+            #report-form { display: grid; color: #fff; }
+            [id="report-form"] { color: red; }
+            :is(div, span) { font-size: 14px; }
+          </style><form id="report-form"></form>`,
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-form": {
+            name: "my-form",
+            fileName: join(workDir, "components/my-form.html"),
+            fileContent: "",
+          },
+        });
+
+        const findings = await checkProject();
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors.length).toBe(2);
+        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("[id] attribute selectors"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Element names inside :is()"))).toBe(true);
+        // Valid #id selector and hex color #fff must NOT produce a false-positive warning or error
+        expect(compatErrors.some((w) => w.message.includes("#report-form") && !w.message.includes("[id"))).toBe(false);
+        expect(findings.errors).toBeGreaterThanOrEqual(2);
+      });
+
+      it("flags runtime .id setter, attribute querySelector, and unsupported DOM methods with error severity", async () => {
+        await setupProject({
+          "pages/index.html": "<my-comp></my-comp>",
+          "components/my-comp.html": `<div id="box"></div><script>
+            el.id = "new-id";
+            document.querySelector("[data-active]");
+            el.removeAttribute("class");
+          </script>`,
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-comp": {
+            name: "my-comp",
+            fileName: join(workDir, "components/my-comp.html"),
+            fileContent: "",
+          },
+        });
+
+        const findings = await checkProject();
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors.length).toBe(3);
+        expect(compatErrors.every((e) => e.severity === "error")).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Runtime .id assignment"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("Attribute selectors are not rewritten"))).toBe(true);
+        expect(compatErrors.some((w) => w.message.includes("removeAttribute"))).toBe(true);
+      });
+
+      it("checks inline style blocks whatever their end tag spelling, and skips <style-guide> elements", async () => {
+        await setupProject({
+          "pages/index.html": "<my-comp></my-comp>",
+          "components/my-comp.html":
+            '<style-guide>[data-a] text</style-guide><div class="x"></div>' +
+            "<style>[data-b] { color: red; }</style/>" +
+            "<style>[data-c] { color: red; }</style\n foo>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "my-comp": { name: "my-comp", fileName: join(workDir, "components/my-comp.html"), fileContent: "" },
+        });
+
+        const findings = await checkProject();
+        const compatErrors = findings.items.filter((i) => i.category === "compatibility");
+        expect(compatErrors).toHaveLength(2);
+        expect(compatErrors.every((e) => e.message.includes("Standalone attribute selectors"))).toBe(true);
+      });
+
+      it("flags _middleware.ts in API routes as an error", async () => {
+        await setupProject({
+          "pages/index.html": "<p>ok</p>",
+          "src/api/_middleware.ts": "export default function middleware() {}",
+          "src/api/hello.ts": "export async function GET() { return new Response('hello'); }",
+        });
+
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({});
+
+        const findings = await checkProject();
+        const middlewareError = findings.items.find((i) => i.category === "middleware-unsupported");
+        expect(middlewareError).toBeDefined();
+        expect(middlewareError?.severity).toBe("error");
+        expect(middlewareError?.message).toContain("Middleware chains (_middleware.ts) are not supported by design");
       });
     });
   });

@@ -15,6 +15,8 @@ describe("removeOutputDirectives", () => {
     ["data-bascik-stream", "<script data-bascik-stream>export default async function* () {}</script>"],
     ["data-bascik-routes", "<script data-bascik-routes>export default () => []</script>"],
     ["data-bascik-build", '<SCRIPT DATA-BASCIK-BUILD src="./x.ts"></SCRIPT >'],
+    ["data-bascik-build", "<script data-bascik-build>x()</script\t\n foo>"],
+    ["data-bascik-server", "<script data-bascik-server>x()</script/>"],
   ])("removes a printed %s script", (directive, tag) => {
     const result = removeOutputDirectives(`<p>a</p>${tag}<p>b</p>`);
     expect(result.html).toBe("<p>a</p><p>b</p>");

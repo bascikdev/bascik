@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "startServerCommand": "bascik --server",
-      "startServerReadyPattern": "Loaded \\d+ pages? from dist/",
+      "startServerReadyPattern": "Server running at http://localhost:8080",
       "url": [
         "http://localhost:8080/?theme=light",
         "http://localhost:8080/getting-started?theme=light",
@@ -11,12 +11,19 @@
       "numberOfRuns": 1,
       "settings": {
         "chromeFlags": "--no-sandbox --headless",
-        "onlyCategories": ["accessibility"]
+        "onlyCategories": [
+          "accessibility"
+        ]
       }
     },
     "assert": {
       "assertions": {
-        "categories:accessibility": ["error", { "minScore": 1.0 }]
+        "categories:accessibility": [
+          "error",
+          {
+            "minScore": 1.0
+          }
+        ]
       }
     },
     "upload": {

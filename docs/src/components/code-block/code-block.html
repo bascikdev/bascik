@@ -63,11 +63,13 @@
       // Tag
       if (src[i] === '<' && i + 1 < n && (src[i + 1] === '/' || /[a-zA-Z!]/.test(src[i + 1]))) {
         out += e('<'); i++;
-        if (i < n && src[i] === '/') { out += e('/'); i++; }
+        let closing = false, selfClosing = false, typeValue = null;
+        if (i < n && src[i] === '/') { out += e('/'); i++; closing = true; }
         const nm = /^[\w-]+/.exec(src.slice(i));
+        const tagName = nm ? nm[0].toLowerCase() : '';
         if (nm) { out += tok(C.kw, nm[0]); i += nm[0].length; }
         while (i < n && src[i] !== '>') {
-          if (src[i] === '/' && src[i + 1] === '>') { out += e('/>'); i += 2; break; }
+          if (src[i] === '/' && src[i + 1] === '>') { out += e('/>'); i += 2; selfClosing = true; break; }
           if (/\s/.test(src[i])) { out += src[i++]; continue; }
           const am = /^[\w:-]+/.exec(src.slice(i));
           if (am) {
@@ -78,12 +80,25 @@
                 const q = src[i];
                 const qj = src.indexOf(q, i + 1);
                 const qe = qj < 0 ? n : qj + 1;
+                if (am[0].toLowerCase() === 'type') typeValue = src.slice(i + 1, qe - 1).trim().toLowerCase();
                 out += tok(C.val, src.slice(i, qe)); i = qe;
               }
             }
           } else { out += e(src[i++]); }
         }
         if (i < n && src[i] === '>') { out += e('>'); i++; }
+        // Embedded <script> and <style> content: highlight with the JS / CSS tokenizers.
+        if (!closing && !selfClosing && (tagName === 'script' || tagName === 'style')) {
+          const closeMatch = new RegExp('</' + tagName + '\\s*>', 'i').exec(src.slice(i));
+          const end = closeMatch ? i + closeMatch.index : n;
+          const body = src.slice(i, end);
+          let inner = null;
+          if (tagName === 'style') inner = hlCss(body);
+          else if (typeValue === null || typeValue === '' || typeValue === 'module' || typeValue === 'importmap'
+            || /(java|ecma|type)script|json/.test(typeValue)) inner = hlJs(body);
+          out += inner === null ? e(body) : inner;
+          i = end;
+        }
         continue;
       }
       out += e(src[i++]);
@@ -209,7 +224,8 @@
         if (m) {
           const word = m[0];
           const after = i + word.length;
-          if (JS_KW.has(word)) out += tok(C.kw, word);
+          const isMember = i > 0 && src[i - 1] === '.';
+          if (JS_KW.has(word) && !isMember) out += tok(C.kw, word);
           else if (after < n && src[after] === '(') out += tok(C.fn, word);
           else out += e(word);
           i = after; continue;

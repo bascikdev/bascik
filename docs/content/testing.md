@@ -137,7 +137,7 @@ describe('formatWeatherCard', () => {
 Playwright tests run against real browser engines (Chromium, Firefox, WebKit) across four server environments:
 
 - **Static Production**: `bascik --build` served via static web server.
-- **Dev Server**: `bascik --dev` testing live-reload and SSE connection stability.
+- **Dev Server**: `bascik` (no mode flag) testing live-reload and SSE connection stability.
 - **HTTP/1.1 Production Server**: `bascik --server` testing cleartext request-time server scripts.
 - **HTTP/2 Production Server**: `bascik --server` testing TLS-encrypted server scripts and multiplexed streaming.
 

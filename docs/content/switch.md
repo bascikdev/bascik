@@ -1,11 +1,11 @@
 # Overview
 
-Switching an existing site to Bascik lets you replace complex client-side framework runtimes and heavy bundlers with standard vanilla HTML, CSS, and JavaScript. Bascik compiles your components at build time, yielding fast static pages and zero client runtime overhead.
+Switching an existing site to Bascik lets you replace complex client-side framework runtimes and heavy bundlers with standard vanilla HTML, CSS, and JavaScript. Bascik compiles your components at build time, yielding fast pages and zero client runtime overhead.
 
-## Is Bascik Right for Your Project?
+## What Bascik Delivers
 
-- **Great fit:** Content-driven websites, marketing pages, company portals, documentation, blogs, and agency projects where fast load times, SEO, and low maintenance matter.
-- **When to stay with your current framework:** Applications requiring complex, state-heavy client interfaces (such as interactive dashboards, canvas editors, or real-time collaborative apps) that rely heavily on a client-side reactive state store.
+- **Fast, Clean Delivery:** Content-driven websites, marketing pages, company portals, documentation, web applications, and digital products where fast load times, SEO, and low maintenance matter.
+- **Full Architectural Freedom:** Static pages, dynamic server scripts, streaming slots, and API routes are all supported out of the box without locking you into a client runtime.
 
 ## Transferable Knowledge
 

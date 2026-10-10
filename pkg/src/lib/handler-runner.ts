@@ -68,6 +68,12 @@ export const runDirectiveHandler = async <T = unknown>(
     delete childEnv.BASCIK_ROUTE;
   }
   delete childEnv[SPILLED_ENV_FILE_VAR];
+  // Each script still runs in its own fresh process. Sharing Node's on-disk
+  // compile cache only lets later children skip recompiling the same modules
+  // (the runner, shared helpers, packages). A user's own setting always wins.
+  if (childEnv.NODE_COMPILE_CACHE === undefined && childEnv.NODE_DISABLE_COMPILE_CACHE === undefined) {
+    childEnv.NODE_COMPILE_CACHE = join(process.cwd(), "node_modules", ".cache", "bascik", "compile-cache");
+  }
 
   const targetFileUrl = pathToFileURL(modulePath).href;
 

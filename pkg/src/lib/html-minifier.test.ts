@@ -1,6 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fc from "fast-check";
 import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
+import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
+
+/**
+ * The browser's view of `html`: structure and text with comments and
+ * collapsible whitespace in ordinary text set aside, plus the scripts that
+ * can run (any script outside `<template>`), which the minifier may move.
+ * Attribute values and preformatted or code text must match exactly.
+ */
+const parsedAsBrowser = (html: string) =>
+  domSnapshot(html, {
+    renderedWhitespace: true,
+    ignoreEmptyFormattingElements: true,
+    collectScript: (_script, inTemplate) => !inTemplate,
+  });
+
+/** Minifying must not change what the browser builds or which scripts run. */
+const expectSameParse = (html: string): string => {
+  const minified = minifyHtml(html);
+  expect(parsedAsBrowser(minified)).toEqual(parsedAsBrowser(html));
+  return minified;
+};
 
 describe("extractScriptTags", () => {
   it("extracts all <script> tags and removes HTML comments", () => {
@@ -38,9 +59,220 @@ describe("extractScriptTags", () => {
   it("returns an empty string if no script tags are present", () => {
     expect(extractScriptTags("<div>No scripts here</div>")).toBe("");
   });
+
+  it("never hoists a <script> that sits inside an unclosed tag, so removal cannot join a new script", () => {
+    // The browser parses `<scr<script>` as one `scr<script` tag and runs
+    // nothing. Hoisting the inner match would join `<scr` and `ipt>` into an
+    // executable `<script>b()</script>`.
+    const html = `<p>x</p><scr<script>a()</script>ipt>b()</script><script>c()</script>`;
+    expect(extractScriptTags(html)).toBe("<script>c()</script>");
+    const minified = minifyHtml(html);
+    expect(minified).toBe(`<p>x</p><scr<script>a()</script>ipt>b()</script>\n<script>c()</script>`);
+    expect(minified).not.toContain("<script>b()</script>");
+  });
+
+  it("leaves nested unclosed-tag scripts as authored at every depth", () => {
+    let html = "<script>a()</script>";
+    for (let depth = 0; depth < 3; depth++) html = `<scr${html}ipt>b${depth}()</script>`;
+    expect(extractScriptTags(html)).toBe("");
+    expect(minifyHtml(html)).toBe(html);
+  });
+
+  it.each([
+    ["inside an unclosed tag name", "<p>x</p><scr<!-- c -->ipt>b()</script>"],
+    ["an empty comment inside an unclosed tag name", "<scr<!---->ipt>b()</script>"],
+  ])("keeps comment-like text %s, which is part of a tag, so nothing joins into a script", (_case, html) => {
+    // The browser reads `<!--` inside a tag as part of that tag, not a comment.
+    expect(extractScriptTags(html)).toBe("");
+    expect(expectSameParse(html)).toBe(html);
+  });
+
+  it("removes a real comment after a lone < without joining the < to the text after it", () => {
+    // `<` followed by `<` is text, then a real comment. Deleting the comment
+    // outright would turn `<` + `script>` into an executable `<script>`.
+    const html = "<p>x</p><<!-- c -->script>b()</script>";
+    expect(expectSameParse(html)).toBe("<p>x</p><<!---->script>b()</script>");
+  });
+
+  it.each([
+    ["<!<!--x-->-- y -->", "<!<!--x-->-- y -->"],
+    ["<!-<!--x-->- y -->", "<!-<!--x-->- y -->"],
+    ["<<!--x-->!-- y -->", "<<!---->!-- y -->"],
+  ])("never joins a new <!-- at a removal seam in %s", (html, expected) => {
+    // The first two are one bogus comment ending at the first `>`. In the
+    // third, `<!--x-->` is a real comment after a text `<`.
+    expect(expectSameParse(html)).toBe(expected);
+  });
+
+  it("removes an unterminated comment, which hides the rest of the document either way", () => {
+    expect(expectSameParse("<p>a</p><!-- open <p>hidden</p>")).toBe("<p>a</p>");
+  });
+
+  it("ends comments where the browser does, including at --!>", () => {
+    // A regex that waits for `-->` would also delete the <b> between them.
+    expect(expectSameParse("<p><!-- a --!><b>kept</b><!-- b --></p>")).toBe("<p><b>kept</b></p>");
+    expect(expectSameParse("<p><!--><b>kept</b><!-- b --></p>")).toBe("<p><b>kept</b></p>");
+  });
+
+  it("keeps comment-like text that is element text, such as in <title> and <noscript>", () => {
+    for (const html of ["<title>a <!-- b --> c</title>", "<noscript><!-- n --></noscript>", "<textarea><!-- t --></textarea>"]) {
+      expect(expectSameParse(html)).toBe(html);
+    }
+  });
+
+  it("keeps the text around a removed comment from forming a different character reference", () => {
+    expect(expectSameParse("<p>&am<!-- c -->p;</p>")).toBe("<p>&am<!---->p;</p>");
+  });
+
+  it.each([
+    ["an unclosed <script>", "<script>b()"],
+    ["an unclosed <template>", "<template><p>t</p>"],
+    ["an unclosed <textarea>", "<textarea>typed"],
+    ["an unclosed <svg>", "<svg><g>"],
+    ["an unclosed start tag", '<div class="x'],
+    ["a trailing </", "</"],
+    ["<plaintext>", "<plaintext>raw"],
+    ["<frameset>", "<frameset>"],
+  ])("keeps hoisted scripts running when the document ends inside %s", (_case, tail) => {
+    // Appended after this markup, a script would be text, inert, or dropped.
+    const html = `<p>a</p><script>a()</script>${tail}`;
+    const minified = expectSameParse(html);
+    expect(minified.indexOf("<script>a()</script>")).toBeLessThan(minified.lastIndexOf(tail));
+  });
+
+  it("hoists a whole script that contains an escaped <script>, not half of it", () => {
+    // Inside `<!--`, a `<script>...</script>` pair does not end the outer script.
+    const html = "<p>x</p><script><!--<script>a()</script>b()--></script><p>y</p>";
+    expect(expectSameParse(html)).toBe("<p>x</p><p>y</p>\n<script><!--<script>a()</script>b()--></script>");
+  });
+
+  it("leaves scripts in <template>, SVG, and <noscript> where they are", () => {
+    for (const html of [
+      "<template><script>t()</script></template><p>x</p>",
+      "<noscript><script>n()</script></noscript><p>x</p>",
+      "<math><mi><script>m()</script></mi></math><p>x</p>",
+    ]) {
+      expect(expectSameParse(html)).toBe(html);
+    }
+  });
+
+  it("keeps execution order around a script that must run in place", () => {
+    // The SVG script and the import map stay put, so scripts before them stay
+    // before them; only scripts after the last such script move.
+    const html =
+      "<script>a()</script><svg><script>s()</script></svg><script>b()</script>" +
+      '<script type="importmap">{}</script><script type="module">m()</script><p>x</p>';
+    expect(expectSameParse(html)).toBe(
+      '<script>a()</script><svg><script>s()</script></svg><script>b()</script><script type="importmap">{}</script><p>x</p>\n' +
+      '<script type="module">m()</script>',
+    );
+  });
+
+  it("classifies script types the way browsers do", () => {
+    // A `type` inside another attribute's value is not the type; `language`
+    // and legacy JavaScript MIME types still run.
+    const html =
+      '<p>x</p><script data-note=\'type="text/plain"\'>a()</script><script language="javascript">b()</script>' +
+      '<script type=" text/x-javascript ">c()</script><script type="text/plain">d()</script>';
+    expect(expectSameParse(html)).toBe(
+      '<p>x</p><script type="text/plain">d()</script>\n' +
+      '<script data-note=\'type="text/plain"\'>a()</script>\n<script language="javascript">b()</script>\n' +
+      '<script type=" text/x-javascript ">c()</script>',
+    );
+  });
+
+  it("stays linear on many comment openers without a close", () => {
+    const started = performance.now();
+    minifyHtml(`<p>a</p>${"<!--".repeat(50_000)}`);
+    minifyHtml(`<p>a</p>${"<!---->".repeat(50_000)}`);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("still removes comments in a closed context, including next to a kept one", () => {
+    const html = "<p>a</p><!-- gone --><scr<!-- kept -->ipt>b()</script><!-- gone too --><p>c</p>";
+    expect(minifyHtml(html)).toBe("<p>a</p><scr<!-- kept -->ipt>b()</script><p>c</p>");
+  });
+
+  it("hoists a script after a literal < in text, which the browser runs", () => {
+    const html = "<p>1 < 2</p><p>x <script>run()</script></p><p>a < b <script>two()</script></p>";
+    expect(extractScriptTags(html)).toBe("<script>run()</script>\n<script>two()</script>");
+    expect(expectSameParse(html)).toBe("<p>1 < 2</p><p>x </p><p>a < b </p>\n<script>run()</script>\n<script>two()</script>");
+  });
+
+  it("still hoists a script after an attribute value containing < or >", () => {
+    for (const title of ["a<b", "a>b"]) {
+      expect(minifyHtml(`<div title="${title}"><script>x()</script></div>`)).toBe(
+        `<div title="${title}"></div>\n<script>x()</script>`,
+      );
+    }
+  });
+
+  it("removes exactly the scripts it hoists, once each, in document order", () => {
+    const html =
+      "<p>a</p><script>one()</script><script data-bascik-server>s()</script>" +
+      "<script>two()</script><script type=\"application/ld+json\">{}</script><script>three()</script>";
+    expect(minifyHtml(html)).toBe(
+      '<p>a</p><script data-bascik-server>s()</script><script type="application/ld+json">{}</script>\n' +
+      "<script>one()</script>\n<script>two()</script>\n<script>three()</script>",
+    );
+  });
+
+  it("stays fast on many scripts, including many inside unclosed tags", () => {
+    const started = performance.now();
+    expect(extractScriptTags("<p>x</p><script>a()</script>".repeat(20_000)).split("\n")).toHaveLength(20_000);
+    expect(extractScriptTags("<p x <script>a()</script>".repeat(20_000))).toBe("");
+    minifyHtml(("<" + "a".repeat(100) + "<script>a()</script>").repeat(10_000));
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("never changes what the browser builds or which scripts can run, on random malformed markup", () => {
+    // parse5 is the oracle: structure, text, and the set of scripts that can
+    // run must match before and after. A joined script, a script hoisted into
+    // inert markup, a split script, or a changed character reference all fail.
+    const fragment = fc.constantFrom(
+      "<script>a()</script>", "<script type=module>m()</script>", "<script data-bascik-server>s()</script>",
+      '<script type="importmap">{}</script>', "<script>", "</script>", "<scr", "ipt>", "ipt>b()</script>",
+      "<script><!--<script>", "-->", "<!--", "--!>", "<!-->", "<!-- c -->", "<!x>", "</", "<", ">", '"', "'",
+      "=", "x", "&am", "p;", "<p>", "</p>", '<div title="', '">', "<b <", "</div>", "<pre>", "</pre>",
+      "<template>", "</template>", "<textarea>", "</textarea>", "<title>", "</title>", "<noscript>",
+      "</noscript>", "<style>", "</style>", "<plaintext>", "<svg>", "</svg>", "<foreignObject>", "<math>", "<mi>",
+      "<![CDATA[", "]]>", "<table>", "<td>", "<select>",
+      // Whitespace in every context: text, between tags, in values, and in
+      // preformatted and code content.
+      " ", "  ", "\n", "\t", "\f", "\r\n", "\u00a0", "\u3000", '<b title="a  b\nc">', "</b>", "<i class=x>", "</i>",
+      "<listing>", "</listing>", "<xmp>", "</xmp>", "</pre x>", "<svg><script>", "<svg><style>",
+    );
+    fc.assert(
+      fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {
+        expectSameParse(parts.join(""));
+      }),
+      { numRuns: 4000 },
+    );
+  });
 });
 
 describe("minifyHtml", () => {
+  it("normalizes each full safety-mask input at most once regardless of raw-text block count", () => {
+    const html = "<main>" + Array.from({ length: 40 }, (_, i) =>
+      `<PRE data-note="quoted > delimiter">  item ${i}\n<!-- literal -->\n<script>example()</script></PRE>`,
+    ).join("\n") + "</main>";
+    const original = String.prototype.toLowerCase;
+    let fullInputNormalizations = 0;
+    const spy = vi.spyOn(String.prototype, "toLowerCase").mockImplementation(function (this: string) {
+      const value = String(this);
+      if (value === html) fullInputNormalizations++;
+      return original.call(value);
+    });
+    let result: string;
+    try {
+      result = minifyHtml(html);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result).toContain("<!-- literal -->\n<script>example()</script>");
+    expect(fullInputNormalizations).toBeLessThanOrEqual(1);
+  });
+
   it("preserves sensitive content with whitespace in closing tags", () => {
     const script =
       "<div><script>const value = 1;\n// keep newline\nwindow.done = true;</script ></div>";
@@ -50,6 +282,15 @@ describe("minifyHtml", () => {
     expect(minifyHtml("<pre>  a\n  b\n</pre >")).toBe(
       "<pre>  a\n  b\n</pre >",
     );
+  });
+
+  it("ends a script at an end tag with trailing whitespace, attributes, or a slash", () => {
+    for (const close of ["</script\t\n foo>", "</script/>", "</SCRIPT\n>"]) {
+      const html = `<script>first()</script ><p>between</p><script>second()${close}<p>after</p>`;
+      expect(extractScriptTags(html)).toBe(`<script>first()</script >\n<script>second()${close}`);
+      expect(minifyHtml(html)).toBe(`<p>between</p><p>after</p>\n<script>first()</script >\n<script>second()${close}`);
+    }
+    expect(extractScriptTags("<script>a()</scripts><p>x</p>")).toBe("");
   });
 
   it("does not strip the document tail when a script contains an HTML comment opener", () => {
@@ -153,12 +394,101 @@ describe("minifyHtml", () => {
   });
 
   it("preserves content of <pre> and <textarea> elements with multiline or newline attributes", () => {
+    // Whitespace between the start tag's attributes never renders, so it
+    // collapses; the content stays verbatim.
     const htmlString =
       '<div><pre\n  class="code-block"\n  id="block1">\n    line1\n    line2\n</pre></div>';
     const result = minifyHtml(htmlString);
     expect(result).toBe(
-      '<div><pre\n  class="code-block"\n  id="block1">\n    line1\n    line2\n</pre></div>',
+      '<div><pre class="code-block" id="block1">\n    line1\n    line2\n</pre></div>',
     );
+  });
+
+  describe("touches only HTML whitespace", () => {
+    const NBSP = "\u00a0";
+
+    it.each([
+      ["a no-break space next to a space", `<p>a${NBSP} b</p>`, `<p>a${NBSP} b</p>`],
+      ["a no-break space between inline elements", `<b>x</b>${NBSP}<i>y</i>`, `<b>x</b>${NBSP}<i>y</i>`],
+      ["no-break spaces between block elements", `<p>x</p>${NBSP}${NBSP}<p>y</p>`, `<p>x</p>${NBSP}${NBSP}<p>y</p>`],
+      ["an em space", "<p>a\u2003 b</p>", "<p>a\u2003 b</p>"],
+      ["ideographic spaces", "<p>a\u3000\u3000b</p>", "<p>a\u3000\u3000b</p>"],
+      ["a zero-width no-break space", "<p>a\ufeff b</p>", "<p>a\ufeff b</p>"],
+      ["a vertical tab", "<p>a\v b</p>", "<p>a\v b</p>"],
+      ["a form feed, which CSS does not collapse", "<p>a\f\fb</p>", "<p>a\f\fb</p>"],
+    ])("keeps %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it("still collapses ASCII whitespace, CRLF included, around no-break spaces", () => {
+      expect(expectSameParse(`<p>a \r\n ${NBSP}  b</p>`)).toBe(`<p>a ${NBSP} b</p>`);
+    });
+
+    it("does not trim no-break spaces at the edges of a page with hoisted scripts", () => {
+      expect(minifyHtml(`${NBSP}<p>x</p>${NBSP}<script>a()</script>`)).toBe(`${NBSP}<p>x</p>${NBSP}\n<script>a()</script>`);
+    });
+  });
+
+  it("keeps attribute values exactly as written", () => {
+    const html =
+      '<input value="a  b"><div title="line1\nline2" data-json=\'{"a":  1}\'\n   class="x"></div>' +
+      '<p title="a> <b">x</p><a b"c  d="e  f">y</a>';
+    expect(expectSameParse(html)).toBe(
+      '<input value="a  b"><div title="line1\nline2" data-json=\'{"a":  1}\' class="x"></div>' +
+      '<p title="a> <b">x</p><a b"c d="e  f">y</a>',
+    );
+  });
+
+  it.each([
+    ["<pre> a  b</pre foo><p>x  y</p>", "<pre> a  b</pre foo><p>x y</p>"],
+    ["<PRE> a  b</PRE><p>x</p>", "<PRE> a  b</PRE><p>x</p>"],
+    ["<listing> a  b</listing>", "<listing> a  b</listing>"],
+    ["<xmp> a  b</xmp>", "<xmp> a  b</xmp>"],
+    ["<pre>a<b> x  y </b>z</pre>", "<pre>a<b> x  y </b>z</pre>"],
+    ["<svg><script>a()\nb()</script><style>.a  {}</style></svg>", "<svg><script>a()\nb()</script><style>.a  {}</style></svg>"],
+  ])("keeps preformatted and code content of %s verbatim", (html, expected) => {
+    expect(expectSameParse(html)).toBe(expected);
+  });
+
+  it("keeps the space between inline content and a textarea", () => {
+    expect(expectSameParse("<span>x</span> <textarea>t</textarea>")).toBe("<span>x</span> <textarea>t</textarea>");
+  });
+
+  it("keeps the space before text that starts with <", () => {
+    expect(expectSameParse("<b>x</b>  <3")).toBe("<b>x</b> <3");
+  });
+
+  describe("cases found by fuzzing against parse5", () => {
+    it.each([
+      // A form feed is content, not trimmable whitespace.
+      ["a form feed after a hoisted script", "<script>a()</script>\f"],
+      // An end tag in a template's contents never closes an element outside it.
+      ["</pre> inside a <template> inside <pre>", "<pre><template></pre>\n"],
+      // `</pre>` never closes a <listing>, and neither closes past a table or select.
+      ["</pre> while only a <listing> is open", "<listing></pre x><script>a()</script>"],
+      ["</listing> across a <table>", "<listing><table></listing><script>a()</script>"],
+      ["</pre> across a <table>", "<script>a()</script><pre><table></pre x>"],
+      ["</pre> across a <select>", "<script>a()</script><pre><select></pre x>"],
+      // Removing a script must not merge the text runs around it in a table.
+      ["text around a script in a table", "<table>\f<script>a()</script>p;"],
+      // Whitespace makes the parser re-create an implicitly closed formatting element.
+      ["whitespace after an implicitly closed <i>", "<pre><i class=x></pre x>\n</p>"],
+      ["whitespace after misnested <a> and <h1>", "<p><a href='x  y'><h1>\n<h1>"],
+      ["a line break before hoisted scripts with <a> open", "<a href='x  y'><i class=x><script>a()</script></a><template>"],
+      ["a stray </i> while <a> is open", "<h1><a href='x  y'></h1><script>a()</script></i><style>"],
+      // <title> text is code-like inside SVG <style> and preformatted inside <listing>.
+      ["a <title> inside SVG <style>", "<svg><style><foreignObject><title>\r\n</title>"],
+      ["a <title> inside <listing>", "<listing><title><a href='x  y'></title>"],
+    ])("keeps the parse of %s", (_case, html) => {
+      expectSameParse(html);
+    });
+  });
+
+  it("keeps whitespace when a hoisted script is placed inside an unclosed <pre>", () => {
+    // The document ends inside an unclosed start tag within <pre>, so the
+    // scripts go before it, where an added line break would render.
+    const html = '<script>a()</script><pre>code  \nmore  <span class="x';
+    expect(expectSameParse(html)).toBe('<pre>code  \nmore  <script>a()</script><span class="x');
   });
 
   it("removes comments, whitespace and newlines and puts script tags at the end of the HTML", () => {

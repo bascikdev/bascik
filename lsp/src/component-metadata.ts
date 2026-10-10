@@ -43,7 +43,7 @@ function maskNonMarkup(source: string): string {
   return source
     .replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => ' '.repeat(match.length))
     .replace(
-      /(<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>)/gi,
+      /(<(script|style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
       (_match, openTag: string, _name: string, body: string, closeTag: string) =>
         `${openTag}${' '.repeat(body.length)}${closeTag}`,
     );
@@ -218,8 +218,8 @@ export function analyzeComponentSource(
     props,
     slots,
     defaultSlot,
-    hasStyles: options.hasCompanionStyles === true || /<style\b/i.test(source),
-    hasScripts: /<script\b/i.test(source),
+    hasStyles: options.hasCompanionStyles === true || /<style(?=[\t\n\f\r />])/i.test(source),
+    hasScripts: /<script(?=[\t\n\f\r />])/i.test(source),
     diagnostics,
   };
 }

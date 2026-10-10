@@ -70,7 +70,7 @@ During local development, `bascik` compiles pages into memory and starts the wat
 The `MemoryStore` class manages rendered pages during development without writing intermediate files to disk on every edit:
 
 - `#files`: Maps HTTP paths (such as `/getting-started`) to `StoredPage` objects containing raw HTML buffers, pre-compressed Brotli and Gzip buffers, and component usage lists. `getPageExact` performs `O(1)` exact lookups and handles trailing-slash path resolution (`/blog` vs `/blog/`) directly without redundant Map queries.
-- `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes.
+- `#components`: Inverted index mapping each component name to the `Set<string>` of page paths using it. This index enables selective re-transpilation when a single component changes. A stylesheet imported by component CSS reaches this index through `componentsImportingStylesheet` in `components.ts`, which maps the imported path to the importing component names; every dev watcher that sees the file (components, pages assets, or the combined source observer) rebuilds those pages before reloading.
 - `#openPages`: Tracks active SSE live-reload connections by HTTP path. Pages currently open in a browser tab are transpiled first during batch rebuilds (`processPageBatch` and `processAllPages`) so visible tabs refresh immediately without waiting for background pages.
 
 Brotli compression during development uses minimum quality (`BROTLI_MIN_QUALITY = 1`) for instant background compression without clogging Node.js C++ threadpool workers. Under `--build` and `--server`, Brotli compression uses maximum quality (`BROTLI_MAX_QUALITY = 11`) to ensure optimal payload sizes.
@@ -125,7 +125,7 @@ Live reload uses Server-Sent Events (SSE) via `GET /bascik-live-reload`. Bascik 
 - **Build Error Overlay:** The `SseManager` owns exactly one `build-error` subscription on the event bus and routes a located failure (file, line, column) to every live client exactly once, so N connections never produce N broadcasts. Errors clear on subsequent successful builds. Because production has no SSE bus or browser overlay, this channel never leaks into `--build` or `--server` output.
 - **Auto-reconnection:** Auto-reconnects on browser tab focus or visibility change, and cleanly closes streams on page unload.
 - **HEAD Handling:** Responds to `HEAD /bascik-live-reload` with headers only and terminates without holding an open stream.
-- **Production Guard:** Never injected into `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth. The injected `<script>` carries a `data-bascik-live-reload` attribute, and the production strip removes only elements whose own open tag carries that attribute. It never identifies the script by scanning page content for `/bascik-live-reload`, so ordinary client scripts, prose, and code samples that mention the SSE path are served unchanged.
+- **Production Guard:** Never injected into `--build` output, returns `404` on `--server`, and runtime-stripped in `server-prod.ts` as defense in depth. The injected `<script>` carries a `data-bascik-live-reload` attribute, and the production strip removes only elements whose own open tag carries that attribute. It never identifies the script by scanning page content for `/bascik-live-reload`, so ordinary client scripts, prose, and code samples that mention the SSE path are served unchanged. The strip finds script elements the way a browser parses the page, so markup that only looks like a live-reload script stays as it is, and removing a script never joins the text around it into new markup.
 
 ### Open-page priority transpilation (`partitionByOpenPages`)
 
@@ -337,7 +337,7 @@ Every specifier the registry receives is canonicalized to one identity key befor
 - A `file:` URL is parsed as a URL, never re-encoded as a path, and its filesystem path is realpath'd the same way. An authored query string or fragment is part of the identity on purpose: Node treats `mod.ts?variant=a` and `mod.ts?variant=b` as distinct modules, and the registry preserves that distinction.
 - Inline source uses a `data:` URL. Its load state belongs to the page's script job, through a weak owner, rather than a permanent registry entry for each historical source. In development, the URL also reflects the generations of its literal file imports.
 
-The identity key is the URL without the framework's own generation marker, so a path, its `file:` URL, a symlinked spelling, and a relative form of the same file all share one module instance. The realpath rule matters because Node's resolver reports realpaths (`/private/tmp/...` on macOS), and the development module graph below is keyed by what the resolver reports.
+The identity key is the URL without the framework's own generation marker, so a path, its `file:` URL, a symlinked spelling, and a relative form of the same file all share one module instance. The realpath rule matters because Node's resolver reports realpaths (on macOS, for example, a file under `/tmp` resolves to `/private/tmp`), and the development module graph below is keyed by what the resolver reports.
 
 #### Mode Ownership
 

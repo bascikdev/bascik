@@ -1,6 +1,6 @@
 {
   "name": "@bascik/adapter-cloudflare",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.5",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -38,7 +38,7 @@
     "smol-toml": "^1.8.0"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.0-rc.5"
+    "@bascik/bascik": "^1.0.0-rc.6"
   },
   "devDependencies": {
     "@bascik/bascik": "workspace:*",

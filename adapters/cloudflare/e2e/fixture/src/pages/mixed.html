@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <demo-favicons />
   <title>Bascik · Mixed Server &amp; Stream Execution Demo</title>
   <style>
     :root {
@@ -43,9 +44,15 @@
     }
 
     header {
+      order: 1;
       border-bottom: 1px solid var(--border);
       padding-bottom: 0.6rem;
       margin-bottom: 0.65rem;
+    }
+
+    main {
+      order: 2;
+      flex: 1 0 auto;
     }
 
     .brand-nav {
@@ -233,28 +240,6 @@
       font-weight: 700;
     }
 
-    .pulse-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #fef08a;
-      animation: dot-glow 1.2s ease-in-out infinite;
-    }
-
-    @keyframes dot-glow {
-
-      0%,
-      100% {
-        opacity: 0.4;
-        transform: scale(0.85);
-      }
-
-      50% {
-        opacity: 1;
-        transform: scale(1.15);
-      }
-    }
-
     .stream-resolved {
       background: rgba(211, 255, 141, 0.08);
       border: 1px solid rgba(211, 255, 141, 0.22);
@@ -318,7 +303,11 @@
       text-decoration: underline;
     }
 
+    /* Early-paint footer: the markup is sent in the initial chunk BEFORE the
+       stream slot, and flexbox order places it at the visual bottom. Without
+       this, the footer only appears after the stream script resolves. */
     footer {
+      order: 3;
       margin-top: auto;
       padding-top: 0.75rem;
       border-top: 1px solid var(--border);
@@ -360,6 +349,14 @@
       <code>&lt;script data-bascik-stream&gt;</code> in one document response.
     </p>
   </header>
+
+  <!-- Static footer sent in the initial chunk before the stream slot.
+       CSS flexbox order places it at the visual bottom of the layout. -->
+  <footer data-testid="cf-mixed-footer">
+    <div>Bascik · Mixed Server &amp; Stream Architecture</div>
+    <div><a href="https://bascik.dev/stream-scripts#the-mixed-page-ordering-rule">Read Mixed-Page Ordering Rule Docs
+        →</a></div>
+  </footer>
 
   <main>
     <div class="callout">
@@ -413,7 +410,6 @@
             <div class="skeleton-header">
               <div class="skeleton-bar" style="width: 45%; height: 0.9rem;"></div>
               <span class="skeleton-status">
-                <span class="pulse-dot"></span>
                 Pending Stream…
               </span>
             </div>
@@ -426,9 +422,11 @@
           </div>
           <script data-bascik-stream>
             export default async function (request, context, { signal }) {
-              // Emulate asynchronous latency
+              // Emulate asynchronous latency (?delay= overrides the 800ms default, clamped to 0-5000ms)
+              const requested = Number(new URL(request.url).searchParams.get('delay') ?? 800);
+              const delay = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 5000) : 800;
               await new Promise((resolve, reject) => {
-                const t = setTimeout(resolve, 800);
+                const t = setTimeout(resolve, delay);
                 signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
               });
               const arrivalTime = new Date().toISOString();
@@ -442,7 +440,7 @@
                 '</p>' +
                 '<div style="font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.35rem;">' +
                 '<span>Stage 2: Chunk Arrival</span>' +
-                '<span>800ms elapsed</span>' +
+                '<span>' + delay + 'ms elapsed</span>' +
                 '</div>' +
                 '</div>';
             }
@@ -456,12 +454,6 @@
         href="/api-demo">API Route Client</a>.
     </p>
   </main>
-
-  <footer>
-    <div>Bascik · Mixed Server &amp; Stream Architecture</div>
-    <div><a href="https://bascik.dev/stream-scripts#the-mixed-page-ordering-rule">Read Mixed-Page Ordering Rule Docs
-        →</a></div>
-  </footer>
 </body>
 
 </html>

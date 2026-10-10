@@ -43,10 +43,10 @@ describe('runCliCheck', () => {
   });
 
   it('returns 0 when a file has warnings but no errors', async () => {
-    // Unanchored attribute selector in CSS is a warning, not an error
-    const css = '[data-state] { color: red; }';
-    const filePath = path.join(tempDir, 'warning.css');
-    fs.writeFileSync(filePath, css);
+    // Unknown data-bascik-preserve token is a warning, not an error
+    const html = '<div data-bascik-preserve="invalid"></div>';
+    const filePath = path.join(tempDir, 'warning.html');
+    fs.writeFileSync(filePath, html);
 
     const exitCode = await runCliCheck([filePath]);
     expect(exitCode).toBe(0);

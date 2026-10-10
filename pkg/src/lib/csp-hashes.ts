@@ -19,17 +19,22 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   const styles = new Set<string>();
 
   // Collect inline script hashes
-  const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  // End tags follow the HTML raw-text rules (`</script\n>` and `</script/>`
+  // close the element), so the hashed body is exactly what the browser hashes.
+  // A quoted attribute value may contain `>`, so the open tag is matched
+  // quote-aware and the body starts where the browser's does.
+  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(emittedHtml)) !== null) {
     const openTag = match[1];
     const body = match[2];
 
-    // Exclude external scripts (<script src="...">)
-    if (/\bsrc\s*=/i.test(openTag)) continue;
+    // Exclude external scripts (<script src="...">). `src` must be a whole
+    // attribute name: `data-src` does not make a script external.
+    if (/(?:^|\s)src\s*=/i.test(openTag)) continue;
 
     // Exclude non-executable / placeholder types (such as text/bascik-server)
-    const typeMatch = openTag.match(/\btype\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const typeMatch = openTag.match(/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)["']?/i);
     if (typeMatch) {
       const typeVal = typeMatch[1].toLowerCase();
       if (typeVal === "text/bascik-server") {
@@ -42,7 +47,7 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   }
 
   // Collect inline style hashes
-  const styleRegex = /<style\b([^>]*)>([\s\S]*?)<\/style>/gi;
+  const styleRegex = /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
   while ((match = styleRegex.exec(emittedHtml)) !== null) {
     const body = match[2];
     const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;

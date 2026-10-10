@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, relative } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
 import { deepReadDirFlat } from "./file-system.ts";
@@ -9,6 +9,7 @@ import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
+import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -133,6 +134,21 @@ export const invalidateComponentListCache = () => {
   componentListCache = null;
 };
 
+// Absolute stylesheet path -> names of components whose CSS imported it at the
+// last complete listing. Kept across cache invalidation: dev looks up an edited
+// file here before the components are listed again.
+let stylesheetImporters = new Map<string, Set<string>>();
+
+/**
+ * Names of components whose stylesheet (companion `.css` or inline `<style>`)
+ * imports `filePath`, directly or through another import, as of the last
+ * component listing. A missing imported file is included, so creating it later
+ * also finds its importers.
+ */
+export const componentsImportingStylesheet = (filePath: string): string[] => [
+  ...(stylesheetImporters.get(resolve(filePath)) ?? []),
+];
+
 /** Load all component HTML and CSS files from the configured components directory. */
 const BARE_TOKEN_SPEC = String.raw`[^\s"'=<>\`]+`;
 const ATTR_VALUE_SPEC = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN_SPEC})`;
@@ -140,7 +156,7 @@ const ATTR_SPEC = String.raw`${BARE_TOKEN_SPEC}(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
 const BUILD_FLAG_SPEC = String.raw`data-bascik-build(?:\s*=\s*${ATTR_VALUE_SPEC})?`;
 
 const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
-  `<script\\b(?:\\s+${ATTR_SPEC})*\\s+${BUILD_FLAG_SPEC}(?:\\s+${ATTR_SPEC})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `<script\\b(?:\\s+${ATTR_SPEC})*\\s+${BUILD_FLAG_SPEC}(?:\\s+${ATTR_SPEC})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -234,6 +250,7 @@ export const listComponents = async (): Promise<ComponentList> => {
     throw new Error(collisions.join("\n\n"));
   }
 
+  const nextStylesheetImporters = new Map<string, Set<string>>();
   const components = await Promise.all(
     componentHtmlFileNames.map(async (fileName) => {
       // Name the file name without the extension.
@@ -253,10 +270,18 @@ export const listComponents = async (): Promise<ComponentList> => {
       let fileContentBuffer: Buffer;
       let cssFileContent: string | undefined;
       let companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined;
+      const importedStylesheets = new Set<string>();
+      const recordImportedStylesheets = () => {
+        for (const path of importedStylesheets) {
+          const importers = nextStylesheetImporters.get(path) ?? new Set<string>();
+          importers.add(componentName);
+          nextStylesheetImporters.set(path, importers);
+        }
+      };
       try {
         [fileContentBuffer, cssFileContent, companionScripts] = await Promise.all([
           readFile(fileName),
-          getComponentCss(fileName, componentCssFileNames),
+          getComponentCss(fileName, componentCssFileNames, importedStylesheets),
           getComponentScripts(fileName, componentScriptFileNames),
         ]);
       } catch (e) {
@@ -265,6 +290,7 @@ export const listComponents = async (): Promise<ComponentList> => {
         // the component without its script.
         if (e instanceof TypeScriptTransformError) throw e;
         console.warn("warning: Failed to process %s", fileName, e);
+        recordImportedStylesheets();
         return {};
       }
 
@@ -284,7 +310,7 @@ export const listComponents = async (): Promise<ComponentList> => {
           const match = buildMatches[i];
           const [fullTag, scriptContent] = match;
           const index = match.index ?? 0;
-          const openTag = fullTag.slice(0, fullTag.length - scriptContent.length - "</script>".length);
+          const openTag = scriptOpenTag(fullTag, scriptContent);
 
           if (isPageAwareBuildScript(openTag, scriptContent)) {
             const placeholder = `<!--__BASCIK_DEFERRED_BUILD_SCRIPT_${i}__-->`;
@@ -308,11 +334,20 @@ export const listComponents = async (): Promise<ComponentList> => {
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
         resolvedContent = resolvedContent.replace(
-          /<script\b([^>]*)\bsrc=["']([^"']+)["']([^>]*)>\s*<\/script>/gi,
-          (match, preSrc, srcVal, postSrc) => {
+          // Quote-aware attributes around a whole-name `src` (never `data-src`).
+          // The body is matched too: browsers ignore inline content when `src`
+          // is set, so a body never stops the companion from being inlined.
+          /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
+          (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
             const baseSrc = basename(srcVal);
             const scriptInfo = companionScripts!.scriptMap.get(baseSrc) ?? companionScripts!.scriptMap.get(srcVal);
             if (scriptInfo) {
+              if (ignoredBody.trim()) {
+                console.warn(
+                  `warning: <script src="${srcVal}"> in "${fileName}" has inline content, which browsers ignore when src is set. ` +
+                  `Bascik inlines "${scriptInfo.relPath}" and drops that content. Move it into the companion file or a separate <script>.`,
+                );
+              }
               const otherAttrs = `${preSrc}${postSrc}`.replace(/\s+/g, " ").trim();
               const attrStr = otherAttrs ? ` ${otherAttrs}` : "";
               // A companion script inlined here becomes a classic <script>
@@ -341,7 +376,10 @@ export const listComponents = async (): Promise<ComponentList> => {
       // are left alone; TypeScript syntax in one is diagnosed, never rewritten.
       resolvedContent = await transformTypeScriptScriptTags(resolvedContent, fileName);
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
-      const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
+      const resolvedInlineCss = inlineCss
+        ? await resolveCssImports(inlineCss, fileName, undefined, importedStylesheets)
+        : "";
+      recordImportedStylesheets();
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
@@ -369,6 +407,7 @@ export const listComponents = async (): Promise<ComponentList> => {
       return component;
     }),
   );
+  stylesheetImporters = nextStylesheetImporters;
   componentListCache = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;
@@ -422,6 +461,99 @@ export const maskRawTextContent = (htmlString: string): string => {
     masked = maskElementContents(masked, ["script", "style", "textarea"]);
   }
   return masked;
+};
+
+// The passes maskRawTextContent runs, in order, each with the opener text a
+// scan could start a match at. Mirrors maskElementContents for the raw tags.
+const MASK_PASSES: Array<{ match: RegExp; opener: RegExp; blank: (match: string, open?: string, inner?: string, close?: string) => string }> = [
+  {
+    match: /<!--[\s\S]*?-->/g,
+    opener: /<!--/g,
+    blank: (match) => match.length >= 7 ? `<!--${" ".repeat(match.length - 7)}-->` : match,
+  },
+  ...["script", "style", "textarea"].map((tag) => ({
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    match: new RegExp(`(<${tag}(?:\\b(?:[^>"']|"[^"]*"|'[^']*')*)?>)([\\s\\S]*?)(<\\/${tag}\\s*>)`, "gi"),
+    // `\b` after the name passes for any following character outside [A-Za-z0-9_].
+    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    opener: new RegExp(`<${tag}(?![A-Za-z0-9_])`, "gi"),
+    blank: (_match: string, open?: string, inner?: string, close?: string) =>
+      `${open}${" ".repeat(inner!.length)}${close}`,
+  })),
+];
+
+// The end of a segment is unsafe when it could be the start of an opener that
+// the following text completes (`<scr` + `ipt>`).
+const PARTIAL_OPENER_AT_END = /<(?:!-?-?|s(?:c(?:r(?:i(?:pt?)?)?)?|t(?:y(?:le?)?)?)?|t(?:e(?:x(?:t(?:a(?:r(?:ea?)?)?)?)?)?)?)?$/i;
+
+/**
+ * Mask `htmlString` exactly like `maskRawTextContent`, and report whether the
+ * string is closed: every pass ends idle, with no opener that a match attempt
+ * failed on (so more text could complete it) and no partial opener at the end.
+ * For a closed string `a`, `maskRawTextContent(a + b)` always equals
+ * `masked + maskRawTextContent(b)`, so its mask can be reused as a prefix.
+ */
+export const maskRawTextContentWithClosure = (htmlString: string): { masked: string; closed: boolean } => {
+  const hasComments = htmlString.includes("<!--");
+  const hasRawTags = /<(?:script|style|textarea)\b/i.test(htmlString);
+  const closedEnd = !PARTIAL_OPENER_AT_END.test(htmlString.slice(-9));
+  if (!hasComments && !hasRawTags) return { masked: htmlString, closed: closedEnd };
+  let masked = htmlString;
+  let closed = closedEnd;
+  MASK_PASSES.forEach((pass, index) => {
+    if (index === 0 ? !hasComments : !hasRawTags) return;
+    const input = masked;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    masked = input.replace(pass.match, (...args: unknown[]) => {
+      const match = args[0] as string;
+      const offset = args[index === 0 ? 1 : 4] as number;
+      starts.push(offset);
+      ends.push(offset + match.length);
+      return index === 0 ? pass.blank(match) : pass.blank(match, args[1] as string, args[2] as string, args[3] as string);
+    });
+    if (!closed) return;
+    // Any opener outside every match is a failed attempt that more text could complete.
+    let matchIndex = 0;
+    pass.opener.lastIndex = 0;
+    for (let opener = pass.opener.exec(input); opener !== null; opener = pass.opener.exec(input)) {
+      while (matchIndex < ends.length && ends[matchIndex] <= opener.index) matchIndex++;
+      if (matchIndex >= starts.length || opener.index < starts[matchIndex]) {
+        closed = false;
+        break;
+      }
+      pass.opener.lastIndex = opener.index + 1;
+    }
+  });
+  return { masked, closed };
+};
+
+/**
+ * Update `masked` (the mask of `body`) after `body[start, end)` is replaced by
+ * `replacement`, without re-masking the whole page. `closedThrough` is a
+ * position at or before `start` whose prefix `body[0, closedThrough)` is
+ * already known to be closed, or -1 when the prefix is known not to be.
+ *
+ * `masked` is null when any part (the prefix, the replaced text, or the
+ * replacement) is not closed; the caller must then re-mask the whole page.
+ * The returned `closedThrough` is `start` when the prefix is closed (the
+ * prefix is unchanged by the substitution, so it stays closed for the next
+ * one) and -1 when it is not, so later substitutions skip the attempt.
+ */
+export const spliceRawTextMask = (
+  body: string,
+  masked: string,
+  start: number,
+  end: number,
+  replacement: string,
+  closedThrough: number,
+): { masked: string | null; closedThrough: number } => {
+  if (closedThrough < 0 || closedThrough > start) return { masked: null, closedThrough: -1 };
+  if (!maskRawTextContentWithClosure(body.slice(closedThrough, start)).closed) return { masked: null, closedThrough: -1 };
+  if (!maskRawTextContentWithClosure(body.slice(start, end)).closed) return { masked: null, closedThrough: start };
+  const inserted = maskRawTextContentWithClosure(replacement);
+  if (!inserted.closed) return { masked: null, closedThrough: start };
+  return { masked: masked.slice(0, start) + inserted.masked + masked.slice(end), closedThrough: start };
 };
 
 /**

@@ -1152,6 +1152,18 @@ describe("scopeContainerNames", () => {
 // ─── scopeInlineStyleTags ────────────────────────────────────────────────────
 
 describe("scopeInlineStyleTags", () => {
+  it.each([["</style >"], ["</style\n>"], ["</style/>"]])("scopes a <style> tag ending in %j", (endTag) => {
+    const { html: result } = scopeInlineStyleTags(`<style>.foo { color: red; }${endTag}<div class="foo"></div>`, "my-comp");
+    expect(result).toContain(".bascik__my-comp__foo");
+    expect(result).toContain('<div class="foo"></div>');
+  });
+
+  it("scopes a <style> tag whose start tag has a quoted >", () => {
+    const { html: result } = scopeInlineStyleTags('<style media="(width > 1px)">.foo { color: red; }</style>', "my-comp");
+    expect(result).toContain('<style media="(width > 1px)">');
+    expect(result).toContain(".bascik__my-comp__foo");
+  });
+
   it("scopes class names inside a <style> tag", () => {
     const html = '<style>.foo { color: red; }</style><div class="foo"></div>';
     const { html: result } = scopeInlineStyleTags(html, "my-comp");
@@ -1521,6 +1533,42 @@ describe("addIdClassesInHtml", () => {
       { idName: "btn", className: "bascik__my-comp__id__btn" },
     ]);
     expect(result).toContain('class="bascik__my-comp__id__btn"');
+  });
+
+  it("injects class onto element with minified scoped id via scopedIdNames mapping", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id="${minifiedId}"><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).toContain(`class="bclasshash123"`);
+    expect(result).toContain(`id="${minifiedId}"`);
+  });
+
+  it("injects class onto element with single-quoted minified scoped id", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id='${minifiedId}'><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).toContain(`class="bclasshash123"`);
+    expect(result).toContain(`id='${minifiedId}'`);
+  });
+
+  it("does not match an unrelated element whose id only shares a prefix with the minified id", () => {
+    const minifiedId = "b1234567890a";
+    const html = `<form id="other__${minifiedId}"><label>Test</label></form>`;
+    const result = addIdClassesInHtml(
+      html,
+      [{ idName: "report-form", className: "bclasshash123" }],
+      { "report-form": minifiedId },
+    );
+    expect(result).not.toContain("bclasshash123");
+    expect(result).toBe(html);
   });
 
   it("appends to existing class attribute", () => {
@@ -1916,6 +1964,101 @@ describe("shieldCssStrings – perfect round-trip", () => {
 });
 
 describe("extractInlineStyles", () => {
+  it("reads a media attribute whole when it contains >, such as a range query", () => {
+    const { html, css } = extractInlineStyles('<div class="a">x</div><style media="(width > 600px)">.a { color: red; }</style>');
+    expect(html).toBe('<div class="a">x</div>');
+    expect(css).toBe("@media (width > 600px) {\n.a { color: red; }\n}");
+  });
+
+  it.each([["</style >"], ["</style\n>"], ["</style foo>"], ["</style/>"], ["</STYLE>"]])(
+    "ends a style at %j without taking the markup after it",
+    (endTag) => {
+      const { html, css } = extractInlineStyles(`<div class="a">x</div><style>.a { color: red; }${endTag}<p>after</p><style>.b{}</style>`);
+      expect(html).toBe('<div class="a">x</div><p>after</p>');
+      expect(css).toBe(".a { color: red; }\n.b{}");
+    },
+  );
+
+  it("leaves no <style> block behind when removing one joins the text around it into another", () => {
+    const { html, css } = extractInlineStyles("<p>x</p><sty<style>.a{}</style>le>.b{}</style>");
+    expect(html).toBe("<p>x</p>");
+    expect(html).not.toContain("<style");
+    expect(css).toBe(".a{}\n.b{}");
+  });
+
+  it("keeps extracting until no block is left when joins are nested several levels deep", () => {
+    // Each pass removes the innermost block and joins the next one, so this
+    // input needs three passes before the HTML stops changing.
+    const { html, css } = extractInlineStyles("<p>x</p><sty<sty<style>.a{}</style>le>.b{}</style>le>.c{}</style>");
+    expect(html).toBe("<p>x</p>");
+    expect(css).toBe(".a{}\n.b{}\n.c{}");
+  });
+
+  it("ends the loop on deeply nested joins and collects every block in order", () => {
+    const depth = 50;
+    const input = "<sty".repeat(depth) + "<style>.n0{}</style>" +
+      Array.from({ length: depth }, (_, i) => `le>.n${i + 1}{}</style>`).join("");
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toBe("");
+    expect(css).toBe(Array.from({ length: depth + 1 }, (_, i) => `.n${i}{}`).join("\n"));
+  });
+
+  it("reads the media attribute of a block formed by a join", () => {
+    const { html, css } = extractInlineStyles('<sty<style>.a{}</style>le media="print">.b{}</style>');
+    expect(html).toBe("");
+    expect(css).toBe(".a{}\n@media print {\n.b{}\n}");
+  });
+
+  it("removes a block formed by joining around an empty <style> block", () => {
+    const { html, css } = extractInlineStyles("<sty<style></style>le>.b{}</style><p>x</p>");
+    expect(html).toBe("<p>x</p>");
+    expect(css).toBe(".b{}");
+  });
+
+  it("stops when a join forms a <style-guide> custom element instead of a style tag", () => {
+    const { html, css } = extractInlineStyles("<sty<style>.a{}</style>le-guide>x</style-guide>");
+    expect(html).toBe("<style-guide>x</style-guide>");
+    expect(css).toBe(".a{}");
+  });
+
+  it("keeps shielded <pre> content intact while extracting joined blocks", () => {
+    const { html, css } = extractInlineStyles("<pre><style>.keep{}</style></pre><sty<style>.a{}</style>le>.b{}</style>");
+    expect(html).toBe("<pre><style>.keep{}</style></pre>");
+    expect(css).toBe(".a{}\n.b{}");
+  });
+
+  it("returns HTML that has no extractable <style> block left (property)", () => {
+    const body = fc.constantFrom("", ".a{}", " ", "x");
+    const noise = fc.constantFrom("", "<p>", "</p>", "x", "<sty", "le>", "</sty", "<style>", "</style>");
+    // A block whose `<style` opener only forms once the block nested inside
+    // it is removed, mixed with stray fragments that may or may not join.
+    const { block } = fc.letrec<{ block: string }>((tie) => ({
+      block: fc.oneof(
+        { depthSize: "small", withCrossShrink: true },
+        fc.tuple(body).map(([css]) => `<style>${css}</style>`),
+        fc.tuple(tie("block"), fc.constantFrom("le>", 'le media="print">'), body)
+          .map(([inner, tail, css]) => `<sty${inner}${tail}${css}</style>`),
+      ),
+    }));
+    const input = fc.array(fc.oneof(block, noise), { maxLength: 12 }).map((parts) => parts.join(""));
+    fc.assert(
+      fc.property(input, (source) => {
+        const first = extractInlineStyles(source);
+        const second = extractInlineStyles(first.html);
+        expect(second.html).toBe(first.html);
+        expect(second.css).toBe("");
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it("leaves a <style-guide> custom element alone", () => {
+    const input = "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
+    const { html, css } = extractInlineStyles(input);
+    expect(html).toBe("<style-guide>.a { color: red; }</style-guide>");
+    expect(css).toBe(".b{}");
+  });
+
   it("extracts inline <style> tags and strips them from HTML", () => {
     const input = '<style>.badge { color: red; }</style><span class="badge">Badge</span>';
     const { html, css } = extractInlineStyles(input);

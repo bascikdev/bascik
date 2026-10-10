@@ -6,7 +6,7 @@ Bascik features zero-dependency minifiers for HTML, CSS, and JavaScript, determi
 
 Minification reduces payload sizes without introducing heavy external bundlers or AST parsers. Bascik includes three specialized minification passes:
 
-- **`html-minifier.ts`**: Shields raw-text content, strips comments, consolidates eligible scripts, and collapses whitespace while protecting `<pre>` and `<textarea>` content.
+- **`html-minifier.ts`**: Strips comments, consolidates eligible scripts, and collapses whitespace, deciding from a spec-following scan of the document (`html-scanner.ts`) what each part of the markup is.
 - **`css-minifier.ts`**: Removes comments and structural whitespace while shielding string literals and `url()` definitions.
 - **`js-minifier.ts`**: Strips comments and unnecessary spaces while preserving string literals, template literals, and regex literals verbatim.
 - **Identifier Hashing (`names.ts`)**: Hashes scoped class names and element IDs using SHA-256 and Base62 encoding when `minify.identifiers: true` is configured.
@@ -16,28 +16,30 @@ Minification reduces payload sizes without introducing heavy external bundlers o
 
 Traditional build tools rely on heavy Abstract Syntax Tree (AST) parsers to minify code safely. Bascik achieves equivalent safety and higher throughput using zero-dependency lexical context preservation:
 
-1. **HTML Null-Byte Token Shielding:** Whitespace-sensitive elements (`<pre>`, `<textarea>`, and `<style>`) and script bodies are replaced with namespaced null-byte placeholders before comments are stripped or whitespace is collapsed. This prevents code blocks, formatted text, CSS CDO/CDC tokens, and comment-like strings inside scripts from being parsed as document structure.
+1. **HTML Tokenizer Scan:** `html-scanner.ts` walks the document once, following the WHATWG HTML tokenizer states, and splits it into text, tags, raw text bodies, and other markup. Comment-like text inside a `<script>` or `<style>`, a quoted `>` in an attribute value, and malformed markup such as `<scr<script>` are all read the way a browser reads them, so they are never mistaken for document structure.
 2. **CSS String and Resource Shielding:** Quoted string literals and `url(...)` declarations in CSS can contain colons, semicolons, or multiple spaces (such as data URIs or content strings). `shieldCssStrings` extracts these values into temporary tokens before structural whitespace stripping, restoring them unchanged afterward.
 3. **JS Lexical Context and Regex Disambiguation:** JavaScript code is segmented into literal regions (quoted strings, template literals, regexes) and minifiable code regions. To disambiguate the forward slash `/` character (which can represent either a division operator or a regex literal), `js-minifier.ts` tracks preceding keyword context (such as `return`, `case`, `typeof`, `yield`, `await`). Forward slashes following expression keywords are preserved as regex literals.
 
 ## HTML Minification (`html-minifier.ts`)
 
-`minifyHtml` optimizes HTML documents through structural transformations and whitespace rules:
+`minifyHtml` makes two linear passes, each driven by the scanner:
 
-The order is deliberate:
+1. Scan the document, remove its comments, and take out the client scripts selected for consolidation.
+2. Scan the result and collapse whitespace token by token, then place the consolidated scripts.
 
-1. Shield complete `<pre>`, `<textarea>`, and `<style>` elements plus script bodies.
-2. Strip ordinary HTML comments from the remaining document structure.
-3. Extract eligible client scripts while leaving scripts inside shielded containers in place.
-4. Collapse structural whitespace.
-5. Restore every shielded region and append only the scripts selected for consolidation.
+The goal is that the minified page parses to the same document, with the same scripts able to run. The test suite checks this against `parse5`, a spec-compliant HTML parser, on random malformed markup.
 
 ### Key HTML Minification Behaviors
 
-1. **Comment Stripping**: Ordinary HTML comments (`<!-- ... -->`) are removed after raw-text regions are shielded. Comment text inside `<pre>`, `<textarea>`, `<style>`, and scripts survives unchanged. In particular, CSS CDO/CDC tokens (`<!--` and `-->`) inside a `<style>` element are not outer HTML comments and are left in place so the authored stylesheet is preserved at the HTML stage.
-2. **Whitespace-Sensitive Shielding**: Complete `<pre>`, `<textarea>`, and `<style>` elements are stored before structural processing. Scripts nested inside those containers remain in their original location. Storing `<style>` as a whole element means structural whitespace inside it is preserved; CSS minimization is owned by the CSS minifier, never by HTML comment removal.
-3. **Smart Inline Tag Spacing & `O(1)` Tag-Boundary Scanning**: Whitespace between block-level tags (`</div> <div>`) is collapsed completely (`"></div><div>"`). For inline tags (`a`, `span`, `b`, `strong`, `code`), a single space is preserved between adjacent elements (`"> <"`). Tag boundary matching uses `O(1)` backwards scanning (`lastIndexOf('<', offset)`) and bounded slices rather than full-string `slice(0, offset)` allocations, avoiding `O(N^2)` memory churn and V8 garbage collection overhead on large HTML pages.
-4. **Script Consolidation**: Eligible classic and module client scripts may be extracted and re-appended at the end of the document. Build, routes, server, data, and scripts nested inside shielded containers remain in place.
+1. **Comment Stripping**: Every HTML comment the browser would parse is removed, including ones ending in `--!>`, except inside `<pre>` and `<listing>`, whose content stays verbatim. Comment-like text inside raw text and RCDATA elements (`<script>`, `<style>`, `<textarea>`, `<title>`, `<noscript>`) is not a comment and is left in place, so CSS CDO/CDC tokens (`<!--` and `-->`) inside a `<style>` element survive. Removing markup never joins the text around it into new markup: where it could (`<` then `<!-- c -->script>`, or `&am<!-- -->p;`), an empty `<!---->` takes its place.
+2. **Verbatim Content**: `<pre>` and `<listing>` content, raw text and RCDATA bodies (`<script>`, `<style>`, `<textarea>`, `<xmp>`, `<noscript>`, `<iframe>`), SVG and MathML `<script>` and `<style>`, attribute values, DOCTYPEs, and CDATA sections are never changed. Whitespace between a tag's attributes collapses, since it never renders. `<title>` text collapses, because `document.title` collapses it anyway.
+3. **Whitespace Collapsing**: In other text, every line break and every run of spaces, tabs, and line breaks becomes one space. Only that whitespace is touched: U+00A0 (`&nbsp;` written as a character), other Unicode spaces, and form feeds are content and stay. Whitespace-only text between two tags is removed, or kept as one space when both are inline elements (`INLINE_TAGS`: `a`, `span`, `b`, `strong`, `code`, `textarea`, ...). While a formatting element such as `<a>` or `<b>` may be open, it is kept as one space instead, because whitespace makes the parser re-create a misnested formatting element.
+4. **Script Consolidation**: Eligible classic and module client scripts are moved to the end of the document, in their original order. Build, routes, server, and data scripts stay in place, as do scripts in `<template>`, `<pre>`, SVG, or MathML. A script that must run in place (an import map, or one of those) keeps every earlier script before it. When the document ends inside markup where an appended script would not run, such as an unclosed tag, comment, `<template>`, or `<textarea>`, the scripts go just before it.
+
+### Known HTML Limits
+
+- **CSS-dependent whitespace**: The minifier does not read your CSS. An element other than `<pre>` or `<listing>` styled `white-space: pre`, `pre-wrap`, `pre-line`, or `break-spaces` loses its extra spaces and line breaks, and an element made inline with CSS can lose the space next to it. Use `<pre>` for preformatted text, or set `minify.html: false`.
+- **Malformed markup the scan cannot follow**: In a few rare constructs, such as raw text or SVG elements inside `<select>`, `<frameset>`, CDATA inside SVG `<title>`, or SVG and MathML end tags that close elements outside them, the scan stops and the rest of the document is left as written. Inside `<pre>` after a `<table>` or `<select>`, it keeps treating the content as preformatted until the next `<template>` boundary, which only keeps more whitespace.
 
 JavaScript minification applies to scripts with no `type` and to `text/javascript`, `module`, `application/javascript`, `text/ecmascript`, and `application/ecmascript`. External `src` scripts and non-JavaScript data scripts are not minified.
 

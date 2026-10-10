@@ -8,9 +8,50 @@ import {
   BUILD_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
+  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
+  scriptOpenTag,
 } from "./html-patterns.ts";
+
+describe("SCRIPT_END_TAG", () => {
+  const endTag = new RegExp(`^${SCRIPT_END_TAG}$`, "i");
+
+  it.each(["</script>", "</SCRIPT>", "</script >", "</script\t\n foo>", "</script/>", "</script foo=\"bar\">", "</script <p>"])(
+    "matches the end tag %j that browsers accept",
+    (tag) => expect(endTag.test(tag)).toBe(true),
+  );
+
+  it.each(["</scripts>", "</script-x>", "</scriptfoo>", "</ script>", "</script", "</script\u00a0>", "</script\u3000>"])("does not match %j", (tag) => {
+    expect(endTag.test(tag)).toBe(false);
+  });
+
+  it("ends a lazy script body at the first end tag, whatever its spelling", () => {
+    const re = new RegExp(`<script>([\\s\\S]*?)${SCRIPT_END_TAG}`, "gi");
+    const html = "<script>a()</script\t\n foo><p>between</p><script>b()</scripts></script/><p>after</p>";
+    expect([...html.matchAll(re)].map((match) => match[1])).toEqual(["a()", "b()</scripts>"]);
+  });
+});
+
+describe("scriptOpenTag", () => {
+  it.each([
+    ["</script>"],
+    ["</script >"],
+    ["</script\t\n foo>"],
+    ["</script/>"],
+    ["</SCRIPT b </script>"],
+  ])("strips the body and the end tag %j", (endTag) => {
+    const open = '<script data-bascik-build data-note="a > b">';
+    expect(scriptOpenTag(`${open}x()${endTag}`, "x()")).toBe(open);
+    expect(scriptOpenTag(`${open}${endTag}`, "")).toBe(open);
+  });
+
+  it("keeps end-tag lookalikes in the body out of the open tag", () => {
+    const open = "<script data-bascik-server>";
+    const body = 'const s = "</scripts>";';
+    expect(scriptOpenTag(`${open}${body}</script>`, body)).toBe(open);
+  });
+});
 
 describe("html-patterns (Prompt 52)", () => {
   it("exports valid regex fragments", () => {

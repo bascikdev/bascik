@@ -2,10 +2,11 @@
 
 React and Bascik both structure user interfaces into reusable components, but they use different execution models. React renders components in JavaScript using a virtual DOM and client-side runtime, whereas Bascik compiles components at build time into vanilla HTML, CSS, and JavaScript.
 
-## When to Switch vs Keep React
+## Why Switch to Bascik
 
-- **Switch to Bascik:** For landing pages, marketing sites, documentation, company portals, blogs, and content-first web applications where instant initial page loads, simple maintenance, and zero client runtime matter.
-- **Keep React:** For applications centered around complex, highly interactive client-side state trees (such as design tools, rich document editors, or real-time collaborative spreadsheets).
+- **Zero Runtime Overhead:** Ship vanilla HTML, CSS, and scoped JavaScript without paying the cost of a virtual DOM or client hydration bundle.
+- **Standards-First Workflow:** Build pages, components, dynamic routes, and API endpoints using the standard web platform APIs you already know.
+- **Instant Page Delivery:** Deliver fast initial paints and excellent Core Web Vitals while retaining the flexibility to add server scripts, streaming, or interactive client scripts as needed.
 
 ## Mental Model Comparison
 

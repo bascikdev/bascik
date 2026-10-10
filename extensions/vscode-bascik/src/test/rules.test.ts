@@ -31,6 +31,12 @@ suite('Bascik HTML Grammar', () => {
 
 suite('Compatibility Rules Suite', () => {
   suite('CSS Rules', () => {
+    test('detects [id] attribute selectors', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      assert.ok(matches.some((r) => r.id === 'css-id-attribute-selector'));
+    });
+
     test('detects standalone attribute selectors', () => {
       const css = '[data-state] { color: red; }';
       const matches = matchCompatibilityRules(css, 'css');
@@ -107,6 +113,19 @@ suite('Compatibility Rules Suite', () => {
       const js = 'el.style.setProperty("--theme-color", "red");';
       const matches = matchCompatibilityRules(js, 'js');
       assert.ok(matches.some((r) => r.id === 'js-style-setproperty'));
+    });
+
+    test('detects unsupported DOM methods (removeAttribute, hasAttribute, toggleAttribute)', () => {
+      const js = 'el.removeAttribute("class"); el.hasAttribute("id"); el.toggleAttribute("hidden");';
+      const matches = matchCompatibilityRules(js, 'js');
+      assert.ok(matches.some((r) => r.id === 'js-unsupported-dom-methods'));
+    });
+
+    test('sets error severity on unsupported compatibility rules', () => {
+      const css = '[id="report-form"] { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      const rule = matches.find((r) => r.id === 'css-id-attribute-selector');
+      assert.strictEqual(rule?.severity, 'error');
     });
 
     test('returns empty array for clean JS', () => {

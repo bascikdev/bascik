@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, removePage, pageWriteIdle } from "./processing.ts";
+import { recursivelyTranspile, pageProcessing, processPageBatch, selectivelyProcessPagesForWatchPath, partitionByOpenPages, getDisplayPath, findActiveSourceFile, getFilePosition, transpilePage, processAllPages, selectivelyProcessPages, processPagesImportingStylesheet, removePage, pageWriteIdle } from "./processing.ts";
 import { collectAllScriptDeps } from "./build-scripts.ts";
 import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -2177,6 +2177,62 @@ describe("selectivelyProcessPages", () => {
     await selectivelyProcessPages("src/components/my-nav.html");
     const { eventEmitter } = await import("./events.ts");
     expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", expect.anything());
+  });
+
+  it("rebuilds the pages of components whose stylesheets import the changed file", async () => {
+    const componentsModule = await import("./components.ts");
+    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue(["my-card"]);
+    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockImplementation((name: string) =>
+      name === "my-card" ? ["src/pages/index.html"] : [],
+    );
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    try {
+      await selectivelyProcessPages("src/components/my-card/shared.css");
+      expect(importers).toHaveBeenCalledWith("src/components/my-card/shared.css");
+      expect(mem.pagesThisComponentIsUsedOn).toHaveBeenCalledWith("shared");
+      const { eventEmitter } = await import("./events.ts");
+      expect(eventEmitter.emit).toHaveBeenCalledWith("transpiled", expect.anything());
+    } finally {
+      importers.mockRestore();
+      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReset().mockReturnValue([]);
+    }
+  });
+});
+
+describe("processPagesImportingStylesheet", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+  });
+
+  it("does nothing when no component imports the stylesheet", async () => {
+    const componentsModule = await import("./components.ts");
+    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue([]);
+    try {
+      await processPagesImportingStylesheet("src/pages/styles/tokens.css");
+      expect(invalidateComponentListCache).not.toHaveBeenCalled();
+      expect(mem.pagesThisComponentIsUsedOn).not.toHaveBeenCalled();
+    } finally {
+      importers.mockRestore();
+    }
+  });
+
+  it("reloads components and rebuilds each importing page once", async () => {
+    const componentsModule = await import("./components.ts");
+    const importers = vi.spyOn(componentsModule, "componentsImportingStylesheet").mockReturnValue(["my-card", "my-nav"]);
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
+    (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReturnValue(["src/pages/index.html"]);
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+    try {
+      await processPagesImportingStylesheet("src/pages/styles/tokens.css");
+      expect(invalidateComponentListCache).toHaveBeenCalledOnce();
+      const { eventEmitter } = await import("./events.ts");
+      const transpiled = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(([name]) => name === "transpiled");
+      expect(transpiled).toHaveLength(1);
+    } finally {
+      importers.mockRestore();
+      (mem.pagesThisComponentIsUsedOn as ReturnType<typeof vi.fn>).mockReset().mockReturnValue([]);
+    }
   });
 });
 

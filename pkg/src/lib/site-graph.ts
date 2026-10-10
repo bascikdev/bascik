@@ -26,8 +26,36 @@ import type {
 
 export type { DistPageSegment };
 
-const PLACEHOLDER_RE =
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>\s*<\/script>/gi;
+/**
+ * Placeholder detection is split into two linear steps instead of one regex.
+ * A single pattern with quote-aware attribute loops on both sides of a
+ * literal `type="text/bascik-server"` is ambiguous about which loop consumes
+ * a repeated attribute, so it backtracks polynomially on hostile input.
+ * The open-tag pattern below has one loop whose alternatives each start with
+ * a distinct character class, and the attribute is read afterward.
+ */
+const isPlaceholderOpenTag = (openTag: string): boolean =>
+  getHtmlAttributeValue(openTag, "type")?.toLowerCase() === "text/bascik-server";
+
+const WHITESPACE_CHAR = /\s/;
+
+/**
+ * Match a whitespace-only placeholder body followed by a `</script>` end tag,
+ * starting exactly at `from`. Returns the index just past the end tag's `>`,
+ * or -1. Hand-written instead of a sticky regex so the cost is one forward
+ * scan with no backtracking: whitespace, `</script`, then either `>` or a
+ * whitespace/`/` character followed by everything up to the next `>`.
+ */
+const matchPlaceholderEndTag = (html: string, from: number): number => {
+  let i = from;
+  while (i < html.length && WHITESPACE_CHAR.test(html[i])) i++;
+  if (html.slice(i, i + 8).toLowerCase() !== "</script") return -1;
+  i += 8;
+  if (html[i] === ">") return i + 1;
+  if (i >= html.length || (html[i] !== "/" && !WHITESPACE_CHAR.test(html[i]))) return -1;
+  const close = html.indexOf(">", i + 1);
+  return close === -1 ? -1 : close + 1;
+};
 
 /** Split built placeholder HTML into static text and script ids, in document order. */
 export const splitDistPageIntoSegments = (
@@ -36,14 +64,22 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  for (const match of html.matchAll(PLACEHOLDER_RE)) {
-    const index = match.index!;
-    const id = getHtmlAttributeValue(match[0], "data-bascik-server-id");
+  // Fresh stateful regex per call: it is driven through `lastIndex`.
+  const openTagRe = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  let open: RegExpExecArray | null;
+  while ((open = openTagRe.exec(html)) !== null) {
+    const openTag = open[0];
+    if (!isPlaceholderOpenTag(openTag)) continue;
+    const end = matchPlaceholderEndTag(html, openTagRe.lastIndex);
+    if (end === -1) continue;
+    const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
+    const index = open.index;
     if (index > cursor) segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
-    cursor = index + match[0].length;
+    cursor = end;
+    openTagRe.lastIndex = cursor;
   }
   if (cursor < html.length || segments.length === 0) segments.push({ kind: "static", text: html.slice(cursor) });
   return { segments, scriptIds };
@@ -186,9 +222,8 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
             `[bascik] --target: page "${rel}" references server script "${id}" that is missing from the sidecar. Run \`bascik --build\` again.`,
           );
         }
-        const owner = `${entry.mode} script in ${
-          entry.sourceFile ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/") : rel
-        }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
+        const owner = `${entry.mode} script in ${entry.sourceFile ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/") : rel
+          }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
         const containingDir = entry.sourceFile ? dirname(resolve(projectRoot, entry.sourceFile)) : projectRoot;
 
         if (entry.modulePath) {

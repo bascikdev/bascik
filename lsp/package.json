@@ -1,6 +1,6 @@
 {
   "name": "@bascik/language-server",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",

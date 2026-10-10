@@ -38,6 +38,25 @@ const x = 1;
     expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com"');
   });
 
+  it('renderMd gives "See it live" blockquotes the live-demo callout variant and leaves others plain', async () => {
+    const mdContent = `> **See it live on Cloudflare Workers.** Open a running deployment:
+>
+> - [Stream demo](https://demo.example.com/stream)
+
+> **Note.** A plain callout.
+
+> **See it** without the live keyword stays plain.
+`;
+    const mdFile = join(tempDir, 'live.md');
+    await writeFile(mdFile, mdContent);
+
+    const html = await renderMd(mdFile);
+    expect(html.match(/<div class="callout callout-live">/g)).toHaveLength(1);
+    expect(html.match(/<div class="callout">/g)).toHaveLength(2);
+    expect(html).not.toContain('<blockquote>');
+    expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://demo.example.com/stream"');
+  });
+
   it('generates clean anchor slugs by decoding entities and collapsing hyphens', async () => {
     const mdContent = `## Why does \`--check\` list my third-party web components?
 

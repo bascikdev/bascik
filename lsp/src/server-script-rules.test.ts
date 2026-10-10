@@ -100,5 +100,36 @@ export default async () => \`<a href="\${request.query}"></a>\`;`;
       const diags = analyzeServerScriptSource(body, { hasSrcAttribute: false, directive: 'server' });
       expect(diags.some((d) => d.code === 'server-script-sink-url-attribute')).toBe(true);
     });
+
+    const sinkCodes = (markup: string) =>
+      analyzeServerScriptSource(`export default async (req) => \`${markup}\`;`, {
+        hasSrcAttribute: false,
+        directive: 'server',
+      }).map((d) => d.code);
+
+    it.each([['</script >'], ['</script foo>'], ['</script/>'], ['</SCRIPT>']])(
+      'treats a placeholder after a script ending in %j as outside the script',
+      (endTag) => {
+        expect(sinkCodes(`<script>a()${endTag}<p>\${req.query}</p>`)).not.toContain('server-script-sink-inline-script');
+      },
+    );
+
+    it.each([['</style >'], ['</style foo>'], ['</style/>']])(
+      'treats a placeholder after a style ending in %j as outside the style',
+      (endTag) => {
+        expect(sinkCodes(`<style>.a{}${endTag}<p>\${req.query}</p>`)).not.toContain('server-script-sink-style');
+      },
+    );
+
+    it('still warns inside a script or style whose start tag has a quoted >', () => {
+      expect(sinkCodes('<script data-x="a>b">const v = "${req.query}";')).toContain('server-script-sink-inline-script');
+      expect(sinkCodes('<style media="(width > 1px)">.a{content:"${req.query}"}')).toContain('server-script-sink-style');
+    });
+
+    it('does not treat <style-guide> or <script-loader> elements as style or script context', () => {
+      const codes = sinkCodes('<style-guide><script-loader><p>${req.query}</p>');
+      expect(codes).not.toContain('server-script-sink-style');
+      expect(codes).not.toContain('server-script-sink-inline-script');
+    });
   });
 });

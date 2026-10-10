@@ -1,7 +1,7 @@
 {
   "name": "@bascik/bascik",
   "description": "HTML components. Zero runtime",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0-rc.6",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -101,6 +101,8 @@
     "update-e2e-coverage": "node bin/update-e2e-coverage.ts",
     "bench": "vitest bench",
     "dev": "bascik",
-    "profile:workload": "node bench/profile-workload.ts"
+    "profile:workload": "node bench/profile-workload.ts",
+    "profile:compiler": "node bench/compiler-timeline.ts",
+    "profile:compare": "node bench/compiler-compare.ts"
   }
 }

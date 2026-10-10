@@ -31,7 +31,8 @@ import {
  * │                                                                        │
  * │  For each component tag found:                                         │
  * │                                                                        │
- * │  1. SCOPING PIPELINE  (buildScopingPipeline → applyTransforms)        │
+ * │  1. SCOPING PIPELINE  (scopeComponentInstance → runScopingPipeline)   │
+ * │     Repeated inputs reuse a verified result (scoping-template.ts).    │
  * │     Each step is BascikComponent → BascikComponent:                   │
  * │     a. prefixElementAttribute('id')    — scope id attrs + JS refs     │
  * │     b. prefixElementAttribute('name')  — scope name attrs + JS refs   │
@@ -74,15 +75,20 @@ import {
 } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
-import { SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { BUILD_ATTR_NAME, OPEN_TAG_ATTRS, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
 
 // Request-time script directives as whole attribute names (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const SERVER_OR_STREAM_SCRIPT_RE = new RegExp(String.raw`\s(?:${SERVER_ATTR_NAME}|${STREAM_ATTR_NAME})`, "i");
+// A build script still pending after a transpile pass: `data-bascik-build` as a
+// whole attribute name of the open tag, never text inside a quoted value.
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const PENDING_BUILD_SCRIPT_RE = new RegExp(String.raw`<script\b${OPEN_TAG_ATTRS}\s${BUILD_ATTR_NAME}`, "i");
 import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
   invalidateComponentListCache,
+  componentsImportingStylesheet,
   replaceTag,
   getFirstComponent,
   getTag,
@@ -96,11 +102,12 @@ import {
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
   maskRawTextContent,
+  spliceRawTextMask,
 } from "./components.ts";
 import { stripPreserveDirectives } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
+import { scopeComponentInstance } from "./scoping-template.ts";
 
 const annotateComponentScriptSources = (html: string, sourceFile: string): string => {
   const encodedSourceFile = encodeURIComponent(sourceFile);
@@ -121,7 +128,7 @@ const annotateComponentScriptSources = (html: string, sourceFile: string): strin
 };
 
 import { isJavaScriptScript } from "./script-types.ts";
-import { minifyJs } from "./js-minifier.ts";
+import { memoizedMinifyJs } from "./js-minifier.ts";
 import { transformTypeScriptScriptTags } from "./typescript.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
@@ -247,7 +254,8 @@ export const resolveInlineStylesHtml = async (): Promise<string> => {
 const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => {
   const cfg = BascikConfig.minify?.js ?? false;
   if (!cfg) return null;
-  const fn = cfg === true ? minifyJs : cfg;
+  // Only the built-in minifier is memoized: it is pure. A custom minifier may not be.
+  const fn = cfg === true ? memoizedMinifyJs : cfg;
   return async (code: string) => {
     try {
       return await fn(code);
@@ -304,7 +312,7 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
-  const regex = /(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi;
+  const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
   const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {
@@ -327,42 +335,6 @@ const minifyScriptTagsInHtml = async (
     result = result.slice(0, index) + `${open}${body}${close}` + result.slice(index + len);
   }
   return result;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pipeline utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** A function that transforms a component in place and returns it. */
-type ComponentTransform = (component: BascikComponent) => BascikComponent;
-
-/**
- * Apply an ordered list of transforms to a component, threading the output of
- * each step as the input to the next — the pipeline pattern.
- */
-const applyTransforms = (
-  component: BascikComponent,
-  transforms: ComponentTransform[],
-): BascikComponent => transforms.reduce((c, fn) => fn(c), component);
-
-/**
- * Build the ordered list of attribute/script scoping transforms for this
- * component instance, filtered by the current BascikConfig flags.
- */
-const buildScopingPipeline = (instanceId: string): ComponentTransform[] => {
-  const skip = BascikConfig.scoping?.preserve ?? ["code"];
-  return (
-    [
-      BascikConfig.scoping?.attributes?.id &&
-      ((c: BascikComponent) => prefixElementAttribute(c, "id", instanceId, true, skip)),
-      BascikConfig.scoping?.attributes?.name &&
-      ((c: BascikComponent) => prefixElementAttribute(c, "name", instanceId, true, skip)),
-      BascikConfig.scoping?.attributes?.class &&
-      ((c: BascikComponent) =>
-        prefixElementAttribute(c, "class", instanceId, BascikConfig.scoping?.deduplicateCss ?? true, skip)),
-      BascikConfig.scoping?.scriptBlocks && namespaceScriptTags,
-    ] as (ComponentTransform | false)[]
-  ).filter((t): t is ComponentTransform => Boolean(t));
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -539,6 +511,10 @@ export const recursivelyTranspile = (
   // components nested inside the inserted template are still found first).
   // Any operation that edits text outside the known splice resets it to 0.
   let searchFrom = 0;
+  // `transpiledHtmlBody.slice(0, maskClosedThrough)` is known to be closed for
+  // masking, so a substitution after it can splice the template's own mask in
+  // instead of re-masking the page (see spliceRawTextMask). Reset with the cursor.
+  let maskClosedThrough = 0;
   while (true) {
     if (
       substitutions >= MAX_SUBSTITUTIONS ||
@@ -604,7 +580,7 @@ export const recursivelyTranspile = (
         issuedIds,
       );
       currentStage = "attribute scoping";
-      component = applyTransforms(component, buildScopingPipeline(instanceId));
+      component = scopeComponentInstance(component, instanceId);
       component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";
@@ -678,6 +654,10 @@ export const recursivelyTranspile = (
       }
       const sIdx = (component as any).startIndex;
       const eIdx = (component as any).endIndex;
+      const hasOffsets = typeof sIdx === "number" && typeof eIdx === "number";
+      const splicedMask = hasOffsets
+        ? spliceRawTextMask(transpiledHtmlBody, masked, sIdx, eIdx, transpiledTag, maskClosedThrough)
+        : null;
       transpiledHtmlBody = replaceTag(
         transpiledHtmlBody,
         component.name,
@@ -688,22 +668,25 @@ export const recursivelyTranspile = (
           : undefined,
       );
 
-      // If the replaced content introduced raw tags (<script>, <style>, <textarea>), re-mask
-      const introducedRawTags = /<(?:script|style|textarea)\b/i.test(transpiledTag);
-      if (introducedRawTags || typeof sIdx !== "number" || typeof eIdx !== "number") {
+      // Mask the inserted template too. Without HTML minification (the dev server, or
+      // `minify.html: false`) a template keeps its comments, and a component tag named in
+      // one, such as a usage note, must stay text instead of being expanded. When the
+      // prefix, the replaced usage, and the template are each closed, the template's own
+      // mask is spliced in; otherwise a comment or raw-text element could cross the
+      // splice boundary, so the whole page is re-masked.
+      if (splicedMask?.masked != null) {
+        masked = splicedMask.masked;
+        searchFrom = sIdx;
+      } else {
         masked = maskRawTextContent(transpiledHtmlBody);
         // A comment or raw-text element opened inside the new content could
         // extend a mask region across the splice boundary only forward, never
         // into the resolved prefix, so resuming at the instance start is still
         // safe; without known indices, be conservative.
-        searchFrom = typeof sIdx === "number" ? sIdx : 0;
-      } else {
-        // Mask the inserted template too. Without HTML minification (the dev server, or
-        // `minify.html: false`) a template keeps its comments, and a component tag named in
-        // one, such as a usage note, must stay text instead of being expanded.
-        masked = masked.slice(0, sIdx) + maskRawTextContent(transpiledTag) + masked.slice(eIdx);
-        searchFrom = sIdx;
+        searchFrom = hasOffsets ? sIdx : 0;
       }
+      // Without offsets the edit position is unknown, so verify from the start again.
+      maskClosedThrough = splicedMask ? splicedMask.closedThrough : 0;
 
       usedComponents.push(component);
       substitutions++;
@@ -732,6 +715,7 @@ export const recursivelyTranspile = (
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
         searchFrom = 0;
+        maskClosedThrough = 0;
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)
@@ -1154,13 +1138,34 @@ export const selectivelyProcessPagesForWatchPath = async (changedPath?: string):
   await processPageBatch(pagesToProcess, componentList, globalStylesHtml);
 };
 
+/** Pages that use a component whose stylesheet imports `path`, as of the last component listing. */
+export const pagesImportingStylesheet = (path: string): string[] => [
+  ...new Set(componentsImportingStylesheet(path).flatMap((name) => mem.pagesThisComponentIsUsedOn(name))),
+];
+
+/**
+ * Rebuild the pages that use a component whose stylesheet imports `path`, for a
+ * file that is not otherwise a page or component input (a stylesheet under the
+ * pages directory). Does nothing when no component imports it.
+ */
+export const processPagesImportingStylesheet = async (path: string): Promise<void> => {
+  const pagesToTranspile = pagesImportingStylesheet(path);
+  if (pagesToTranspile.length === 0) return;
+  invalidateComponentListCache();
+  await processPageBatch(pagesToTranspile);
+};
+
 export const selectivelyProcessPages = async (path: string): Promise<void> => {
   invalidateComponentListCache();
   const rawFileName = basename(path);
   if (!rawFileName || rawFileName.startsWith(".")) return;
   const componentName = rawFileName.split(".")[0].toLowerCase();
   if (!componentName) return;
-  const pagesToTranspile = mem.pagesThisComponentIsUsedOn(componentName);
+  // A stylesheet that is not itself a component's companion still reaches the
+  // pages of every component that imports it.
+  const pagesToTranspile = [
+    ...new Set([...mem.pagesThisComponentIsUsedOn(componentName), ...pagesImportingStylesheet(path)]),
+  ];
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
   // processPageBatch happens only after those claims. Otherwise a newer direct
@@ -1523,7 +1528,7 @@ export const transpilePage = async (
   );
 
   let bodyPasses = 0;
-  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHtmlBody) && bodyPasses < 10) {
+  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHtmlBody) && bodyPasses < 10) {
     bodyPasses++;
     const pendingBodyBuild = executeBuildScripts(transpiledHtmlBody, pagePath, route, {
       pageFile: pagePath,
@@ -1551,7 +1556,7 @@ export const transpilePage = async (
   } = recursivelyTranspile(headRaw ?? "", componentList, [], pagePath, instanceState);
 
   let headPasses = 0;
-  while (/<script\b[^>]*\bdata-bascik-build/i.test(transpiledHeadContent) && headPasses < 10) {
+  while (PENDING_BUILD_SCRIPT_RE.test(transpiledHeadContent) && headPasses < 10) {
     headPasses++;
     const pendingHeadBuild = executeBuildScripts(transpiledHeadContent, pagePath, route, {
       pageFile: pagePath,
@@ -1643,7 +1648,7 @@ export const transpilePage = async (
 
   if (cssMinifier) {
     // Also minify any inline <style> blocks that came from the page source
-    const styleBlockRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+    const styleBlockRegex = /<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
     const matches: Array<{ full: string; css: string; index: number }> = [];
     let match: RegExpExecArray | null;
     while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {

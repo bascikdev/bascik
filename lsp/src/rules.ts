@@ -3,6 +3,7 @@ import compatibilityRulesData from './compatibility-rules.json' with { type: 'js
 export type CompatibilityPattern = {
   id: string;
   kind: 'css' | 'js';
+  severity?: 'error' | 'warning';
   regex: RegExp;
   message: string;
   suggestion: string;
@@ -11,6 +12,7 @@ export type CompatibilityPattern = {
 type CompatibilityRuleDefinition = {
   id: string;
   kind: 'css' | 'js';
+  severity?: 'error' | 'warning';
   pattern: string;
   flags?: string;
   message: string;

@@ -60,6 +60,8 @@ export const dev = defineConfig({
 
 export const build = defineConfig({
   pipeline: {
+    // Compile pages across CPU cores, matching the dev server.
+    workers: true,
     exec: [
       { script: 'scripts/publish-heading-anchors.ts', phase: 'pre' },
       { script: 'scripts/generate-search-index.ts', phase: 'parallel' },

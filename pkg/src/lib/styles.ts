@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
 import { shieldElementContents } from "./shielding.ts";
+import { readStartTagAttributes } from "./html-scanner.ts";
 import type { BascikComponent } from "./types.ts";
 
 // CSS unit keywords that are not valid HTML element names.  A CSS syntax
@@ -307,20 +308,31 @@ export const convertCssIdSelectorsToClasses = (
 
 /**
  * Inject the generated id-class onto every HTML element whose `id` attribute
- * matches.  Works for both unscoped (`id="idName"`) and already-scoped
- * (`id="bascik__comp__instanceId__idName"`) forms.
+ * matches. Works for unscoped (`id="idName"`), already-scoped
+ * (`id="bascik__comp__instanceId__idName"`), and minified (`id="b..."`) forms.
  */
 export const addIdClassesInHtml = (
   html: string,
   idsConverted: { idName: string; className: string }[],
+  scopedIdNames?: Record<string, string>,
 ): string => {
   if (idsConverted.length === 0) return html;
   idsConverted.forEach(({ idName, className }) => {
-    if (!html.includes(idName)) return;
+    const scopedId = scopedIdNames?.[idName];
+    if (!html.includes(idName) && (!scopedId || !html.includes(scopedId))) return;
     const escaped = idName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedScoped = scopedId
+      ? scopedId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      : "";
+    const idGroup = escapedScoped
+      ? `(?:(?:[^"]*__)?${escaped}|${escapedScoped})`
+      : `(?:[^"]*__)?${escaped}`;
+    const idGroupSingle = escapedScoped
+      ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
+      : `(?:[^']*__)?${escaped}`;
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"(?:[^"]*__)?${escaped}"|'(?:[^']*__)?${escaped}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"${idGroup}"|'${idGroupSingle}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
     );
     html = html.replace(idPattern, (openTag) =>
@@ -482,8 +494,80 @@ type CssImportPlan = {
   fullStatement: string;
   parsed: NonNullable<ReturnType<typeof parseCssImport>>;
   targetPath: string;
+  /** Every file whose creation, edit, or removal changes this import's result. */
+  dependencyPaths: string[];
   nextVisited: Set<string>;
   replacement?: string;
+};
+
+const isCssNameChar = (char: string | undefined): boolean =>
+  char !== undefined && /[\w-]/.test(char);
+
+/**
+ * Sorted `[start, end)` ranges of comments, quoted strings, and unquoted
+ * `url(...)` tokens. `@import` text inside these is not an at-rule (CSS Syntax
+ * Level 3, section 4). A resolved missing import leaves a comment marker that
+ * names the import, so this is also what makes resolution idempotent.
+ */
+const cssOpaqueRanges = (css: string): Array<[number, number]> => {
+  const ranges: Array<[number, number]> = [];
+  let i = 0;
+  while (i < css.length) {
+    const char = css[i];
+    if (char === "/" && css[i + 1] === "*") {
+      const close = css.indexOf("*/", i + 2);
+      const end = close === -1 ? css.length : close + 2;
+      ranges.push([i, end]);
+      i = end;
+    } else if (char === '"' || char === "'") {
+      // A string ends at its unescaped quote, or at an unescaped newline (bad-string).
+      let j = i + 1;
+      while (j < css.length && css[j] !== char && css[j] !== "\n") j += css[j] === "\\" ? 2 : 1;
+      const end = Math.min(j + 1, css.length);
+      ranges.push([i, end]);
+      i = end;
+    } else if (char === "\\") {
+      i += 2;
+    } else if (
+      (char === "u" || char === "U") &&
+      css.slice(i, i + 4).toLowerCase() === "url(" &&
+      !isCssNameChar(css[i - 1])
+    ) {
+      let argument = i + 4;
+      while (argument < css.length && /\s/.test(css[argument])) argument++;
+      if (css[argument] === '"' || css[argument] === "'") {
+        // A quoted url() argument is an ordinary string; the next pass records it.
+        i = argument;
+        continue;
+      }
+      // An unquoted url() token runs to its closing parenthesis; `/*` inside is not a comment.
+      const close = css.indexOf(")", argument);
+      const end = close === -1 ? css.length : close + 1;
+      ranges.push([i, end]);
+      i = end;
+    } else {
+      i++;
+    }
+  }
+  return ranges;
+};
+
+// Observer for CSS import planning, set only while scoping-template.ts records
+// one synchronous scoping run. Planning past this point reads the file system.
+let cssImportPlanningObserver: (() => void) | null = null;
+
+/**
+ * Run `run` synchronously while reporting whether any CSS `@import` planning
+ * (and so any file system access) happened. The previous observer is restored.
+ */
+export const observeCssImportPlanning = <T>(observer: () => void, run: () => T): T => {
+  const previous = cssImportPlanningObserver;
+  cssImportPlanningObserver = observer;
+  try {
+    return run();
+  } finally {
+    cssImportPlanningObserver = previous;
+  }
 };
 
 const planCssImports = (
@@ -492,9 +576,15 @@ const planCssImports = (
   visited: Set<string>,
 ): CssImportPlan[] => {
   if (!css || !css.includes("@import")) return [];
+  cssImportPlanningObserver?.();
   const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const opaque = cssOpaqueRanges(css);
+  let opaqueIndex = 0;
   const plans: CssImportPlan[] = [];
   for (const match of css.matchAll(importRegex)) {
+    const start = match.index;
+    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start) opaqueIndex++;
+    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start) continue;
     const fullStatement = match[0];
     const parsed = parseCssImport(fullStatement);
     if (!parsed || parsed.isRemote) continue;
@@ -503,7 +593,11 @@ const planCssImports = (
         ? baseFilePath
         : dirname(baseFilePath)
       : process.cwd();
-    let targetPath = resolve(baseDir, parsed.url);
+    const requestedPath = resolve(baseDir, parsed.url);
+    const dependencyPaths = requestedPath.endsWith(".css")
+      ? [requestedPath]
+      : [requestedPath, `${requestedPath}.css`];
+    let targetPath = requestedPath;
     if (
       !existsSync(targetPath) &&
       !targetPath.endsWith(".css") &&
@@ -521,13 +615,14 @@ const planCssImports = (
         fullStatement,
         parsed,
         targetPath,
+        dependencyPaths,
         nextVisited,
         replacement: `/* @import "${parsed.url}" not found */`,
       });
     } else if (visited.has(targetPath)) {
-      plans.push({ fullStatement, parsed, targetPath, nextVisited, replacement: "" });
+      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited, replacement: "" });
     } else {
-      plans.push({ fullStatement, parsed, targetPath, nextVisited });
+      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited });
     }
   }
   return plans;
@@ -557,14 +652,17 @@ const wrapPlannedCss = (css: string, plan: CssImportPlan): string =>
  * @param css The raw CSS content
  * @param baseFilePath The file path of the current CSS/HTML file (used to resolve relative import paths)
  * @param visited Set of canonical file paths already visited (for circular import prevention)
+ * @param dependencies Receives every local file path an import names, found or not
  */
 export const resolveCssImports = async (
   css: string,
   baseFilePath?: string,
   visited: Set<string> = new Set(),
+  dependencies?: Set<string>,
 ): Promise<string> => {
   let result = css;
   for (const plan of planCssImports(css, baseFilePath, visited)) {
+    for (const path of plan.dependencyPaths) dependencies?.add(path);
     if (plan.replacement !== undefined) {
       result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
@@ -572,7 +670,7 @@ export const resolveCssImports = async (
 
     try {
       const importedRaw = cleanImportedCss((await readFile(plan.targetPath)).toString());
-      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited);
+      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
       result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
       console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
@@ -591,9 +689,11 @@ export const resolveCssImportsSync = (
   css: string,
   baseFilePath?: string,
   visited: Set<string> = new Set(),
+  dependencies?: Set<string>,
 ): string => {
   let result = css;
   for (const plan of planCssImports(css, baseFilePath, visited)) {
+    for (const path of plan.dependencyPaths) dependencies?.add(path);
     if (plan.replacement !== undefined) {
       result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
@@ -601,7 +701,7 @@ export const resolveCssImportsSync = (
 
     try {
       const importedRaw = cleanImportedCss(readFileSync(plan.targetPath, "utf-8"));
-      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited);
+      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
       result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
       console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
@@ -644,6 +744,7 @@ export const hoistCssImports = (css: string): string => {
 export const getComponentCss = async (
   htmlFileName: string,
   cssFileNames: string[],
+  importDependencies?: Set<string>,
 ): Promise<string | undefined> => {
   if (!htmlFileName || !Array.isArray(cssFileNames)) return;
   const cssFileName = cssFileNames.find(
@@ -652,7 +753,7 @@ export const getComponentCss = async (
   if (!cssFileName) return;
   try {
     const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
-    return await resolveCssImports(raw, cssFileName);
+    return await resolveCssImports(raw, cssFileName, undefined, importDependencies);
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
@@ -790,21 +891,18 @@ export const scopeContainerNames = (
     },
   );
   if (containerNames.size === 0) return css;
-  let result = css;
+  // One pass per pattern over whole names: rewriting one name at a time let a
+  // later name match inside an earlier generated name or a longer name.
+  const scopedNames = new Map<string, string>();
   containerNames.forEach((name) => {
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__container__${name}`,
-    );
-    result = result.replace(
-      new RegExp(`(?<=@container\\s+)${name}(?=\\s*[({])`, "gm"),
-      () => scoped,
-    );
-    result = result.replace(
-      new RegExp(`(container(?:-name)?\\s*:\\s*)${name}`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
+    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__container__${name}`));
   });
-  return result;
+  return css
+    .replace(/(?<=@container\s+)([\w-]+)(?=\s*[({])/gm, (name: string) => scopedNames.get(name) ?? name)
+    .replace(/(container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
+      const scoped = scopedNames.get(name);
+      return scoped === undefined ? match : `${prefix}${scoped}`;
+    });
 };
 
 // ─── view-transition-name Scoping ────────────────────────────────────────────
@@ -887,37 +985,25 @@ export const scopeCounterStyleNames = (
   );
   if (names.size === 0) return css;
 
-  let result = css;
+  const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__counter__${name}`,
-    );
-    // Scope the @counter-style declaration
-    result = result.replace(
-      new RegExp(`(@counter-style\\s+)${escaped}(?=\\s*\\{)`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope list-style and list-style-type property references
-    result = result.replace(
-      new RegExp(`(list-style(?:-type)?\\s*:\\s*)${escaped}\\b`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope counter() second argument: counter(name, style)
-    result = result.replace(
-      new RegExp(`(counter\\([^,)]+,\\s*)${escaped}(?=[^)]*\\))`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope counters() third argument: counters(name, sep, style)
-    result = result.replace(
-      new RegExp(
-        `(counters\\([^,)]+,\\s*[^,)]+,\\s*)${escaped}(?=[^)]*\\))`,
-        "gm",
-      ),
-      (_, p1) => `${p1}${scoped}`,
-    );
+    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__counter__${name}`));
   });
-  return result;
+  // One pass per pattern over whole names: rewriting one name at a time let a
+  // later name match inside an earlier generated name or a longer name.
+  const scopeName = (match: string, prefix: string, name: string): string => {
+    const scoped = scopedNames.get(name);
+    return scoped === undefined ? match : `${prefix}${scoped}`;
+  };
+  return css
+    // The @counter-style declaration
+    .replace(/(@counter-style\s+)([\w-]+)(?=\s*\{)/gm, scopeName)
+    // list-style and list-style-type property references
+    .replace(/(list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
+    // counter() second argument: counter(name, style)
+    .replace(/(counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
+    // counters() third argument: counters(name, sep, style)
+    .replace(/(counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
 };
 
 // ─── anchor-name / @position-try Scoping ─────────────────────────────────────
@@ -1020,24 +1106,34 @@ export const extractInlineStyles = (
   const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
-  const cleanedHtml = shielded.html.replace(
-    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
-    (_match, openTag: string, styleContent: string) => {
-      let css = removeCommentsFromCss(styleContent).trim();
-      if (!css) return "";
-      const mediaMatch = openTag.match(/\bmedia\s*=\s*["']?([^"'>]+)["']?/i);
-      if (
-        mediaMatch &&
-        mediaMatch[1].trim() &&
-        mediaMatch[1].toLowerCase() !== "all" &&
-        mediaMatch[1].toLowerCase() !== "screen"
-      ) {
-        css = `@media ${mediaMatch[1].trim()} {\n${css}\n}`;
-      }
-      cssBlocks.push(css);
-      return "";
-    },
-  );
+  const collectStyleBlock = (_match: string, openTag: string, styleContent: string): string => {
+    let css = removeCommentsFromCss(styleContent).trim();
+    if (!css) return "";
+    // Read `media` the way the browser does, so a range query such as
+    // `(width > 600px)` is read whole. The first `media` attribute counts.
+    const media = readStartTagAttributes(openTag, 0)
+      .find((attribute) => attribute.name === "media")?.value.trim() ?? "";
+    if (media && media.toLowerCase() !== "all" && media.toLowerCase() !== "screen") {
+      css = `@media ${media} {\n${css}\n}`;
+    }
+    cssBlocks.push(css);
+    return "";
+  };
+
+  // Removing a block can join the text around it into a new `<style>` block
+  // (for example `<sty<style>a{}</style>le>b{}</style>`), so repeat until the
+  // HTML stops changing. Every pass that changes the HTML shortens it, so the
+  // loop always ends. The `replace` call stays inline, with its result fed
+  // back into its own receiver, so static analysis can see the fixpoint loop.
+  let cleanedHtml = shielded.html;
+  let previousHtml: string;
+  do {
+    previousHtml = cleanedHtml;
+    cleanedHtml = cleanedHtml.replace(
+      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
+      collectStyleBlock,
+    );
+  } while (cleanedHtml !== previousHtml);
 
   // Restore shielded element content first, then restore masked HTML comments.
   let restoredHtml = shielded.restore(cleanedHtml);
@@ -1074,7 +1170,7 @@ export const scopeInlineStyleTags = (
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
   const processedHtml = html.replace(
-    /(<style(?![\w.:-])[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, open: string, styleContent: string, close: string) => {
       let css = resolveCssImportsSync(removeCommentsFromCss(styleContent), baseFilePath);
       // Shield strings/url() so dots inside them aren't treated as class selectors

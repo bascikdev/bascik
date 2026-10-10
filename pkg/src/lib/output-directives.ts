@@ -10,13 +10,13 @@
  * privileges. Directives are therefore only honored where an author wrote them
  * in a source file; printed ones are removed before any later pass sees them.
  */
-import { ATTR, ANY_DIRECTIVE_ATTR_NAME, ATTR_NAME_END, SCRIPT_TAG_PREFIX } from "./html-patterns.ts";
+import { ATTR, ANY_DIRECTIVE_ATTR_NAME, ATTR_NAME_END, SCRIPT_END_TAG, SCRIPT_TAG_PREFIX } from "./html-patterns.ts";
 
 // A `<script>` open tag carrying any directive attribute, with its body and closing tag when
 // present. Without a closing tag the open tag alone is removed, so a later pass can never pair it
 // with an unrelated `</script>`.
 const DIRECTIVE_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*?\\s+(${ANY_DIRECTIVE_ATTR_NAME.replace(ATTR_NAME_END, "")})${ATTR_NAME_END}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'=<>\`]+))?(?:\\s+${ATTR})*\\s*\\/?>(?:[\\s\\S]*?<\\/script\\s*>)?`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*?\\s+(${ANY_DIRECTIVE_ATTR_NAME.replace(ATTR_NAME_END, "")})${ATTR_NAME_END}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s"'=<>\`]+))?(?:\\s+${ATTR})*\\s*\\/?>(?:[\\s\\S]*?${SCRIPT_END_TAG})?`,
   "gi",
 );
 

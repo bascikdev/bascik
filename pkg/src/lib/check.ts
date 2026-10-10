@@ -33,6 +33,7 @@ import {
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
 import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -236,7 +237,7 @@ const toDisplay = (filePath: string): string => {
  */
 const extractBuildScripts = (html: string): string[] => {
   const scripts: string[] = [];
-  const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(html)) !== null) {
     const attrs = match[1];
@@ -364,7 +365,7 @@ const canonicalPath = (filePath: string): string => resolve(process.cwd(), fileP
 
 const maskPreservedSubtrees = (html: string): string => {
   let result = html;
-  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi;
+  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
   let previous = "";
   while (previous !== result) {
     previous = result;
@@ -608,7 +609,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
       unknownBascikAttrs.set(unknown.attr, list);
     }
 
-    const scriptTagRegex = /<script\b([^>]*)>/gi;
+    const scriptTagRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
     let scriptMatch: RegExpExecArray | null;
     while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
       if (hasBuildServerConflict(scriptMatch[1] ?? "")) {
@@ -750,6 +751,67 @@ export const checkProject = async (): Promise<CheckFindings> => {
           locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
         });
       }
+
+      // ── Scoping compatibility analysis in component HTML, inline styles & scripts ──
+      const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+      let styleMatch: RegExpExecArray | null;
+      while ((styleMatch = styleBlockRegex.exec(html)) !== null) {
+        const styleBody = styleMatch[2] ?? "";
+        const styleOffset = styleMatch.index + styleMatch[1].length;
+        const matches = findCompatibilityMatches(styleBody, "css");
+        for (const m of matches) {
+          items.push({
+            category: "compatibility",
+            severity: (m.rule.severity as FindingSeverity) ?? "error",
+            message: `${m.rule.message} ${m.rule.suggestion}`,
+            locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, styleOffset + m.index) }],
+            suggestion: m.rule.suggestion,
+          });
+        }
+      }
+
+      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+      let scriptMatch: RegExpExecArray | null;
+      while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
+        const openTag = scriptMatch[1];
+        const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+        const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
+        const isJs = !typeVal || typeVal === "module" || typeVal === "text/javascript" || typeVal === "application/javascript";
+        if (isJs) {
+          const scriptBody = scriptMatch[2] ?? "";
+          const scriptOffset = scriptMatch.index + openTag.length;
+          const matches = findCompatibilityMatches(scriptBody, "js");
+          for (const m of matches) {
+            items.push({
+              category: "compatibility",
+              severity: (m.rule.severity as FindingSeverity) ?? "error",
+              message: `${m.rule.message} ${m.rule.suggestion}`,
+              locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, scriptOffset + m.index) }],
+              suggestion: m.rule.suggestion,
+            });
+          }
+        }
+      }
+
+      // Check companion .css file if it exists
+      const companionCssPath = filePath.replace(/\.html$/i, ".css");
+      if (existsSync(companionCssPath)) {
+        try {
+          const cssContent = await readFile(companionCssPath, "utf8");
+          const matches = findCompatibilityMatches(cssContent, "css");
+          for (const m of matches) {
+            items.push({
+              category: "compatibility",
+              severity: (m.rule.severity as FindingSeverity) ?? "error",
+              message: `${m.rule.message} ${m.rule.suggestion}`,
+              locations: [{ filePath: toDisplay(companionCssPath), line: getLineAt(cssContent, m.index) }],
+              suggestion: m.rule.suggestion,
+            });
+          }
+        } catch {
+          // ignore unreadable companion css
+        }
+      }
     } catch {
       // Ignore unreadable component files here.
     }
@@ -762,6 +824,14 @@ export const checkProject = async (): Promise<CheckFindings> => {
     const routesByUrl = new Map<string, string[]>();
 
     for (const filePath of apiFiles) {
+      if (filePath.replace(/\\/g, "/").split("/").pop()?.startsWith("_middleware.")) {
+        items.push({
+          category: "middleware-unsupported",
+          severity: "error",
+          message: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.",
+          locations: [{ filePath: toDisplay(filePath) }],
+        });
+      }
       const normalizedApiDir = apiDir.replace(/\\/g, "/");
       const normalizedFilePath = filePath.replace(/\\/g, "/");
       let rel = normalizedFilePath.startsWith(normalizedApiDir + "/")
@@ -967,6 +1037,14 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "component-structure-order": {
     title: "Component style and script order",
     description: "Component templates should place styles above markup and scripts below markup.",
+  },
+  compatibility: {
+    title: "Scoping compatibility errors",
+    description: "CSS or JavaScript patterns that cannot be reliably scoped by Bascik.",
+  },
+  "middleware-unsupported": {
+    title: "Unsupported API middleware files",
+    description: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Handlers compose plain functions directly.",
   },
   "component-list": {
     title: "Component scan failures",

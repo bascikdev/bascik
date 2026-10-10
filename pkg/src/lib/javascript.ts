@@ -152,6 +152,21 @@ export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
 };
 
+// A memo hit skips the name generation and CSS import planning that
+// scoping-template.ts must observe, so its recording runs compute the CSS.
+let bypassScopedCssCache = false;
+
+/** Run `run` synchronously with `scopedCssCache` lookups disabled (entries are still stored). */
+export const withScopedCssCacheBypassed = <T>(run: () => T): T => {
+  const previous = bypassScopedCssCache;
+  bypassScopedCssCache = true;
+  try {
+    return run();
+  } finally {
+    bypassScopedCssCache = previous;
+  }
+};
+
 const rewriteIdReferencesInStyleTags = (
   html: string,
   resolve: (originalId: string) => string | null,
@@ -159,7 +174,7 @@ const rewriteIdReferencesInStyleTags = (
   const shielded = shieldElementContents(html, ["code", "pre", "script", "textarea"]);
   let changed = false;
   const rewrittenHtml = shielded.html.replace(
-    /(<style\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style\s*>)/gi,
+    /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, openTag: string, css: string, closeTag: string) => {
       const rewrittenCss = rewriteIdReferencesInCss(css, resolve);
       changed ||= rewrittenCss !== css;
@@ -358,7 +373,9 @@ export const prefixElementAttribute = (
     scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {
-      cssSources.push(resolveCssImportsSync(component.cssFileContent, component.fileName));
+      // Resolved once here, so the memo key below holds the imported contents.
+      component.cssFileContent = resolveCssImportsSync(component.cssFileContent, component.fileName);
+      cssSources.push(component.cssFileContent);
     }
     if (component.fileContent && component.fileContent.includes("<style")) {
       const { css: inlineCss } = extractInlineStyles(component.fileContent);
@@ -476,7 +493,7 @@ export const prefixElementAttribute = (
     };
 
     for (const scriptMatch of scopedAttrsHtml.matchAll(
-      /<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi,
+      /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
     )) {
       const openTag = scriptMatch[1];
       if (DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
@@ -540,7 +557,7 @@ export const prefixElementAttribute = (
 
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
   const scopedHtml = scopedAttrsHtml.replace(
-    /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
     (match, open) => {
       if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
       let updatedMatch = match;
@@ -767,20 +784,17 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
-      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames
+      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames.
+      // Every source in `cssFileContent` has had its imports resolved, so the key holds what was read from disk.
       const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
       const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
-      const cached = scopedCssCache.get(cacheKey);
+      const cached = bypassScopedCssCache ? undefined : scopedCssCache.get(cacheKey);
 
       if (cached) {
         component.cssFileContent = cached.css;
         allElementClasses.push(...cached.allElementClasses);
         allIdsConverted.push(...cached.allIdsConverted);
       } else {
-        component.cssFileContent = resolveCssImportsSync(
-          component.cssFileContent,
-          component.fileName,
-        );
         if (component.scopedIdNames) {
           component.cssFileContent = rewriteIdReferencesInCss(
             component.cssFileContent,
@@ -882,6 +896,7 @@ export const prefixElementAttribute = (
     component.fileContent = addIdClassesInHtml(
       component.fileContent,
       allIdsConverted,
+      component.scopedIdNames,
     );
 
     // Deferred page-aware build scripts print their markup at page time, after
@@ -1006,7 +1021,7 @@ export const namespaceScriptTags = (
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(commentMaskedContent.replace(
-    /(<script\b[^>]*>)([\s\S]*?)(<\/script[^>]*>)/gi,
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
     (match, open, code, close, _offset) => {
       // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
       if (DIRECTIVE_SCRIPT_RE.test(open)) return match;

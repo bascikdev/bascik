@@ -20,7 +20,7 @@ Bascik's performance story starts before any of the techniques on this page. The
 
 **CSS deduplication.** When a component appears multiple times on a page, Bascik emits a single `<style>` block regardless of instance count. A page with fifty cards carries the same CSS weight as a page with one.
 
-**HTML minification.** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>` blocks is left intact.
+**HTML minification.** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>`, `<textarea>`, `<script>`, and `<style>`, and every attribute value, is left intact, and non-breaking spaces are never touched. The minifier does not read your CSS: an element styled `white-space: pre` (or `pre-wrap`, `pre-line`) that is not a `<pre>` loses its extra spaces and line breaks, so use `<pre>` for preformatted text or set `minify.html: false`.
 
 **Script minification.** `minify.js` is `true` by default, stripping comments and whitespace from every inline `<script>` block and any `.js` static files copied to `dist/`. For identifier mangling and dead-code elimination, plug in esbuild (see [Minify JavaScript Output](#minify-javascript-output) below).
 

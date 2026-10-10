@@ -88,6 +88,18 @@ describe("planServerScripts", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it("reads the open tag correctly when the end tag carries whitespace or junk", () => {
+    for (const endTag of ["</script >", "</script\n foo>", "</script/>"]) {
+      expect(() => planServerScripts(`<script data-bascik-server data-bascik-build>x${endTag}`, "/p.html")).toThrow(
+        "both data-bascik-server and data-bascik-build",
+      );
+      const html = `<p>a</p><script data-bascik-stream>export default function() { return 1; }${endTag}<p>b</p>`;
+      const plan = planServerScripts(html);
+      expect(plan.segments.map((s) => (s.kind === "static" ? "static" : s.mode))).toEqual(["static", "stream", "static"]);
+      expect((plan.segments[2] as any).bytes.toString()).toBe("<p>b</p>");
+    }
+  });
+
   it("throws for a missing sidecar id", () => {
     expect(() => planServerScripts(`<script type="text/bascik-server" data-bascik-server-id="nope"></script>`)).toThrow(/could not be resolved from sidecar/);
   });

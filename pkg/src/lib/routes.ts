@@ -13,7 +13,9 @@ import {
   ROUTES_FLAG,
   BUILD_FLAG,
   SERVER_FLAG,
+  SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
+  scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
@@ -33,7 +35,7 @@ const WINDOWS_RESERVED_NAMES = new Set([
 ]);
 
 const ROUTES_SCRIPT_RE = new RegExp(
-  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)<\\/script>`,
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
   "gi",
 );
 
@@ -273,10 +275,7 @@ export const executeRoutesScript = async (
   const match = matches[0];
   const [fullTag, scriptContent] = match;
   const index = match.index ?? 0;
-  const openTag = fullTag.slice(
-    0,
-    fullTag.length - scriptContent.length - "</script>".length,
-  );
+  const openTag = scriptOpenTag(fullTag, scriptContent);
 
   if (ROUTES_BUILD_CONFLICT_RE.test(openTag)) {
     const prefix = html.slice(0, index);

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createHook } from "node:async_hooks";
-import { fstatSync, readdirSync } from "node:fs";
+import { createReadStream, createWriteStream, fstatSync, readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { open, readFile, readdir, realpath, stat, unlink } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
+import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -72,7 +74,16 @@ export function validateCompression(metrics: CompressionMetrics, expectedCalls: 
 }
 export interface ProcessCoverage { role: string; pid: number; threadId?: number; taskId?: string; startedAt?: number; endedAt?: number; dispatchedAt?: number; completedAt?: number }
 export function workerCpuLimitation(platform: string = process.platform, version: string = process.version) {
-  if (platform === "darwin" && version === "v24.17.0") return "Unsupported worker CPU capture on Node v24.17.0/macOS: native built-in loader lock stall; unprofiled worker timelines remain available";
+  // First seen on v24.17.0; still reproduces on later Node 24 releases (see nativeWorkerCpuLimitation).
+  if (platform === "darwin" && /^v24\./.test(version)) return `Unsupported worker CPU capture on Node ${version}/macOS: native built-in loader lock stall; unprofiled worker timelines remain available`;
+}
+/**
+ * Real-project dev timelines (eight page workers): with native --cpu-prof inherited by page workers, captures
+ * stall on Node 24/macOS with workers blocked on a process-wide rwlock (builtin loader or OpenSSL provider
+ * store) while being sampled. Main-isolate-only profiling did not stall. Small fixtures may not reproduce it.
+ */
+export function nativeWorkerCpuLimitation(platform: string = process.platform, version: string = process.version) {
+  if (platform === "darwin" && /^v24\./.test(version)) return `Native page-worker CPU capture stalls on Node ${version}/macOS: sampled workers block on a process-wide rwlock`;
 }
 export function validateProcessCoverage(events: ProcessCoverage[], coverage: ProcessCoverage[]) {
   for (const event of events) {
@@ -133,6 +144,168 @@ export async function validatePrivateDirectory(path: string, forbidden: string[]
 export function cleanGeneratorEnvironment(environment: NodeJS.ProcessEnv) {
   return Object.fromEntries(Object.entries(environment).filter(([key]) =>
     !/^(NODE_OPTIONS|NODE_V8_COVERAGE|NODE_CLINIC_.*|HEAP_PROFILER_.*|BASCIK_PROFILE_.*|CLINIC_.*|ZEROX_.*|VITEST(?:_.*)?)$/.test(key)));
+}
+/**
+ * Environment for a profiled subject's own descendants (page workers and script children).
+ *
+ * Clinic instruments its target through `NODE_OPTIONS` preloads and trace flags, plus a `NODE_PATH` entry for its
+ * inject directory. Every Node descendant that inherits them runs its own sampler: script children write extra
+ * `<pid>.clinic-*` datasets and `node_trace.*.log` rotations into the shared cwd, and worker threads (same PID as
+ * the target) write into the target's own dataset files. Descendants must run unprofiled unless a harness opts
+ * them into a separately labeled capture.
+ */
+export function profilerFreeEnvironment(environment: NodeJS.ProcessEnv) {
+  const clean = cleanGeneratorEnvironment(environment);
+  if (clean.NODE_PATH !== undefined) {
+    const kept = clean.NODE_PATH.split(delimiter).filter((entry) => entry && !/[\\/]@clinic[\\/]/.test(entry));
+    if (kept.length) clean.NODE_PATH = kept.join(delimiter);
+    else delete clean.NODE_PATH;
+  }
+  return clean;
+}
+/**
+ * Clinic's CLI announces exactly one dataset for its profiled command. Instrumented descendants can leave further
+ * `<pid>.clinic-<tool>` datasets beside it; those never represent the target and must not be decoded or visualized
+ * in its place (directory order sorts PIDs as text, so "first dataset" is arbitrary).
+ */
+export function mainClinicDataset(log: string, profiles: string, tool: string): string {
+  const owner = resolve(profiles);
+  const announced = new Set([...log.matchAll(/^Output file is (.+)$/gm)].map((match) => resolve(match[1].trim())));
+  const owned = [...announced].filter((path) => dirname(path) === owner && /^\d+\.clinic-/.test(basename(path)) && basename(path).endsWith(`.clinic-${tool}`));
+  assert.equal(owned.length, 1, `missing or ambiguous main Clinic ${tool} dataset`);
+  return owned[0];
+}
+/** Datasets in `profiles` other than the announced main dataset; nonzero means descendants were instrumented. */
+export async function descendantClinicDatasets(profiles: string, tool: string, main: string): Promise<string[]> {
+  return (await readdir(profiles)).filter((name) => name.endsWith(`.clinic-${tool}`) && join(resolve(profiles), name) !== resolve(main)).sort();
+}
+/** Distinct `"pid"` values in a Chrome trace-event file, streamed so large Bubbleprof/Doctor traces stay bounded. */
+export async function traceEventPids(path: string): Promise<Set<number>> {
+  const pids = new Set<number>();
+  const pattern = /"pid"\s*:\s*(\d+)/g;
+  let carry = "";
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    const text = carry + (chunk as string);
+    // A field split across chunks is matched once it is complete; keep only an unfinished tail.
+    let consumed = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match.index! + match[0].length === text.length) break;
+      pids.add(Number(match[1]));
+      consumed = match.index! + match[0].length;
+    }
+    carry = text.slice(Math.max(consumed, text.length - 32));
+  }
+  for (const match of carry.matchAll(pattern)) pids.add(Number(match[1]));
+  return pids;
+}
+
+const TRACE_LOG_PREFIX = '{"traceEvents":[';
+
+/**
+ * Node rotates `node_trace.<n>.log` every 2^19 events, so a large Bubbleprof target writes several files.
+ * Clinic's multi-file join (multistream + end-of-stream) reports "premature close" on Node 24 before writing the
+ * closing `]}`, leaving a truncated traceevent. This joins the rotated files in rotation order by streaming each
+ * file's event array, after checking every file is a complete Node trace log written only by `pid`.
+ * Inputs are removed after a successful join, matching Clinic.
+ */
+export async function joinNodeTraceLogs(directory: string, output: string, pid: number) {
+  const files = (await readdir(directory))
+    .map((name) => ({ name, rotation: /^node_trace\.(\d+)\.log$/.exec(name)?.[1] }))
+    .filter((entry) => entry.rotation !== undefined)
+    .sort((a, b) => Number(a.rotation) - Number(b.rotation))
+    .map((entry) => join(directory, entry.name));
+  assert(files.length > 0, `no node_trace logs to join in ${directory}`);
+  const ranges: { file: string; start: number; end: number }[] = [];
+  for (const file of files) {
+    const handle = await open(file, "r");
+    try {
+      const { size } = await handle.stat();
+      const head = Buffer.alloc(Math.min(size, TRACE_LOG_PREFIX.length));
+      await handle.read(head, 0, head.length, 0);
+      assert.equal(head.toString("latin1"), TRACE_LOG_PREFIX, `${basename(file)}: not a Node trace log`);
+      const tailLength = Math.min(size - TRACE_LOG_PREFIX.length, 64);
+      const tail = Buffer.alloc(tailLength);
+      await handle.read(tail, 0, tailLength, size - tailLength);
+      const trimmed = tail.toString("latin1").replace(/[ \t\r\n]+$/, "");
+      assert(trimmed.endsWith("]}"), `${basename(file)}: incomplete Node trace log`);
+      ranges.push({ file, start: TRACE_LOG_PREFIX.length, end: size - tailLength + trimmed.length - 2 });
+    } finally {
+      await handle.close();
+    }
+    const foreign = [...await traceEventPids(file)].filter((value) => value !== pid);
+    assert.equal(foreign.length, 0, `${basename(file)}: trace events from foreign PIDs ${foreign.slice(0, 5).join(", ")}`);
+  }
+  const populated = ranges.filter((range) => range.end > range.start);
+  await pipeline(async function* () {
+    yield TRACE_LOG_PREFIX;
+    for (const [index, range] of populated.entries()) {
+      if (index) yield ",";
+      yield* createReadStream(range.file, { start: range.start, end: range.end - 1 });
+    }
+    yield "]}";
+  }, createWriteStream(output, { mode: 0o600 }));
+  const expected = TRACE_LOG_PREFIX.length + 2 + Math.max(0, populated.length - 1)
+    + populated.reduce((total, range) => total + range.end - range.start, 0);
+  const bytes = (await stat(output)).size;
+  assert.equal(bytes, expected, "joined trace size does not match its inputs");
+  for (const file of files) await unlink(file);
+  return { files: files.map((file) => basename(file)), bytes };
+}
+
+/**
+ * True only for Clinic's trace-join failure after a target that exited normally: "Analysing data" followed by
+ * "Error: premature close", with no dataset announcement and no abnormal-exit report.
+ */
+export function isClinicTraceJoinFailure(log: string) {
+  // Clinic prints the error's stack (end-of-stream frames) after the message; nothing else may follow.
+  // Each frame ends at a newline or the end of input, so frames cannot overlap and matching stays linear.
+  return /(?:^|\n)Analysing data\r?\nError: premature close\r?\n(?:[ \t]+at [^\r\n]*\r?(?:\n|$))*$/.test(log)
+    && !log.includes("Output file is") && !/process exited (?:with exit code|by signal)/.test(log);
+}
+
+interface ProcessStatMessage { timestamp: number; delay: number; cpu: number; handles: number; memory: { rss: number; heapUsed: number } }
+let processStatMessages: { decode(buffer: Buffer): ProcessStatMessage } | undefined;
+function processStatMessageType() {
+  if (processStatMessages) return processStatMessages;
+  // Decode with Doctor's own schema and protobuf runtime, so validation matches what --visualize-only reads.
+  const doctorRequire = createRequire(createRequire(import.meta.url).resolve("@clinic/doctor/package.json"));
+  const protobuf = doctorRequire("protocol-buffers") as (schema: Buffer) => { ProcessStat: { decode(buffer: Buffer): ProcessStatMessage } };
+  const schema = readFileSync(join(dirname(doctorRequire.resolve("@clinic/doctor/package.json")), "format/process-stat.proto"));
+  return processStatMessages = protobuf(schema).ProcessStat;
+}
+
+/**
+ * Doctor's processstat file is a sequence of uint16 big-endian length-prefixed ProcessStat frames written by
+ * one sampler. A second writer (for example a page worker that loaded the sampler under the same PID)
+ * interleaves frames and Doctor's decoder later fails with "Groups are not supported". Validate every frame,
+ * a single nondecreasing clock, and a complete final frame before visualizing.
+ */
+export function validateDoctorProcessStat(bytes: Buffer, path = "processstat") {
+  const type = processStatMessageType();
+  let offset = 0;
+  let frames = 0;
+  let previous = -Infinity;
+  let first: number | undefined;
+  while (offset < bytes.length) {
+    assert(offset + 2 <= bytes.length, `${path}: truncated frame prefix at byte ${offset} after ${frames} frames`);
+    const length = bytes.readUInt16BE(offset);
+    assert(length > 0, `${path}: empty frame at byte ${offset} after ${frames} frames`);
+    assert(offset + 2 + length <= bytes.length, `${path}: truncated frame at byte ${offset} after ${frames} frames`);
+    let message: ProcessStatMessage;
+    try {
+      message = type.decode(bytes.subarray(offset + 2, offset + 2 + length));
+    } catch (error) {
+      throw new Error(`${path}: undecodable frame at byte ${offset} after ${frames} frames: ${(error as Error).message}`);
+    }
+    assert(Number.isFinite(message.timestamp) && message.timestamp > 0, `${path}: invalid timestamp at byte ${offset}`);
+    assert(message.timestamp >= previous, `${path}: timestamp moved backwards at byte ${offset} after ${frames} frames (second sampler?)`);
+    previous = message.timestamp;
+    first ??= message.timestamp;
+    offset += 2 + length;
+    frames++;
+  }
+  assert(frames > 0, `${path}: no ProcessStat frames`);
+  return { frames, firstTimestamp: first!, lastTimestamp: previous, bytes: bytes.length };
 }
 
 interface AllocationNode { id: number; selfSize: number; callFrame: { functionName: string; url: string; lineNumber: number }; children: AllocationNode[] }

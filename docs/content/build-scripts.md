@@ -382,6 +382,7 @@ Every uncached build script on a page is written to its own temporary module and
 - Detached async output (`setImmediate`, `Promise.resolve().then`, timers) is attributed to the script that scheduled it and never captured by a sibling's transport.
 - Returned HTML results travel across an isolated result transport. Child process stdout and stderr streams are streamed directly to terminal logs up to 10 MB per script run.
 - Avoid calling `process.exit()` inside build scripts, as it terminates the subprocess for that single script.
+- Children share Node's on-disk compile cache in `node_modules/.cache/bascik/compile-cache/`, so a module one child compiled (a shared helper or a package) is not recompiled by the next. The cache stores compiled code only, never module state, so isolation is unchanged. Bascik keeps your own `NODE_COMPILE_CACHE` value, and `NODE_DISABLE_COMPILE_CACHE=1` turns the cache off.
 
 ### SHA-256 Script Caching
 
