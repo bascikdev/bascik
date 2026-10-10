@@ -1979,6 +1979,13 @@ describe("extractInlineStyles", () => {
     },
   );
 
+  it("leaves no <style> block behind when removing one joins the text around it into another", () => {
+    const { html, css } = extractInlineStyles("<p>x</p><sty<style>.a{}</style>le>.b{}</style>");
+    expect(html).toBe("<p>x</p>");
+    expect(html).not.toContain("<style");
+    expect(css).toBe(".a{}\n.b{}");
+  });
+
   it("leaves a <style-guide> custom element alone", () => {
     const input = "<style-guide>.a { color: red; }</style-guide><style>.b{}</style>";
     const { html, css } = extractInlineStyles(input);

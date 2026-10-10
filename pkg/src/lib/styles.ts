@@ -1106,7 +1106,7 @@ export const extractInlineStyles = (
   const shielded = shieldElementContents(htmlWithMaskedComments, ["code", "pre", "script", "textarea"]);
 
   const cssBlocks: string[] = [];
-  const cleanedHtml = shielded.html.replace(
+  const extractStyleBlocks = (source: string): string => source.replace(
     /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi,
     (_match, openTag: string, styleContent: string) => {
       let css = removeCommentsFromCss(styleContent).trim();
@@ -1122,6 +1122,17 @@ export const extractInlineStyles = (
       return "";
     },
   );
+
+  // Removing a block can join the text around it into a new `<style>` block
+  // (for example `<sty<style>a{}</style>le>b{}</style>`), so repeat until the
+  // HTML stops changing. Every pass that changes the HTML shortens it, so the
+  // loop always ends.
+  let cleanedHtml = shielded.html;
+  let previousHtml: string;
+  do {
+    previousHtml = cleanedHtml;
+    cleanedHtml = extractStyleBlocks(previousHtml);
+  } while (cleanedHtml !== previousHtml);
 
   // Restore shielded element content first, then restore masked HTML comments.
   let restoredHtml = shielded.restore(cleanedHtml);
