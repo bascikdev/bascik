@@ -23,7 +23,7 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   // close the element), so the hashed body is exactly what the browser hashes.
   // A quoted attribute value may contain `>`, so the open tag is matched
   // quote-aware and the body starts where the browser's does.
-  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
+  const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRegex.exec(emittedHtml)) !== null) {
     const openTag = match[1];
@@ -47,7 +47,7 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   }
 
   // Collect inline style hashes
-  const styleRegex = /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\s/][^>]*)?>/gi;
+  const styleRegex = /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
   while ((match = styleRegex.exec(emittedHtml)) !== null) {
     const body = match[2];
     const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;

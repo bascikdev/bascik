@@ -56,6 +56,7 @@ describe("scanHtml", () => {
       ["an end tag with a quoted > in an attribute", '<script>a()</script x=">">', ['<script>a()</script x=">">']],
       ["a self-closing script still opens script data", "<script/>a()</script>", ["<script/>a()</script>"]],
       ["a script after a bogus comment", "<?x <script>a()</script> ?><script>b()</script>", ["<script>b()</script>"]],
+      ["a no-break space after </script, which does not end it", "<script>a()</script\u00a0>b()</script>", ["<script>a()</script\u00a0>b()</script>"]],
     ])("finds scripts with %s", (_case, html, expected) => {
       expect(ordinaryScripts(html)).toEqual(expected);
       expect(parsedLocations(html).scripts.map((r) => html.slice(r.start, r.end))).toEqual(expected);

@@ -227,3 +227,24 @@ describe("shieldElementContents wildcard patterns", () => {
     expect(first.html).not.toContain(">B<");
   });
 });
+
+describe("createContentShield collision checks", () => {
+  it("skips a token that already appears in the source", () => {
+    const probe = createContentShield("").hide("probe");
+    const next = Number(/\d+/.exec(probe)![0]) + 1;
+    const colliding = `\x00BASCIK_SHIELD_${next}\x00`;
+    const shield = createContentShield(`before ${colliding} after`);
+    const token = shield.hide("value");
+    expect(token).not.toBe(colliding);
+    expect(token).toBe(`\x00BASCIK_SHIELD_${next + 1}\x00`);
+    expect(shield.restore(`${colliding}${token}`)).toBe(`${colliding}value`);
+  });
+
+  it("does not skip numbers when the source contains no shield token", () => {
+    const probe = createContentShield("").hide("probe");
+    const next = Number(/\d+/.exec(probe)![0]) + 1;
+    const shield = createContentShield("plain \x00BASCIK_SHIELD_ text");
+    expect(shield.hide("a")).toBe(`\x00BASCIK_SHIELD_${next}\x00`);
+    expect(shield.hide("b")).toBe(`\x00BASCIK_SHIELD_${next + 1}\x00`);
+  });
+});

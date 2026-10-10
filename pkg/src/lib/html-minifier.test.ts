@@ -4,13 +4,14 @@ import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
 
 /**
- * The browser's view of `html`: structure and text with whitespace and
- * comments set aside, plus the scripts that can run (any script outside
- * `<template>`), which the minifier may move.
+ * The browser's view of `html`: structure and text with comments and
+ * collapsible whitespace in ordinary text set aside, plus the scripts that
+ * can run (any script outside `<template>`), which the minifier may move.
+ * Attribute values and preformatted or code text must match exactly.
  */
 const parsedAsBrowser = (html: string) =>
   domSnapshot(html, {
-    ignoreWhitespace: true,
+    renderedWhitespace: true,
     ignoreEmptyFormattingElements: true,
     collectScript: (_script, inTemplate) => !inTemplate,
   });
@@ -236,6 +237,10 @@ describe("extractScriptTags", () => {
       "<template>", "</template>", "<textarea>", "</textarea>", "<title>", "</title>", "<noscript>",
       "</noscript>", "<style>", "</style>", "<plaintext>", "<svg>", "</svg>", "<foreignObject>", "<math>", "<mi>",
       "<![CDATA[", "]]>", "<table>", "<td>", "<select>",
+      // Whitespace in every context: text, between tags, in values, and in
+      // preformatted and code content.
+      " ", "  ", "\n", "\t", "\f", "\r\n", "\u00a0", "\u3000", '<b title="a  b\nc">', "</b>", "<i class=x>", "</i>",
+      "<listing>", "</listing>", "<xmp>", "</xmp>", "</pre x>", "<svg><script>", "<svg><style>",
     );
     fc.assert(
       fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {
@@ -389,12 +394,101 @@ describe("minifyHtml", () => {
   });
 
   it("preserves content of <pre> and <textarea> elements with multiline or newline attributes", () => {
+    // Whitespace between the start tag's attributes never renders, so it
+    // collapses; the content stays verbatim.
     const htmlString =
       '<div><pre\n  class="code-block"\n  id="block1">\n    line1\n    line2\n</pre></div>';
     const result = minifyHtml(htmlString);
     expect(result).toBe(
-      '<div><pre\n  class="code-block"\n  id="block1">\n    line1\n    line2\n</pre></div>',
+      '<div><pre class="code-block" id="block1">\n    line1\n    line2\n</pre></div>',
     );
+  });
+
+  describe("touches only HTML whitespace", () => {
+    const NBSP = "\u00a0";
+
+    it.each([
+      ["a no-break space next to a space", `<p>a${NBSP} b</p>`, `<p>a${NBSP} b</p>`],
+      ["a no-break space between inline elements", `<b>x</b>${NBSP}<i>y</i>`, `<b>x</b>${NBSP}<i>y</i>`],
+      ["no-break spaces between block elements", `<p>x</p>${NBSP}${NBSP}<p>y</p>`, `<p>x</p>${NBSP}${NBSP}<p>y</p>`],
+      ["an em space", "<p>a\u2003 b</p>", "<p>a\u2003 b</p>"],
+      ["ideographic spaces", "<p>a\u3000\u3000b</p>", "<p>a\u3000\u3000b</p>"],
+      ["a zero-width no-break space", "<p>a\ufeff b</p>", "<p>a\ufeff b</p>"],
+      ["a vertical tab", "<p>a\v b</p>", "<p>a\v b</p>"],
+      ["a form feed, which CSS does not collapse", "<p>a\f\fb</p>", "<p>a\f\fb</p>"],
+    ])("keeps %s", (_case, html, expected) => {
+      expect(expectSameParse(html)).toBe(expected);
+    });
+
+    it("still collapses ASCII whitespace, CRLF included, around no-break spaces", () => {
+      expect(expectSameParse(`<p>a \r\n ${NBSP}  b</p>`)).toBe(`<p>a ${NBSP} b</p>`);
+    });
+
+    it("does not trim no-break spaces at the edges of a page with hoisted scripts", () => {
+      expect(minifyHtml(`${NBSP}<p>x</p>${NBSP}<script>a()</script>`)).toBe(`${NBSP}<p>x</p>${NBSP}\n<script>a()</script>`);
+    });
+  });
+
+  it("keeps attribute values exactly as written", () => {
+    const html =
+      '<input value="a  b"><div title="line1\nline2" data-json=\'{"a":  1}\'\n   class="x"></div>' +
+      '<p title="a> <b">x</p><a b"c  d="e  f">y</a>';
+    expect(expectSameParse(html)).toBe(
+      '<input value="a  b"><div title="line1\nline2" data-json=\'{"a":  1}\' class="x"></div>' +
+      '<p title="a> <b">x</p><a b"c d="e  f">y</a>',
+    );
+  });
+
+  it.each([
+    ["<pre> a  b</pre foo><p>x  y</p>", "<pre> a  b</pre foo><p>x y</p>"],
+    ["<PRE> a  b</PRE><p>x</p>", "<PRE> a  b</PRE><p>x</p>"],
+    ["<listing> a  b</listing>", "<listing> a  b</listing>"],
+    ["<xmp> a  b</xmp>", "<xmp> a  b</xmp>"],
+    ["<pre>a<b> x  y </b>z</pre>", "<pre>a<b> x  y </b>z</pre>"],
+    ["<svg><script>a()\nb()</script><style>.a  {}</style></svg>", "<svg><script>a()\nb()</script><style>.a  {}</style></svg>"],
+  ])("keeps preformatted and code content of %s verbatim", (html, expected) => {
+    expect(expectSameParse(html)).toBe(expected);
+  });
+
+  it("keeps the space between inline content and a textarea", () => {
+    expect(expectSameParse("<span>x</span> <textarea>t</textarea>")).toBe("<span>x</span> <textarea>t</textarea>");
+  });
+
+  it("keeps the space before text that starts with <", () => {
+    expect(expectSameParse("<b>x</b>  <3")).toBe("<b>x</b> <3");
+  });
+
+  describe("cases found by fuzzing against parse5", () => {
+    it.each([
+      // A form feed is content, not trimmable whitespace.
+      ["a form feed after a hoisted script", "<script>a()</script>\f"],
+      // An end tag in a template's contents never closes an element outside it.
+      ["</pre> inside a <template> inside <pre>", "<pre><template></pre>\n"],
+      // `</pre>` never closes a <listing>, and neither closes past a table or select.
+      ["</pre> while only a <listing> is open", "<listing></pre x><script>a()</script>"],
+      ["</listing> across a <table>", "<listing><table></listing><script>a()</script>"],
+      ["</pre> across a <table>", "<script>a()</script><pre><table></pre x>"],
+      ["</pre> across a <select>", "<script>a()</script><pre><select></pre x>"],
+      // Removing a script must not merge the text runs around it in a table.
+      ["text around a script in a table", "<table>\f<script>a()</script>p;"],
+      // Whitespace makes the parser re-create an implicitly closed formatting element.
+      ["whitespace after an implicitly closed <i>", "<pre><i class=x></pre x>\n</p>"],
+      ["whitespace after misnested <a> and <h1>", "<p><a href='x  y'><h1>\n<h1>"],
+      ["a line break before hoisted scripts with <a> open", "<a href='x  y'><i class=x><script>a()</script></a><template>"],
+      ["a stray </i> while <a> is open", "<h1><a href='x  y'></h1><script>a()</script></i><style>"],
+      // <title> text is code-like inside SVG <style> and preformatted inside <listing>.
+      ["a <title> inside SVG <style>", "<svg><style><foreignObject><title>\r\n</title>"],
+      ["a <title> inside <listing>", "<listing><title><a href='x  y'></title>"],
+    ])("keeps the parse of %s", (_case, html) => {
+      expectSameParse(html);
+    });
+  });
+
+  it("keeps whitespace when a hoisted script is placed inside an unclosed <pre>", () => {
+    // The document ends inside an unclosed start tag within <pre>, so the
+    // scripts go before it, where an added line break would render.
+    const html = '<script>a()</script><pre>code  \nmore  <span class="x';
+    expect(expectSameParse(html)).toBe('<pre>code  \nmore  <script>a()</script><span class="x');
   });
 
   it("removes comments, whitespace and newlines and puts script tags at the end of the HTML", () => {

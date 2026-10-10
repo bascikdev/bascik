@@ -337,7 +337,7 @@ export const listComponents = async (): Promise<ComponentList> => {
           // Quote-aware attributes around a whole-name `src` (never `data-src`).
           // The body is matched too: browsers ignore inline content when `src`
           // is set, so a body never stops the companion from being inlined.
-          /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi,
+          /<script\b((?:[^>"']|"[^"]*"|'[^']*')*?)\ssrc=["']([^"']+)["']((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
           (match, preSrc, srcVal, postSrc, ignoredBody: string) => {
             const baseSrc = basename(srcVal);
             const scriptInfo = companionScripts!.scriptMap.get(baseSrc) ?? companionScripts!.scriptMap.get(srcVal);

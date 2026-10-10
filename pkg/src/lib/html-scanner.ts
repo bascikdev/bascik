@@ -18,10 +18,22 @@
  * foreign content (integration points and breakout tags included),
  * `<template>` contents, and `<pre>`/`<listing>` for callers that keep that
  * content verbatim, plus the `<select>` and `<frameset>` cases that change
- * tokenization. Where the model cannot follow the browser, the scan stops
- * reporting, so callers never act on a guess. Script bodies follow the script
- * data escape states: after `<!--<script>` inside a script, `</script>` does
- * not end it until `-->`.
+ * tokenization. Script bodies follow the script data escape states: after
+ * `<!--<script>` inside a script, `</script>` does not end it until `-->`.
+ *
+ * Known limits, each chosen to err in the safe direction:
+ * - Where the model cannot follow the browser, the scan stops and reports the
+ *   rest of the input as one `unparsed` token, so callers never act on a
+ *   guess. It stops at raw text, RCDATA, or SVG/MathML start tags inside
+ *   `<select>` (parsers disagree there), `<frameset>`, CDATA directly inside
+ *   an SVG/MathML integration point, end tags in foreign content that may
+ *   close an element the scan does not track, and nesting deeper than
+ *   MAX_TRACKED_DEPTH.
+ * - Ordinary HTML elements are not tracked, only counted where it matters.
+ *   `inPre` and `inTable` can stay true after the element was closed
+ *   implicitly (`<div><pre></div>`), and once a `<table>` or `<select>` opens
+ *   inside `<pre>`, `inPre` stays true until the template level ends. Callers
+ *   then keep more whitespace than needed, never less.
  */
 
 export interface ScanContext {
@@ -31,6 +43,12 @@ export interface ScanContext {
   inForeign: boolean;
   /** Inside `<pre>` or `<listing>`. */
   inPre: boolean;
+  /**
+   * A `<table>` may be open. Text in a table is moved before it when it is
+   * not all whitespace, run by run, so removing markup between two runs of
+   * text there can change what moves. Errs toward true.
+   */
+  inTable: boolean;
 }
 
 export interface HtmlRange {
@@ -55,9 +73,36 @@ export interface ScannedScript extends HtmlRange, ScanContext {
   terminated: boolean;
 }
 
+/**
+ * One piece of the document, in order. Together the tokens cover the input
+ * exactly once, from index 0 to its length.
+ *
+ * - `text`: character data parsed as markup content (a `<` that starts no
+ *   markup is part of it).
+ * - `tag`: a start or end tag, `<` through `>`.
+ * - `raw`: the body of a raw text or RCDATA element (`script`, `style`,
+ *   `textarea`, `title`, `xmp`, ...), between its start and end tags.
+ * - `markup`: a comment, DOCTYPE, CDATA section, bogus comment, or `</>`.
+ * - `unparsed`: the rest of the input from where the scan stopped or the
+ *   input ended inside markup. Its meaning is unknown, so keep it verbatim.
+ */
+export interface HtmlToken extends HtmlRange, ScanContext {
+  kind: "text" | "tag" | "raw" | "markup" | "unparsed";
+  /** Lowercased tag name for `tag`, element name for `raw`, otherwise "". */
+  name: string;
+  /** For `tag`: true for an end tag. */
+  isEndTag: boolean;
+  /**
+   * Inside an SVG or MathML `script` or `style` element, whose text is code
+   * even though it is tokenized as markup.
+   */
+  inForeignCode: boolean;
+}
+
 export interface HtmlScanHandlers {
   comment?(comment: ScannedComment): void;
   script?(script: ScannedScript): void;
+  token?(token: HtmlToken): void;
 }
 
 export interface HtmlScanResult {
@@ -207,9 +252,15 @@ const SELF_CLOSING_START_TAG = 8;
  * Scan a start or end tag whose name begins at `nameStart` (an ASCII letter),
  * following the tokenizer's tag name, attribute, and self-closing states: a
  * quote delimits a value only after `=`, and `<` inside a tag is ordinary.
- * Pass `attributes` to collect the tag's attributes.
+ * Pass `attributes` to collect the tag's attributes, and `quotedValues` to
+ * collect each quoted value's range as start and end index pairs.
  */
-const scanTag = (html: string, nameStart: number, attributes?: TagAttribute[]): ScannedTag => {
+const scanTag = (
+  html: string,
+  nameStart: number,
+  attributes?: TagAttribute[],
+  quotedValues?: number[],
+): ScannedTag => {
   const n = html.length;
   let i = nameStart + 1;
   while (i < n) {
@@ -310,6 +361,7 @@ const scanTag = (html: string, nameStart: number, attributes?: TagAttribute[]): 
       case ATTRIBUTE_VALUE_SINGLE_QUOTED: {
         const close = html.indexOf(state === ATTRIBUTE_VALUE_DOUBLE_QUOTED ? '"' : "'", i);
         if (close === -1) return unterminated;
+        quotedValues?.push(valueStart, close);
         finishAttribute(close);
         state = AFTER_ATTRIBUTE_VALUE_QUOTED;
         i = close + 1;
@@ -353,6 +405,19 @@ export const readStartTagAttributes = (html: string, tagStart: number): TagAttri
   const attributes: TagAttribute[] = [];
   if (isAsciiAlpha(html.charCodeAt(tagStart + 1))) scanTag(html, tagStart + 1, attributes);
   return attributes;
+};
+
+/**
+ * Ranges of the quoted attribute values in the start or end tag whose `<` is
+ * at `tagStart`, as start and end index pairs (quotes excluded). Unquoted
+ * values end at whitespace, so outside these ranges whitespace in a tag only
+ * separates its parts.
+ */
+export const readQuotedValueRanges = (html: string, tagStart: number): number[] => {
+  const ranges: number[] = [];
+  const nameStart = html.charCodeAt(tagStart + 1) === SLASH ? tagStart + 2 : tagStart + 1;
+  if (isAsciiAlpha(html.charCodeAt(nameStart))) scanTag(html, nameStart, undefined, ranges);
+  return ranges;
 };
 
 /**
@@ -475,19 +540,83 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
   /** Open elements since entering foreign content; empty in ordinary HTML content. */
   const stack: OpenElement[] = [];
   let templateDepth = 0;
-  let preDepth = 0;
+  /**
+   * Open `<pre>` and `<listing>` elements, counted by name (`</pre>` never
+   * closes a listing) and per template level: an end tag inside a template's
+   * contents never closes an element outside it.
+   */
+  const preformattedFrames = [{ pre: 0, listing: 0, sticky: false, tables: 0 }];
+  let openTables = 0;
+  let openPreformatted = 0;
+  const isPreformatted = (name: string): name is "pre" | "listing" => name === "pre" || name === "listing";
+  const preformatted = () => preformattedFrames[preformattedFrames.length - 1];
+  const openPreformattedElement = (name: "pre" | "listing"): void => {
+    preformatted()[name]++;
+    openPreformatted++;
+  };
+  const closePreformattedElement = (name: "pre" | "listing"): void => {
+    const frame = preformatted();
+    // Past a scope boundary such as `<table>`, `</pre>` may not reach the
+    // `<pre>`, and the scan does not track when the boundary closes. It errs
+    // toward still being in `<pre>`, which only keeps more whitespace.
+    if (frame[name] === 0 || frame.sticky) return;
+    frame[name]--;
+    openPreformatted--;
+  };
+  const openTemplate = (): void => {
+    templateDepth++;
+    preformattedFrames.push({ pre: 0, listing: 0, sticky: false, tables: 0 });
+  };
+  const closeTemplate = (): void => {
+    if (templateDepth === 0) return;
+    templateDepth--;
+    const frame = preformattedFrames.pop()!;
+    openPreformatted -= frame.pre + frame.listing;
+    openTables -= frame.tables;
+  };
   /** A `<select>` may be open: only explicit closers clear it, so it errs toward open. */
   let selectOpen = false;
   /** Set when the scan can no longer follow the browser's parse. */
   let lost = false;
   /** Start of the current stretch where inserted markup would not run, or -1. */
   let notInsertableSince = -1;
+  /** Open SVG/MathML `script` and `style` elements on the stack. */
+  let foreignCodeDepth = 0;
+  /** Start of text not yet reported as a token. */
+  let textFrom = 0;
+  /** Set by startHtmlElement for a raw text or RCDATA element: its body and end tag. */
+  let rawElement: { name: string; close: number; end: number } | null = null;
 
   const context = (): ScanContext => ({
     inTemplate: templateDepth > 0,
     inForeign: stack.length > 0,
-    inPre: preDepth > 0,
+    inPre: openPreformatted > 0,
+    inTable: openTables > 0,
   });
+  /** A nested `<table>` start tag closes the outer one; counting both only errs toward a table being open. */
+  const openTable = (): void => {
+    preformatted().tables++;
+    openTables++;
+  };
+  const closeTable = (): void => {
+    if (preformatted().tables === 0) return;
+    preformatted().tables--;
+    openTables--;
+  };
+  const emit = (kind: HtmlToken["kind"], start: number, end: number, name = "", isEndTag = false): void => {
+    if (end > start) handlers.token?.({ kind, start, end, name, isEndTag, inForeignCode: foreignCodeDepth > 0, ...context() });
+  };
+  /** Report text up to `start`, where markup begins. */
+  const flushText = (start: number): void => {
+    emit("text", textFrom, start);
+    textFrom = start;
+  };
+  /** Report markup spanning `start` to `end`, after any text before it. */
+  const emitMarkup = (kind: HtmlToken["kind"], start: number, end: number, name = "", isEndTag = false): void => {
+    flushText(start);
+    emit(kind, start, end, name, isEndTag);
+    textFrom = end;
+  };
   const isInsertable = (): boolean => stack.length === 0 && templateDepth === 0;
   /** Report a foreign script, with the context captured before its elements were popped. */
   const reportForeignScript = (entry: OpenElement, end: number, terminated: boolean, where: ScanContext): void => {
@@ -498,19 +627,29 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
   const endAt = (start: number): HtmlScanResult => {
     const where = context();
     for (let k = stack.length - 1; k >= 0; k--) reportForeignScript(stack[k], n, false, where);
+    emitMarkup("unparsed", start, n);
     return {
       insertionPoint: notInsertableSince === -1 ? start : notInsertableSince,
       stoppedAt: n,
     };
   };
   /** The scan lost track at the token starting at `start`. */
-  const giveUpAt = (start: number): HtmlScanResult => ({
-    insertionPoint: notInsertableSince === -1 ? start : notInsertableSince,
-    stoppedAt: start,
-  });
+  const giveUpAt = (start: number): HtmlScanResult => {
+    emitMarkup("unparsed", start, n);
+    return {
+      insertionPoint: notInsertableSince === -1 ? start : notInsertableSince,
+      stoppedAt: start,
+    };
+  };
+  const isForeignCode = (element: OpenElement): boolean =>
+    element.namespace !== "html" && (element.name === "script" || element.name === "style");
   const push = (element: OpenElement): void => {
-    if (stack.length >= MAX_TRACKED_DEPTH) lost = true;
-    else stack.push(element);
+    if (stack.length >= MAX_TRACKED_DEPTH) {
+      lost = true;
+      return;
+    }
+    stack.push(element);
+    if (isForeignCode(element)) foreignCodeDepth++;
   };
 
   /**
@@ -525,9 +664,11 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     for (let k = popped.length - 1; k >= 0; k--) {
       const entry = popped[k];
       if (entry.namespace === "html") {
-        if (entry.name === "template") templateDepth--;
-        else if (entry.name === "pre" || entry.name === "listing") preDepth--;
+        if (entry.name === "template") closeTemplate();
+        else if (isPreformatted(entry.name)) closePreformattedElement(entry.name);
+        else if (entry.name === "table") closeTable();
       } else {
+        if (isForeignCode(entry)) foreignCodeDepth--;
         reportForeignScript(entry, k === 0 && closesTarget ? end : tokenStart, true, where);
       }
     }
@@ -540,6 +681,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       const current = stack[stack.length - 1];
       if (current.namespace === "html" || current.integrationPoint !== NOT_AN_INTEGRATION_POINT) return;
       stack.pop();
+      if (isForeignCode(current)) foreignCodeDepth--;
       reportForeignScript(current, tokenStart, true, where);
     }
   };
@@ -603,10 +745,14 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
         return -1;
       }
       if (name === "script") handlers.script?.({ start, openTagEnd: tag.end, end: endTag.end, terminated: true, ...context() });
+      rawElement = { name, close, end: endTag.end };
       return endTag.end;
     }
-    if (name === "template") templateDepth++;
-    else if (name === "pre" || name === "listing") preDepth++;
+    if (name === "template") openTemplate();
+    else if (isPreformatted(name)) openPreformattedElement(name);
+    else if (name === "table") openTable();
+    // In a select, end tags other than its own are ignored, so `</pre>` may not close the `<pre>` either.
+    if ((SCOPE_BOUNDARY_ELEMENTS.has(name) || name === "select") && openPreformatted > 0) preformatted().sticky = true;
     if (stack.length > 0 && !VOID_ELEMENTS.has(name)) {
       push({ name, namespace: "html", integrationPoint: NOT_AN_INTEGRATION_POINT, start, openTagEnd: tag.end });
     }
@@ -648,7 +794,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       }
       if (templateDepth > 0) {
         popTo(0, tokenStart, end, false);
-        templateDepth--;
+        closeTemplate();
       }
       return;
     }
@@ -674,15 +820,16 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     // `</pre>` with no `<pre>` open matches nothing either.
     if (RAW_TEXT_ELEMENTS.has(name) || VOID_ELEMENTS.has(name) || name === "plaintext") return;
     if (name === "body" || name === "html" || name === "head") return;
-    if ((name === "pre" || name === "listing") && preDepth === 0) return;
+    if (isPreformatted(name) && preformatted()[name] === 0) return;
     lost = true;
   };
 
   const endElement = (name: string, tokenStart: number, end: number): void => {
     if (name === "select") selectOpen = false;
     if (stack.length === 0) {
-      if (name === "template") templateDepth = Math.max(0, templateDepth - 1);
-      else if (name === "pre" || name === "listing") preDepth = Math.max(0, preDepth - 1);
+      if (name === "template") closeTemplate();
+      else if (isPreformatted(name)) closePreformattedElement(name);
+      else if (name === "table") closeTable();
       return;
     }
     if (stack[stack.length - 1].namespace !== "html") {
@@ -712,9 +859,18 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       const tag = scanTag(html, start + 1);
       if (tag.end === -1) return endAt(start);
       const wasInsertable = isInsertable();
+      // Text before the tag carries the context it was parsed in.
+      flushText(start);
+      rawElement = null;
       const resume = startTagUsesHtmlRules(tag.name) ? startHtmlElement(start, tag) : startForeignElement(start, tag);
       if (lost) return giveUpAt(start);
       if (resume === -1) return endAt(start);
+      emitMarkup("tag", start, tag.end, tag.name);
+      if (rawElement) {
+        const { name, close, end } = rawElement;
+        emitMarkup("raw", tag.end, close, name);
+        emitMarkup("tag", close, end, name, true);
+      }
       if (wasInsertable && !isInsertable()) notInsertableSince = start;
       i = html.indexOf("<", resume);
       continue;
@@ -726,8 +882,10 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
         const tag = scanTag(html, start + 2);
         if (tag.end === -1) return endAt(start);
         const wasInsertable = isInsertable();
+        flushText(start);
         endElement(tag.name, start, tag.end);
         if (lost) return giveUpAt(start);
+        emitMarkup("tag", start, tag.end, tag.name, true);
         const nowInsertable = isInsertable();
         if (wasInsertable && !nowInsertable) notInsertableSince = start;
         else if (!wasInsertable && nowInsertable) notInsertableSince = -1;
@@ -736,6 +894,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       }
       if (afterSlash === GT) {
         // `</>` is dropped.
+        emitMarkup("markup", start, start + 3);
         i = html.indexOf("<", start + 3);
         continue;
       }
@@ -745,6 +904,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
       // Any other `</` opens a bogus comment that ends at `>`.
       const close = html.indexOf(">", start + 2);
       if (close === -1) return endAt(start);
+      emitMarkup("markup", start, close + 1);
       i = html.indexOf("<", close + 1);
       continue;
     }
@@ -754,6 +914,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
         const end = findCommentEnd(html, start);
         handlers.comment?.({ start, end: end === -1 ? n : end, terminated: end !== -1, ...context() });
         if (end === -1) return endAt(start);
+        emitMarkup("markup", start, end);
         i = html.indexOf("<", end);
         continue;
       }
@@ -765,12 +926,14 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
         // A CDATA section is text in foreign content.
         const close = html.indexOf("]]>", start + 9);
         if (close === -1) return endAt(start);
+        emitMarkup("markup", start, close + 3);
         i = html.indexOf("<", close + 3);
         continue;
       }
       // DOCTYPE, CDATA in HTML content, and other `<!` constructs end at `>`.
       const close = html.indexOf(">", start + 2);
       if (close === -1) return endAt(start);
+      emitMarkup("markup", start, close + 1);
       i = html.indexOf("<", close + 1);
       continue;
     }
@@ -778,6 +941,7 @@ export const scanHtml = (html: string, handlers: HtmlScanHandlers = {}): HtmlSca
     if (next === QUESTION) {
       const close = html.indexOf(">", start + 2);
       if (close === -1) return endAt(start);
+      emitMarkup("markup", start, close + 1);
       i = html.indexOf("<", close + 1);
       continue;
     }
@@ -804,10 +968,13 @@ export const SEAM_SEPARATOR = "<!---->";
  * Ranges may arrive in any order; a range inside or overlapping an earlier
  * one is dropped. `index` (an offset into `html`) is mapped to the output and
  * returned, so callers can keep an insertion point across the removal.
+ *
+ * A range with `separate` set (one removed from inside a table) is always
+ * replaced with the separator, so the text runs on either side stay apart.
  */
 export const removeHtmlRanges = (
   html: string,
-  ranges: readonly HtmlRange[],
+  ranges: readonly (HtmlRange & { separate?: boolean })[],
   index: number = html.length,
 ): { html: string; index: number } => {
   if (ranges.length === 0) return { html, index };
@@ -828,7 +995,7 @@ export const removeHtmlRanges = (
     if (range.start < cursor) continue;
     if (mappedIndex === -1 && index <= range.start) mappedIndex = length + Math.max(0, index - cursor);
     write(html.slice(cursor, range.start));
-    if (PENDING_LOOKAHEAD_RE.test(tail)) write(SEAM_SEPARATOR);
+    if (range.separate || PENDING_LOOKAHEAD_RE.test(tail)) write(SEAM_SEPARATOR);
     cursor = range.end;
   }
   if (mappedIndex === -1) mappedIndex = length + Math.max(0, index - cursor);

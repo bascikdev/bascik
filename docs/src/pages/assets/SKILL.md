@@ -1963,7 +1963,7 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 ### What Bascik Does
 * **Zero runtime:** The most impactful thing Bascik does is what it does not add: no framework bundle, no hydration script, and no client-side router. The only JavaScript on any page is what you wrote.
 * **CSS deduplication:** When a component appears multiple times on a page, Bascik emits a single `<style>` block regardless of instance count.
-* **HTML minification:** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>` blocks is left intact.
+* **HTML minification:** HTML comments are stripped and excess whitespace is collapsed in every built page. Content inside `<pre>`, `<textarea>`, `<script>`, and `<style>`, every attribute value, and non-breaking spaces are left intact. CSS is not read: an element styled `white-space: pre` that is not a `<pre>` loses its extra whitespace, so use `<pre>` for preformatted text.
 * **Script minification:** `minify.js` is `true` by default, stripping comments and whitespace.
 * **Inline styles:** Set `assets.inlineStyles` in `bascik.config.ts` to inject a stylesheet directly into `<head>`, eliminating the render-blocking HTTP request.
 

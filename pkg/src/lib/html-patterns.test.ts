@@ -22,7 +22,7 @@ describe("SCRIPT_END_TAG", () => {
     (tag) => expect(endTag.test(tag)).toBe(true),
   );
 
-  it.each(["</scripts>", "</script-x>", "</scriptfoo>", "</ script>", "</script"])("does not match %j", (tag) => {
+  it.each(["</scripts>", "</script-x>", "</scriptfoo>", "</ script>", "</script", "</script\u00a0>", "</script\u3000>"])("does not match %j", (tag) => {
     expect(endTag.test(tag)).toBe(false);
   });
 

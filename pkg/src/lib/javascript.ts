@@ -493,7 +493,7 @@ export const prefixElementAttribute = (
     };
 
     for (const scriptMatch of scopedAttrsHtml.matchAll(
-      /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi,
+      /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi,
     )) {
       const openTag = scriptMatch[1];
       if (DIRECTIVE_SCRIPT_RE.test(openTag)) continue;
@@ -557,7 +557,7 @@ export const prefixElementAttribute = (
 
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
   const scopedHtml = scopedAttrsHtml.replace(
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi,
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
     (match, open) => {
       if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
       let updatedMatch = match;
@@ -1021,7 +1021,7 @@ export const namespaceScriptTags = (
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(commentMaskedContent.replace(
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi,
+    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
     (match, open, code, close, _offset) => {
       // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
       if (DIRECTIVE_SCRIPT_RE.test(open)) return match;

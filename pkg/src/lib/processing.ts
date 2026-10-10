@@ -312,7 +312,7 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
-  const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi;
+  const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
   const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
   while ((m = regex.exec(html)) !== null) {

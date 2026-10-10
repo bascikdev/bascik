@@ -41,10 +41,18 @@ export const OPEN_TAG_ATTRS = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`;
  * A `</script>` end tag as browsers parse it inside script data: `</script`
  * closes the element when followed by whitespace, `/`, or `>`, and everything
  * up to the next `>` is ignored (`</script >`, `</script\t\n foo>`,
- * `</script/>`). `</scripts>` does not close the element. Regex literals that
- * cannot interpolate this constant spell the same fragment inline.
+ * `</script/>`). `</scripts>` does not close the element, and neither does
+ * `</script` followed by U+00A0: only HTML ASCII whitespace counts, so the
+ * class is spelled out rather than `\s`. Regex literals that cannot
+ * interpolate this constant spell the same fragment inline.
+ *
+ * Known limit: a regex built on this ends a script at its first `</script`,
+ * while a browser keeps going inside `<!--<script>` in the script body (the
+ * script data escape states). The modules that use it read authored source
+ * files, where that form does not occur. Code that removes or moves markup in
+ * built output uses the spec-following scan in html-scanner.ts instead.
  */
-export const SCRIPT_END_TAG = String.raw`<\/script(?:[\s/][^>]*)?>`;
+export const SCRIPT_END_TAG = String.raw`<\/script(?:[\t\n\f\r /][^>]*)?>`;
 
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const TRAILING_SCRIPT_END_TAG_RE = new RegExp(`${SCRIPT_END_TAG}$`, "i");
