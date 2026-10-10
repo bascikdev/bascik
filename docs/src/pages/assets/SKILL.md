@@ -209,7 +209,7 @@ src/components/
 ```
 
 ### Companion CSS and Script Files
-Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Path resolution is strictly scoped to the component directory or base filename.
+Companion `.css` files in the component directory are merged automatically. Companion script files (`.ts`, `.js`, `.mjs`) explicitly referenced via `<script src="counter.ts"></script>` inside component HTML are resolved, inlined, and scoped at build time. Inline content inside that `<script src>` tag is dropped with a warning, matching the browser, so keep the code in the companion file. Path resolution is strictly scoped to the component directory or base filename.
 
 ### Component Metadata Comments (`<!-- @bascik ... -->`)
 To document a component's public contract and provide rich hover and autocomplete information in editor tooling (such as the Bascik VS Code extension), add an optional leading `@bascik` metadata comment block at the very top of the component file:

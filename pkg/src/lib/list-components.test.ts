@@ -301,6 +301,44 @@ describe("listComponents – companion scripts", () => {
     expect(content).not.toContain('src="demo-counter.ts"');
   });
 
+  it.each([["</script>"], ["</script >"], ['</script foo="bar">'], ["</script\t\n bar>"]])(
+    "inlines a companion whose <script src> has an ignored body and end tag %j, and warns about the body",
+    async (endTag) => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+      mockDeepReadDirFlat.mockResolvedValue([
+        "src/components/demo-counter/demo-counter.html",
+        "src/components/demo-counter/demo-counter.ts",
+      ]);
+      mockReadFile
+        .mockResolvedValueOnce(Buffer.from(`<div></div><script src="demo-counter.ts">legacyFallback()${endTag}<p>after</p>`))
+        .mockResolvedValueOnce(Buffer.from("const x = 1;"));
+
+      const content = (await listComponents())["demo-counter"].fileContent;
+
+      expect(content).toContain("const x = 1;");
+      expect(content).not.toContain("legacyFallback");
+      expect(content).not.toContain('src="demo-counter.ts"');
+      expect(content).toContain("<p>after</p>");
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("browsers ignore when src is set"));
+      warnSpy.mockRestore();
+    },
+  );
+
+  it("does not warn when a companion <script src> body is only whitespace", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    mockDeepReadDirFlat.mockResolvedValue([
+      "src/components/demo-counter/demo-counter.html",
+      "src/components/demo-counter/demo-counter.ts",
+    ]);
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('<div></div><script src="demo-counter.ts">\n  </script>'))
+      .mockResolvedValueOnce(Buffer.from("const x = 1;"));
+
+    expect((await listComponents())["demo-counter"].fileContent).toContain("const x = 1;");
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("browsers ignore when src is set"));
+    warnSpy.mockRestore();
+  });
+
   it("does not treat data-src as a companion script reference", async () => {
     mockDeepReadDirFlat.mockResolvedValue([
       "src/components/demo-counter/demo-counter.html",
