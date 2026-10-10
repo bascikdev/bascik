@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createConnection, ProposedFeatures } from 'vscode-languageserver/node.js';
+import { createConnection, ProposedFeatures } from 'vscode-languageserver/node';
 import { BascikLanguageServer } from './server.js';
 import { runCliCheck } from './cli.js';
 

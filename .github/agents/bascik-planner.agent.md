@@ -203,7 +203,8 @@ Anything the implementer must not do, including the banned workarounds above.
 - E2E assertions use `data-testid` with `page.getByTestId()` only. Never assert on raw class
   names or IDs, because production minification hashes them. Never use `.nth(N)` or
   `.locator('../..')`.
-- Vitest 4: `vi.clearAllMocks()` and `vi.resetAllMocks()` also reset `vi.mock()` module mocks.
+- Vitest 5: `clearMocks` is on by default, nested `vi.mock()` throws, and unawaited `.resolves`/`.rejects` fail.
+  `vi.clearAllMocks()` and `vi.resetAllMocks()` also reset `vi.mock()` module mocks.
   Declare shared `vi.fn()` instances in `vi.hoisted()` and prefer `mockFn.mockReset()`.
 - Verification commands: `yarn pkg:build`, `yarn unit:all`, `yarn typecheck:all`,
   `yarn docs:build`, and the relevant `yarn pkg:e2e:*`.

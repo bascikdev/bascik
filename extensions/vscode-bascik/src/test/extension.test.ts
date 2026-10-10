@@ -2118,7 +2118,7 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('reports template classList replacement warning in standalone TypeScript', async () => {
+    test('reports template classList replacement error in standalone TypeScript', async () => {
       const document = await openWorkspaceDocument({
         language: 'typescript',
         content: 'element.classList.replace("old", `state-${nextState}`);',
@@ -2130,8 +2130,9 @@ suite('Extension Integration Suite', () => {
             'Template-literal class names are not rewritten safely',
           ),
         );
-      assert.ok(match, 'Expected template classList replacement warning');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.ok(match, 'Expected template classList replacement diagnostic');
+      // Every compatibility rule is an error (docs/content/compatibility.md).
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('does not warn for a hyphenated component filename', async () => {
