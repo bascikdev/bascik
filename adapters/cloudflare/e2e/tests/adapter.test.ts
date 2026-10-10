@@ -23,6 +23,17 @@ test.describe('cloudflare adapter: static bypass', () => {
     expect(res.status()).toBe(404);
     expect(await res.text()).not.toContain('text/bascik-server');
   });
+
+  test('every demo page links the Bascik favicon, and the asset layer serves it', async ({ page }) => {
+    for (const path of ['/', '/server', '/stream', '/stream-append', '/mixed', '/api-demo']) {
+      await page.goto(path);
+      await expect(page.locator('link[rel="icon"][type="image/svg+xml"]'), path).toHaveAttribute('href', '/assets/favicon.svg');
+    }
+    for (const asset of ['/favicon.ico', '/assets/favicon.svg', '/assets/favicon-32x32.png', '/assets/apple-touch-icon.png']) {
+      const res = await page.request.get(asset);
+      expect(res.status(), asset).toBe(200);
+    }
+  });
 });
 
 test.describe('cloudflare adapter: request-time pages', () => {
@@ -136,5 +147,14 @@ test.describe('cloudflare adapter: streamed paint order', () => {
     expect(tSkeleton).toBeLessThan(1000);
     expect(tResult).toBeGreaterThanOrEqual(1500);
     await expect(page.getByTestId('cf-footer')).toContainText('Zero client JS framework hydration');
+  });
+
+  test('the mixed page footer paints in the initial chunk, before the stream job resolves', async ({ page }) => {
+    await page.goto('/mixed?delay=1500', { waitUntil: 'commit' });
+    await expect(page.getByTestId('cf-mixed-footer')).toBeVisible();
+    expect(await page.locator('.stream-resolved').count()).toBe(0);
+
+    await expect(page.locator('.stream-resolved')).toBeVisible();
+    await expect(page.getByTestId('cf-mixed-footer')).toBeVisible();
   });
 });

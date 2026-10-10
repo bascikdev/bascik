@@ -1,6 +1,13 @@
 # Cloudflare Adapter
 
-Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring. Inspect live production demonstrations of [server scripts](https://cloudflare-adapter.bascik.dev/server), [stream scripts](https://cloudflare-adapter.bascik.dev/stream), [mixed-page ordering](https://cloudflare-adapter.bascik.dev/mixed), and [edge API routes](https://cloudflare-adapter.bascik.dev/api-demo) at [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/).
+Deploy a Bascik site to Cloudflare Workers or Pages so a CDN serves your static files with zero compute overhead, while a generated Worker automatically executes your server scripts, stream scripts, and API routes at the edge, with no separate backend server or manual infrastructure wiring.
+
+> **See it live on Cloudflare Workers.** [cloudflare-adapter.bascik.dev](https://cloudflare-adapter.bascik.dev/) is a Bascik site deployed with this adapter. Its home page comes straight from the CDN, and each demo page runs in the generated Worker:
+>
+> - [Server scripts](https://cloudflare-adapter.bascik.dev/server): request context and platform bindings rendered before headers commit.
+> - [In-place skeleton swap](https://cloudflare-adapter.bascik.dev/stream) and [progressive append](https://cloudflare-adapter.bascik.dev/stream-append): stream scripts flushing chunked HTML from the edge.
+> - [Mixed server and stream page](https://cloudflare-adapter.bascik.dev/mixed): the mixed-page ordering rule in one response.
+> - [Edge API client](https://cloudflare-adapter.bascik.dev/api-demo): browser `fetch()` calls to a deployed API route.
 
 ## How it works: CDN-first with Edge Workers
 
