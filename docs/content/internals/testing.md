@@ -70,7 +70,7 @@ End-to-end tests are run via:
 # Static production server suite
 yarn pkg:e2e
 
-# Dev server suite (runs full E2E test suite + live-reload tests against bascik --dev)
+# Dev server suite (runs full E2E test suite + live-reload tests against the dev server)
 yarn pkg:e2e:dev
 
 # Production server suite (runs both HTTP/1.1 cleartext and HTTP/2 TLS server script tests against bascik --server)
@@ -96,7 +96,7 @@ To run a specific test file or use the Playwright UI, run Playwright from `pkg/`
 # Run only CSS scoping tests against static server
 npx playwright test --config e2e/playwright.config.ts e2e/tests/css-scoping.test.ts
 
-# Run dev server live-reload tests against bascik --dev
+# Run dev server live-reload tests against the dev server
 npx playwright test --config e2e/playwright.dev.config.ts e2e/tests/dev-server-reload.test.ts
 
 # Run HTTP/1.1 prod server tests against bascik --server

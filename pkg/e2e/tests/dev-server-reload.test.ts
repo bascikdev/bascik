@@ -1,5 +1,5 @@
 /**
- * E2E tests for the Bascik Dev Server (`bascik --dev`).
+ * E2E tests for the Bascik Dev Server (`bascik` with no mode flag).
  *
  * Exercises:
  *   1. Live-reload script injection in dev mode (`/bascik-live-reload` SSE)
