@@ -26,8 +26,16 @@ import type {
 
 export type { DistPageSegment };
 
-const PLACEHOLDER_RE =
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*type=["']text\/bascik-server["'](?:[^>"']|"[^"]*"|'[^']*')*>\s*<\/script(?:[\s/][^>]*)?>/gi;
+/**
+ * Placeholder detection is split into two linear steps instead of one regex.
+ * A single pattern with quote-aware attribute loops on both sides of a
+ * literal `type="text/bascik-server"` is ambiguous about which loop consumes
+ * a repeated attribute, so it backtracks polynomially on hostile input.
+ * The open-tag pattern below has one loop whose alternatives each start with
+ * a distinct character class, and the attribute is read afterward.
+ */
+const isPlaceholderOpenTag = (openTag: string): boolean =>
+  getHtmlAttributeValue(openTag, "type")?.toLowerCase() === "text/bascik-server";
 
 /** Split built placeholder HTML into static text and script ids, in document order. */
 export const splitDistPageIntoSegments = (
@@ -36,14 +44,24 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  for (const match of html.matchAll(PLACEHOLDER_RE)) {
-    const index = match.index!;
-    const id = getHtmlAttributeValue(match[0], "data-bascik-server-id");
+  // Fresh stateful regexes per call: both are driven through `lastIndex`.
+  const openTagRe = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  // Whitespace-only body followed by a `</script>` end tag, anchored at `lastIndex`.
+  const endTagRe = /\s*<\/script(?:[\s/][^>]*)?>/iy;
+  let open: RegExpExecArray | null;
+  while ((open = openTagRe.exec(html)) !== null) {
+    const openTag = open[0];
+    if (!isPlaceholderOpenTag(openTag)) continue;
+    endTagRe.lastIndex = openTagRe.lastIndex;
+    if (!endTagRe.test(html)) continue;
+    const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
+    const index = open.index;
     if (index > cursor) segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
-    cursor = index + match[0].length;
+    cursor = endTagRe.lastIndex;
+    openTagRe.lastIndex = cursor;
   }
   if (cursor < html.length || segments.length === 0) segments.push({ kind: "static", text: html.slice(cursor) });
   return { segments, scriptIds };

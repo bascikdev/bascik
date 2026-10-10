@@ -23,9 +23,22 @@ export const LIVE_RELOAD_SCRIPT_ATTR = "data-bascik-live-reload";
 export const LIVE_RELOAD_SCRIPT_TAG_RE =
   /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-live-reload(?=[\s=/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi;
 
-/** Remove every injected live-reload script from `html`, leaving all other scripts intact. */
-export const stripLiveReloadScript = (html: string): string =>
-  html.replace(LIVE_RELOAD_SCRIPT_TAG_RE, () => "");
+/**
+ * Remove every injected live-reload script from `html`, leaving all other
+ * scripts intact. Removal repeats until nothing matches, so text on either
+ * side of a removed element can never join into a new live-reload script
+ * (for example `<scr<script data-bascik-live-reload></script>ipt ...>`).
+ * Every pass removes at least one non-empty match, so the loop terminates.
+ */
+export const stripLiveReloadScript = (html: string): string => {
+  let previous: string;
+  let current = html;
+  do {
+    previous = current;
+    current = previous.replace(LIVE_RELOAD_SCRIPT_TAG_RE, () => "");
+  } while (current !== previous);
+  return current;
+};
 
 export const getLiveReloadScript = (url = "/bascik-live-reload") => `
 <script ${LIVE_RELOAD_SCRIPT_ATTR}>

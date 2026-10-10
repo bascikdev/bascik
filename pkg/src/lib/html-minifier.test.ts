@@ -38,6 +38,103 @@ describe("extractScriptTags", () => {
   it("returns an empty string if no script tags are present", () => {
     expect(extractScriptTags("<div>No scripts here</div>")).toBe("");
   });
+
+  it("never hoists a <script> that sits inside an unclosed tag, so removal cannot join a new script", () => {
+    // The browser parses `<scr<script>` as one `scr<script` tag and runs
+    // nothing. Hoisting the inner match would join `<scr` and `ipt>` into an
+    // executable `<script>b()</script>`.
+    const html = `<p>x</p><scr<script>a()</script>ipt>b()</script><script>c()</script>`;
+    expect(extractScriptTags(html)).toBe("<script>c()</script>");
+    const minified = minifyHtml(html);
+    expect(minified).toBe(`<p>x</p><scr<script>a()</script>ipt>b()</script>\n<script>c()</script>`);
+    expect(minified).not.toContain("<script>b()</script>");
+  });
+
+  it("leaves nested unclosed-tag scripts as authored at every depth", () => {
+    let html = "<script>a()</script>";
+    for (let depth = 0; depth < 3; depth++) html = `<scr${html}ipt>b${depth}()</script>`;
+    expect(extractScriptTags(html)).toBe("");
+    expect(minifyHtml(html)).toBe(html);
+  });
+
+  it.each([
+    ["inside an unclosed tag name", "<p>x</p><scr<!-- c -->ipt>b()</script>"],
+    ["an empty comment inside an unclosed tag name", "<scr<!---->ipt>b()</script>"],
+    ["directly after a lone <", "<p>x</p><<!-- c -->script>b()</script>"],
+  ])("keeps a comment %s, so removing it cannot join a new script", (_case, html) => {
+    // The browser reads `<!--` after an unclosed `<` as tag text and runs
+    // nothing; removing it would turn `<scr` + `ipt>` into `<script>`.
+    expect(extractScriptTags(html)).toBe("");
+    expect(minifyHtml(html)).not.toContain("<script>b()</script>");
+    expect(minifyHtml(html)).toContain("<!--");
+  });
+
+  it("still removes comments in a closed context, including next to a kept one", () => {
+    const html = "<p>a</p><!-- gone --><scr<!-- kept -->ipt>b()</script><!-- gone too --><p>c</p>";
+    expect(minifyHtml(html)).toBe("<p>a</p><scr<!-- kept -->ipt>b()</script><p>c</p>");
+  });
+
+  it("leaves a script in place, body intact, when a literal < in text precedes it", () => {
+    // `a < b ` is text in the browser, so the script runs. The minifier cannot
+    // tell that apart from an unclosed tag and conservatively does not hoist it.
+    const html = "<p>1 < 2</p><p>x <script>run()</script></p><p>a < b <script>two()</script></p>";
+    expect(extractScriptTags(html)).toBe("<script>run()</script>");
+    expect(minifyHtml(html)).toBe("<p>1 < 2</p><p>x </p><p>a < b <script>two()</script></p>\n<script>run()</script>");
+  });
+
+  it("still hoists a script after an attribute value containing < or >", () => {
+    for (const title of ["a<b", "a>b"]) {
+      expect(minifyHtml(`<div title="${title}"><script>x()</script></div>`)).toBe(
+        `<div title="${title}"></div>\n<script>x()</script>`,
+      );
+    }
+  });
+
+  it("removes exactly the scripts it hoists, once each, in document order", () => {
+    const html =
+      "<p>a</p><script>one()</script><script data-bascik-server>s()</script>" +
+      "<script>two()</script><script type=\"application/ld+json\">{}</script><script>three()</script>";
+    expect(minifyHtml(html)).toBe(
+      '<p>a</p><script data-bascik-server>s()</script><script type="application/ld+json">{}</script>\n' +
+      "<script>one()</script>\n<script>two()</script>\n<script>three()</script>",
+    );
+  });
+
+  it("stays fast on many scripts, including many inside unclosed tags", () => {
+    const started = performance.now();
+    expect(extractScriptTags("<p>x</p><script>a()</script>".repeat(20_000)).split("\n")).toHaveLength(20_000);
+    expect(extractScriptTags("<p x <script>a()</script>".repeat(20_000))).toBe("");
+    minifyHtml(("<" + "a".repeat(100) + "<script>a()</script>").repeat(10_000));
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("never emits a script body that was not a script body in the input", () => {
+    // Removal (hoisting or comment stripping) must never join surrounding text
+    // into a new script element. Bodies are unique markers, so a joined script
+    // shows up as an output body the input never had.
+    const scriptBodies = (html: string) =>
+      new Set([...html.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi)].map((m) => m[1]));
+    const fragment = fc.constantFrom(
+      // `ipt>b()</script>` is one fragment so join sequences such as
+      // `<scr` + `<!-- c -->` + `ipt>b()</script>` turn up within the run budget.
+      "<script>a()</script>", "<script data-bascik-server>s()</script>", "<scr", "ipt>", "ipt>b()</script>",
+      "</script>", "<!--", "-->", "<!-- c -->", "<", ">", "<p>", '<div title="', '">', "<pre>", "</pre>",
+    );
+    fc.assert(
+      fc.property(fc.array(fragment, { maxLength: 14 }), (parts) => {
+        const html = parts.join("");
+        // A trailing unterminated <script> swallows everything appended after
+        // it, hoisted scripts included. That is a separate malformed-input
+        // case, not a join, so it is excluded here.
+        const lastEnd = html.toLowerCase().lastIndexOf("</script");
+        fc.pre(!/<script\b/i.test(lastEnd === -1 ? html : html.slice(lastEnd + 2)));
+        const inputBodies = scriptBodies(html);
+        for (const body of scriptBodies(minifyHtml(html))) expect(inputBodies).toContain(body);
+        for (const body of scriptBodies(extractScriptTags(html))) expect(inputBodies).toContain(body);
+      }),
+      { numRuns: 5000 },
+    );
+  });
 });
 
 describe("minifyHtml", () => {

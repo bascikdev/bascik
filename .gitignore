@@ -63,6 +63,10 @@ typings/
 .env.test
 !pkg/e2e/src/pages/.env
 
+# Written and removed by the dev-server recovery E2E test
+# (pkg/e2e/tests/dev-server-reload.test.ts). Never a real fixture.
+pkg/e2e/src/pages/dev-recovery-test.html
+
 
 # macos
 .DS_Store

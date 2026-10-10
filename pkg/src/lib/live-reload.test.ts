@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import fc from "fast-check";
 import {
   LIVE_RELOAD_SCRIPT,
   LIVE_RELOAD_SCRIPT_ATTR,
+  LIVE_RELOAD_SCRIPT_TAG_RE,
   getLiveReloadScript,
   stripLiveReloadScript,
 } from "./live-reload.ts";
@@ -200,6 +202,46 @@ describe("stripLiveReloadScript", () => {
   it("does not treat data-bascik-live-reload-* variants as the injected script", () => {
     const html = `<script data-bascik-live-reload-note="x">window.c = 3</script>`;
     expect(stripLiveReloadScript(html)).toBe(html);
+  });
+
+  it("removes a live-reload script formed by text around a removed one", () => {
+    const inner = getLiveReloadScript().trim();
+    const html = `<p>a</p><scr${inner}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x()</script><p>b</p>`;
+    expect(stripLiveReloadScript(html)).toBe("<p>a</p><p>b</p>");
+  });
+
+  it("removes live-reload scripts joined at every nesting depth", () => {
+    const nest = (depth: number) => {
+      let html = getLiveReloadScript().trim();
+      for (let i = 0; i < depth; i++) html = `<scr${html}ipt ${LIVE_RELOAD_SCRIPT_ATTR}>x${i}()</script>`;
+      return `<p>a</p>${html}<p>b</p>`;
+    };
+    expect(stripLiveReloadScript(nest(3))).toBe("<p>a</p><p>b</p>");
+    const started = performance.now();
+    expect(stripLiveReloadScript(nest(1000))).toBe("<p>a</p><p>b</p>");
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("returns a fixed point with no live-reload script left, keeping other scripts", () => {
+    const inner = getLiveReloadScript().trim();
+    const fragment = fc.constantFrom(
+      inner, "<scr", `ipt ${LIVE_RELOAD_SCRIPT_ATTR}>`, "x()", "</script>", "<script>keep()</script>", "<p>", "</p>",
+    );
+    fc.assert(
+      fc.property(fc.array(fragment, { maxLength: 12 }), (parts) => {
+        const result = stripLiveReloadScript(parts.join(""));
+        expect(result).not.toMatch(new RegExp(LIVE_RELOAD_SCRIPT_TAG_RE.source, "i"));
+        expect(stripLiveReloadScript(result)).toBe(result);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it("strips a live-reload script whose end tag carries whitespace or junk", () => {
+    const body = getLiveReloadScript().trim().replace(/<\/script>$/, "");
+    for (const endTag of ["</script >", "</SCRIPT>", "</script\t\n foo>", "</script/>"]) {
+      expect(stripLiveReloadScript(`<p>a</p>${body}${endTag}<p>b</p>`)).toBe("<p>a</p><p>b</p>");
+    }
   });
 
   it("handles regex replacement tokens in surrounding content", () => {

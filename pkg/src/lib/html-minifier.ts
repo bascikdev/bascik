@@ -199,16 +199,60 @@ const isExtractableScript = (openTag: string): boolean =>
   !DIRECTIVE_SCRIPT_RE.test(openTag) &&
   isJavaScriptScript(openTag);
 
+/**
+ * Whether the nearest `<` before `index` is more recent than the nearest `>`.
+ * Each backward scan stops at the previous script match's closing `>` at the
+ * latest, so the total cost across one scan of the page stays linear.
+ */
+const followsUnclosedTag = (html: string, index: number): boolean =>
+  index > 0 && html.lastIndexOf("<", index - 1) > html.lastIndexOf(">", index - 1);
+
+/**
+ * Split shielded, comment-free `html` into the markup that stays in place and
+ * the extractable script elements, in one scan. Building the remainder from
+ * slices of a single match list guarantees that exactly the scripts that are
+ * hoisted are the ones removed.
+ *
+ * A `<script` that follows an unclosed `<` (more recent than any `>`) is not
+ * a tag start: in `<scr<script>a()</script>ipt>b()</script>` the browser sees
+ * one `scr<script` tag and runs nothing. Removing it would join `<scr` and
+ * `ipt>` into a new, executable `<script>`. Such a script is left in place,
+ * which keeps the document as authored. Because every removal happens in a
+ * closed context, joined text can never start a new tag at the seam.
+ */
+const partitionExtractableScripts = (html: string): { remainder: string; scripts: string[] } => {
+  const parts: string[] = [];
+  const scripts: string[] = [];
+  let cursor = 0;
+  for (const match of html.matchAll(SCRIPT_TAG_PATTERN)) {
+    if (!isExtractableScript(match[1])) continue;
+    if (followsUnclosedTag(html, match.index)) continue;
+    parts.push(html.slice(cursor, match.index));
+    scripts.push(match[0]);
+    cursor = match.index + match[0].length;
+  }
+  if (scripts.length === 0) return { remainder: html, scripts };
+  parts.push(html.slice(cursor));
+  return { remainder: parts.join(""), scripts };
+};
+
+/**
+ * Remove HTML comments from shielded `html`. A `<!--` that follows an unclosed
+ * `<` is tag text, not a comment: the browser reads `<scr<!-- c -->ipt>` as one
+ * `scr<!--` tag. Removing it would join `<scr` and `ipt>` into a new,
+ * executable `<script>`, so it is kept. Every removal happens in a closed
+ * context, so the text joined at the seam can never extend a tag name.
+ */
+const removeComments = (html: string): string =>
+  html.replace(/<!--[\s\S]*?-->/g, (comment: string, offset: number) =>
+    followsUnclosedTag(html, offset) ? comment : "");
+
 export const extractScriptTags = (htmlString: string): string => {
   const shielded = shieldSensitiveContent(htmlString);
-  const html = shielded.html.replace(/<!--[\s\S]*?-->/g, "");
-  const arr = [...html.matchAll(SCRIPT_TAG_PATTERN)]
-    .filter((script) => isExtractableScript(script[1]));
-  if (!arr.length) return "";
-  return shielded.restore(arr
-    .map((script) => script[0])
-    .join("\n")
-    .trim());
+  const html = removeComments(shielded.html);
+  const { scripts } = partitionExtractableScripts(html);
+  if (!scripts.length) return "";
+  return shielded.restore(scripts.join("\n").trim());
 };
 
 export const INLINE_TAGS = new Set([
@@ -287,13 +331,11 @@ const getNextTagName = (str: string, ltIndex: number): string => {
 
 export const minifyHtml = (htmlString: string): string => {
   const shielded = shieldSensitiveContent(htmlString);
-  let html = shielded.html.replace(/<!--[\s\S]*?-->/g, "");
-  const scriptTags = extractScriptTags(html);
+  let html = removeComments(shielded.html);
+  const { remainder, scripts } = partitionExtractableScripts(html);
+  const scriptTags = scripts.join("\n").trim();
   if (scriptTags) {
-    html = html.replace(
-      SCRIPT_TAG_PATTERN,
-      (match, open: string) => isExtractableScript(open) ? "" : match,
-    ).trim();
+    html = remainder.trim();
   }
   // Preserve content of whitespace-sensitive elements before collapsing whitespace.
   // Without this, code inside <pre> blocks has its newlines and indentation stripped,
