@@ -403,7 +403,7 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 * `@scope` (native): class names in `@scope (.foo)` argument and optional `to (.clause)` are scoped normally, and class names inside the `@scope` block are scoped
 * `:nth-child(An+B of .selector)`: class names in the `of <selector>` argument are scoped (same global `(?<=\.)` pass as `:is()`, `:where()`, `:has()`); works for `:nth-child` and `:nth-last-child`
 * `@font-face`: passed through untouched; declare in a shared stylesheet to avoid duplicate injections
-* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet
+* `@import`: local file imports (`@import "./file.css"`) are inlined recursively and scoped to the component; remote URLs (`@import "https://..."`) are preserved and hoisted to the top of the compiled stylesheet. In dev, editing an imported file rebuilds the pages of every component that imports it
 * Standalone attribute selectors (e.g. `[data-state]`): not scoped and can leak globally; anchor with a scoped class: `.card[data-state]`
 * `[id]` selectors: `[id]` and `[id="..."]` attribute selectors in CSS are stripped at compile time because they cannot be scoped without DOM wrapping
 * Compound element selectors: every element name in a chain is converted to a scoped class and injected on matching elements in the component's own template, with or without a class anchor (`.card p {}`, `div p {}`, `p + p {}`, `nav a {}`, `ul li * {}` all work); they never reach page markup or a child component's root

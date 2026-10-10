@@ -278,6 +278,10 @@ The recursion terminates when `getFirstComponent` no longer finds any custom tag
 
 When a component file changes during dev, Bascik does not reprocess every page. The memory store maintains a reverse index mapping each component name to the set of pages that use it. `selectivelyProcessPages` uses this index to retranspile only the affected pages.
 
+Component stylesheets inline their local `@import` files, so an imported file is an input of every component that imports it. `listComponents` records each imported path (nested imports included, and missing files too, so creating one later is seen) against the importing component names, and `componentsImportingStylesheet(path)` reads that record. The component watcher, the pages-directory asset watcher (`processPagesImportingStylesheet`), and the combined source observer in `watch-source.ts` each add the pages of those components to the rebuild. The record from the last listing is kept across cache invalidation, because the lookup happens before the components are listed again.
+
+Import resolution is idempotent: `@import` text inside comments, strings, and unquoted `url()` tokens is skipped, which includes the `not found` marker a missing import leaves behind. The scoping pass resolves a component's imports once, before it forms the `scopedCssCache` key, so the key holds the imported file contents read on that run and an edited import can never return a stale memo entry.
+
 ## Scoped Name Format
 
 All scoped attribute names follow this pattern:

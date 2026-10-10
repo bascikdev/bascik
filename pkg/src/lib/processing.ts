@@ -84,6 +84,7 @@ import { getLiveReloadScript } from "./live-reload.ts";
 import {
   listComponents,
   invalidateComponentListCache,
+  componentsImportingStylesheet,
   replaceTag,
   getFirstComponent,
   getTag,
@@ -1133,13 +1134,34 @@ export const selectivelyProcessPagesForWatchPath = async (changedPath?: string):
   await processPageBatch(pagesToProcess, componentList, globalStylesHtml);
 };
 
+/** Pages that use a component whose stylesheet imports `path`, as of the last component listing. */
+export const pagesImportingStylesheet = (path: string): string[] => [
+  ...new Set(componentsImportingStylesheet(path).flatMap((name) => mem.pagesThisComponentIsUsedOn(name))),
+];
+
+/**
+ * Rebuild the pages that use a component whose stylesheet imports `path`, for a
+ * file that is not otherwise a page or component input (a stylesheet under the
+ * pages directory). Does nothing when no component imports it.
+ */
+export const processPagesImportingStylesheet = async (path: string): Promise<void> => {
+  const pagesToTranspile = pagesImportingStylesheet(path);
+  if (pagesToTranspile.length === 0) return;
+  invalidateComponentListCache();
+  await processPageBatch(pagesToTranspile);
+};
+
 export const selectivelyProcessPages = async (path: string): Promise<void> => {
   invalidateComponentListCache();
   const rawFileName = basename(path);
   if (!rawFileName || rawFileName.startsWith(".")) return;
   const componentName = rawFileName.split(".")[0].toLowerCase();
   if (!componentName) return;
-  const pagesToTranspile = mem.pagesThisComponentIsUsedOn(componentName);
+  // A stylesheet that is not itself a component's companion still reaches the
+  // pages of every component that imports it.
+  const pagesToTranspile = [
+    ...new Set([...mem.pagesThisComponentIsUsedOn(componentName), ...pagesImportingStylesheet(path)]),
+  ];
   // Enter the batch immediately so it claims each affected page generation at
   // the component event boundary. Loading components and global styles inside
   // processPageBatch happens only after those claims. Otherwise a newer direct

@@ -373,7 +373,9 @@ export const prefixElementAttribute = (
     scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {
-      cssSources.push(resolveCssImportsSync(component.cssFileContent, component.fileName));
+      // Resolved once here, so the memo key below holds the imported contents.
+      component.cssFileContent = resolveCssImportsSync(component.cssFileContent, component.fileName);
+      cssSources.push(component.cssFileContent);
     }
     if (component.fileContent && component.fileContent.includes("<style")) {
       const { css: inlineCss } = extractInlineStyles(component.fileContent);
@@ -782,7 +784,8 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
-      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames
+      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames.
+      // Every source in `cssFileContent` has had its imports resolved, so the key holds what was read from disk.
       const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
       const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
       const cached = bypassScopedCssCache ? undefined : scopedCssCache.get(cacheKey);
@@ -792,10 +795,6 @@ export const prefixElementAttribute = (
         allElementClasses.push(...cached.allElementClasses);
         allIdsConverted.push(...cached.allIdsConverted);
       } else {
-        component.cssFileContent = resolveCssImportsSync(
-          component.cssFileContent,
-          component.fileName,
-        );
         if (component.scopedIdNames) {
           component.cssFileContent = rewriteIdReferencesInCss(
             component.cssFileContent,

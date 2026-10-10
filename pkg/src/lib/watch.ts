@@ -7,6 +7,7 @@ import { loadChokidar } from "./dev-watcher.ts";
 import {
   pageProcessing,
   processAllPages,
+  processPagesImportingStylesheet,
   removePage,
   selectivelyProcessPages,
   selectivelyProcessPagesForWatchPath,
@@ -112,6 +113,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
           } else {
             await copyReplicatePath(path, BascikConfig.directory.out);
             if (!BascikConfig.isBuild) {
+              await processPagesImportingStylesheet(path);
               eventEmitter.emit("asset-changed");
             }
           }
@@ -125,8 +127,10 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
             }
           } else {
             await copyReplicatePath(path, BascikConfig.directory.out);
-            // Reload any currently-open page when a static asset changes
+            // Reload any currently-open page when a static asset changes.
+            // A stylesheet a component imports is also inlined into pages.
             if (!BascikConfig.isBuild) {
+              await processPagesImportingStylesheet(path);
               eventEmitter.emit("asset-changed");
             }
           }
@@ -135,7 +139,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
       .on("unlink", (path) => {
         const operation = isInlineStylesheet(path)
           ? processAllPages()
-          : deleteDistFile(path);
+          : deleteDistFile(path).then(() => processPagesImportingStylesheet(path));
         operation.catch(onWatchError);
       })
       .on("unlinkDir", (path) => {

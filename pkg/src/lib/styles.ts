@@ -487,8 +487,62 @@ type CssImportPlan = {
   fullStatement: string;
   parsed: NonNullable<ReturnType<typeof parseCssImport>>;
   targetPath: string;
+  /** Every file whose creation, edit, or removal changes this import's result. */
+  dependencyPaths: string[];
   nextVisited: Set<string>;
   replacement?: string;
+};
+
+const isCssNameChar = (char: string | undefined): boolean =>
+  char !== undefined && /[\w-]/.test(char);
+
+/**
+ * Sorted `[start, end)` ranges of comments, quoted strings, and unquoted
+ * `url(...)` tokens. `@import` text inside these is not an at-rule (CSS Syntax
+ * Level 3, section 4). A resolved missing import leaves a comment marker that
+ * names the import, so this is also what makes resolution idempotent.
+ */
+const cssOpaqueRanges = (css: string): Array<[number, number]> => {
+  const ranges: Array<[number, number]> = [];
+  let i = 0;
+  while (i < css.length) {
+    const char = css[i];
+    if (char === "/" && css[i + 1] === "*") {
+      const close = css.indexOf("*/", i + 2);
+      const end = close === -1 ? css.length : close + 2;
+      ranges.push([i, end]);
+      i = end;
+    } else if (char === '"' || char === "'") {
+      // A string ends at its unescaped quote, or at an unescaped newline (bad-string).
+      let j = i + 1;
+      while (j < css.length && css[j] !== char && css[j] !== "\n") j += css[j] === "\\" ? 2 : 1;
+      const end = Math.min(j + 1, css.length);
+      ranges.push([i, end]);
+      i = end;
+    } else if (char === "\\") {
+      i += 2;
+    } else if (
+      (char === "u" || char === "U") &&
+      css.slice(i, i + 4).toLowerCase() === "url(" &&
+      !isCssNameChar(css[i - 1])
+    ) {
+      let argument = i + 4;
+      while (argument < css.length && /\s/.test(css[argument])) argument++;
+      if (css[argument] === '"' || css[argument] === "'") {
+        // A quoted url() argument is an ordinary string; the next pass records it.
+        i = argument;
+        continue;
+      }
+      // An unquoted url() token runs to its closing parenthesis; `/*` inside is not a comment.
+      const close = css.indexOf(")", argument);
+      const end = close === -1 ? css.length : close + 1;
+      ranges.push([i, end]);
+      i = end;
+    } else {
+      i++;
+    }
+  }
+  return ranges;
 };
 
 // Observer for CSS import planning, set only while scoping-template.ts records
@@ -517,8 +571,13 @@ const planCssImports = (
   if (!css || !css.includes("@import")) return [];
   cssImportPlanningObserver?.();
   const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
+  const opaque = cssOpaqueRanges(css);
+  let opaqueIndex = 0;
   const plans: CssImportPlan[] = [];
   for (const match of css.matchAll(importRegex)) {
+    const start = match.index;
+    while (opaqueIndex < opaque.length && opaque[opaqueIndex][1] <= start) opaqueIndex++;
+    if (opaqueIndex < opaque.length && opaque[opaqueIndex][0] <= start) continue;
     const fullStatement = match[0];
     const parsed = parseCssImport(fullStatement);
     if (!parsed || parsed.isRemote) continue;
@@ -527,7 +586,11 @@ const planCssImports = (
         ? baseFilePath
         : dirname(baseFilePath)
       : process.cwd();
-    let targetPath = resolve(baseDir, parsed.url);
+    const requestedPath = resolve(baseDir, parsed.url);
+    const dependencyPaths = requestedPath.endsWith(".css")
+      ? [requestedPath]
+      : [requestedPath, `${requestedPath}.css`];
+    let targetPath = requestedPath;
     if (
       !existsSync(targetPath) &&
       !targetPath.endsWith(".css") &&
@@ -545,13 +608,14 @@ const planCssImports = (
         fullStatement,
         parsed,
         targetPath,
+        dependencyPaths,
         nextVisited,
         replacement: `/* @import "${parsed.url}" not found */`,
       });
     } else if (visited.has(targetPath)) {
-      plans.push({ fullStatement, parsed, targetPath, nextVisited, replacement: "" });
+      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited, replacement: "" });
     } else {
-      plans.push({ fullStatement, parsed, targetPath, nextVisited });
+      plans.push({ fullStatement, parsed, targetPath, dependencyPaths, nextVisited });
     }
   }
   return plans;
@@ -581,14 +645,17 @@ const wrapPlannedCss = (css: string, plan: CssImportPlan): string =>
  * @param css The raw CSS content
  * @param baseFilePath The file path of the current CSS/HTML file (used to resolve relative import paths)
  * @param visited Set of canonical file paths already visited (for circular import prevention)
+ * @param dependencies Receives every local file path an import names, found or not
  */
 export const resolveCssImports = async (
   css: string,
   baseFilePath?: string,
   visited: Set<string> = new Set(),
+  dependencies?: Set<string>,
 ): Promise<string> => {
   let result = css;
   for (const plan of planCssImports(css, baseFilePath, visited)) {
+    for (const path of plan.dependencyPaths) dependencies?.add(path);
     if (plan.replacement !== undefined) {
       result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
@@ -596,7 +663,7 @@ export const resolveCssImports = async (
 
     try {
       const importedRaw = cleanImportedCss((await readFile(plan.targetPath)).toString());
-      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited);
+      const nestedResolved = await resolveCssImports(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
       result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
       console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
@@ -615,9 +682,11 @@ export const resolveCssImportsSync = (
   css: string,
   baseFilePath?: string,
   visited: Set<string> = new Set(),
+  dependencies?: Set<string>,
 ): string => {
   let result = css;
   for (const plan of planCssImports(css, baseFilePath, visited)) {
+    for (const path of plan.dependencyPaths) dependencies?.add(path);
     if (plan.replacement !== undefined) {
       result = replaceCssImport(result, plan.fullStatement, plan.replacement);
       continue;
@@ -625,7 +694,7 @@ export const resolveCssImportsSync = (
 
     try {
       const importedRaw = cleanImportedCss(readFileSync(plan.targetPath, "utf-8"));
-      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited);
+      const nestedResolved = resolveCssImportsSync(importedRaw, plan.targetPath, plan.nextVisited, dependencies);
       result = replaceCssImport(result, plan.fullStatement, wrapPlannedCss(nestedResolved, plan));
     } catch (err) {
       console.warn("[bascik] warning: Failed to read imported CSS file %s:", plan.targetPath, err);
@@ -668,6 +737,7 @@ export const hoistCssImports = (css: string): string => {
 export const getComponentCss = async (
   htmlFileName: string,
   cssFileNames: string[],
+  importDependencies?: Set<string>,
 ): Promise<string | undefined> => {
   if (!htmlFileName || !Array.isArray(cssFileNames)) return;
   const cssFileName = cssFileNames.find(
@@ -676,7 +746,7 @@ export const getComponentCss = async (
   if (!cssFileName) return;
   try {
     const raw = removeCommentsFromCss((await readFile(cssFileName)).toString());
-    return await resolveCssImports(raw, cssFileName);
+    return await resolveCssImports(raw, cssFileName, undefined, importDependencies);
   } catch (error) {
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }

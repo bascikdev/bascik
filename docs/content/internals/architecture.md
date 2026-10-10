@@ -177,7 +177,7 @@ To maintain accurate debugging diagnostics across execution boundaries, Bascik a
 
 ### Incremental rebuilds via reverse component index
 
-To keep the development server instantaneous, Bascik avoids full site rebuilds on change. The in-memory store (`mem.ts`) maintains a reverse dependency index mapping each custom component tag to the exact list of pages that consume it. When a component file is modified, the file-system watcher resolves the component's name, checks the reverse index, and schedules only the affected pages for re-transpilation. Unaffected pages remain cached in memory.
+To keep the development server instantaneous, Bascik avoids full site rebuilds on change. The in-memory store (`mem.ts`) maintains a reverse dependency index mapping each custom component tag to the exact list of pages that consume it. When a component file is modified, the file-system watcher resolves the component's name, checks the reverse index, and schedules only the affected pages for re-transpilation. A stylesheet that component CSS `@import`s is mapped to its importing components at listing time (`componentsImportingStylesheet`), so editing it rebuilds those components' pages too. Unaffected pages remain cached in memory.
 
 ### Custom lightweight JS minifier
 

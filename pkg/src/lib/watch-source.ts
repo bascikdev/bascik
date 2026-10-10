@@ -7,7 +7,7 @@ import { execWatchCoversPath, runScript } from './exec.ts';
 import { getExecErrorAction, stopAfterExecFailure } from './exec-policy.ts';
 import { withCompilationPublisher } from './compilation-events.ts';
 import { clearBuildScriptCaches } from './build-scripts.ts';
-import { invalidateComponentListCache } from './components.ts';
+import { componentsImportingStylesheet, invalidateComponentListCache } from './components.ts';
 import { mem } from './mem.ts';
 import { processAllPages, processPageBatch, removePage } from './processing.ts';
 import { copyStaticAssets, copyReplicatePath, deleteDistFile, deleteDistDir } from './file-system.ts';
@@ -63,6 +63,11 @@ export const watchSourceCycles = async (
         const extra = execWatchCoversPath(watchPaths, path) || execWatchCoversPath(execPatterns, path);
         const dependents = mem.pagesDependentOnFile(path);
         for (const page of dependents) pages.add(resolve(page));
+        // Component stylesheets inline their imports, so an imported file
+        // reaches the pages of every component that imports it.
+        for (const name of componentsImportingStylesheet(path)) {
+          for (const page of mem.pagesThisComponentIsUsedOn(name)) pages.add(resolve(page));
+        }
         if (kind === 'unlinkDir') {
           if (inPages) {
             await deleteDistDir(path);

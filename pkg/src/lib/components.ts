@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, relative } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { getComponentCss, extractInlineStyles, resolveCssImports } from "./styles.ts";
 import { getComponentScripts } from "./javascript.ts";
 import { deepReadDirFlat } from "./file-system.ts";
@@ -133,6 +133,21 @@ export const invalidateComponentListCache = () => {
   componentListCache = null;
 };
 
+// Absolute stylesheet path -> names of components whose CSS imported it at the
+// last complete listing. Kept across cache invalidation: dev looks up an edited
+// file here before the components are listed again.
+let stylesheetImporters = new Map<string, Set<string>>();
+
+/**
+ * Names of components whose stylesheet (companion `.css` or inline `<style>`)
+ * imports `filePath`, directly or through another import, as of the last
+ * component listing. A missing imported file is included, so creating it later
+ * also finds its importers.
+ */
+export const componentsImportingStylesheet = (filePath: string): string[] => [
+  ...(stylesheetImporters.get(resolve(filePath)) ?? []),
+];
+
 /** Load all component HTML and CSS files from the configured components directory. */
 const BARE_TOKEN_SPEC = String.raw`[^\s"'=<>\`]+`;
 const ATTR_VALUE_SPEC = String.raw`(?:"[^"]*"|'[^']*'|${BARE_TOKEN_SPEC})`;
@@ -234,6 +249,7 @@ export const listComponents = async (): Promise<ComponentList> => {
     throw new Error(collisions.join("\n\n"));
   }
 
+  const nextStylesheetImporters = new Map<string, Set<string>>();
   const components = await Promise.all(
     componentHtmlFileNames.map(async (fileName) => {
       // Name the file name without the extension.
@@ -253,10 +269,18 @@ export const listComponents = async (): Promise<ComponentList> => {
       let fileContentBuffer: Buffer;
       let cssFileContent: string | undefined;
       let companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined;
+      const importedStylesheets = new Set<string>();
+      const recordImportedStylesheets = () => {
+        for (const path of importedStylesheets) {
+          const importers = nextStylesheetImporters.get(path) ?? new Set<string>();
+          importers.add(componentName);
+          nextStylesheetImporters.set(path, importers);
+        }
+      };
       try {
         [fileContentBuffer, cssFileContent, companionScripts] = await Promise.all([
           readFile(fileName),
-          getComponentCss(fileName, componentCssFileNames),
+          getComponentCss(fileName, componentCssFileNames, importedStylesheets),
           getComponentScripts(fileName, componentScriptFileNames),
         ]);
       } catch (e) {
@@ -265,6 +289,7 @@ export const listComponents = async (): Promise<ComponentList> => {
         // the component without its script.
         if (e instanceof TypeScriptTransformError) throw e;
         console.warn("warning: Failed to process %s", fileName, e);
+        recordImportedStylesheets();
         return {};
       }
 
@@ -341,7 +366,10 @@ export const listComponents = async (): Promise<ComponentList> => {
       // are left alone; TypeScript syntax in one is diagnosed, never rewritten.
       resolvedContent = await transformTypeScriptScriptTags(resolvedContent, fileName);
       const { html: cleanedContent, css: inlineCss } = extractInlineStyles(resolvedContent);
-      const resolvedInlineCss = inlineCss ? await resolveCssImports(inlineCss, fileName) : "";
+      const resolvedInlineCss = inlineCss
+        ? await resolveCssImports(inlineCss, fileName, undefined, importedStylesheets)
+        : "";
+      recordImportedStylesheets();
       const combinedCss = [cssFileContent, resolvedInlineCss].filter(Boolean).join("\n");
       let minifiedContent: string;
       try {
@@ -369,6 +397,7 @@ export const listComponents = async (): Promise<ComponentList> => {
       return component;
     }),
   );
+  stylesheetImporters = nextStylesheetImporters;
   componentListCache = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;

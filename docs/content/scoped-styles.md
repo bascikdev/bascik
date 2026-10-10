@@ -320,6 +320,9 @@ Bascik supports standard CSS `@import` statements in component CSS (`.css` files
 - **Local file imports:** Local relative paths (e.g. `@import "./tokens.css"`, `@import "../shared/theme.css"`) are resolved and inlined recursively at build time. All selectors, custom properties, and keyframes inside imported stylesheets are automatically scoped to the component instance.
 - **Remote URL imports:** External URLs (e.g. `@import "https://fonts.googleapis.com/..."`) are preserved and automatically hoisted to the top of the compiled stylesheet per W3C CSS specifications.
 - **Conditions & Cascade Layers:** Optional conditions such as `layer(...)`, `supports(...)`, and media query lists attached to `@import` rules are fully preserved and wrapped around the inlined CSS.
+- **Missing files:** An import whose file does not exist logs a warning and is replaced by a `/* @import "…" not found */` comment. The rules after it are still scoped and emitted.
+- **Comments and strings:** `@import` text inside a CSS comment or a quoted string is left as written.
+- **Dev server:** Editing, creating, or deleting an imported stylesheet rebuilds and reloads every page that uses a component importing it, directly or through another import. The stylesheet can live anywhere, including outside the components directory, as long as a dev watcher covers it (`directory.pages`, `directory.components`, or `pipeline.watchPaths`).
 
 ## Toggling Scoping
 

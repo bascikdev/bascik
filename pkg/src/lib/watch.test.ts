@@ -12,6 +12,7 @@ const {
   mockRemovePage,
   mockSelectivelyProcessPages,
   mockSelectivelyProcessPagesForWatchPath,
+  mockProcessPagesImportingStylesheet,
   mockCopyReplicatePath,
   mockCopyStaticAssets,
   mockIsStaticAssetPath,
@@ -39,6 +40,7 @@ const {
   const mockRemovePage = vi.fn().mockResolvedValue(undefined);
   const mockSelectivelyProcessPages = vi.fn().mockResolvedValue(undefined);
   const mockSelectivelyProcessPagesForWatchPath = vi.fn().mockResolvedValue(undefined);
+  const mockProcessPagesImportingStylesheet = vi.fn().mockResolvedValue(undefined);
   const mockCopyReplicatePath = vi.fn().mockResolvedValue(undefined);
   const mockCopyStaticAssets = vi.fn().mockResolvedValue(undefined);
   const mockIsStaticAssetPath = vi.fn().mockReturnValue(true);
@@ -77,6 +79,7 @@ const {
     mockSelectivelyProcessPagesForWatchPath.mockReset().mockResolvedValue(
       undefined,
     );
+    mockProcessPagesImportingStylesheet.mockReset().mockResolvedValue(undefined);
     mockCopyReplicatePath.mockReset().mockResolvedValue(undefined);
     mockCopyStaticAssets.mockReset().mockResolvedValue(undefined);
     mockIsStaticAssetPath.mockReset().mockReturnValue(true);
@@ -107,6 +110,7 @@ const {
     mockRemovePage,
     mockSelectivelyProcessPages,
     mockSelectivelyProcessPagesForWatchPath,
+    mockProcessPagesImportingStylesheet,
     mockCopyReplicatePath,
     mockCopyStaticAssets,
     mockIsStaticAssetPath,
@@ -138,6 +142,7 @@ vi.mock("./processing.js", () => ({
   pageProcessing: mockPageProcessing,
   processAllPages: mockProcessAllPages,
   processPageBatch: mockProcessPageBatch,
+  processPagesImportingStylesheet: mockProcessPagesImportingStylesheet,
   removePage: mockRemovePage,
   selectivelyProcessPages: mockSelectivelyProcessPages,
   selectivelyProcessPagesForWatchPath: mockSelectivelyProcessPagesForWatchPath,
@@ -543,6 +548,32 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     await handler?.("/path/to/src/css/other.css");
     expect(processAllPages).not.toHaveBeenCalled();
     expect(eventEmitter.emit).toHaveBeenCalledWith("asset-changed");
+  });
+
+  it.each(["add", "change", "unlink"])(
+    "rebuilds pages of components importing a static stylesheet on '%s' before reloading",
+    async (event) => {
+      const order: string[] = [];
+      mockProcessPagesImportingStylesheet.mockImplementation(async () => { order.push("rebuild"); });
+      mockEventEmit.mockImplementation((name: string) => { order.push(name); });
+      await getHandler(0, event)?.("/project/src/pages/styles/tokens.css");
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockProcessPagesImportingStylesheet).toHaveBeenCalledExactlyOnceWith("/project/src/pages/styles/tokens.css");
+      if (event !== "unlink") expect(order).toEqual(["rebuild", "asset-changed"]);
+    },
+  );
+
+  it("does not look up stylesheet importers for an inline stylesheet, which rebuilds every page", async () => {
+    mockIsInlineStylesheet.mockReturnValue(true);
+    mockProcessAllPages.mockClear();
+    try {
+      await getHandler(0, "change")?.("/project/src/pages/styles.css");
+      expect(processAllPages).toHaveBeenCalledOnce();
+      expect(mockProcessPagesImportingStylesheet).not.toHaveBeenCalled();
+    } finally {
+      mockIsInlineStylesheet.mockReset().mockReturnValue(false);
+    }
   });
 });
 
