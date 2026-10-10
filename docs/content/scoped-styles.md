@@ -78,7 +78,7 @@ In production builds (`minify.identifiers: true`, the default), these verbose na
 
 ## Selector and animation lab
 
-This component combines a class, an ID selector, bare `h3` and `p` selectors, a local custom property, a media query, and a keyframe animation. Inspect Source and Output to see Bascik rewrite them while the pulse runs in the preview.
+This component combines a class, an ID selector, bare `h3` and `p` selectors, a local custom property, a media query, and a keyframe animation. Inspect Source and Output to see Bascik rewrite them while the meter sweeps in the preview.
 
 <!-- demo:scope-lab-usage -->
 ```html
@@ -88,11 +88,11 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
 <!-- demo:scope-lab-html -->
 ```html
 <section class="scope-lab">
-  <span class="scope-lab-pulse" id="signal" aria-hidden="true"></span>
   <div>
     <h3>Scoped selectors are active</h3>
     <p>Bare element selectors, keyframes, and custom properties stay inside this component.</p>
   </div>
+  <span class="scope-lab-meter" id="signal" aria-hidden="true"></span>
 </section>
 ```
 
@@ -101,39 +101,43 @@ This component combines a class, an ID selector, bare `h3` and `p` selectors, a 
 .scope-lab {
   --signal-color: #d3ff8d;
   display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
-.scope-lab-pulse {
+.scope-lab-meter {
+  height: 4px;
   background: var(--signal-color);
-  animation: scope-pulse 1.6s ease-in-out infinite;
+  transform-origin: left center;
+  animation: scope-sweep 1.6s ease-in-out infinite alternate;
 }
 
 #signal {
-  outline: 3px solid color-mix(in srgb, var(--signal-color) 22%, transparent);
+  border-radius: 999px;
 }
 
 h3 { color: #f0f1f2; }
 p { color: #8d929e; }
 
-@keyframes scope-pulse {
-  50% { opacity: 0.35; transform: scale(0.72); }
+@keyframes scope-sweep {
+  from { transform: scaleX(0.15); }
+  to { transform: scaleX(1); }
 }
 
-@media (max-width: 600px) {
-  .scope-lab { align-items: flex-start; }
+@media (prefers-reduced-motion: reduce) {
+  .scope-lab-meter { animation: none; }
 }
 ```
 
 <!-- demo:scope-lab-output-html -->
 ```html
 <section class="bascik__scope-lab__scope-lab">
-  <span class="bascik__scope-lab__scope-lab-pulse bascik__scope-lab__id__signal"
-        id="bascik__scope-lab__a1b2__signal" aria-hidden="true"></span>
   <div>
     <h3 class="bascik__scope-lab__el__h3">Scoped selectors are active</h3>
     <p class="bascik__scope-lab__el__p">Bare element selectors stay local.</p>
   </div>
+  <span class="bascik__scope-lab__scope-lab-meter bascik__scope-lab__id__signal"
+        id="bascik__scope-lab__a1b2__signal" aria-hidden="true"></span>
 </section>
 ```
 
@@ -143,20 +147,25 @@ p { color: #8d929e; }
   --bascik__scope-lab__signal-color: #d3ff8d;
 }
 
-.bascik__scope-lab__scope-lab-pulse {
+.bascik__scope-lab__scope-lab-meter {
   background: var(--bascik__scope-lab__signal-color);
-  animation: bascik__scope-lab__keyframe__scope-pulse 1.6s ease-in-out infinite;
+  animation: bascik__scope-lab__keyframe__scope-sweep 1.6s ease-in-out infinite alternate;
 }
 
 .bascik__scope-lab__id__signal {
-  outline: 3px solid color-mix(in srgb, var(--bascik__scope-lab__signal-color) 22%, transparent);
+  border-radius: 999px;
 }
 
 .bascik__scope-lab__el__h3 { color: #f0f1f2; }
 .bascik__scope-lab__el__p { color: #8d929e; }
 
-@media (max-width: 600px) {
-  .bascik__scope-lab__scope-lab { align-items: flex-start; }
+@keyframes bascik__scope-lab__keyframe__scope-sweep {
+  from { transform: scaleX(0.15); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bascik__scope-lab__scope-lab-meter { animation: none; }
 }
 ```
 
@@ -221,13 +230,13 @@ The selector and animation lab above uses this exact pattern. Its Source CSS con
 
 Media queries work normally. Class names inside them are scoped like any other rule:
 
-The selector and animation lab includes a mobile media query. Open Output → CSS to see its `.scope-lab` selector rewritten inside the unchanged `@media` wrapper.
+The selector and animation lab includes a `prefers-reduced-motion` media query. Open Output → CSS to see its `.scope-lab-meter` selector rewritten inside the unchanged `@media` wrapper.
 
 ## @keyframes Scoping
 
 Keyframe names are also prefixed so animations from different components never collide:
 
-The pulsing indicator in the lab is driven by `@keyframes scope-pulse`. Open Output → CSS to see the scoped keyframe name and rewritten `animation` declaration.
+The sweeping meter in the lab is driven by `@keyframes scope-sweep`. Open Output → CSS to see the scoped keyframe name and rewritten `animation` declaration.
 
 ## CSS ID Selectors
 

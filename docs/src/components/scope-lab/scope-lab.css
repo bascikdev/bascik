@@ -1,8 +1,8 @@
 .scope-lab {
   --signal-color: var(--accent);
   display: flex;
+  flex-direction: column;
   width: min(100%, 32rem);
-  align-items: center;
   gap: 16px;
   padding: 22px;
   background: var(--elevated);
@@ -10,18 +10,17 @@
   border-radius: 6px;
 }
 
-.scope-lab-pulse {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
+.scope-lab-meter {
+  display: block;
+  height: 4px;
   background: var(--signal-color);
-  border-radius: 50%;
-  animation: scope-pulse 1.6s ease-in-out infinite;
+  transform-origin: left center;
+  animation: scope-sweep 1.6s ease-in-out infinite alternate;
 }
 
 #signal {
-  outline: 3px solid color-mix(in srgb, var(--signal-color) 22%, transparent);
-  outline-offset: 4px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal-color) 22%, transparent);
 }
 
 h3 {
@@ -36,15 +35,18 @@ p {
   font-size: 0.88rem;
 }
 
-@keyframes scope-pulse {
-  50% {
-    opacity: 0.35;
-    transform: scale(0.72);
+@keyframes scope-sweep {
+  from {
+    transform: scaleX(0.15);
+  }
+
+  to {
+    transform: scaleX(1);
   }
 }
 
-@media (max-width: 600px) {
-  .scope-lab {
-    align-items: flex-start;
+@media (prefers-reduced-motion: reduce) {
+  .scope-lab-meter {
+    animation: none;
   }
 }
