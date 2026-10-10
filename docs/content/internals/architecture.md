@@ -57,6 +57,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `exec.ts` | Runs commands from the `exec` configuration list sequentially on build or during file-watching changes. |
 | `file-system.ts` | File-system helpers: recursive directory listing, path resolution between source and dist, copying static assets. |
 | `html-minifier.ts` | Built-in HTML minifier that strips HTML comments and collapses unnecessary whitespace between tags in production builds. |
+| `html-scanner.ts` | One linear scan that follows the WHATWG HTML tokenizer to find the comments and `<script>` elements a browser actually parses, including in malformed markup. The minifier and the production live-reload strip remove or move only what it reports, so they never make text or dead markup run, never stop a script from running, and never join the text around a removal into new markup. |
 | `http.ts` | Plaintext HTTP/1.1 server (`node:http`) used by default in development and cleartext environments. |
 | `http2.ts` | TLS-enabled HTTP/2 server (`node:http2`) used when `enableTls: true` is configured. |
 | `init.ts` | Bootstraps a new Bascik project via `bascik init`. Creates `src/pages/index.html` and `src/components/`, ensures `.gitignore` includes `dist/` and `node_modules/.cache/bascik/`, and patches `package.json` with `"type": "module"` (when absent), an `@bascik/bascik` dependency, and dev/build scripts. |
@@ -116,6 +117,7 @@ index.ts
         │           │     └── typescript.ts
         │           ├── styles.ts
         │           ├── html-minifier.ts, css-minifier.ts, js-minifier.ts
+        │           │     └── html-scanner.ts
         │           ├── build-scripts.ts
         │           ├── worker-pool.ts → page-worker.ts
         │           │     └── (transpilePage - no side effects)

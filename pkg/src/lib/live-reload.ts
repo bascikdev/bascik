@@ -11,33 +11,36 @@
  * scanning page content for the SSE path, which ordinary pages may mention.
  */
 
+import { readStartTagAttributes, removeHtmlRanges, scanHtml, type HtmlRange } from "./html-scanner.ts";
+
 /** Attribute that marks the injected dev live-reload `<script>` tag. */
 export const LIVE_RELOAD_SCRIPT_ATTR = "data-bascik-live-reload";
 
 /**
- * Match one complete injected live-reload `<script>` element. The body is a
- * lazy `[\s\S]*?` bounded by the element's own `</script>`, and the open tag
- * must carry `data-bascik-live-reload` as a whole attribute name, so a match
- * can never start at an unrelated `<script>` or run across several elements.
- */
-export const LIVE_RELOAD_SCRIPT_TAG_RE =
-  /<script\b(?:[^>"']|"[^"]*"|'[^']*')*\sdata-bascik-live-reload(?=[\s=/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi;
-
-/**
- * Remove every injected live-reload script from `html`, leaving all other
- * scripts intact. Removal repeats until nothing matches, so text on either
- * side of a removed element can never join into a new live-reload script
- * (for example `<scr<script data-bascik-live-reload></script>ipt ...>`).
- * Every pass removes at least one non-empty match, so the loop terminates.
+ * Remove every live-reload script element from `html`, leaving everything
+ * else exactly as the browser parses it.
+ *
+ * Elements are found by the spec-following scan in html-scanner.ts, with the
+ * attribute read from the tokenized start tag, so only a real `<script>`
+ * element whose own start tag carries `data-bascik-live-reload` is removed.
+ * Look-alike text, such as `<scr<script data-bascik-live-reload>` (one odd
+ * start tag that runs nothing) or the attribute name inside another
+ * attribute's value, is not a live-reload script and is kept. Text on either
+ * side of a removed element never joins into new markup, so stripping can
+ * never create a script, live-reload or otherwise. If malformed SVG or MathML
+ * stops the scan, scripts after that point stay; a leftover dev client finds
+ * no live-reload endpoint and shuts itself down.
  */
 export const stripLiveReloadScript = (html: string): string => {
-  let previous: string;
-  let current = html;
-  do {
-    previous = current;
-    current = previous.replace(LIVE_RELOAD_SCRIPT_TAG_RE, () => "");
-  } while (current !== previous);
-  return current;
+  if (!html.includes(LIVE_RELOAD_SCRIPT_ATTR)) return html;
+  const removals: HtmlRange[] = [];
+  scanHtml(html, {
+    script(script) {
+      const attributes = readStartTagAttributes(html, script.start);
+      if (attributes.some((attribute) => attribute.name === LIVE_RELOAD_SCRIPT_ATTR)) removals.push(script);
+    },
+  });
+  return removeHtmlRanges(html, removals).html;
 };
 
 export const getLiveReloadScript = (url = "/bascik-live-reload") => `

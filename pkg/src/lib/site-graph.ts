@@ -222,9 +222,8 @@ export const readSiteGraph = async (options: ReadSiteGraphOptions): Promise<Site
             `[bascik] --target: page "${rel}" references server script "${id}" that is missing from the sidecar. Run \`bascik --build\` again.`,
           );
         }
-        const owner = `${entry.mode} script in ${
-          entry.sourceFile ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/") : rel
-        }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
+        const owner = `${entry.mode} script in ${entry.sourceFile ? relative(projectRoot, entry.sourceFile).replace(/\\/g, "/") : rel
+          }${entry.sourceLine ? `:${entry.sourceLine}` : ""}`;
         const containingDir = entry.sourceFile ? dirname(resolve(projectRoot, entry.sourceFile)) : projectRoot;
 
         if (entry.modulePath) {

@@ -5,11 +5,21 @@
  * Strips HTML comments, collapses redundant whitespace while preserving
  * whitespace between inline HTML elements, preserves <pre> and <textarea>
  * contents verbatim, and consolidates script tags at the end of the output.
+ *
+ * Which comments and scripts exist is decided by the spec-following scan in
+ * html-scanner.ts, never by a regex: removing or moving only what the browser
+ * parses as a comment or script keeps every script that ran running, and
+ * never makes text or dead markup run.
  */
 
-import { isJavaScriptScript } from "./script-types.ts";
 import { createContentShield } from "./shielding.ts";
-import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+import {
+  readStartTagAttributes,
+  removeHtmlRanges,
+  scanHtml,
+  type HtmlRange,
+  type TagAttribute,
+} from "./html-scanner.ts";
 
 // The end tag follows the HTML script-data rules: `</script` closes the element
 // when followed by whitespace, `/`, or `>`, and anything up to `>` is ignored
@@ -191,92 +201,92 @@ export const __htmlMinifierInternalsForTests = {
   shieldSensitiveContent,
 };
 
-// Whole-attribute-name match: `data-bascik-server-foo` is NOT a directive.
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
+const DIRECTIVE_ATTRIBUTES = new Set(["data-bascik-build", "data-bascik-server", "data-bascik-routes", "data-bascik-stream"]);
 
-const isExtractableScript = (openTag: string): boolean =>
-  !DIRECTIVE_SCRIPT_RE.test(openTag) &&
-  isJavaScriptScript(openTag);
+/** JavaScript MIME type essences (WHATWG MIME Sniffing). */
+const JAVASCRIPT_MIME_TYPES = new Set([
+  "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
+  "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+  "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
+  "text/x-ecmascript", "text/x-javascript",
+]);
+
+type ScriptKind = "classic" | "module" | "processed" | "inert";
 
 /**
- * Whether the nearest `<` before `index` is more recent than the nearest `>`.
- * Each backward scan stops at the previous script match's closing `>` at the
- * latest, so the total cost across one scan of the page stays linear.
+ * How the browser treats a script, from its tokenized attributes (WHATWG
+ * "prepare the script element"): a classic or module script runs; an import
+ * map or speculation rules are processed in place; any other type is a data
+ * block. Bascik directive scripts never reach the browser as written.
  */
-const followsUnclosedTag = (html: string, index: number): boolean =>
-  index > 0 && html.lastIndexOf("<", index - 1) > html.lastIndexOf(">", index - 1);
+const scriptKind = (attributes: TagAttribute[]): ScriptKind => {
+  if (attributes.some((attribute) => DIRECTIVE_ATTRIBUTES.has(attribute.name))) return "inert";
+  // The tokenizer drops repeated attributes, so the first one counts.
+  const type = attributes.find((attribute) => attribute.name === "type");
+  const language = attributes.find((attribute) => attribute.name === "language");
+  let typeString: string;
+  if (type ? type.value === "" : !language || language.value === "") typeString = "text/javascript";
+  else if (type) typeString = type.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+  else typeString = `text/${language!.value}`;
+  const lower = typeString.toLowerCase();
+  if (JAVASCRIPT_MIME_TYPES.has(lower)) return "classic";
+  if (lower === "module") return "module";
+  if (lower === "importmap" || lower === "speculationrules") return "processed";
+  return "inert";
+};
+
+interface MinificationPlan {
+  /** The document without its comments and hoisted scripts. */
+  remainder: string;
+  /** Hoisted script elements, verbatim, in document order. */
+  scripts: string[];
+  /** Where in `remainder` the hoisted scripts still run when placed. */
+  insertAt: number;
+}
 
 /**
- * Split shielded, comment-free `html` into the markup that stays in place and
- * the extractable script elements, in one scan. Building the remainder from
- * slices of a single match list guarantees that exactly the scripts that are
- * hoisted are the ones removed.
+ * Decide, from one spec-following scan of the original document, which
+ * comments to drop and which scripts to hoist.
  *
- * A `<script` that follows an unclosed `<` (more recent than any `>`) is not
- * a tag start: in `<scr<script>a()</script>ipt>b()</script>` the browser sees
- * one `scr<script` tag and runs nothing. Removing it would join `<scr` and
- * `ipt>` into a new, executable `<script>`. Such a script is left in place,
- * which keeps the document as authored. Because every removal happens in a
- * closed context, joined text can never start a new tag at the seam.
+ * - Comments are dropped everywhere except inside `<pre>`, whose content stays
+ *   verbatim. Comment-like text in raw text or RCDATA (a `<script>` or
+ *   `<style>` body, `<textarea>`, `<title>`, `<noscript>`) is not a comment.
+ * - Ordinary JavaScript scripts are hoisted. Scripts inside `<template>` (inert
+ *   until cloned), SVG or MathML (parsed differently), or `<pre>` stay where
+ *   they are, as does anything after the point the scan cannot follow.
+ *   Execution order is kept: a script that is processed in place (one of
+ *   those, or an import map) keeps every earlier script before it, so those
+ *   are not hoisted either. Data blocks and Bascik directive scripts stay put
+ *   and do not affect order.
+ * - Hoisted scripts are placed at the end, unless the document ends inside
+ *   markup where an appended script would not run, such as an unclosed tag,
+ *   comment, `<template>`, or `<textarea>`. They then go just before it.
  */
-const partitionExtractableScripts = (html: string): { remainder: string; scripts: string[] } => {
-  const parts: string[] = [];
-  const scripts: string[] = [];
-  let cursor = 0;
-  for (const match of html.matchAll(SCRIPT_TAG_PATTERN)) {
-    if (!isExtractableScript(match[1])) continue;
-    if (followsUnclosedTag(html, match.index)) continue;
-    parts.push(html.slice(cursor, match.index));
-    scripts.push(match[0]);
-    cursor = match.index + match[0].length;
-  }
-  if (scripts.length === 0) return { remainder: html, scripts };
-  parts.push(html.slice(cursor));
-  return { remainder: parts.join(""), scripts };
+const planMinification = (htmlString: string): MinificationPlan => {
+  const removals: HtmlRange[] = [];
+  const candidates: HtmlRange[] = [];
+  /** End of the last script that runs where it stands; nothing before it may move after it. */
+  let keepBefore = 0;
+  const { insertionPoint } = scanHtml(htmlString, {
+    comment(comment) {
+      if (!comment.inPre) removals.push(comment);
+    },
+    script(script) {
+      // A script cut off by the end of the input never runs; it stays as is.
+      if (script.inTemplate || !script.terminated) return;
+      const kind = scriptKind(readStartTagAttributes(htmlString, script.start));
+      if (kind === "inert") return;
+      if ((kind === "classic" || kind === "module") && !script.inForeign && !script.inPre) candidates.push(script);
+      else keepBefore = Math.max(keepBefore, script.end);
+    },
+  });
+  const hoisted = candidates.filter((script) => script.start >= keepBefore);
+  const { html, index } = removeHtmlRanges(htmlString, [...removals, ...hoisted], insertionPoint);
+  return { remainder: html, scripts: hoisted.map((script) => htmlString.slice(script.start, script.end)), insertAt: index };
 };
 
-/**
- * Remove HTML comments from shielded `html`. A `<!--` that follows an unclosed
- * `<` is tag text, not a comment: the browser reads `<scr<!-- c -->ipt>` as one
- * `scr<!--` tag. Removing it would join `<scr` and `ipt>` into a new,
- * executable `<script>`, so it is kept. Every removal happens in a closed
- * context, so the text joined at the seam can never extend a tag name or
- * form a new `<!--`: any `<`, `<!`, or `<!-` left of a seam is unclosed, so
- * the comment after it is kept.
- *
- * Scanned with `indexOf` rather than a regex replacement, which matches
- * `<!--[\s\S]*?-->` exactly: each comment runs to the first `-->` after its
- * opening `<!--`, and an unterminated `<!--` is left as is.
- */
-const removeComments = (html: string): string => {
-  const parts: string[] = [];
-  let cursor = 0;
-  let searchFrom = 0;
-  while (true) {
-    const start = html.indexOf("<!--", searchFrom);
-    if (start === -1) break;
-    const close = html.indexOf("-->", start + 4);
-    if (close === -1) break;
-    const end = close + 3;
-    if (!followsUnclosedTag(html, start)) {
-      parts.push(html.slice(cursor, start));
-      cursor = end;
-    }
-    searchFrom = end;
-  }
-  if (cursor === 0) return html;
-  parts.push(html.slice(cursor));
-  return parts.join("");
-};
-
-export const extractScriptTags = (htmlString: string): string => {
-  const shielded = shieldSensitiveContent(htmlString);
-  const html = removeComments(shielded.html);
-  const { scripts } = partitionExtractableScripts(html);
-  if (!scripts.length) return "";
-  return shielded.restore(scripts.join("\n").trim());
-};
+export const extractScriptTags = (htmlString: string): string =>
+  planMinification(htmlString).scripts.join("\n").trim();
 
 export const INLINE_TAGS = new Set([
   "a",
@@ -352,14 +362,10 @@ const getNextTagName = (str: string, ltIndex: number): string => {
   return str.slice(start, end).toLowerCase();
 };
 
-export const minifyHtml = (htmlString: string): string => {
+/** Collapse whitespace outside `<pre>`, `<textarea>`, `<style>`, and script bodies. */
+const collapseWhitespace = (htmlString: string): string => {
   const shielded = shieldSensitiveContent(htmlString);
-  let html = removeComments(shielded.html);
-  const { remainder, scripts } = partitionExtractableScripts(html);
-  const scriptTags = scripts.join("\n").trim();
-  if (scriptTags) {
-    html = remainder.trim();
-  }
+  let html = shielded.html;
   // Preserve content of whitespace-sensitive elements before collapsing whitespace.
   // Without this, code inside <pre> blocks has its newlines and indentation stripped,
   // breaking the visual display of code examples in the browser. Non-extracted scripts
@@ -383,9 +389,17 @@ export const minifyHtml = (htmlString: string): string => {
     /(\x00BASCIK_SHIELD_\d+\x00)\s+</g,
     (_match, token: string) => `${token}<`,
   );
-  html = shielded.restore(html);
-  if (scriptTags) {
-    html += `\n${shielded.restore(scriptTags)}`;
-  }
-  return html;
+  return shielded.restore(html);
+};
+
+export const minifyHtml = (htmlString: string): string => {
+  const { remainder, scripts, insertAt } = planMinification(htmlString);
+  if (scripts.length === 0) return collapseWhitespace(remainder);
+  const scriptTags = scripts.join("\n").trim();
+  if (insertAt >= remainder.length) return `${collapseWhitespace(remainder.trim())}\n${scriptTags}`;
+  // The document ends inside markup where an appended script would not run.
+  // Place the scripts just before it; the line breaks keep the text on either
+  // side from joining with them.
+  const head = collapseWhitespace(remainder.slice(0, insertAt).trim());
+  return `${head}\n${scriptTags}\n${collapseWhitespace(remainder.slice(insertAt))}`;
 };
