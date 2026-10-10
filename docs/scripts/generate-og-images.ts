@@ -14,20 +14,30 @@
  *
  * Or via Yarn workspace script:
  *   yarn workspace bascik-docs generate:og
+ *
+ * Every full build empties dist/, so rendered cards are cached by content in
+ * node_modules/.cache/bascik-docs/og/ and copied back when nothing that shapes
+ * the image (SVG markup, fonts, renderer options or versions) has changed.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
-import { Resvg } from '@resvg/resvg-js';
+import { Resvg, type ResvgRenderOptions } from '@resvg/resvg-js';
 import sharp from 'sharp';
 import { NAV } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
 const fontsDir = join(docsDir, 'fonts');
-const distOgDir = join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets', 'og');
+const defaultOutDir = (): string => join(process.env.BASCIK_OUT_DIR ?? join(docsDir, 'dist'), 'assets', 'og');
+const defaultCacheDir = join(docsDir, 'node_modules', '.cache', 'bascik-docs', 'og');
+
+// Bump to discard every cached card after a change the key does not capture.
+const OG_CACHE_VERSION = 1;
 
 // Custom font paths for resvg
 const fontPaths = [
@@ -36,6 +46,78 @@ const fontPaths = [
   join(fontsDir, 'Inter-800.ttf'),
   join(fontsDir, 'Inter-900.ttf'),
 ];
+
+const RESVG_OPTIONS: ResvgRenderOptions = {
+  fitTo: { mode: 'width', value: 1200 },
+  font: {
+    fontFiles: fontPaths,
+    loadSystemFonts: false,
+    defaultFontFamily: 'Inter',
+    sansSerifFamily: 'Inter',
+    serifFamily: 'Inter',
+    monospaceFamily: 'Inter',
+  },
+};
+
+const JPEG_OPTIONS = { quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: '4:4:4' } as const;
+
+/** Render one card SVG to JPEG bytes. */
+export async function renderOgJpeg(svg: string): Promise<Buffer> {
+  const pngBuffer = new Resvg(svg, RESVG_OPTIONS).render().asPng();
+  return sharp(pngBuffer).jpeg(JPEG_OPTIONS).toBuffer();
+}
+
+/**
+ * Everything except the SVG that shapes the rendered bytes: font file
+ * contents, renderer options, and renderer versions.
+ */
+async function rendererFingerprint(): Promise<string> {
+  const hash = createHash('sha256');
+  hash.update(`og-cache-v${OG_CACHE_VERSION}\0`);
+  for (const fontPath of fontPaths) {
+    hash.update(await readFile(fontPath));
+    hash.update('\0');
+  }
+  hash.update(JSON.stringify(RESVG_OPTIONS.fitTo));
+  hash.update(JSON.stringify({ ...RESVG_OPTIONS.font, fontFiles: undefined }));
+  hash.update(JSON.stringify(JPEG_OPTIONS));
+  const resvgVersion = createRequire(import.meta.url)('@resvg/resvg-js/package.json').version as string;
+  hash.update(`resvg ${resvgVersion}\0`);
+  hash.update(JSON.stringify(sharp.versions));
+  return hash.digest('hex');
+}
+
+const readCachedCard = async (cacheFile: string): Promise<Buffer | null> => {
+  try {
+    const bytes = await readFile(cacheFile);
+    // A truncated or foreign file is treated as a miss and re-rendered.
+    const isJpeg = bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+      bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+    return isJpeg ? bytes : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedCard = async (cacheDir: string, cacheFile: string, bytes: Buffer): Promise<void> => {
+  try {
+    await mkdir(cacheDir, { recursive: true });
+    const temporaryFile = `${cacheFile}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    await writeFile(temporaryFile, bytes);
+    await rename(temporaryFile, cacheFile);
+  } catch {
+    // The cache is an optimization; a failed write never fails the build.
+  }
+};
+
+export interface GenerateOgImagesOptions {
+  /** Output directory for the cards. Defaults to `<BASCIK_OUT_DIR or dist>/assets/og`. */
+  outDir?: string;
+  /** Card cache directory, or `false` to always render. */
+  cacheDir?: string | false;
+  /** Renderer, injectable for tests. */
+  render?: (svg: string) => Promise<Buffer>;
+}
 
 function escapeXml(str: string): string {
   return str
@@ -408,8 +490,12 @@ interface PageMeta {
   codeSnippet?: string;
 }
 
-export async function generateOgImages(): Promise<void> {
+export async function generateOgImages(options: GenerateOgImagesOptions = {}): Promise<void> {
+  const distOgDir = options.outDir ?? defaultOutDir();
+  const cacheDir = options.cacheDir === undefined ? defaultCacheDir : options.cacheDir;
+  const render = options.render ?? renderOgJpeg;
   await mkdir(distOgDir, { recursive: true });
+  const fingerprint = cacheDir ? await rendererFingerprint() : '';
 
   const logoSvgFile = join(docsDir, 'src', 'pages', 'assets', 'bascik-logo.svg');
   let logoMarkup = DEFAULT_LOGO_MARKUP;
@@ -467,25 +553,21 @@ export async function generateOgImages(): Promise<void> {
       chunk.map(async ([slug, { section, title, description }]) => {
         const isHome = slug === 'home';
         const svg = renderOgSvg(title, section, description, isHome, logoMarkup);
-
-        const resvg = new Resvg(svg, {
-          fitTo: { mode: 'width', value: 1200 },
-          font: {
-            fontFiles: fontPaths,
-            loadSystemFonts: false,
-            defaultFontFamily: 'Inter',
-            sansSerifFamily: 'Inter',
-            serifFamily: 'Inter',
-            monospaceFamily: 'Inter',
-          },
-        });
-        const pngBuffer = resvg.render().asPng();
-        const jpgBuffer = await sharp(pngBuffer)
-          .jpeg({ quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: '4:4:4' })
-          .toBuffer();
-
         const outFile = join(distOgDir, `${slug}.jpg`);
+
+        if (!cacheDir) {
+          await writeFile(outFile, await render(svg));
+          return;
+        }
+        const key = createHash('sha256').update(fingerprint).update('\0').update(svg).digest('hex');
+        const cacheFile = join(cacheDir, `${key}.jpg`);
+        if (await readCachedCard(cacheFile)) {
+          await copyFile(cacheFile, outFile);
+          return;
+        }
+        const jpgBuffer = await render(svg);
         await writeFile(outFile, jpgBuffer);
+        await writeCachedCard(cacheDir, cacheFile, jpgBuffer);
       })
     );
     if (i + chunkSize < entries.length) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -486,6 +486,49 @@ describe("executeBuildScripts", () => {
     expect(opts.env?.BASCIK_SOURCE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGE_FILE).toBe("/abs/project/src/pages/guides/intro.html");
     expect(opts.env?.BASCIK_PAGES_DIR).toBe(`${process.cwd()}/src/pages`);
+  });
+
+  describe("Node compile cache for build script children", () => {
+    const saved = {
+      cache: process.env.NODE_COMPILE_CACHE,
+      disabled: process.env.NODE_DISABLE_COMPILE_CACHE,
+    };
+    const restore = (name: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    };
+    beforeEach(() => {
+      delete process.env.NODE_COMPILE_CACHE;
+      delete process.env.NODE_DISABLE_COMPILE_CACHE;
+    });
+    afterEach(() => {
+      restore("NODE_COMPILE_CACHE", saved.cache);
+      restore("NODE_DISABLE_COMPILE_CACHE", saved.disabled);
+    });
+
+    const childEnv = async (): Promise<Record<string, string>> => {
+      resolveWith("");
+      await executeBuildScripts("<script data-bascik-build>x</script>");
+      return (mockExecFile.mock.calls[0][2] as { env: Record<string, string> }).env;
+    };
+
+    it("shares a project-local compile cache across children by default", async () => {
+      expect((await childEnv()).NODE_COMPILE_CACHE).toBe(
+        resolve(process.cwd(), "node_modules", ".cache", "bascik", "compile-cache"),
+      );
+    });
+
+    it("keeps a compile cache directory the user already chose", async () => {
+      process.env.NODE_COMPILE_CACHE = "/custom/cache";
+      expect((await childEnv()).NODE_COMPILE_CACHE).toBe("/custom/cache");
+    });
+
+    it("sets no compile cache when the user disabled it", async () => {
+      process.env.NODE_DISABLE_COMPILE_CACHE = "1";
+      const env = await childEnv();
+      expect(env.NODE_DISABLE_COMPILE_CACHE).toBe("1");
+      expect("NODE_COMPILE_CACHE" in env).toBe(false);
+    });
   });
 
   it("omits BASCIK_SITE_URL from child env when unset, so scripts can distinguish unset from empty", async () => {

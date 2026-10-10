@@ -74,7 +74,8 @@ export function validateCompression(metrics: CompressionMetrics, expectedCalls: 
 }
 export interface ProcessCoverage { role: string; pid: number; threadId?: number; taskId?: string; startedAt?: number; endedAt?: number; dispatchedAt?: number; completedAt?: number }
 export function workerCpuLimitation(platform: string = process.platform, version: string = process.version) {
-  if (platform === "darwin" && version === "v24.17.0") return "Unsupported worker CPU capture on Node v24.17.0/macOS: native built-in loader lock stall; unprofiled worker timelines remain available";
+  // First seen on v24.17.0; still reproduces on later Node 24 releases (see nativeWorkerCpuLimitation).
+  if (platform === "darwin" && /^v24\./.test(version)) return `Unsupported worker CPU capture on Node ${version}/macOS: native built-in loader lock stall; unprofiled worker timelines remain available`;
 }
 /**
  * Real-project dev timelines (eight page workers): with native --cpu-prof inherited by page workers, captures

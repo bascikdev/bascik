@@ -551,6 +551,19 @@ describe("transpilePage – minify.js branch coverage", () => {
     expect(result).not.toBeNull();
     expect(result!.distHtml).toContain("<p>no scripts</p>");
   });
+
+  it("calls a custom minifier for every script, even identical ones", async () => {
+    const custom = vi.fn((code: string) => `/*custom*/${code.trim()}`);
+    (BascikConfig.minify as any).js = custom;
+    const html =
+      '<!DOCTYPE html><html><head></head><body>' +
+      '<script>run();</script><script>run();</script>' +
+      '</body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    await transpilePage(PAGE_PATH, {});
+    await transpilePage(PAGE_PATH, {});
+    expect(custom).toHaveBeenCalledTimes(4);
+  });
 });
 
 describe("transpilePage – auto-fetches componentList", () => {

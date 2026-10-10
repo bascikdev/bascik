@@ -603,3 +603,44 @@ export const minifyJs = (js: string): string => {
 
   return result.trim();
 };
+
+/**
+ * Bounded least-recently-used memo for a pure string minifier. Pages repeat
+ * the same component scripts, so identical inputs are minified once. Sizes
+ * count UTF-16 bytes of input plus output. A throw is never cached.
+ */
+export const createMinifyJsMemo = (
+  minify: (code: string) => string,
+  limits: { maxEntries: number; maxBytes: number },
+): { minify: (code: string) => string; stats: () => { entries: number; bytes: number } } => {
+  const entries = new Map<string, string>();
+  let bytes = 0;
+  const sizeOf = (code: string, result: string): number => 2 * (code.length + result.length);
+  return {
+    minify: (code: string): string => {
+      const cached = entries.get(code);
+      if (cached !== undefined) {
+        entries.delete(code);
+        entries.set(code, cached);
+        return cached;
+      }
+      const result = minify(code);
+      const size = sizeOf(code, result);
+      if (size > limits.maxBytes) return result;
+      entries.set(code, result);
+      bytes += size;
+      while (entries.size > limits.maxEntries || bytes > limits.maxBytes) {
+        const [oldestCode, oldestResult] = entries.entries().next().value as [string, string];
+        entries.delete(oldestCode);
+        bytes -= sizeOf(oldestCode, oldestResult);
+      }
+      return result;
+    },
+    stats: () => ({ entries: entries.size, bytes }),
+  };
+};
+
+const builtInMinifyJsMemo = createMinifyJsMemo(minifyJs, { maxEntries: 512, maxBytes: 16 * 1024 * 1024 });
+
+/** `minifyJs` with a bounded memo of recent inputs. Same output for every input. */
+export const memoizedMinifyJs = builtInMinifyJsMemo.minify;

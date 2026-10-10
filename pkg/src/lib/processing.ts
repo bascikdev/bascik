@@ -96,6 +96,7 @@ import {
   extractInheritableAttributes,
   mergeAttributesOntoRoot,
   maskRawTextContent,
+  spliceRawTextMask,
 } from "./components.ts";
 import { stripPreserveDirectives } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
@@ -121,7 +122,7 @@ const annotateComponentScriptSources = (html: string, sourceFile: string): strin
 };
 
 import { isJavaScriptScript } from "./script-types.ts";
-import { minifyJs } from "./js-minifier.ts";
+import { memoizedMinifyJs } from "./js-minifier.ts";
 import { transformTypeScriptScriptTags } from "./typescript.ts";
 import { deduplicateCss } from "./styles.ts";
 import { minifyCss } from "./css-minifier.ts";
@@ -247,7 +248,8 @@ export const resolveInlineStylesHtml = async (): Promise<string> => {
 const resolveScriptMinifier = (): ((code: string) => Promise<string>) | null => {
   const cfg = BascikConfig.minify?.js ?? false;
   if (!cfg) return null;
-  const fn = cfg === true ? minifyJs : cfg;
+  // Only the built-in minifier is memoized: it is pure. A custom minifier may not be.
+  const fn = cfg === true ? memoizedMinifyJs : cfg;
   return async (code: string) => {
     try {
       return await fn(code);
@@ -539,6 +541,10 @@ export const recursivelyTranspile = (
   // components nested inside the inserted template are still found first).
   // Any operation that edits text outside the known splice resets it to 0.
   let searchFrom = 0;
+  // `transpiledHtmlBody.slice(0, maskClosedThrough)` is known to be closed for
+  // masking, so a substitution after it can splice the template's own mask in
+  // instead of re-masking the page (see spliceRawTextMask). Reset with the cursor.
+  let maskClosedThrough = 0;
   while (true) {
     if (
       substitutions >= MAX_SUBSTITUTIONS ||
@@ -678,6 +684,10 @@ export const recursivelyTranspile = (
       }
       const sIdx = (component as any).startIndex;
       const eIdx = (component as any).endIndex;
+      const hasOffsets = typeof sIdx === "number" && typeof eIdx === "number";
+      const splicedMask = hasOffsets
+        ? spliceRawTextMask(transpiledHtmlBody, masked, sIdx, eIdx, transpiledTag, maskClosedThrough)
+        : null;
       transpiledHtmlBody = replaceTag(
         transpiledHtmlBody,
         component.name,
@@ -688,22 +698,25 @@ export const recursivelyTranspile = (
           : undefined,
       );
 
-      // If the replaced content introduced raw tags (<script>, <style>, <textarea>), re-mask
-      const introducedRawTags = /<(?:script|style|textarea)\b/i.test(transpiledTag);
-      if (introducedRawTags || typeof sIdx !== "number" || typeof eIdx !== "number") {
+      // Mask the inserted template too. Without HTML minification (the dev server, or
+      // `minify.html: false`) a template keeps its comments, and a component tag named in
+      // one, such as a usage note, must stay text instead of being expanded. When the
+      // prefix, the replaced usage, and the template are each closed, the template's own
+      // mask is spliced in; otherwise a comment or raw-text element could cross the
+      // splice boundary, so the whole page is re-masked.
+      if (splicedMask?.masked != null) {
+        masked = splicedMask.masked;
+        searchFrom = sIdx;
+      } else {
         masked = maskRawTextContent(transpiledHtmlBody);
         // A comment or raw-text element opened inside the new content could
         // extend a mask region across the splice boundary only forward, never
         // into the resolved prefix, so resuming at the instance start is still
         // safe; without known indices, be conservative.
-        searchFrom = typeof sIdx === "number" ? sIdx : 0;
-      } else {
-        // Mask the inserted template too. Without HTML minification (the dev server, or
-        // `minify.html: false`) a template keeps its comments, and a component tag named in
-        // one, such as a usage note, must stay text instead of being expanded.
-        masked = masked.slice(0, sIdx) + maskRawTextContent(transpiledTag) + masked.slice(eIdx);
-        searchFrom = sIdx;
+        searchFrom = hasOffsets ? sIdx : 0;
       }
+      // Without offsets the edit position is unknown, so verify from the start again.
+      maskClosedThrough = splicedMask ? splicedMask.closedThrough : 0;
 
       usedComponents.push(component);
       substitutions++;
@@ -732,6 +745,7 @@ export const recursivelyTranspile = (
         // replaceTag without offsets re-searches from the document start and
         // may have edited text before the cursor; reset conservatively.
         searchFrom = 0;
+        maskClosedThrough = 0;
         substitutions++;
       } else {
         // No content to strip — replacing would be a no-op and the while(true)
