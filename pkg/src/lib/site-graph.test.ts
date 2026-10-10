@@ -93,6 +93,30 @@ describe("splitDistPageIntoSegments", () => {
     expect(performance.now() - started).toBeLessThan(2000);
   });
 
+  it.each([
+    ["a bare end tag", "</script>", ["p"]],
+    ["whitespace before the end tag", " \n\t</script>", ["p"]],
+    ["whitespace inside the end tag", "</script \t>", ["p"]],
+    ["a slash inside the end tag", "</script/>", ["p"]],
+    ["an uppercase end tag", "</SCRIPT>", ["p"]],
+    ["a body before the end tag", "x</script>", []],
+    ["a longer tag name", "</scriptx>", []],
+    ["an unterminated end tag", "</script ", []],
+    ["a truncated end tag", "</scri", []],
+  ])("matches the placeholder end tag for %s", (_case, tail, expected) => {
+    const html = `<script type="text/bascik-server" data-bascik-server-id="p">${tail}`;
+    expect(splitDistPageIntoSegments(html).scriptIds).toEqual(expected);
+  });
+
+  it("stays linear on long whitespace runs and repeated unterminated end tags", () => {
+    const open = '<script type="text/bascik-server" data-bascik-server-id="s">';
+    const started = performance.now();
+    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}x`).scriptIds).toEqual([]);
+    expect(splitDistPageIntoSegments(`${open}${"</script\t".repeat(50_000)}`).scriptIds).toEqual([]);
+    expect(splitDistPageIntoSegments(`${open}${" ".repeat(200_000)}</script>`).scriptIds).toEqual(["s"]);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("stays fast on many repeated type attributes in an unterminated tag", () => {
     const html = `<script ${'type="text/bascik-server"'.repeat(20_000)}`;
     const started = performance.now();

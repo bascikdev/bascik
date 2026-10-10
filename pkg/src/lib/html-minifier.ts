@@ -241,11 +241,34 @@ const partitionExtractableScripts = (html: string): { remainder: string; scripts
  * `<` is tag text, not a comment: the browser reads `<scr<!-- c -->ipt>` as one
  * `scr<!--` tag. Removing it would join `<scr` and `ipt>` into a new,
  * executable `<script>`, so it is kept. Every removal happens in a closed
- * context, so the text joined at the seam can never extend a tag name.
+ * context, so the text joined at the seam can never extend a tag name or
+ * form a new `<!--`: any `<`, `<!`, or `<!-` left of a seam is unclosed, so
+ * the comment after it is kept.
+ *
+ * Scanned with `indexOf` rather than a regex replacement, which matches
+ * `<!--[\s\S]*?-->` exactly: each comment runs to the first `-->` after its
+ * opening `<!--`, and an unterminated `<!--` is left as is.
  */
-const removeComments = (html: string): string =>
-  html.replace(/<!--[\s\S]*?-->/g, (comment: string, offset: number) =>
-    followsUnclosedTag(html, offset) ? comment : "");
+const removeComments = (html: string): string => {
+  const parts: string[] = [];
+  let cursor = 0;
+  let searchFrom = 0;
+  while (true) {
+    const start = html.indexOf("<!--", searchFrom);
+    if (start === -1) break;
+    const close = html.indexOf("-->", start + 4);
+    if (close === -1) break;
+    const end = close + 3;
+    if (!followsUnclosedTag(html, start)) {
+      parts.push(html.slice(cursor, start));
+      cursor = end;
+    }
+    searchFrom = end;
+  }
+  if (cursor === 0) return html;
+  parts.push(html.slice(cursor));
+  return parts.join("");
+};
 
 export const extractScriptTags = (htmlString: string): string => {
   const shielded = shieldSensitiveContent(htmlString);

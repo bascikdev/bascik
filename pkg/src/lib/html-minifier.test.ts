@@ -69,6 +69,27 @@ describe("extractScriptTags", () => {
     expect(minifyHtml(html)).toContain("<!--");
   });
 
+  it.each([
+    ["<!<!--x-->-- y -->"],
+    ["<!-<!--x-->- y -->"],
+    ["<<!--x-->!-- y -->"],
+  ])("never joins a new <!-- at a removal seam in %s", (html) => {
+    // Each inner comment follows an unclosed `<`, so it is kept and no new
+    // comment opener can form from the text on either side of it.
+    expect(minifyHtml(html)).toContain("<!--x-->");
+  });
+
+  it("leaves an unterminated comment in place", () => {
+    expect(minifyHtml("<p>a</p><!-- open")).toContain("<!-- open");
+  });
+
+  it("stays linear on many comment openers without a close", () => {
+    const started = performance.now();
+    minifyHtml(`<p>a</p>${"<!--".repeat(50_000)}`);
+    minifyHtml(`<p>a</p>${"<!---->".repeat(50_000)}`);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   it("still removes comments in a closed context, including next to a kept one", () => {
     const html = "<p>a</p><!-- gone --><scr<!-- kept -->ipt>b()</script><!-- gone too --><p>c</p>";
     expect(minifyHtml(html)).toBe("<p>a</p><scr<!-- kept -->ipt>b()</script><p>c</p>");
@@ -112,8 +133,21 @@ describe("extractScriptTags", () => {
     // Removal (hoisting or comment stripping) must never join surrounding text
     // into a new script element. Bodies are unique markers, so a joined script
     // shows up as an output body the input never had.
+    const scriptPattern = String.raw`<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>`;
     const scriptBodies = (html: string) =>
-      new Set([...html.matchAll(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi)].map((m) => m[1]));
+      new Set([...html.matchAll(new RegExp(scriptPattern, "gi"))].map((m) => m[1]));
+    // Input bodies come from two scans: a comment-blind one, and one that
+    // skips comments the way top-level parsing does, so a commented-out
+    // `<script>` such as `<!--<script>-->` is not read as opening a script
+    // around the real one that follows. Neither scan joins text across a
+    // removed region, so a joined body is still absent from both.
+    const inputScriptBodies = (html: string) => {
+      const bodies = scriptBodies(html);
+      for (const m of html.matchAll(new RegExp(`<!--[\\s\\S]*?-->|${scriptPattern}`, "gi"))) {
+        if (m[1] !== undefined) bodies.add(m[1]);
+      }
+      return bodies;
+    };
     const fragment = fc.constantFrom(
       // `ipt>b()</script>` is one fragment so join sequences such as
       // `<scr` + `<!-- c -->` + `ipt>b()</script>` turn up within the run budget.
@@ -128,7 +162,7 @@ describe("extractScriptTags", () => {
         // case, not a join, so it is excluded here.
         const lastEnd = html.toLowerCase().lastIndexOf("</script");
         fc.pre(!/<script\b/i.test(lastEnd === -1 ? html : html.slice(lastEnd + 2)));
-        const inputBodies = scriptBodies(html);
+        const inputBodies = inputScriptBodies(html);
         for (const body of scriptBodies(minifyHtml(html))) expect(inputBodies).toContain(body);
         for (const body of scriptBodies(extractScriptTags(html))) expect(inputBodies).toContain(body);
       }),

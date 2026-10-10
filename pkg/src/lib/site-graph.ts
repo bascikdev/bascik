@@ -37,6 +37,26 @@ export type { DistPageSegment };
 const isPlaceholderOpenTag = (openTag: string): boolean =>
   getHtmlAttributeValue(openTag, "type")?.toLowerCase() === "text/bascik-server";
 
+const WHITESPACE_CHAR = /\s/;
+
+/**
+ * Match a whitespace-only placeholder body followed by a `</script>` end tag,
+ * starting exactly at `from`. Returns the index just past the end tag's `>`,
+ * or -1. Hand-written instead of a sticky regex so the cost is one forward
+ * scan with no backtracking: whitespace, `</script`, then either `>` or a
+ * whitespace/`/` character followed by everything up to the next `>`.
+ */
+const matchPlaceholderEndTag = (html: string, from: number): number => {
+  let i = from;
+  while (i < html.length && WHITESPACE_CHAR.test(html[i])) i++;
+  if (html.slice(i, i + 8).toLowerCase() !== "</script") return -1;
+  i += 8;
+  if (html[i] === ">") return i + 1;
+  if (i >= html.length || (html[i] !== "/" && !WHITESPACE_CHAR.test(html[i]))) return -1;
+  const close = html.indexOf(">", i + 1);
+  return close === -1 ? -1 : close + 1;
+};
+
 /** Split built placeholder HTML into static text and script ids, in document order. */
 export const splitDistPageIntoSegments = (
   html: string,
@@ -44,23 +64,21 @@ export const splitDistPageIntoSegments = (
   const segments: DistPageSegment[] = [];
   const scriptIds: string[] = [];
   let cursor = 0;
-  // Fresh stateful regexes per call: both are driven through `lastIndex`.
+  // Fresh stateful regex per call: it is driven through `lastIndex`.
   const openTagRe = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-  // Whitespace-only body followed by a `</script>` end tag, anchored at `lastIndex`.
-  const endTagRe = /\s*<\/script(?:[\s/][^>]*)?>/iy;
   let open: RegExpExecArray | null;
   while ((open = openTagRe.exec(html)) !== null) {
     const openTag = open[0];
     if (!isPlaceholderOpenTag(openTag)) continue;
-    endTagRe.lastIndex = openTagRe.lastIndex;
-    if (!endTagRe.test(html)) continue;
+    const end = matchPlaceholderEndTag(html, openTagRe.lastIndex);
+    if (end === -1) continue;
     const id = getHtmlAttributeValue(openTag, "data-bascik-server-id");
     if (!id) continue;
     const index = open.index;
     if (index > cursor) segments.push({ kind: "static", text: html.slice(cursor, index) });
     segments.push({ kind: "script", id });
     scriptIds.push(id);
-    cursor = endTagRe.lastIndex;
+    cursor = end;
     openTagRe.lastIndex = cursor;
   }
   if (cursor < html.length || segments.length === 0) segments.push({ kind: "static", text: html.slice(cursor) });
