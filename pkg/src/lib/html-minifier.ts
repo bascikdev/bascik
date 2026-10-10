@@ -11,7 +11,10 @@ import { isJavaScriptScript } from "./script-types.ts";
 import { createContentShield } from "./shielding.ts";
 import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
 
-const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
+// The end tag follows the HTML script-data rules: `</script` closes the element
+// when followed by whitespace, `/`, or `>`, and anything up to `>` is ignored
+// (`</script >`, `</script\t\n foo>`, `</script/>`).
+const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\s/][^>]*)?>)/gi;
 
 /**
  * Build a same-length mask of `htmlString` where HTML comments and the bodies
@@ -183,6 +186,7 @@ const shieldSensitiveContent = (htmlString: string): {
  * parity tests in html-minifier-shield.test.ts. Never read on production paths.
  */
 export const __htmlMinifierInternalsForTests = {
+  SCRIPT_TAG_PATTERN,
   buildSensitiveMask,
   shieldSensitiveContent,
 };

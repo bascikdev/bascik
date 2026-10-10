@@ -3,7 +3,7 @@ import fc from "fast-check";
 import { __htmlMinifierInternalsForTests } from "./html-minifier.ts";
 import { createContentShield } from "./shielding.ts";
 
-const { buildSensitiveMask, shieldSensitiveContent } = __htmlMinifierInternalsForTests;
+const { SCRIPT_TAG_PATTERN, buildSensitiveMask, shieldSensitiveContent } = __htmlMinifierInternalsForTests;
 
 // Reference copies of the original character-array mask and splice-based
 // shield. The optimized implementations must stay byte-identical to these on
@@ -57,8 +57,8 @@ const referenceMask = (html: string): string => {
   return chars.join("");
 };
 
-const SCRIPT_TAG_PATTERN = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
-
+// The reference shield shares the production script pattern: the parity
+// property covers mask building and range assembly, not end-tag syntax.
 const referenceShield = (htmlString: string): {
   html: string;
   restore: (value: string) => string;
@@ -111,6 +111,8 @@ const fragment = fc.constantFrom(
   "</script>",
   "<SCRIPT type=module>",
   "</script >",
+  "</script\t\n foo>",
+  "</script/>",
   "<script data-bascik-server>",
   '<script type="application/ld+json">',
   "<pre>",

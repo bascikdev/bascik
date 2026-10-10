@@ -258,7 +258,8 @@ export async function joinNodeTraceLogs(directory: string, output: string, pid: 
  */
 export function isClinicTraceJoinFailure(log: string) {
   // Clinic prints the error's stack (end-of-stream frames) after the message; nothing else may follow.
-  return /(?:^|\n)Analysing data\r?\nError: premature close\r?\n(?:[ \t]+at [^\n]*\r?\n?)*$/.test(log)
+  // Each frame ends at a newline or the end of input, so frames cannot overlap and matching stays linear.
+  return /(?:^|\n)Analysing data\r?\nError: premature close\r?\n(?:[ \t]+at [^\r\n]*\r?(?:\n|$))*$/.test(log)
     && !log.includes("Output file is") && !/process exited (?:with exit code|by signal)/.test(log);
 }
 

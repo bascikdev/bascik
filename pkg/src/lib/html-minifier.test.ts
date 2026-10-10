@@ -73,6 +73,15 @@ describe("minifyHtml", () => {
     );
   });
 
+  it("ends a script at an end tag with trailing whitespace, attributes, or a slash", () => {
+    for (const close of ["</script\t\n foo>", "</script/>", "</SCRIPT\n>"]) {
+      const html = `<script>first()</script ><p>between</p><script>second()${close}<p>after</p>`;
+      expect(extractScriptTags(html)).toBe(`<script>first()</script >\n<script>second()${close}`);
+      expect(minifyHtml(html)).toBe(`<p>between</p><p>after</p>\n<script>first()</script >\n<script>second()${close}`);
+    }
+    expect(extractScriptTags("<script>a()</scripts><p>x</p>")).toBe("");
+  });
+
   it("does not strip the document tail when a script contains an HTML comment opener", () => {
     const html = '<div><script>const sample = "<!--";</script><p>after</p><!-- real --></div>';
     expect(minifyHtml(html)).toContain("<p>after</p>");

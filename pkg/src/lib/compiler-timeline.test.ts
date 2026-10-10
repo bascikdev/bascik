@@ -318,6 +318,11 @@ describe('rotated Node trace log join', () => {
     expect(isClinicTraceJoinFailure(`${failure}Output file is /p/1.clinic-bubbleprof\n`)).toBe(false);
     expect(isClinicTraceJoinFailure('Analysing data\nError: ENOSPC\n')).toBe(false);
     expect(isClinicTraceJoinFailure(`${failure}Another failure\n`)).toBe(false);
+    expect(isClinicTraceJoinFailure('Analysing data\r\nError: premature close\r\n    at a (x.js:1:1)\r')).toBe(true);
+    // Many frame-like repetitions on one line with a non-matching tail must not backtrack exponentially.
+    const started = performance.now();
+    expect(isClinicTraceJoinFailure(`Analysing data\nError: premature close\n\tat ${'\tat '.repeat(5000)}\nnot a frame`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 
