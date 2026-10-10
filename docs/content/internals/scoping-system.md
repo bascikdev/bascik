@@ -273,6 +273,19 @@ The hash is deterministic, the same full scoped name always produces the same sh
 <style>.ba1c2d3e4f5b { color: red; }</style>
 ```
 
+## Repeated Instances
+
+Instances with identical input after props are applied (same template, CSS, file, and scoping config) differ only in their instance ID. `scopeComponentInstance` in `scoping-template.ts` runs the full scoping pipeline for the first instance of each distinct input and records every generated name. It reuses that work for later instances by computing their names and renaming:
+
+- Every generated name goes through `minifyAttributeName`, which reports each call while a run is recorded. A name whose input contains the instance ID, or an earlier instance-dependent name, is recomputed for each new instance.
+- Reuse starts only after the predicted result matched the full pipeline for two more instances with different IDs. Any mismatch disables reuse for that input.
+- A run that writes to the console or resolves a CSS `@import` is never reused, so warnings and file reads still happen for every instance.
+- A name that occurs in the authored input, overlapping names, colliding names, and unrestored shield markers all fall back to the full pipeline.
+
+The result is byte-identical to scoping every instance in full. Tests check that the pipeline treats generated names as opaque tokens on random and real components. Unit, integration, and end-to-end runs set `BASCIK_VERIFY_SCOPING_TEMPLATES=1`, which recomputes every reused result with the full pipeline and fails on any difference.
+
+CSS name scoping (`container-name`, `@counter-style`, and the other name kinds) replaces whole declared names in one pass, so a declared name never matches inside another generated name or a longer declared name.
+
 ## CSS Deduplication
 
 After all components on a page have been resolved, `deduplicateCss` receives the list of used components. Because class-scoped names are identical across all instances of the same component, a Set-based deduplication is sufficient, each component's CSS block appears exactly once in the final `<style>` tag, regardless of how many times that component was used on the page.

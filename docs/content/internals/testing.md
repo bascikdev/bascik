@@ -230,6 +230,10 @@ Use locator strategy based on test intent:
 
 This keeps ordinary feature tests robust while still verifying compiler transforms directly when required.
 
+### Repeated-instance scoping verification
+
+The Vitest projects in `pkg/` and `docs/`, and every Playwright config, set `BASCIK_VERIFY_SCOPING_TEMPLATES=1`. With it, each scoping result reused for a repeated component instance is also recomputed by the full pipeline, and any difference throws. `scoping-parametricity.test.ts` checks the underlying property directly: on random components (fast-check) and on every component in `docs/` and `pkg/e2e/`, renaming one instance's generated names must give exactly the full pipeline's output for another instance ID, with and without identifier minification. Set `SCOPING_PROPERTY_RUNS` to raise the number of random cases for a deeper local run. `scoping-template.test.ts` pins the component fields and config the pipeline reads and writes with recording proxies, so a new input fails a test instead of being left out of the reuse key.
+
 ## E2E Test Files
 
 Each test file is paired with a fixture page. See the full list on [GitHub](https://github.com/bascikdev/bascik/tree/main/pkg/e2e/tests).

@@ -491,12 +491,31 @@ type CssImportPlan = {
   replacement?: string;
 };
 
+// Observer for CSS import planning, set only while scoping-template.ts records
+// one synchronous scoping run. Planning past this point reads the file system.
+let cssImportPlanningObserver: (() => void) | null = null;
+
+/**
+ * Run `run` synchronously while reporting whether any CSS `@import` planning
+ * (and so any file system access) happened. The previous observer is restored.
+ */
+export const observeCssImportPlanning = <T>(observer: () => void, run: () => T): T => {
+  const previous = cssImportPlanningObserver;
+  cssImportPlanningObserver = observer;
+  try {
+    return run();
+  } finally {
+    cssImportPlanningObserver = previous;
+  }
+};
+
 const planCssImports = (
   css: string,
   baseFilePath: string | undefined,
   visited: Set<string>,
 ): CssImportPlan[] => {
   if (!css || !css.includes("@import")) return [];
+  cssImportPlanningObserver?.();
   const importRegex = /@import\s+(?:url\(\s*(?:([`'"])([\s\S]*?)\1|([^)]*?))\s*\)|([`'"])([\s\S]*?)\4)([^;]*);?/gi;
   const plans: CssImportPlan[] = [];
   for (const match of css.matchAll(importRegex)) {
@@ -795,21 +814,18 @@ export const scopeContainerNames = (
     },
   );
   if (containerNames.size === 0) return css;
-  let result = css;
+  // One pass per pattern over whole names: rewriting one name at a time let a
+  // later name match inside an earlier generated name or a longer name.
+  const scopedNames = new Map<string, string>();
   containerNames.forEach((name) => {
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__container__${name}`,
-    );
-    result = result.replace(
-      new RegExp(`(?<=@container\\s+)${name}(?=\\s*[({])`, "gm"),
-      () => scoped,
-    );
-    result = result.replace(
-      new RegExp(`(container(?:-name)?\\s*:\\s*)${name}`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
+    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__container__${name}`));
   });
-  return result;
+  return css
+    .replace(/(?<=@container\s+)([\w-]+)(?=\s*[({])/gm, (name: string) => scopedNames.get(name) ?? name)
+    .replace(/(container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
+      const scoped = scopedNames.get(name);
+      return scoped === undefined ? match : `${prefix}${scoped}`;
+    });
 };
 
 // ─── view-transition-name Scoping ────────────────────────────────────────────
@@ -892,37 +908,25 @@ export const scopeCounterStyleNames = (
   );
   if (names.size === 0) return css;
 
-  let result = css;
+  const scopedNames = new Map<string, string>();
   names.forEach((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const scoped = minifyAttributeName(
-      `bascik__${componentName}__counter__${name}`,
-    );
-    // Scope the @counter-style declaration
-    result = result.replace(
-      new RegExp(`(@counter-style\\s+)${escaped}(?=\\s*\\{)`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope list-style and list-style-type property references
-    result = result.replace(
-      new RegExp(`(list-style(?:-type)?\\s*:\\s*)${escaped}\\b`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope counter() second argument: counter(name, style)
-    result = result.replace(
-      new RegExp(`(counter\\([^,)]+,\\s*)${escaped}(?=[^)]*\\))`, "gm"),
-      (_, p1) => `${p1}${scoped}`,
-    );
-    // Scope counters() third argument: counters(name, sep, style)
-    result = result.replace(
-      new RegExp(
-        `(counters\\([^,)]+,\\s*[^,)]+,\\s*)${escaped}(?=[^)]*\\))`,
-        "gm",
-      ),
-      (_, p1) => `${p1}${scoped}`,
-    );
+    scopedNames.set(name, minifyAttributeName(`bascik__${componentName}__counter__${name}`));
   });
-  return result;
+  // One pass per pattern over whole names: rewriting one name at a time let a
+  // later name match inside an earlier generated name or a longer name.
+  const scopeName = (match: string, prefix: string, name: string): string => {
+    const scoped = scopedNames.get(name);
+    return scoped === undefined ? match : `${prefix}${scoped}`;
+  };
+  return css
+    // The @counter-style declaration
+    .replace(/(@counter-style\s+)([\w-]+)(?=\s*\{)/gm, scopeName)
+    // list-style and list-style-type property references
+    .replace(/(list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
+    // counter() second argument: counter(name, style)
+    .replace(/(counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
+    // counters() third argument: counters(name, sep, style)
+    .replace(/(counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
 };
 
 // ─── anchor-name / @position-try Scoping ─────────────────────────────────────

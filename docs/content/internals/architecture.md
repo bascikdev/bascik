@@ -80,6 +80,7 @@ All logic lives in `pkg/src/lib/`. Each file has a single, well-defined responsi
 | `server-scripts.ts` | Loads and executes `<script data-bascik-server>` and `<script data-bascik-stream>` blocks at request time, remapping stack traces to the authored file and line before emitting markup into the page stream. |
 | `server-sidecar.ts` | Production sidecar manager for server script registry serialization and startup loading. |
 | `server.ts` | Shared server core used by both dev and production. Dispatches to `http.ts` or `http2.ts` based on `BascikConfig.http.tls.enabled`, runs the request handler, and manages server instances. |
+| `scoping-template.ts` | Runs the attribute and script scoping pipeline per component instance (`runScopingPipeline`) and reuses a verified result for repeated identical inputs by renaming instance-dependent names (`scopeComponentInstance`). Output is byte-identical to scoping every instance in full. |
 | `shielding.ts` | Central string shielding utility protecting raw-text elements, comments, and preserved blocks from scoping regex transforms. |
 | `sitemap.ts` | Generates `dist/sitemap.xml` and `dist/robots.txt` at the end of a build when `generate.sitemap` / `generate.robots` are enabled (both default to `true`). Fails the build when enabled but no site URL is available. |
 | `sse.ts` | Server-Sent Events (SSE) connection manager powering live reload and dev server notifications. |

@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
+// Recompute every reused scoping result and fail on any difference (scoping-template.ts).
+process.env.BASCIK_VERIFY_SCOPING_TEMPLATES ??= '1';
+
 const e2eDir = fileURLToPath(new URL('.', import.meta.url));
 const pkgIndex = join(e2eDir, '../../pkg/dist/index.js');
 

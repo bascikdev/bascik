@@ -31,7 +31,8 @@ import {
  * │                                                                        │
  * │  For each component tag found:                                         │
  * │                                                                        │
- * │  1. SCOPING PIPELINE  (buildScopingPipeline → applyTransforms)        │
+ * │  1. SCOPING PIPELINE  (scopeComponentInstance → runScopingPipeline)   │
+ * │     Repeated inputs reuse a verified result (scoping-template.ts).    │
  * │     Each step is BascikComponent → BascikComponent:                   │
  * │     a. prefixElementAttribute('id')    — scope id attrs + JS refs     │
  * │     b. prefixElementAttribute('name')  — scope name attrs + JS refs   │
@@ -101,7 +102,7 @@ import {
 import { stripPreserveDirectives } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { namespaceScriptTags, prefixElementAttribute } from "./javascript.ts";
+import { scopeComponentInstance } from "./scoping-template.ts";
 
 const annotateComponentScriptSources = (html: string, sourceFile: string): string => {
   const encodedSourceFile = encodeURIComponent(sourceFile);
@@ -329,42 +330,6 @@ const minifyScriptTagsInHtml = async (
     result = result.slice(0, index) + `${open}${body}${close}` + result.slice(index + len);
   }
   return result;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pipeline utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** A function that transforms a component in place and returns it. */
-type ComponentTransform = (component: BascikComponent) => BascikComponent;
-
-/**
- * Apply an ordered list of transforms to a component, threading the output of
- * each step as the input to the next — the pipeline pattern.
- */
-const applyTransforms = (
-  component: BascikComponent,
-  transforms: ComponentTransform[],
-): BascikComponent => transforms.reduce((c, fn) => fn(c), component);
-
-/**
- * Build the ordered list of attribute/script scoping transforms for this
- * component instance, filtered by the current BascikConfig flags.
- */
-const buildScopingPipeline = (instanceId: string): ComponentTransform[] => {
-  const skip = BascikConfig.scoping?.preserve ?? ["code"];
-  return (
-    [
-      BascikConfig.scoping?.attributes?.id &&
-      ((c: BascikComponent) => prefixElementAttribute(c, "id", instanceId, true, skip)),
-      BascikConfig.scoping?.attributes?.name &&
-      ((c: BascikComponent) => prefixElementAttribute(c, "name", instanceId, true, skip)),
-      BascikConfig.scoping?.attributes?.class &&
-      ((c: BascikComponent) =>
-        prefixElementAttribute(c, "class", instanceId, BascikConfig.scoping?.deduplicateCss ?? true, skip)),
-      BascikConfig.scoping?.scriptBlocks && namespaceScriptTags,
-    ] as (ComponentTransform | false)[]
-  ).filter((t): t is ComponentTransform => Boolean(t));
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -610,7 +575,7 @@ export const recursivelyTranspile = (
         issuedIds,
       );
       currentStage = "attribute scoping";
-      component = applyTransforms(component, buildScopingPipeline(instanceId));
+      component = scopeComponentInstance(component, instanceId);
       component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";

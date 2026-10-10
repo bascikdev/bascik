@@ -152,6 +152,21 @@ export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
 };
 
+// A memo hit skips the name generation and CSS import planning that
+// scoping-template.ts must observe, so its recording runs compute the CSS.
+let bypassScopedCssCache = false;
+
+/** Run `run` synchronously with `scopedCssCache` lookups disabled (entries are still stored). */
+export const withScopedCssCacheBypassed = <T>(run: () => T): T => {
+  const previous = bypassScopedCssCache;
+  bypassScopedCssCache = true;
+  try {
+    return run();
+  } finally {
+    bypassScopedCssCache = previous;
+  }
+};
+
 const rewriteIdReferencesInStyleTags = (
   html: string,
   resolve: (originalId: string) => string | null,
@@ -770,7 +785,7 @@ export const prefixElementAttribute = (
       // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames
       const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
       const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
-      const cached = scopedCssCache.get(cacheKey);
+      const cached = bypassScopedCssCache ? undefined : scopedCssCache.get(cacheKey);
 
       if (cached) {
         component.cssFileContent = cached.css;
