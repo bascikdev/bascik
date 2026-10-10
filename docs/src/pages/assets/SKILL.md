@@ -1708,9 +1708,12 @@ Each `pkg/src/lib/*.ts` module has a paired `*.test.ts`. Because modules depend 
 
 ### Runtime Profiling and Retention
 
-Use `yarn workspace @bascik/bascik profile:workload --report-dir <private-directory>` for bounded runtime captures, separate from throughput benchmarks. Replace the illustrative placeholder with a new, empty, absolute directory outside the repository and all served or watched trees; existing roots must be user-owned and mode `0700`. Run tools sequentially and keep manifests, profiles, and snapshots private.
+Bascik's profiling harness lives in `pkg/bench/` (`profile:workload`, `profile:compiler`, `profile:compare`), separate from throughput benchmarks. `pkg/bench/README.md` documents commands, options, and report directory rules. Key constraints:
 
-Captures require complete byte-checked work and valid artifacts, not merely exit code zero. Main-isolate CPU profiles do not establish worker or child-process coverage. Worker CPU recording is unsupported on Node v24.17.0/macOS; unprofiled workers remain available. Allocation samples do not prove reclamation: use the separate module-retention experiments and heap retainer paths described in the testing docs. Failed profiling tests retain private diagnostic paths; do not retry failures into success or infer Node ESM eviction from framework cache cleanup.
+- Pass `--report-dir` a new, empty, absolute directory outside the repository and all served or watched trees (existing roots must be user-owned and mode `0700`). Do not copy example paths literally. Keep manifests, profiles, and snapshots private.
+- Run tools sequentially. Captures require complete byte-checked work and valid artifacts, not merely exit code zero. Failed profiling tests keep private diagnostic paths; do not retry failures into success.
+- Main-isolate CPU profiles do not establish worker or child-process coverage. Worker CPU recording is unsupported on Node 24 on macOS; unprofiled workers remain available.
+- Allocation samples do not prove reclamation, and framework cache cleanup does not evict Node's ESM cache. Use the module-retention experiments and heap retainer paths for retention questions.
 
 ### End-to-End Tests (Playwright)
 

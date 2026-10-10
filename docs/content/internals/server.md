@@ -337,7 +337,7 @@ Every specifier the registry receives is canonicalized to one identity key befor
 - A `file:` URL is parsed as a URL, never re-encoded as a path, and its filesystem path is realpath'd the same way. An authored query string or fragment is part of the identity on purpose: Node treats `mod.ts?variant=a` and `mod.ts?variant=b` as distinct modules, and the registry preserves that distinction.
 - Inline source uses a `data:` URL. Its load state belongs to the page's script job, through a weak owner, rather than a permanent registry entry for each historical source. In development, the URL also reflects the generations of its literal file imports.
 
-The identity key is the URL without the framework's own generation marker, so a path, its `file:` URL, a symlinked spelling, and a relative form of the same file all share one module instance. The realpath rule matters because Node's resolver reports realpaths (`/private/tmp/...` on macOS), and the development module graph below is keyed by what the resolver reports.
+The identity key is the URL without the framework's own generation marker, so a path, its `file:` URL, a symlinked spelling, and a relative form of the same file all share one module instance. The realpath rule matters because Node's resolver reports realpaths (on macOS, for example, a file under `/tmp` resolves to `/private/tmp`), and the development module graph below is keyed by what the resolver reports.
 
 #### Mode Ownership
 

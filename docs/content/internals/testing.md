@@ -14,50 +14,6 @@ The codebase distinguishes test runners from testing levels:
 
 Integration tests in Bascik follow an explicit boundary contract: they do not mock away the primary boundary being verified. When testing worker thread lifecycle, real Node.js `worker_threads` run. When testing targeted-build persistence, real child processes invoke `bascik --build` against isolated disk fixtures. When testing scaffold output, the real `scaffold()` creates directory structures and files, and the real compiler parses and builds them into emitted artifacts. Mocks are reserved for external environment control (such as clock injection or network limits) rather than internal subsystem borders.
 
-## Exec Lifecycle Boundaries
-
-`source-cycle.test.ts` uses injected clocks and promise gates to pin phase ordering, overlapping edits, retained changes, failure recovery, and nonblocking parallel work. `watch-source.integration.test.ts` exercises the source observer with the real cycle coordinator, including glob roots, output exclusion, and dependency routing. Compilation publication tests verify async-scoped reload buffering and disk-write joins.
-
-The dedicated exec Playwright configurations use HTTP release gates rather than arbitrary delays to hold pre and parallel children. Real CLI build fixtures use temporary project directories and an event-driven artifact gate to prove that post sees compiled pages while parallel still runs. Both serial and worker builds must join parallel completion before success. Fixtures write generated artifacts only to `dist/`, and watch source inputs rather than generated files.
-
-## Module Retention Experiments
-
-`module-retention.integration.test.ts` runs bounded native-process experiments with changing-source and stable-source controls. It checks completed responses, framework-owned references, and strong heap retainer paths separately. Framework cache cleanup does not evict Node's ESM cache, and allocation samples alone do not prove reclamation. Like the profiling tests, a failed experiment retains its private report directory and prints the path; successful reports are removed.
-
-Run captures from the repository root in a new private directory outside the repository and all served or watched trees. This illustrative command retains a changing-source dev capture:
-
-```sh
-node --input-type=module -e '
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { runRetentionExperiment } from "./pkg/src/lib/module-retention.test-helper.ts";
-const directory = await mkdtemp(join(tmpdir(), "bascik-retention-"));
-await runRetentionExperiment(directory, true, 60);
-console.log(directory);
-'
-```
-
-Use `false` for the changing-source argument to run the stable control with the same count. A fourth argument of `"http1"` or `"http2"` measures stable-source production requests without edits. Counts must be even and between 2 and 100. Production rounds are request rounds, not compilation generations.
-
-Only disposable subject processes receive GC and snapshot flags. Captures use external deadlines and fail on incomplete requests or publication. Reports include runtime versions, source hashes, checkpoints, and snapshot metadata. Existing report roots must be empty, user-owned, and mode `0700`; snapshots are mode `0600`. Test runs remove temporary artifacts, while explicit captures retain them privately.
-
-Interruption cancels the capture and terminates its owned POSIX process group with bounded graceful-close and force-kill deadlines. This cannot cover uncatchable parent termination or descendants that leave the group; Windows does not provide the POSIX group guarantee. See [Module Lifetime](/internals/server#module-lifetime) for runtime limitations.
-
-## Profiling Resource Boundaries
-
-The profiling workload validates response bytes, completion counts, process coverage, and decoded artifacts before accepting a capture. Run one tool at a time in a new, empty, user-owned directory with mode `0700`, outside the repository and every served or watched tree. For example, replace the illustrative private path below with a new directory:
-
-```sh
-yarn workspace @bascik/bascik profile:workload --tools bubbleprof --scenarios http1 --rounds 20 --report-dir /private/tmp/bascik-async-capture
-```
-
-Tool choices include `control`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `cpu`. Clinic datasets must decode and render successfully. Allocation samples must reference nodes in their captured tree; incomplete or unattributed captures fail and remain private. The load generator runs without profiler flags. Main-isolate captures do not establish worker or child-process CPU coverage. Worker CPU recording is rejected on Node 24 on macOS because of a native loader lock stall; unprofiled worker execution and timelines remain available.
-
-`profile-resource-boundaries.integration.test.ts` uses isolated native processes and explicit producer and consumer gates. Injected controls verify detection of live timers, open descriptors, serialized independent work, and unfinished streams. Actual boundary checks exercise script settlement, response backpressure and disconnect, child permits, source-cycle ordering, worker transfer, disk publication, and cancellation. Resource samples follow explicit cleanup and event-loop checkpoints. Async hooks track resources created after module setup, including unreferenced timers; supported platforms also inspect process-wide open descriptors. Closed file handles are not counted as open resources. These checks do not establish Promise reclamation or native allocator behavior.
-
-The standalone `pkg/bench/profile-boundaries.ts` entry point accepts a new private report directory and an optional `--allocation` flag. Allocation sampling covers the main script and source-cycle window and stops before worker execution. CPU time, elapsed wait, sampled allocation, and retained heap are separate measurements. Worker queue-to-entry and reply-to-receive timings include scheduling costs, and the controlled worker fixture is not a page-worker CPU profile. Use the separate module-retention experiments for snapshots and retainer paths. HeapProfiler request captures stop through the profiler's own writer after framework cleanup; they do not measure full server shutdown.
-
 ## Running Unit Tests
 
 Commands can be run per-package or across the workspace from the repository root:
@@ -134,7 +90,7 @@ This builds the fixture site (using the current `dist/`) and then runs Playwrigh
 yarn pkg:build && yarn pkg:e2e
 ```
 
-To run a specific test file or use the Playwright UI:
+To run a specific test file or use the Playwright UI, run Playwright from `pkg/`:
 
 ```sh
 # Run only CSS scoping tests against static server
@@ -152,22 +108,6 @@ npx playwright test --config e2e/playwright.server-http2.config.ts e2e/tests/pro
 # Open the Playwright UI for interactive debugging
 npx playwright test --config e2e/playwright.config.ts --ui
 ```
-
-### Real-Filesystem Watch Testing
-
-In addition to mocked chokidar tests, watch mode includes real-filesystem tests in isolated temporary directories (`watch-fs.test.ts`). These verify real-world filesystem event sequences, atomic editor saves (temp file write followed by rename), stability thresholds (`awaitWriteFinish`), and debounce behavior without false-confidence gaps.
-
-### Time-Boundary Testing Model
-
-Bascik uses five test mechanics for time-sensitive behavior. This keeps framework timing deterministic in unit tests while preserving real runtime boundaries in integration tests:
-
-1. **Framework internals with fake timers:** Modules that own semantic time accept `FrameworkClock` and are tested with Vitest fake timers (`vi.useFakeTimers()`).
-2. **Static architectural enforcement:** `time-boundary.test.ts` prevents direct ambient timer usage in designated semantic-time modules.
-3. **Cross-process E2E deadlines with real time:** Playwright runs Bascik in a separate process, so E2E timeout assertions use short real deadlines to verify `AbortSignal` propagation and HTTP timeout responses.
-4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
-5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
-
-For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
 ## How the E2E Suite Works
 
@@ -203,10 +143,10 @@ Tests navigate to pages on the active server and assert against the live browser
 
 ## Fixture Design
 
-`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The site URL is supplied per run through the `BASCIK_SITE_URL` environment variable in each Playwright `webServer` command, and the production server port is set via a `server` mode override:
+`minify.identifiers` is kept at `false` in the fixture config so Playwright selectors can use readable scoped names like `bascik__my-comp__btn`. The site URL is supplied per run through the `BASCIK_SITE_URL` environment variable in each Playwright `webServer` command, and the server port is set via a `server` mode override that each lane can change with `BASCIK_SERVER_PORT`. The fixture config also exercises other features (multiple component roots, exec scripts, custom minifiers), so this is an excerpt:
 
 ```ts
-// pkg/e2e/bascik.config.ts
+// pkg/e2e/bascik.config.ts (excerpt)
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
@@ -215,7 +155,7 @@ export default defineConfig({
 });
 
 export const server = defineConfig({
-  http: { port: 9443 },
+  http: { port: Number(process.env.BASCIK_SERVER_PORT) || 9443 },
 });
 ```
 
@@ -266,7 +206,7 @@ test.describe('my-feature-test page', () => {
 });
 ```
 
-> **Rebuild before testing.** Playwright tests run against `e2e/dist/`, which is built from the current `pkg/dist/`. If you change `pkg/src/`, run `yarn build` before `yarn e2e` so the fixture picks up the latest transpiler.
+> **Rebuild before testing.** Playwright tests run against `e2e/dist/`, which is built from the current `pkg/dist/`. If you change `pkg/src/`, run `yarn pkg:build` before `yarn pkg:e2e` so the fixture picks up the latest transpiler.
 
 ## Test Configuration
 
@@ -345,68 +285,53 @@ describe("prefixElementAttribute", () => {
 
 > **Important.** Always import the module under test *after* calling `vi.mock`. Vitest hoists mock calls to the top of the file, but the import order still matters for ensuring the mock is in place when the module initializes its dependencies.
 
-## Benchmarks
+## Boundary Test Patterns
 
-### Runtime Profiling
+### Real-Filesystem Watch Testing
 
-The bounded profiling runner is separate from Vitest throughput benchmarks. Run it from the repository root with a new, empty, absolute private report directory. The path below is illustrative; choose a private directory outside the repository and any served, watched, or cleaned output tree.
+In addition to mocked chokidar tests, watch mode includes real-filesystem tests in isolated temporary directories (`watch-fs.test.ts`). These verify real-world filesystem event sequences, atomic editor saves (temp file write followed by rename), stability thresholds (`awaitWriteFinish`), and debounce behavior without false-confidence gaps.
 
-```sh
-yarn workspace @bascik/bascik profile:workload --report-dir /private/tmp/bascik-profile-run
-```
+### Time-Boundary Testing Model
 
-The default matrix runs unprofiled controls, Clinic Doctor, top-level 0x, and Node CPU sampling across HTTP/1.1, HTTP/2 with TLS, static file serving, live development, serial builds, and worker builds. Use `--tools control,cpu`, `--scenarios http1,workers`, or `--rounds 20` to select a bounded subset. Rounds must be between 1 and 100. Every capture command has a 150-second deadline, leaving cleanup time before the worker profiling test's 180-second limit. At 120 seconds the runner records its own resource state and, on macOS, writes `sample` stack reports for up to four processes in the capture's process group, so a stalled capture keeps evidence of where its threads were waiting. Failed commands, missing output, invalid response bytes, incomplete tasks, and missing required profiles invalidate the run. On POSIX systems, every command (successful, failed, interrupted, or past its deadline) settles its own process group before reporting an outcome: remaining descendants receive termination, get 500ms to exit, are then force-killed, and group absence is checked within one second. The command's exit code or error is preserved and a settlement failure is reported alongside it. Windows has no process groups, so only the leader is owned there. Cancellation stops the capture loop. This does not cover uncatchable parent termination or descendants that deliberately leave the process group.
+Bascik uses five test mechanics for time-sensitive behavior. This keeps framework timing deterministic in unit tests while preserving real runtime boundaries in integration tests:
 
-Clinic commands (collection, visualization, and help) run with Clinic's supported `NO_INSIGHT` opt-out set in the child environment only. Without it, a fresh non-interactive environment never starts collection and exits zero with no dataset. The runner never writes or reads the user's saved consent, and the fresh-environment unit tests use a disposable `HOME` and XDG directories so an existing consent file cannot mask a false start.
+1. **Framework internals with fake timers:** Modules that own semantic time accept `FrameworkClock` and are tested with Vitest fake timers (`vi.useFakeTimers()`).
+2. **Static architectural enforcement:** `time-boundary.test.ts` prevents direct ambient timer usage in designated semantic-time modules.
+3. **Cross-process E2E deadlines with real time:** Playwright runs Bascik in a separate process, so E2E timeout assertions use short real deadlines to verify `AbortSignal` propagation and HTTP timeout responses.
+4. **Browser context timing with `page.clock`:** Browser-only scheduling behavior is tested with Playwright clock controls in the browser runtime.
+5. **External watchdogs on wall clock:** Startup, sockets, and filesystem event flows use real time to match production boundaries.
 
-HTTP/2 harness clients verify TLS normally. `pkg/bench/profile-tls.ts` issues a private fixture certificate authority and a server certificate whose subject alternative name matches the connection host; the fixture config passes the key and certificate through `http.tls`, and clients trust only that fixture CA. Wrong-CA and hostname-mismatch controls confirm that verification is active rather than bypassed. Existing report roots must belong to the current user and have mode `0700`; unsafe roots are rejected before report writes. There are no automatic retries.
+For architecture ownership, cancellation rules, and timeout surfaces, see [Time Boundaries](/internals/time-boundaries).
 
-The fixtures check byte-identical asset delivery, API responses, complete streamed responses, source-edit publication, and serial/worker build output. Static hosting checks file delivery only. Cold and warm phases describe application-cache state, not physical disk-cache state.
+### Exec Lifecycle
 
-Manifests record runtime/profiler versions, hardware, source hashes, configuration, commands, task counts, response hashes, phase timings, memory, and artifact hashes. Keep manifests and raw captures private: they can contain source code and filesystem paths. Profiler and target must use the same stable project working directory.
+Exec scripts run in `pre`, `parallel`, and `post` phases around compilation. The tests pin that ordering with explicit gates rather than fixed delays:
 
-CPU captures append owner-only event journals as worker dispatch, listener entry, inspector operations, artifact writes, replies, and termination occur. Build and shutdown markers do not depend on a successful final result. At 120 seconds, responsive runner and subject event loops record resource snapshots before the capture deadline. Profiling unit tests retain failed report directories and print their private paths; successful test reports are removed. Event journals diagnose incomplete work but do not replace the required task counts or CPU attribution checks.
+- `source-cycle.test.ts` drives the source cycle with injected clocks and promise gates to verify phase ordering, overlapping edits, retained changes, failure recovery, and nonblocking `parallel` work.
+- `watch-source.integration.test.ts` runs the source observer against the real cycle coordinator, covering glob roots, output exclusion, and dependency routing.
+- Compilation publication tests verify that page reloads are buffered per async scope and that dev disk writes are joined before `post` runs.
+- The exec Playwright lanes hold `pre` and `parallel` children behind HTTP release gates. Real CLI build fixtures run in temporary project directories and use an event-driven artifact gate to prove that `post` sees compiled pages while `parallel` is still running. Serial and worker builds both wait for `parallel` to finish before reporting success.
+- Fixture scripts write generated artifacts only to `dist/`, and watchers observe source inputs, never generated files.
 
-Compare controls with profiled runs using completed useful work and validated response bytes. Consult separate startup and workload timings before attributing CPU samples. Worker and build-script child profiles are labeled independently; a main-isolate profile cannot establish their CPU cost. Native helpers and libuv threads require separate low-level profiling. Inclusive samples describe ancestry, while self samples identify the sampled leaf. Instrumentation adds overhead, and a finite fixture does not establish a universal memory or latency budget.
+### Runtime Resource and Retention Tests
 
-Clinic instruments its target through `NODE_OPTIONS`, which every Node descendant would otherwise inherit. Profiling subjects therefore start page workers, build-script children, and config `exec` children without Clinic's preloads, trace flags, or inject path. Node rotates trace-event logs every 2^19 events, so a large Bubbleprof target writes several `node_trace.<n>.log` files. Clinic's multi-file join can fail on Node 24 with `premature close` and leave a truncated trace. When that is the only failure and the subject completed, `profile:compiler` joins the main process's rotated logs itself, after checking each one is complete and contains only that process's events, and then visualizes the dataset. Only the dataset Clinic announces for the main target is decoded and visualized; any other `<pid>.clinic-<tool>` dataset beside it fails the capture. Before a Doctor dataset is visualized, every `processstat` frame is decoded with Doctor's own schema and must form one complete stream with a nondecreasing clock; a truncated or interleaved stream fails with its byte offset instead of a later decoder error.
+Some integration tests measure the runtime itself rather than a single feature:
 
-### Compiler Timelines
+- `module-retention.integration.test.ts` and its siblings check what stays in memory as request modules are edited and reloaded, using changing-source and stable-source controls and heap retainer paths. They pin the behavior described under [Module Lifetime](/internals/server#module-lifetime): clearing framework caches does not evict Node's ESM cache.
+- `profile-resource-boundaries.integration.test.ts` verifies that timers, descriptors, streams, child processes, and worker transfers are released at each boundary, using explicit producer and consumer gates and event-loop checkpoints.
+- `profile-workload.integration.test.ts` and `profile-fixture-tls.integration.test.ts` validate the profiling harness itself.
 
-`profile:compiler` copies a real Bascik project into a private fixture and times complete dev and build runs against an immutable snapshot of the built compiler. It defaults to the repository docs site; pass `--source` for another project and `--site-url` to set `BASCIK_SITE_URL`. Tools are `control`, `cpu`, `doctor`, `bubbleprof`, `heapprofiler`, `0x`, and `flame`. Each fixture gets a real, private cache directory, so a capture never reads or clears the original project's script cache.
+These tests run isolated native processes. A failing run keeps its private report directory and prints the path, and a passing run cleans up after itself.
 
-```sh
-yarn workspace @bascik/bascik profile:compiler --tools control,cpu --modes build --rounds 3 --report-dir /private/tmp/bascik-compiler-run
-```
+## Benchmarks and Profiling
 
-`timeline-manifest.json` records the compiler `dist` digest, runtime, options, every run, and any failure; `complete` stays `false` unless the whole matrix finished. The `cpu` tool requires the main isolate's profile and records page-worker profiles against observed worker starts. Build-script children are not covered by that tool. `--worker-cpu` chooses how page workers are profiled: `all` and `first` inherit native `--cpu-prof` (every worker, or only the first), `inspector` starts the inspector profiler from a preload after worker bootstrap and writes one profile per task, and `none` profiles the main isolate only. The default, `auto`, uses `all` unless native worker capture is known to stall on the current runtime, and then uses `none`. On Node 24 for macOS, sampled page workers can block indefinitely on a process-wide lock, so `all` and `first` are refused there. `inspector` usually completes but can still stall, in which case the capture deadline stops it. `--edits` measures dev edits until validated output reaches disk, not until a browser refreshes. On the docs site it edits a page, a Markdown file, and a shared helper. For another project, `--edit-page src/pages/<page>.html` edits one page and implies `--edits`; pass `--edit-output` when the page does not map to `dist/` under the default directories.
+`yarn pkg:bench` runs Vitest throughput benchmarks from `pkg/bench/` on fixed, repeatable inputs. The same directory contains a bounded profiling harness for deeper investigation:
 
-### Paired Compiler Comparisons
+- `profile:workload` captures runtime behavior (HTTP/1.1, HTTP/2 with TLS, static serving, live development, serial and worker builds) with Clinic, 0x, or Node CPU sampling on a synthetic fixture.
+- `profile:compiler` times complete dev and build runs of a real project, defaulting to the docs site.
+- `profile:compare` alternates a baseline and a candidate compiler on the same fixture and stops if their emitted HTML differs, so a performance change can be checked for byte-identical output.
 
-`profile:compare` alternates a baseline and a candidate compiler on one prepared private fixture. Deterministic instance IDs hash absolute source paths, so emitted HTML is only comparable between builds of the same fixture path. Before each build the fixture's `node_modules/@bascik/bascik` symlink is pointed at the compiler under test, so config imports and exec scripts use the same snapshot as the compile. Both compilers need `dist`, `bin`, and `package.json`; a `git worktree` checkout also records its revision.
-
-```sh
-yarn workspace @bascik/bascik profile:compare --project /private/tmp/fixture/docs --baseline /private/tmp/baseline/pkg --candidate /private/tmp/candidate/pkg --mode build --rounds 5 --site-url https://bascik.dev --report-dir /private/tmp/bascik-compare-run
-```
-
-Rounds swap which compiler runs first. Cold runs remove the fixture's application cache before each build; warm runs reuse whatever cache the previous build left, which may come from the other compiler. Any change in emitted HTML between the two compilers stops the comparison. `comparison.json` reports per-compiler, per-cache-state medians with their samples, and keeps partial results and the failure when a run stops early.
-
-Performance benchmarks live in `pkg/bench/` and use Vitest's built-in `bench` API. They measure the transpilation pipeline on fixed, repeatable inputs:
-
-```ts
-import { bench, describe } from "vitest";
-import { recursivelyTranspile } from "../src/lib/processing.ts";
-
-describe("recursivelyTranspile", () => {
-  bench("simple page - one component", () => {
-    recursivelyTranspile(simpleHtml, componentList);
-  });
-
-  bench("complex page - nested components", () => {
-    recursivelyTranspile(complexHtml, componentList);
-  });
-});
-```
+Each capture validates the work it measured (response bytes, task counts, decoded artifacts) and is rejected if anything is incomplete, so a run that merely exits successfully is not accepted. Captures write to a private report directory you choose. Commands, options, report directory rules, and known platform limitations are documented in the [benchmarks and profiling README](https://github.com/bascikdev/bascik/blob/main/pkg/bench/README.md).
 
 ## TypeScript Checking
 

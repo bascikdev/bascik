@@ -27,7 +27,7 @@ export default defineConfig({
     onBuildScriptError: 'warn',
     onRoutesScriptError: 'warn',
     onServerScriptError: 'warn',
-    // Bring-your-own browser TypeScript compiler (prompt 148 follow-on).
+    // Bring-your-own browser TypeScript compiler.
     // esbuild with loader 'ts' handles non-erasable syntax (enum) that Node's
     // default strip-only mode rejects; ts-compiler-test depends on that.
     // Runs in worker threads too, which is why it lives in the config file.
