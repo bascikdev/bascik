@@ -11,6 +11,8 @@
  * recorded live, so timing is exact and does not depend on how fast this machine renders. An animated scene also
  * gets a `-still` copy of its last frame, which the docs serve to visitors who prefer reduced motion.
  *
+ * The VS Code launching and frame assembly live in ./capture-kit, shared with capture-demos.ts.
+ *
  * Maintainer tool only: it is not part of the docs build. Run after `yarn ext:compile` (macOS):
  *   node scripts/capture-vscode-screenshots.ts [sceneName ...]
  *
@@ -19,27 +21,29 @@
  *
  * Output: docs/src/pages/assets/vscode/<scene>@2x.webp, plus <scene>-still@2x.webp for animated scenes
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, type Page } from 'playwright';
-import sharp from 'sharp';
+import type { Page } from 'playwright';
+import { INTRO_HOLD, OUTRO_HOLD, pushFrame, writeScene, type Clip, type Frame } from './capture-kit/frames.ts';
+import {
+  LINE_HEIGHT,
+  TAB_HEIGHT,
+  TOP_PADDING,
+  createCapture,
+  gotoLine,
+  launchVsCode,
+  openFile,
+  press,
+  resizeWindow,
+} from './capture-kit/vscode.ts';
 
 const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const repoDir = resolve(docsDir, '..');
 const outDir = join(docsDir, 'src/pages/assets/vscode');
-const codeBinary = '/Applications/Visual Studio Code.app/Contents/MacOS/Code';
-const debugPort = 9333;
 
 /** Default window content size in CSS pixels. Screenshots are taken at 2x pixel density. */
 const WIDTH = 780;
 const HEIGHT = 720;
-const LINE_HEIGHT = 24;
-const TAB_HEIGHT = 35;
-const TOP_PADDING = 12;
-
 interface Scene {
   /** Output file name without extension. */
   name: string;
@@ -124,10 +128,6 @@ const siteHeader = `<header>
 </style>
 `;
 
-const press = async (page: Page, ...keys: string[]) => {
-  for (const key of keys) await page.keyboard.press(key);
-};
-
 /** Opens the suggest widget, retrying while the extension is still indexing the project. */
 const openSuggestList = async (page: Page) => {
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -170,10 +170,6 @@ const hover = async (page: Page, settleMs = 3000) => {
   await page.screenshot({ path: '/tmp/vscode-hover-failure.png' });
   throw new Error('The hover never stayed visible (screenshot: /tmp/vscode-hover-failure.png)');
 };
-
-/** How long the first frame stays up before anything moves, and how long the last one stays before the loop. */
-const INTRO_HOLD = 1200;
-const OUTRO_HOLD = 4000;
 
 // Order matters: scenes that show the documentation side panel must come last, because VS Code keeps it open.
 const scenes: Scene[] = [
@@ -357,131 +353,15 @@ async function buildProject(root: string, sceneList: Scene[]): Promise<void> {
   }
 }
 
-async function installExtension(extensionsDir: string): Promise<void> {
-  const source = join(repoDir, 'extensions/vscode-bascik');
-  const target = join(extensionsDir, 'bascik.bascik-vscode-0.0.0');
-  await mkdir(target, { recursive: true });
-  for (const entry of ['package.json', 'syntaxes', 'snippets', 'icon.png', 'LICENSE']) {
-    await cp(join(source, entry), join(target, entry), { recursive: true });
-  }
-  await cp(join(source, 'dist'), join(target, 'dist'), {
-    recursive: true,
-    filter: (path) => !path.includes('/test') && !path.endsWith('.test.js'),
-  });
-}
-
-async function writeSettings(userDataDir: string): Promise<void> {
-  const userDir = join(userDataDir, 'User');
-  await mkdir(userDir, { recursive: true });
-  const settings = {
-    'workbench.colorTheme': 'Default Dark Modern',
-    'workbench.startupEditor': 'none',
-    'workbench.activityBar.location': 'hidden',
-    'workbench.statusBar.visible': false,
-    'workbench.layoutControl.enabled': false,
-    'workbench.tips.enabled': false,
-    'workbench.editor.showTabs': 'single',
-    'window.titleBarStyle': 'custom',
-    'window.commandCenter': false,
-    'window.restoreWindows': 'none',
-    'security.workspace.trust.enabled': false,
-    'telemetry.telemetryLevel': 'off',
-    'update.mode': 'none',
-    'extensions.autoUpdate': false,
-    'extensions.autoCheckUpdates': false,
-    'editor.minimap.enabled': false,
-    'editor.fontSize': 15,
-    'editor.lineHeight': LINE_HEIGHT,
-    'editor.fontFamily': 'Menlo, Monaco, "Courier New", monospace',
-    'editor.padding.top': TOP_PADDING,
-    'editor.scrollBeyondLastLine': false,
-    'editor.wordBasedSuggestions': 'off',
-    'editor.suggest.showStatusBar': false,
-    'editor.quickSuggestions': { other: false, comments: false, strings: false },
-    'editor.suggestOnTriggerCharacters': false,
-    'editor.autoClosingBrackets': 'never',
-    'editor.renderLineHighlight': 'none',
-    // A blinking caret would make otherwise identical frames differ and bloat the animation.
-    'editor.cursorBlinking': 'solid',
-    'editor.occurrencesHighlight': 'off',
-    'editor.selectionHighlight': false,
-    'editor.guides.indentation': false,
-    'editor.stickyScroll.enabled': false,
-    'breadcrumbs.enabled': false,
-    // Autosave keeps the tab free of the unsaved-changes dot after a scene types text.
-    'files.autoSave': 'afterDelay',
-    'files.autoSaveDelay': 100,
-    'git.enabled': false,
-    'chat.commandCenter.enabled': false,
-    'chat.disableAIFeatures': true,
-  };
-  await writeFile(join(userDir, 'settings.json'), JSON.stringify(settings, null, 2));
-}
-
-async function waitForPort(): Promise<void> {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
-      if (response.ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((done) => setTimeout(done, 300));
-  }
-  throw new Error('VS Code did not expose the DevTools port in time');
-}
-
-/** Resizes the window content area while keeping 2x pixel density for crisp screenshots. */
-async function resizeWindow(page: Page, width: number, height: number): Promise<void> {
-  const session = await page.context().newCDPSession(page);
-  await session.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: false });
-  await page.waitForTimeout(800);
-}
-
-/** Opens a file with Quick Open and confirms the editor tab shows it, retrying while the file index warms up. */
-async function openFile(page: Page, fileName: string): Promise<void> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await press(page, 'Meta+p');
-    await page.keyboard.type(fileName);
-    await page.waitForTimeout(700);
-    await press(page, 'Enter');
-    await page.waitForTimeout(500);
-    const label = await page.locator('.editor-group-container .title-label').first().textContent();
-    if (label?.trim().startsWith(fileName)) return;
-  }
-  throw new Error(`Could not open ${fileName}`);
-}
-
-interface Frame {
-  png: Buffer;
-  hold: number;
-}
-
-type Clip = { x: number; y: number; width: number; height: number };
-
 async function createRecorder(page: Page, clip: Clip): Promise<Recorder & { frames: Frame[] }> {
-  // Playwright's own screenshot call dismisses a keyboard-triggered hover once it has taken the picture, so
-  // frames after the first would lose it. Asking the browser for the picture directly leaves the editor alone.
-  const session = await page.context().newCDPSession(page);
-  const capture = async (area: Clip): Promise<Buffer> => {
-    const { data } = await session.send('Page.captureScreenshot', {
-      format: 'png',
-      clip: { ...area, scale: 1 },
-    });
-    return Buffer.from(data, 'base64');
-  };
+  const capture = await createCapture(page);
   const frames: Frame[] = [];
   const recorder = {
     frames,
     async frame(holdMs: number) {
       // Let popups and squiggles finish their own short fades before the picture is taken.
       await page.waitForTimeout(150);
-      const png = await capture(clip);
-      const previous = frames.at(-1);
-      // Identical neighbors become one longer frame, which keeps the file small.
-      if (previous?.png.equals(png)) previous.hold += holdMs;
-      else frames.push({ png, hold: holdMs });
+      pushFrame(frames, await capture(clip), holdMs);
     },
     async type(text: string, { every = 1, msPerChar = 110 }: { every?: number; msPerChar?: number } = {}) {
       const characters = Array.from(text);
@@ -495,87 +375,20 @@ async function createRecorder(page: Page, clip: Clip): Promise<Recorder & { fram
   return recorder;
 }
 
-/** Writes a still WebP for one frame, or an animated WebP plus a still of the last frame for several. */
-async function writeScene(name: string, frames: Frame[]): Promise<void> {
-  const animatedFile = join(outDir, `${name}@2x.webp`);
-  const stillFile = join(outDir, `${name}-still@2x.webp`);
-  const lossy = { quality: 80, effort: 6 };
-  if (frames.length === 1) {
-    await sharp(frames[0].png).webp(lossy).toFile(animatedFile);
-    // A scene that stopped moving must not leave a stale reduced-motion copy behind.
-    await rm(stillFile, { force: true });
-    console.log(`captured ${name}`);
-    return;
-  }
-  const { width = 0, height = 0 } = await sharp(frames[0].png).metadata();
-  const raw = await Promise.all(frames.map(({ png }) => sharp(png).ensureAlpha().raw().toBuffer()));
-  await sharp(Buffer.concat(raw), { raw: { width, height: height * frames.length, channels: 4, pageHeight: height } })
-    // Lossless: lossy animations only re-encode the changed rectangle, so each frame leaves a faint ghost of
-    // the one before it. Flat dark UI compresses well without loss anyway.
-    .webp({ lossless: true, effort: 6, loop: 0, delay: frames.map((frame) => frame.hold) })
-    .toFile(animatedFile);
-  await sharp(frames[frames.length - 1].png).webp(lossy).toFile(stillFile);
-  const seconds = (frames.reduce((total, frame) => total + frame.hold, 0) / 1000).toFixed(1);
-  console.log(`captured ${name} (${frames.length} frames, ${seconds}s loop)`);
-}
-
 async function main(): Promise<void> {
   const wanted = process.argv.slice(2);
   const selected = wanted.length ? scenes.filter((scene) => wanted.includes(scene.name)) : scenes;
   if (selected.length === 0) throw new Error(`No scenes match: ${wanted.join(', ')}`);
 
-  const base = await mkdtemp(join(tmpdir(), 'bascik-shots-'));
-  const projectDir = join(base, 'project');
-  const extensionsDir = join(base, 'extensions');
-  const userDataDir = join(base, 'user-data');
-  await buildProject(projectDir, selected);
-  await installExtension(extensionsDir);
-  await writeSettings(userDataDir);
-  await mkdir(outDir, { recursive: true });
-
-  // Strip the variables an integrated terminal sets, so this window starts as a standalone VS Code.
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('VSCODE_') || key === 'ELECTRON_RUN_AS_NODE') delete env[key];
-  }
-
-  const code: ChildProcess = spawn(
-    codeBinary,
-    [
-      projectDir,
-      `--user-data-dir=${userDataDir}`,
-      `--extensions-dir=${extensionsDir}`,
-      `--remote-debugging-port=${debugPort}`,
-      '--new-window',
-      '--skip-release-notes',
-      '--skip-welcome',
-      '--disable-workspace-trust',
-      '--disable-extensions-except=bascik.bascik-vscode',
-    ],
-    { env, stdio: 'ignore' },
-  );
-
+  const vscode = await launchVsCode({ prepare: (projectDir) => buildProject(projectDir, selected) });
+  const { page } = vscode;
   try {
-    await waitForPort();
-    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
-    const context = browser.contexts()[0];
-    let page = context.pages().find((candidate) => candidate.url().includes('workbench'));
-    if (!page) page = await context.waitForEvent('page');
-    await page.waitForSelector('.monaco-workbench', { timeout: 60_000 });
-    await page.waitForTimeout(3000);
-    // Give the editor the whole window: hide the Explorer (Cmd+B) and the secondary side bar (Cmd+Option+B).
-    await press(page, 'Meta+b', 'Meta+Alt+b');
-    await page.waitForTimeout(500);
-
     for (const scene of selected) {
       const { line, column } = stripMarker(scene.content);
       await resizeWindow(page, scene.width ?? WIDTH, HEIGHT);
       await openFile(page, scene.file.split('/').pop() ?? scene.file);
       await page.waitForTimeout(1500);
-      await press(page, 'Control+g');
-      await page.keyboard.type(`${line}:${column}`);
-      await press(page, 'Enter');
-      await page.waitForTimeout(500);
+      await gotoLine(page, line, column);
 
       const editor = await page.locator('.editor-group-container').first().boundingBox();
       if (!editor) throw new Error('Editor not found');
@@ -583,8 +396,7 @@ async function main(): Promise<void> {
         editor.height,
         TAB_HEIGHT + TOP_PADDING + scene.lines * LINE_HEIGHT + (scene.extraHeight ?? 0),
       );
-      const clip = { x: editor.x, y: editor.y, width: editor.width, height };
-      const recorder = await createRecorder(page, clip);
+      const recorder = await createRecorder(page, { x: editor.x, y: editor.y, width: editor.width, height });
 
       await scene.run(page, recorder);
       if (recorder.frames.length === 0) {
@@ -592,16 +404,11 @@ async function main(): Promise<void> {
         await recorder.frame(0);
       }
       if (process.env.DEBUG_FULL) await page.screenshot({ path: `/tmp/vscode-${scene.name}.png` });
-      await writeScene(scene.name, recorder.frames);
+      await writeScene(outDir, scene.name, recorder.frames);
       await press(page, 'Escape');
     }
-    await browser.close();
   } finally {
-    code.kill();
-    // Electron leaves helper processes behind; end everything started with this run's profile.
-    spawnSync('pkill', ['-f', base]);
-    if (process.env.KEEP_TEMP) console.log(`kept ${base}`);
-    else await rm(base, { recursive: true, force: true }).catch(() => undefined);
+    await vscode.close();
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { renderMd, renderMdRange, extractDemoBlock } from './md-renderer.js';
+import { renderMd, renderMdRange, extractDemoBlock, demoImage } from './md-renderer.js';
 
 describe('md-renderer', () => {
   let tempDir: string;
@@ -147,6 +147,65 @@ const x = 1;
       // An image with no still copy stays a plain <img>.
       expect(html.match(/<picture>/g)).toHaveLength(1);
       expect(html).toContain('<img loading="lazy" decoding="async" width="20" height="10" src="/assets/solo@2x.webp" alt="Solo">');
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it('demoImage renders like a Markdown image and marks recorded demos without boxing other images', async () => {
+    const webp = Buffer.alloc(32);
+    webp.write('RIFF', 0, 'latin1');
+    webp.write('WEBP', 8, 'latin1');
+    webp.write('VP8 ', 12, 'latin1');
+    webp.writeUInt16LE(40, 26);
+    webp.writeUInt16LE(20, 28);
+    await mkdir(join(tempDir, 'src/pages/assets/demos'), { recursive: true });
+    await writeFile(join(tempDir, 'src/pages/assets/demos/tour@2x.webp'), webp);
+    await writeFile(join(tempDir, 'src/pages/assets/demos/tour-still@2x.webp'), webp);
+    await writeFile(join(tempDir, 'src/pages/assets/photo@2x.webp'), webp);
+
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    try {
+      expect(demoImage('/assets/demos/tour@2x.webp', 'A "quoted" tour')).toBe(
+        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still@2x.webp">' +
+          '<img loading="lazy" decoding="async" class="demo-shot" width="20" height="10" ' +
+          'src="/assets/demos/tour@2x.webp" alt="A &quot;quoted&quot; tour"></picture>',
+      );
+      // Only the recorded demos opt out of the default image frame.
+      expect(demoImage('/assets/photo@2x.webp', 'Photo')).not.toContain('demo-shot');
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it('demoImage serves a narrow-screen image with its own size, and keeps reduced motion ahead of screen size', async () => {
+    const webp = (width: number, height: number) => {
+      const header = Buffer.alloc(32);
+      header.write('RIFF', 0, 'latin1');
+      header.write('WEBP', 8, 'latin1');
+      header.write('VP8 ', 12, 'latin1');
+      header.writeUInt16LE(width, 26);
+      header.writeUInt16LE(height, 28);
+      return header;
+    };
+    const assets = join(tempDir, 'src/pages/assets/demos');
+    await mkdir(assets, { recursive: true });
+    await writeFile(join(assets, 'wide@2x.webp'), webp(1100, 360));
+    await writeFile(join(assets, 'wide-still@2x.webp'), webp(1100, 360));
+    await writeFile(join(assets, 'tall@2x.webp'), webp(660, 700));
+    await writeFile(join(assets, 'tall-still@2x.webp'), webp(660, 700));
+
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    try {
+      const html = demoImage('/assets/demos/wide@2x.webp', 'Tour', { src: '/assets/demos/tall@2x.webp', maxWidth: 760 });
+      const sources = [...html.matchAll(/<source [^>]*>/g)].map((match) => match[0]);
+      expect(sources).toEqual([
+        '<source media="(max-width: 760px) and (prefers-reduced-motion: reduce)" srcset="/assets/demos/tall-still@2x.webp" width="330" height="350">',
+        '<source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/wide-still@2x.webp">',
+        '<source media="(max-width: 760px)" srcset="/assets/demos/tall@2x.webp" width="330" height="350">',
+      ]);
+      // The <img> keeps the default image's own size.
+      expect(html).toContain('width="550" height="180" src="/assets/demos/wide@2x.webp"');
     } finally {
       cwd.mockRestore();
     }

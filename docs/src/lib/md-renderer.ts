@@ -83,6 +83,57 @@ function stillCopyPath(sitePath: string): string | null {
   return existsSync(join(process.cwd(), 'src/pages', still)) ? still : null;
 }
 
+/**
+ * Site folder for the recordings made by scripts/capture-demos.ts. Their windows have rounded, transparent
+ * corners. The square VS Code screenshots in /assets/vscode/ keep the default image border.
+ */
+const DEMO_FOLDERS = ['/assets/demos/'];
+
+/**
+ * The HTML for one site image: lazy loading, the display size when the file is a PNG or WebP that ships with
+ * the docs, and a `demo-shot` class for the recorded demos so their rounded window corners are not boxed in.
+ *
+ * An animated image with a `-still` copy is wrapped in <picture> so visitors who prefer reduced motion get the
+ * still instead. The animation loops forever and cannot be paused, so it must not be their default.
+ *
+ * `rest` is whatever follows `src` in the original tag, such as ` alt="..."`.
+ */
+function renderImage(src: string, rest: string, narrow?: { src: string; maxWidth: number }): string {
+  const size = imageSize(src);
+  const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
+  const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder)) ? ' class="demo-shot"' : '';
+  const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${src}"${rest}>`;
+  const sources: string[] = [];
+  // The narrow image has a different shape from the default one, so its sources say how big it is. Without
+  // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
+  const narrowSize = narrow ? imageSize(narrow.src) : null;
+  const narrowDimensions = narrowSize ? ` width="${narrowSize.width}" height="${narrowSize.height}"` : '';
+  // Reduced motion wins over screen size, so these sources come first: the browser uses the first match.
+  const still = stillCopyPath(src);
+  const narrowStill = narrow ? stillCopyPath(narrow.src) : null;
+  if (narrow && narrowStill) {
+    sources.push(`<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${narrowStill}"${narrowDimensions}>`);
+  }
+  if (still) sources.push(`<source media="(prefers-reduced-motion: reduce)" srcset="${still}">`);
+  if (narrow) sources.push(`<source media="(max-width: ${narrow.maxWidth}px)" srcset="${narrow.src}"${narrowDimensions}>`);
+  if (sources.length === 0) return image;
+  return `<picture>${sources.join('')}${image}</picture>`;
+}
+
+/** Escapes text for use inside a double-quoted HTML attribute. */
+const escapeAttribute = (text: string) => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+/**
+ * Renders a site image for an HTML page, with the same sizing, lazy loading, and reduced-motion handling as
+ * images in Markdown. Call it from a `data-bascik-build` script.
+ *
+ * `narrow` swaps in a different image on screens up to `maxWidth` pixels wide. A wide side-by-side recording
+ * would shrink to unreadable on a phone, so a stacked recording is served there instead.
+ */
+export function demoImage(src: string, alt: string, narrow?: { src: string; maxWidth: number }): string {
+  return renderImage(src, ` alt="${escapeAttribute(alt)}"`, narrow);
+}
+
 interface RenderMdOptions {
   skipFirstHeading?: boolean;
   stripDemoBlocks?: boolean;
@@ -264,17 +315,8 @@ function _transformMd(
   html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
 
-  // Images: lazy loading, and the display size when the file is a PNG or WebP that ships with the docs.
-  // An animated image with a `-still` copy is wrapped in <picture> so visitors who prefer reduced motion
-  // get the still instead. The animation loops forever and cannot be paused, so it must not be their default.
-  html = html.replace(/<img src="(\/[^"]+)"([^>]*)>/g, (_, src: string, rest: string) => {
-    const size = imageSize(src);
-    const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
-    const image = `<img loading="lazy" decoding="async"${dimensions} src="${src}"${rest}>`;
-    const still = stillCopyPath(src);
-    if (!still) return image;
-    return `<picture><source media="(prefers-reduced-motion: reduce)" srcset="${still}">${image}</picture>`;
-  });
+  // Images: lazy loading, the display size, and a reduced-motion still for animated demos.
+  html = html.replace(/<img src="(\/[^"]+)"([^>]*)>/g, (_, src: string, rest: string) => renderImage(src, rest));
 
   // Open external links in a new tab
   html = html.replace(

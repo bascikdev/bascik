@@ -23,6 +23,10 @@ Every project scaffolded with `npm create bascik` includes a `lint` script in `p
 npm run lint
 ```
 
+Each finding gives the file, line and column, a rule name, and a suggested fix. This is a real run against a project with four problems planted in it:
+
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors in a component, a runtime id assignment and an attribute selector. It ends with Found 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
+
 You can also run the checker directly on any directory or file with `npx`:
 
 ```sh

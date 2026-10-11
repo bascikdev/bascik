@@ -547,50 +547,32 @@
       align-items: start;
     }
 
-    .speed-terminal {
-      background: var(--pre-bg);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      overflow: hidden;
-      --cblock-header-display: none;
-      --cblock-border: none;
-      --cblock-radius: 0;
+    /* ── Recorded demos ── */
+    /* The recordings draw their own rounded windows, so the image gets no frame of its own. */
+    .demo-figure {
+      margin: 0;
     }
 
-    .speed-terminal-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-      font-family: var(--mono);
-      font-size: 0.78rem;
+    .demo-figure img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .demo-figure figcaption {
+      margin-top: 14px;
+      font-size: 0.82rem;
+      line-height: 1.55;
       color: var(--text-muted);
     }
 
-    .terminal-dots {
-      display: flex;
-      gap: 6px;
-      margin-right: 8px;
+    .demo-figure figcaption a {
+      color: var(--accent-fg);
     }
 
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
-    .dot-red {
-      background: #ff5f56;
-    }
-
-    .dot-yellow {
-      background: #ffbd2e;
-    }
-
-    .dot-green {
-      background: #27c93f;
+    .stream-recording {
+      max-width: 640px;
+      margin: 28px auto 0;
     }
 
     .speed-metrics {
@@ -1022,7 +1004,8 @@
               <li><strong>Zero layout shift:</strong> CSS <code>:has()</code> swaps out the skeleton in place when the
                 HTML chunk arrives.</li>
               <li><strong>Early-paint footer:</strong> Send the footer in chunk 1, position it visually with CSS
-                <code>order</code>.</li>
+                <code>order</code>.
+              </li>
             </ul>
 
             <div class="stream-links">
@@ -1032,6 +1015,15 @@
             </div>
           </div>
         </div>
+
+        <figure class="demo-figure stream-recording">
+          <script data-bascik-build>
+            import { demoImage } from '@/lib/md-renderer.ts';
+            export default () => demoImage('/assets/demos/stream@2x.webp', 'A browser loading a dashboard page. A loading skeleton is shown first, and after about two seconds a card reading 99.99% uptime replaces it in place.');
+          </script>
+          <figcaption>A real page from the dev server. The server holds the card back for two seconds on purpose so the
+            swap is easy to see. The skeleton and shell arrive first, with no client-side fetching.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -1050,22 +1042,15 @@
           enabled on multi-core hardware.
         </p>
         <div class="speed-grid">
-          <div class="speed-terminal">
-            <div class="speed-terminal-bar">
-              <div class="terminal-dots">
-                <span class="dot dot-red"></span>
-                <span class="dot dot-yellow"></span>
-                <span class="dot dot-green"></span>
-              </div>
-              <span>yarn docs:dev</span>
-            </div>
-            <code-block data-bascik-prop-lang="text">
-              <script data-bascik-build>
-                import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                export default async () => await extractDemoBlock('./content/index.md', 'home-build-output');
-              </script>
-            </code-block>
-          </div>
+          <figure class="demo-figure">
+            <script data-bascik-build>
+              import { demoImage } from '@/lib/md-renderer.ts';
+              export default () => demoImage('/assets/demos/dev-terminal@2x.webp', 'A terminal running bascik on a new project. Four pages transpile in about 120 milliseconds and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in about two milliseconds.');
+            </script>
+            <figcaption>A new <code>npm create bascik</code> project, recorded for real on a laptop: the server is up
+              almost immediately, and saving one file rebuilds only that page. The figures beside it describe this
+              documentation site.</figcaption>
+          </figure>
 
           <div class="speed-metrics">
             <div class="metric-card">
@@ -1111,6 +1096,27 @@
         });
       });
     </script>
+
+    <!-- ── Live reload ── -->
+    <!-- Placed below the first screens on purpose. A recording this size is fetched early by the browser when it
+         sits high on the page, which measurably lowers the mobile Lighthouse score. -->
+    <section class="home-section">
+      <div class="container">
+        <p class="section-label">Live Reload</p>
+        <h2 class="section-heading">Save a file. The page is already updated.</h2>
+        <p class="section-sub">Edit a page or a component and the dev server rebuilds only what changed, then
+          refreshes the browser. Change one component and every page that uses it changes with it.</p>
+
+        <figure class="demo-figure">
+          <script data-bascik-build>
+            import { demoImage } from '@/lib/md-renderer.ts';
+            export default () => demoImage('/assets/demos/live-reload@2x.webp', 'An editor beside a browser showing a new Bascik project. A heading is edited and saved, and the browser updates. A border color in a component is edited and saved, and every card on the page changes.', { src: '/assets/demos/live-reload-stacked@2x.webp', maxWidth: 760 });
+          </script>
+          <figcaption>Recorded for real: the starter site from <code>npm create bascik</code>, edited in VS Code and
+            served by the Bascik dev server. Nothing here is mocked.</figcaption>
+        </figure>
+      </div>
+    </section>
 
     <!-- ── DX pillars ── -->
     <section class="home-section">
