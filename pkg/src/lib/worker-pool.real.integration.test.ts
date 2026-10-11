@@ -127,13 +127,25 @@ describe("WorkerPool real-worker lifecycle settlement", () => {
       const script = await fixture("broken", BROKEN_TOP);
       const pool = new WorkerPool<unknown, unknown>(script, 1, {});
       try {
-        // Let the bounded respawn exhaust every attempt so no livable capacity
-        // remains, then confirm callers settle promptly with a useful error.
-        await sleep(500);
-        const first = pool.run("never-1");
-        await expect(first).rejects.toThrow(/no viable worker/);
-        const second = pool.run("never-2");
-        await expect(second).rejects.toThrow(/no viable worker/);
+        // No fixed wait: how fast respawns exhaust depends on machine load. A
+        // call made before the budget is spent goes to a live broken worker and
+        // is rejected with that worker's error. Every call must settle, and at
+        // most one call per startup attempt (4) can land before exhaustion.
+        const MAX_STARTUP_ATTEMPTS = 4;
+        const earlyErrors: string[] = [];
+        for (let call = 0; ; call++) {
+          const error = await pool.run(`never-${call}`).then(
+            () => { throw new Error("a broken worker must never resolve a task"); },
+            (rejection: Error) => rejection,
+          );
+          if (/no viable worker/.test(error.message)) break;
+          earlyErrors.push(error.message);
+          expect(earlyErrors.length, `pre-exhaustion rejections: ${earlyErrors.join(" | ")}`)
+            .toBeLessThanOrEqual(MAX_STARTUP_ATTEMPTS);
+        }
+        for (const message of earlyErrors) expect(message).toMatch(/broken module|Worker exited/);
+        // Once exhausted, every later caller is rejected immediately.
+        await expect(pool.run("after-exhaustion")).rejects.toThrow(/no viable worker/);
       } finally {
         await pool.terminate();
       }

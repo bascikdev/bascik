@@ -2,6 +2,14 @@ import { describe, it, expect } from "vitest";
 import { getHttpPath } from "./paths.ts";
 
 describe("getHttpPath", () => {
+  it("runs in linear time when the pages directory holds a long slash run", () => {
+    // `/\/+$/` is quadratic on a slash run that does not end the string.
+    const pagesDir = `${"/".repeat(50_000)}pages`;
+    const start = performance.now();
+    expect(getHttpPath("pages/about.html", pagesDir)).toBe("/about");
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
   it("converts pages/index.html to /", () => {
     expect(getHttpPath("pages/index.html")).toBe("/");
   });

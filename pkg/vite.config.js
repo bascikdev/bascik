@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     benchmark: {
       include: ["bench/**/*.bench.ts"],
+      // Calls between src/lib modules go through Vite's export getters. Removing
+      // them means disabling the module runner, which the benchmarks' vi.mock
+      // calls need; Vitest 4 measured with the same overhead.
+      suppressExportGetterWarnings: true,
     },
     coverage: {
       provider: "v8",
@@ -26,6 +30,9 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["src/**/*.integration.test.ts"],
+          // Inline projects inherit the root `benchmark.include` (Vitest 5), so
+          // without this `vitest bench` runs every benchmark twice.
+          benchmark: { exclude: ["bench/**"] },
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
         },
       },

@@ -7,6 +7,7 @@ import { BascikConfig } from "./config.ts";
 import { manifestCollector } from "./manifest.ts";
 import { cspHashCollector } from "./csp-hashes.ts";
 import { LIVE_RELOAD_SCRIPT } from "./live-reload.ts";
+import { BuildScriptError } from "./build-error.ts";
 
 // Disable all scoping so tests produce predictable, readable HTML
 vi.mock("./config.js", () => ({
@@ -2281,5 +2282,80 @@ describe("selectivelyProcessPagesForWatchPath – open pages first", () => {
     expect(storeAboutIdx).toBeLessThan(storeIndexIdx);
     expect(emitAboutIdx).toBeLessThan(storeIndexIdx);
     expect(emitAboutIdx).toBeLessThan(emitIndexIdx);
+  });
+});
+
+describe("component load failures (a component build script that throws)", () => {
+  const failure = () =>
+    new BuildScriptError('[bascik] build script error in "components/site-footer.html" at (line 37, column 16):\nStrin is not defined', {
+      sourceFile: "components/site-footer.html",
+      line: 37,
+      column: 16,
+    });
+  const emitted = async () => {
+    const { eventEmitter } = await import("./events.ts");
+    return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.filter(([event]) => event === "build-error");
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    (BascikConfig as Record<string, unknown>).isBuild = false;
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockRejectedValue(failure());
+  });
+
+  it("publishes one located build-error and still rejects, so a caller outside a compile scope still sees the failure", async () => {
+    await expect(processPageBatch(["src/pages/index.html"])).rejects.toBeInstanceOf(BuildScriptError);
+
+    const errors = await emitted();
+    expect(errors).toHaveLength(1);
+    expect(errors[0][1]).toEqual({
+      message: expect.stringContaining("Strin is not defined"),
+      file: "components/site-footer.html",
+      line: 37,
+      column: 16,
+    });
+  });
+
+  it("publishes for the processAllPages path that a newly added component takes", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    await expect(processAllPages({ useWorkers: false })).rejects.toBeInstanceOf(BuildScriptError);
+    expect(await emitted()).toHaveLength(1);
+  });
+
+  it("publishes for the selectivelyProcessPagesForWatchPath path", async () => {
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/index.html"]);
+    await expect(selectivelyProcessPagesForWatchPath("nav.mjs")).rejects.toBeInstanceOf(BuildScriptError);
+    expect(await emitted()).toHaveLength(1);
+  });
+
+  it("publishes a message-only build-error for a failure that has no location", async () => {
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockRejectedValue(new Error("two component files both define the tag <x-y>"));
+
+    await expect(processPageBatch(["src/pages/index.html"])).rejects.toThrow("two component files");
+
+    const errors = await emitted();
+    expect(errors).toHaveLength(1);
+    expect(errors[0][1]).toEqual({ message: expect.stringContaining("two component files") });
+  });
+
+  it("does not publish when a compile scope owns the failure, so the cycle reports it exactly once", async () => {
+    const { withCompilationPublisher } = await import("./compilation-events.ts");
+    await expect(
+      withCompilationPublisher(vi.fn(), () => processPageBatch(["src/pages/index.html"]), { onPageErrors: "throw" }),
+    ).rejects.toBeInstanceOf(AggregateError);
+    expect(await emitted()).toHaveLength(0);
+  });
+
+  it("does not publish in a production build, which has no browsers to tell", async () => {
+    (BascikConfig as Record<string, unknown>).isBuild = true;
+    await expect(processPageBatch(["src/pages/index.html"])).rejects.toBeInstanceOf(BuildScriptError);
+    expect(await emitted()).toHaveLength(0);
+  });
+
+  it("does not publish when the batch has no pages, because nothing asked for the components", async () => {
+    await expect(processPageBatch([])).resolves.toEqual([]);
+    expect(await emitted()).toHaveLength(0);
   });
 });

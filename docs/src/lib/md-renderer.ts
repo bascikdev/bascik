@@ -20,31 +20,118 @@
  * the emitted <code-block> tags are resolved normally by Bascik.
  */
 
-import { closeSync, openSync, readSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { marked } from 'marked';
 import { slugFromHeadingHtml } from './heading-slug.ts';
 
+/** Pixel size of a PNG or WebP header, or null when the bytes are neither. */
+function readImageHeader(header: Buffer): { width: number; height: number } | null {
+  if (header.length >= 24 && header.toString('latin1', 1, 4) === 'PNG' && header.toString('latin1', 12, 16) === 'IHDR') {
+    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+  }
+  if (header.length >= 30 && header.toString('latin1', 0, 4) === 'RIFF' && header.toString('latin1', 8, 12) === 'WEBP') {
+    const format = header.toString('latin1', 12, 16);
+    if (format === 'VP8 ') {
+      return { width: header.readUInt16LE(26) & 0x3fff, height: header.readUInt16LE(28) & 0x3fff };
+    }
+    if (format === 'VP8L') {
+      const bits = header.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (format === 'VP8X') {
+      return { width: header.readUIntLE(24, 3) + 1, height: header.readUIntLE(27, 3) + 1 };
+    }
+  }
+  return null;
+}
+
 /**
- * Width and height of a PNG in docs/src/pages, read from its header, or null when the file is
- * missing or is not a PNG. Giving the browser both numbers reserves the space before the image
- * loads, so the page does not shift.
+ * Display size of a PNG or WebP in docs/src/pages, read from its header, or null when the file is
+ * missing or is neither. Giving the browser both numbers reserves the space before the image loads,
+ * so the page does not shift. A file name ending in `@2x` holds twice the pixels it displays, so its
+ * size is halved: the image then renders at its intended size on high-density screens and is only
+ * ever scaled down to fit the column.
  */
-function pngSize(sitePath: string): { width: number; height: number } | null {
+function imageSize(sitePath: string): { width: number; height: number } | null {
   if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
   let descriptor: number | undefined;
   try {
     descriptor = openSync(join(process.cwd(), 'src/pages', sitePath), 'r');
-    const header = Buffer.alloc(24);
-    if (readSync(descriptor, header, 0, 24, 0) < 24) return null;
-    if (header.toString('latin1', 1, 4) !== 'PNG' || header.toString('latin1', 12, 16) !== 'IHDR') return null;
-    return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+    const header = Buffer.alloc(32);
+    const bytesRead = readSync(descriptor, header, 0, 32, 0);
+    const size = readImageHeader(header.subarray(0, bytesRead));
+    if (!size) return null;
+    const density = /@2x\.[a-z]+$/i.test(sitePath) ? 2 : 1;
+    return { width: Math.round(size.width / density), height: Math.round(size.height / density) };
   } catch {
     return null;
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+/**
+ * Site path of the still copy that goes with an animated image, or null when there is none. The copy sits
+ * beside the animation with `-still` before the density suffix: `demo@2x.webp` pairs with `demo-still@2x.webp`.
+ */
+function stillCopyPath(sitePath: string): string | null {
+  if (!sitePath.startsWith('/') || sitePath.includes('..')) return null;
+  const still = sitePath.replace(/(@\dx)?(\.[a-z0-9]+)$/i, '-still$1$2');
+  if (still === sitePath) return null;
+  return existsSync(join(process.cwd(), 'src/pages', still)) ? still : null;
+}
+
+/**
+ * Site folder for the recordings made by scripts/capture-demos.ts. Their windows have rounded, transparent
+ * corners. The square VS Code screenshots in /assets/vscode/ keep the default image border.
+ */
+const DEMO_FOLDERS = ['/assets/demos/'];
+
+/**
+ * The HTML for one site image: lazy loading, the display size when the file is a PNG or WebP that ships with
+ * the docs, and a `demo-shot` class for the recorded demos so their rounded window corners are not boxed in.
+ *
+ * An animated image with a `-still` copy is wrapped in <picture> so visitors who prefer reduced motion get the
+ * still instead. The animation loops forever and cannot be paused, so it must not be their default.
+ *
+ * `rest` is whatever follows `src` in the original tag, such as ` alt="..."`.
+ */
+function renderImage(src: string, rest: string, narrow?: { src: string; maxWidth: number }): string {
+  const size = imageSize(src);
+  const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
+  const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder)) ? ' class="demo-shot"' : '';
+  const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${src}"${rest}>`;
+  const sources: string[] = [];
+  // The narrow image has a different shape from the default one, so its sources say how big it is. Without
+  // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
+  const narrowSize = narrow ? imageSize(narrow.src) : null;
+  const narrowDimensions = narrowSize ? ` width="${narrowSize.width}" height="${narrowSize.height}"` : '';
+  // Reduced motion wins over screen size, so these sources come first: the browser uses the first match.
+  const still = stillCopyPath(src);
+  const narrowStill = narrow ? stillCopyPath(narrow.src) : null;
+  if (narrow && narrowStill) {
+    sources.push(`<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${narrowStill}"${narrowDimensions}>`);
+  }
+  if (still) sources.push(`<source media="(prefers-reduced-motion: reduce)" srcset="${still}">`);
+  if (narrow) sources.push(`<source media="(max-width: ${narrow.maxWidth}px)" srcset="${narrow.src}"${narrowDimensions}>`);
+  if (sources.length === 0) return image;
+  return `<picture>${sources.join('')}${image}</picture>`;
+}
+
+/** Escapes text for use inside a double-quoted HTML attribute. */
+const escapeAttribute = (text: string) => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+/**
+ * Renders a site image for an HTML page, with the same sizing, lazy loading, and reduced-motion handling as
+ * images in Markdown. Call it from a `data-bascik-build` script.
+ *
+ * `narrow` swaps in a different image on screens up to `maxWidth` pixels wide. A wide side-by-side recording
+ * would shrink to unreadable on a phone, so a stacked recording is served there instead.
+ */
+export function demoImage(src: string, alt: string, narrow?: { src: string; maxWidth: number }): string {
+  return renderImage(src, ` alt="${escapeAttribute(alt)}"`, narrow);
 }
 
 interface RenderMdOptions {
@@ -228,12 +315,8 @@ function _transformMd(
   html = html.replace(/<th(?![^>]*\bscope=)>/g, '<th scope="col">');
   html = html.replace(/(<table[\s\S]*?<\/table>)/g, '<doc-table>$1</doc-table>');
 
-  // Images: lazy loading, and the real size when the file is a PNG that ships with the docs.
-  html = html.replace(/<img src="(\/[^"]+)"/g, (_, src: string) => {
-    const size = pngSize(src);
-    const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
-    return `<img loading="lazy" decoding="async"${dimensions} src="${src}"`;
-  });
+  // Images: lazy loading, the display size, and a reduced-motion still for animated demos.
+  html = html.replace(/<img src="(\/[^"]+)"([^>]*)>/g, (_, src: string, rest: string) => renderImage(src, rest));
 
   // Open external links in a new tab
   html = html.replace(

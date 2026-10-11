@@ -566,6 +566,7 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
   });
 
   const writeModule = (filePath: string, value: string) =>
+    // codeql[js/bad-code-sanitization] Writes a test fixture module from test literals.
     writeFile(filePath, `export default function() { return ${JSON.stringify(value)}; }\n`);
 
   describe("configured singleton mode", () => {

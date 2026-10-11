@@ -21,6 +21,10 @@ When started, Bascik:
 4. Initializes high-speed filesystem watchers across pages, components, the import root, and custom `pipeline.watchPaths`.
 5. Starts an HTTP development server with live reload on port 8080.
 
+This is the real output of a new project, recorded from the starter site on one machine. Startup takes a fraction of a second, and saving a page afterward rebuilds only that page:
+
+![A terminal running bascik. The output lists four pages transpiled in 121ms and the server running at localhost:8080. After a file is saved, the server reports a rebuild of only pages/index.html in 2.1ms](/assets/demos/dev-terminal@2x.webp)
+
 ## Linked Static Assets
 
 For projects with many large static assets, enable development-only asset links instead of copies:
@@ -61,6 +65,10 @@ Bascik injects a lightweight, zero-dependency SSE client into HTML pages served 
 - Browsers reload seamlessly without requiring browser extensions or external polling tools.
 - Live reload scripts are completely stripped from production builds (`bascik --build`).
 
+Here it is on a new project. The first edit changes a page. The second changes the `feat-card` component, and every card on the page updates because they all use it:
+
+![An editor above a browser. A heading edited in the editor and saved changes in the browser. A border color edited in a component and saved changes on every card](/assets/demos/live-reload-stacked@2x.webp)
+
 ## Browser Error Overlay
 
 When a syntax error, build script failure, or invalid component reference occurs, Bascik presents a full-screen interactive error overlay directly in the browser:
@@ -68,6 +76,10 @@ When a syntax error, build script failure, or invalid component reference occurs
 - **Source Line Remapping:** Displays the original HTML template file, line number, and column.
 - **Detailed Stack Traces:** Strips internal V8 and Node runtime frames to highlight your authored code.
 - **Auto-Dismiss on Fix:** As soon as you correct the error and save the file, the dev server re-transpiles the page and dismisses the overlay instantly.
+
+A typo in a build script, then the fix:
+
+![An editor above a browser. A typo in a build script, String changed to Strin, is saved and the browser shows a Bascik Build Error overlay naming the file and the ReferenceError. Restoring the letter and saving dismisses the overlay](/assets/demos/error-overlay@2x.webp)
 
 ## Automatic Watching & Invalidation
 

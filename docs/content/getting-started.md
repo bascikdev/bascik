@@ -12,6 +12,10 @@ npm create bascik@latest my-site -y
 
 That scaffolds the project, installs dependencies, and starts the dev server in one shot. Open **http://localhost:8080** in your browser to see your live site.
 
+Edit a page or a component and save. The browser updates on its own, with no manual refresh:
+
+![An editor above a browser showing the starter site. A heading is edited and saved and the browser updates. A component's border color is edited and saved and every card updates](/assets/demos/live-reload-stacked@2x.webp)
+
 Pass a different name to use it as both the directory name and the site title. If you omit `-y`, the CLI steps through the setup prompts interactively.
 
 `npm create bascik@latest` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, the `@bascik/language-server` linter (`npm run lint`), E2E testing, and code coverage pre-configured. It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.

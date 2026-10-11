@@ -42,6 +42,8 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { getRelativePath } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
+import { BuildScriptError } from "./build-error.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
@@ -71,6 +73,24 @@ import {
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
+
+const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
+
+const isInsideDirectory = (path: string, directory: string): boolean => {
+  const root = toPosixPath(resolve(directory));
+  const candidate = toPosixPath(resolve(path));
+  return candidate === root || candidate.startsWith(`${root}/`);
+};
+
+/**
+ * How an error message names the file a build script is in: `components/...` for a component,
+ * `pages/...` for a page. The pages directory is checked first so a page is never mistaken for a
+ * component when a components root happens to contain it.
+ */
+const displayPathFor = (filePath: string): string =>
+  !isInsideDirectory(filePath, BascikConfig.directory.pages) && findComponentRoot(filePath) !== undefined
+    ? getRelativePath(filePath, "components")
+    : getRelativePath(filePath, "pages");
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
@@ -773,10 +793,16 @@ export const executeBuildScripts = async (
         const msg = err instanceof Error ? err.message : String(err);
         let errorMsg = `[bascik] build script error`;
         const cleanedMsg = cleanStackTrace(msg, task.tmpPath, taskRelPath, task.startLine);
+        let location: { sourceFile: string; line: number; column: number } | undefined;
         if (filePath) {
           const prefix = html.slice(0, task.index);
           const lines = prefix.split(/\r?\n/);
-          errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+          location = {
+            sourceFile: displayPathFor(filePath),
+            line: lines.length,
+            column: lines[lines.length - 1].length + 1,
+          };
+          errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
         // Nothing was memoized for this key; drop its pending dependency list
         // so a failing script cannot accumulate index state across edits.
@@ -784,6 +810,9 @@ export const executeBuildScripts = async (
         const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
         if (behavior === "error") {
           console.error(`${errorMsg}:\n${cleanedMsg}`);
+          // The location travels as data so the dev overlay can name the file. Without a source
+          // file there is nothing to point at, so the failure stays a plain Error.
+          if (location) throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
           throw new Error(`${errorMsg}:\n${cleanedMsg}`);
         } else {
           console.warn(`${errorMsg}:\n${cleanedMsg}`);

@@ -30,29 +30,30 @@
     "update-coverage": "yarn workspace @bascik/bascik build && vitest run --coverage.enabled && node scripts/update-coverage.ts"
   },
   "devDependencies": {
-    "@lhci/cli": "^0.14.0",
-    "@playwright/test": "^1.62.0",
+    "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.63.0",
     "@resvg/resvg-js": "^2.6.2",
-    "@types/canvas-confetti": "^1",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/ejs": "^3.1.5",
-    "@types/node": "^24.0.0",
-    "@types/nunjucks": "^3",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@types/node": "^24.19.1",
+    "@types/nunjucks": "^3.2.6",
+    "@vitest/coverage-v8": "^5.0.3",
     "@zachleat/heading-anchors": "^1.0.5",
     "canvas-confetti": "^1.9.4",
     "esbuild": "^0.28.2",
-    "lighthouse": "^12.4.0",
+    "lighthouse": "^13.5.0",
     "opentype.js": "^2.0.0",
     "parse5": "^8.0.1",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "@bascik/bascik": "workspace:*",
     "ejs": "^6.0.1",
-    "handlebars": "^4.7.9",
-    "marked": "^18.0.7",
+    "handlebars": "^4.7.10",
+    "marked": "^18.0.14",
     "nunjucks": "^3.2.4"
   }
 }

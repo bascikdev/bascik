@@ -11,8 +11,9 @@
  */
 import { relative } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { trimTrailingSlashes } from "./slashes.ts";
 
-const toPosix = (path: string): string => path.replace(/\\/g, "/").replace(/\/+$/, "");
+const toPosix = (path: string): string => trimTrailingSlashes(path.replace(/\\/g, "/"));
 
 /** Configured component roots with forward slashes and no trailing slash. */
 export const getComponentRoots = (): string[] => {

@@ -1,18 +1,5 @@
 <!-- Content for home page demo code blocks extracted by docs/src/pages/index.html. -->
 
-<!-- demo:home-build-output -->
-```text
-$ bascik
-transpiled: pages/404.html in 0.4ms
-transpiled: pages/index.html in 0.8ms
-transpiled: pages/cli.html in 0.5ms
-transpiled: pages/license.html in 0.3ms
-transpiled: pages/getting-started.html in 0.6ms
-...
-✓ 85 pages transpiled
-Server running at http://localhost:8080
-```
-
 <!-- demo:home-card-component -->
 ```html
 <!-- src/components/my-card.html -->
@@ -185,4 +172,108 @@ inc.addEventListener('click', () => {
   </script>
 </body>
 </html>
+```
+
+<!-- demo:home-slot-component -->
+```html
+<!-- src/components/dialog-box.html -->
+<style>
+  .dialog {
+    border: 1px solid #3a3d40;
+    border-radius: 8px;
+    padding: 20px;
+    background: #1e2022;
+  }
+  .header {
+    border-bottom: 1px solid #2e3032;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+</style>
+
+<div class="dialog">
+  <div class="header">
+    <div data-bascik-slot="header">
+      <span>Notice</span>
+    </div>
+  </div>
+  <div class="body">
+    <div data-bascik-slot>
+      <p>Default content if no slot content was provided.</p>
+    </div>
+  </div>
+</div>
+```
+
+<!-- demo:home-slot-usage -->
+```html
+<!-- src/pages/index.html -->
+<dialog-box>
+  <span data-bascik-slot="header">Account Settings</span>
+  <p>Your components accept slots, attributes, and regular HTML tags.</p>
+  <button type="button">Save Changes</button>
+</dialog-box>
+```
+
+<!-- demo:home-slot-output -->
+```html
+<!-- dist/index.html -->
+<style>
+  .bascik__dialog-box__dialog {
+    border: 1px solid #3a3d40;
+    border-radius: 8px;
+    padding: 20px;
+    background: #1e2022;
+  }
+  .bascik__dialog-box__header {
+    border-bottom: 1px solid #2e3032;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+</style>
+
+<div class="bascik__dialog-box__dialog">
+  <div class="bascik__dialog-box__header">
+    <span>Account Settings</span>
+  </div>
+  <div class="bascik__dialog-box__body">
+    <p>Your components accept slots, attributes, and regular HTML tags.</p>
+    <button type="button">Save Changes</button>
+  </div>
+</div>
+```
+
+<!-- demo:home-stream-card -->
+```html
+<!-- 1. Skeletons and footer flush in the very first byte. Zero wait. -->
+<div class="stream-layout">
+  <div class="skeleton" role="status">Loading live metrics...</div>
+
+  <!-- 2. Async backend finishes, flushes straight into the open connection -->
+  <div class="slot">
+    <script data-bascik-stream>
+      import { escape } from '@/lib/server.ts';
+
+      export default async function (request, context, { signal }) {
+        const stats = await fetchDatabaseStats({ signal });
+        return `<article class="card"><h3>${escape(stats.cluster)}</h3><p>99.99% Uptime</p></article>`;
+      }
+    </script>
+  </div>
+</div>
+```
+
+<!-- demo:home-stream-css -->
+```css
+/* 3. Pure CSS: :has() swaps the skeleton out the moment HTML arrives */
+.stream-layout:has(.card) .skeleton {
+  display: none;
+}
+
+/* 4. CSS flex order: footer sent in chunk 1, but sits visually at the bottom */
+footer {
+  order: 99;
+}
 ```

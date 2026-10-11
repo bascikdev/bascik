@@ -92,7 +92,7 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
     const minified = minifyHtml(raw);
     // If we now naively replace the script with generated content:
     const wrongOrder = minified.replace(
-      /<script[^>]*>[\s\S]*?<\/script>/,
+      /<script[^>]*>[\s\S]*?<\/script[^>]*>/i,
       "<li>item</li>",
     );
     // Content is outside the <ul> — this is the bug the fix prevents

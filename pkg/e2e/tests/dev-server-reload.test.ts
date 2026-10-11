@@ -718,6 +718,29 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
     await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
   });
 
+  test('shows the overlay when a component fails to load, and clears it when the component is fixed', async ({ page }) => {
+    await page.goto('/scope-test');
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+
+    // A component that cannot be loaded fails before any page is built, so there is no page to attach
+    // the error to. This bug class hid because the failure was only logged, never sent to the browser.
+    // A static `export` in a classic inline TypeScript script is used because, unlike a failing build
+    // script, it is not downgraded to a warning by this harness's `on*ScriptError: 'warn'` settings. It
+    // fails whatever TypeScript compiler is configured (this harness uses esbuild, which accepts `enum`).
+    const broken = originalComponentContent + '\n<script type="text/typescript">export const broken = 1;</script>\n';
+    await writeFile(componentPath, broken, 'utf8');
+
+    const overlay = page.getByTestId('bascik-build-error-overlay');
+    await expect(overlay).toBeVisible({ timeout: 15000 });
+    await expect(overlay).toContainText('TypeScript transformation failed');
+    await expect(overlay).toHaveCount(1);
+
+    // Fixing the component rebuilds the pages that use it, which clears the overlay and reloads.
+    await writeFile(componentPath, originalComponentContent, 'utf8');
+    await expect(overlay).not.toBeAttached({ timeout: 15000 });
+    await expect(page.locator('h1')).toHaveText('JS Scope Rewriting — Live Test');
+  });
+
   test('delivers a build-error to each open tab of the affected page exactly once', async ({ context }) => {
     const tab1 = await context.newPage();
     const tab2 = await context.newPage();

@@ -187,7 +187,7 @@ describe('Bascik Language Server Analyzer', () => {
       '<div data-bascik-build></div>',
     );
     const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
-    expect(diags.some((d) => d.message.includes('only valid on <script> tags'))).toBe(true);
+    expect(diags.some((d) => String(d.message).includes('only valid on <script> tags'))).toBe(true);
   });
 
   describe('script and style blocks follow the browser tag rules', () => {

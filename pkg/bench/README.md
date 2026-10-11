@@ -14,22 +14,28 @@ Supporting modules: `profile-runner.ts` (bounded, process-group-owned command ex
 
 ## Throughput Benchmarks
 
-Benchmarks use Vitest's built-in `bench` API and measure the transpilation pipeline on fixed, repeatable inputs:
+Benchmarks use Vitest's `bench` test-context fixture and measure the transpilation pipeline on fixed, repeatable inputs. Related benches go in one `bench.compare` call so they print as one table:
 
 ```ts
-import { bench, describe } from "vitest";
-import { recursivelyTranspile } from "../src/lib/processing.ts";
+import { test } from "vitest";
+import * as processing from "../src/lib/processing.ts";
 
-describe("recursivelyTranspile", () => {
-  bench("simple page - one component", () => {
-    recursivelyTranspile(simpleHtml, componentList);
-  });
+// Bind imports once: each read of a module export goes through a getter.
+const { recursivelyTranspile } = processing;
 
-  bench("complex page - nested components", () => {
-    recursivelyTranspile(complexHtml, componentList);
-  });
+test("recursivelyTranspile", async ({ bench }) => {
+  await bench.compare(
+    bench("simple page - one component", () => {
+      recursivelyTranspile(simpleHtml, componentList);
+    }),
+    bench("complex page - nested components", () => {
+      recursivelyTranspile(complexHtml, componentList);
+    }),
+  );
 });
 ```
+
+A single bench uses `await bench("name", fn).run()`. Each `test` has the default 60 second timeout; pass `{ timeout }` as the second argument for large comparisons.
 
 ## Report Directories
 
