@@ -73,6 +73,10 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 </html>
 ```
 
+## Images in `/assets/demos/` and `/assets/vscode/`
+
+Both folders are served with `Cache-Control: public, max-age=31536000, immutable` on Cloudflare Pages (rule written by `docs/scripts/generate-pages-headers.ts`). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
+
 ## Markdown File Conventions
 
 - First lines: `# Page Title` (h1), then a plain intro paragraph (styled as page-intro via CSS)
