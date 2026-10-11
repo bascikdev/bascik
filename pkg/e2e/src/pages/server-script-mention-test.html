@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Server Script Mention Test</title>
+</head>
+
+<body>
+  <!--
+    Documentation about server scripts. This page contains the directive's name as text, in prose and in
+    an escaped code sample, but no script on it runs per request. It must be served like any static page:
+    with an ETag and compression. See caching-layer.test.ts.
+  -->
+  <h1 data-testid="mention-heading">About server scripts</h1>
+  <p data-testid="mention-prose">Add <code>data-bascik-server</code> to a script to run it on every request, or
+    <code>data-bascik-stream</code> to stream its output.
+  </p>
+  <pre><code>&lt;script data-bascik-server&gt;
+  export default (request) =&gt; '&lt;p&gt;Hello&lt;/p&gt;';
+&lt;/script&gt;</code></pre>
+</body>
+
+</html>

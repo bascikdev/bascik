@@ -13,6 +13,7 @@ import {
   _buildScriptCacheTestHooks as cacheHooks,
 } from "./build-scripts.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { BuildScriptError } from "./build-error.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -1638,6 +1639,30 @@ describe("build-script output cache", () => {
     const html =
       "<div><script data-bascik-build>good()</script><script data-bascik-build>bad()</script></div>";
     await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
+  });
+
+  it("throws a BuildScriptError that carries the failing script's location as data", async () => {
+    rejectWith("ReferenceError: Strin is not defined");
+    const html = "<footer>\n  <span>\n    <script data-bascik-build>Strin()</script>\n  </span>\n</footer>";
+
+    const error = await executeBuildScripts(html, "src/pages/about.html").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ sourceFile: "pages/about.html", line: 3, column: 5 });
+    // The text keeps its existing shape, so the CLI's duplicate-message filter still recognizes it.
+    expect((error as Error).message).toContain('[bascik] build script error in "pages/about.html" at (line 3, column 5)');
+  });
+
+  it("labels a script in a component file as a component, not as a page", async () => {
+    rejectWith("ReferenceError: Strin is not defined");
+    const html = "<footer><script data-bascik-build>Strin()</script></footer>";
+
+    const error = await executeBuildScripts(html, "src/components/site-footer/site-footer.html").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ sourceFile: "components/site-footer/site-footer.html", line: 1, column: 9 });
+    expect((error as Error).message).toContain('in "components/site-footer/site-footer.html"');
+    expect((error as Error).message).not.toContain('"pages/');
   });
 
   it("forwards stderr for each isolated script run", async () => {

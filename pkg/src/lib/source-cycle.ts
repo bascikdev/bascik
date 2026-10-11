@@ -2,6 +2,7 @@ import type { EventEmitter } from 'node:events';
 import { resolve } from 'node:path';
 import type { ExecEntry } from './types.ts';
 import { execWatchCoversPath } from './exec.ts';
+import { locateBuildError } from './build-error.ts';
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
 
 export type PublishCompilation = (event: string, payload?: unknown) => void;
@@ -29,9 +30,13 @@ export const createSourceCycle = (options: {
 
   const report = (error: unknown, entry?: ExecEntry) => {
     console.error('[bascik] source cycle error:', error);
+    // A failing exec script is named by its entry. A compile failure may carry the file and line of the
+    // build script that threw, found through the wrappers the compile scope puts around it.
+    const location = entry ? undefined : locateBuildError(error);
     options.emitter.emit('build-error', {
       message: error instanceof Error ? error.message : String(error),
       file: entry?.script,
+      ...(location ?? {}),
     });
   };
   const runEntry = async (entry: ExecEntry) => {

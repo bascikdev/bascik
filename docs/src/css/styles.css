@@ -374,6 +374,10 @@ pre code { background: none; border: none; padding: 0; color: var(--pre-text); f
   border-radius: var(--r); padding: 16px 20px; margin: 20px 0;
 }
 .callout p { color: var(--text); margin: 0; font-size: 0.9rem; }
+/* List items in a callout take the same text color as its paragraphs. Left to inherit, they use the muted
+   body color, which is 4.06:1 on the callout's tinted background and fails the 4.5:1 minimum. Color only:
+   spacing and size stay as the page's list styles set them. */
+.callout li { color: var(--text); }
 .callout strong { color: var(--accent-fg); }
 
 /* Live-demo callout: rendered from MD blockquotes that open with **See it live** */

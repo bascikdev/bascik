@@ -122,7 +122,14 @@ class MemoryStore {
     let serverScriptPlan: StoredPage["serverScriptPlan"];
     if (htmlHasServerScripts(buffer)) {
       try {
-        serverScriptPlan = planServerScripts(buffer.toString("utf8"), absolutePagePath);
+        const plan = planServerScripts(buffer.toString("utf8"), absolutePagePath);
+        // The byte pre-filter above is loose on purpose: it matches any page that merely contains the
+        // directive's name, such as documentation or a blog post about server scripts. The exact scan
+        // then finds no script, and a plan with no script in it is not a plan. Keeping it would make
+        // the server treat the page as personalized (`private, no-store`, no ETag, no compression) when
+        // nothing on it runs per request. Pages with a real script, including a sidecar placeholder,
+        // always have a script segment, so they keep their plan.
+        if (plan.segments.some((segment) => segment.kind === "script")) serverScriptPlan = plan;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         console.error(`[bascik] server-script plan failed for "${relativePagePath}": ${error.message}`);

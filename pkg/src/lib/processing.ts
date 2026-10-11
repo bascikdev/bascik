@@ -137,6 +137,7 @@ import { deriveInstanceId } from "./names.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
 import { mem } from "./mem.ts";
 import { eventEmitter } from "./events.ts";
+import { locateBuildError } from "./build-error.ts";
 import { generateSitemapFiles } from "./sitemap.ts";
 import { WorkerPool } from "./worker-pool.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
@@ -449,6 +450,39 @@ const recordMissingScriptDeps = async (rawHtml: string, pagePath: string): Promi
     mem.recordFailedDependencies(pagePath, missing);
   } catch {
     // dependency collection must never mask the original build error
+  }
+};
+
+/**
+ * Tells the dev browser that the components could not be loaded, which is the one failure that happens
+ * before any page exists to attach it to. A component's build script that throws lands here.
+ *
+ * It follows the same ownership rule as {@link reportPageErrors}: a production build has no browsers, and
+ * a compile scope with the `throw` policy hands the failure to its source cycle, which reports it once.
+ * Everything else (the plain dev watcher, a newly added component) has no other owner, so it publishes.
+ */
+const reportComponentLoadFailure = (error: unknown): void => {
+  if (BascikConfig.isBuild || getCompilationPageErrorPolicy() === "throw") return;
+  const location = locateBuildError(error);
+  eventEmitter.emit("build-error", {
+    message: error instanceof Error ? error.message : String(error),
+    ...(location ?? {}),
+  });
+};
+
+/**
+ * Loads every component for a batch of pages. A failure is reported to the browser and then rethrown, so
+ * callers still see it: dev boot must keep failing hard on a broken component.
+ *
+ * `transpilePage` has its own `listComponents()` call and does not use this. Its callers publish the error
+ * themselves (`pageProcessing` reports every failure), so using it there would report each one twice.
+ */
+const loadComponentList = async () => {
+  try {
+    return await listComponents();
+  } catch (error) {
+    reportComponentLoadFailure(error);
+    throw error;
   }
 };
 
@@ -1001,7 +1035,7 @@ export const processPageBatch = async (
     }
   }
 
-  if (!componentList) componentList = await listComponents();
+  if (!componentList) componentList = await loadComponentList();
   if (globalStylesHtml === undefined) globalStylesHtml = await resolveInlineStylesHtml();
 
   const jobs: PageJob[] = [];
@@ -1122,7 +1156,7 @@ export const selectivelyProcessPagesForWatchPath = async (changedPath?: string):
   invalidateComponentListCache();
   const [pages, componentList, globalStylesHtml] = await Promise.all([
     listPages(),
-    listComponents(),
+    loadComponentList(),
     resolveInlineStylesHtml(),
   ]);
   const pageList = pages ?? [];
@@ -1182,7 +1216,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   // Parallel processing of pages
   const [pages, componentList, globalStylesHtml] = await Promise.all([
     listPages(),
-    listComponents(),
+    loadComponentList(),
     resolveInlineStylesHtml(),
   ]);
   let pageList = pages ?? [];
