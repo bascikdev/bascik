@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { renderMd, renderMdRange, extractDemoBlock, demoImage } from './md-renderer.js';
+import { createHash } from 'node:crypto';
+import { renderMd, renderMdRange, extractDemoBlock, demoImage, VERSIONED_IMAGE_FOLDERS } from './md-renderer.js';
+
+const hashOf = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex').slice(0, 10);
 
 describe('md-renderer', () => {
   let tempDir: string;
@@ -166,10 +169,11 @@ const x = 1;
 
     const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
     try {
+      const version = hashOf(webp);
       expect(demoImage('/assets/demos/tour@2x.webp', 'A "quoted" tour')).toBe(
-        '<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still@2x.webp">' +
+        `<picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/tour-still@2x.webp?v=${version}">` +
           '<img loading="lazy" decoding="async" class="demo-shot" width="20" height="10" ' +
-          'src="/assets/demos/tour@2x.webp" alt="A &quot;quoted&quot; tour"></picture>',
+          `src="/assets/demos/tour@2x.webp?v=${version}" alt="A &quot;quoted&quot; tour"></picture>`,
       );
       // Only the recorded demos opt out of the default image frame.
       expect(demoImage('/assets/photo@2x.webp', 'Photo')).not.toContain('demo-shot');
@@ -199,13 +203,51 @@ const x = 1;
     try {
       const html = demoImage('/assets/demos/wide@2x.webp', 'Tour', { src: '/assets/demos/tall@2x.webp', maxWidth: 760 });
       const sources = [...html.matchAll(/<source [^>]*>/g)].map((match) => match[0]);
+      const wide = hashOf(webp(1100, 360));
+      const tall = hashOf(webp(660, 700));
       expect(sources).toEqual([
-        '<source media="(max-width: 760px) and (prefers-reduced-motion: reduce)" srcset="/assets/demos/tall-still@2x.webp" width="330" height="350">',
-        '<source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/wide-still@2x.webp">',
-        '<source media="(max-width: 760px)" srcset="/assets/demos/tall@2x.webp" width="330" height="350">',
+        `<source media="(max-width: 760px) and (prefers-reduced-motion: reduce)" srcset="/assets/demos/tall-still@2x.webp?v=${tall}" width="330" height="350">`,
+        `<source media="(prefers-reduced-motion: reduce)" srcset="/assets/demos/wide-still@2x.webp?v=${wide}">`,
+        `<source media="(max-width: 760px)" srcset="/assets/demos/tall@2x.webp?v=${tall}" width="330" height="350">`,
       ]);
       // The <img> keeps the default image's own size.
-      expect(html).toContain('width="550" height="180" src="/assets/demos/wide@2x.webp"');
+      expect(html).toContain(`width="550" height="180" src="/assets/demos/wide@2x.webp?v=${wide}"`);
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it('versions images in the demo and screenshot folders by content hash, and nothing else', async () => {
+    expect(VERSIONED_IMAGE_FOLDERS).toEqual(['/assets/demos/', '/assets/vscode/']);
+    const bytes = (fill: number) => {
+      const header = Buffer.alloc(32, fill);
+      header.write('RIFF', 0, 'latin1');
+      header.write('WEBP', 8, 'latin1');
+      header.write('VP8 ', 12, 'latin1');
+      header.writeUInt16LE(40, 26);
+      header.writeUInt16LE(20, 28);
+      return header;
+    };
+    await mkdir(join(tempDir, 'src/pages/assets/vscode'), { recursive: true });
+    await mkdir(join(tempDir, 'src/pages/assets/other'), { recursive: true });
+    const vscodeFile = join(tempDir, 'src/pages/assets/vscode/hover@2x.webp');
+    await writeFile(vscodeFile, bytes(1));
+    await writeFile(join(tempDir, 'src/pages/assets/other/photo@2x.webp'), bytes(1));
+
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+    try {
+      const first = demoImage('/assets/vscode/hover@2x.webp', 'Hover');
+      expect(first).toContain(`src="/assets/vscode/hover@2x.webp?v=${hashOf(bytes(1))}"`);
+      // Same bytes give the same URL; different bytes give a different one, even at the same size.
+      expect(demoImage('/assets/vscode/hover@2x.webp', 'Hover')).toBe(first);
+      await writeFile(vscodeFile, bytes(2));
+      const second = demoImage('/assets/vscode/hover@2x.webp', 'Hover');
+      expect(second).toContain(`?v=${hashOf(bytes(2))}`);
+      expect(second).not.toBe(first);
+      // Folders outside the list are never versioned, because they are not cached forever.
+      expect(demoImage('/assets/other/photo@2x.webp', 'Photo')).toContain('src="/assets/other/photo@2x.webp"');
+      // A missing file renders its plain path instead of throwing.
+      expect(demoImage('/assets/vscode/missing@2x.webp', 'Gone')).toContain('src="/assets/vscode/missing@2x.webp"');
     } finally {
       cwd.mockRestore();
     }

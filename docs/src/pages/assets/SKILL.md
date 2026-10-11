@@ -1428,7 +1428,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 
 **`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages and static assets receive strong SHA-256 content-hash `ETag` headers (not mtime-derived, so identical bytes produce identical ETags across separate server instances/replicas) and the server returns `304 Not Modified` for unchanged content, carrying `vary` and `cache-control`. Set `false` if a CDN manages caching externally.
 
-**`http.cacheControl`:** a string (applied to every static asset) or a per-extension map, e.g. `{ '.woff2': 'public, max-age=31536000, immutable', '.png': 'public, max-age=86400' }`. Unmapped extensions fall back to the default `public, max-age=3600`. Only pair `immutable` with a URL whose content cannot change (in practice, a fingerprinted filename).
+**`http.cacheControl`:** a string (applied to every static asset) or a per-extension map, e.g. `{ '.woff2': 'public, max-age=31536000, immutable', '.png': 'public, max-age=86400' }`. Unmapped extensions fall back to the default `public, max-age=3600`. Only pair `immutable` with a URL whose content cannot change (in practice, a fingerprinted filename or a content-hash query string).
 
 **`http.compression`:** negotiates Brotli or Gzip based on `Accept-Encoding`. Static HTML pages are pre-compressed with both Brotli and Gzip in the background at startup; static assets negotiate Brotli or Gzip with sidecar support (`.br`/`.gz`). Compression is skipped below a size threshold and for already-compressed formats (images, video, audio, archives, `woff2`). Each encoded representation gets a distinct ETag from the identity representation (e.g. `"hash-br"`, `"hash-gz"`).
 

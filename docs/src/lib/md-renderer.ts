@@ -20,7 +20,8 @@
  * the emitted <code-block> tags are resolved normally by Bascik.
  */
 
-import { closeSync, existsSync, openSync, readSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { marked } from 'marked';
@@ -90,6 +91,39 @@ function stillCopyPath(sitePath: string): string | null {
 const DEMO_FOLDERS = ['/assets/demos/'];
 
 /**
+ * Site folders whose images are served with a content-hash query string and cached for a year. These are the
+ * large recordings and screenshots. Every reference to them goes through `renderImage`, so every URL carries
+ * the hash. scripts/generate-pages-headers.ts reads this list to write the matching `immutable` rule, so a
+ * folder is only ever cached forever when its URLs are versioned.
+ */
+export const VERSIONED_IMAGE_FOLDERS = ['/assets/demos/', '/assets/vscode/'] as const;
+
+const versionCache = new Map<string, { stamp: string; version: string }>();
+
+/**
+ * The site path with `?v=<content hash>` appended when it names an image in a versioned folder, otherwise the
+ * path unchanged (including when the file is missing). The query string changes whenever the bytes change, so
+ * a far-future cache can never serve a stale image, and the file keeps its name: nothing is renamed or rewritten
+ * after the build. Hashes are cached per file and recomputed when its size or modified time changes.
+ */
+function versionedPath(sitePath: string): string {
+  if (!sitePath.startsWith('/') || sitePath.includes('..')) return sitePath;
+  if (!VERSIONED_IMAGE_FOLDERS.some((folder) => sitePath.startsWith(folder))) return sitePath;
+  try {
+    const file = join(process.cwd(), 'src/pages', sitePath);
+    const { mtimeMs, size } = statSync(file);
+    const stamp = `${mtimeMs}:${size}`;
+    const cached = versionCache.get(file);
+    if (cached?.stamp === stamp) return `${sitePath}?v=${cached.version}`;
+    const version = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 10);
+    versionCache.set(file, { stamp, version });
+    return `${sitePath}?v=${version}`;
+  } catch {
+    return sitePath;
+  }
+}
+
+/**
  * The HTML for one site image: lazy loading, the display size when the file is a PNG or WebP that ships with
  * the docs, and a `demo-shot` class for the recorded demos so their rounded window corners are not boxed in.
  *
@@ -102,7 +136,7 @@ function renderImage(src: string, rest: string, narrow?: { src: string; maxWidth
   const size = imageSize(src);
   const dimensions = size ? ` width="${size.width}" height="${size.height}"` : '';
   const demoClass = DEMO_FOLDERS.some((folder) => src.startsWith(folder)) ? ' class="demo-shot"' : '';
-  const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${src}"${rest}>`;
+  const image = `<img loading="lazy" decoding="async"${demoClass}${dimensions} src="${versionedPath(src)}"${rest}>`;
   const sources: string[] = [];
   // The narrow image has a different shape from the default one, so its sources say how big it is. Without
   // that, the browser would reserve the default image's shape and the page would jump when the real one loads.
@@ -112,10 +146,10 @@ function renderImage(src: string, rest: string, narrow?: { src: string; maxWidth
   const still = stillCopyPath(src);
   const narrowStill = narrow ? stillCopyPath(narrow.src) : null;
   if (narrow && narrowStill) {
-    sources.push(`<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${narrowStill}"${narrowDimensions}>`);
+    sources.push(`<source media="(max-width: ${narrow.maxWidth}px) and (prefers-reduced-motion: reduce)" srcset="${versionedPath(narrowStill)}"${narrowDimensions}>`);
   }
-  if (still) sources.push(`<source media="(prefers-reduced-motion: reduce)" srcset="${still}">`);
-  if (narrow) sources.push(`<source media="(max-width: ${narrow.maxWidth}px)" srcset="${narrow.src}"${narrowDimensions}>`);
+  if (still) sources.push(`<source media="(prefers-reduced-motion: reduce)" srcset="${versionedPath(still)}">`);
+  if (narrow) sources.push(`<source media="(max-width: ${narrow.maxWidth}px)" srcset="${versionedPath(narrow.src)}"${narrowDimensions}>`);
   if (sources.length === 0) return image;
   return `<picture>${sources.join('')}${image}</picture>`;
 }
