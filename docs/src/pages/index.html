@@ -339,6 +339,27 @@
       text-decoration: none;
     }
 
+    .how-nav-card {
+      padding: 0 0 26px;
+      overflow: hidden;
+    }
+
+    .how-nav-card h3 {
+      margin: 22px 28px 0;
+      font-size: 1.6rem;
+    }
+
+    .how-nav {
+      display: flex;
+      gap: 24px;
+      padding: 16px 28px;
+      border-bottom: 3px solid var(--accent-fg);
+    }
+
+    .how-nav-link:hover {
+      text-decoration: underline;
+    }
+
 
     /* ── Pillars ── */
     .pillars-grid {
@@ -776,12 +797,12 @@
 
         <div class="how-split">
           <!-- Code panel using component-demo with disabled preview tab -->
-          <component-demo data-bascik-prop-no-preview="true" data-bascik-prop-file="my-card">
+          <component-demo data-bascik-prop-no-preview="true" data-bascik-prop-file="site-nav">
             <div data-bascik-slot="source-usage">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-usage');
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-nav-usage');
                 </script>
               </code-block>
             </div>
@@ -789,7 +810,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-component');
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-nav-component');
                 </script>
               </code-block>
             </div>
@@ -797,7 +818,7 @@
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>
                   import { extractDemoBlock } from '@/lib/md-renderer.ts';
-                  export default async () => await extractDemoBlock('./content/index.md', 'home-card-output');
+                  export default async () => await extractDemoBlock('./content/index.md', 'home-nav-output');
                 </script>
               </code-block>
             </div>
@@ -808,9 +829,13 @@
             <p class="how-result-eyebrow">
               Live Example
             </p>
-            <div class="how-result-card" id="how-demo-card">
-              <h3>My Card</h3>
-              <p>Any HTML goes inside as slot content.</p>
+            <div class="how-result-card how-nav-card" id="how-demo-card">
+              <nav class="how-nav">
+                <a class="how-nav-link" href="/">Home</a>
+                <a class="how-nav-link" href="/why-bascik">Why Bascik</a>
+                <a class="how-nav-link" href="/getting-started">Docs</a>
+              </nav>
+              <h3>Welcome</h3>
             </div>
           </div>
         </div>

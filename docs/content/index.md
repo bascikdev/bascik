@@ -1,55 +1,61 @@
 <!-- Content for home page demo code blocks extracted by docs/src/pages/index.html. -->
 
-<!-- demo:home-card-component -->
+<!-- demo:home-nav-component -->
 ```html
-<!-- src/components/my-card.html -->
+<!-- src/components/site-nav.html -->
 <style>
-  .card {
-    padding: 24px 28px;
-    border: 1px solid #3a3d40;
-    border-top: 3px solid #d3ff8d;
-    border-radius: 10px;
+  .nav {
+    display: flex;
+    gap: 24px;
+    padding: 16px 28px;
+    border-bottom: 3px solid #d3ff8d;
   }
+  .link { color: #d3ff8d; }
+  .link:hover { text-decoration: underline; }
 </style>
-<article class="card">
-  <div data-bascik-slot></div>
-</article>
+<nav class="nav">
+  <a class="link" href="/">Home</a>
+  <a class="link" href="/why-bascik">Why Bascik</a>
+  <a class="link" href="/getting-started">Docs</a>
+</nav>
 ```
 
-<!-- demo:home-card-usage -->
+<!-- demo:home-nav-usage -->
 ```html
 <!-- src/pages/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <body>
-  <my-card>
-    <h3>My Card</h3>
-    <p>Any HTML goes inside as slot content.</p>
-  </my-card>
+  <site-nav />
+  <h1>Welcome</h1>
 </body>
 </html>
 ```
 
-<!-- demo:home-card-output -->
+<!-- demo:home-nav-output -->
 ```html
 <!-- dist/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <style>
-    .bascik__my-card__card {
-      padding: 24px 28px;
-      border: 1px solid #3a3d40;
-      border-top: 3px solid #d3ff8d;
-      border-radius: 10px;
+    .bascik__site-nav__nav {
+      display: flex;
+      gap: 24px;
+      padding: 16px 28px;
+      border-bottom: 3px solid #d3ff8d;
     }
+    .bascik__site-nav__link { color: #d3ff8d; }
+    .bascik__site-nav__link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <article class="bascik__my-card__card">
-    <h3>My Card</h3>
-    <p>Any HTML goes inside as slot content.</p>
-  </article>
+  <nav class="bascik__site-nav__nav">
+    <a class="bascik__site-nav__link" href="/">Home</a>
+    <a class="bascik__site-nav__link" href="/components">Components</a>
+    <a class="bascik__site-nav__link" href="/slots">Slots</a>
+  </nav>
+  <h1>Welcome</h1>
 </body>
 </html>
 ```
