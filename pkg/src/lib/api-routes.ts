@@ -18,6 +18,7 @@ import { readdir } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
 import { existsSync } from "node:fs";
 import { withBasePath } from "./base-path.ts";
+import { trimSlashes } from "./slashes.ts";
 import {
   extractApiRouteParamNames,
   findApiRoutePatternProblems,
@@ -59,7 +60,7 @@ export const fileToApiRoutePath = (relPath: string, basePath = "/"): string => {
   }
 
   // Ensure clean leading slash and no trailing slash except root
-  routeSegment = "/" + routeSegment.replace(/^\/+/, "").replace(/\/+$/, "");
+  routeSegment = "/" + trimSlashes(routeSegment);
   return withBasePath(routeSegment, basePath);
 };
 

@@ -456,6 +456,21 @@ suite('Extension Integration Suite', () => {
       ]);
     });
 
+    test('filters on the leading "<" that the replacement range covers', async () => {
+      // The range replaces "<my-", so VS Code filters the typed "<my-" against filterText.
+      // Without the "<", the editor hides every item even though the provider returned it.
+      const completions = await completionsInFile(
+        'primary',
+        'src/component-nav.html',
+        '<my-',
+      );
+      const items = completions.items.filter((item) => item.detail === 'Bascik component');
+      assert.ok(items.length > 0, 'Expected component items');
+      for (const item of items) {
+        assert.strictEqual(item.filterText, `<${completionLabel(item)}`);
+      }
+    });
+
     test('includes components from every configured root', async () => {
       const completions = await completionsInFile(
         'primary',
@@ -684,6 +699,7 @@ suite('Extension Integration Suite', () => {
 
       const buildShorthand = shorthandCompletions.items.find((i) => completionLabel(i) === 'bascik-build');
       assert.ok(buildShorthand, 'Expected bascik-build item');
+      assert.strictEqual(buildShorthand.filterText, '<bascik-build');
       const buildInsert = buildShorthand.insertText instanceof vscode.SnippetString
         ? buildShorthand.insertText.value
         : String(buildShorthand.insertText);
@@ -2118,7 +2134,7 @@ suite('Extension Integration Suite', () => {
       );
     });
 
-    test('reports template classList replacement warning in standalone TypeScript', async () => {
+    test('reports template classList replacement error in standalone TypeScript', async () => {
       const document = await openWorkspaceDocument({
         language: 'typescript',
         content: 'element.classList.replace("old", `state-${nextState}`);',
@@ -2130,8 +2146,9 @@ suite('Extension Integration Suite', () => {
             'Template-literal class names are not rewritten safely',
           ),
         );
-      assert.ok(match, 'Expected template classList replacement warning');
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      assert.ok(match, 'Expected template classList replacement diagnostic');
+      // Every compatibility rule is an error (docs/content/compatibility.md).
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('does not warn for a hyphenated component filename', async () => {

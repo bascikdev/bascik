@@ -598,7 +598,9 @@ Never configure `minify.js` merely to strip TypeScript. Bascik performs supporte
 
 When debugging component scripts in browser DevTools (Cmd+Option+I or F12), Bascik provides virtual source files and accurate stack traces:
 
-* **Virtual Source Files:** Bascik appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component client `<script>` block. In browser DevTools under the **Sources** (or Debugger) panel, your component scripts appear as virtual files matching your project folder structure (e.g., `src/components/card.html`).
+* **Virtual Source Files:** Bascik appends a `//# sourceURL=src/components/name.html` directive to every component client `<script>` block and pads it so DevTools line N is line N of the component file. In browser DevTools under the **Sources** (or Debugger) panel, your component scripts appear as virtual files matching your project folder structure (e.g., `src/components/card.html`).
+* **One File per Instance:** The second and later instances of a component on a page are separate files: `card.html?instance=2`, `card.html?instance=3`. A breakpoint pauses only the instance whose file it was set in; use a `debugger;` statement to pause every instance.
+* **Minified Builds:** `bascik --build` minifies JavaScript by default, which joins lines. Source line numbers hold in the dev server, or in a build with `minify.js: false`.
 * **Console Logs & Breakpoints:** Because component scripts are listed as virtual files, you can search for them directly using `Cmd + P` or `Ctrl + P` in DevTools, set breakpoints, and step-debug. Runtime console logs and uncaught exceptions map directly to the original component file and line offset rather than the generated HTML page.
 
 ---
@@ -847,7 +849,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script + the resolved identity of every installed package the script (or its local dependencies) imports. Package identity covers the package manifest and the resolved entry, plus a bounded transitive hash of the packages those imports themselves pull in, so upgrading a build-time npm dependency invalidates affected entries automatically regardless of cache temperature.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script + the content of the source and page files when the script or a local helper names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE` + the resolved identity of every installed package the script (or its local dependencies) imports. Package identity covers the package manifest and the resolved entry, plus a bounded transitive hash of the packages those imports themselves pull in, so upgrading a build-time npm dependency invalidates affected entries automatically regardless of cache temperature.
 
 **Excluding scripts from cache:** Statically scanned cache keys cannot detect runtime network calls, `readdir` directory reads, or dynamic computed file paths. For scripts reading from external APIs or computed paths, exclude them via `scripts.cache.exclude`:
 
@@ -1428,7 +1430,7 @@ When `tls.enabled: true` is set, TLS certs are generated automatically (mkcert i
 
 **`http.httpCache`:** defaults to `true` in `--server` and `false` in the dev server. When `true`: pages and static assets receive strong SHA-256 content-hash `ETag` headers (not mtime-derived, so identical bytes produce identical ETags across separate server instances/replicas) and the server returns `304 Not Modified` for unchanged content, carrying `vary` and `cache-control`. Set `false` if a CDN manages caching externally.
 
-**`http.cacheControl`:** a string (applied to every static asset) or a per-extension map, e.g. `{ '.woff2': 'public, max-age=31536000, immutable', '.png': 'public, max-age=86400' }`. Unmapped extensions fall back to the default `public, max-age=3600`. Only pair `immutable` with a URL whose content cannot change (in practice, a fingerprinted filename).
+**`http.cacheControl`:** a string (applied to every static asset) or a per-extension map, e.g. `{ '.woff2': 'public, max-age=31536000, immutable', '.png': 'public, max-age=86400' }`. Unmapped extensions fall back to the default `public, max-age=3600`. Only pair `immutable` with a URL whose content cannot change (in practice, a fingerprinted filename or a content-hash query string).
 
 **`http.compression`:** negotiates Brotli or Gzip based on `Accept-Encoding`. Static HTML pages are pre-compressed with both Brotli and Gzip in the background at startup; static assets negotiate Brotli or Gzip with sidecar support (`.br`/`.gz`). Compression is skipped below a size threshold and for already-compressed formats (images, video, audio, archives, `woff2`). Each encoded representation gets a distinct ETag from the identity representation (e.g. `"hash-br"`, `"hash-gz"`).
 
@@ -1770,7 +1772,7 @@ Bascik works smoothly with debuggers because it operates directly on vanilla HTM
 Debugging server-side scripts, build-time scripts, and browser component code in Bascik requires no special source map plugins or transpilation step:
 
 * **Server and Build Scripts:** Bascik automatically appends `//# sourceURL=${relPath}` comments to temporary script modules created during compilation (`<script data-bascik-build>` and `<script data-bascik-server>`). Stack traces and debugger breakpoints point directly back to your original source file paths.
-* **Client Component Scripts:** Bascik preserves newline padding when scoping component `<script>` tags. Line numbers reported in console errors or hit during step-debugging match the exact line numbers in your component `.html` source files.
+* **Client Component Scripts:** Bascik pads component `<script>` tags to their source line when scoping them. Line numbers reported in console errors or hit during step-debugging match the exact line numbers in your component `.html` source files while JavaScript is not minified (the dev server default).
 * **Native TypeScript Debugging:** Because Node 22.18.0+ natively executes TypeScript files by stripping type annotations, setting breakpoints in `.ts` modules pauses execution immediately with full access to local scope variables and call stacks.
 
 #### Pre-Configured VS Code Launch Configurations
@@ -1958,7 +1960,7 @@ To install locally: open `extensions/vscode-bascik/` in VS Code and press F5.
 
 ## 16. Lighthouse 100s & Performance
 
-Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores. Reaching 100 across all four Lighthouse categories is a matter of applying a small, well-known set of HTML patterns.
+Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores. Reaching 100 across the four scored Lighthouse categories is a matter of applying a small, well-known set of HTML patterns. The docs have an overview at `/lighthouse` and one page per category: `/lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`.
 
 ### What Bascik Does
 * **Zero runtime:** The most impactful thing Bascik does is what it does not add: no framework bundle, no hydration script, and no client-side router. The only JavaScript on any page is what you wrote.
@@ -1974,6 +1976,12 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 * **Prefetching (`<link rel="prefetch">`):** Fetch resources or future pages during idle time if a navigation is highly likely.
 * **Preconnect / DNS Prefetch:** For critical third-party domains, resolve DNS and negotiate connections early using `dns-prefetch` and `preconnect`.
 * **Async and Deferred Scripts:** Use `defer` for scripts that need the DOM ready, and `async` for fully independent scripts like analytics.
+
+### Other Categories
+* **Accessibility:** Use landmark elements, `lang` on `<html>`, labeled controls, a skip link, and native `<details>` and `<dialog>` before reaching for JavaScript.
+* **Best Practices:** Keep `<!DOCTYPE html>` and an early `<meta charset>` in every page, serve over HTTPS, and enable `generate.cspHashes` for a strict Content Security Policy. Bascik emits hashes in `dist/.bascik/csp-hashes.json` and does not set the header.
+* **SEO:** Every page needs its own `<title>`, meta description, and canonical URL. `bascik --build` writes `sitemap.xml` and `robots.txt` once `BASCIK_SITE_URL` is set.
+* **Agentic Browsing:** Lighthouse's newest category reports a pass ratio, not a 0 to 100 score. Semantic HTML, zero layout shift, and a valid `llms.txt` (author `src/pages/llms.txt` or generate it into `dist/` from an exec script) cover the audits that apply without opt-in. WebMCP audits are experimental and need an origin trial.
 
 ---
 

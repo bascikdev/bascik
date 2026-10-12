@@ -1,4 +1,5 @@
 import { createContentShield, shieldElementContents } from "./shielding.ts";
+import { trimTrailingSlashes } from "./slashes.ts";
 
 const URL_ATTRIBUTES = new Set([
   "action",
@@ -33,7 +34,7 @@ export const stripBasePath = (pathname: string, base: string): string | null => 
 };
 
 export const composeSiteUrl = (siteUrl: string, base: string, pathname: string): string => {
-  const normalizedSiteUrl = siteUrl.replace(/\/+$/, "");
+  const normalizedSiteUrl = trimTrailingSlashes(siteUrl);
   const normalizedPathname = pathname.startsWith("/") ? pathname : `/${pathname}`;
   return `${normalizedSiteUrl}${withBasePath(normalizedPathname, base)}`;
 };

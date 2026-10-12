@@ -66,12 +66,19 @@ export async function readConfigSource(
   return undefined;
 }
 
+/** Drops trailing "/" in linear time; the regex `/\/+$/` is quadratic on long slash runs. */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
+}
+
 export function resolveComponentRoots(
   workspaceRoot: string,
   configuredRoots: string[],
 ): string[] {
   return configuredRoots.map((root) =>
-    path.resolve(workspaceRoot, root).replace(/\\/g, '/').replace(/\/+$/, ''),
+    trimTrailingSlashes(path.resolve(workspaceRoot, root).replace(/\\/g, '/')),
   );
 }
 

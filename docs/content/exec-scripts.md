@@ -135,6 +135,10 @@ When running `bascik` in development mode:
 4. Edits arriving during pre, compilation, or post are retained for a following cycle. Failed-cycle paths are retained for retry when another source edit arrives, not retried endlessly without an edit.
 5. Successful compilation reloads are held until post succeeds. Pre, compilation, or post failure reports a build-error without a success reload for that cycle.
 
+This recording runs the dev server with a `post` script that watches `content/` and writes `dist/search-index.json`. Saving `content/notes.md` rebuilds only the page that reads it, then reruns the script:
+
+![A terminal running bascik. Five pages transpile, then the search-index exec script runs once and logs indexed: Release notes, and the server starts. After content/notes.md is saved, only pages/notes.html is rebuilt and the script runs again, logging indexed: Release notes for 1.0](/assets/demos/exec-watch@2x.webp)
+
 ## When a script fails
 
 `pipeline.onExecError` decides what a failing script does. It applies to every phase (`pre`, `parallel`, and `post`), at startup and on later edits.

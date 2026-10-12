@@ -8,8 +8,7 @@
  * are used every run so results are comparable across code changes.
  */
 
-import { bench, describe } from "vitest";
-import { vi } from "vitest";
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 
 // ── Mock config so benchmarks run without a project root ─────────────────────
@@ -37,17 +36,19 @@ vi.mock(import("../src/lib/names.ts"), async (importOriginal) => ({
   getUniqueId: () => "bench1234",
 }));
 
-import {
-  recursivelyTranspile,
-} from "../src/lib/processing.ts";
-import { replaceTag, getTag } from "../src/lib/components.ts";
-import { minifyHtml } from "../src/lib/html-minifier.ts";
-import { minifyJs } from "../src/lib/js-minifier.ts";
-import {
-  convertCssElementSelectorsToClasses,
-  scopeCssCustomProperties,
-  deduplicateCss,
-} from "../src/lib/styles.ts";
+import * as processing from "../src/lib/processing.ts";
+import * as components from "../src/lib/components.ts";
+import * as htmlMinifier from "../src/lib/html-minifier.ts";
+import * as jsMinifier from "../src/lib/js-minifier.ts";
+import * as styles from "../src/lib/styles.ts";
+
+// Vite's module runner turns every import into a getter; reading one per
+// iteration adds overhead to the measurement. Bind each function once.
+const { recursivelyTranspile } = processing;
+const { replaceTag, getTag } = components;
+const { minifyHtml } = htmlMinifier;
+const { minifyJs } = jsMinifier;
+const { convertCssElementSelectorsToClasses, scopeCssCustomProperties, deduplicateCss } = styles;
 
 import type { ComponentList } from "../src/lib/types.ts";
 
@@ -160,111 +161,124 @@ const SLASH_HEAVY = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_HEAVY
 const SLASH_LIGHT = JS_SIZES.map(({ label, reps }) => ({ label, src: SLASH_LIGHT_UNIT.repeat(reps) }));
 
 // ── Benchmarks ────────────────────────────────────────────────────────────────────────────
+// Vitest 5: `bench` is a test-context fixture. Each group is one test; groups
+// with several sizes use `bench.compare` so the table shows them side by side.
 
-describe("minifyJs: slash-heavy scaling", () => {
-  for (const { label, src } of SLASH_HEAVY) {
-    bench(`slash-heavy ${label} (${src.length} bytes)`, () => {
-      minifyJs(src);
-    });
-  }
+test("minifyJs: slash-heavy scaling", async ({ bench }) => {
+  await bench.compare(
+    ...SLASH_HEAVY.map(({ label, src }) =>
+      bench(`slash-heavy ${label} (${src.length} bytes)`, () => {
+        minifyJs(src);
+      }),
+    ),
+  );
 });
 
-describe("minifyJs: slash-light scaling", () => {
-  for (const { label, src } of SLASH_LIGHT) {
-    bench(`slash-light ${label} (${src.length} bytes)`, () => {
-      minifyJs(src);
-    });
-  }
+test("minifyJs: slash-light scaling", async ({ bench }) => {
+  await bench.compare(
+    ...SLASH_LIGHT.map(({ label, src }) =>
+      bench(`slash-light ${label} (${src.length} bytes)`, () => {
+        minifyJs(src);
+      }),
+    ),
+  );
 });
 
-describe("minifyHtml", () => {
-  bench("small HTML (~200 chars)", () => {
-    minifyHtml(SMALL_NAV_HTML);
-  });
-
-  bench("large HTML (~10KB, 50× repeated)", () => {
-    minifyHtml(LARGE_HTML);
-  });
+test("minifyHtml", async ({ bench }) => {
+  await bench.compare(
+    bench("small HTML (~200 chars)", () => {
+      minifyHtml(SMALL_NAV_HTML);
+    }),
+    bench("large HTML (~10KB, 50× repeated)", () => {
+      minifyHtml(LARGE_HTML);
+    }),
+  );
 });
 
-describe("getTag", () => {
-  bench("paired tag lookup", () => {
-    getTag("<div><custom-nav>inner</custom-nav></div>", "custom-nav");
-  });
-
-  bench("self-closing tag lookup", () => {
-    getTag("<div><custom-nav /></div>", "custom-nav");
-  });
+test("getTag", async ({ bench }) => {
+  await bench.compare(
+    bench("paired tag lookup", () => {
+      getTag("<div><custom-nav>inner</custom-nav></div>", "custom-nav");
+    }),
+    bench("self-closing tag lookup", () => {
+      getTag("<div><custom-nav /></div>", "custom-nav");
+    }),
+  );
 });
 
-describe("replaceTag", () => {
-  bench("replace paired tag", () => {
+test("replaceTag", async ({ bench }) => {
+  await bench("replace paired tag", () => {
     replaceTag(
       "<div><custom-nav>inner</custom-nav><p>after</p></div>",
       "custom-nav",
       "<nav>replaced</nav>",
     );
-  });
+  }).run();
 });
 
-describe("CSS scoping — convertCssElementSelectorsToClasses", () => {
-  bench("realistic component CSS (~600 chars)", () => {
+test("CSS scoping — convertCssElementSelectorsToClasses", async ({ bench }) => {
+  await bench("realistic component CSS (~600 chars)", () => {
     convertCssElementSelectorsToClasses(COMPONENT_CSS, "my-nav");
-  });
+  }).run();
 });
 
-describe("CSS scoping — scopeCssCustomProperties", () => {
-  bench("10 custom properties", () => {
+test("CSS scoping — scopeCssCustomProperties", async ({ bench }) => {
+  await bench("10 custom properties", () => {
     scopeCssCustomProperties(CUSTOM_PROPS_CSS, "my-comp__bench1234");
-  });
+  }).run();
 });
 
-describe("recursivelyTranspile: flat instance scaling", () => {
-  bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
-    recursivelyTranspile(FLAT_800, FLAT_LIST);
-  });
-  bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
-    recursivelyTranspile(FLAT_1600, FLAT_LIST);
-  });
-  bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
-    recursivelyTranspile(FLAT_3200, FLAT_LIST);
-  });
-  bench(`800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`, () => {
-    recursivelyTranspile(NESTED_800, NESTED_LIST);
-  });
+// Four interleaved multi-millisecond benches outlast the default 60 s test timeout.
+test("recursivelyTranspile: flat instance scaling", { timeout: 300_000 }, async ({ bench }) => {
+  await bench.compare(
+    bench(`800 flat instances (${FLAT_800.length} bytes)`, () => {
+      recursivelyTranspile(FLAT_800, FLAT_LIST);
+    }),
+    bench(`1600 flat instances (${FLAT_1600.length} bytes)`, () => {
+      recursivelyTranspile(FLAT_1600, FLAT_LIST);
+    }),
+    bench(`3200 flat instances (${FLAT_3200.length} bytes)`, () => {
+      recursivelyTranspile(FLAT_3200, FLAT_LIST);
+    }),
+    bench(`800 nested instances, 2400 substitutions (${NESTED_800.length} bytes)`, () => {
+      recursivelyTranspile(NESTED_800, NESTED_LIST);
+    }),
+  );
 });
 
-describe("recursivelyTranspile (full pipeline)", () => {
-  bench("10 components, 1 page", () => {
-    recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
-  });
-
-  bench("50 components, 1 page", () => {
-    recursivelyTranspile(PAGE_BODY_50, COMPONENT_LIST_50);
-  });
+test("recursivelyTranspile (full pipeline)", async ({ bench }) => {
+  await bench.compare(
+    bench("10 components, 1 page", () => {
+      recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
+    }),
+    bench("50 components, 1 page", () => {
+      recursivelyTranspile(PAGE_BODY_50, COMPONENT_LIST_50);
+    }),
+  );
 });
 
-describe("deduplicateCss", () => {
+test("deduplicateCss", async ({ bench }) => {
   const usedComponents = Array.from({ length: 20 }, (_, i) => ({
     name: `comp-${i % 10}`, // 10 unique names, each used twice
     cssFileContent: `.c${i % 10} { color: red; }`,
   }));
 
-  bench("20 entries, 10 unique components", () => {
+  await bench("20 entries, 10 unique components", () => {
     deduplicateCss(usedComponents);
-  });
+  }).run();
 });
 
-describe("multi-page transpilation simulation", () => {
-  bench("20 pages × recursivelyTranspile (sequential)", () => {
-    for (let p = 0; p < 20; p++) {
-      recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
-    }
-  });
-
-  bench("50 pages × recursivelyTranspile (sequential)", () => {
-    for (let p = 0; p < 50; p++) {
-      recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
-    }
-  });
+test("multi-page transpilation simulation", async ({ bench }) => {
+  await bench.compare(
+    bench("20 pages × recursivelyTranspile (sequential)", () => {
+      for (let p = 0; p < 20; p++) {
+        recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
+      }
+    }),
+    bench("50 pages × recursivelyTranspile (sequential)", () => {
+      for (let p = 0; p < 50; p++) {
+        recursivelyTranspile(PAGE_BODY_10, COMPONENT_LIST_10);
+      }
+    }),
+  );
 });

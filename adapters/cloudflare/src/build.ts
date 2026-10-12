@@ -107,6 +107,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
       }
       addOwner(specifier, job.owner);
       jobLiterals.push(
+        // codeql[js/bad-code-sanitization] Emits a standalone JS module (never inline HTML), and JSON.stringify yields valid JS string literals.
         `${JSON.stringify(id)}: { id: ${JSON.stringify(id)}, mode: ${JSON.stringify(job.mode)}, load: () => import(${JSON.stringify(specifier)}) }`,
       );
     }
@@ -117,6 +118,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
 
   const routeLiterals = graph.apiRoutes.map((r) => {
     addOwner(r.filePath, `API route ${r.path}`);
+    // codeql[js/bad-code-sanitization] Emits a standalone JS module (never inline HTML), and JSON.stringify yields valid JS string literals.
     return `{ path: ${JSON.stringify(r.path)}, filePath: ${JSON.stringify(relative(projectRoot, r.filePath).replace(/\\/g, "/"))}, paramNames: ${JSON.stringify(r.paramNames)}, isDynamic: ${r.isDynamic}, load: () => import(${JSON.stringify(r.filePath)}) }`;
   });
 

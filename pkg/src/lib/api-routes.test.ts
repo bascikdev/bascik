@@ -2,9 +2,29 @@ import { describe, it, expect } from "vitest";
 import {
   matchApiRoute,
   buildApiRouteTree,
+  fileToApiRoutePath,
   formatApiRouteWarning,
   type ApiRouteDefinition,
 } from "./api-routes.ts";
+
+describe("fileToApiRoutePath", () => {
+  it.each([
+    ["health.ts", "/api/health"],
+    ["users/index.ts", "/api/users"],
+    ["index.ts", "/api"],
+    ["users/", "/api/users"],
+  ])("maps %j to %j", (relPath, expected) => {
+    expect(fileToApiRoutePath(relPath)).toBe(expected);
+  });
+
+  it("runs in linear time on a long slash run inside the path", () => {
+    // `/\/+$/` is quadratic on a slash run that does not end the string.
+    const relPath = `a${"/".repeat(50_000)}b.ts`;
+    const start = performance.now();
+    expect(fileToApiRoutePath(relPath)).toBe(`/api/a${"/".repeat(50_000)}b`);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+});
 
 describe("API route matching (pure)", () => {
   it("matches static routes correctly", () => {

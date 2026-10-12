@@ -17,6 +17,10 @@ bascik --build --site-url https://example.com
 
 That's all, `generate.sitemap` and `generate.robots` both default to `true`, so no other change is needed. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
 
+This recording builds a new project that has one [dynamic route](/dynamic-routes) template, then prints the sitemap the build wrote. Each generated blog post is listed, and the 404 page is not:
+
+![A terminal running bascik --build --site-url https://example.com followed by cat dist/sitemap.xml. The build transpiles six pages, including two blog posts generated from one template, and reports generated: dist/sitemap.xml and dist/robots.txt. The printed sitemap lists absolute example.com URLs for the home, about, contact, and both blog post pages](/assets/demos/sitemap@2x.webp)
+
 ## What gets generated
 
 **`dist/sitemap.xml`:** an XML sitemap listing every `.html` page in your `src/pages` directory as an absolute URL:
@@ -101,6 +105,19 @@ export default defineConfig({
 ```
 
 `sitemapLastmod` is opt-in because filesystem mtimes can vary across CI checkouts, which would create unnecessary diff churn. Bascik intentionally omits `changefreq` and `priority` elements, as search engines publicly ignore them.
+
+### Dates from git history
+
+A git checkout sets every file's modification time to the checkout time, so mtime-based dates claim that every page changed on each deploy. Search engines stop trusting `<lastmod>` once it proves unreliable. If your pages live in a git repository, a `post` exec script can use the date of the last commit that touched each page's source files instead:
+
+```sh
+git log -1 --format=%cI -- src/pages/about.html content/about.md
+```
+
+The script reads `dist/sitemap.xml`, adds a `<lastmod>` to each `<url>`, and writes the file back. Two details matter:
+
+- **Shallow clones:** CI systems often fetch only recent history. A shallow clone treats its oldest visible commit as if it created every file, so dates taken from it are only upper bounds. Skip that boundary commit and leave a page undated when no real commit is visible, or fetch the full history (`git fetch --unshallow`, or `fetch-depth: 0` in GitHub Actions).
+- **Pages built from content files:** a page whose text comes from a Markdown file changed when either the HTML shell or the Markdown changed, so use the newest date across both.
 
 ## URL path rules
 

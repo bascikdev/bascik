@@ -58,7 +58,8 @@ describe('Lighthouse CI configuration', () => {
     expect(urls).toContain('http://localhost:8080/');
     expect(urls).toContain('http://localhost:8080/getting-started');
     expect(urls).toContain('http://localhost:8080/components');
-    expect(urls).toContain('http://localhost:8080/performance');
+    expect(urls).toContain('http://localhost:8080/lighthouse');
+    expect(urls).toContain('http://localhost:8080/lighthouse/performance');
 
     const allConfigRaw = await readFile(join(process.cwd(), 'lighthouse/lighthouserc.all.json'), 'utf8');
     const allConfig = JSON.parse(allConfigRaw);

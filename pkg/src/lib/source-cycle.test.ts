@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { createSourceCycle } from './source-cycle.ts';
+import { BuildScriptError } from './build-error.ts';
 
 const gate = () => Promise.withResolvers<void>();
 afterEach(() => vi.useRealTimers());
@@ -31,6 +32,34 @@ describe('source-owned phase cycles', () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(reload.mock.calls).toEqual([[{ relativePagePath: '1.html' }], [{ relativePagePath: '2.html' }]]);
     cycle.close();
+  });
+
+  it('reports a located build-error when compilation fails inside a component build script', async () => {
+    vi.useFakeTimers();
+    const emitter = new EventEmitter();
+    const errors: unknown[] = [];
+    emitter.on('build-error', (payload) => errors.push(payload));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failure = new BuildScriptError('[bascik] build script error in "components/x.html" at (line 4, column 7):\nboom', {
+      sourceFile: 'components/x.html',
+      line: 4,
+      column: 7,
+    });
+    const cycle = createSourceCycle({
+      entries: [],
+      run: vi.fn(),
+      emitter,
+      // The compile scope wraps what the work threw, so the cycle sees an AggregateError.
+      compile: async () => { throw new AggregateError([failure], 'wrapped'); },
+    });
+    cycle.enqueue('src/components/x.html');
+    await vi.advanceTimersByTimeAsync(50);
+    await cycle.idle();
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ file: 'components/x.html', line: 4, column: 7 });
+    cycle.close();
+    consoleError.mockRestore();
   });
 
   it('reruns a script when its own explicitly watched source is edited', async () => {

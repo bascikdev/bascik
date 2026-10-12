@@ -237,6 +237,8 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["src/**/*.integration.test.ts"],
+          // Projects inherit the root `benchmark.include`; run benchmarks once.
+          benchmark: { exclude: ["bench/**"] },
         },
       },
     ],

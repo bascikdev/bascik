@@ -76,6 +76,10 @@ A common pattern is converting Markdown content to HTML at build time:
 </script>
 ```
 
+The dev server does not watch files outside `src/` on its own. Add the folder to [`pipeline.watchPaths`](/watch-paths) and saving the Markdown rebuilds the page that reads it:
+
+![An editor above a browser. The editor shows content/notes.md. Changing today to on Friday and saving updates the paragraph in the browser. Adding a second paragraph and saving adds it to the page](/assets/demos/markdown-watch@2x.webp)
+
 ### Generating Navigation from JSON
 
 Read a JSON data file and render HTML markup from it:
@@ -313,6 +317,10 @@ See [Dynamic Routes](/dynamic-routes) for the complete guide to dynamic route ge
 
 Build scripts run as isolated Node.js ESM modules during transpilation. When a build script throws an exception (such as `ENOENT`, a syntax error, or a failed network fetch), Bascik intercepts the error and reports it cleanly without crashing the dev server or CLI runner.
 
+In the dev server, the error also appears as an overlay in every open browser, and saving the fix dismisses it:
+
+![An editor above a browser. A typo in a build script, String changed to Strin, is saved and the browser shows a Bascik Build Error overlay naming the file and the ReferenceError. Restoring the letter and saving dismisses the overlay](/assets/demos/error-overlay@2x.webp)
+
 ### Terminal Error Formatting
 
 When a build script fails, Bascik prints the page file path along with the exact line and column number of the `<script data-bascik-build>` tag. Bascik automatically filters out internal V8 and child-process execution noise, remapping execution offsets back to your source file:
@@ -393,6 +401,7 @@ Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`.
 - The authored script body before temporary-module import rewriting
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
+- The contents of the source and page files, when the script or a local helper it imports names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`, so a helper that reads its own page re-runs when the page changes
 - **Resolved package identity** for every bare, scoped, and subpath package the script imports: the resolved entry file contents plus the package manifest, resolved with Node ESM semantics and walked as a bounded graph with cycle detection, so a package upgrade or an in-place edit to a workspace/`file:`-linked package invalidates cached output even when the script text is unchanged
 
 Package identity is computed per imported package (not per page) and cached, so unrelated installed packages are never hashed on every page. Node core modules (`node:fs`, `fs`) contribute only their runtime name, never a filesystem hash.

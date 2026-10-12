@@ -4,6 +4,10 @@ Imagine a dashboard or product page where the navigation, header, and sidebar ar
 
 ## See it in action
 
+This is a recording of a real page served by the Bascik dev server. The skeleton and the page shell paint first, and the metric card replaces the skeleton in place when the slow work finishes (the page waits two seconds on purpose, so the swap is easy to see). There is no layout shift and no client-side fetching:
+
+![A browser loading a dashboard page. A Loading live metrics skeleton is shown first, and after about two seconds a card reading 99.99% uptime across 3 regions replaces it in place](/assets/demos/stream@2x.webp)
+
 The preview below cycles through the streaming lifecycle: the static header and pending placeholder paint immediately in the initial chunk (Stage 1), and the streamed result replaces the placeholder once the asynchronous backend task resolves (Stage 2).
 
 > **See it live on Cloudflare Workers.** These pages stream real chunked HTTP responses from a deployed Bascik site. Reload them and watch the placeholders resolve:

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { writeHeapSnapshot } from "node:v8";
-import { setImmediate as nextTurn } from "node:timers/promises";
+import { setImmediate as nextTurn, setTimeout as delay } from "node:timers/promises";
 import { resolve, join } from "node:path";
 import { chmod, readFile, readdir } from "node:fs/promises";
 import tls from "node:tls";
@@ -37,6 +37,39 @@ if (mode !== "dev") process.argv.push("--server");
 assert(process.send && global.gc, "retention subject requires IPC and child-only --expose-gc");
 process.umask(0o077);
 const watcherReadiness: Promise<void>[] = [];
+const observedWatchers: object[] = [];
+
+/**
+ * Count chokidar's self-clearing internal timers on one watcher: throttles
+ * (`change` 50ms, raw `watch` 5ms, `readdir` 1000ms, `remove` 100ms),
+ * awaitWriteFinish polls, and atomic unlink deferrals. Each owns a live
+ * `Timeout` until it expires, so a resource sample taken inside that window
+ * reports a transient timer rather than a retained one.
+ */
+function watcherTransientTimers(watcher: object): number {
+  if (Reflect.get(watcher, "closed") === true) return 0;
+  let count = 0;
+  for (const field of ["_pendingWrites", "_pendingUnlinks"]) {
+    const pending: unknown = Reflect.get(watcher, field);
+    assert(pending instanceof Map, `chokidar ${field} observation unavailable`);
+    count += pending.size;
+  }
+  const throttled: unknown = Reflect.get(watcher, "_throttled");
+  assert(throttled instanceof Map, "chokidar _throttled observation unavailable");
+  for (const action of throttled.values()) if (action instanceof Map) count += action.size;
+  return count;
+}
+
+/** Wait for every watcher's transient timers to expire before sampling resources. */
+async function drainWatcherTimers(): Promise<void> {
+  const pollMs = 10;
+  // Chokidar's longest internal timer is the 1000ms readdir throttle; allow
+  // several back-to-back rescans before declaring the watcher stuck.
+  for (let waited = 0; observedWatchers.some(watcher => watcherTransientTimers(watcher) > 0); waited += pollMs) {
+    assert(waited < 5000, `chokidar transient timers did not drain: ${observedWatchers.map(watcherTransientTimers).join(",")}`);
+    await delay(pollMs);
+  }
+}
 const pendingCompression = new Set<Promise<void>>();
 for (const codec of ["gzip", "brotliCompress"] as const) {
   const original = zlib[codec];
@@ -69,6 +102,7 @@ async function enterHeldBuildDepGate(event: string): Promise<void> {
 const originalWatch = chokidar.watch;
 chokidar.watch = (...args: Parameters<typeof originalWatch>) => {
   const watcher = originalWatch(...args);
+  observedWatchers.push(watcher);
   const watchPathsTarget = args[0];
   const isWatchPaths = (Array.isArray(watchPathsTarget) ? watchPathsTarget : [watchPathsTarget])
     .some(p => typeof p === "string" && resolve(p) === resolve("src/lib/build-helper.ts"));
@@ -725,6 +759,7 @@ async function sample(
     return { blocked: expectedStage, pending: boundary.pending() };
   }
 
+  await drainWatcherTimers();
   await boundary.join();
   await Promise.all([...pendingCompression]);
 

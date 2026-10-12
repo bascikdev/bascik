@@ -266,6 +266,7 @@
     const raw = codeEl.textContent;
     if (lang && lang !== 'text' && raw.trim()) {
       const result = highlight(raw, lang);
+      // codeql[js/xss-through-dom] highlight() escapes every source character; code-block.test.ts pins that.
       if (result !== null) codeEl.innerHTML = result;
     }
   }

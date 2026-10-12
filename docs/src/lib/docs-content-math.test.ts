@@ -65,6 +65,7 @@ function findMathOccurrences(content: string, filePath: string, contentDir: stri
     }
 
     // Strip any full comments within the line
+    // codeql[js/incomplete-multi-character-sanitization] Test scan of first-party Markdown; not a sanitizer.
     line = line.replace(/<!--[\s\S]*?-->/g, '');
 
     // Check if an unclosed HTML comment starts on this line

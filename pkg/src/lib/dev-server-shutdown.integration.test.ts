@@ -162,6 +162,7 @@ describe("Dev server SSE shutdown hang (Prompt 146)", () => {
           `${server!.url}/bascik-live-reload`,
           {
             headers: { Accept: "text/event-stream" },
+            // codeql[js/disabling-certificate-validation] Test-only client of a localhost server with a self-signed cert.
             rejectUnauthorized: false,
           },
           (res) => {

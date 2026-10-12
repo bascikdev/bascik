@@ -51,6 +51,36 @@ describe('articleSchema', () => {
     expect(result).toContain('"inLanguage": "en-US"');
   });
 
+  it('points image at a generated social card, never the removed og-image.jpg', async () => {
+    const pageFile = join(tempDir, 'components.html');
+    await writeFile(
+      pageFile,
+      `<title>Components - Bascik Docs</title><meta name="description" content="Components." />`,
+    );
+
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+
+    const result = await articleSchema();
+    expect(result).toContain('"image": "https://bascik.dev/assets/og/components.jpg"');
+    expect(result).not.toContain('og-image.jpg');
+  });
+
+  it('declares the official brand profiles on the publisher', async () => {
+    const pageFile = join(tempDir, 'topic.html');
+    await writeFile(pageFile, `<title>Topic</title><meta name="description" content="Topic." />`);
+
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+
+    const result = await articleSchema();
+    expect(result).toContain('"sameAs"');
+    expect(result).toContain('https://github.com/bascikdev/bascik');
+    expect(result).toContain('https://www.npmjs.com/package/@bascik/bascik');
+  });
+
   it('extracts description when content precedes name or uses single quotes', async () => {
     const pageFile = join(tempDir, 'topic.html');
     await writeFile(

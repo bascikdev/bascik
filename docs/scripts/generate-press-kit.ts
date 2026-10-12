@@ -109,6 +109,7 @@ export function parseLogo(source: string, crop?: Box): LogoArtwork {
     throw new Error(`press-kit: unreadable viewBox "${svg[1]}"`);
   }
 
+  // codeql[js/incomplete-multi-character-sanitization] Reads the repo's own logo SVG; not a sanitizer.
   const inner = svg[2]
     .replace(/<!--[\s\S]*?-->/g, () => '')
     .replace(/<animate\b[\s\S]*?\/>/g, () => '');

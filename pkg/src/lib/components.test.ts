@@ -47,6 +47,14 @@ describe("replaceTag", () => {
     expect(replaceTag(input, "span", "<p>new tag</p>")).toEqual(input);
   });
 
+  it("does not treat a longer tag name that starts with the tag name as a match", () => {
+    // `<cards>` and `<card2>` share the `card` prefix; only `<card>` is the target.
+    for (const longer of ["cards", "card2", "card_x"]) {
+      const input = `<${longer}>keep</${longer}><card>replace me</card>`;
+      expect(replaceTag(input, "card", "<p>new</p>")).toEqual(`<${longer}>keep</${longer}><p>new</p>`);
+    }
+  });
+
   it("preserves tag attributes", () => {
     const input =
       '<div>before</div><span class="important">replace me</span><div>after</div>';

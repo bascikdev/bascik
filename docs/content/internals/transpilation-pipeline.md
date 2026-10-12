@@ -204,6 +204,7 @@ The key is the SHA-256 hex digest of:
 9. The dynamic route payload (`BASCIK_ROUTE`), if applicable.
 10. The normalized path and full content of every detected local dependency. Relative ESM imports are followed recursively from each containing module, while generic quoted data paths are rooted at `process.cwd()`.
 11. The resolved package identity for every external (bare, scoped, subpath) package the script imports: resolved entry content and manifest, plus the bounded transitive package graph (`package-identity.ts`). A script with no package imports contributes nothing for this item.
+12. The content of the source file and page file, only when the script or one of its local dependencies names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`. A helper that reads its own page (for example to copy `<title>` into `og:title`) re-runs when that page changes. Both files are recorded as dependencies, so a dev edit drops the memoized output. Scripts that name neither variable keep their key across page edits.
 
 File references are extracted by `extractScriptDeps()` (exported from `build-scripts.ts`). It lexically identifies genuine relative and import-root (`@/`) ESM specifiers and path-like string arguments used in code, so editing an alias-imported helper invalidates the cache and triggers a dev rebuild. The following paths are illustrative examples, not an exhaustive list of supported directories or extensions:
 
@@ -251,7 +252,7 @@ A deterministic `instanceId` (an 8-character hex hash derived from page path, co
 1. `prefixElementAttribute(c, "id", instanceId)`: scopes `id` attributes and all corresponding JS DOM selector references.
 2. `prefixElementAttribute(c, "name", instanceId)`: scopes `name` attributes and `getElementsByName` calls.
 3. `prefixElementAttribute(c, "class", instanceId)`: scopes class names in HTML attributes, CSS, and JS selector calls.
-4. `namespaceScriptTags(c)`: wraps every inline `<script>` in an IIFE, preserves line positioning, and appends a `//# sourceURL` comment for browser DevTools source attribution.
+4. `namespaceScriptTags(c)`: wraps every inline `<script>` in an IIFE, pads it to the source line recorded when the component file was read, and appends a `//# sourceURL` comment for browser DevTools source attribution. The second and later instances of a component get `?instance=N` on that URL after the pipeline runs.
 
 Each step is skipped if disabled in `bascik.config.ts`.
 

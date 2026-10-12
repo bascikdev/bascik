@@ -17,6 +17,11 @@ const stopHeapSampling = process.env.HEAP_PROFILER_PATH ? process.listeners("SIG
 process.argv = process.argv.slice(0, 2);
 delete process.env.BASCIK_BUILD;
 delete process.env.BASCIK_SERVER;
+const STATIC_SCENARIO_FILES = new Map([
+  ["/asset.txt", "asset.txt"],
+  ["/readiness.json", "readiness.json"],
+  ["/page-0.html", "page-0.html"],
+]);
 const startedAt = Date.now();
 const start = performance.now();
 const subjectEvents = observeSubjects(process.env.BASCIK_PROFILE_CAPTURE_DIR);
@@ -106,9 +111,11 @@ if (["prepare", "serial", "workers"].includes(scenario)) {
     origin = `http://127.0.0.1:${BascikConfig.http.port}`;
   } else if (scenario === "static") {
     staticServer = http.createServer(async (request, response) => {
-      const path = request.url;
-      if (!["/asset.txt", "/readiness.json", "/page-0.html"].includes(path ?? "")) { response.writeHead(404).end("Not Found"); return; }
-      try { response.end(await readFile(join(process.cwd(), "dist", path!.slice(1)))); }
+      // Look the file name up rather than slicing the request URL, so the read
+      // path is always one of these constants.
+      const file = STATIC_SCENARIO_FILES.get(request.url ?? "");
+      if (!file) { response.writeHead(404).end("Not Found"); return; }
+      try { response.end(await readFile(join(process.cwd(), "dist", file))); }
       catch { response.writeHead(500).end("Read failed"); }
     });
     await new Promise<void>((resolve) => staticServer!.listen(0, "127.0.0.1", resolve));

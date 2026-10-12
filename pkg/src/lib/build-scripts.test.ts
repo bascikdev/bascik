@@ -13,6 +13,7 @@ import {
   _buildScriptCacheTestHooks as cacheHooks,
 } from "./build-scripts.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { BuildScriptError } from "./build-error.ts";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -1433,6 +1434,67 @@ describe("build-script output cache", () => {
     expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 
+  describe("scripts that read their page through BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE", () => {
+    const keyForPageVersion = async (script: string, pageVersion: string, helper: string) => {
+      mockReadFile.mockImplementation((path: string) => {
+        const p = String(path);
+        if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
+        if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
+        if (p.endsWith("src/pages/test.html")) return Promise.resolve(`<title>${pageVersion}</title>`);
+        return Promise.reject(new Error("ENOENT"));
+      });
+      // Full clear: the disk cache always misses here, so every run writes its key.
+      clearBuildScriptCaches();
+      mockWriteFile.mockClear();
+      resolveWith(`<meta content="${pageVersion}">`);
+      await executeBuildScripts(script, "src/pages/test.html");
+      const jsonWrite = mockWriteFile.mock.calls.find(([p]) => String(p).endsWith(".json"));
+      expect(jsonWrite).toBeDefined();
+      return jsonWrite![0] as string;
+    };
+
+    const script = "<script data-bascik-build>import { og } from '../../lib/og-helper.ts'; export default og;</script>";
+
+    it("folds the page content into the key when an imported helper names the variable", async () => {
+      const helper = "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
+      const key1 = await keyForPageVersion(script, "Old title", helper);
+      const key2 = await keyForPageVersion(script, "New title", helper);
+      expect(key1).not.toEqual(key2);
+      expect(await keyForPageVersion(script, "New title", helper)).toEqual(key2);
+    });
+
+    it("a per-path clear of the page drops the memoized output, so the edit re-runs the script", async () => {
+      const helper = "export const og = () => readFile(process.env.BASCIK_SOURCE_FILE, 'utf8');";
+      await keyForPageVersion(script, "Old title", helper);
+      mockReadFile.mockImplementation((path: string) => {
+        const p = String(path);
+        if (p.includes(".cache")) return Promise.reject(new Error("ENOENT"));
+        if (p.endsWith("og-helper.ts")) return Promise.resolve(helper);
+        if (p.endsWith("src/pages/test.html")) return Promise.resolve("<title>New title</title>");
+        return Promise.reject(new Error("ENOENT"));
+      });
+      clearBuildScriptCaches("src/pages/test.html");
+      mockExecFile.mockClear();
+      resolveWith('<meta content="New title">');
+      expect(await executeBuildScripts(script, "src/pages/test.html")).toContain("New title");
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
+    it("folds the page content into the key when the inline script names BASCIK_PAGE_FILE", async () => {
+      const inline = "<script data-bascik-build>export default () => process.env.BASCIK_PAGE_FILE;</script>";
+      const key1 = await keyForPageVersion(inline, "Old title", "");
+      const key2 = await keyForPageVersion(inline, "New title", "");
+      expect(key1).not.toEqual(key2);
+    });
+
+    it("keeps the key stable across page edits for scripts that never name either variable", async () => {
+      const helper = "export const og = () => 'static';";
+      const key1 = await keyForPageVersion(script, "Old title", helper);
+      const key2 = await keyForPageVersion(script, "New title", helper);
+      expect(key1).toEqual(key2);
+    });
+  });
+
   it("invalidates cache when a page-relative imported file changes", async () => {
     mockReadFile.mockReset();
     mockWriteFile.mockReset().mockResolvedValue(undefined);
@@ -1638,6 +1700,30 @@ describe("build-script output cache", () => {
     const html =
       "<div><script data-bascik-build>good()</script><script data-bascik-build>bad()</script></div>";
     await expect(executeBuildScripts(html)).rejects.toThrow(/build script error/);
+  });
+
+  it("throws a BuildScriptError that carries the failing script's location as data", async () => {
+    rejectWith("ReferenceError: Strin is not defined");
+    const html = "<footer>\n  <span>\n    <script data-bascik-build>Strin()</script>\n  </span>\n</footer>";
+
+    const error = await executeBuildScripts(html, "src/pages/about.html").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ sourceFile: "pages/about.html", line: 3, column: 5 });
+    // The text keeps its existing shape, so the CLI's duplicate-message filter still recognizes it.
+    expect((error as Error).message).toContain('[bascik] build script error in "pages/about.html" at (line 3, column 5)');
+  });
+
+  it("labels a script in a component file as a component, not as a page", async () => {
+    rejectWith("ReferenceError: Strin is not defined");
+    const html = "<footer><script data-bascik-build>Strin()</script></footer>";
+
+    const error = await executeBuildScripts(html, "src/components/site-footer/site-footer.html").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BuildScriptError);
+    expect(error).toMatchObject({ sourceFile: "components/site-footer/site-footer.html", line: 1, column: 9 });
+    expect((error as Error).message).toContain('in "components/site-footer/site-footer.html"');
+    expect((error as Error).message).not.toContain('"pages/');
   });
 
   it("forwards stderr for each isolated script run", async () => {

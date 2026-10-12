@@ -42,6 +42,8 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { getRelativePath } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
+import { BuildScriptError } from "./build-error.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
@@ -72,6 +74,24 @@ import {
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
 
+const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
+
+const isInsideDirectory = (path: string, directory: string): boolean => {
+  const root = toPosixPath(resolve(directory));
+  const candidate = toPosixPath(resolve(path));
+  return candidate === root || candidate.startsWith(`${root}/`);
+};
+
+/**
+ * How an error message names the file a build script is in: `components/...` for a component,
+ * `pages/...` for a page. The pages directory is checked first so a page is never mistaken for a
+ * component when a components root happens to contain it.
+ */
+const displayPathFor = (filePath: string): string =>
+  !isInsideDirectory(filePath, BascikConfig.directory.pages) && findComponentRoot(filePath) !== undefined
+    ? getRelativePath(filePath, "components")
+    : getRelativePath(filePath, "pages");
+
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${BUILD_FLAG}(?:\\s+${ATTR})*\\s*>([\\s\\S]*?)${SCRIPT_END_TAG}`,
@@ -99,7 +119,12 @@ const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 11;
+export const SCRIPT_CACHE_VERSION = 12;
+
+// A script (or a local helper it imports) that names either variable can read
+// the file it points at, which static dependency scanning cannot see. Such
+// scripts fold that file's content into their cache key.
+const CONTEXT_FILE_ENV_RE = /\bBASCIK_(?:SOURCE|PAGE)_FILE\b/;
 
 export interface ImportRootOptions {
   /** Absolute import root that `@/` specifiers resolve against. */
@@ -443,6 +468,7 @@ const computeScriptCacheKey = async (
 
   const visited = new Set<string>();
   const queue = [...extractScriptDeps(script, baseDir, { importRoot })];
+  let readsContextFile = CONTEXT_FILE_ENV_RE.test(script);
 
   while (queue.length > 0) {
     const rawDep = queue.shift()!;
@@ -456,6 +482,7 @@ const computeScriptCacheKey = async (
       const content = await readCachedFile(absPath, relKey);
       hash.update(relKey);
       hash.update(content);
+      if (!readsContextFile && CONTEXT_FILE_ENV_RE.test(content)) readsContextFile = true;
 
       // Scan file content for nested dependencies relative to the file's directory
       const fileDir = dirname(absPath);
@@ -466,6 +493,27 @@ const computeScriptCacheKey = async (
     } catch {
       hash.update(relKey);
       hash.update("MISSING");
+    }
+  }
+
+  // Context files: a helper that reads BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE
+  // (for example to copy the page <title> into og:title) depends on that
+  // file's content, not just its path. Fold the content in, and record the
+  // file as a dependency so a per-path clear on edit drops the memoized output.
+  if (readsContextFile) {
+    hash.update("CTX"); // explicit marker so context-free keys never collide with context keys
+    for (const contextFile of new Set([filePath, pageFile])) {
+      if (!contextFile) continue;
+      const absPath = resolve(process.cwd(), contextFile);
+      const relKey = relative(process.cwd(), absPath).replace(/\\/g, "/");
+      if (visited.has(relKey)) continue;
+      visited.add(relKey);
+      hash.update(relKey);
+      try {
+        hash.update(await readCachedFile(absPath, relKey));
+      } catch {
+        hash.update("MISSING");
+      }
     }
   }
 
@@ -773,10 +821,16 @@ export const executeBuildScripts = async (
         const msg = err instanceof Error ? err.message : String(err);
         let errorMsg = `[bascik] build script error`;
         const cleanedMsg = cleanStackTrace(msg, task.tmpPath, taskRelPath, task.startLine);
+        let location: { sourceFile: string; line: number; column: number } | undefined;
         if (filePath) {
           const prefix = html.slice(0, task.index);
           const lines = prefix.split(/\r?\n/);
-          errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lines.length}, column ${lines[lines.length - 1].length + 1})`;
+          location = {
+            sourceFile: displayPathFor(filePath),
+            line: lines.length,
+            column: lines[lines.length - 1].length + 1,
+          };
+          errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
         // Nothing was memoized for this key; drop its pending dependency list
         // so a failing script cannot accumulate index state across edits.
@@ -784,6 +838,9 @@ export const executeBuildScripts = async (
         const behavior = BascikConfig.scripts?.onBuildScriptError ?? "error";
         if (behavior === "error") {
           console.error(`${errorMsg}:\n${cleanedMsg}`);
+          // The location travels as data so the dev overlay can name the file. Without a source
+          // file there is nothing to point at, so the failure stays a plain Error.
+          if (location) throw new BuildScriptError(`${errorMsg}:\n${cleanedMsg}`, location);
           throw new Error(`${errorMsg}:\n${cleanedMsg}`);
         } else {
           console.warn(`${errorMsg}:\n${cleanedMsg}`);

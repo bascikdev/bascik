@@ -33,6 +33,10 @@ To define the routes to generate, place a `<script data-bascik-routes>` element 
 </script>
 ```
 
+In this recording, `src/pages/blog/[slug].html` lists two posts, so `/blog/third-post` is a 404 in the dev server. Adding a third entry to the routes script and saving makes the same URL render the template with that entry's data:
+
+![An editor above a browser. The editor shows src/pages/blog/[slug].html with a data-bascik-routes script listing hello-world and second-post. The browser at localhost:8080/blog/third-post shows the 404 Page not found page. The second-post line is duplicated and renamed to third-post with the title Third post, the file is saved, and the browser now shows the heading Third post](/assets/demos/dynamic-routes@2x.webp)
+
 ### Route Object Format
 
 Each element in the returned array must be an object with:

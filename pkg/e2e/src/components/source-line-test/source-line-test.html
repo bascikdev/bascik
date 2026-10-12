@@ -1,0 +1,13 @@
+<div class="source-line">
+  <button id="throw-btn" data-bascik-attr-data-testid="testid">Throw</button>
+</div>
+<style>
+  .source-line {
+    padding: 4px;
+  }
+</style>
+<script>
+  document.getElementById("throw-btn").addEventListener("click", () => {
+    throw new Error("source line test");
+  });
+</script>

@@ -1,0 +1,94 @@
+.shift {
+  margin: 8px 0 32px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+
+.shift-caption {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Two classes, so the reset outranks the docs-wide `.docs-content ul` and `li` rules. */
+.shift .shift-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shift .shift-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin: 0;
+  padding: 14px 16px;
+  line-height: 1.5;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.shift-then {
+  display: grid;
+  gap: 2px;
+}
+
+.shift-tool {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.shift-gap {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.shift-arrow {
+  color: var(--text-muted);
+  font-size: 1.2rem;
+}
+
+.shift-now {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.shift .shift-row-open {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+}
+
+.shift-row-open .shift-tool,
+.shift-row-open .shift-arrow,
+.shift-answer {
+  color: var(--accent-fg);
+}
+
+.shift-answer {
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .shift {
+    padding: 14px;
+  }
+
+  .shift .shift-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .shift-arrow {
+    display: none;
+  }
+}

@@ -73,6 +73,10 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 </html>
 ```
 
+## Images in `/assets/demos/` and `/assets/vscode/`
+
+Both folders are served with `Cache-Control: public, max-age=31536000, immutable` on Cloudflare Pages (rule written by `docs/scripts/generate-pages-headers.ts`). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
+
 ## Markdown File Conventions
 
 - First lines: `# Page Title` (h1), then a plain intro paragraph (styled as page-intro via CSS)
@@ -159,7 +163,7 @@ Each docs page has a `<title>` and `<meta name="description">` hardcoded in its 
 
 **When editing a `docs/content/*.md` file**, check whether the h1 or intro paragraph changed in a way that should be reflected in the corresponding HTML page's `<title>` or `<meta name="description">`. If so, update both together.
 
-The mapping is straightforward: `docs/content/topic.md` corresponds to `docs/src/pages/topic.html`. The `<title>` should reflect the page's h1 (with ` - Bascik Docs` suffix for non-homepage pages), and the description should be a concise search-optimised summary drawn from the intro paragraph.
+The mapping is straightforward: `docs/content/topic.md` corresponds to `docs/src/pages/topic.html`. The `<title>` is written for search results, not derived from the h1: lead with the search phrase a developer would type (for example "Scoped CSS for HTML Components, No Shadow DOM - Bascik"), keep it 15-65 characters, name Bascik, and keep it unique. Pages without a strong search phrase keep the `{h1} - Bascik Docs` form. The `og:title` and `TechArticle` headline follow the `<title>` automatically, while the breadcrumb label uses the short sidebar label. The description should be a concise search-optimised summary drawn from the intro paragraph.
 
 ## Page Naming Convention (h1 equals sidebar label)
 
@@ -171,9 +175,9 @@ Rules:
 - Overview pages are named "Overview" everywhere; the section label supplies the context.
 - Do not use "Guide" as a suffix unless the sidebar says it too.
 - A sidebar label must fit a sidebar; shorten the label, not the h1, when the full title is long.
-- The `<title>` is the h1 plus ` - Bascik Docs` for non-homepage pages.
+- The `<title>` is independent of the h1 (see "Keeping SEO Meta in Sync with Content"); it only has to be unique, name Bascik, and fit 15-65 characters.
 
-This is enforced by `docs/src/lib/nav-label-h1.test.ts`, which parses `nav.ts` labels, reads h1s from `docs/content/*.md`, and asserts equality (plus the title convention). **When adding or renaming a docs page**, keep the h1, nav label, and `<title>` in sync so that test stays green.
+This is enforced by `docs/src/lib/nav-label-h1.test.ts`, which parses `nav.ts` labels, reads h1s from `docs/content/*.md`, and asserts equality, plus the title rules above. **When adding or renaming a docs page**, keep the h1 and nav label in sync and give the page a unique `<title>` so that test stays green.
 
 ## Docs Writing Guide
 

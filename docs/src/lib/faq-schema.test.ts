@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { faqSchema } from './faq-schema.js';
 
+/** The JSON between the opening `<script ...>` tag and the closing tag. */
+const jsonLdBody = (html: string): string => html.slice(html.indexOf('>') + 1, html.lastIndexOf('</'));
+
 describe('faqSchema', () => {
   let tempDir: string;
   let originalCwd: string;
@@ -40,7 +43,7 @@ It transpiles HTML templates at build time.
     expect(result).toContain('<script type="application/ld+json">');
     expect(result).toContain('"@type": "FAQPage"');
 
-    const parsed = JSON.parse(result.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''));
+    const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.mainEntity).toHaveLength(2);
     expect(parsed.mainEntity[0].name).toBe('What is Bascik?');
     expect(parsed.mainEntity[0].acceptedAnswer.text).toBe('Bascik is a fast static site generator.');
@@ -71,7 +74,7 @@ When a component \`.html\` file includes a \`<script src="counter.ts"></script>\
     process.chdir(tempDir);
 
     const result = await faqSchema('faq.md');
-    const parsed = JSON.parse(result.replace(/<script[^>]*>/, '').replace(/<\/script>/, ''));
+    const parsed = JSON.parse(jsonLdBody(result));
     expect(parsed.mainEntity[0].name).toBe('How do local script references (&lt;script src="..."&gt;) work?');
     expect(parsed.mainEntity[0].acceptedAnswer.text).toBe('When a component .html file includes a &lt;script src="counter.ts"&gt;&lt;/script&gt; tag.');
   });

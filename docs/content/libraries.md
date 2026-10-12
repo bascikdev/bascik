@@ -34,6 +34,8 @@ Alternatively, co-locate the script tag inside the component file so the library
 
 > **Tip:** If multiple components on the same page all include the same CDN `<script src>` tag, the browser deduplicates requests via HTTP caching. For cleaner output, place the shared CDN tag in a head component instead.
 
+> **Using npm packages without a CDN build?** Bascik does not rewrite bare specifiers in client scripts. To bundle npm packages with deep module trees using tools like esbuild or Rolldown, see the [Bundling npm Packages](/how-to/bundling-npm-packages) guide.
+
 ## petite-vue
 
 [petite-vue](https://github.com/vuejs/petite-vue) is a ~5 KB subset of Vue optimized for progressive enhancement. It auto-mounts any element with a `v-scope` attribute, giving it isolated reactive state with no build step, no bundler.

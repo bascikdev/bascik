@@ -32,9 +32,6 @@ function resolveRoutePath(currentPath?: string): string {
   }
   if (!path) return '';
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-  if (path === '/using-markdown') return '/how-to/markdown';
-  if (path === '/how-to/cloudflare') return '/deployment/cloudflare';
-  if (path === '/deploying') return '/deployment';
   return path;
 }
 
@@ -74,11 +71,7 @@ export async function renderPageTableOfContents(pageContentPath?: string): Promi
     if (!pageFile) {
       const route = resolveRoutePath();
       if (!route) return '';
-      const pageRelativePath = route === '/'
-        ? 'index.html'
-        : route === '/deployment'
-          ? 'deployment/index.html'
-          : `${route.slice(1)}.html`;
+      const pageRelativePath = route === '/' ? 'index.html' : `${route.slice(1)}.html`;
       pageFile = join(process.cwd(), 'src/pages', pageRelativePath);
     }
 

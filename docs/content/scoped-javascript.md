@@ -92,11 +92,15 @@ When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`
 
 ### Virtual Source Files in DevTools (`//# sourceURL`)
 
-Bascik automatically appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+Bascik automatically appends a `//# sourceURL=src/components/name.html` directive to every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+
+Each instance of a component on a page is its own file, because each instance's script has its own scoped IDs. The first instance is `card.html`, the second is `card.html?instance=2`, and so on. A component used once keeps the plain file name.
 
 ### 1:1 Line Number Preservation
 
-Bascik inserts leading newline padding when scoping component `<script>` tags so that line numbers in the compiled output match the original component file line numbers exactly. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template.
+Bascik pads each component script with blank lines so that line numbers in DevTools match the component file exactly, including when markup or `<style>` blocks sit above the script. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template. A companion script (`<script src="card.ts">`) is numbered from line 1 of its own file.
+
+Line numbers match when JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default, which joins lines; set `minify.js: false` to keep source line numbers in a build.
 
 ### Setting Breakpoints and Inspecting State
 
@@ -107,9 +111,13 @@ Because component scripts appear as virtual source files in DevTools:
 3. Click any line number to set a breakpoint, or place a `debugger;` statement directly inside your component `<script>`.
 4. Interact with the component in your browser to pause execution, inspect variables, and step through code.
 
+A breakpoint pauses only the instance whose file it was set in. To pause every instance, write a `debugger;` statement in the component script instead.
+
+![A browser showing the starter's two counters above Chrome DevTools. Quick Open lists my-counter.html and my-counter.html?instance=2. my-counter.html opens at line 43, val.textContent = ++count, and a breakpoint is set there. Clicking the first counter's plus button pauses on line 43 with the call stack at my-counter.html:43, and resuming sets the count to 1](/assets/demos/devtools-breakpoint@2x.webp)
+
 ### Accurate Console Stack Traces
 
-When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
+When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` (or `card.html?instance=2:18` for a second instance) instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
 
 ## Dynamic Runtime Classes
 
@@ -261,7 +269,9 @@ The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, sele
 
 > **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 22.18+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
 
-**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
+**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
+
+> **Need to bundle client dependencies?** Bascik intentionally leaves third-party client module bundling to dedicated tools. See the how-to guide on [Bundling npm Packages](/how-to/bundling-npm-packages) for setting up esbuild or Rolldown with `pipeline.exec`.
 
 **Bring your own compiler.** Set [`scripts.typescript`](/configuration#scriptstypescript) to a function to run esbuild, swc, or `tsc` instead of Node's stripper. It receives `(code, { sourcePath, kind })` and returns JavaScript, and it sits at the same point in the pipeline, so scoping and `minify.js` still run afterwards. This is the path for `enum`, decorators, or downleveling to an older browser target. Set it to `false` to turn the transform off entirely when another tool already compiles what Bascik reads.
 
@@ -271,7 +281,7 @@ The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, sele
 
 Every component `<script>` is wrapped in an IIFE to prevent variable leaks, and every selector string that references a scoped attribute is rewritten to match:
 
-Bascik also preserves line-offset padding and appends `//# sourceURL=src/components/name.html` directives to client script blocks. In browser DevTools, runtime errors and console statements point directly to the original component file and line number.
+Bascik also pads client script blocks to their source line and appends `//# sourceURL=src/components/name.html` directives to them. In browser DevTools, runtime errors and console statements point directly to the original component file and line number.
 
 The counter demo's Output tabs show the complete compiled HTML, CSS, and JavaScript together. The runtime-class demo adds a focused view of `classList.toggle()` rewriting.
 

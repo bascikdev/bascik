@@ -66,6 +66,7 @@
 
 import { BascikConfig } from "./config.ts";
 import { namespaceScriptTags, prefixElementAttribute, withScopedCssCacheBypassed } from "./javascript.ts";
+import { stripScriptLines } from "./script-source-lines.ts";
 import { minifyAttributeName, observeAttributeNames } from "./names.ts";
 import { observeCssImportPlanning } from "./styles.ts";
 import type { BascikComponent } from "./types.ts";
@@ -110,6 +111,8 @@ export const runScopingPipeline = (component: BascikComponent, instanceId: strin
   }
   if (BascikConfig.scoping?.scriptBlocks) {
     current = namespaceScriptTags(current);
+  } else {
+    current.fileContent = stripScriptLines(current.fileContent);
   }
   return current;
 };

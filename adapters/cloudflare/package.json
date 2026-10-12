@@ -35,19 +35,20 @@
   "dependencies": {
     "esbuild": "^0.28.2",
     "jsonc-parser": "^3.3.1",
-    "smol-toml": "^1.8.0"
+    "smol-toml": "^1.9.0"
   },
   "peerDependencies": {
     "@bascik/bascik": "^1.0.0-rc.6"
   },
   "devDependencies": {
     "@bascik/bascik": "workspace:*",
-    "@playwright/test": "^1.58.2",
-    "@types/node": "^24.0.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
     "miniflare": "4.20260730.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   },
   "publishConfig": {
     "access": "public"

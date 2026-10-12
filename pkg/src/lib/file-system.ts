@@ -10,6 +10,7 @@ import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
+import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
@@ -425,7 +426,7 @@ export const getDistPagePath = (pagePath: string): string => {
 export const toDistPath = (srcPath: string): string => {
   const outDirRel = (BascikConfig.directory.out ? relative(process.cwd(), BascikConfig.directory.out) : "") || "dist";
   const outputRoot = resolve(BascikConfig.directory.out);
-  const normalizedOutputRoot = outputRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedOutputRoot = trimTrailingSlashes(outputRoot.replace(/\\/g, "/"));
   const normalizedSrc = srcPath.replace(/\\/g, "/").replace(/\/+/g, "/");
   let targetPath = "";
   if (normalizedSrc.startsWith(`${outDirRel}/`)) {
@@ -434,9 +435,9 @@ export const toDistPath = (srcPath: string): string => {
     targetPath = `${outDirRel}/${normalizedSrc.slice(normalizedOutputRoot.length + 1)}`;
   } else {
     const sourceSegments = normalizedSrc.split("/");
-    const configuredPagesDir = BascikConfig.directory.pages.replace(/\\/g, "/").replace(/\/+$/, "");
+    const configuredPagesDir = trimTrailingSlashes(BascikConfig.directory.pages.replace(/\\/g, "/"));
     const hasConfiguredRoot = (configuredDir: string): boolean => {
-      const root = configuredDir.replace(/^\/+|\/+$/g, "");
+      const root = trimSlashes(configuredDir);
       return normalizedSrc.replace(/^\/+/, "").startsWith(`${root}/`) || normalizedSrc.includes(`/${root}/`);
     };
     const hasSourceRoot =

@@ -92,7 +92,7 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
     const minified = minifyHtml(raw);
     // If we now naively replace the script with generated content:
     const wrongOrder = minified.replace(
-      /<script[^>]*>[\s\S]*?<\/script>/,
+      /<script[^>]*>[\s\S]*?<\/script[^>]*>/i,
       "<li>item</li>",
     );
     // Content is outside the <ul> — this is the bug the fix prevents
@@ -297,7 +297,8 @@ describe("listComponents – companion scripts", () => {
     const content = (await listComponents())["demo-counter"].fileContent;
 
     expect(content).toContain("const x = 1;");
-    expect(content).toMatch(/<script data-note="a > b" defer data-bascik-source="[^"]*demo-counter\.ts">/);
+    // The companion's first line is line 1 of its sourceURL file, so it starts right after the tag.
+    expect(content).toMatch(/<script data-note="a > b" defer data-bascik-source="[^"]*demo-counter\.ts" data-bascik-script-line="1">const x = 1;/);
     expect(content).not.toContain('src="demo-counter.ts"');
   });
 

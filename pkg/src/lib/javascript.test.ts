@@ -45,7 +45,7 @@ const makeScopedComponent = (
   for (const attribute of fileContent.matchAll(/\sclass\s*=\s*(["'])([^"']*)\1/gi)) {
     for (const token of attribute[2].split(/\s+/)) if (token) names.add(token);
   }
-  for (const script of fileContent.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const script of fileContent.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/gi)) {
     for (const quoted of script[1].matchAll(/["']([^"'\n]*)["']/g)) {
       for (const token of quoted[1].split(/[\s.]+/)) if (/^[a-zA-Z_][\w-]*$/.test(token)) names.add(token);
     }

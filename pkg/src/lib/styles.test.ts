@@ -1470,13 +1470,16 @@ describe("convertCssIdSelectorsToClasses – literal vs real-target property tes
       "--brand: #abc",
       "é",
       "ま",
+      "\\",
     );
     const contentTokenArb = fc.array(tokenArb, { minLength: 0, maxLength: 4 });
 
     fc.assert(
       fc.property(contentTokenArb, (tokens) => {
         const inner = tokens.join(" ");
-        const escaped = inner.replace(/"/g, '\\"');
+        // CSS string escaping: backslashes first, so an input `\` cannot end up
+        // escaping the quote that follows it.
+        const escaped = inner.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         const css = `.x::before { content: "${escaped}"; }
           #anchor { color: blue; }`;
         const { css: result, idsConverted } =

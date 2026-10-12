@@ -1,6 +1,17 @@
 # Bundling npm Packages
 
-Many npm packages ship no CDN build. This guide shows how to use any npm package in client-side JavaScript by bundling it with esbuild as a build step, writing the bundle into the output directory, and referencing it from the page.
+Many npm packages ship no CDN build. This guide explains why Bascik leaves client module bundling to dedicated tools, how to use any bundler (such as esbuild or Rolldown) with Bascik's lifecycle pipeline, and how to reference the resulting bundle from your pages.
+
+## Why Bascik delegates client module bundling
+
+Bascik eliminates network waterfalls for your authored components by extracting, deduplicating, scoping, and inlining component CSS and companion scripts directly into the compiled HTML page. This delivers zero-runtime, single-roundtrip components without any framework overhead.
+
+However, client-side npm libraries present a distinct set of problems:
+- Resolving deep `node_modules` dependency trees.
+- Scope hoisting, dead code elimination, and tree-shaking unused exports.
+- Emitting code-split chunks and managing bundle cache boundaries.
+
+Rather than embedding a heavy JavaScript bundler into its core compiler, Bascik delegates client module bundling to specialized tools like esbuild, Rolldown, or Rollup. You run your preferred bundler through Bascik's `pipeline.exec` hook. Bascik manages the server and page compilation, while your bundler optimizes your client libraries.
 
 ## What Bascik does with bare specifiers
 
@@ -17,9 +28,13 @@ Bascik does **not** rewrite bare specifiers in client-side scripts. A line like 
 </script>
 ```
 
-The fix is to bundle the package yourself at build time and import the bundle with a root-relative URL the browser can resolve.
+The fix is to bundle the package at build time and import the bundle with a root-relative URL the browser can resolve.
 
-## The recipe: esbuild as an exec step
+## The recipe: bundler as an exec step
+
+You can use any bundler you prefer. Below is an example with esbuild, followed by an equivalent setup using Rolldown.
+
+### Example with esbuild
 
 Install esbuild and the package you want to use as development dependencies:
 
@@ -89,6 +104,33 @@ Finally, reference the bundle from the page with a root-relative URL:
   document.getElementById('celebrate-btn').addEventListener('click', celebrate);
 </script>
 ```
+
+### Alternative: Example with Rolldown
+
+You can use Rolldown identically. Install Rolldown:
+
+```sh
+npm install --save-dev rolldown canvas-confetti
+```
+
+Write `build-bundle.mjs` using the Rolldown API:
+
+```js
+// build-bundle.mjs
+import { rolldown } from 'rolldown';
+
+const bundle = await rolldown({
+  input: 'src/client/confetti-entry.mjs',
+});
+
+await bundle.write({
+  dir: 'dist/assets/js',
+  format: 'esm',
+  minify: true,
+});
+```
+
+Because Bascik's `pipeline.exec` runs standalone Node scripts, the rest of your setup (the `bascik.config.ts` configuration, dev-mode watcher, and root-relative `<script type="module">` tag) remains identical.
 
 ## Why direct output is the escape hatch
 

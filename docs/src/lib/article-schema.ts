@@ -11,6 +11,16 @@
  *   export default async () => await articleSchema();
  */
 import { readFile } from 'node:fs/promises';
+import { socialImageUrl } from './open-graph.ts';
+
+/** Official Bascik profiles. Lets search engines connect the site to the same entity. */
+export const BRAND_SAME_AS = [
+  'https://github.com/bascikdev/bascik',
+  'https://www.npmjs.com/package/@bascik/bascik',
+  'https://youtube.com/@bascikdev',
+  'https://x.com/bascikdev',
+  'https://www.instagram.com/bascik.dev/',
+] as const;
 
 export async function articleSchema(): Promise<string> {
   const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
@@ -48,7 +58,7 @@ export async function articleSchema(): Promise<string> {
     mainEntityOfPage: url,
     headline,
     description,
-    image: `${siteUrl}/assets/og-image.jpg`,
+    image: socialImageUrl(siteUrl, urlPath, withoutExt),
     inLanguage: 'en-US',
     url,
     author: {
@@ -60,6 +70,11 @@ export async function articleSchema(): Promise<string> {
       '@type': 'Organization',
       name: 'Bascik',
       url: 'https://bascik.dev',
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteUrl}/assets/apple-touch-icon.png`,
+      },
+      sameAs: [...BRAND_SAME_AS],
     },
   };
 

@@ -39,7 +39,7 @@ vi.mock("./config.js", () => ({
 /** Every inline script body in the emitted HTML must parse as JavaScript. */
 const assertAllInlineScriptsParse = (html: string): string[] => {
   const bodies: string[] = [];
-  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)) {
     if (/\bsrc\s*=/.test(m[1])) continue;
     if (/\btype\s*=/.test(m[1]) && !/text\/javascript|module/i.test(m[1])) continue;
     bodies.push(m[2]);

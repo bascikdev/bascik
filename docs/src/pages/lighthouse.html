@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="Bascik gives you an enormous head start on Lighthouse scores. Learn responsive images, lazy loading, preload hints, and SEO best practices." />
-  <title>Lighthouse 100s - Bascik Docs</title>
+    content="Bascik gives you a head start on Lighthouse scores. See what it does automatically and find a guide for each category, from Performance to SEO." />
+  <title>Get 100 Lighthouse Scores with Bascik</title>
   <style>
     .docs-content table {
       width: 100%;
@@ -55,11 +55,24 @@
 
     @media (max-width: 600px) {
 
-      /* Reflow 1×4 score table to 2×2 with each label above its score */
+      /* Reflow the 1x5 score table to 3 + 2 columns with each label above its score */
       .docs-content table:first-of-type {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-rows: auto auto auto auto;
+        row-gap: 8px;
+      }
+
+      .docs-content table:first-of-type th {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        padding: 0 4px 12px;
+        font-size: 0.68rem;
+      }
+
+      .docs-content table:first-of-type td {
+        font-size: 2.2rem;
+        padding: 12px 4px 0;
       }
 
       .docs-content table:first-of-type thead,
@@ -79,11 +92,16 @@
       }
 
       .docs-content table:first-of-type th:nth-child(3) {
+        grid-row: 1;
+        grid-column: 3;
+      }
+
+      .docs-content table:first-of-type th:nth-child(4) {
         grid-row: 3;
         grid-column: 1;
       }
 
-      .docs-content table:first-of-type th:nth-child(4) {
+      .docs-content table:first-of-type th:nth-child(5) {
         grid-row: 3;
         grid-column: 2;
       }
@@ -99,11 +117,16 @@
       }
 
       .docs-content table:first-of-type td:nth-child(3) {
+        grid-row: 2;
+        grid-column: 3;
+      }
+
+      .docs-content table:first-of-type td:nth-child(4) {
         grid-row: 4;
         grid-column: 1;
       }
 
-      .docs-content table:first-of-type td:nth-child(4) {
+      .docs-content table:first-of-type td:nth-child(5) {
         grid-row: 4;
         grid-column: 2;
       }
@@ -169,6 +192,11 @@
       background: rgba(196, 181, 253, 0.12);
       color: #c4b5fd;
     }
+
+    .tag-agent {
+      background: rgba(244, 114, 182, 0.12);
+      color: #f472b6;
+    }
   </style>
 </head>
 
@@ -184,15 +212,15 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/performance');
+          export default async () => renderSectionLabel('/lighthouse');
         </script>
 
-        <!-- Content rendered from docs/content/performance.md at build time.
+        <!-- Content rendered from docs/content/lighthouse.md at build time.
              To update page content, edit the MD file - not this file.
              The MD file also feeds into llms.txt via scripts/generate-llms-txt.ts. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/performance.md');
+          export default async () => await renderMd('./content/lighthouse.md');
         </script>
 
         <h2>Technique Summary</h2>
@@ -256,6 +284,11 @@
             <p>Every meaningful image needs a descriptive alt. Decorative images get <code>alt=""</code>.</p>
           </div>
           <div class="technique-card">
+            <span class="tag tag-a11y">Accessibility</span>
+            <h3><code>&lt;details&gt;</code> and <code>&lt;dialog&gt;</code></h3>
+            <p>Native toggles and modals with keyboard and focus handling built in. No JavaScript required.</p>
+          </div>
+          <div class="technique-card">
             <span class="tag tag-seo">SEO</span>
             <h3>Unique <code>&lt;title&gt;</code> per page</h3>
             <p>The single highest-impact SEO signal. Bascik makes this natural: one file, one title.</p>
@@ -280,12 +313,41 @@
             <h3>HTTPS everywhere</h3>
             <p>Bascik's dev server uses HTTP/2 with a self-signed cert. Deploy behind HTTPS in production.</p>
           </div>
+          <div class="technique-card">
+            <span class="tag tag-bp">Best Practices</span>
+            <h3>Doctype and charset</h3>
+            <p>Start every page with <code>&lt;!DOCTYPE html&gt;</code> and an early <code>&lt;meta charset&gt;</code>.
+            </p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-bp">Best Practices</span>
+            <h3>CSP hashes</h3>
+            <p>Set <code>generate.cspHashes</code> to get exact hashes for a strict policy without
+              <code>'unsafe-inline'</code>.
+            </p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3>Accessibility tree</h3>
+            <p>Semantic HTML gives AI agents the same reliable structure that screen readers use.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3><code>llms.txt</code></h3>
+            <p>Publish a valid Markdown index at the site root so agents can discover your content.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3>Zero layout shift</h3>
+            <p>Finished HTML with sized images keeps elements where an agent last saw them.</p>
+          </div>
         </div>
 
         <div class="callout">
-          <p><strong>Next:</strong> See <a href="/why-bascik">Why Bascik</a> for the philosophy behind shipping zero
-            framework JavaScript, or read the <a href="/getting-started">Getting Started guide</a> to set up your
-            first project.</p>
+          <p><strong>Next:</strong> Start with <a href="/lighthouse/performance">Performance</a>, or see
+            <a href="/why-bascik">Why Bascik</a> for the philosophy behind shipping zero framework JavaScript. To set up
+            your first project, read <a href="/getting-started">Getting Started</a>.
+          </p>
         </div>
 
         <docs-pagination />

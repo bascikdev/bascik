@@ -123,7 +123,9 @@ export async function runCliCheck(args: string[] = process.argv.slice(2)): Promi
         else warningCount++;
 
         const codeStr = d.code ? ` \x1b[90m(${d.code})\x1b[0m` : '';
-        console.log(`${rel}:${line}:${col} - ${prefix}:${codeStr} ${d.message}`);
+        // LSP 3.18 allows a MarkupContent message; print its text, not [object Object].
+        const message = typeof d.message === 'string' ? d.message : d.message.value;
+        console.log(`${rel}:${line}:${col} - ${prefix}:${codeStr} ${message}`);
       }
     }
   }

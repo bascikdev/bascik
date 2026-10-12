@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    export default async () => await canonical();
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    export default async () => await openGraph();
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    export default async () => await breadcrumbLd();
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    export default async () => await articleSchema();
+  </script>
+  <meta name="description"
+    content="Reach a Lighthouse Performance score of 100 with Bascik: responsive images, lazy loading, resource hints, font loading, critical CSS, and minification." />
+  <title>Lighthouse Performance 100 with Bascik</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          export default async () => renderSectionLabel('/lighthouse/performance');
+        </script>
+        <script data-bascik-build>
+          import { renderMd } from '@/lib/md-renderer.ts';
+          export default async () => await renderMd('./content/lighthouse/performance.md');
+        </script>
+
+        <docs-pagination />
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

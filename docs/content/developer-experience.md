@@ -23,6 +23,10 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
+This is a real run on a new project. After the server starts, one page is saved and only that page is rebuilt:
+
+![A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+
 ### Daily Edit-and-Save Loop
 
 Edit any file and save. Bascik re-transpiles only the affected files in milliseconds and updates your browser automatically without full page reloads:
@@ -31,6 +35,8 @@ Edit any file and save. Bascik re-transpiles only the affected files in millisec
 transpiled: pages/index.html in 0.4ms (modified component: <user-badge>)
 ```
 
+![An editor above a browser. A heading edited in the editor and saved changes in the browser. A border color edited in a component and saved changes on every card](/assets/demos/live-reload-stacked@2x.webp)
+
 Drop a new component file at `src/components/user-badge/user-badge.html` and use `<user-badge></user-badge>` in your pages immediately without writing import statements or registering tags.
 
 ### Recovering from a Broken Page
@@ -38,6 +44,8 @@ Drop a new component file at `src/components/user-badge/user-badge.html` and use
 A syntax error, missing `<body>`, or other page-level transpilation failure does not terminate the dev server. Initial boot still completes, successfully compiled pages remain available, and the failed route returns an error response instead of remaining on the boot screen. Bascik logs the source path, stage, and error message.
 
 In development, Bascik displays a **build-error overlay** in the browser immediately via SSE (`event: build-error`), detailing the file, line number, and error stack trace so you do not have to check your terminal. Fix and save the page normally; the overlay clears automatically and your page refreshes.
+
+![An editor above a browser. A typo in a build script, String changed to Strin, is saved and the browser shows a Bascik Build Error overlay naming the file and the ReferenceError. Restoring the letter and saving dismisses the overlay](/assets/demos/error-overlay@2x.webp)
 
 The live-reload connection also includes comment heartbeats every 20 seconds, ensuring connections through corporate firewalls, VPNs, and proxies do not silently time out.
 
@@ -65,6 +73,8 @@ Install the official Bascik extension to get component, prop, and slot IntelliSe
 
 Start an opening tag to see matching project components in IntelliSense. For example, typing `<user-` suggests discovered components such as `user-card` and `user-badge`. A component with a default slot completes as paired opening and closing tags with the cursor placed between them.
 
+![The VS Code suggest widget listing user-card for the partial tag user-ca, with a documentation panel showing the component source file, its props, and its slots](/assets/vscode/complete-component-tags@2x.webp)
+
 Inside a component opening tag, IntelliSense suggests props inferred from that component's markup and omits props already supplied. Inside its body, element attributes receive named-slot suggestions from the nearest containing component:
 
 ```html
@@ -72,6 +82,8 @@ Inside a component opening tag, IntelliSense suggests props inferred from that c
   <span data-bascik-slot="name">Sarah Chen</span>
 </user-card>
 ```
+
+![The suggest widget listing data-bascik-prop-status and data-bascik-prop-tone after typing data-bascik-prop inside a user-badge tag](/assets/vscode/complete-props@2x.webp)
 
 Component authors can add a leading `@bascik` comment to describe the component and its inferred props and slots. Those descriptions appear in tag, prop, and slot suggestions and in hover details. Markup remains the source of truth, and editor warnings identify duplicate annotations or names that the component does not declare.
 
@@ -90,6 +102,8 @@ Hover over any custom component tag in your page HTML, hold `Cmd` (macOS) or `Ct
 
 Hover without clicking to inspect the component description, source path, inferred props, named and default slots, member descriptions, and included styles or scripts.
 
+![A hover card for the user-card tag showing its description, source path, the role prop, and the actions and default slots](/assets/vscode/hover-component@2x.webp)
+
 The same gesture works for relative imports, the `@/` import-root alias, and `src="..."` attributes inside build and server scripts:
 
 ```html
@@ -107,6 +121,10 @@ Alias imports resolve against `scripts.importRoot` (default `src`). The extensio
 ### Structural & Scoping Warnings in the Problems Panel
 
 The extension catches invalid tags or unsafe scoping patterns in real time as you type:
+
+![An editor with warnings and errors: an undeclared prop on user-card with its hover message, an unknown slot name, and a script with two conflicting directives](/assets/vscode/diagnostics@2x.webp)
+
+Unsafe CSS is flagged the same way:
 
 ```css
 /* Flagged in VS Code Problems panel: [id] selectors cannot be scoped safely */
@@ -246,14 +264,13 @@ Bascik eliminates the overhead and synchronization issues of traditional multi-m
 
 ### Zero-Overhead Browser Source Mapping (`//# sourceURL`)
 
-During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and inserts newline padding to preserve exact line offsets:
+During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and pads the script with blank lines, one for each line above it in the component file. For a component whose `<script>` tag is on line 3:
 
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
+
 (function() {
-
-
   document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
     console.log("Button clicked");
   });
@@ -264,8 +281,10 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 
 When inspecting your application in Chrome DevTools, Firefox Developer Tools, Safari Web Inspector, or Microsoft Edge DevTools:
 
-- **Virtual File Tree:** Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab.
-- **Accurate Breakpoints:** Clicking a line number in DevTools or adding a `debugger;` statement pauses execution directly on the original source line.
+- **Virtual File Tree:** Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab. Each instance on a page is its own file: the second is `counter.html?instance=2`.
+- **Accurate Breakpoints:** Clicking a line number in DevTools pauses that instance directly on the original source line. A `debugger;` statement pauses every instance.
+
+Line numbers match while JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default.
 - **Console Log and Error Mapping:** Messages from `console.log()` and uncaught runtime errors reference the component file and line number rather than a compiled monolithic page.
 
 ### Build and Server Script Stack Trace Remapping
@@ -347,6 +366,10 @@ Output:
 ```terminal
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
+
+Scaffolded projects also include `npm run lint`, which runs the same `@bascik/language-server` checks as the editor extension from the terminal. Each finding names the file, line, column, and rule:
+
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors in a component, a runtime id assignment and an attribute selector. It ends with Found 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
 > **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 

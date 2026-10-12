@@ -1,6 +1,14 @@
 {
   "name": "create-bascik",
-  "description": "Create a new Bascik project",
+  "description": "Create a new Bascik project: HTML components with scoped CSS and JS, zero runtime.",
+  "keywords": [
+    "bascik",
+    "create-bascik",
+    "html components",
+    "scaffold",
+    "starter",
+    "static site generator"
+  ],
   "version": "1.0.0-rc.6",
   "repository": {
     "type": "git",
@@ -25,11 +33,11 @@
     "access": "public"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

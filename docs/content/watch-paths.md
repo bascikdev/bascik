@@ -23,6 +23,10 @@ export default defineConfig({
 
 Bascik watches these paths in the dev server alongside your pages and components directories. Whenever a file matching any pattern changes, Bascik detects the edit, re-evaluates dependent pages and build scripts, and triggers live reload via Server-Sent Events (SSE).
 
+In this recording, a page's build script reads `content/notes.md`, and `content/` is listed in `pipeline.watchPaths`. Saving the Markdown rebuilds the page and reloads the browser:
+
+![An editor above a browser. The editor shows content/notes.md. Changing today to on Friday and saving updates the paragraph in the browser. Adding a second paragraph and saving adds it to the page](/assets/demos/markdown-watch@2x.webp)
+
 ## Automatic Watching vs Custom Watch Paths
 
 Bascik automatically monitors standard project locations without requiring configuration:

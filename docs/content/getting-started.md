@@ -1,22 +1,38 @@
 # Getting Started
 
-Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.18, the first release that runs `.ts` files natively, which Bascik relies on for `bascik.config.ts`, build scripts, and helper modules. Get up and running in under five minutes.
+Node.js 24 LTS is recommended. The minimum supported version is Node.js 22.18.
 
 ## Quick Start
 
-The fastest way to start a new Bascik project with no prompts, just a running site:
+Create a new site with Bascik:
 
 ```sh
 npm create bascik@latest my-site -y
 ```
 
-That scaffolds the project, installs dependencies, and starts the dev server in one shot. Open **http://localhost:8080** in your browser to see your live site.
+That scaffolds the project, installs dependencies, and starts the dev server in one shot. 
 
-Pass a different name to use it as both the directory name and the site title. If you omit `-y`, the CLI steps through the setup prompts interactively.
+Open **http://localhost:8080** in your browser to see your live site.
 
-`npm create bascik@latest` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, the `@bascik/language-server` linter (`npm run lint`), E2E testing, and code coverage pre-configured. It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
+Edit a page or a component and save. The browser updates on its own, with no manual refresh:
 
-### Manual Setup
+![An editor above a browser showing the starter site. A heading is edited and saved and the browser updates. A component's border color is edited and saved and every card updates](/assets/demos/live-reload-stacked@2x.webp)
+
+## Create Bascik Command
+
+```sh
+npm create bascik@latest my-site
+```
+
+Pass a different name to use it as both the directory name and the site title.
+
+If you omit `-y`, the CLI steps through the setup prompts interactively.
+
+`npm create bascik@latest` scaffolds a complete starter site: pages, components with unit tests, Playwright E2E browser tests, global CSS, `vite.config.js`, `.vscode/extensions.json` recommending the official Bascik extension, and a `.gitignore` with Vitest, the `@bascik/language-server` linter (`npm run lint`), E2E testing, and code coverage pre-configured. 
+
+It does not create `bascik.config.ts` because the starter uses Bascik's built-in defaults.
+
+## Manual Setup
 
 To add Bascik to an existing project:
 

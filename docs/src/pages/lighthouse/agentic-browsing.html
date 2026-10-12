@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="Overview of deployment options for Bascik sites, including static hosting, bascik --server, and serverless hosting adapters." />
-  <title>Overview - Bascik Docs</title>
+    content="How Bascik sites fare in the Lighthouse Agentic Browsing category: a well-formed accessibility tree, zero layout shift, a valid llms.txt, and optional WebMCP." />
+  <title>Lighthouse Agentic Browsing with Bascik</title>
 </head>
 
 <body>
@@ -36,17 +36,14 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/deployment');
+          export default async () => renderSectionLabel('/lighthouse/agentic-browsing');
         </script>
-        <!-- Content rendered from docs/content/deployment/index.md at build time.
-             To update page content, edit the MD file, not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/deployment/index.md');
+          export default async () => await renderMd('./content/lighthouse/agentic-browsing.md');
         </script>
 
         <docs-pagination />
-
       </main>
     </div>
   </div>

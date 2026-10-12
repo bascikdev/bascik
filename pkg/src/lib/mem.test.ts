@@ -457,6 +457,47 @@ describe("storePage precomputes serverScriptPlan", () => {
     expect(mem.getPage("static-page")!.serverScriptPlan).toBeUndefined();
   });
 
+  it("stores no plan for a page that only talks about server scripts", async () => {
+    // A documentation page, a blog post, or an escaped code sample contains the directive's name as
+    // text. Nothing on it runs per request, so it must stay a plain cacheable, compressible page. The
+    // byte pre-filter matches it, so the exact scan is what must decide.
+    const prose = "<p>Add <code>data-bascik-server</code> to a script. Streaming uses data-bascik-stream.</p>";
+    const escaped =
+      "<pre><code>&lt;script data-bascik-server&gt;export default () =&gt; 1&lt;/script&gt;</code></pre>";
+    const comment = "<!-- <script data-bascik-server>old()</script> -->";
+    for (const [name, html] of [["prose", prose], ["escaped-sample", escaped], ["only-a-mention-in-an-attribute", '<p title="data-bascik-server">x</p>']] as const) {
+      await mem.storePage({ relativePagePath: name, absolutePagePath: name, pageContent: html, usedComponentsNames: [] });
+      expect(mem.getPage(name)!.serverScriptPlan, name).toBeUndefined();
+    }
+    // An HTML comment is not a script either, but the exact scan is regex-based and does not parse
+    // comments. It is pinned here so a change to that behavior is a deliberate one.
+    await mem.storePage({ relativePagePath: "commented", absolutePagePath: "commented", pageContent: comment, usedComponentsNames: [] });
+    expect(mem.getPage("commented")!.serverScriptPlan).toBeDefined();
+  });
+
+  it("keeps the plan for a page with a real script among text that also mentions the directive", async () => {
+    const html =
+      "<p>The <code>data-bascik-server</code> attribute runs code per request.</p>" +
+      "<script data-bascik-server>export default function() { return '1'; }</script>";
+    await mem.storePage({ relativePagePath: "mixed", absolutePagePath: "mixed", pageContent: html, usedComponentsNames: [] });
+    const plan = mem.getPage("mixed")!.serverScriptPlan!;
+    expect("segments" in plan && plan.segments.some((segment) => segment.kind === "script")).toBe(true);
+  });
+
+  it("keeps the plan for a sidecar placeholder, which is a real script", async () => {
+    const html = '<script type="text/bascik-server" data-bascik-server-id="missing-id"></script>';
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    try {
+      await mem.storePage({ relativePagePath: "placeholder", absolutePagePath: "placeholder", pageContent: html, usedComponentsNames: [] });
+      // The sidecar has no such id, so planning fails. That failure must still be stored (and fail
+      // production startup validation), not hidden by the new "no script means no plan" rule.
+      const plan = mem.getPage("placeholder")!.serverScriptPlan;
+      expect(plan && "error" in plan).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("stores a planner error on the page instead of throwing, so other pages still load", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
     try {
