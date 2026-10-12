@@ -20,6 +20,14 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
 
 <!-- demo:source-html -->
 ```html
+<style>
+  .hello-card {
+    padding: 24px;
+    background: #242628;
+    border: 1px solid #3a3d40;
+    border-top: 3px solid #d3ff8d;
+  }
+</style>
 <article class="hello-card">
   <p class="hello-card-kicker">One file. One tag.</p>
   <h3 class="hello-card-title">Plain HTML, ready to reuse.</h3>
@@ -27,16 +35,6 @@ Create one HTML file, then use its filename as a tag anywhere, with no registrat
     Bascik replaces the custom tag at build time and ships the finished markup.
   </p>
 </article>
-```
-
-<!-- demo:source-css -->
-```css
-.hello-card {
-  padding: 24px;
-  background: #242628;
-  border: 1px solid #3a3d40;
-  border-top: 3px solid #d3ff8d;
-}
 ```
 
 <!-- demo:output-html -->
