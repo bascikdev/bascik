@@ -10,6 +10,7 @@
  */
 export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
+
 export function pagesHeaders(versionedFolders: readonly string[]): string {
   return versionedFolders
     .map((folder) => `${folder}*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`)

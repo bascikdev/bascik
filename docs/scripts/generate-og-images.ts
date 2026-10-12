@@ -270,7 +270,7 @@ function extractMetaFromHtml(html: string): { title: string; description: string
   const descMatch = html.match(/<meta\s+name=["']description["']\s+content=["'](.*?)["']/i);
   if (!titleMatch && !descMatch) return null;
   return {
-    title: titleMatch ? titleMatch[1].replace(/\s*-\s*Bascik Docs$/, '').trim() : '',
+    title: titleMatch ? titleMatch[1].replace(/\s*-\s*Bascik( Docs)?$/, '').trim() : '',
     description: descMatch ? descMatch[1].trim() : '',
   };
 }

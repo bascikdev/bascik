@@ -3,10 +3,53 @@
 HTML components.
 Zero runtime.
 
-Bascik is a build tool for HTML components. It scopes and assembles reusable HTML component files into vanilla HTML pages at build time. Zero JavaScript is added to your pages.
+Bascik is a build tool for HTML components with automatically scoped CSS and JavaScript. You write vanilla HTML, CSS, and JavaScript. Bascik scopes and assembles reusable component files into plain static HTML pages at build time, with no framework runtime, no Shadow DOM, and no virtual DOM. The code that ships is the code you wrote.
 
 **Documentation:** [bascik.dev](https://bascik.dev)  
 **Package:** [`@bascik/bascik`](https://www.npmjs.com/package/@bascik/bascik)
+
+## Get Started
+
+```sh
+npm create bascik@latest my-site
+```
+
+The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
+
+## What It Looks Like
+
+A component is an HTML file named after its tag. Its `<style>` and `<script>` are scoped to it at build time, so class names and DOM queries never collide with other components.
+
+```html
+<!-- src/components/site-nav.html -->
+<style>
+  .nav { display: flex; gap: 1rem; }
+</style>
+<nav class="nav">
+  <a href="/">Home</a>
+  <a href="/about">About</a>
+</nav>
+```
+
+Use the tag in any page or component. There is no import, export, or registration step.
+
+```html
+<!-- src/pages/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Home</title></head>
+<body>
+  <site-nav />
+</body>
+</html>
+```
+
+## Learn More
+
+- [Components](https://bascik.dev/components) and [Slots](https://bascik.dev/slots)
+- [Scoped CSS without Shadow DOM](https://bascik.dev/scoped-styles) and [Scoped JavaScript](https://bascik.dev/scoped-javascript)
+- [Build Scripts](https://bascik.dev/build-scripts), [Dynamic Routes](https://bascik.dev/dynamic-routes), and [Deployment](https://bascik.dev/deployment)
+- [Bascik vs React, Vue, Svelte, and Astro](https://bascik.dev/vs-frameworks)
 
 ---
 

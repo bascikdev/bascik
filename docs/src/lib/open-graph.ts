@@ -37,6 +37,16 @@ function extractDescription(html: string): string {
   return '';
 }
 
+/**
+ * Resolves the generated social card for a page. Pages outside the nav (stubs, search) fall back to
+ * the home card, matching the SVG/JPEG files written by scripts/generate-og-images.ts.
+ */
+export function socialImageUrl(siteUrl: string, urlPath: string, withoutExt: string): string {
+  const isNavOrHome = urlPath === '/' || NAV.some((sec) => sec.pages.some((p) => p.href === urlPath));
+  const imageSlug = (isNavOrHome && withoutExt !== 'index') ? withoutExt.replace(/\//g, '-') : 'home';
+  return `${siteUrl}/assets/og/${imageSlug}.jpg`;
+}
+
 export async function openGraph(): Promise<string> {
   const siteUrl = (process.env.BASCIK_SITE_URL ?? '').replace(/\/$/, '');
   const pageFile = process.env.BASCIK_SOURCE_FILE ?? process.env.BASCIK_PAGE_FILE ?? '';
@@ -67,9 +77,7 @@ export async function openGraph(): Promise<string> {
     ? (rawTitle.replace(/^Bascik\s*-\s*/i, '').trim() || 'HTML components. Zero runtime.')
     : (rawTitle.replace(/\s*-\s*Bascik Docs$/i, '').replace(/\s*-\s*Bascik$/i, '').trim() || rawTitle);
 
-  const isNavOrHome = urlPath === '/' || NAV.some((sec) => sec.pages.some((p) => p.href === urlPath));
-  const imageSlug = (isNavOrHome && withoutExt !== 'index') ? withoutExt.replace(/\//g, '-') : 'home';
-  const imageUrl = `${siteUrl}/assets/og/${imageSlug}.jpg`;
+  const imageUrl = socialImageUrl(siteUrl, urlPath, withoutExt);
 
   const tags = [
     `<meta property="og:type" content="website" />`,

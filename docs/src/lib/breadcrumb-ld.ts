@@ -11,6 +11,7 @@
  *   export default async () => await breadcrumbLd();
  */
 import { readFile } from 'node:fs/promises';
+import { NAV } from './nav.ts';
 
 // Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment)
 const SECTIONS_WITH_PAGE = new Set(['internals', 'switch', 'testing', 'deployment']);
@@ -47,10 +48,11 @@ export async function breadcrumbLd(): Promise<string> {
     return '';
   }
   const titleM = html.match(/<title[^>]*>([^<]+)<\/title>/);
-  // Strip " - Bascik Docs" / " - Bascik Developer Guide" / " - Bascik" suffixes
-  const rawPageLabel = titleM
-    ? titleM[1].replace(/ - Bascik.*$/, '').trim()
-    : parts[parts.length - 1];
+  // <title> is written for search results (long, keyword-rich), so the breadcrumb prefers the short
+  // sidebar label. Pages outside the nav fall back to the title with its " - Bascik..." suffix stripped.
+  const navLabel = NAV.flatMap((sec) => sec.pages).find((p) => p.href === `/${parts.join('/')}`)?.label;
+  const rawPageLabel = navLabel
+    ?? (titleM ? titleM[1].replace(/ - Bascik.*$/, '').trim() : parts[parts.length - 1]);
   const pageLabel = rawPageLabel.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const rawSectionLabel = SECTION_LABELS[section]

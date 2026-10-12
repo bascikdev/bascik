@@ -1,4 +1,4 @@
-# Overview
+# Lighthouse 100s Overview
 
 Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores, and reaching 100 across the scored Lighthouse categories, plus a clean Agentic Browsing report, is a matter of applying a small, well-known set of HTML patterns. This section has one page for each of the five categories.
 

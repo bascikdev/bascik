@@ -1,4 +1,4 @@
-# Overview
+# Switch to Bascik
 
 Switching an existing site to Bascik lets you replace complex client-side framework runtimes and heavy bundlers with standard vanilla HTML, CSS, and JavaScript. Bascik compiles your components at build time, yielding fast pages and zero client runtime overhead.
 

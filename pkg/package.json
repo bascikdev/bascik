@@ -1,6 +1,23 @@
 {
   "name": "@bascik/bascik",
-  "description": "HTML components. Zero runtime",
+  "description": "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime.",
+  "keywords": [
+    "bascik",
+    "html components",
+    "build tool",
+    "scoped css",
+    "scoped javascript",
+    "static site generator",
+    "ssg",
+    "web components",
+    "zero runtime",
+    "no framework",
+    "vanilla html",
+    "templating"
+  ],
+  "bugs": {
+    "url": "https://github.com/bascikdev/bascik/issues"
+  },
   "version": "1.0.0-rc.6",
   "repository": {
     "type": "git",

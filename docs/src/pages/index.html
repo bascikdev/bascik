@@ -13,7 +13,7 @@
   </script>
   <meta name="description"
     content="Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote." />
-  <title>Bascik - HTML components. Zero runtime.</title>
+  <title>Bascik - HTML Components Build Tool with Scoped CSS and JS</title>
   <link rel="prefetch" href="/why-bascik" />
   <link rel="prefetch" href="/getting-started" />
   <script type="application/ld+json">
@@ -21,6 +21,7 @@
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "Bascik",
+    "alternateName": ["Bascik HTML components", "bascik.dev"],
     "url": "https://bascik.dev",
     "potentialAction": {
       "@type": "SearchAction",
@@ -32,29 +33,10 @@
     }
   }
   </script>
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Bascik",
-    "url": "https://bascik.dev",
-    "description": "Bascik is a build tool for HTML components with automatically scoped CSS and JS. Zero runtime. The code that ships is the code you wrote.",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS, Windows, Linux",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "creator": {
-      "@type": "Person",
-      "name": "Collin Thomas",
-      "url": "https://github.com/collin-thomas"
-    },
-    "downloadUrl": "https://www.npmjs.com/package/@bascik/bascik",
-    "softwareVersion": "1.0.0",
-    "license": "https://bascik.dev/license"
-  }
+  <!-- SoftwareApplication + Organization JSON-LD. softwareVersion comes from pkg/package.json. -->
+  <script data-bascik-build>
+    import { homeSchema } from '@/lib/home-schema.ts';
+    export default async () => await homeSchema();
   </script>
   <style>
     /* The nav and docs pages use the wider site width. The home page content
@@ -763,7 +745,14 @@
     <section class="hero">
       <div class="container">
         <div class="hero-eyebrow">
-          <span class="badge">v1.0.0</span>
+          <!-- Reads pkg/package.json; release candidate suffixes are dropped (v1.0.0). -->
+          <script data-bascik-build>
+            import { versionBadge } from '@/lib/package-version.ts';
+            export default async () => {
+              const text = await versionBadge();
+              return text ? `<span class="badge">${text}</span>` : '';
+            };
+          </script>
         </div>
         <h1 class="hero-title">HTML components.<br><span class="text-accent">Zero runtime.</span></h1>
         <p class="hero-desc">What if you could have components that were just HTML files without any special syntax? Now

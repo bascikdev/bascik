@@ -87,4 +87,22 @@ describe('breadcrumbLd', () => {
     expect(parsed.itemListElement[1].item).toBe('https://bascik.dev/internals');
     expect(parsed.itemListElement[2].name).toBe('Architecture');
   });
+
+  it('uses the short sidebar label, not the keyword-rich <title>, for pages in the nav', async () => {
+    const sectionDir = join(tempDir, 'switch');
+    const pageFile = join(sectionDir, 'from-react.html');
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(sectionDir, { recursive: true });
+    await writeFile(
+      pageFile,
+      '<html><head><title>Migrate from React to Bascik</title></head><body></body></html>',
+    );
+
+    process.env.BASCIK_PAGE_FILE = pageFile;
+    process.env.BASCIK_PAGES_DIR = tempDir;
+    process.env.BASCIK_SITE_URL = 'https://bascik.dev';
+
+    const parsed = JSON.parse(jsonLdBody(await breadcrumbLd()));
+    expect(parsed.itemListElement.at(-1).name).toBe('From React');
+  });
 });

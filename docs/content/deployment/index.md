@@ -1,4 +1,4 @@
-# Overview
+# Deployment Overview
 
 Deploying a Bascik site is fast and flexible. Because Bascik compiles your components, styles, and scripts into standard vanilla HTML, CSS, and client JavaScript in `dist/`, you can host your site anywhere: from zero-configuration static hosts and global CDNs to edge serverless platforms and dedicated Node servers.
 

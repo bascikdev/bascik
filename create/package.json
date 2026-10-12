@@ -1,6 +1,14 @@
 {
   "name": "create-bascik",
-  "description": "Create a new Bascik project",
+  "description": "Create a new Bascik project: HTML components with scoped CSS and JS, zero runtime.",
+  "keywords": [
+    "bascik",
+    "create-bascik",
+    "html components",
+    "scaffold",
+    "starter",
+    "static site generator"
+  ],
   "version": "1.0.0-rc.6",
   "repository": {
     "type": "git",
