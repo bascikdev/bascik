@@ -598,7 +598,9 @@ Never configure `minify.js` merely to strip TypeScript. Bascik performs supporte
 
 When debugging component scripts in browser DevTools (Cmd+Option+I or F12), Bascik provides virtual source files and accurate stack traces:
 
-* **Virtual Source Files:** Bascik appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component client `<script>` block. In browser DevTools under the **Sources** (or Debugger) panel, your component scripts appear as virtual files matching your project folder structure (e.g., `src/components/card.html`).
+* **Virtual Source Files:** Bascik appends a `//# sourceURL=src/components/name.html` directive to every component client `<script>` block and pads it so DevTools line N is line N of the component file. In browser DevTools under the **Sources** (or Debugger) panel, your component scripts appear as virtual files matching your project folder structure (e.g., `src/components/card.html`).
+* **One File per Instance:** The second and later instances of a component on a page are separate files: `card.html?instance=2`, `card.html?instance=3`. A breakpoint pauses only the instance whose file it was set in; use a `debugger;` statement to pause every instance.
+* **Minified Builds:** `bascik --build` minifies JavaScript by default, which joins lines. Source line numbers hold in the dev server, or in a build with `minify.js: false`.
 * **Console Logs & Breakpoints:** Because component scripts are listed as virtual files, you can search for them directly using `Cmd + P` or `Ctrl + P` in DevTools, set breakpoints, and step-debug. Runtime console logs and uncaught exceptions map directly to the original component file and line offset rather than the generated HTML page.
 
 ---
@@ -847,7 +849,7 @@ Each `<script data-bascik-build>` spawns a Node.js child process (~50–150 ms s
 
 **Cache location:** `node_modules/.cache/bascik/script-cache/<sha256>.json`
 
-**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script + the resolved identity of every installed package the script (or its local dependencies) imports. Package identity covers the package manifest and the resolved entry, plus a bounded transitive hash of the packages those imports themselves pull in, so upgrading a build-time npm dependency invalidates affected entries automatically regardless of cache temperature.
+**Cache key:** SHA-256 of the script content + dev/build mode + the source file path (`BASCIK_SOURCE_FILE`) + the site URL + the deployment base + dynamic route parameters + the full content of any local dependency files referenced as quoted path literals in the script + the content of the source and page files when the script or a local helper names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE` + the resolved identity of every installed package the script (or its local dependencies) imports. Package identity covers the package manifest and the resolved entry, plus a bounded transitive hash of the packages those imports themselves pull in, so upgrading a build-time npm dependency invalidates affected entries automatically regardless of cache temperature.
 
 **Excluding scripts from cache:** Statically scanned cache keys cannot detect runtime network calls, `readdir` directory reads, or dynamic computed file paths. For scripts reading from external APIs or computed paths, exclude them via `scripts.cache.exclude`:
 
@@ -1770,7 +1772,7 @@ Bascik works smoothly with debuggers because it operates directly on vanilla HTM
 Debugging server-side scripts, build-time scripts, and browser component code in Bascik requires no special source map plugins or transpilation step:
 
 * **Server and Build Scripts:** Bascik automatically appends `//# sourceURL=${relPath}` comments to temporary script modules created during compilation (`<script data-bascik-build>` and `<script data-bascik-server>`). Stack traces and debugger breakpoints point directly back to your original source file paths.
-* **Client Component Scripts:** Bascik preserves newline padding when scoping component `<script>` tags. Line numbers reported in console errors or hit during step-debugging match the exact line numbers in your component `.html` source files.
+* **Client Component Scripts:** Bascik pads component `<script>` tags to their source line when scoping them. Line numbers reported in console errors or hit during step-debugging match the exact line numbers in your component `.html` source files while JavaScript is not minified (the dev server default).
 * **Native TypeScript Debugging:** Because Node 22.18.0+ natively executes TypeScript files by stripping type annotations, setting breakpoints in `.ts` modules pauses execution immediately with full access to local scope variables and call stacks.
 
 #### Pre-Configured VS Code Launch Configurations

@@ -119,7 +119,12 @@ const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 // skip the Node.js child-process spawn entirely for unchanged scripts.
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
-export const SCRIPT_CACHE_VERSION = 11;
+export const SCRIPT_CACHE_VERSION = 12;
+
+// A script (or a local helper it imports) that names either variable can read
+// the file it points at, which static dependency scanning cannot see. Such
+// scripts fold that file's content into their cache key.
+const CONTEXT_FILE_ENV_RE = /\bBASCIK_(?:SOURCE|PAGE)_FILE\b/;
 
 export interface ImportRootOptions {
   /** Absolute import root that `@/` specifiers resolve against. */
@@ -463,6 +468,7 @@ const computeScriptCacheKey = async (
 
   const visited = new Set<string>();
   const queue = [...extractScriptDeps(script, baseDir, { importRoot })];
+  let readsContextFile = CONTEXT_FILE_ENV_RE.test(script);
 
   while (queue.length > 0) {
     const rawDep = queue.shift()!;
@@ -476,6 +482,7 @@ const computeScriptCacheKey = async (
       const content = await readCachedFile(absPath, relKey);
       hash.update(relKey);
       hash.update(content);
+      if (!readsContextFile && CONTEXT_FILE_ENV_RE.test(content)) readsContextFile = true;
 
       // Scan file content for nested dependencies relative to the file's directory
       const fileDir = dirname(absPath);
@@ -486,6 +493,27 @@ const computeScriptCacheKey = async (
     } catch {
       hash.update(relKey);
       hash.update("MISSING");
+    }
+  }
+
+  // Context files: a helper that reads BASCIK_SOURCE_FILE or BASCIK_PAGE_FILE
+  // (for example to copy the page <title> into og:title) depends on that
+  // file's content, not just its path. Fold the content in, and record the
+  // file as a dependency so a per-path clear on edit drops the memoized output.
+  if (readsContextFile) {
+    hash.update("CTX"); // explicit marker so context-free keys never collide with context keys
+    for (const contextFile of new Set([filePath, pageFile])) {
+      if (!contextFile) continue;
+      const absPath = resolve(process.cwd(), contextFile);
+      const relKey = relative(process.cwd(), absPath).replace(/\\/g, "/");
+      if (visited.has(relKey)) continue;
+      visited.add(relKey);
+      hash.update(relKey);
+      try {
+        hash.update(await readCachedFile(absPath, relKey));
+      } catch {
+        hash.update("MISSING");
+      }
     }
   }
 

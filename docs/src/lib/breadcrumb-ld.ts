@@ -13,12 +13,13 @@
 import { readFile } from 'node:fs/promises';
 import { NAV } from './nav.ts';
 
-// Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment)
-const SECTIONS_WITH_PAGE = new Set(['internals', 'switch', 'testing', 'deployment']);
+// Sections that have their own index page (e.g. /internals, /switch, /testing, /deployment, /lighthouse)
+export const SECTIONS_WITH_PAGE = new Set(['internals', 'switch', 'testing', 'deployment', 'lighthouse']);
 
 const SECTION_LABELS: Record<string, string> = {
   deployment: 'Deployment',
   internals: 'Internals',
+  lighthouse: 'Lighthouse 100s',
   switch: 'Switch',
   testing: 'Testing & Debugging',
   'how-to': 'How-to',

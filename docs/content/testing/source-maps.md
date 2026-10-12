@@ -4,14 +4,13 @@ Bascik eliminates the complexity of generating multi-megabyte `.map` files by co
 
 ## Zero-Overhead Browser Source Mapping (`//# sourceURL`)
 
-During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and inserts leading newline padding to preserve line offsets:
+During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and pads the script with blank lines, one for each line above it in the component file. For a component whose `<script>` tag is on line 3:
 
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
+
 (function() {
-
-
   document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
     console.log("Button clicked");
   });
@@ -22,9 +21,11 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 
 When inspecting your application in browser DevTools:
 
-- **Virtual File Tree**: Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab.
-- **Accurate Breakpoints**: Setting a breakpoint on line 14 in DevTools pauses execution on line 14 of your original component file.
+- **Virtual File Tree**: Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab. Each instance on a page is its own file: the second is `counter.html?instance=2`, the third `counter.html?instance=3`.
+- **Accurate Breakpoints**: Setting a breakpoint on line 14 in DevTools pauses execution on line 14 of your original component file. It pauses only that instance; a `debugger;` statement pauses every instance.
 - **Console Errors**: Console messages and uncaught exceptions attribute errors directly to the component file and line number.
+
+Line numbers match when JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default, which joins lines; set `minify.js: false` to keep source line numbers in a build.
 
 ## Build and Server Script Stack Trace Remapping
 

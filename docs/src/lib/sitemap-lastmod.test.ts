@@ -11,6 +11,7 @@ import {
   isShallowRepository,
   lastmodFor,
   parseGitLog,
+  parseGitLogRange,
   routeOf,
   sitemapLocs,
   sourceFilesForRoute,
@@ -38,6 +39,13 @@ describe('parseGitLog', () => {
     const latest = parseGitLog(log, new Set([HASH_C]));
     expect(latest.get('new.md')).toBe(3000);
     expect(latest.has('old.md')).toBe(false);
+  });
+
+  it('also tracks the oldest commit time per path, skipping boundary commits', () => {
+    const log = [`commit ${HASH_A} 3000`, 'x.md', '', `commit ${HASH_B} 1000`, 'x.md', '', `commit ${HASH_C} 10`, 'x.md'].join('\n');
+    const { latest, earliest } = parseGitLogRange(log, new Set([HASH_C]));
+    expect(latest.get('x.md')).toBe(3000);
+    expect(earliest.get('x.md')).toBe(1000);
   });
 });
 
@@ -170,6 +178,15 @@ describe('against a real git repository', () => {
     expect(summary!.xml).not.toMatch(/missing<\/loc>\s*<lastmod>/);
   });
 
+  it('reports first and newest commit times per page for article dates', async () => {
+    const summary = await addGitLastmod(sitemap('', 'guide', 'missing'), docsDir, repo);
+    const first = Date.parse('2026-01-10T12:00:00Z') / 1000;
+    const update = Date.parse('2026-03-20T12:00:00Z') / 1000;
+    expect(summary!.timesByLoc.get('https://bascik.dev/guide')).toEqual({ modified: update, published: first });
+    expect(summary!.timesByLoc.get('https://bascik.dev/')).toEqual({ modified: first, published: first });
+    expect(summary!.timesByLoc.has('https://bascik.dev/missing')).toBe(false);
+  });
+
   it('does not date uncommitted new files', async () => {
     await writeFile(join(docsDir, 'src/pages/fresh.html'), '<html></html>');
     const summary = await addGitLastmod(sitemap('fresh'), docsDir, repo);
@@ -203,6 +220,10 @@ describe('against a real git repository', () => {
       // guide.md changed in the newest commit, so it is dated exactly. index.html did not, so it is unknown.
       expect(summary!.xml).toContain('<loc>https://bascik.dev/guide</loc>\n    <lastmod>2026-05-01</lastmod>');
       expect(summary!.xml).not.toMatch(/bascik\.dev\/<\/loc>\s*<lastmod>/);
+      // A shallow clone cannot see when a file was added, so no publish date is reported.
+      expect(summary!.timesByLoc.get('https://bascik.dev/guide')).toEqual({
+        modified: Date.parse('2026-05-01T12:00:00Z') / 1000,
+      });
     } finally {
       await rm(clone, { recursive: true, force: true });
     }
@@ -258,7 +279,7 @@ describe('against a real git repository', () => {
 });
 
 describe('docs build configuration', () => {
-  const script = 'scripts/generate-sitemap-lastmod.ts';
+  const script = 'scripts/generate-git-dates.ts';
 
   it('runs after the sitemap is written, in the build only', () => {
     expect(build.pipeline?.exec?.find((entry) => entry.script === script)?.phase).toBe('post');

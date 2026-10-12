@@ -264,14 +264,13 @@ Bascik eliminates the overhead and synchronization issues of traditional multi-m
 
 ### Zero-Overhead Browser Source Mapping (`//# sourceURL`)
 
-During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and inserts newline padding to preserve exact line offsets:
+During component compilation, Bascik automatically appends a `//# sourceURL` comment to every client `<script>` block and pads the script with blank lines, one for each line above it in the component file. For a component whose `<script>` tag is on line 3:
 
 ```html
 <!-- Compiled output injected into page HTML -->
 <script>
+
 (function() {
-
-
   document.getElementById("bascik__counter__a1b2__btn").addEventListener("click", () => {
     console.log("Button clicked");
   });
@@ -282,8 +281,10 @@ During component compilation, Bascik automatically appends a `//# sourceURL` com
 
 When inspecting your application in Chrome DevTools, Firefox Developer Tools, Safari Web Inspector, or Microsoft Edge DevTools:
 
-- **Virtual File Tree:** Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab.
-- **Accurate Breakpoints:** Clicking a line number in DevTools or adding a `debugger;` statement pauses execution directly on the original source line.
+- **Virtual File Tree:** Component scripts appear under their actual project paths (such as `src/components/counter/counter.html`) in the **Sources** or **Debugger** tab. Each instance on a page is its own file: the second is `counter.html?instance=2`.
+- **Accurate Breakpoints:** Clicking a line number in DevTools pauses that instance directly on the original source line. A `debugger;` statement pauses every instance.
+
+Line numbers match while JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default.
 - **Console Log and Error Mapping:** Messages from `console.log()` and uncaught runtime errors reference the component file and line number rather than a compiled monolithic page.
 
 ### Build and Server Script Stack Trace Remapping

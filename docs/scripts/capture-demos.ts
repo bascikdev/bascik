@@ -12,6 +12,9 @@
  *   markdown-watch    editor above a browser: a watched Markdown file is edited, and the page that reads it updates
  *   server-request    editor above a browser: a server script renders a different page for each request
  *   exec-watch        the terminal: editing a watched file reruns an exec script and rebuilds only its page
+ *   dynamic-routes    editor above a browser: a URL is a 404 until a route is added to the template's routes script
+ *   sitemap           the terminal: `bascik --build` with a site URL, then the generated sitemap.xml
+ *   devtools-breakpoint  the browser above real Chrome DevTools: a breakpoint in a component script, on its file's line
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
  *
@@ -807,6 +810,239 @@ async function execWatch(): Promise<Frame[]> {
   }
 }
 
+/** One template, one page per route. Lines stay short so they fit the stacked editor without clipping. */
+const BLOG_TEMPLATE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Blog - my-site</title>
+  <site-meta />
+</head>
+<body>
+  <site-header data-bascik-prop-brand="my-site" />
+  <main class="section container">
+    <script data-bascik-routes>
+      export default () => [
+        { slug: 'hello-world', title: 'Hello, world' },
+        { slug: 'second-post', title: 'Second post' },
+      ].map((post) => ({
+        params: { slug: post.slug },
+        data: post,
+      }));
+    </script>
+    <script data-bascik-build>
+      export default () => {
+        const route = JSON.parse(process.env.BASCIK_ROUTE);
+        return \`<h1>\${route.data.title}</h1>\`;
+      };
+    </script>
+  </main>
+</body>
+</html>
+`;
+
+const addBlog = async (dir: string) => {
+  await mkdir(join(dir, 'src/pages/blog'), { recursive: true });
+  await writeFile(join(dir, 'src/pages/blog/[slug].html'), BLOG_TEMPLATE);
+};
+
+async function dynamicRoutes(): Promise<Frame[]> {
+  const rig = await openEditorAndBrowser({
+    layout: 'stacked',
+    path: '/blog/third-post',
+    editorHeight: 300,
+    editorSettings: {
+      'editor.lightbulb.enabled': 'off',
+      'editor.autoClosingQuotes': 'never',
+      // VS Code's built-in HTML validator treats every <script> as a classic script, so after an edit it
+      // underlines the `export default` of Bascik's directive scripts. That is unrelated to routes.
+      'html.validate.scripts': false,
+    },
+    prepare: addBlog,
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const templateFile = join(rig.project.dir, 'src/pages/blog/[slug].html');
+  const heading = () => rig.page.locator('h1').first().textContent();
+  try {
+    // Beat 1: the URL does not exist yet, so the dev server answers with the starter's 404 page.
+    await openFile(editor, '[slug].html');
+    const second = await readLine(templateFile, "{ slug: 'second-post'");
+    // Going to the last line first makes the editor scroll so the routes script sits at the top.
+    await gotoLine(editor, 29, 1);
+    await gotoLine(editor, second.line, second.text.length + 1);
+    if ((await heading()) === 'Third post') throw new Error('The third post exists before it was added');
+    await rig.snap(frames, INTRO_HOLD + 1400);
+
+    // Beat 2: add a route. Duplicate the last entry, then rename it.
+    await press(editor, 'Shift+Alt+ArrowDown');
+    await rig.snap(frames, 700);
+    const added = second.line + 1;
+    const slugEnd = second.text.indexOf('second-post') + 1 + 'second'.length;
+    await selectBackwards(editor, added, slugEnd, 'second'.length);
+    await rig.snap(frames, 500);
+    await editor.keyboard.type('third');
+    await rig.snap(frames, 500);
+    // Columns are 1-based, and "third" is one letter shorter than "second", so the title moved left by one.
+    const titleEnd = second.text.indexOf('Second post') + 1 + 'Second'.length - 1;
+    await selectBackwards(editor, added, titleEnd, 'Second'.length);
+    await rig.snap(frames, 500);
+    await editor.keyboard.type('Third');
+    await rig.snap(frames, 800);
+    await press(editor, 'Meta+s');
+    const saved = await readFile(templateFile, 'utf8');
+    if (!saved.includes("{ slug: 'third-post', title: 'Third post' },")) {
+      throw new Error(`The route edit did not save as expected:\n${saved}`);
+    }
+
+    // Beat 3: the same URL now renders the template with the new route's data.
+    const deadline = Date.now() + 15_000;
+    while ((await heading()) !== 'Third post') {
+      if (Date.now() > deadline) throw new Error('The new route never rendered');
+      await sleep(300);
+      await rig.page.reload();
+    }
+    await rig.snap(frames, OUTRO_HOLD);
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
+async function sitemap(): Promise<Frame[]> {
+  const project = await createStarterProject();
+  await addBlog(project.dir);
+  const browser = await chromium.launch();
+  try {
+    const pairs = await redactions(project);
+    const typed = 'bascik --build --site-url https://example.com && cat dist/sitemap.xml';
+    // The real build runs, then the real file it wrote is printed. Only how bascik is reached differs.
+    const recording = await recordCommand({
+      command: '/bin/sh',
+      args: ['-c', `"${process.execPath}" "${bascikBin}" --build --site-url https://example.com && cat dist/sitemap.xml`],
+      cwd: project.dir,
+    });
+    const text = recording.chunks.map((chunk) => chunk.text).join('');
+    if (recording.exitCode !== 0 || !text.includes('<loc>https://example.com/blog/second-post</loc>')) {
+      throw new Error(`The build did not write the expected sitemap:\n${text}`);
+    }
+    for (const chunk of recording.chunks) chunk.text = redact(chunk.text, pairs);
+    return await renderTerminal(browser, { title: 'bascik --build', rows: 26, width: 780 }, {
+      typed,
+      recording,
+      maxGapMs: 500,
+      finalHoldMs: OUTRO_HOLD + 1000,
+    });
+  } finally {
+    await browser.close();
+    await project.cleanup();
+  }
+}
+
+/** The DevTools frontend port. Separate from the dev server's. */
+const DEVTOOLS_PORT = 9334;
+
+/**
+ * The browser above, and real Chrome DevTools docked under it, debugging the starter's two counters. DevTools is
+ * Chrome's own frontend, served by the inspected browser and opened in a second one so it can be photographed.
+ */
+async function devtoolsBreakpoint(): Promise<Frame[]> {
+  const project = await createStarterProject();
+  const server = await startDevServer(project.dir, PORT);
+  // The full Chromium build serves the DevTools frontend; the headless shell does not.
+  const inspected = await chromium.launch({
+    channel: 'chromium',
+    args: [`--remote-debugging-port=${DEVTOOLS_PORT}`, '--remote-allow-origins=*'],
+  });
+  const frontend = await chromium.launch();
+  const frames: Frame[] = [];
+  try {
+    const counterFile = join(project.dir, 'src/components/my-counter/my-counter.html');
+    const increment = await readLine(counterFile, '++count');
+    const page = await inspected.newPage({ viewport: { width: 664, height: 132 }, deviceScaleFactor: 2 });
+    await page.goto(server.url);
+    // Below the sticky header, so the counters are in view and nothing covers the button.
+    const showCounters = () =>
+      page.evaluate(() => {
+        const header = document.querySelector('header')?.getBoundingClientRect().height ?? 0;
+        const counter = document.querySelector('[data-testid="counter-inc"]')!;
+        window.scrollTo(0, counter.getBoundingClientRect().top + window.scrollY - header - 24);
+      });
+    await showCounters();
+    const targets = (await (await fetch(`http://127.0.0.1:${DEVTOOLS_PORT}/json`)).json()) as Array<{ id: string; url: string }>;
+    const target = targets.find((candidate) => candidate.url.startsWith(server.url))!;
+    const tools = await frontend.newPage({ viewport: { width: 664, height: 470 }, deviceScaleFactor: 2, colorScheme: 'dark' });
+    const ws = `127.0.0.1:${DEVTOOLS_PORT}/devtools/page/${target.id}`;
+    await tools.goto(`http://127.0.0.1:${DEVTOOLS_PORT}/devtools/inspector.html?ws=${ws}&panel=sources`);
+    await tools.waitForSelector('.navigator-tabbed-pane', { timeout: 30_000 });
+    await sleep(1500);
+    // DevTools opens a screencast of the page when the frontend is not docked; the page is shown above instead.
+    const screencast = tools.locator('[aria-label="Toggle screencast"]');
+    if (await screencast.count()) await screencast.first().click();
+    await sleep(500);
+    // A frontend opened this way attaches with the page paused. Let it run.
+    if (await tools.getByText('Debugger paused').count()) {
+      await press(tools, 'F8');
+      await sleep(500);
+      // The pause opened whatever script was running in a tab of its own. Close it.
+      await press(tools, 'Alt+w');
+    }
+    await sleep(500);
+    // In a pane this narrow the file tree would leave the editor no room.
+    await press(tools, 'Meta+Shift+y');
+    await sleep(500);
+
+    // The page cannot be photographed while it is paused, so the last picture is kept until it resumes.
+    let pagePane = await browserWindow(await page.screenshot(), SHOWN_URL).then((window) => roundCorners(window));
+    const snap = async (hold: number, { refreshPage = true } = {}) => {
+      await sleep(250);
+      if (refreshPage) pagePane = await browserWindow(await page.screenshot(), SHOWN_URL).then((window) => roundCorners(window));
+      pushFrame(frames, await stacked(pagePane, await roundCorners(await tools.screenshot())), hold);
+    };
+
+    // Beat 1: each counter's script is its own file, named after the component.
+    await press(tools, 'Meta+p');
+    await sleep(400);
+    for (const chunk of ['my-', 'cou', 'nter']) {
+      await tools.keyboard.type(chunk);
+      await sleep(150);
+    }
+    await sleep(800);
+    await snap(INTRO_HOLD + 1800);
+
+    // Beat 2: open the first instance at the line that increments the count, and set a breakpoint there.
+    await press(tools, 'Enter');
+    await sleep(800);
+    await press(tools, 'Meta+p');
+    await tools.keyboard.type(`:${increment.line}`);
+    await sleep(600);
+    await press(tools, 'Enter');
+    await sleep(800);
+    await snap(1600);
+    const gutter = tools.locator('.cm-lineNumbers .cm-gutterElement', { hasText: new RegExp(`^${increment.line}$`) });
+    await gutter.first().click();
+    await snap(1400);
+
+    // Beat 3: click "+". The page pauses on the same line number as in the file.
+    await page.getByTestId('counter-inc').first().click({ noWaitAfter: true, timeout: 1500 }).catch(() => undefined);
+    await tools.locator('.cm-executionLine').waitFor({ timeout: 10_000 });
+    await snap(3600, { refreshPage: false });
+
+    // Beat 4: resume, and the count changes.
+    await press(tools, 'F8');
+    await page.waitForFunction(() => document.querySelector('[data-testid="counter-val"]')?.textContent === '1', null, {
+      timeout: 10_000,
+    });
+    await showCounters();
+    await snap(OUTRO_HOLD);
+    return frames;
+  } finally {
+    await frontend.close();
+    await inspected.close();
+    await server.stop();
+    await project.cleanup();
+  }
+}
+
 const scenes: Record<string, () => Promise<Frame[]>> = {
   'live-reload': () => liveReload('side'),
   'live-reload-stacked': () => liveReload('stacked'),
@@ -818,6 +1054,9 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   'markdown-watch': markdownWatch,
   'server-request': serverRequest,
   'exec-watch': execWatch,
+  'dynamic-routes': dynamicRoutes,
+  sitemap,
+  'devtools-breakpoint': devtoolsBreakpoint,
 };
 
 const wanted = process.argv.slice(2);

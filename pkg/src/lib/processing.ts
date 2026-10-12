@@ -108,6 +108,7 @@ import { stripPreserveDirectives } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { scopeComponentInstance } from "./scoping-template.ts";
+import { numberInstanceSourceUrls } from "./script-source-lines.ts";
 
 const annotateComponentScriptSources = (html: string, sourceFile: string): string => {
   const encodedSourceFile = encodeURIComponent(sourceFile);
@@ -615,6 +616,9 @@ export const recursivelyTranspile = (
       );
       currentStage = "attribute scoping";
       component = scopeComponentInstance(component, instanceId);
+      // After scoping, not inside it: scoping results are reused across instances by renaming
+      // instance IDs, and the ordinal is not an instance ID.
+      component.fileContent = numberInstanceSourceUrls(component.fileContent, currentOrdinal);
       component.fileContent = stripPreserveDirectives(component.fileContent);
 
       currentStage = "prop injection";

@@ -44,3 +44,21 @@ test('live reload reconnects through the configured base', async ({ page }, test
     await writeFile(nestedPagePath, original);
   }
 });
+
+// Lives in the base fixture because it is the one fixture whose dev server leaves JS unminified.
+test('component script errors report the line in the component file', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'base-dev', 'only the dev server leaves JS unminified by default');
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+  await page.goto('/sub/source-lines');
+
+  await page.getByTestId('line-note-first').click();
+  await page.getByTestId('line-note-second').click();
+
+  // line-note.html throws on line 11. A <style> block above the script is extracted before
+  // scripts are scoped, so the line only survives if it was recorded from the file itself.
+  expect(errors.map((err) => /\((src\/components\/line-note\.html[^:]*):(\d+):\d+\)/.exec(err.stack ?? '')?.slice(1))).toEqual([
+    ['src/components/line-note.html', '11'],
+    ['src/components/line-note.html?instance=2', '11'],
+  ]);
+});

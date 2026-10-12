@@ -401,6 +401,7 @@ Bascik caches build script output in `node_modules/.cache/bascik/script-cache/`.
 - The authored script body before temporary-module import rewriting
 - The normalized paths and contents of detected local dependencies
 - The component file path (if in a component), page path, site URL (`BASCIK_SITE_URL`), deployment base (`BASCIK_BASE`), and dynamic route parameters
+- The contents of the source and page files, when the script or a local helper it imports names `BASCIK_SOURCE_FILE` or `BASCIK_PAGE_FILE`, so a helper that reads its own page re-runs when the page changes
 - **Resolved package identity** for every bare, scoped, and subpath package the script imports: the resolved entry file contents plus the package manifest, resolved with Node ESM semantics and walked as a bounded graph with cycle detection, so a package upgrade or an in-place edit to a workspace/`file:`-linked package invalidates cached output even when the script text is unchanged
 
 Package identity is computed per imported package (not per page) and cached, so unrelated installed packages are never hashed on every page. Node core modules (`node:fs`, `fs`) contribute only their runtime name, never a filesystem hash.

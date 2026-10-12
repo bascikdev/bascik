@@ -9,6 +9,7 @@ import { minifyHtml } from "./html-minifier.ts";
 import { maskElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
+import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
@@ -295,16 +296,20 @@ export const listComponents = async (): Promise<ComponentList> => {
       }
 
       const rawContent = fileContentBuffer.toString();
+      // Record each browser script's source line now: style extraction, build
+      // scripts, and minification below all move scripts around. The stamp adds
+      // no newlines, so build script line numbers are unaffected.
+      const stampedContent = stampScriptLines(rawContent);
       // Run build scripts before minification so that generated content
       // stays in its original position (minifyHtml moves <script> tags).
       // Page-aware component build scripts are deferred to page transpilation time.
-      const buildMatches = [...rawContent.matchAll(COMPONENT_BUILD_SCRIPT_RE)];
-      let resolvedContent = rawContent;
+      const buildMatches = [...stampedContent.matchAll(COMPONENT_BUILD_SCRIPT_RE)];
+      let resolvedContent = stampedContent;
 
       if (buildMatches.length > 0) {
         const deferredPlaceholders: Array<{ placeholder: string; tag: string }> = [];
         let hasStaticScripts = false;
-        let withPlaceholders = rawContent;
+        let withPlaceholders = stampedContent;
 
         for (let i = buildMatches.length - 1; i >= 0; i--) {
           const match = buildMatches[i];
@@ -364,7 +369,9 @@ export const listComponents = async (): Promise<ComponentList> => {
                   `or bundle this file with esbuild, swc, or another tool first so it has no import/export left.`,
                 );
               }
-              return `<script${attrStr} data-bascik-source="${scriptInfo.relPath}">\n${scriptInfo.code}\n</script>`;
+              // The companion's first line is line 1 of its own sourceURL file.
+              const openTag = withScriptLine(`<script${attrStr} data-bascik-source="${scriptInfo.relPath}">`, 1);
+              return `${openTag}${scriptInfo.code}\n</script>`;
             }
             return match;
           },

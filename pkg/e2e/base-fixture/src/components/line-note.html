@@ -1,0 +1,13 @@
+<div class="line-note">
+  <button id="throw-btn" data-bascik-attr-data-testid="testid">Throw</button>
+</div>
+<style>
+  .line-note {
+    padding: 4px;
+  }
+</style>
+<script>
+  document.getElementById("throw-btn").addEventListener("click", () => {
+    throw new Error("line note");
+  });
+</script>

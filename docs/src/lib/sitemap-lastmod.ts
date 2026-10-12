@@ -29,16 +29,25 @@ export type LatestCommitTimes = Map<string, number>;
 
 export interface GitHistory {
   latest: LatestCommitTimes;
+  /**
+   * Repo-relative path to the unix time of its oldest commit. Empty in a shallow clone: the oldest
+   * visible commit there may be a later edit, not the commit that added the file.
+   */
+  earliest: LatestCommitTimes;
   /** True when the clone is shallow, so older dates may be unknown rather than wrong. */
   shallow: boolean;
 }
 
 /**
- * Parses `git log --name-only --format="commit %H %ct"` output into the newest commit time per path,
- * skipping boundary commits whose dates cannot be trusted.
+ * Parses `git log --name-only --format="commit %H %ct"` output into the newest and oldest commit time per
+ * path, skipping boundary commits whose dates cannot be trusted.
  */
-export function parseGitLog(output: string, boundaryCommits: ReadonlySet<string> = new Set()): LatestCommitTimes {
+export function parseGitLogRange(
+  output: string,
+  boundaryCommits: ReadonlySet<string> = new Set(),
+): { latest: LatestCommitTimes; earliest: LatestCommitTimes } {
   const latest: LatestCommitTimes = new Map();
+  const earliest: LatestCommitTimes = new Map();
   let current: { hash: string; time: number } | null = null;
   for (const line of output.split('\n')) {
     if (!line) continue;
@@ -48,10 +57,17 @@ export function parseGitLog(output: string, boundaryCommits: ReadonlySet<string>
       continue;
     }
     if (!current || boundaryCommits.has(current.hash)) continue;
-    const previous = latest.get(line);
-    if (previous === undefined || current.time > previous) latest.set(line, current.time);
+    const newest = latest.get(line);
+    if (newest === undefined || current.time > newest) latest.set(line, current.time);
+    const oldest = earliest.get(line);
+    if (oldest === undefined || current.time < oldest) earliest.set(line, current.time);
   }
-  return latest;
+  return { latest, earliest };
+}
+
+/** Newest commit time per path. See `parseGitLogRange`. */
+export function parseGitLog(output: string, boundaryCommits: ReadonlySet<string> = new Set()): LatestCommitTimes {
+  return parseGitLogRange(output, boundaryCommits).latest;
 }
 
 /** True when `cwd` is a shallow clone. Returns false outside a git repository. */
@@ -100,9 +116,10 @@ export async function readGitHistory(cwd: string, paths: readonly string[]): Pro
     }
   }
 
-  if (paths.length === 0) return { latest: new Map(), shallow };
+  if (paths.length === 0) return { latest: new Map(), earliest: new Map(), shallow };
   const { stdout } = await git(['log', '--name-only', '--format=commit %H %ct', '--', ...paths]);
-  return { latest: parseGitLog(stdout, boundary), shallow };
+  const { latest, earliest } = parseGitLogRange(stdout, boundary);
+  return { latest, earliest: shallow ? new Map() : earliest, shallow };
 }
 
 /** Markdown files a page shell renders, as written in its source (`./content/x.md`, `../CHANGELOG.md`). */
@@ -152,13 +169,29 @@ export function formatLastmod(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
 
-/** Newest known commit date across `sources`, or `undefined` when none of them has a trustworthy date. */
-export function lastmodFor(sources: readonly string[], latest: LatestCommitTimes): string | undefined {
+/** Newest known commit time across `sources`, or `undefined` when none of them has a trustworthy date. */
+export function newestTimeFor(sources: readonly string[], latest: LatestCommitTimes): number | undefined {
   let newest: number | undefined;
   for (const source of sources) {
     const time = latest.get(source);
     if (time !== undefined && (newest === undefined || time > newest)) newest = time;
   }
+  return newest;
+}
+
+/** Oldest known commit time across `sources`, or `undefined` when none of them has one. */
+export function oldestTimeFor(sources: readonly string[], earliest: LatestCommitTimes): number | undefined {
+  let oldest: number | undefined;
+  for (const source of sources) {
+    const time = earliest.get(source);
+    if (time !== undefined && (oldest === undefined || time < oldest)) oldest = time;
+  }
+  return oldest;
+}
+
+/** Newest known commit date across `sources`, or `undefined` when none of them has a trustworthy date. */
+export function lastmodFor(sources: readonly string[], latest: LatestCommitTimes): string | undefined {
+  const newest = newestTimeFor(sources, latest);
   return newest === undefined ? undefined : formatLastmod(newest);
 }
 
@@ -181,11 +214,19 @@ export function sitemapLocs(sitemapXml: string): string[] {
   return [...sitemapXml.matchAll(/<url>[\s\S]*?<loc>([^<]*)<\/loc>[\s\S]*?<\/url>/g)].map((m) => m[1]);
 }
 
+/** Unix commit times behind one page: newest for `dateModified`, oldest (full history only) for `datePublished`. */
+export interface PageCommitTimes {
+  modified: number;
+  published?: number;
+}
+
 export interface LastmodSummary {
   xml: string;
   dated: number;
   total: number;
   shallow: boolean;
+  /** Commit times per sitemap `<loc>`, for pages with a trustworthy date. Same source files as `<lastmod>`. */
+  timesByLoc: Map<string, PageCommitTimes>;
 }
 
 /** Computes the dated sitemap for `sitemapXml` from the git history under `repoRoot`. */
@@ -202,11 +243,21 @@ export async function addGitLastmod(
   if (!history) return null;
 
   const dates = new Map<string, string>();
+  const timesByLoc = new Map<string, PageCommitTimes>();
   for (const [loc, sources] of sourcesByLoc) {
-    const date = lastmodFor(sources, history.latest);
-    if (date) dates.set(loc, date);
+    const modified = newestTimeFor(sources, history.latest);
+    if (modified === undefined) continue;
+    dates.set(loc, formatLastmod(modified));
+    const published = oldestTimeFor(sources, history.earliest);
+    timesByLoc.set(loc, published === undefined ? { modified } : { modified, published });
   }
-  return { xml: injectLastmod(sitemapXml, dates), dated: dates.size, total: locs.length, shallow: history.shallow };
+  return {
+    xml: injectLastmod(sitemapXml, dates),
+    dated: dates.size,
+    total: locs.length,
+    shallow: history.shallow,
+    timesByLoc,
+  };
 }
 
 /** Repo root containing `cwd`, or `null` outside a git repository. */

@@ -71,8 +71,9 @@ export const build = defineConfig({
       { script: 'scripts/generate-og-images.ts', phase: 'parallel' },
       // Cloudflare Pages cache rules for the versioned demo images. Build only: dev has no CDN.
       { script: 'scripts/generate-pages-headers.ts', phase: 'parallel' },
-      // Git-derived <lastmod> for sitemap.xml. Post phase: it edits the sitemap Bascik writes. Build only.
-      { script: 'scripts/generate-sitemap-lastmod.ts', phase: 'post' },
+      // Git-derived <lastmod> for sitemap.xml and TechArticle dates in pages. Post phase: it edits the
+      // sitemap and pages Bascik writes. Build only.
+      { script: 'scripts/generate-git-dates.ts', phase: 'post' },
     ],
   },
 });

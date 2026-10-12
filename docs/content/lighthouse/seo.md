@@ -41,11 +41,11 @@ Two audits depend on how you deploy rather than on the markup. A page returning 
 
 ## Structured Data with JSON-LD
 
-Structured data tells search engines what your content *means*, not just what it says. Google uses it to generate **rich results**: FAQ dropdowns, breadcrumb trails, star ratings, article bylines, and product prices shown directly in the search listing before the user clicks.
+Structured data tells search engines what your content *means*, not just what it says. Google uses some types to generate **rich results** shown directly in the search listing before the user clicks, such as breadcrumb trails, article bylines and dates, and product prices. Types without a visual result still give search engines and AI assistants a machine-readable summary of the page.
 
 Add a `<script type="application/ld+json">` block to your `<head>` with the schema for your content type. Bascik never touches `application/ld+json` script blocks, so the JSON passes through exactly as written.
 
-**FAQ rich results**: turns your page's questions into expandable dropdowns in search results:
+**FAQPage**: marks up question-and-answer content. Google shows FAQ rich results only for well-known government and health sites, so on most sites this markup describes the page without adding expandable dropdowns to the listing. Unused structured data causes no problems in search:
 
 ```html
 <head>

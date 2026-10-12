@@ -1,14 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { pagesHeaders, IMMUTABLE_CACHE_CONTROL } from './pages-headers.ts';
+import { pagesHeaders, IMMUTABLE_CACHE_CONTROL, PAGES_DEV_NOINDEX_RULE } from './pages-headers.ts';
 import { VERSIONED_IMAGE_FOLDERS } from './md-renderer.ts';
 import config, { build } from '../../bascik.config.ts';
 
 describe('pages-headers', () => {
   it('writes one immutable rule per versioned folder and nothing for other paths', () => {
     expect(pagesHeaders(['/assets/demos/', '/assets/vscode/'])).toBe(
-      `/assets/demos/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n\n/assets/vscode/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
+      `${PAGES_DEV_NOINDEX_RULE}\n/assets/demos/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n\n/assets/vscode/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
     );
-    expect(pagesHeaders([])).toBe('');
+    expect(pagesHeaders([])).toBe(PAGES_DEV_NOINDEX_RULE);
+  });
+
+  it('keeps the pages.dev alias out of search results without touching the custom domain', () => {
+    const headers = pagesHeaders([]);
+    expect(headers).toContain('https://:project.pages.dev/*\n  X-Robots-Tag: noindex');
+    // Path-only rules apply to every host, including bascik.dev, so noindex must never be path-only.
+    const pathOnlyBlocks = headers.split('\n\n').filter((block) => block.startsWith('/'));
+    expect(pathOnlyBlocks.some((block) => block.includes('X-Robots-Tag'))).toBe(false);
   });
 
   it('covers exactly the folders whose image URLs are versioned', () => {

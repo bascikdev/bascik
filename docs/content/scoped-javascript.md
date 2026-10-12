@@ -92,11 +92,15 @@ When you open browser DevTools (`F12` or `Cmd + Option + I` / `Ctrl + Shift + I`
 
 ### Virtual Source Files in DevTools (`//# sourceURL`)
 
-Bascik automatically appends a `//# sourceURL=src/components/name.html` directive and preserves line-offset padding in every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+Bascik automatically appends a `//# sourceURL=src/components/name.html` directive to every component `<script>` block. In browser DevTools under the **Sources** (or **Debugger**) panel, your component scripts appear as virtual files matching your project folder structure (for example, `src/components/card.html`).
+
+Each instance of a component on a page is its own file, because each instance's script has its own scoped IDs. The first instance is `card.html`, the second is `card.html?instance=2`, and so on. A component used once keeps the plain file name.
 
 ### 1:1 Line Number Preservation
 
-Bascik inserts leading newline padding when scoping component `<script>` tags so that line numbers in the compiled output match the original component file line numbers exactly. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template.
+Bascik pads each component script with blank lines so that line numbers in DevTools match the component file exactly, including when markup or `<style>` blocks sit above the script. When you set breakpoints or inspect errors, line 14 in DevTools corresponds to line 14 of your source template. A companion script (`<script src="card.ts">`) is numbered from line 1 of its own file.
+
+Line numbers match when JavaScript is not minified, which is the default for the dev server. `bascik --build` minifies JavaScript by default, which joins lines; set `minify.js: false` to keep source line numbers in a build.
 
 ### Setting Breakpoints and Inspecting State
 
@@ -107,9 +111,13 @@ Because component scripts appear as virtual source files in DevTools:
 3. Click any line number to set a breakpoint, or place a `debugger;` statement directly inside your component `<script>`.
 4. Interact with the component in your browser to pause execution, inspect variables, and step through code.
 
+A breakpoint pauses only the instance whose file it was set in. To pause every instance, write a `debugger;` statement in the component script instead.
+
+![A browser showing the starter's two counters above Chrome DevTools. Quick Open lists my-counter.html and my-counter.html?instance=2. my-counter.html opens at line 43, val.textContent = ++count, and a breakpoint is set there. Clicking the first counter's plus button pauses on line 43 with the call stack at my-counter.html:43, and resuming sets the count to 1](/assets/demos/devtools-breakpoint@2x.webp)
+
 ### Accurate Console Stack Traces
 
-When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
+When `console.log()` runs or an uncaught exception occurs inside a component script, the DevTools Console panel attributes the message directly to `src/components/card.html:18` (or `card.html?instance=2:18` for a second instance) instead of pointing to a line in the generated page HTML. The reported line number matches the line in your original source HTML file.
 
 ## Dynamic Runtime Classes
 
@@ -273,7 +281,7 @@ The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, sele
 
 Every component `<script>` is wrapped in an IIFE to prevent variable leaks, and every selector string that references a scoped attribute is rewritten to match:
 
-Bascik also preserves line-offset padding and appends `//# sourceURL=src/components/name.html` directives to client script blocks. In browser DevTools, runtime errors and console statements point directly to the original component file and line number.
+Bascik also pads client script blocks to their source line and appends `//# sourceURL=src/components/name.html` directives to them. In browser DevTools, runtime errors and console statements point directly to the original component file and line number.
 
 The counter demo's Output tabs show the complete compiled HTML, CSS, and JavaScript together. The runtime-class demo adds a focused view of `classList.toggle()` rewriting.
 

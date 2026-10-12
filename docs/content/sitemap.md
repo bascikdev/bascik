@@ -17,6 +17,10 @@ bascik --build --site-url https://example.com
 
 That's all, `generate.sitemap` and `generate.robots` both default to `true`, so no other change is needed. See [Configuration](/configuration#configuration-precedence) for the full precedence chain.
 
+This recording builds a new project that has one [dynamic route](/dynamic-routes) template, then prints the sitemap the build wrote. Each generated blog post is listed, and the 404 page is not:
+
+![A terminal running bascik --build --site-url https://example.com followed by cat dist/sitemap.xml. The build transpiles six pages, including two blog posts generated from one template, and reports generated: dist/sitemap.xml and dist/robots.txt. The printed sitemap lists absolute example.com URLs for the home, about, contact, and both blog post pages](/assets/demos/sitemap@2x.webp)
+
 ## What gets generated
 
 **`dist/sitemap.xml`:** an XML sitemap listing every `.html` page in your `src/pages` directory as an absolute URL:

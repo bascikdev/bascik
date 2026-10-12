@@ -214,7 +214,9 @@ export async function renderTerminal(browser: Browser, options: TerminalOptions,
     await shoot(shown, hold, false);
   }
   const endsAtPrompt = script.endsAtPrompt ?? true;
-  await shoot(endsAtPrompt ? shown + promptText : shown.replace(/\n+$/, ''), script.finalHoldMs ?? 4000, endsAtPrompt);
+  // Like a real shell, start the prompt on its own line when the output did not end with a newline.
+  const beforePrompt = shown.endsWith('\n') ? shown : shown + '\n';
+  await shoot(endsAtPrompt ? beforePrompt + promptText : shown.replace(/\n+$/, ''), script.finalHoldMs ?? 4000, endsAtPrompt);
   await context.close();
   return frames;
 }

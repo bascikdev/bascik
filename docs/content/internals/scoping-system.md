@@ -234,7 +234,11 @@ el.setAttribute("name", "bascik__site-nav__a1b2c3d4__email-field");
 
 ## Script Namespacing
 
-`namespaceScriptTags` wraps every inline script in an IIFE so that `var` declarations cannot leak between components. It also appends a `//# sourceURL` comment pointing to the relative component path and preserves line positioning relative to the component file, ensuring browser DevTools attribute errors and logs directly to the original component file and line number:
+`namespaceScriptTags` wraps every inline script in an IIFE so that `var` declarations cannot leak between components. It also appends a `//# sourceURL` comment pointing to the relative component path and pads the script with blank lines so DevTools line numbers match the component file, ensuring browser DevTools attribute errors and logs directly to the original component file and line number.
+
+The padding cannot be computed from the HTML that reaches scoping: by then `<style>` blocks are extracted, build scripts have run, and the HTML may be minified. `listComponents` therefore stamps each browser script with its source line (`data-bascik-script-line`) as soon as it reads the file, and `namespaceScriptTags` turns the stamp into padding and removes it (`script-source-lines.ts`). A companion script is stamped as line 1 of its own file.
+
+After scoping, `recursivelyTranspile` appends `?instance=N` to the sourceURL of the second and later instances of a component on a page. DevTools keeps one file per URL, so a shared URL would leave earlier instances with no source when paused. This runs outside the scoping pipeline because scoping results are reused across instances by renaming instance IDs, and the ordinal is not one:
 
 ```js
 // Before (in src/components/card.html at line 12)
@@ -243,7 +247,7 @@ el.setAttribute("name", "bascik__site-nav__a1b2c3d4__email-field");
   document.querySelector(".btn").addEventListener("click", function() { count++; });
 </script>
 
-// After (simplified)
+// After (simplified; 11 blank lines of padding before the IIFE are not shown)
 <script>
 (function() {
   var count = 0;

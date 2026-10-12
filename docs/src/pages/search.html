@@ -4,8 +4,9 @@
 <head>
   <!--
     Why Bascik maintains a dedicated `/search` page:
-    1. Search Engine Integration: Google Sitelinks Search Box (Schema.org SearchAction)
-       directs direct-from-Google site searches to `bascik.dev/search?q=...`
+    1. Search Engine Integration: the home page WebSite schema declares a Schema.org SearchAction
+       pointing at `bascik.dev/search?q=...`. Google retired the Sitelinks Search Box in 2024, but
+       the WebSite schema still feeds Google's site name and other consumers can use the action.
     2. Progressive Enhancement: Serves as a standard GET fallback if client JS is disabled.
     3. Deep Linking: Allows bookmarking and sharing search result URLs directly.
     4. SEO Isolation: Configured with `noindex` below to prevent search engine indexing of dynamic queries.

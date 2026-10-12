@@ -107,6 +107,7 @@ const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
+import { sourceLinePadding, takeScriptLine } from "./script-source-lines.ts";
 import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
 import {
   addElementClassesInHtml,
@@ -1022,9 +1023,12 @@ export const namespaceScriptTags = (
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(commentMaskedContent.replace(
     /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (match, open, code, close, _offset) => {
+    (match, stampedOpen, code, close, _offset) => {
       // Server, stream, build, and routes scripts run in Node.js, never wrap in browser IIFE
-      if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
+      if (DIRECTIVE_SCRIPT_RE.test(stampedOpen)) return match;
+
+      // The line the body starts on in the source file, recorded when the file was read.
+      const { openTag: open, line: sourceLine } = takeScriptLine(stampedOpen);
 
       // Extract data-bascik-source attribute if present
       const sourceAttrMatch = open.match(/\bdata-bascik-source=["']([^"']+)["']/i);
@@ -1043,24 +1047,32 @@ export const namespaceScriptTags = (
 
       const targetPath = customSourcePath || (component.fileName ? relative(process.cwd(), component.fileName).replace(/\\/g, "/") : null);
 
-      if (isExternal) return match;
+      if (isExternal) return `${open}${code}${close}`;
+
+      // DevTools numbers a sourceURL script from the text right after `<script>`. Padding it by
+      // the lines above it in the source file makes DevTools line N the file's line N.
+      const startsOnNewLine = /^\r?\n/.test(code);
+      const { padding, leading } = sourceLinePadding(
+        targetPath ? sourceLine : undefined,
+        startsOnNewLine ? "" : "\n",
+      );
 
       if (!shouldWrap) {
         // If type is present and not text/javascript, leave unchanged.
         // If it is a JS type (like module), still add sourceURL if possible.
         if (isJsType && targetPath) {
           const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
-          return `${cleanOpen}${code}${sourceUrlComment}${close}`;
+          const modulePadding = sourceLinePadding(sourceLine, "").padding;
+          return `${cleanOpen}${modulePadding}${code}${sourceUrlComment}${close}`;
         }
-        return match;
+        return `${open}${code}${close}`;
       }
 
-      const leading = code.startsWith("\n") ? "" : "\n";
       const trailing = code.endsWith("\n") ? "" : "\n";
 
       if (targetPath) {
         const sourceUrlComment = `\n//# sourceURL=${targetPath}`;
-        return `${cleanOpen}(function() {${leading}${code}${trailing}})();${sourceUrlComment}${close}`;
+        return `${cleanOpen}${padding}(function() {${leading}${code}${trailing}})();${sourceUrlComment}${close}`;
       } else {
         return `${cleanOpen}(function() {${leading}${code}${trailing}})();${close}`;
       }
