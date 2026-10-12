@@ -29,7 +29,6 @@ export const NAV: NavSection[] = [
       { href: '/why-bascik', label: 'Why Bascik' },
       { href: '/developer-experience', label: 'Developer Experience' },
       { href: '/vs-frameworks', label: 'Bascik vs Frameworks' },
-      { href: '/performance', label: 'Lighthouse 100s' },
       { href: '/getting-started', label: 'Getting Started' },
     ]
   },
@@ -105,6 +104,16 @@ export const NAV: NavSection[] = [
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
       { href: '/how-to/monorepos', label: 'Monorepos' },
       { href: '/libraries', label: 'JavaScript Libraries' },
+    ]
+  },
+  {
+    section: 'Lighthouse 100s', pages: [
+      { href: '/lighthouse', label: 'Overview' },
+      { href: '/lighthouse/performance', label: 'Performance' },
+      { href: '/lighthouse/accessibility', label: 'Accessibility' },
+      { href: '/lighthouse/best-practices', label: 'Best Practices' },
+      { href: '/lighthouse/seo', label: 'SEO' },
+      { href: '/lighthouse/agentic-browsing', label: 'Agentic Browsing' },
     ]
   },
   {

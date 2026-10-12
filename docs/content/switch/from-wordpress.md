@@ -238,7 +238,7 @@ Plugins have no direct equivalent because Bascik pages are static HTML. Map each
 | SEO (title, meta, sitemap) | Hardcode tags in pages, and use the built-in [Sitemap and Robots](/sitemap) generation |
 | Contact forms | A handler in `src/api/` (see [API Routes](/api-routes)) or a hosted form service |
 | Search | Build a search index at build time with an [Exec Script](/exec-scripts) |
-| Caching and performance | Not needed for static output; see [Performance](/performance) |
+| Caching and performance | Not needed for static output; see [Performance](/lighthouse/performance) |
 | Image galleries and sliders | Vanilla JavaScript in a component `<script>`, see [Scoped JavaScript](/scoped-javascript) |
 | Comments, memberships, e-commerce | Hosted services, or keep WordPress for those features |
 

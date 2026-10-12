@@ -1070,7 +1070,7 @@
           <figure class="demo-figure">
             <script data-bascik-build>
               import { demoImage } from '@/lib/md-renderer.ts';
-              export default () => demoImage('/assets/demos/dev-terminal@2x.webp', 'A terminal running bascik on a new project. Four pages transpile in about 120 milliseconds and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in about two milliseconds.');
+              export default () => demoImage('/assets/demos/dev-terminal@2x.webp', 'A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds.');
             </script>
             <figcaption>A new <code>npm create bascik</code> project, recorded for real on a laptop: the server is up
               almost immediately, and saving one file rebuilds only that page. The figures beside it describe this
@@ -1230,7 +1230,7 @@
             <p class="docs-card-desc">Override defaults in <code>bascik.config.ts</code>. Toggle scoping,
               identifier minification, and code minification per project.</p>
           </a>
-          <a href="/performance" class="card docs-card-link">
+          <a href="/lighthouse" class="card docs-card-link">
             <p class="section-label">Speed</p>
             <h3 class="docs-card-title">No Framework Runtime</h3>
             <p class="docs-card-desc">No framework bundle or hydration payload. Your content, assets, and markup

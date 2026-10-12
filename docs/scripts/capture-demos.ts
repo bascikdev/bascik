@@ -7,6 +7,7 @@
  *   live-reload       editor beside a browser: edit a page, then a component, and the browser updates on save
  *   live-reload-stacked  the same, with the editor above the browser, for narrow docs columns
  *   error-overlay     editor beside a browser: a typo raises the overlay, fixing it dismisses it
+ *   component-tag     editor above a browser: a component file exists, its tag is typed into a page, and it renders
  *   stream            a browser loading a page whose slow part streams in
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
@@ -65,6 +66,8 @@ interface RigOptions {
   editorSettings?: Record<string, unknown>;
   /** Changes the starter before the dev server and editor open it. */
   prepare?: (projectDir: string) => Promise<void>;
+  /** The page the browser opens, such as `/hello`. Defaults to the home page. */
+  path?: string;
 }
 
 async function readLine(file: string, needle: string): Promise<{ line: number; column: number; text: string }> {
@@ -85,7 +88,12 @@ interface EditorBrowserRig {
 }
 
 /** An editor and a browser looking at the same real dev server, composed into one picture per frame. */
-async function openEditorAndBrowser({ layout = 'side', editorSettings = {}, prepare }: RigOptions = {}): Promise<EditorBrowserRig> {
+async function openEditorAndBrowser({
+  layout = 'side',
+  editorSettings = {},
+  prepare,
+  path = '',
+}: RigOptions = {}): Promise<EditorBrowserRig> {
   const size = LAYOUTS[layout];
   const project = await createStarterProject();
   await prepare?.(project.dir);
@@ -113,7 +121,7 @@ async function openEditorAndBrowser({ layout = 'side', editorSettings = {}, prep
     },
     deviceScaleFactor: 2,
   });
-  await page.goto(server.url);
+  await page.goto(server.url + path);
   const capture = await createCapture(vscode.page);
 
   const rig: EditorBrowserRig = {
@@ -129,7 +137,7 @@ async function openEditorAndBrowser({ layout = 'side', editorSettings = {}, prep
       ]);
       const [editorWindow, browserPane] = await Promise.all([
         roundCorners(editorPng),
-        browserWindow(pagePng, SHOWN_URL).then((window) => roundCorners(window)),
+        browserWindow(pagePng, SHOWN_URL + path).then((window) => roundCorners(window)),
       ]);
       const compose = layout === 'side' ? sideBySide : stacked;
       pushFrame(frames, await compose(editorWindow, browserPane), holdMs);
@@ -263,6 +271,109 @@ async function errorOverlay(): Promise<Frame[]> {
     await rig.page.waitForFunction(() => document.querySelector('h1') !== null, null, { timeout: 15_000 });
     if (!(await readFile(pageFile, 'utf8')).includes('String(new Date()')) throw new Error('The fix did not save as expected');
     await sleep(400);
+    await rig.snap(frames, OUTRO_HOLD);
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
+/** A component the starter does not have. Its file name is its tag name: nothing registers or imports it. */
+const HELLO_CARD = `<article class="hello-card">
+  <p class="kicker">One file. One tag.</p>
+  <h2 class="title">Vanilla HTML, ready to reuse.</h2>
+</article>
+
+<style>
+  .hello-card {
+    margin-top: 18px;
+    padding: 16px 20px;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: var(--r);
+  }
+  .kicker { margin: 0 0 6px; color: var(--accent); font-size: 0.85rem; }
+  .title { margin: 0; font-size: 1.2rem; }
+</style>
+`;
+
+/** A page that does not use the component yet. The blank line in `<main>` is where its tag gets typed. */
+const HELLO_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Hello - my-site</title>
+  <site-meta />
+</head>
+<body>
+  <site-header data-bascik-prop-brand="my-site" />
+  <main class="container">
+
+  </main>
+</body>
+</html>
+`;
+
+/** Opens the suggest widget, retrying while the extension is still indexing the project. */
+async function openSuggestions(editor: Page): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await press(editor, 'Control+Space');
+    await sleep(700);
+    if ((await editor.locator('.suggest-widget.visible .monaco-list-row').count()) > 0) return;
+    await press(editor, 'Escape');
+    await sleep(500);
+  }
+  throw new Error('The suggest widget never listed the component');
+}
+
+async function componentTag(): Promise<Frame[]> {
+  const rig = await openEditorAndBrowser({
+    layout: 'stacked',
+    path: '/hello',
+    prepare: async (dir) => {
+      await mkdir(join(dir, 'src/components/hello-card'), { recursive: true });
+      await writeFile(join(dir, 'src/components/hello-card/hello-card.html'), HELLO_CARD);
+      await writeFile(join(dir, 'src/pages/hello.html'), HELLO_PAGE);
+    },
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const waitForCards = (count: number) =>
+    rig.page.waitForFunction((expected) => document.querySelectorAll('main article').length === expected, count, {
+      timeout: 15_000,
+    });
+  try {
+    const pageFile = join(rig.project.dir, 'src/pages/hello.html');
+
+    // Beat 1: the component is one file. The tab shows its name and folder.
+    await openFile(editor, 'hello-card.html');
+    await gotoLine(editor, 1, 1);
+    await rig.snap(frames, INTRO_HOLD + 1600);
+
+    // Beat 2: use the file name as a tag. The editor suggests it, with no import anywhere.
+    await openFile(editor, 'hello.html');
+    const slot = await readLine(pageFile, '<main class="container">');
+    await gotoLine(editor, slot.line + 1, 1);
+    await editor.keyboard.type('    ');
+    await rig.snap(frames, 1000);
+    for (const chunk of ['<', 'h', 'e', 'l']) {
+      await editor.keyboard.type(chunk);
+      await rig.snap(frames, 200);
+    }
+    await openSuggestions(editor);
+    await rig.snap(frames, 1500);
+    await press(editor, 'Enter');
+    await rig.snap(frames, 900);
+    await press(editor, 'Meta+s');
+    await waitForCards(1);
+    if (!(await readFile(pageFile, 'utf8')).includes('<hello-card')) throw new Error('The tag did not save as expected');
+    await rig.snap(frames, 2200);
+
+    // Beat 3: use it again. Each tag is another copy, built from the same file.
+    await press(editor, 'Shift+Alt+ArrowDown');
+    await rig.snap(frames, 800);
+    await press(editor, 'Meta+s');
+    await waitForCards(2);
     await rig.snap(frames, OUTRO_HOLD);
     return frames;
   } finally {
@@ -451,6 +562,7 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   'live-reload': () => liveReload('side'),
   'live-reload-stacked': () => liveReload('stacked'),
   'error-overlay': errorOverlay,
+  'component-tag': componentTag,
   stream,
   'dev-terminal': devTerminal,
   lint,

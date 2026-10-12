@@ -23,7 +23,7 @@ When started, Bascik:
 
 This is the real output of a new project, recorded from the starter site on one machine. Startup takes a fraction of a second, and saving a page afterward rebuilds only that page:
 
-![A terminal running bascik. The output lists four pages transpiled in 121ms and the server running at localhost:8080. After a file is saved, the server reports a rebuild of only pages/index.html in 2.1ms](/assets/demos/dev-terminal@2x.webp)
+![A terminal running bascik. The output lists four pages transpiled in under a quarter of a second and the server running at localhost:8080. After a file is saved, the server reports a rebuild of only pages/index.html in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
 ## Linked Static Assets
 

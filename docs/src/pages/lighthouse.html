@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    export default async () => await canonical();
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    export default async () => await openGraph();
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    export default async () => await breadcrumbLd();
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    export default async () => await articleSchema();
+  </script>
+  <meta name="description"
+    content="Bascik gives you an enormous head start on Lighthouse scores. See what Bascik does automatically and find a guide for each category: Performance, Accessibility, Best Practices, SEO, and Agentic Browsing." />
+  <title>Overview - Bascik Docs</title>
+  <style>
+    .docs-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0 40px;
+    }
+
+    .docs-content table th {
+      text-align: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-muted);
+      padding: 0 8px 12px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .docs-content table td {
+      text-align: center;
+      padding: 12px 8px;
+    }
+
+    .docs-content table:first-of-type td {
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: var(--accent-fg);
+      line-height: 1;
+      padding: 16px 8px 0;
+    }
+
+    @media (max-width: 600px) {
+
+      /* Reflow the 1x5 score table to 3 + 2 columns with each label above its score */
+      .docs-content table:first-of-type {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: auto auto auto auto;
+        row-gap: 8px;
+      }
+
+      .docs-content table:first-of-type th {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        padding: 0 4px 12px;
+        font-size: 0.68rem;
+      }
+
+      .docs-content table:first-of-type td {
+        font-size: 2.2rem;
+        padding: 12px 4px 0;
+      }
+
+      .docs-content table:first-of-type thead,
+      .docs-content table:first-of-type tbody,
+      .docs-content table:first-of-type tr {
+        display: contents;
+      }
+
+      .docs-content table:first-of-type th:nth-child(1) {
+        grid-row: 1;
+        grid-column: 1;
+      }
+
+      .docs-content table:first-of-type th:nth-child(2) {
+        grid-row: 1;
+        grid-column: 2;
+      }
+
+      .docs-content table:first-of-type th:nth-child(3) {
+        grid-row: 1;
+        grid-column: 3;
+      }
+
+      .docs-content table:first-of-type th:nth-child(4) {
+        grid-row: 3;
+        grid-column: 1;
+      }
+
+      .docs-content table:first-of-type th:nth-child(5) {
+        grid-row: 3;
+        grid-column: 2;
+      }
+
+      .docs-content table:first-of-type td:nth-child(1) {
+        grid-row: 2;
+        grid-column: 1;
+      }
+
+      .docs-content table:first-of-type td:nth-child(2) {
+        grid-row: 2;
+        grid-column: 2;
+      }
+
+      .docs-content table:first-of-type td:nth-child(3) {
+        grid-row: 2;
+        grid-column: 3;
+      }
+
+      .docs-content table:first-of-type td:nth-child(4) {
+        grid-row: 4;
+        grid-column: 1;
+      }
+
+      .docs-content table:first-of-type td:nth-child(5) {
+        grid-row: 4;
+        grid-column: 2;
+      }
+    }
+
+    .technique-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    @media (max-width: 700px) {
+      .technique-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .technique-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .technique-card h4 {
+      margin: 0 0 8px;
+      font-size: 0.95rem;
+    }
+
+    .technique-card p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--fg-muted);
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .tag-perf {
+      background: rgba(74, 222, 128, 0.12);
+      color: #4ade80;
+    }
+
+    .tag-a11y {
+      background: rgba(147, 197, 253, 0.12);
+      color: #93c5fd;
+    }
+
+    .tag-seo {
+      background: rgba(251, 191, 36, 0.12);
+      color: #fbbf24;
+    }
+
+    .tag-bp {
+      background: rgba(196, 181, 253, 0.12);
+      color: #c4b5fd;
+    }
+
+    .tag-agent {
+      background: rgba(244, 114, 182, 0.12);
+      color: #f472b6;
+    }
+  </style>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          export default async () => renderSectionLabel('/lighthouse');
+        </script>
+
+        <!-- Content rendered from docs/content/lighthouse.md at build time.
+             To update page content, edit the MD file - not this file.
+             The MD file also feeds into llms.txt via scripts/generate-llms-txt.ts. -->
+        <script data-bascik-build>
+          import { renderMd } from '@/lib/md-renderer.ts';
+          export default async () => await renderMd('./content/lighthouse.md');
+        </script>
+
+        <h2>Technique Summary</h2>
+        <div class="technique-grid">
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>srcset</code> + <code>sizes</code></h3>
+            <p>Serve appropriately sized images per device. Saves hundreds of kilobytes on mobile.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>loading="lazy"</code></h3>
+            <p>Defer off-screen images and iframes. Reduces initial page weight and improves LCP.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>rel="preload"</code></h3>
+            <p>Fetch critical assets (hero image, fonts) before the browser would otherwise discover them.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>rel="prefetch"</code></h3>
+            <p>Prime the cache for the user's next likely navigation during idle time.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>rel="preconnect"</code></h3>
+            <p>Open connections to critical third-party origins before they are needed.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>defer</code> / <code>async</code></h3>
+            <p>Never block HTML parsing with scripts. Use <code>defer</code> for app code, <code>async</code> for
+              analytics.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>width</code> + <code>height</code> on images</h3>
+            <p>Reserve layout space before images load. Eliminates Cumulative Layout Shift.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-perf">Performance</span>
+            <h3><code>font-display: swap</code></h3>
+            <p>Show text immediately with a fallback font. Swap when the custom font arrives.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-a11y">Accessibility</span>
+            <h3>Semantic HTML</h3>
+            <p>Use <code>&lt;header&gt;</code>, <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>,
+              <code>&lt;footer&gt;</code>. Landmark roles for free.
+            </p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-a11y">Accessibility</span>
+            <h3>Skip link</h3>
+            <p>Let keyboard users bypass navigation with a visually-hidden-until-focused anchor.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-a11y">Accessibility</span>
+            <h3><code>alt</code> text</h3>
+            <p>Every meaningful image needs a descriptive alt. Decorative images get <code>alt=""</code>.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-a11y">Accessibility</span>
+            <h3><code>&lt;details&gt;</code> and <code>&lt;dialog&gt;</code></h3>
+            <p>Native toggles and modals with keyboard and focus handling built in. No JavaScript required.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-seo">SEO</span>
+            <h3>Unique <code>&lt;title&gt;</code> per page</h3>
+            <p>The single highest-impact SEO signal. Bascik makes this natural: one file, one title.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-seo">SEO</span>
+            <h3><code>meta description</code></h3>
+            <p>Controls the snippet shown in search results. Keep it under 160 characters.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-seo">SEO</span>
+            <h3>Canonical URL</h3>
+            <p>Prevents duplicate-content penalties when content is accessible at multiple URLs.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-seo">SEO</span>
+            <h3>Open Graph tags</h3>
+            <p>Controls title, description, and image when a page is shared on social platforms.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-bp">Best Practices</span>
+            <h3>HTTPS everywhere</h3>
+            <p>Bascik's dev server uses HTTP/2 with a self-signed cert. Deploy behind HTTPS in production.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-bp">Best Practices</span>
+            <h3>Doctype and charset</h3>
+            <p>Start every page with <code>&lt;!DOCTYPE html&gt;</code> and an early <code>&lt;meta charset&gt;</code>.
+            </p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-bp">Best Practices</span>
+            <h3>CSP hashes</h3>
+            <p>Set <code>generate.cspHashes</code> to get exact hashes for a strict policy without
+              <code>'unsafe-inline'</code>.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3>Accessibility tree</h3>
+            <p>Semantic HTML gives AI agents the same reliable structure that screen readers use.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3><code>llms.txt</code></h3>
+            <p>Publish a valid Markdown index at the site root so agents can discover your content.</p>
+          </div>
+          <div class="technique-card">
+            <span class="tag tag-agent">Agentic Browsing</span>
+            <h3>Zero layout shift</h3>
+            <p>Finished HTML with sized images keeps elements where an agent last saw them.</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <p><strong>Next:</strong> Start with <a href="/lighthouse/performance">Performance</a>, or see
+            <a href="/why-bascik">Why Bascik</a> for the philosophy behind shipping zero framework JavaScript. To set up
+            your first project, read <a href="/getting-started">Getting Started</a>.
+          </p>
+        </div>
+
+        <docs-pagination />
+
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+</body>
+
+</html>

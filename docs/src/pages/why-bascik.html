@@ -77,7 +77,15 @@
         <!-- The existing argument follows the concrete example. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'The Problem Bascik Solves' });
+          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'The Problem Bascik Solves', to: 'Why Not Web Components?' });
+        </script>
+
+        <!-- Summarizes "The Platform Caught Up" above. -->
+        <platform-shift />
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/why-bascik.md', { from: 'Why Not Web Components?' });
         </script>
 
         <docs-pagination />

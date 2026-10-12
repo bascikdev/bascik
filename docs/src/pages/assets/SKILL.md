@@ -1958,7 +1958,7 @@ To install locally: open `extensions/vscode-bascik/` in VS Code and press F5.
 
 ## 16. Lighthouse 100s & Performance
 
-Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores. Reaching 100 across all four Lighthouse categories is a matter of applying a small, well-known set of HTML patterns.
+Bascik gives you an enormous head start on Lighthouse scores. Because it outputs vanilla HTML with zero framework runtime, you begin every page with near-perfect scores. Reaching 100 across the four scored Lighthouse categories is a matter of applying a small, well-known set of HTML patterns. The docs have an overview at `/lighthouse` and one page per category: `/lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`.
 
 ### What Bascik Does
 * **Zero runtime:** The most impactful thing Bascik does is what it does not add: no framework bundle, no hydration script, and no client-side router. The only JavaScript on any page is what you wrote.
@@ -1974,6 +1974,12 @@ Bascik gives you an enormous head start on Lighthouse scores. Because it outputs
 * **Prefetching (`<link rel="prefetch">`):** Fetch resources or future pages during idle time if a navigation is highly likely.
 * **Preconnect / DNS Prefetch:** For critical third-party domains, resolve DNS and negotiate connections early using `dns-prefetch` and `preconnect`.
 * **Async and Deferred Scripts:** Use `defer` for scripts that need the DOM ready, and `async` for fully independent scripts like analytics.
+
+### Other Categories
+* **Accessibility:** Use landmark elements, `lang` on `<html>`, labeled controls, a skip link, and native `<details>` and `<dialog>` before reaching for JavaScript.
+* **Best Practices:** Keep `<!DOCTYPE html>` and an early `<meta charset>` in every page, serve over HTTPS, and enable `generate.cspHashes` for a strict Content Security Policy. Bascik emits hashes in `dist/.bascik/csp-hashes.json` and does not set the header.
+* **SEO:** Every page needs its own `<title>`, meta description, and canonical URL. `bascik --build` writes `sitemap.xml` and `robots.txt` once `BASCIK_SITE_URL` is set.
+* **Agentic Browsing:** Lighthouse's newest category reports a pass ratio, not a 0 to 100 score. Semantic HTML, zero layout shift, and a valid `llms.txt` (author `src/pages/llms.txt` or generate it into `dist/` from an exec script) cover the audits that apply without opt-in. WebMCP audits are experimental and need an origin trial.
 
 ---
 

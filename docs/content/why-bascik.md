@@ -80,6 +80,8 @@ Frameworks like React and Vue introduce complex component models, virtual DOMs, 
 
 In Bascik, creating a component is creating a file. Name a file `my-nav.html` and it becomes the `<my-nav>` tag, automatically, everywhere. There is no registration step, no import statement, no export, no class to define. The filename is the entire interface.
 
+![An editor above a browser. The editor shows hello-card.html in src/components/hello-card. In a page, typing the start of the tag brings up hello-card as a suggested Bascik component. Accepting it and saving renders the card in the browser. Duplicating the line and saving renders a second card](/assets/demos/component-tag@2x.webp)
+
 CSS inside that file scopes itself to that component. Write `.card { padding: 20px; }` and Bascik rewrites it to something like `.bascik__my-card__card { padding: 20px; }` at build time. You never manage a namespace. You never worry about a class name colliding with another component. You write CSS the way you always have, it just works.
 
 JavaScript inside that file scopes itself too. Write `document.getElementById('count')` and Bascik rewrites it to target the scoped version of that element, so two instances of the same counter on one page stay completely isolated, not through Shadow DOM or any runtime trick, but because the selectors were rewritten before the browser ever saw them. TypeScript works here as well; `bascik.config.ts`, build scripts, and helper modules all run natively on Node 22.18+ with no compiler step.
@@ -134,7 +136,9 @@ Every decision in Bascik follows three simple rules:
 
 - **Be fast.** Build times are measured in milliseconds. In development, live reload updates your browser instantly. In production, zero runtime JavaScript is added, giving users maximum page load performance.
 - **Be transparent.** There is no hidden runtime, no virtual DOM abstraction, and no framework black box. What you write in source is what ships in `dist/`: plain HTML, CSS, and JavaScript with deterministic, human-readable scoping prefixes.
-- **Use what exists.** Use the standard HTML, CSS, and Javascript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
+- **Use what exists.** Use the standard HTML, CSS, and JavaScript APIs. Do not invent a template language. Do not add a reactive data system. Do not require a runtime. Do not get between the developer and the browser.
+
+![A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
 Bascik exports configuration helpers (`defineConfig`) for your build, and nothing for your runtime code. Server scripts, stream scripts, and API routes receive standard web objects and import what they need from their own project or npm. If a task feels like it needs a Bascik helper, the answer is a five-line function in `src/lib/`, not a new export.
 
