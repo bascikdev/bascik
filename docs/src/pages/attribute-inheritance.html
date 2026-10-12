@@ -85,7 +85,51 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/attribute-inheritance.md', { from: 'How It Works', to: 'See it in action' });
+          export default async () => await renderMdRange('./content/attribute-inheritance.md', { from: 'How It Works', to: 'Interaction with Scoped Classes' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="The component root decides which id wins">
+          <diagram-row data-bascik-prop-label="The root has no id: the usage id is forwarded unchanged" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/attribute-inheritance.md', 'attribute-inheritance-id-free-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/attribute-inheritance.md', 'attribute-inheritance-id-free-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="The root has its own id: the template id is kept and scoped, and the usage id is dropped" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/attribute-inheritance.md', 'attribute-inheritance-id-own-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/attribute-inheritance.md', 'attribute-inheritance-id-own-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/attribute-inheritance.md', { from: 'Interaction with Scoped Classes', to: 'See it in action' });
         </script>
 
         <docs-pagination />

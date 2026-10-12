@@ -10,6 +10,7 @@ export default defineConfig({
     watchPaths: [
       'scripts/',
       'content/',
+      'src/diagrams/',
       'src/lib/',
       'src/css/',
       '../pkg/test-coverage.json',

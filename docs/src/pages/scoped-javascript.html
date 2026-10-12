@@ -124,7 +124,59 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Writing Component Scripts', to: 'Dynamic Runtime Classes' });
+          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Writing Component Scripts', to: 'HTML ID References' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Where a component script lands">
+          <diagram-row data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="Development server: the script stays after its component">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-script-placement-dev');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Production build: the script moves to the end of the body">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-script-placement-prod');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'HTML ID References', to: 'Pitfall: Class-Based DOM Lookups' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="References follow the id they point at">
+          <diagram-row data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-id-references-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-javascript.md', 'scoped-javascript-id-references-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/scoped-javascript.md', { from: 'Pitfall: Class-Based DOM Lookups', to: 'Dynamic Runtime Classes' });
         </script>
 
         <script data-bascik-build>

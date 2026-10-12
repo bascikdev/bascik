@@ -489,10 +489,47 @@ If a component does not use a `<slot>` to accept inner children, always prefer s
 
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
 
+<!-- demo:source-usage-roots -->
 ```html
-<h2>Section Heading</h2>
-<p class="intro">Introductory paragraph text.</p>
-<div class="card">Card content</div>
+<roots-demo />
+```
+
+<!-- demo:source-html-roots -->
+```html
+<style>
+  .roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; }
+  .roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+  .roots-note {
+    padding: 8px 12px;
+    color: #d3ff8d;
+    border: 1px dashed #d3ff8d;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+</style>
+<h2 class="roots-title">Release notes</h2>
+<p class="roots-lead">Three top-level elements in one file.</p>
+<div class="roots-note">No wrapper element is added.</div>
+```
+
+<!-- demo:output-html-roots -->
+```html
+<h2 class="bascik__roots-demo__roots-title">Release notes</h2>
+<p class="bascik__roots-demo__roots-lead">Three top-level elements in one file.</p>
+<div class="bascik__roots-demo__roots-note">No wrapper element is added.</div>
+```
+
+<!-- demo:output-css-roots -->
+```css
+.bascik__roots-demo__roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; }
+.bascik__roots-demo__roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+.bascik__roots-demo__roots-note {
+  padding: 8px 12px;
+  color: #d3ff8d;
+  border: 1px dashed #d3ff8d;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
 ```
 
 When transpiled, all root-level elements are inserted directly into the page markup in order. No unnecessary wrapper `<div>` or `<Fragment>` tags are added to your rendered HTML. Bascik's scoping engine automatically handles CSS rules, class names, IDs, element selectors, and scripts across every element in the component template.

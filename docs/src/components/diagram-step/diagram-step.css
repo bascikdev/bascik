@@ -1,0 +1,37 @@
+/* `li.step` is two classes, so it outranks the docs-wide `.docs-content li` rules. */
+li.step {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  margin: 0;
+  padding: 14px;
+  line-height: 1.45;
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  counter-increment: diagram-step;
+}
+
+li.step::before {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: #18191b;
+  background: var(--accent);
+  border-radius: 50%;
+  content: counter(diagram-step);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.step-title {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.step-detail {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}

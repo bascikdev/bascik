@@ -1,0 +1,26 @@
+.panel {
+  position: relative;
+  min-width: 0;
+}
+
+.panel-label {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.panel-label:empty,
+.panel-arrow:empty {
+  display: none;
+}
+
+/* Centered in the gap above the panel, so it points down from the panel before it. Use it in a stacked row. */
+.panel-arrow {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}

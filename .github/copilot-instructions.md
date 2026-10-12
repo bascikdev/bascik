@@ -2,7 +2,7 @@
 
 Repository-wide instructions are labeled accordingly.
 
-**Docs work:** the rules for creating or editing anything under `/docs/` live in `.github/instructions/docs.instructions.md` (scoped with `applyTo: "docs/**"`). Read that file before touching docs pages, `docs/content/*.md`, or `SKILL.md`.
+**Docs work:** the rules for creating or editing anything under `/docs/` live in `.github/instructions/docs.instructions.md` (scoped with `applyTo: "docs/**"`). Read that file before touching docs pages, `docs/content/*.md`, `SKILL.md`, or any docs image or diagram.
 
 ## Keeping the Changelog Up to Date
 
@@ -35,6 +35,16 @@ yarn docs:build
 ```
 
 Then inspect the relevant `docs/dist/` output to confirm the pkg change has the intended effect.
+
+## Keeping Docs Visuals in Sync
+
+Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
+
+- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`~/.nvm/versions/node/v24.17.0/bin`). Images are only for things that must be a picture of a real program.
+- **Diagrams** (flows, file trees, "you write / Bascik emits" comparisons) are the `diagram-*` Bascik components placed in the page shell. Their code lives in `<!-- demo:id -->` blocks in `docs/src/diagrams/<page>.md`, not in `docs/content/`.
+- **Live examples** that must run in the page are `<component-demo>` blocks.
+
+**Whenever you change behavior or wording that a diagram or recording restates**, update it in the same task: the diagram's props or its demo blocks in `docs/src/diagrams/`, or re-render the recording scene. A diagram that disagrees with the prose is worse than none. Examples: exec phases, stream ordering, preserve reference rules, scoped output names, the `Allow` header in the API routes recording. Full rules, including where a diagram goes in a shell, are in `.github/instructions/docs.instructions.md` under "Visuals".
 
 ## Tests and Coverage
 

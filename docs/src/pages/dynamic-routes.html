@@ -41,8 +41,43 @@
         <!-- Content rendered from docs/content/dynamic-routes.md at build time.
              To update page content, edit the MD file - not this file. -->
         <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/dynamic-routes.md');
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/dynamic-routes.md', { to: 'data-bascik-routes' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="One template, one page per route"
+          data-bascik-prop-footer="The template with literal brackets is never written to dist/ or listed in sitemap.xml.">
+          <diagram-row data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-source');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="The routes script returns these slugs" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-slugs');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik builds" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/dynamic-routes.md', 'dynamic-routes-expansion-built');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/dynamic-routes.md', { from: 'data-bascik-routes' });
         </script>
 
         <div class="callout">

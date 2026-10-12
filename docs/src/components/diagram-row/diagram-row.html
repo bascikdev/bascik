@@ -1,0 +1,12 @@
+<!-- @bascik
+A labeled row of diagram-panel tags. Panels sit side by side, or stacked when direction is stack.
+@prop label - Optional caption above the row.
+@prop direction - Optional. Set to stack to put the panels on top of each other, for long lines of code.
+@slot default - diagram-panel tags.
+-->
+<div class="row">
+  <p class="row-label" data-bascik-prop-label></p>
+  <div class="row-panels" data-bascik-attr-data-direction="direction">
+    <div data-bascik-slot></div>
+  </div>
+</div>

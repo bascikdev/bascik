@@ -67,6 +67,10 @@ A route file exports functions corresponding to standard HTTP methods: `GET`, `P
 - **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
 
+This recording sends two real requests to a dev server whose `src/api/users/[id].ts` exports only `GET`. The `GET` returns the handler's JSON with a `200`. The `DELETE` is refused with a `405`, and the `Allow` header lists exactly what the route accepts:
+
+![A terminal running two curl commands against a dev server. A GET to /api/users/42 prints the JSON {"id":"42","name":"Ada"} and 200. A DELETE to the same URL prints 405 and an Allow header listing GET, HEAD, and OPTIONS](/assets/demos/api-routes@2x.webp)
+
 ## The Request and Response Contract & Portability
 
 Bascik uses native web standard `Request` and `Response` objects, and `request.url` reflects the real scheme and host of the incoming request. That makes the handler *function* reusable: a handler that only touches Web APIs (`Request`, `Response`, `URL`, `fetch`, Web Crypto) is plain code you can call from a unit test or from another runtime's wrapper.

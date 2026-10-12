@@ -134,7 +134,77 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Class Scoping', to: 'See it in action' });
+          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Class Scoping', to: 'Element Selector Scoping' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Declared in the component, scoped. Declared elsewhere, left alone.">
+          <diagram-row data-bascik-prop-label="site-nav.css declares .dnav-logo, but not .skip-link" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-global-classes-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-global-classes-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Element Selector Scoping', to: 'Using global design tokens in a component' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Custom properties follow the same rule">
+          <diagram-row data-bascik-prop-label="Declared in the component CSS" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-local-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-local-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="Declared in a global stylesheet" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-global-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="css">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/scoped-styles.md', 'scoped-styles-custom-properties-global-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/scoped-styles.md', { from: 'Using global design tokens in a component', to: 'See it in action' });
         </script>
 
         <docs-pagination />

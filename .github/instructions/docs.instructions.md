@@ -77,6 +77,40 @@ The `renderMd` helper (`docs/src/lib/md-renderer.ts`) applies these transformati
 
 Both folders are served with `Cache-Control: public, max-age=31536000, immutable` on Cloudflare Pages (rule written by `docs/scripts/generate-pages-headers.ts`). That is only safe because every reference gets a `?v=<content hash>` from the image helper in `docs/src/lib/md-renderer.ts`. Always reference these images through a Markdown image (`![alt](/assets/demos/x@2x.webp)`) or `demoImage()` in a `data-bascik-build` script. Never write a raw `<img src>`, `<link href>`, or CSS `url()` into them: `docs/src/lib/versioned-image-references.test.ts` fails if you do. When re-recording a demo, keep the same file name; the hash changes on its own.
 
+## Visuals
+
+Three kinds of visual, each with one home. Do not mix them up, and do not add a fourth.
+
+- **Recordings** of a real tool (editor, browser, terminal) are WebP or animated WebP in `/assets/demos/` and `/assets/vscode/`, produced by `docs/scripts/capture-demos.ts` and shown as Markdown images. Only use an image when the thing shown has to be a picture of a real program.
+- **Diagrams** (a flow, a file tree, or a "you write / Bascik emits" comparison) are Bascik components: `diagram-figure`, `diagram-steps` with `diagram-step`, and `diagram-row` with `diagram-panel`. They are real HTML, so the text is selectable, searchable, and themable.
+- **Live examples** that must run in the page are a `<component-demo>`.
+
+### Diagrams
+
+Markdown cannot hold a component, so a diagram goes in the page shell, at the end of the section it illustrates. Split that page's `renderMdRange` call at the heading that follows the section, put the diagram between the two ranges, and pass `{ stripDemoBlocks: true }` to any range that contains the diagram's code blocks.
+
+Code shown in a panel is written once, as a demo block in `docs/src/diagrams/<page>.md` (the file named after the page), and read back with `extractDemoBlock('./src/diagrams/<page>.md', '<diagram-id>-<panel>')`. It lives there and not in `docs/content/` on purpose: a diagram restates prose and code the page already has, so its blocks must not feed the page's search entries or its Markdown. This is the one exception to "code in slots comes from `docs/content/`": that rule exists so `llms.txt` and `SKILL.md` see the code, and a diagram adds nothing they do not already have. Name each block `<diagram-id>-<panel>`:
+
+````markdown
+<!-- demo:scoped-styles-global-classes-in -->
+```html
+<a class="skip-link dnav-logo">
+```
+````
+
+Flow diagrams need no code blocks. Their text lives in props:
+
+```html
+<diagram-figure data-bascik-prop-title="One build, three phases">
+  <diagram-steps>
+    <diagram-step data-bascik-prop-title="'pre' scripts"
+      data-bascik-prop-detail="Awaited before any page or component is transpiled." />
+  </diagram-steps>
+</diagram-figure>
+```
+
+For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-direction="stack"` to stack them (use this for code with long lines), and `data-bascik-prop-arrow="↓"` on the second panel to draw the arrow. Side by side is the default and suits file trees. A diagram restates prose and code that already exist, so it must never carry information the text does not.
+
 ## Markdown File Conventions
 
 - First lines: `# Page Title` (h1), then a plain intro paragraph (styled as page-intro via CSS)

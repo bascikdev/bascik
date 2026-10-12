@@ -69,7 +69,25 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/server-scripts.md', { from: 'data-bascik-server' }, { stripDemoBlocks: true });
+          export default async () => await renderMdRange('./content/server-scripts.md', { from: 'data-bascik-server', to: 'Handler Signature' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="What happens on each request">
+          <diagram-steps>
+            <diagram-step data-bascik-prop-title="Request arrives"
+              data-bascik-prop-detail="The dev server or production server routes it to the page." />
+            <diagram-step data-bascik-prop-title="Scripts run"
+              data-bascik-prop-detail="Each data-bascik-server script gets (request, context, { signal })." />
+            <diagram-step data-bascik-prop-title="Markup replaces the tag"
+              data-bascik-prop-detail="The returned string lands in the document flow. No client runtime ships." />
+            <diagram-step data-bascik-prop-title="Response sent"
+              data-bascik-prop-detail="A timeout or a client disconnect aborts the signal so slow work can stop." />
+          </diagram-steps>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/server-scripts.md', { from: 'Handler Signature' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

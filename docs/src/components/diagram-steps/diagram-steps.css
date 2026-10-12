@@ -1,0 +1,10 @@
+/* Two classes, so the reset outranks the docs-wide `.docs-content ol` rule. */
+ol.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: diagram-step;
+}
