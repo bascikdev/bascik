@@ -9,6 +9,9 @@
  *   error-overlay     editor beside a browser: a typo raises the overlay, fixing it dismisses it
  *   component-tag     editor above a browser: a component file exists, its tag is typed into a page, and it renders
  *   stream            a browser loading a page whose slow part streams in
+ *   markdown-watch    editor above a browser: a watched Markdown file is edited, and the page that reads it updates
+ *   server-request    editor above a browser: a server script renders a different page for each request
+ *   exec-watch        the terminal: editing a watched file reruns an exec script and rebuilds only its page
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
  *
@@ -68,6 +71,8 @@ interface RigOptions {
   prepare?: (projectDir: string) => Promise<void>;
   /** The page the browser opens, such as `/hello`. Defaults to the home page. */
   path?: string;
+  /** Overrides the layout's editor height, for scenes whose code needs more lines. */
+  editorHeight?: number;
 }
 
 async function readLine(file: string, needle: string): Promise<{ line: number; column: number; text: string }> {
@@ -93,8 +98,9 @@ async function openEditorAndBrowser({
   editorSettings = {},
   prepare,
   path = '',
+  editorHeight,
 }: RigOptions = {}): Promise<EditorBrowserRig> {
-  const size = LAYOUTS[layout];
+  const size = { ...LAYOUTS[layout], ...(editorHeight ? { editorHeight } : {}) };
   const project = await createStarterProject();
   await prepare?.(project.dir);
   const server = await startDevServer(project.dir, PORT);
@@ -135,9 +141,12 @@ async function openEditorAndBrowser({
         capture({ x: measured.x, y: measured.y, width: measured.width, height: measured.height }),
         page.screenshot(),
       ]);
+      // The address bar follows the page, so a scene that navigates shows where it went.
+      const current = new URL(page.url());
+      const shownPath = current.pathname === '/' && !current.search ? '' : current.pathname + decodeURIComponent(current.search);
       const [editorWindow, browserPane] = await Promise.all([
         roundCorners(editorPng),
-        browserWindow(pagePng, SHOWN_URL + path).then((window) => roundCorners(window)),
+        browserWindow(pagePng, SHOWN_URL + shownPath).then((window) => roundCorners(window)),
       ]);
       const compose = layout === 'side' ? sideBySide : stacked;
       pushFrame(frames, await compose(editorWindow, browserPane), holdMs);
@@ -558,6 +567,246 @@ async function lint(): Promise<Frame[]> {
   }
 }
 
+/** Markdown outside `src/`, read by a page's build script. */
+const NOTES_MD = `# Release notes
+
+Version 1.0 ships today.
+`;
+
+/** A page whose build script turns `content/notes.md` into a heading and paragraphs. */
+const NOTES_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Notes - my-site</title>
+  <site-meta />
+</head>
+<body>
+  <site-header data-bascik-prop-brand="my-site" />
+  <main>
+    <section class="section">
+      <div class="container">
+        <script data-bascik-build>
+          import { readFile } from 'node:fs/promises';
+
+          export default async () => {
+            const [title, ...body] = (await readFile('content/notes.md', 'utf8')).trim().split('\\n\\n');
+            return \`<h1>\${title.slice(2)}</h1>\` + body.map((text) => \`<p>\${text}</p>\`).join('');
+          };
+        </script>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+`;
+
+/** A post-phase exec script that indexes the Markdown and writes its output to `dist/`, never to a source. */
+const SEARCH_INDEX_SCRIPT = `import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+
+const files = (await readdir('content')).filter((file) => file.endsWith('.md'));
+const entries = await Promise.all(
+  files.map(async (file) => ({ file, title: (await readFile(\`content/\${file}\`, 'utf8')).split('\\n')[0].slice(2) })),
+);
+await mkdir('dist', { recursive: true });
+await writeFile('dist/search-index.json', JSON.stringify(entries));
+console.log(\`indexed: \${entries.map((entry) => entry.title).join(', ')}\`);
+`;
+
+/** Adds the notes page and its Markdown. With `exec`, also the search index script that watches the Markdown. */
+async function addNotes(dir: string, { exec = false } = {}): Promise<void> {
+  await mkdir(join(dir, 'content'), { recursive: true });
+  await writeFile(join(dir, 'content/notes.md'), NOTES_MD);
+  await writeFile(join(dir, 'src/pages/notes.html'), NOTES_PAGE);
+  const pipeline = exec
+    ? `exec: [{ script: 'scripts/search-index.ts', phase: 'post', watch: ['content/'] }],`
+    : `watchPaths: ['content/'],`;
+  if (exec) {
+    await mkdir(join(dir, 'scripts'), { recursive: true });
+    await writeFile(join(dir, 'scripts/search-index.ts'), SEARCH_INDEX_SCRIPT);
+  }
+  await writeFile(
+    join(dir, 'bascik.config.ts'),
+    `import { defineConfig } from '@bascik/bascik/config';\n\nexport default defineConfig({\n  pipeline: {\n    ${pipeline}\n  },\n});\n`,
+  );
+}
+
+async function markdownWatch(): Promise<Frame[]> {
+  const rig = await openEditorAndBrowser({
+    layout: 'stacked',
+    path: '/notes',
+    editorHeight: 236,
+    // Markdown offers code actions on empty lines; the bulb would flicker in and out of frames.
+    editorSettings: { 'editor.lightbulb.enabled': 'off' },
+    prepare: (dir) => addNotes(dir),
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const markdownFile = join(rig.project.dir, 'content/notes.md');
+  try {
+    // Beat 1: change a sentence in the Markdown. The page that reads it rebuilds.
+    await openFile(editor, 'notes.md');
+    const sentence = await readLine(markdownFile, 'ships today');
+    const endOfToday = sentence.column + 'ships today'.length;
+    await selectBackwards(editor, sentence.line, endOfToday, 'today'.length);
+    await rig.snap(frames, INTRO_HOLD + 400);
+    for (const chunk of ['on ', 'Fri', 'day']) {
+      await editor.keyboard.type(chunk);
+      await rig.snap(frames, 220);
+    }
+    await rig.snap(frames, 600);
+    await press(editor, 'Meta+s');
+    await rig.page.waitForFunction(() => document.querySelector('main p')?.textContent?.includes('Friday'), null, {
+      timeout: 15_000,
+    });
+    await rig.snap(frames, 2200);
+
+    // Beat 2: add a paragraph. It appears on the page as a new <p>.
+    await press(editor, 'End', 'Enter', 'Enter');
+    await rig.snap(frames, 500);
+    for (const chunk of ['Scoped ', 'CSS is ', 'on by ', 'default.']) {
+      await editor.keyboard.type(chunk);
+      await rig.snap(frames, 220);
+    }
+    await rig.snap(frames, 600);
+    await press(editor, 'Meta+s');
+    await rig.page.waitForFunction(() => document.querySelectorAll('main p').length === 2, null, { timeout: 15_000 });
+    const saved = await readFile(markdownFile, 'utf8');
+    if (!saved.includes('ships on Friday.\n\nScoped CSS is on by default.')) {
+      throw new Error(`The Markdown edit did not save as expected:\n${saved}`);
+    }
+    await rig.snap(frames, OUTRO_HOLD);
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
+/** The five-line escaper the server scripts docs recommend writing once per project. */
+const ESCAPE_HELPER = `export const escape = (value: unknown): string =>
+  String(value ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+`;
+
+/** A component that is only a server script: it renders on every request, from that request. */
+const HELLO_USER = `<script data-bascik-server>
+  import { escape } from '@/lib/server.ts';
+
+  export default (request) => {
+    const params = new URL(request.url).searchParams;
+    const name = escape(params.get('name') ?? 'Guest');
+    const time = new Date().toLocaleTimeString('en-US');
+    return \`<h1>Hello, \${name}!</h1>
+      <p>Rendered at \${time}</p>\`;
+  };
+</script>
+`;
+
+const GREET_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Greet - my-site</title>
+  <site-meta />
+</head>
+<body>
+  <site-header data-bascik-prop-brand="my-site" />
+  <main>
+    <section class="section">
+      <div class="container">
+        <hello-user />
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+`;
+
+async function serverRequest(): Promise<Frame[]> {
+  const rig = await openEditorAndBrowser({
+    layout: 'stacked',
+    path: '/greet?name=Ada',
+    editorHeight: 354,
+    editorSettings: { 'editor.lightbulb.enabled': 'off' },
+    prepare: async (dir) => {
+      await mkdir(join(dir, 'src/lib'), { recursive: true });
+      await writeFile(join(dir, 'src/lib/server.ts'), ESCAPE_HELPER);
+      await mkdir(join(dir, 'src/components/hello-user'), { recursive: true });
+      await writeFile(join(dir, 'src/components/hello-user/hello-user.html'), HELLO_USER);
+      await writeFile(join(dir, 'src/pages/greet.html'), GREET_PAGE);
+    },
+  });
+  const { page: editor } = rig.vscode;
+  const frames: Frame[] = [];
+  const heading = () => rig.page.locator('main h1').textContent();
+  const renderedAt = () => rig.page.locator('main p').textContent();
+  try {
+    await openFile(editor, 'hello-user.html');
+    await gotoLine(editor, 1, 1);
+    if ((await heading()) !== 'Hello, Ada!') throw new Error(`Unexpected first render: ${await heading()}`);
+    await rig.snap(frames, INTRO_HOLD + 1800);
+
+    // Beat 1: another request, another query string, another page. Nothing was rebuilt.
+    await rig.page.goto(rig.page.url().replace('name=Ada', 'name=Grace'));
+    if ((await heading()) !== 'Hello, Grace!') throw new Error(`Unexpected second render: ${await heading()}`);
+    await rig.snap(frames, 2600);
+
+    // Beat 2: the same URL again. The script runs again, so the time moves on.
+    const before = await renderedAt();
+    await sleep(1100);
+    await rig.page.reload();
+    if ((await renderedAt()) === before) throw new Error('The reload did not render a new time');
+    await rig.snap(frames, OUTRO_HOLD);
+    return frames;
+  } finally {
+    await rig.close();
+  }
+}
+
+async function execWatch(): Promise<Frame[]> {
+  const project = await createStarterProject();
+  await addNotes(project.dir, { exec: true });
+  const browser = await chromium.launch();
+  try {
+    const pairs = await redactions(project);
+    const markdownFile = join(project.dir, 'content/notes.md');
+    let edited = false;
+    // The real dev server runs the exec script once at startup. Then the Markdown is edited, and the server
+    // reruns the script and rebuilds the one page that reads that file.
+    const recording = await recordCommand({
+      command: process.execPath,
+      args: [bascikBin, '--port', String(PORT)],
+      cwd: project.dir,
+      stopAfterMs: 20_000,
+      stopWhen: /\(completed\) exec[^\n]*\n(?:[^\n]*\n)*?[^\n]*\(completed\) exec/,
+      triggers: [
+        {
+          when: /Server running at/,
+          run: async () => {
+            await sleep(900);
+            await writeFile(markdownFile, NOTES_MD.replace('# Release notes', '# Release notes for 1.0'));
+            edited = true;
+          },
+        },
+      ],
+    });
+    if (!edited) throw new Error('The dev server never reported that it was running');
+    const text = recording.chunks.map((chunk) => chunk.text).join('');
+    if (!/transpiled: pages\/notes\.html[\s\S]*indexed: Release notes for 1\.0/.test(text)) {
+      throw new Error(`The edit did not rebuild the page and rerun the script:\n${text}`);
+    }
+    for (const chunk of recording.chunks) chunk.text = redact(chunk.text, pairs);
+    return await renderTerminal(browser, { title: 'bascik', rows: 18, width: 780 }, {
+      typed: 'bascik',
+      recording,
+      maxGapMs: 900,
+      finalHoldMs: OUTRO_HOLD,
+      endsAtPrompt: false,
+    });
+  } finally {
+    await browser.close();
+    await project.cleanup();
+  }
+}
+
 const scenes: Record<string, () => Promise<Frame[]>> = {
   'live-reload': () => liveReload('side'),
   'live-reload-stacked': () => liveReload('stacked'),
@@ -566,6 +815,9 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   stream,
   'dev-terminal': devTerminal,
   lint,
+  'markdown-watch': markdownWatch,
+  'server-request': serverRequest,
+  'exec-watch': execWatch,
 };
 
 const wanted = process.argv.slice(2);

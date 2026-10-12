@@ -433,6 +433,10 @@ src/components/
 
 Bascik derives the tag name from the filename only, not from the directory path. Subfolders do not create separate namespaces, so `marketing/promo-card.html` registers `<promo-card>`, `admin/user-row.html` registers `<user-row>`, and `alert-box/alert-box.html` registers `<alert-box>`.
 
+There is nothing to import or register. Here `hello-card.html` lives in its own folder, and typing `<hello-card>` in a page is enough:
+
+![An editor above a browser. The editor shows hello-card.html in src/components/hello-card. In a page, typing the start of the tag brings up hello-card as a suggested Bascik component. Accepting it and saving renders the card in the browser. Duplicating the line and saving renders a second card](/assets/demos/component-tag@2x.webp)
+
 If two files anywhere in `src/components/` resolve to the same tag name (e.g. `marketing/card.html` and `admin/card.html`), Bascik raises a build error naming both conflicting paths.
 
 > **Flexible organization.** Organize `src/components/` flat, in feature folders, or in per-component directories. Choose whichever layout fits your workflow and keep filenames unique across the tree.

@@ -76,6 +76,10 @@ A common pattern is converting Markdown content to HTML at build time:
 </script>
 ```
 
+The dev server does not watch files outside `src/` on its own. Add the folder to [`pipeline.watchPaths`](/watch-paths) and saving the Markdown rebuilds the page that reads it:
+
+![An editor above a browser. The editor shows content/notes.md. Changing today to on Friday and saving updates the paragraph in the browser. Adding a second paragraph and saving adds it to the page](/assets/demos/markdown-watch@2x.webp)
+
 ### Generating Navigation from JSON
 
 Read a JSON data file and render HTML markup from it:
@@ -312,6 +316,10 @@ See [Dynamic Routes](/dynamic-routes) for the complete guide to dynamic route ge
 ## Error Handling & Stack Remapping
 
 Build scripts run as isolated Node.js ESM modules during transpilation. When a build script throws an exception (such as `ENOENT`, a syntax error, or a failed network fetch), Bascik intercepts the error and reports it cleanly without crashing the dev server or CLI runner.
+
+In the dev server, the error also appears as an overlay in every open browser, and saving the fix dismisses it:
+
+![An editor above a browser. A typo in a build script, String changed to Strin, is saved and the browser shows a Bascik Build Error overlay naming the file and the ReferenceError. Restoring the letter and saving dismisses the overlay](/assets/demos/error-overlay@2x.webp)
 
 ### Terminal Error Formatting
 

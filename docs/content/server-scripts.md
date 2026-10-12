@@ -26,6 +26,10 @@ Tag any `<script>` block with `data-bascik-server` to run it at request time on 
 
 > This example interpolates a header without escaping so the mechanics are visible. Real scripts must escape; see Escaping and injection.
 
+This recording shows a real dev server running a server script that lives in a component. Every request runs the script again: a new query string renders a new name, and reloading the same URL renders a new time. Nothing is rebuilt between requests:
+
+![An editor above a browser. The editor shows hello-user.html, a component holding one data-bascik-server script that reads a name from the query string, escapes it, and returns a heading and the current time. The browser loads /greet?name=Ada and shows Hello, Ada!, then loads /greet?name=Grace and shows Hello, Grace!, then reloads and shows a later time](/assets/demos/server-request@2x.webp)
+
 ## Handler Signature
 
 Every server script handler uses the standard signature:
