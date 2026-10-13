@@ -1,0 +1,107 @@
+<!-- @bascik
+Accessible tabs built from the sections passed in. Each child of the default slot becomes one tab panel, labeled by its data-tab attribute. Without JavaScript every section stays visible, stacked.
+@prop label - Accessible name for the tab list, for example "Pricing plans".
+@slot default - One element per tab, each with a data-tab="Label" attribute.
+-->
+<style>
+  .tab-group {
+    display: block;
+  }
+
+  .tablist {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid currentColor;
+  }
+
+  .tab {
+    padding: 0.5rem 1rem;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .tab[aria-selected="true"] {
+    border-bottom-color: currentColor;
+    font-weight: 700;
+  }
+
+  .tab:focus-visible,
+  .panel:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  .panel {
+    padding-block: 1rem;
+  }
+</style>
+<div class="tab-group" id="root">
+  <div class="tablist" id="tablist" role="tablist" data-bascik-attr-aria-label="label" hidden></div>
+  <div class="panels" id="panels">
+    <div data-bascik-slot></div>
+  </div>
+</div>
+<script>
+  // Every id below is rewritten per instance, so several tab groups on one page stay independent.
+  const root = document.getElementById('root');
+  const tablist = document.getElementById('tablist');
+  const panels = [...document.getElementById('panels').children];
+  const tabs = [];
+
+  const select = (index, moveFocus) => {
+    tabs.forEach((tab, i) => {
+      const selected = i === index;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels[i].hidden = !selected;
+    });
+    if (moveFocus) tabs[index].focus();
+  };
+
+  panels.forEach((panel, index) => {
+    // Runtime ids are derived from the root's scoped id, so they are unique per instance.
+    const tabId = `${root.id}-tab-${index}`;
+    const panelId = `${root.id}-panel-${index}`;
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    // A static class string is rewritten to the scoped name defined in the <style> above.
+    tab.className = 'tab';
+    tab.textContent = panel.dataset.tab || `Tab ${index + 1}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('id', tabId);
+    tab.setAttribute('aria-controls', panelId);
+    tab.addEventListener('click', () => select(index, false));
+    tablist.append(tab);
+    tabs.push(tab);
+
+    panel.classList.add('panel');
+    panel.setAttribute('id', panelId);
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tabId);
+    panel.tabIndex = 0;
+  });
+
+  tablist.addEventListener('keydown', (event) => {
+    const current = tabs.indexOf(document.activeElement);
+    if (current === -1) return;
+    const last = tabs.length - 1;
+    const next = {
+      ArrowRight: current === last ? 0 : current + 1,
+      ArrowLeft: current === 0 ? last : current - 1,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    select(next, true);
+  });
+
+  if (tabs.length > 0) {
+    tablist.hidden = false;
+    select(0, false);
+  }
+</script>

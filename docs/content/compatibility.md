@@ -142,6 +142,9 @@ Bascik supports flexible HTML, CSS, and JavaScript structures inside `.html` com
 | Internal raw-text mask | WHATWG HTML §13.1.2 | ✓ | Internal scans use a hardcoded same-length discard mask for scripts, styles, textareas, and comments. It is not configurable and is distinct from author-facing preservation. |
 | Inline phrasing whitespace preservation | CSS Text Level 3 | ✓ | HTML minification preserves single spaces between inline phrasing elements (`INLINE_TAGS`: `span`, `a`, `strong`, `em`, `code`, etc.) while safely collapsing block-level whitespace. Only spaces, tabs, and line breaks collapse: U+00A0 and other Unicode spaces, attribute values, and `<pre>`, `<textarea>`, `<script>`, and `<style>` content are kept. CSS is not read, so `white-space: pre` on another element is not detected. |
 | `<meta>` tag preservation | WHATWG HTML §4.2.5 | ✓ | Standard metadata attributes on `<meta>` tags (e.g. `name="viewport"`, `name="description"`) are shielded from attribute scoping. |
+| Exclusive `<details name>` groups | WHATWG HTML §4.11.1 | ✓ | `name` is scoped per instance like any other `name`, so the `<details>` elements of one component instance form one group and other instances stay independent. Add `data-bascik-preserve="name"` to group across instances or with page markup. |
+| Declarative shadow DOM | WHATWG HTML §4.12.3 | △ | `<template shadowrootmode="open">` in a component passes through as markup. Bascik does not scope inside a shadow root, which isolates its own styles. |
+| Custom elements defined in script | WHATWG HTML §4.13 | ✓ | Real custom elements from a library or your own `customElements.define` work alongside Bascik components. List their tags in `components.external` so they are not reported as unresolved components. Their shadow roots are not scoped by Bascik. |
 
 ---
 
@@ -255,6 +258,18 @@ CSS scoping applies to `.css` files paired with a component's HTML file. Place t
 | `@counter-style`          | ✓     | `@counter-style name { }` declaration names are scoped. References in `list-style`, `list-style-type`, `counter(counter, name)`, and `counters(counter, sep, name)` in the same component file are updated to match. Only whole names match, so `a` never rewrites part of `a-b` or of another scoped name. |
 | `view-transition-name`    | ✓     | `view-transition-name: name` values are scoped to the component. Matching `::view-transition-old(name)`, `::view-transition-new(name)`, `::view-transition-group(name)`, and `::view-transition-image-pair(name)` pseudo-element references in the same file are updated to match. The keywords `none` and `auto` are not scoped. |
 | `anchor-name` / `@position-try` | ✓  | `anchor-name: --name` declarations are scoped per component. Matching `position-anchor: --name` references and `@position-try --name { }` at-rules in the same CSS file are updated to match. Only anchors declared in the component's own CSS are scoped, external anchor references are left untouched. |
+
+### Names Shared by Every Instance
+
+Container names, layer names, anchor names, view transition names, keyframes, and custom properties declared in component CSS are scoped per component type: every instance of a component shares one name, and no other component can see it. That keeps components apart, but it changes how these features combine.
+
+| Pattern | Example | Status | Notes |
+| --- | --- | --- | --- |
+| Child component querying a parent's named container | `@container sidebar (…)` in a child of `side-bar` | ✕ | The parent's `sidebar` is renamed to the parent, so the child's query never matches. Use an unnamed query, `@container (min-width: 30rem)`, which targets the nearest container, or declare the named container in a global stylesheet. |
+| Global layer order including component layers | `@layer reset, components;` in a page with `@layer components {}` in a component | ✕ | The component's layer becomes its own private layer and is not placed by the global statement. Put base styles in layers in the global stylesheet and leave component CSS unlayered; unlayered rules win over layered ones. |
+| `anchor-name` with several instances on a page | `.trigger { anchor-name: --menu; }` | △ | Every instance declares the same scoped name, so each positioned element anchors to the last one. Use the implicit anchor of `popover` and `popovertarget`, or set the name per instance from the script: `` el.style.setProperty('anchor-name', `--${el.id}`) ``. |
+| `view-transition-name` with several instances on a page | `.card { view-transition-name: card; }` | △ | Two elements with one name abort the transition. Use it on components that appear once per page, or name instances from the script: `el.style.setProperty('view-transition-name', el.id)`. The same component on two pages shares its name, so it morphs across a navigation. |
+| Site-wide tokens declared in a component | `:root { --brand: … }` in component CSS | ✕ | The property is renamed to the component, so no other component sees it. Declare tokens in a global stylesheet and only read them in components. |
 
 ---
 

@@ -208,27 +208,41 @@ interface RenderRange {
  * @returns {Promise<string>} HTML-escaped code ready for a <code-block> slot.
  */
 export async function extractDemoBlock(filePath: string, markerId: string): Promise<string> {
+  const block = await readDemoBlock(filePath, markerId);
+  if (block.code === undefined) return block.problem;
+  return escapeCode(block.code);
+}
+
+/** Escapes source code for a <code-block> slot. */
+export function escapeCode(code: string): string {
+  return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * The raw, unescaped text of a named code block, for printing it as live markup (an example preview).
+ * `problem` is an HTML comment describing why the block could not be read.
+ */
+export async function readDemoBlock(
+  filePath: string,
+  markerId: string,
+): Promise<{ code: string; problem?: undefined } | { code?: undefined; problem: string }> {
   let md: string;
   try {
     md = await readFile(filePath, 'utf8');
   } catch (err) {
     console.warn(`[md-renderer] Warning: Could not read file "${filePath}": ${(err as Error).message}`);
-    return `<!-- [md-renderer] File not found: ${filePath} -->`;
+    return { problem: `<!-- [md-renderer] File not found: ${filePath} -->` };
   }
   const markerRe = new RegExp(`<!--\\s*demo:${markerId}\\s*-->`, 'i');
   const markerMatch = markerRe.exec(md);
-  if (!markerMatch) return `<!-- demo:${markerId} not found in ${filePath} -->`;
+  if (!markerMatch) return { problem: `<!-- demo:${markerId} not found in ${filePath} -->` };
 
   const rest = md.slice(markerMatch.index + markerMatch[0].length);
   // Match the next fenced code block (``` ... ```)
   const codeRe = /^```\w*\n([\s\S]*?)\n^```/m;
   const codeMatch = codeRe.exec(rest);
-  if (!codeMatch) return `<!-- no code block after demo:${markerId} -->`;
-
-  return codeMatch[1]
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  if (!codeMatch) return { problem: `<!-- no code block after demo:${markerId} -->` };
+  return { code: codeMatch[1] };
 }
 
 export async function renderMd(

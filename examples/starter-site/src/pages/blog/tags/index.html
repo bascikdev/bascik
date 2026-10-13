@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <site-head />
+  <script data-bascik-build>
+    import { seo } from '@/lib/seo.ts';
+    export default () => seo({ title: 'Tags - Example Site', description: 'Every topic the Example Site blog covers, with the number of posts for each.' });
+  </script>
+</head>
+
+<body>
+  <site-header />
+  <main id="main" class="container">
+    <h1>Tags</h1>
+    <script data-bascik-build>
+      import { escapeHtml, getPosts, groupByTag } from '@/lib/posts.ts';
+      export default async () => {
+        const items = groupByTag(await getPosts()).map(({ tag, posts }) => `<li><a href="/blog/tags/${tag}/">${escapeHtml(tag)}</a> (${posts.length})</li>`);
+        return items.length ? `<ul>${items.join('')}</ul>` : '<p>No tags yet.</p>';
+      };
+    </script>
+  </main>
+  <site-footer />
+</body>
+
+</html>

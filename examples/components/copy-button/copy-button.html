@@ -1,0 +1,45 @@
+<!-- @bascik
+Copies a text value to the clipboard and announces the result to screen readers.
+@prop text - The exact text to copy.
+@prop label - Button text. Defaults to "Copy".
+-->
+<style>
+  .copy-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .button {
+    font: inherit;
+  }
+
+  .status {
+    font-size: 0.875em;
+  }
+</style>
+<span class="copy-button">
+  <button class="button" id="button" type="button" data-bascik-attr-data-text="text">
+    <span data-bascik-prop-label>Copy</span>
+  </button>
+  <span class="status" id="status" role="status"></span>
+</span>
+<script>
+  const button = document.getElementById('button');
+  const status = document.getElementById('status');
+  let timer;
+
+  button.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(button.dataset.text ?? '');
+      status.textContent = 'Copied';
+    } catch {
+      // Clipboard access needs a secure context (HTTPS or localhost) and can be denied.
+      status.textContent = 'Copy failed. Select the text and copy it manually.';
+    }
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      status.textContent = '';
+    }, 2000);
+  });
+</script>

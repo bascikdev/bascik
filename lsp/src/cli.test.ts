@@ -53,6 +53,62 @@ describe('runCliCheck', () => {
     expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Found 0 errors, 1 warning.'));
   });
 
+  describe('component roots outside the project', () => {
+    // A monorepo site lists a shared folder as a component root: directory.components: ['src/components', '../shared'].
+    const slotted = '<style>\n  .box { padding: 1rem; }\n</style>\n<div class="box"><div data-bascik-slot></div></div>\n';
+    const setup = () => {
+      const site = path.join(tempDir, 'sites', 'a');
+      const shared = path.join(tempDir, 'shared');
+      fs.mkdirSync(path.join(site, 'src', 'components'), { recursive: true });
+      fs.mkdirSync(path.join(shared, 'slot-box'), { recursive: true });
+      fs.writeFileSync(
+        path.join(site, 'bascik.config.ts'),
+        "export default { directory: { components: ['src/components', '../../shared'] } };\n",
+      );
+      fs.writeFileSync(path.join(shared, 'slot-box', 'slot-box.html'), slotted);
+      return { site, shared };
+    };
+
+    it('lints a shared root as component files with --project', async () => {
+      const { site, shared } = setup();
+      const exitCode = await runCliCheck([shared, '--project', site]);
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('No Bascik diagnostics found'));
+    });
+
+    it('accepts --project=<dir>', async () => {
+      const { site, shared } = setup();
+      expect(await runCliCheck([`--project=${site}`, shared])).toBe(0);
+    });
+
+    it('uses the project in the working directory when the target is one of its component roots', async () => {
+      const { site, shared } = setup();
+      const cwd = vi.spyOn(process, 'cwd').mockReturnValue(site);
+      try {
+        expect(await runCliCheck([shared])).toBe(0);
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it('still treats a folder that belongs to no project as plain HTML', async () => {
+      const { shared } = setup();
+      const cwd = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+      try {
+        expect(await runCliCheck([shared])).toBe(1);
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('only valid inside a Bascik component body'));
+      } finally {
+        cwd.mockRestore();
+      }
+    });
+
+    it('fails when --project does not exist', async () => {
+      const { shared } = setup();
+      expect(await runCliCheck([shared, '--project', path.join(tempDir, 'missing')])).toBe(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Project directory does not exist'));
+    });
+  });
+
   it('returns 1 when target path does not exist', async () => {
     const nonExistent = path.join(tempDir, 'does-not-exist.html');
     const exitCode = await runCliCheck([nonExistent]);

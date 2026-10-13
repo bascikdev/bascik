@@ -1,6 +1,11 @@
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
+  directory: {
+    // The repo-root examples/ components render live on /examples/* pages. They are the only copy: the pages,
+    // /assets/examples.json, and the tests all read the same files.
+    components: ['src/components', '../examples/components'],
+  },
   components: {
     // <heading-anchors> comes from @zachleat/heading-anchors and is demonstrated on
     // /how-to/third-party-web-components. It is not a Bascik component file.
@@ -19,6 +24,8 @@ export default defineConfig({
       '../extensions/vscode-bascik/test-coverage.json',
       '../adapters/cloudflare/test-coverage.json',
       'test-coverage.json',
+      // /examples/starter-site shows these files; the component folder is already watched as a component root.
+      '../examples/starter-site/',
     ],
     exec: [
       // Copies the npm custom element into dist/assets/vendor/. 'pre' so it exists before pages load it.
@@ -38,6 +45,12 @@ export default defineConfig({
         // denies .md by design; the authored skills are watched, the generated outputs never are.
       },
       {
+        script: 'scripts/publish-examples.ts',
+        phase: 'parallel',
+        watch: ['../examples/'],
+        // Publishes /assets/examples.json for skills/bascik/scripts/add-example.mjs.
+      },
+      {
         script: 'scripts/generate-press-kit.ts',
         phase: 'parallel',
         watch: ['src/pages/assets/bascik-logo.svg', 'src/pages/assets/favicon.svg'],
@@ -48,6 +61,12 @@ export default defineConfig({
   },
   assets: {
     inlineStyles: ['src/css/styles.css'],
+  },
+  scripts: {
+    cache: {
+      // Example pages read example files through markers in their Markdown, which the cache key cannot see.
+      exclude: ['src/pages/examples/**'],
+    },
   },
 });
 
@@ -68,6 +87,7 @@ export const build = defineConfig({
       { script: 'scripts/publish-heading-anchors.ts', phase: 'pre' },
       { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
       { script: 'scripts/publish-agent-skill.ts', phase: 'parallel' },
+      { script: 'scripts/publish-examples.ts', phase: 'parallel' },
       { script: 'scripts/generate-press-kit.ts', phase: 'parallel' },
       { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
       { script: 'scripts/generate-og-images.ts', phase: 'parallel' },

@@ -2,6 +2,7 @@
 Interactive demo box with Preview, Source, and Output panes and per-language tabs. Used on docs pages to show a live example alongside its source and the scoped build output.
 @prop no-preview - Hides the Preview tab and pane and collapses the demo box margin.
 @prop hide-preview - Alias for no-preview.
+@prop no-output - Hides the Output tab, for demos that show source only.
 @prop file - Optional file path shown in the demo meta bar.
 @slot example - Content rendered in the Preview pane.
 @slot source-usage - Usage snippet shown in the Source pane Usage tab.
@@ -28,6 +29,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
 -->
 <div class="demo-box">
   <span class="demo-no-preview-marker" data-bascik-prop-no-preview data-bascik-prop-hide-preview hidden></span>
+  <span class="demo-no-output-marker" data-bascik-prop-no-output hidden></span>
   <div class="demo-nav">
     <div class="demo-tabs">
       <label class="demo-tab" data-testid="demo-tab-preview">
@@ -218,6 +220,10 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
   }
 
   .demo-pane {
+    display: none;
+  }
+
+  .demo-box:has(.demo-no-output-marker:not(:empty)) .demo-tab[data-testid="demo-tab-output"] {
     display: none;
   }
 

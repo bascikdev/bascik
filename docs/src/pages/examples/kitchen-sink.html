@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    export default async () => await canonical();
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    export default async () => await openGraph();
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    export default async () => await breadcrumbLd();
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    export default async () => await articleSchema();
+  </script>
+  <meta name="description"
+    content="Every Bascik example component on one page, two instances each, to show that every copy controls only its own elements." />
+  <title>Kitchen Sink: Every Example Component - Bascik</title>
+  <style>
+    .kitchen-sink {
+      display: grid;
+      gap: 2rem;
+      margin-block: 1.5rem 2.5rem;
+    }
+
+    .kitchen-sink-item {
+      display: grid;
+      gap: 1rem;
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+    }
+
+    .kitchen-sink-item h3 {
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          export default async () => renderSectionLabel('/examples/kitchen-sink');
+        </script>
+        <script data-bascik-build>
+          import { renderMd } from '@/lib/md-renderer.ts';
+          export default async () => await renderMd('./content/examples/kitchen-sink.md');
+        </script>
+
+        <!-- Two of every component from the repo-root examples/components folder. docs/e2e/examples.spec.ts
+             tests each pair; keep the data-testid wrappers. -->
+        <div class="kitchen-sink">
+          <section class="kitchen-sink-item" aria-labelledby="sink-tabs">
+            <h3 id="sink-tabs"><a href="/examples/tab-group">Tab Group</a></h3>
+            <div data-testid="tabs-a">
+              <tab-group data-bascik-prop-label="Plans A">
+                <section data-tab="Monthly">
+                  <p>A monthly</p>
+                </section>
+                <section data-tab="Yearly">
+                  <p>A yearly</p>
+                </section>
+                <section data-tab="Lifetime">
+                  <p>A lifetime</p>
+                </section>
+              </tab-group>
+            </div>
+            <div data-testid="tabs-b">
+              <tab-group data-bascik-prop-label="Plans B">
+                <section data-tab="One">
+                  <p>B one</p>
+                </section>
+                <section data-tab="Two">
+                  <p>B two</p>
+                </section>
+              </tab-group>
+            </div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-dialog">
+            <h3 id="sink-dialog"><a href="/examples/modal-dialog">Modal Dialog</a></h3>
+            <div data-testid="dialog-a">
+              <modal-dialog data-bascik-prop-trigger="Open A" data-bascik-prop-title="Dialog A">
+                <p>Body A</p>
+              </modal-dialog>
+            </div>
+            <div data-testid="dialog-b">
+              <modal-dialog data-bascik-prop-trigger="Open B" data-bascik-prop-title="Dialog B">
+                <p>Body B</p>
+              </modal-dialog>
+            </div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-menu">
+            <h3 id="sink-menu"><a href="/examples/popover-menu">Popover Menu</a></h3>
+            <div data-testid="menu-a">
+              <popover-menu data-bascik-prop-label="Menu A"><a href="/examples/tab-group">Tabs A</a></popover-menu>
+            </div>
+            <div data-testid="menu-b">
+              <popover-menu data-bascik-prop-label="Menu B"><a href="/examples/modal-dialog">Dialog B</a></popover-menu>
+            </div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-copy">
+            <h3 id="sink-copy"><a href="/examples/copy-button">Copy Button</a></h3>
+            <div data-testid="copy-a"><copy-button data-bascik-prop-text="alpha text" data-bascik-prop-label="Copy A" />
+            </div>
+            <div data-testid="copy-b"><copy-button data-bascik-prop-text="beta text" data-bascik-prop-label="Copy B" />
+            </div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-filter">
+            <h3 id="sink-filter"><a href="/examples/filter-list">Filter List</a></h3>
+            <div data-testid="filter-a">
+              <filter-list data-bascik-prop-label="Filter A">
+                <li>Apple</li>
+                <li>Banana</li>
+                <li>Cherry</li>
+              </filter-list>
+            </div>
+            <div data-testid="filter-b">
+              <filter-list data-bascik-prop-label="Filter B">
+                <li>Red</li>
+                <li>Green</li>
+              </filter-list>
+            </div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-form">
+            <h3 id="sink-form"><a href="/examples/contact-form">Contact Form</a></h3>
+            <div data-testid="form-a"><contact-form /></div>
+            <div data-testid="form-b"><contact-form /></div>
+          </section>
+
+          <section class="kitchen-sink-item" aria-labelledby="sink-theme">
+            <h3 id="sink-theme"><a href="/examples/theme-toggle">Theme Toggle</a></h3>
+            <div data-testid="theme-a"><theme-toggle /></div>
+            <div data-testid="theme-b"><theme-toggle /></div>
+          </section>
+        </div>
+
+        <docs-pagination />
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

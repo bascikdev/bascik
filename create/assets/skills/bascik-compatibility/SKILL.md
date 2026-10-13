@@ -1,0 +1,72 @@
+---
+name: bascik-compatibility
+description: Decide which HTML, CSS, and JavaScript features to use in a Bascik site. Use before reaching for a modern or unusual feature (popover, dialog, invoker commands, anchor positioning, container queries, @layer, @scope, :has(), view transitions, nesting, light-dark(), TypeScript in the browser, web components); when asking "can I use X", "does Bascik support X", or "is X Baseline"; when a selector, DOM call, or at-rule works in a page but not in a component; or when the linter reports css-* or js-* compatibility errors. Includes a live lookup of Bascik's compatibility matrix and a Baseline browser support checker.
+license: MIT
+metadata:
+  author: bascik
+  homepage: https://bascik.dev
+---
+
+# HTML, CSS, and JavaScript Compatibility
+
+Every feature passes two gates: **browsers** must support it for your audience, and inside a component **Bascik's scoping** must handle it. Page markup, page `<style>` and `<script>` blocks, and global stylesheets are not renamed, so anything a browser supports works there. Requires the `bascik` skill; `bascik-components` has the scoping rules.
+
+## Gate 1: browser support
+
+```sh
+node <skills-dir>/bascik-compatibility/scripts/baseline.mjs popover anchor-positioning "invoker commands"
+```
+
+| Status | Decision |
+|---|---|
+| Widely available | Use it |
+| Newly available | Use it when the page still works without it, or behind `@supports` or a feature check with a fallback |
+| Limited availability | Enhancement only, inside `@supports` or `if ('x' in ...)`, never for content or navigation |
+
+Never guess support from memory; statuses change every few months. The script queries the Web Platform Status API (the web-features data behind MDN and caniuse) and can take several seconds per feature. Prefer features that degrade to something usable.
+
+## Gate 2: Bascik scoping (components only)
+
+```sh
+node <skills-dir>/bascik-compatibility/scripts/lookup.mjs container
+node <skills-dir>/bascik-compatibility/scripts/lookup.mjs setAttribute
+node <skills-dir>/bascik-compatibility/scripts/lookup.mjs --list
+```
+
+`lookup.mjs` searches every row of the live matrix at https://bascik.dev/compatibility and prints ✓ supported, △ partial, ✕ unsupported, or – not yet. Look up anything you have not used before in a component.
+
+The surprises that matter most:
+
+- **Container, layer, anchor, and view-transition names are scoped per component type** and invisible to other components. A child cannot query its parent's named container (use an unnamed `@container (...)`), a global `@layer` order does not place component layers, and two instances share one `anchor-name` or `view-transition-name`. Read `/compatibility#names-shared-by-every-instance` before using any of them.
+- **Element names are not converted inside `:is()`, `:where()`, `:has()`,** and element selectors never reach slotted content or elements a script creates.
+- **Attribute selectors are not scoped:** anchor them on a class in CSS, and never use them in `querySelector`.
+- **`name` attributes are scoped per instance,** including `<details name>` groups and form fields; `data-bascik-preserve="name"` keeps them literal.
+- **TypeScript runs in the browser only** through `<script type="text/typescript">` or a companion `.ts` file, with erasable syntax.
+- **Not provided by design:** API middleware, schema validation, automatic CORS, and API response compression. Write them in the handler.
+
+## Lint rules
+
+`bascik-language-server --check` (run by `verify.mjs`) reports these as errors:
+
+| Rule | Pattern | Use instead |
+|---|---|---|
+| `js-id-setter` | `el.id = 'x'` | `setAttribute('id', ...)` with a value derived from a scoped ID, or keep the element reference |
+| `js-attribute-selector` | `querySelector('[data-x]')` | `getElementById`, a static class, or `.children` of an element found by ID |
+| `js-template-classname` | `` el.className = `a ${b}` `` | `classList.add/remove/toggle` with static names |
+| `js-style-setproperty` | `el.style.setProperty('--x', v)` | A `data-` attribute styled in CSS, or a global token the component does not declare |
+| `js-unsupported-dom-methods` | `removeAttribute/hasAttribute/toggleAttribute('class'|'id'|'name')` | `classList` or the element reference |
+| `css-is-element-names` | `:is(h2)`, `:has(img)` | Classes inside the pseudo-class, or a global stylesheet |
+| `css-attribute-selector` | `[data-state] {}` at the start of a selector | `.card[data-state] {}` |
+| `css-id-attribute-selector` | `[id] {}`, `[id="x"] {}` | `#x {}` or a class |
+
+## Look it up
+
+| How do I... | Read |
+|---|---|
+| See every supported and unsupported pattern | `/compatibility` |
+| Use popover, dialog, and other HTML-first widgets | `/how-to/interactivity` |
+| Use a third-party custom element | `/how-to/third-party-web-components` |
+| Use `light-dark()` and color schemes | `/how-to/theming` |
+| Use TypeScript in a component | `/scoped-javascript#typescript-in-component-scripts` |
+
+`node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

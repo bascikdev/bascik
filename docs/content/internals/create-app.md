@@ -23,7 +23,7 @@ Running `npx create-bascik <name>` writes this structure:
   .vscode/
     launch.json
     extensions.json
-  .agents/skills/        Bascik agent skills (bascik, bascik-scoping, ...) with scripts
+  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
   .claude/skills/        the same skills for Claude Code
   e2e/
     playwright.config.ts

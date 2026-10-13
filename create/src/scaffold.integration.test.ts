@@ -109,8 +109,8 @@ describe("scaffold-to-compiler integration", () => {
     // 1. Run real scaffold
     await scaffold(projectName, parentDir);
 
-    // Verify the agent skills were copied from real assets, with their references and scripts
-    for (const file of ["bascik/SKILL.md", "bascik/scripts/verify.mjs", "bascik-scoping/references/css.md", "bascik-config/scripts/audit-config.mjs"]) {
+    // Verify the agent skills were copied from real assets, with their scripts
+    for (const file of ["bascik/SKILL.md", "bascik/scripts/verify.mjs", "bascik-components/SKILL.md", "bascik-config/scripts/audit-config.mjs"]) {
       const agentsCopy = await readFile(join(projectDir, ".agents/skills", file), "utf8");
       const claudeCopy = await readFile(join(projectDir, ".claude/skills", file), "utf8");
       const bundled = await readFile(join(SKILLS_DIR, file), "utf8");

@@ -14,7 +14,7 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 ## Procedure
 
 1. **Inventory.** List every URL, shared layout region (`<head>` tags, header, footer, nav), repeated widget, data source, and client behavior. Run `node <skills-dir>/bascik/scripts/list-components.mjs` if Bascik components already exist.
-2. **Read the framework guide.** `node <skills-dir>/bascik/scripts/read-doc.mjs /switch/from-<framework>` (`react`, `next`, `vue`, `svelte`, `astro`, `eleventy`, `hugo`, `wordpress`). Short versions for some are in `references/`.
+2. **Read the framework guide.** `node <skills-dir>/bascik/scripts/read-doc.mjs /switch/from-<framework>` (`react`, `next`, `vue`, `svelte`, `astro`, `eleventy`, `hugo`, `wordpress`). Read it before writing any code; it maps each framework feature to its Bascik equivalent.
 3. **Pages first.** One `.html` per URL in `src/pages/`, each with its own `<html>`, `<head>`, and `<body>`. Parameterized URLs become dynamic route templates.
 4. **Extract components.** Shared head becomes `<site-head />`; header, footer, and nav become components; repeated widgets become components with props and slots. Use `scripts/new-component.mjs` for the folder layout.
 5. **Move styles.** Delete framework scoped-style mechanisms and put the CSS in each component's companion `.css`. Class names stay the same; Bascik scopes them. Global styles go to `src/pages/css/styles.css`.
@@ -59,7 +59,8 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 - **`bascik --check` reports components printed only by build scripts as unused.** That is expected.
 - **Do not generate page files into `src/pages/`.** Use dynamic routes.
 - **Exclude data-reading build scripts from the cache** (`scripts.cache.exclude`) and watch `content/` (`pipeline.watchPaths`).
-- **Tailwind:** see `references/next.md` and the `bascik` skill's `references/libraries.md`.
+- **Tailwind:** run it as a `pre` exec script with `scoping.attributes.class: false`; see `read-doc.mjs /libraries`.
+- **Start from the examples** for layout, SEO tags, a blog, and interactive widgets: `add-example.mjs --list` in the `bascik` skill.
 
 ## Existing `sitemap.xml` and `robots.txt`
 
@@ -70,12 +71,5 @@ Requires the `bascik` skill for component rules and the `bascik-scripts` skill f
 
 Copying old files while disabling generation looks correct but freezes the sitemap at the old URL list forever.
 
-## References
-
-- [references/react.md](references/react.md)
-- [references/next.md](references/next.md)
-- [references/vue.md](references/vue.md)
-- [references/svelte.md](references/svelte.md)
-- [references/wordpress.md](references/wordpress.md)
 
 For Astro, Eleventy, and Hugo, read the live guide with `read-doc.mjs /switch/from-astro` (or `from-eleventy`, `from-hugo`).

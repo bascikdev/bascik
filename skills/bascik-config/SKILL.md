@@ -1,6 +1,6 @@
 ---
 name: bascik-config
-description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, building a Cloudflare bundle with --target, or placing static assets, 404, and 500 pages. Includes an audit script that flags redundant or invalid config.
+description: Configure, build, and deploy Bascik sites. Use when deciding whether a bascik.config.ts is needed, editing one (directory, components.external, scoping, minify, assets, generate, pipeline.exec, pipeline.watchPaths, scripts, http, base), setting BASCIK_SITE_URL, deploying to a static host, running bascik --server in production, building a Cloudflare bundle with --target, placing static assets, 404, and 500 pages, or structuring a monorepo with several sites, shared components, workspaces, and CI. Includes an audit script that flags redundant or invalid config and a workspace checker for multi-site repositories.
 license: MIT
 metadata:
   author: bascik
@@ -88,20 +88,35 @@ export default defineConfig({
 - Exec scripts receive `BASCIK_BUILD`, `BASCIK_PAGES_DIR`, `BASCIK_OUT_DIR`, `BASCIK_BASE`, and `BASCIK_SITE_URL`.
 - `watch` reruns the matching script after a source edit in dev; exec-only inputs need no duplicate `pipeline.watchPaths` entry.
 - `pipeline.onExecError`: `'warn'` (dev default) reports and continues; `'error'` (`--build` default) stops with exit 1.
-- Full semantics (cycle ordering, retries, reload behavior): [references/config-reference.md](references/config-reference.md).
+- Full semantics (cycle ordering, retries, reload behavior): `read-doc.mjs /exec-scripts`.
 
 ## Monorepos and shared components
 
 `directory.pages`, `directory.components`, and `scripts.importRoot` are independent. `directory.components` accepts an array, and roots may live outside the project:
 
 ```ts
+// sites/marketing/bascik.config.ts (illustrative paths)
 export default defineConfig({
-  directory: { components: ['../../shared/components', 'src/components'] },
-  scripts: { importRoot: '../../shared/scripts' },
+  directory: { components: ['src/components', '../../shared/components'] },
+  pipeline: { watchPaths: ['../../shared/scripts/'] },
 });
 ```
 
-Component names must be unique across all roots; roots may not nest or repeat (including through symlinks). `bascik add` copies into the first root.
+1. **One site, one project:** each site has its own config, `src/pages/`, `.env`, and `dist/`. Run Bascik from the site folder.
+2. **Tag names are unique across all of a site's roots.** Roots never nest or repeat, including through symlinks.
+3. **List the site's own folder first.** `bascik add` and `add-example.mjs` write into the first root.
+4. **Shared components import shared helpers with relative paths** (`../../scripts/links.ts`) unless every site points `scripts.importRoot` at the same folder. `@/` resolves against the consuming site, and a broken import fails that site's build even when no page uses the component.
+5. **Watch shared helper and style folders** with `pipeline.watchPaths`; only component roots are watched automatically.
+6. **Share tokens as a stylesheet:** `assets: { inlineStyles: ['../../shared/styles/tokens.css'] }`.
+7. **One Bascik version** for every site. Task runners (Turborepo, Nx) must list `shared/**` as a build input and `BASCIK_SITE_URL` as an env input.
+
+Check the whole repository from its root, then each site (`verify.mjs` also lints component roots outside the site):
+
+```sh
+node <skill-dir>/scripts/check-workspace.mjs
+```
+
+It lists every site with its component roots, import root, base, and Bascik version, and reports duplicate tags, nested roots, `@/` imports in shared components that do not resolve for some site, unwatched external helpers, and version drift. Exit code 1 on errors. Details: `read-doc.mjs /how-to/monorepos`.
 
 ## Assets and error pages
 
@@ -119,9 +134,17 @@ Component names must be unique across all roots; roots may not nest or repeat (i
 | Only static pages, build scripts, and dynamic routes | `BASCIK_SITE_URL=https://example.com bascik --build`, upload `dist/` to any static host |
 | `data-bascik-server`, `data-bascik-stream`, or `src/api/` | `bascik --build && bascik --server` on Node, or `bascik --build --target cloudflare` for a Worker bundle |
 
-`bascik --server` details (TLS, caching, compression, rate limits, proxies, health checks, Docker, systemd) and the Cloudflare target: [references/deployment.md](references/deployment.md).
+## Look it up
 
-## References
+| How do I... | Read |
+|---|---|
+| Find an option and its default | `/configuration` |
+| Choose a host, deploy static output | `/deployment`, `/deployment/static-hosting` |
+| Run `bascik --server` (TLS, caching, compression, rate limits, proxies, health checks) | `/production-server` |
+| Deploy to Cloudflare Workers or Pages | `/deployment/cloudflare` |
+| Write exec scripts and pick a phase | `/exec-scripts` |
+| Control the sitemap and robots.txt | `/sitemap` |
+| Set per-environment values | `/environment-variables` |
+| Share components across sites or repositories | `/how-to/monorepos`, `/how-to/sharing-components` |
 
-- [references/config-reference.md](references/config-reference.md): every option with its default, `http`, `minify.js`, TypeScript compiler, exec cycle semantics
-- [references/deployment.md](references/deployment.md): static hosting, the production server, hardening, reverse proxies, serverless targets
+`node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

@@ -4,20 +4,32 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { DiagnosticSeverity } from 'vscode-languageserver';
-import { buildSnapshot, findHtmlFiles } from './project.js';
+import { buildSnapshot, isInsideComponentRoots, type ProjectSnapshot } from './project.js';
 import { createDiagnostics } from './analyzer.js';
 
 interface CheckOptions {
   cwd: string;
   targetPath?: string;
+  projectPath?: string;
 }
+
+const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
 
 function parseArgs(args: string[]): CheckOptions {
   let targetPath: string | undefined;
+  let projectPath: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--stdio') {
       // Handled by main bin launcher
+      continue;
+    }
+    if (arg === '--project') {
+      projectPath = args[++i];
+      continue;
+    }
+    if (arg.startsWith('--project=')) {
+      projectPath = arg.slice('--project='.length);
       continue;
     }
     if (!arg.startsWith('-')) {
@@ -27,32 +39,52 @@ function parseArgs(args: string[]): CheckOptions {
   return {
     cwd: process.cwd(),
     targetPath,
+    projectPath,
   };
 }
 
-export async function runCliCheck(args: string[] = process.argv.slice(2)): Promise<number> {
-  const { cwd, targetPath } = parseArgs(args);
-  const targetRoot = targetPath ? path.resolve(cwd, targetPath) : cwd;
-
-  // Locate closest bascik.config file or fallback to targetRoot
-  let projectRoot = targetRoot;
-  let curr = targetRoot;
-  while (curr !== path.dirname(curr)) {
-    if (
-      fs.existsSync(path.join(curr, 'bascik.config.ts')) ||
-      fs.existsSync(path.join(curr, 'bascik.config.js')) ||
-      fs.existsSync(path.join(curr, 'bascik.config.mjs'))
-    ) {
-      projectRoot = curr;
-      break;
-    }
-    curr = path.dirname(curr);
+/** The nearest directory at or above `start` that holds a Bascik config file. */
+function findConfigRoot(start: string): string | undefined {
+  let curr = start;
+  while (true) {
+    if (CONFIG_FILES.some((file) => fs.existsSync(path.join(curr, file)))) return curr;
+    const parent = path.dirname(curr);
+    if (parent === curr) return undefined;
+    curr = parent;
   }
+}
+
+export async function runCliCheck(args: string[] = process.argv.slice(2)): Promise<number> {
+  const { cwd, targetPath, projectPath } = parseArgs(args);
+  const targetRoot = targetPath ? path.resolve(cwd, targetPath) : cwd;
 
   const stat = fs.existsSync(targetRoot) ? fs.statSync(targetRoot) : undefined;
   if (!stat) {
     console.error(`Error: Path does not exist: ${targetRoot}`);
     return 1;
+  }
+
+  // Project whose config decides component roots and the import root:
+  //   1. --project <dir>, for checking a folder that lives outside the project (a monorepo's shared components)
+  //   2. the project in the working directory, when the target is one of its component roots
+  //   3. the nearest config at or above the target, else the target itself
+  let projectRoot: string;
+  let snapshot: ProjectSnapshot | undefined;
+  if (projectPath !== undefined) {
+    projectRoot = path.resolve(cwd, projectPath);
+    if (!fs.existsSync(projectRoot) || !fs.statSync(projectRoot).isDirectory()) {
+      console.error(`Error: Project directory does not exist: ${projectRoot}`);
+      return 1;
+    }
+  } else {
+    const cwdProject = findConfigRoot(cwd);
+    if (cwdProject) {
+      const cwdSnapshot = await buildSnapshot(cwdProject);
+      if (isInsideComponentRoots(targetRoot.replace(/\\/g, '/'), cwdSnapshot.componentRoots)) {
+        snapshot = cwdSnapshot;
+      }
+    }
+    projectRoot = snapshot?.projectRoot ?? findConfigRoot(targetRoot) ?? targetRoot;
   }
 
   let filesToCheck: string[] = [];
@@ -87,7 +119,7 @@ export async function runCliCheck(args: string[] = process.argv.slice(2)): Promi
     }
   }
 
-  const snapshot = await buildSnapshot(projectRoot);
+  snapshot ??= await buildSnapshot(projectRoot);
   let errorCount = 0;
   let warningCount = 0;
 

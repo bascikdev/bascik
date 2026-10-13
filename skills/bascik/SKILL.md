@@ -1,6 +1,6 @@
 ---
 name: bascik
-description: Build websites with Bascik, the zero-runtime HTML component build tool. Use whenever a project depends on @bascik/bascik, has a bascik.config.ts, or keeps components in src/components/*.html, or when the user mentions Bascik. Covers pages, components, slots, props, attribute inheritance, the bascik CLI (dev, --build, --server, --check, add), project layout, and verifying compiled dist/ output. Start here; companion skills cover scoping, scripts, config, testing, and migration.
+description: Build websites with Bascik, the zero-runtime HTML component build tool. Use whenever a project depends on @bascik/bascik, has a bascik.config.ts, or keeps components in src/components/*.html, or when the user mentions Bascik. Covers pages, components, slots, props, attribute inheritance, the bascik CLI (dev, --build, --server, --check, add), project layout, verifying compiled dist/ output, building a new site, and copying tested example components. Start here; companion skills cover components, compatibility, scripts, SEO, config, testing, and migration.
 license: MIT
 metadata:
   author: bascik
@@ -95,7 +95,7 @@ New components are picked up by the running dev server automatically; no restart
 | Prop into an attribute | `<img data-bascik-attr-src="image" data-bascik-attr-alt="alt">` | `<my-card data-bascik-prop-image="/a.png" data-bascik-prop-alt="A" />` |
 | Forward attributes | (nothing) | `<my-card class="wide" aria-label="Promo" />` lands on the first root element |
 
-The slot element itself is replaced by the content, so named-slot wrappers disappear: wrap headings and links in a `<div data-bascik-slot="x">` rather than putting the attribute on the `<h1>` or `<a>`. Full details: [references/components.md](references/components.md).
+Pass props as `data-bascik-prop-<name>="..."` on the usage tag. A plain attribute such as `label="..."` is not a prop: it is forwarded to the root element and the prop keeps its default. The slot element itself is replaced by the content, so named-slot wrappers disappear: wrap headings and links in a `<div data-bascik-slot="x">` rather than putting the attribute on the `<h1>` or `<a>`. Details: `read-doc.mjs /slots`, `/props`, `/attribute-inheritance`.
 
 ## Script tags at a glance
 
@@ -123,7 +123,7 @@ bascik init                 # add Bascik to an existing project
 npx @bascik/language-server --check   # lint scoping patterns, unclosed tags, and directives
 ```
 
-New project: `npm create bascik@latest my-site -y`. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI, dev workflow, and error messages: [references/cli.md](references/cli.md).
+New project: `npm create bascik@latest my-site -y`. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
 ## Verify every change
 
@@ -147,41 +147,68 @@ All scripts are dependency-free Node.js (22.18+) and run from the project root. 
 | [`scripts/new-component.mjs`](scripts/new-component.mjs) | Create a component folder that follows the naming and ordering rules |
 | [`scripts/search-docs.mjs`](scripts/search-docs.mjs) | Search the live docs at bascik.dev for a topic |
 | [`scripts/read-doc.mjs`](scripts/read-doc.mjs) | Print the current text of a docs page, such as `/scoped-javascript` |
+| [`scripts/add-example.mjs`](scripts/add-example.mjs) | Copy a tested example component or part of the starter site from bascik.dev into the project (`--list` shows them) |
+| [`scripts/check-links.mjs`](scripts/check-links.mjs) | Find broken internal links, missing assets, and dead `#fragments` in the built `dist/`, honoring `base` |
 
 Run `list-components.mjs` before creating a component so you reuse what exists instead of duplicating it.
 
-## Look up current documentation
+## Look it up in the docs
 
-This skill covers the common path. For anything else, query the live docs instead of guessing:
+The docs at https://bascik.dev are the reference; this skill only holds the rules. Read the page for any task below before writing code, instead of guessing:
 
 ```sh
-node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 node <skill-dir>/scripts/read-doc.mjs /dynamic-routes
+node <skill-dir>/scripts/search-docs.mjs "dynamic routes trailing slash"
 ```
 
-The full page index is also at https://bascik.dev/llms.txt.
+| How do I... | Read |
+|---|---|
+| Write components, slots, props, attributes | `/components`, `/slots`, `/props`, `/attribute-inheritance` |
+| Pass shared `<head>` tags | `/how-to/templating` |
+| Use a library (petite-vue, Alpine.js, HTMX, Tailwind) | `/libraries` |
+| Use a third-party web component | `/how-to/third-party-web-components` |
+| Share components between projects | `/how-to/sharing-components`, `/how-to/publishing-components` |
+| Find answers to edge cases | `/faq` |
+| Use the CLI and the dev server | `/cli`, `/development-server` |
+
+The full page index is at https://bascik.dev/llms.txt.
+
+## Start from an example
+
+https://bascik.dev/examples has tested components (tabs, dialog, popover menu, copy button, filter list, contact form, theme toggle) and a complete starter site (layout components, SEO helper, Markdown blog, feed, `llms.txt`, contact page). Copy instead of writing from scratch, then adapt:
+
+```sh
+node <skill-dir>/scripts/add-example.mjs --list
+node <skill-dir>/scripts/add-example.mjs tab-group
+node <skill-dir>/scripts/add-example.mjs starter-site/src/lib/seo.ts
+```
+
+The script downloads from bascik.dev, maps files to the project's configured folders, also copies example components a file uses, and writes nothing if any file would overwrite a different one. It prints `bascik.config.ts` and `package.json` instead of copying them.
+
+## Build a new site
+
+1. `npm create bascik@latest my-site -y`, or read the existing project first with `list-components.mjs`. Add `BASCIK_SITE_URL=https://example.com` to `.env`.
+2. Plan the pages and URLs (one purpose and one `<h1>` each), the shared layout (head, header, footer), repeated content (a collection in `content/`), and anything that needs a server (API routes, per-request markup). Ask when the plan is unclear.
+3. Copy the foundation: `add-example.mjs starter-site`, or only the parts you need. Then replace the example name, navigation (`src/lib/nav.ts`), colors (tokens in `src/pages/css/styles.css`), and every page's `seo({ title, description })`.
+4. Add pages, components (`new-component.mjs`), and interactive examples. Load the companion skill for each area.
+5. Before launch: `npx bascik --build`, then `verify.mjs`, `check-links.mjs`, the `bascik-seo` audit, and the `bascik-components` token check. Read `/examples/starter-site#build-and-check-it` for the manual checklist.
 
 ## Companion skills
 
 | Skill | Load it when |
 |---|---|
-| `bascik-scoping` | Writing component CSS or `<script>` code, or compiled class and ID names look wrong |
-| `bascik-scripts` | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, Markdown, or API routes |
-| `bascik-config` | Creating or editing `bascik.config.ts`, deploying, or running `bascik --server` |
+| `bascik-components` | Writing component CSS or `<script>` code, adding interactivity, theming, or compiled class and ID names look wrong |
+| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature works in browsers and inside a component |
+| `bascik-scripts` | Using `data-bascik-build`, `-routes`, `-server`, `-stream`, API routes, Markdown, or a blog |
+| `bascik-seo` | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt` |
+| `bascik-config` | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server` |
 | `bascik-testing` | Writing tests, debugging, validating output, or tuning Lighthouse scores |
 | `bascik-migrate` | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress |
 
-If the companions or this skill's `references/` and `scripts/` folders are missing, the skill was installed as a single file. Reinstall the full set:
+If the companions or this skill's `scripts/` folder are missing, the skill was installed as a single file. Reinstall the full set:
 
 ```sh
 npx skills add bascikdev/bascik
 # or, without npx skills:
 mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
 ```
-
-## References
-
-- [references/components.md](references/components.md): component format, companion files, `@bascik` metadata, slots, props, attribute inheritance, head components, external custom elements
-- [references/cli.md](references/cli.md): every CLI command and flag, dev server behavior, error output, `bascik --check`, inspecting `dist/`
-- [references/libraries.md](references/libraries.md): CDN libraries, npm packages in the browser, petite-vue, Alpine.js, Tailwind CSS, HTMX
-- [references/faq.md](references/faq.md): common questions and edge cases

@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // One verification loop for a Bascik project: bascik --check, the language server linter, and optionally a build.
 import { parseArgs } from 'node:util';
-import { fail, findPackageBin, findProjectRoot, installedVersion, isMain, run } from './lib/project.mjs';
+import { isAbsolute, relative, sep } from 'node:path';
+import { componentRoots, fail, findPackageBin, findProjectRoot, installedVersion, isMain, loadProjectConfig, run } from './lib/project.mjs';
 
 const HELP = `Usage: node verify.mjs [--build] [--strict] [--npx]
 
 Runs, from the project root:
   1. bascik --check                       pages, components, config, and API routes
-  2. bascik-language-server --check       scoping patterns, unclosed tags, misplaced directives
+  2. bascik-language-server --check       scoping patterns, unclosed tags, misplaced directives (also run on
+                                          each directory.components root outside the project, such as a
+                                          monorepo's shared components)
   3. bascik --build (with --build)        a full production build
 
 Uses the project's installed packages. Exits nonzero when any step fails.
@@ -20,6 +23,17 @@ Options:
 
 const SITE_URL_HINT =
   'Hint: a production build needs a site URL for sitemap.xml and robots.txt. Set BASCIK_SITE_URL=https://example.com, pass --site-url, or add it to .env. Never put siteUrl in bascik.config.ts.';
+
+/**
+ * Component roots outside the project directory. The linter only scans below the directory it runs in, so shared
+ * roots such as ../../shared/components need their own pass. Exported for tests.
+ */
+export function externalComponentRoots(root, roots) {
+  return roots.filter((dir) => {
+    const rel = relative(root, dir);
+    return rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  });
+}
 
 function report(title, result) {
   const status = result.skipped ? 'SKIP' : result.code === 0 ? 'PASS' : 'FAIL';
@@ -53,11 +67,23 @@ async function main() {
   statuses.push(report(`bascik --check${values.strict ? ' --strict' : ''}`, await run(process.execPath, checkArgs, options)));
 
   const lsp = findPackageBin(root, '@bascik/language-server', 'bascik-language-server');
+  const config = await loadProjectConfig(root);
+  const external = externalComponentRoots(root, componentRoots(root, config?.module));
+  const lintTargets = [undefined, ...external];
+  const label = (target) => `bascik-language-server --check${target ? ` ${relative(root, target)}` : ''}`;
+  // --project makes the linter read this project's config for a folder outside it, so shared components are
+  // checked as components. The target stays last so an older linter that ignores --project still checks it.
+  const lintArgs = (target) => ['--check', ...(target ? ['--project', root, target] : [])];
   if (lsp) {
-    statuses.push(report('bascik-language-server --check', await run(process.execPath, [lsp, '--check'], options)));
+    for (const target of lintTargets) {
+      statuses.push(report(label(target), await run(process.execPath, [lsp, ...lintArgs(target)], options)));
+    }
   } else if (values.npx) {
     const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    statuses.push(report('npx @bascik/language-server --check', await run(npx, ['--yes', '@bascik/language-server', '--check'], { ...options, shell: process.platform === 'win32' })));
+    for (const target of lintTargets) {
+      const args = ['--yes', '@bascik/language-server', ...lintArgs(target)];
+      statuses.push(report(`npx ${label(target).replace('bascik-language-server', '@bascik/language-server')}`, await run(npx, args, { ...options, shell: process.platform === 'win32' })));
+    }
   } else {
     statuses.push(report('bascik-language-server --check', { skipped: 'not installed; npm install -D @bascik/language-server, or rerun with --npx' }));
   }

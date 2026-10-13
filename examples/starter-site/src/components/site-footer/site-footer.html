@@ -1,0 +1,35 @@
+<!-- @bascik
+The site footer with a copyright line. The year is filled in at build time, so the page ships no JavaScript for it.
+@prop name - Copyright holder. Defaults to "Example Site".
+-->
+<style>
+  .footer {
+    margin-top: var(--space-6);
+    padding-block: var(--space-4);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-muted);
+    font-size: 0.9rem;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .copyright {
+    margin: 0;
+  }
+</style>
+<footer class="footer">
+  <div class="row container">
+    <p class="copyright">
+      &copy;
+      <script data-bascik-build>
+        export default () => String(new Date().getFullYear());
+      </script>
+      <span data-bascik-prop-name>Example Site</span>
+    </p>
+  </div>
+</footer>

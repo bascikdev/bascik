@@ -1,0 +1,33 @@
+<!-- @bascik
+A dropdown menu with no JavaScript, using the HTML popover attribute. Escape and clicks outside close it. Where CSS anchor positioning is supported the menu opens below its button; elsewhere it opens centered.
+@prop label - Text of the button that opens the menu.
+@slot default - Menu content, usually links or buttons.
+-->
+<style>
+  .trigger {
+    font: inherit;
+  }
+
+  .menu {
+    min-width: 12rem;
+    margin: 0;
+    padding: 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 0.5rem;
+  }
+
+  /* The button that opens a popover is its implicit anchor, so each instance anchors to its own button. Do not
+     use anchor-name here: Bascik scopes it per component, so every instance would share one anchor. */
+  @supports (position-area: bottom) {
+    .menu {
+      inset: auto;
+      margin-top: 0.25rem;
+      position-area: bottom span-right;
+      position-try-fallbacks: flip-block;
+    }
+  }
+</style>
+<button class="trigger" type="button" popovertarget="menu" data-bascik-prop-label>Menu</button>
+<div class="menu" id="menu" popover>
+  <div data-bascik-slot></div>
+</div>

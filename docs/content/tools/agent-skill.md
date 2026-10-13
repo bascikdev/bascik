@@ -59,14 +59,16 @@ The core skill is also available on its own at [https://bascik.dev/assets/SKILL.
 
 | Skill | The assistant loads it when |
 |---|---|
-| `bascik` | Working in any Bascik project: layout, components, slots, props, the CLI, and checking output. Start here |
-| `bascik-scoping` | Writing component CSS or `<script>` code, or compiled class and ID names look wrong |
-| `bascik-scripts` | Using build, routes, server, or stream scripts, Markdown, or API routes |
-| `bascik-config` | Creating or editing `bascik.config.ts`, adding exec scripts, or deploying |
+| `bascik` | Working in any Bascik project: layout, components, slots, props, the CLI, checking output, copying examples, and building a new site. Start here |
+| `bascik-components` | Writing component CSS or `<script>` code, adding interactivity, setting up theming, or compiled class and ID names look wrong |
+| `bascik-compatibility` | Deciding whether an HTML, CSS, or JavaScript feature is safe to use, in browsers and inside a component |
+| `bascik-scripts` | Using build, routes, server, or stream scripts, API routes, Markdown, or a blog |
+| `bascik-seo` | Writing titles, descriptions, canonical URLs, social cards, JSON-LD, or `llms.txt` |
+| `bascik-config` | Creating or editing `bascik.config.ts`, adding exec scripts, deploying, or setting up a monorepo |
 | `bascik-testing` | Writing unit or E2E tests, debugging, validating `dist/`, or tuning Lighthouse scores |
 | `bascik-migrate` | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress |
 
-Each skill keeps its main instructions short and puts detail in a `references/` folder the assistant reads only when it needs it. The skills put the rules that matter most up front: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`.
+The skills hold only what an assistant must not get wrong: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`. For everything else they point to the page on this site that explains it, and `read-doc.mjs` prints that page, so the skills and the docs never disagree.
 
 ## Scripts the Assistant Runs
 
@@ -74,13 +76,21 @@ The skills include dependency-free Node.js scripts (Node 22.18 or newer). The as
 
 | Script | What it does |
 |---|---|
-| `bascik/scripts/verify.mjs` | Runs `bascik --check` and the [linter](/tools/linter), and with `--build` a production build, then reports each step |
+| `bascik/scripts/verify.mjs` | Runs `bascik --check` and the [linter](/tools/linter) (including component folders outside the project, such as a monorepo's shared components), and with `--build` a production build, then reports each step |
 | `bascik/scripts/preview.mjs` | Compiles a snippet or an existing page with your components and config in a scratch directory, and prints readable output |
 | `bascik/scripts/list-components.mjs` | Lists every component with its props, slots, companion files, and `@bascik` description |
 | `bascik/scripts/new-component.mjs` | Creates a component folder that follows the naming and ordering rules |
 | `bascik/scripts/search-docs.mjs` | Searches this documentation site |
 | `bascik/scripts/read-doc.mjs` | Prints a docs page as text, such as `/scoped-javascript` |
+| `bascik/scripts/add-example.mjs` | Copies an [example](/examples) into the right folders of your project, and refuses to overwrite your files |
+| `bascik/scripts/check-links.mjs` | Finds broken internal links, missing assets, and dead `#fragment` targets in `dist/`, honoring `base` |
+| `bascik-components/scripts/check-tokens.mjs` | Reports CSS custom properties that components read but no global stylesheet declares |
+| `bascik-compatibility/scripts/lookup.mjs` | Searches the [compatibility matrix](/compatibility) for a pattern, such as `container` or `setAttribute` |
+| `bascik-compatibility/scripts/baseline.mjs` | Reports a web feature's Baseline status and browser versions from the [Web Platform Status](https://webstatus.dev) API |
+| `bascik-scripts/scripts/new-post.mjs` | Creates a Markdown post with front matter the starter site's blog helper accepts |
+| `bascik-seo/scripts/audit-seo.mjs` | Checks every built page for a title, description, canonical URL, social tags, one `<h1>`, image `alt`, and valid JSON-LD |
 | `bascik-config/scripts/audit-config.mjs` | Flags config values that restate defaults, `siteUrl` in config, missing exec scripts, and watched output paths |
+| `bascik-config/scripts/check-workspace.mjs` | Lists every site in a repository with its shared folders and reports duplicate tags, broken `@/` imports in shared components, unwatched helpers, and mismatched Bascik versions |
 
 For example, after writing a component the assistant can confirm that two instances get separate IDs:
 
@@ -88,7 +98,16 @@ For example, after writing a component the assistant can confirm that two instan
 node .agents/skills/bascik/scripts/preview.mjs '<like-button data-bascik-prop-label="Like" />' --count 2 --body
 ```
 
-Only `new-component.mjs` writes to your project. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
+Only `new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
+
+## Examples
+
+The [Examples](/examples) section of this site has tested components and a complete starter site. The skills tell the assistant to start from them, and `add-example.mjs` downloads them from this site, so the files the assistant copies are the ones these pages show:
+
+```sh
+node .agents/skills/bascik/scripts/add-example.mjs --list
+node .agents/skills/bascik/scripts/add-example.mjs tab-group
+```
 
 ## Keeping the Skills Updated
 

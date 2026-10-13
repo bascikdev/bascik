@@ -61,7 +61,7 @@ test('each like button toggles independently', async ({ page }) => {
 
 ## Validate compiled HTML
 
-Install `parse5` as a dev dependency and `bascik --check` will report WHATWG parse errors in `dist/` HTML. For a test that fails the suite instead, walk `dist/**/*.html` and collect `onParseError` results; see [references/debugging.md](references/debugging.md#validate-dist-against-the-html-spec).
+Install `parse5` as a dev dependency and `bascik --check` will report WHATWG parse errors in `dist/` HTML. For a test that fails the suite instead, walk `dist/**/*.html` and collect `parse5` `onParseError` results; see `read-doc.mjs /testing/component-testing`.
 
 ## Debug
 
@@ -70,13 +70,19 @@ Install `parse5` as a dev dependency and `bascik --check` will report WHATWG par
 - **Wrong output:** run `node <skills-dir>/bascik/scripts/preview.mjs --page src/pages/x.html` to read the unminified compiled page.
 - **Stale build script output:** a script that reads the network or a directory is cached; add it to `scripts.cache.exclude` or delete `node_modules/.cache/bascik/script-cache`.
 
-VS Code launch configurations and step-by-step flows: [references/debugging.md](references/debugging.md).
+VS Code launch configurations and step-by-step flows: `read-doc.mjs /testing/debugging` and `/testing/source-maps`.
 
 ## Lighthouse
 
-Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklist: [references/lighthouse.md](references/lighthouse.md).
+Bascik output starts near 100 because it adds no runtime. The remaining points come from ordinary HTML practice: explicit image `width` and `height`, `loading="lazy"` below the fold only, preload of the hero image and critical fonts, `defer` scripts, a unique `<title>`, description, and canonical per page, landmarks, labeled controls, and `lang` on `<html>`. Checklists: `read-doc.mjs /lighthouse/performance`, `/lighthouse/accessibility`, `/lighthouse/best-practices`, `/lighthouse/seo`, and `/lighthouse/agentic-browsing`.
 
-## References
+## Look it up
 
-- [references/debugging.md](references/debugging.md): VS Code launch configurations, debugging server and build scripts, browser debugging, dist spec validation test
-- [references/lighthouse.md](references/lighthouse.md): performance, accessibility, best practices, SEO, and agentic browsing patterns
+| How do I... | Read |
+|---|---|
+| Unit test helpers and handlers | `/testing/unit-testing` |
+| Test components in a browser | `/testing/component-testing`, `/testing/e2e-testing` |
+| Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
+| Lint in CI | `/testing/linting`, `/tools/linter` |
+
+`node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

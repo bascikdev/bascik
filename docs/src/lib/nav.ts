@@ -115,6 +115,8 @@ export const NAV: NavSection[] = [
       { href: '/how-to/markdown', label: 'Markdown' },
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
       { href: '/how-to/templating', label: 'Templating' },
+      { href: '/how-to/interactivity', label: 'Interactivity' },
+      { href: '/how-to/theming', label: 'Theming' },
       { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
       { href: '/how-to/third-party-web-components', label: 'Third-Party Web Components' },
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
@@ -122,6 +124,20 @@ export const NAV: NavSection[] = [
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
       { href: '/how-to/monorepos', label: 'Monorepos' },
       { href: '/libraries', label: 'JavaScript Libraries' },
+    ]
+  },
+  {
+    section: 'Examples', pages: [
+      { href: '/examples', label: 'Overview' },
+      { href: '/examples/kitchen-sink', label: 'Kitchen Sink' },
+      { href: '/examples/starter-site', label: 'Starter Site' },
+      { href: '/examples/tab-group', label: 'Tab Group' },
+      { href: '/examples/modal-dialog', label: 'Modal Dialog' },
+      { href: '/examples/popover-menu', label: 'Popover Menu' },
+      { href: '/examples/copy-button', label: 'Copy Button' },
+      { href: '/examples/filter-list', label: 'Filter List' },
+      { href: '/examples/contact-form', label: 'Contact Form' },
+      { href: '/examples/theme-toggle', label: 'Theme Toggle' },
     ]
   },
   {
