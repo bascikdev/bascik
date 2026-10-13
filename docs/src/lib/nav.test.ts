@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NAV } from './nav.js';
+import { NAV, HOME_SITELINKS } from './nav.js';
 import { renderSectionLabel, renderPagination } from './render-nav.js';
 
 describe('NAV structure', () => {
@@ -25,6 +25,15 @@ describe('NAV structure', () => {
     const hrefs = NAV.flatMap(s => s.pages.map(p => p.href));
     const uniqueHrefs = new Set(hrefs);
     expect(uniqueHrefs.size).toEqual(hrefs.length);
+  });
+
+  it('keeps every Home search sitelink as a unique, internal NAV page', () => {
+    const internal = new Set(NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => p.href)));
+    expect(HOME_SITELINKS.length).toBeGreaterThan(0);
+    expect(new Set(HOME_SITELINKS).size).toBe(HOME_SITELINKS.length);
+    for (const href of HOME_SITELINKS) {
+      expect(internal.has(href)).toBe(true);
+    }
   });
 });
 

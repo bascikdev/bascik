@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tokens, basePath, score, snippet, buildResults } from './search-logic.js';
+import { tokens, basePath, score, snippet, buildResults, isNavigationalQuery, buildSitelinks } from './search-logic.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -220,6 +220,97 @@ describe('snippet', () => {
     const result = snippet(text, 'word', tokens('word'));
     // Allow a few extra chars for ellipsis characters
     expect(result.replace(/\u2026/g, '').length).toBeLessThanOrEqual(125);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isNavigationalQuery
+// ---------------------------------------------------------------------------
+
+describe('isNavigationalQuery', () => {
+  it.each([
+    'bascik', 'Bascik', '  bascik  ', 'bascik.dev', 'bascik.de', 'bascik.d', 'bascik dev', 'bascik docs',
+    'bascik documentation', 'https://bascik.dev', 'https://www.bascik.dev/', 'bascik home', 'home', 'homepage',
+    'basc', 'bascik official site',
+  ])('treats %j as a navigational query', (q) => {
+    expect(isNavigationalQuery(q)).toBe(true);
+  });
+
+  it.each([
+    '', 'bas', 'docs', 'dev', 'site', 'scoped styles', 'bascik components', 'bascik config', 'basic', 'components', 'bascikx',
+  ])('does not treat %j as a navigational query', (q) => {
+    expect(isNavigationalQuery(q)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Home result with sitelinks
+// ---------------------------------------------------------------------------
+
+const SITELINK_PATHS = ['/getting-started', '/why-bascik', '/components', '/scoped-styles'];
+
+const HOME_INDEX = [
+  entry({ navLabel: 'Bascik', section: 'Home', path: '/', text: 'Bascik is a build tool for HTML components.', sitelinks: SITELINK_PATHS }),
+  entry({ navLabel: 'Getting Started', section: 'Overview', path: '/getting-started', text: 'Install Bascik.' }),
+  entry({ navLabel: 'Getting Started', section: 'Overview', heading: 'Install', path: '/getting-started#install', text: 'Install Bascik with yarn.' }),
+  entry({ navLabel: 'Why Bascik', section: 'Overview', path: '/why-bascik', text: 'Why use Bascik.' }),
+  entry({ navLabel: 'Components', section: 'Features', path: '/components', text: 'Bascik components.' }),
+  entry({ navLabel: 'Scoped Styles', section: 'Features', path: '/scoped-styles', text: 'Bascik scopes CSS.' }),
+  entry({ navLabel: 'Slots', section: 'Features', path: '/slots', text: 'Bascik slots.' }),
+  entry({ navLabel: 'From Astro', section: 'Switch to Bascik', path: '/switch/from-astro', text: 'Move to Bascik.' }),
+];
+
+describe('buildResults Home result', () => {
+  it.each(['bascik', 'Bascik.dev', 'bascik docs', 'basc', 'home'])('puts Home first for %j', (query) => {
+    const q = query.toLowerCase().trim();
+    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+    expect(results[0].path).toBe('/');
+    expect(results[0].sitelinks).toEqual(SITELINK_PATHS);
+  });
+
+  it('does not repeat sitelink pages or their section entries in the remaining results', () => {
+    const q = 'bascik';
+    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+    const bases = results.slice(1).map(r => basePath(r.path));
+    for (const p of SITELINK_PATHS) expect(bases).not.toContain(p);
+    expect(bases).toContain('/slots');
+    expect(bases).toContain('/switch/from-astro');
+  });
+
+  it('counts Home toward the limit', () => {
+    const q = 'bascik';
+    expect(buildResults(HOME_INDEX, q, tokens(q), 2).length).toBe(2);
+  });
+
+  it.each(['scoped styles', 'bascik components', 'docs', 'slots'])('keeps Home out of %j results', (q) => {
+    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+    expect(results.some(r => r.path === '/')).toBe(false);
+  });
+
+  it('leaves non-navigational ordering and sitelink pages untouched', () => {
+    const q = 'scoped styles';
+    const results = buildResults(HOME_INDEX, q, tokens(q), 13);
+    expect(results[0].path).toBe('/scoped-styles');
+  });
+
+  it('returns no results for a navigational query when the index has no Home entry', () => {
+    const withoutHome = HOME_INDEX.filter(e => e.path !== '/');
+    const results = buildResults(withoutHome, 'bascik', tokens('bascik'), 13);
+    expect(results.some(r => r.sitelinks)).toBe(false);
+  });
+});
+
+describe('buildSitelinks', () => {
+  it('resolves sitelink paths to page-level entries in the declared order', () => {
+    const links = buildSitelinks(HOME_INDEX, HOME_INDEX[0]);
+    expect(links.map(l => l.path)).toEqual(SITELINK_PATHS);
+    expect(links.every(l => l.heading === null)).toBe(true);
+  });
+
+  it('skips paths missing from the index and tolerates a missing sitelinks list', () => {
+    const home = entry({ path: '/', sitelinks: ['/nope', '/components'] });
+    expect(buildSitelinks(HOME_INDEX, home).map(l => l.path)).toEqual(['/components']);
+    expect(buildSitelinks(HOME_INDEX, entry({ path: '/' }))).toEqual([]);
   });
 });
 

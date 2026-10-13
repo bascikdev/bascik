@@ -9,7 +9,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NAV } from '../src/lib/nav.ts';
+import { NAV, HOME_SITELINKS } from '../src/lib/nav.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, '..');
@@ -53,6 +53,30 @@ interface SearchEntry {
   path: string;
   heading: string | null;
   text: string;
+  /** Home entry only: ordered page paths the search UI nests beneath it. */
+  sitelinks?: string[];
+}
+
+function decodeAttr(value: string): string {
+  return value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+/**
+ * The Home entry reads its title and description from pages/index.html so the
+ * search result can never drift from what the page declares. It is surfaced
+ * only for brand queries (see isNavigationalQuery in search-logic.ts).
+ */
+async function homeEntry(): Promise<SearchEntry> {
+  let title = 'Bascik';
+  let text = '';
+  try {
+    const html = await readFile(join(docsDir, 'src/pages/index.html'), 'utf8');
+    const t = /<title>([^<]*)<\/title>/.exec(html);
+    if (t) title = decodeAttr(t[1]).trim();
+    const d = /<meta\s+name="description"\s+content="([^"]*)"/.exec(html);
+    if (d) text = decodeAttr(d[1]).trim();
+  } catch { }
+  return { title, navLabel: 'Bascik', section: 'Home', path: '/', heading: null, text, sitelinks: [...HOME_SITELINKS] };
 }
 
 function parseMd(md: string, navLabel: string, section: string, href: string): SearchEntry[] {
@@ -97,7 +121,7 @@ function parseMd(md: string, navLabel: string, section: string, href: string): S
   return entries;
 }
 
-const entries: SearchEntry[] = [];
+const entries: SearchEntry[] = [await homeEntry()];
 
 for (const { section, pages } of NAV) {
   for (const { href, label } of pages) {

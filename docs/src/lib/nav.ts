@@ -23,6 +23,19 @@ export interface NavSection {
   pages: NavPage[];
 }
 
+/**
+ * Pages the docs search shows nested under the Home result for brand queries
+ * such as "bascik". Order is display order. Every href must exist in NAV.
+ */
+export const HOME_SITELINKS: string[] = [
+  '/getting-started',
+  '/why-bascik',
+  '/developer-experience',
+  '/vs-frameworks',
+  '/components',
+  '/scoped-styles',
+];
+
 export const NAV: NavSection[] = [
   {
     section: 'Overview', pages: [

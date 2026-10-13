@@ -177,6 +177,32 @@
   font-weight: 500;
 }
 
+/* Home result: popular pages nested under the Home link */
+.sr-sitelinks {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  margin: 0 0 6px 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--border);
+}
+
+.sr-sitelink {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.sr-sitelink:hover,
+.sr-sitelink:focus {
+  background: var(--elevated);
+  outline: none;
+}
+
 .sr-sep {
   color: var(--text-muted);
   font-weight: 400;
