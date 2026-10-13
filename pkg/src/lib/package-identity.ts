@@ -124,6 +124,9 @@ const RESOLVER_SOURCE =
   "export const resolveFor = (spec) => import.meta.resolve(spec, import.meta.url);\n";
 
 let resolverModule: Promise<{ resolveFor: (spec: string) => string } | null> | null = null;
+const resolvedSpecMemo = new Map<string, ResolvedPackage>();
+const packageGraphMemo = new Map<string, string>();
+const MAX_PACKAGE_IDENTITY_MEMO = 256;
 
 /**
  * Ensure the resolver stub exists under the project temp dir and return its
@@ -219,6 +222,12 @@ export const resolvePackages = async (specifiers: string[]): Promise<ResolvedPac
   const resolveFor = ref.resolveFor;
 
   for (const spec of externals) {
+    const memoKey = `${cwd()}\u0000${spec}`;
+    const memoized = resolvedSpecMemo.get(memoKey);
+    if (memoized && !memoized.resolvedPath.startsWith("MISSING:")) {
+      resolved.push(memoized);
+      continue;
+    }
     let resolvedUrl: string;
     try {
       resolvedUrl = resolveFor(spec);
@@ -233,7 +242,12 @@ export const resolvePackages = async (specifiers: string[]): Promise<ResolvedPac
     const pathname = fileURLToPathname(resolvedUrl);
     const realPath = await realpathOf(pathname);
     const kind = await classifyKind(realPath);
-    resolved.push({ specifier: spec, kind, resolvedPath: realPath });
+    const pkg: ResolvedPackage = { specifier: spec, kind, resolvedPath: realPath };
+    if (resolvedSpecMemo.size >= MAX_PACKAGE_IDENTITY_MEMO) {
+      resolvedSpecMemo.delete(resolvedSpecMemo.keys().next().value as string);
+    }
+    resolvedSpecMemo.set(memoKey, pkg);
+    resolved.push(pkg);
   }
   return resolved;
 };
@@ -313,4 +327,12 @@ export const computePackageIdentity = async (specifiers: string[]): Promise<stri
 /** Reset resolver caching between tests/fixtures (avoids cross-cwd staleness). */
 export const resetPackageIdentity = (): void => {
   resolverModule = null;
+  resolvedSpecMemo.clear();
+  packageGraphMemo.clear();
+};
+
+/** Clear memoized package specifier resolutions. */
+export const clearPackageIdentityCache = (): void => {
+  resolvedSpecMemo.clear();
+  packageGraphMemo.clear();
 };

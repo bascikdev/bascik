@@ -1022,6 +1022,9 @@ export const injectProps = (
   props: Record<string, string>,
 ): string => {
   if (!fileContent) return "";
+  if (Object.keys(props).length === 0 && !fileContent.includes("data-bascik-prop-")) {
+    return fileContent;
+  }
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
     ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))

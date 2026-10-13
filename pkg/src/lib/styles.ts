@@ -208,23 +208,35 @@ export const addElementClassesInHtml = (
 ): string => {
   if (elementsConvertedClasses.length === 0) return componentHtml;
   const shielded = shieldNonMarkupHtml(componentHtml);
-  let result = shielded.html;
-  // Loop through each element that has styling
-  elementsConvertedClasses.forEach((element) => {
-    const bascikClassName = minifyAttributeName(
-      `bascik__${componentName}__el__${element}`,
-    );
-    // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    const elPattern = new RegExp(`<${element}(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`, "gis");
-    result = result.replace(
-      elPattern,
-      (openTag) => injectClassIntoTag(openTag, bascikClassName),
-    );
-  });
+  const elementClassMap = new Map<string, string>();
+  const escapedElements: string[] = [];
+  for (const element of elementsConvertedClasses) {
+    const lower = element.toLowerCase();
+    if (!elementClassMap.has(lower)) {
+      elementClassMap.set(
+        lower,
+        minifyAttributeName(`bascik__${componentName}__el__${element}`),
+      );
+      escapedElements.push(element.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    }
+  }
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const combinedPattern = new RegExp(
+    `<(${escapedElements.join("|")})(?![\\w.:-])(?:[^>"']|"[^"]*"|'[^']*')*>`,
+    "gis",
+  );
+  const result = shielded.html.replace(
+    combinedPattern,
+    (openTag, tagName: string) => {
+      const bascikClassName = elementClassMap.get(tagName.toLowerCase());
+      return bascikClassName ? injectClassIntoTag(openTag, bascikClassName) : openTag;
+    },
+  );
   return shielded.restore(result);
 };
 
 export const getKeyframeNames = (css: string): string[] | null => {
+  if (!css.includes("@keyframes") && !css.includes("@KEYFRAMES")) return null;
   // Anchor on the @keyframes at-rule itself so only the declared animation
   // name is captured — never `from`/`to`/percentage selectors or idents that
   // merely appear later in the stylesheet. Full CSS ident: [\w-]+ covers
@@ -260,6 +272,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
 };
 
 export const removeIdSelectors = (css: string): string => {
+  if (!/\[id\b/i.test(css)) return css;
   // Strips the [id] / [id="…"] attribute-selector form which cannot be
   // reliably scoped without DOM wrapping.  The hash form (#foo) is now
   // handled by convertCssIdSelectorsToClasses.
@@ -304,6 +317,7 @@ export const convertCssIdSelectorsToClasses = (
   css: string,
   componentName: string,
 ): { css: string; idsConverted: { idName: string; className: string }[] } => {
+  if (!css.includes("#")) return { css, idsConverted: [] };
   const seen = new Map<string, string>();
   const idsConverted: { idName: string; className: string }[] = [];
   // Mask literals first so a hash inside a string literal, a comment, or an
@@ -934,6 +948,7 @@ export const scopeViewTransitionNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("view-transition-name")) return css;
   const names = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   shielded.replace(
@@ -991,6 +1006,7 @@ export const scopeCounterStyleNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("@counter-style")) return css;
   const names = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all @counter-style declarations
@@ -1048,6 +1064,7 @@ export const scopeAnchorNames = (
   css: string,
   componentName: string,
 ): string => {
+  if (!css.includes("anchor-name") && !css.includes("@position-try")) return css;
   const names = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all anchor-name: --name declarations and @position-try --name declarations
@@ -1171,6 +1188,9 @@ export const scopeInlineStyleTags = (
   elementsConvertedClasses: string[];
   idsConverted: { idName: string; className: string }[];
 } => {
+  if (!html.includes("<style") && !html.includes("<STYLE")) {
+    return { html, elementsConvertedClasses: [], idsConverted: [] };
+  }
   const allElementClasses: string[] = [];
   const allIdsConverted: { idName: string; className: string }[] = [];
   const processedHtml = html.replace(

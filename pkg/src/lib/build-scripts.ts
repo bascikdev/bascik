@@ -61,7 +61,7 @@ import {
   type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
-import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
+import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport, clearPackageIdentityCache } from "./package-identity.ts";
 import { getImportRoot } from "./import-root.ts";
 import { applyOutputScope, decodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
 import { removeOutputDirectives } from "./output-directives.ts";
@@ -239,6 +239,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   outputKeysByDependency.clear();
   dependenciesByOutputKey.clear();
   dependencyScanCache.clear();
+  clearPackageIdentityCache();
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */

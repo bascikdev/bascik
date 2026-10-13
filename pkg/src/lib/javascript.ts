@@ -153,6 +153,15 @@ export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
 };
 
+export const __scopedCssCacheStatsForTests = {
+  hits: 0,
+  misses: 0,
+  reset(): void {
+    this.hits = 0;
+    this.misses = 0;
+  },
+};
+
 // A memo hit skips the name generation and CSS import planning that
 // scoping-template.ts must observe, so its recording runs compute the CSS.
 let bypassScopedCssCache = false;
@@ -281,6 +290,7 @@ const replaceSafeAttr = (
   return html.replace(
     /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
     (tagMatch) => {
+      if (!tagMatch.includes("=")) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
       const stringRanges: Array<{ start: number; end: number }> = [];
       let j = 0;
@@ -329,6 +339,20 @@ export const prefixElementAttribute = (
   preservedTags: string[] = [],
 ): BascikComponent => {
   if (!component.fileContent) return component;
+  if (
+    attribute === "id" &&
+    !/\sid\s*=/i.test(component.fileContent) &&
+    !component.fileContent.includes("data-bascik-preserve")
+  ) {
+    return component;
+  }
+  if (
+    attribute === "name" &&
+    !/\sname\s*=/i.test(component.fileContent) &&
+    !component.fileContent.includes("data-bascik-preserve")
+  ) {
+    return component;
+  }
 
   const { html: shieldedContent, restore } = shieldPreservedAttribute(
     component.fileContent,
@@ -457,13 +481,15 @@ export const prefixElementAttribute = (
         : null,
     );
     component.scopedIdNames = Object.fromEntries(scopedIds);
-    const inlineStyles = rewriteIdReferencesInStyleTags(
-      scopedAttrsHtml,
-      (originalId) => scopedIds.get(originalId) ?? null,
-    );
+    const inlineStyles = scopedAttrsHtml.includes("<style")
+      ? rewriteIdReferencesInStyleTags(
+          scopedAttrsHtml,
+          (originalId) => scopedIds.get(originalId) ?? null,
+        )
+      : { html: scopedAttrsHtml, changed: false };
     scopedAttrsHtml = inlineStyles.html;
     component.requiresPerInstanceCss = inlineStyles.changed;
-    if (component.cssFileContent) {
+    if (component.cssFileContent && /url\(/i.test(component.cssFileContent)) {
       const rewrittenCss = rewriteIdReferencesInCss(
         component.cssFileContent,
         (originalId) => scopedIds.get(originalId) ?? null,
@@ -704,23 +730,27 @@ export const prefixElementAttribute = (
     let allIdsConverted: { idName: string; className: string }[] = [];
 
     if (component.cssFileContent) {
-      // Memoization cache key: component name, scope key, CSS source, minify identifiers, and scopedIdNames.
-      // Every source in `cssFileContent` has had its imports resolved, so the key holds what was read from disk.
-      const scopedIdKey = component.scopedIdNames ? JSON.stringify(component.scopedIdNames) : "";
-      const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${scopedIdKey}::${component.cssFileContent}`;
+      if (component.scopedIdNames && /url\(/i.test(component.cssFileContent)) {
+        const rewrittenCss = rewriteIdReferencesInCss(
+          component.cssFileContent,
+          (originalId) => component.scopedIdNames?.[originalId] ?? null,
+        );
+        component.requiresPerInstanceCss ||= rewrittenCss !== component.cssFileContent;
+        component.cssFileContent = rewrittenCss;
+      }
+      // Memoization cache key: component name, scope key, minify identifiers, and CSS source.
+      // Every source in `cssFileContent` has had its imports and any url(#id) fragments resolved,
+      // so components whose CSS has no per-instance url(#id) references share one cache entry across instances.
+      const cacheKey = `${component.name}::${scopeKey}::${Boolean(BascikConfig.minify?.identifiers)}::${component.cssFileContent}`;
       const cached = bypassScopedCssCache ? undefined : scopedCssCache.get(cacheKey);
 
       if (cached) {
+        __scopedCssCacheStatsForTests.hits++;
         component.cssFileContent = cached.css;
         allElementClasses.push(...cached.allElementClasses);
         allIdsConverted.push(...cached.allIdsConverted);
       } else {
-        if (component.scopedIdNames) {
-          component.cssFileContent = rewriteIdReferencesInCss(
-            component.cssFileContent,
-            (originalId) => component.scopedIdNames?.[originalId] ?? null,
-          );
-        }
+        __scopedCssCacheStatsForTests.misses++;
         // Handle basic replacement of classnames in css file.
         // Shield string literals and url(...) contents first so dots inside
         // them (file extensions, domains) are never mistaken for class selectors:

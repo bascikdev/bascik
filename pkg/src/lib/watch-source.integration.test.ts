@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 const mocks = vi.hoisted(() => ({
   watch: vi.fn(), run: vi.fn(), batch: vi.fn(), all: vi.fn(), remove: vi.fn(),
   deps: vi.fn(), components: vi.fn(), importers: vi.fn(), clear: vi.fn(), copy: vi.fn(),
+  invalidateComponents: vi.fn(),
   shutdown: [] as (() => Promise<void>)[],
   config: { directory: { pages: 'src/pages', components: ['src/components'], out: 'dist' }, pipeline: { watchPaths: ['content/*.md'], exec: [{ script: 'scripts/pre.ts', watch: ['content/*.md'] }] } },
 }));
@@ -17,7 +18,7 @@ vi.mock('./events.ts', async () => {
 vi.mock('./exec.ts', async importOriginal => ({ ...await importOriginal<typeof import('./exec.ts')>(), runScript: mocks.run }));
 vi.mock('./processing.ts', () => ({ processAllPages: mocks.all, processPageBatch: mocks.batch, removePage: mocks.remove }));
 vi.mock('./mem.ts', () => ({ mem: { pagesDependentOnFile: mocks.deps, pagesThisComponentIsUsedOn: mocks.components } }));
-vi.mock('./components.ts', () => ({ invalidateComponentListCache: vi.fn(), componentsImportingStylesheet: mocks.importers }));
+vi.mock('./components.ts', () => ({ invalidateComponentListCache: mocks.invalidateComponents, componentsImportingStylesheet: mocks.importers }));
 vi.mock('./build-scripts.ts', () => ({ clearBuildScriptCaches: mocks.clear }));
 vi.mock('./file-system.ts', () => ({ copyStaticAssets: mocks.copy, copyReplicatePath: mocks.copy, deleteDistFile: mocks.remove, deleteDistDir: mocks.remove }));
 vi.mock('./asset-filter.ts', () => ({ isInlineStylesheet: () => false, isStaticAssetPath: () => false }));
@@ -30,6 +31,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   for (const mock of [mocks.run, mocks.batch, mocks.all, mocks.remove, mocks.copy]) mock.mockReset().mockResolvedValue(undefined);
   mocks.clear.mockReset();
+  mocks.invalidateComponents.mockReset();
   mocks.deps.mockReset().mockReturnValue(['src/pages/consumer.html']);
   mocks.components.mockReset().mockReturnValue([]);
   mocks.importers.mockReset().mockReturnValue([]);
@@ -155,5 +157,38 @@ describe('source observer and phase queue integration', () => {
     expect(bootCompile).toHaveBeenCalledOnce();
     expect(mocks.copy).toHaveBeenCalledTimes(1);
     expect(mocks.all).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps component list cache and unrelated build script memos warm on a direct page HTML edit', async () => {
+    mocks.deps.mockReturnValue([]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit('boot-done');
+    mocks.clear.mockClear();
+    mocks.invalidateComponents.mockClear();
+
+    const editedPage = resolve('src/pages/index.html');
+    watcher.emit('all', 'change', editedPage);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.invalidateComponents).not.toHaveBeenCalled();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedPage);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([editedPage]);
+  });
+
+  it('invalidates component list cache and clears per-path build script memo when a component file changes', async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.components.mockReturnValue(['src/pages/index.html']);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit('boot-done');
+    mocks.clear.mockClear();
+    mocks.invalidateComponents.mockClear();
+
+    const editedComponent = resolve('src/components/my-card/my-card.html');
+    watcher.emit('all', 'change', editedComponent);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedComponent);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([resolve('src/pages/index.html')]);
   });
 });

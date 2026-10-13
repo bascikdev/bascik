@@ -623,57 +623,67 @@ export const recursivelyTranspile = (
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
-      const componentNames = new Set(Object.keys(componentList));
-      const protectedChildren: Array<{ placeholder: string; content: string }> = [];
-      let slotTemplate = component.fileContent;
-      let childSearchFrom = 0;
-      // The usage site's default slot content, computed once. It is also what a default slot
-      // marker written inside a nested child's usage tag receives (see below).
-      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
-      while (childSearchFrom < slotTemplate.length) {
-        const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
-          startIndex?: number;
-          endIndex?: number;
-          contentStart?: number;
-          closeIndex?: number;
-        };
-        if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
-        const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
-        let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
-        // Forward the default slot: a valueless `data-bascik-slot` marker written between a
-        // child's usage tags is this template's own marker (named wrappers stay with the
-        // child). Only the child's inner content is touched, never its opening tag.
-        if (
-          typeof child.contentStart === "number" &&
-          typeof child.closeIndex === "number" &&
-          child.closeIndex > child.contentStart
-        ) {
-          const innerStart = child.contentStart - child.startIndex;
-          const innerEnd = child.closeIndex - child.startIndex;
-          childContent =
-            childContent.slice(0, innerStart) +
-            replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
-            childContent.slice(innerEnd);
+      let transpiledTag: string;
+      const hasTemplateSlot = component.fileContent.includes("data-bascik-slot");
+      const hasUsageSlot = Boolean(component.innerContent && component.innerContent.includes("data-bascik-slot"));
+      if (!hasTemplateSlot && !hasUsageSlot) {
+        const defaultSlotContent = extractDefaultSlotContent(component.innerContent);
+        const namedSlots = extractNamedSlotContent(component.innerContent);
+        const slotTemplate = replaceNamedSlots(component.fileContent, namedSlots);
+        transpiledTag = replaceDefaultSlots(slotTemplate, defaultSlotContent);
+      } else {
+        const componentNames = new Set(Object.keys(componentList));
+        const protectedChildren: Array<{ placeholder: string; content: string }> = [];
+        let slotTemplate = component.fileContent;
+        let childSearchFrom = 0;
+        // The usage site's default slot content, computed once. It is also what a default slot
+        // marker written inside a nested child's usage tag receives (see below).
+        const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
+        while (childSearchFrom < slotTemplate.length) {
+          const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
+            startIndex?: number;
+            endIndex?: number;
+            contentStart?: number;
+            closeIndex?: number;
+          };
+          if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
+          const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
+          let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
+          // Forward the default slot: a valueless `data-bascik-slot` marker written between a
+          // child's usage tags is this template's own marker (named wrappers stay with the
+          // child). Only the child's inner content is touched, never its opening tag.
+          if (
+            typeof child.contentStart === "number" &&
+            typeof child.closeIndex === "number" &&
+            child.closeIndex > child.contentStart
+          ) {
+            const innerStart = child.contentStart - child.startIndex;
+            const innerEnd = child.closeIndex - child.startIndex;
+            childContent =
+              childContent.slice(0, innerStart) +
+              replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
+              childContent.slice(innerEnd);
+          }
+          protectedChildren.push({ placeholder, content: childContent });
+          slotTemplate =
+            slotTemplate.slice(0, child.startIndex) +
+            placeholder +
+            slotTemplate.slice(child.endIndex);
+          childSearchFrom = child.startIndex + placeholder.length;
         }
-        protectedChildren.push({ placeholder, content: childContent });
-        slotTemplate =
-          slotTemplate.slice(0, child.startIndex) +
-          placeholder +
-          slotTemplate.slice(child.endIndex);
-        childSearchFrom = child.startIndex + placeholder.length;
-      }
-      // Resolve named slots from the usage inner HTML.
-      const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
-      slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
+        // Resolve named slots from the usage inner HTML.
+        const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
+        slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
 
-      // Replace <element data-bascik-slot> default slot markers.
-      // Named slots were already handled above by replaceNamedSlots.
-      let transpiledTag = replaceDefaultSlots(
-        slotTemplate,
-        defaultSlotContent,
-      );
-      for (const { placeholder, content } of protectedChildren) {
-        transpiledTag = transpiledTag.replace(placeholder, () => content);
+        // Replace <element data-bascik-slot> default slot markers.
+        // Named slots were already handled above by replaceNamedSlots.
+        transpiledTag = replaceDefaultSlots(
+          slotTemplate,
+          defaultSlotContent,
+        );
+        for (const { placeholder, content } of protectedChildren) {
+          transpiledTag = transpiledTag.replace(placeholder, () => content);
+        }
       }
 
       currentStage = "attribute inheritance";
@@ -1791,7 +1801,10 @@ export const transpilePage = async (
   await pendingMissingDeps;
   resume();
 
+  const seenDepComponents = new Set<string>();
   for (const comp of allUsedComponents) {
+    if (seenDepComponents.has(comp.name)) continue;
+    seenDepComponents.add(comp.name);
     const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
     if (compContent) {
       const componentSourcePath = comp.fileName

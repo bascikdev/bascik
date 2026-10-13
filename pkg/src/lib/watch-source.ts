@@ -51,10 +51,32 @@ export const watchSourceCycles = async (
       const pages = new Set<string>();
       let all = false;
       let staticAssetsInvalidated = false;
+      let shouldInvalidateComponents = false;
+      let shouldClearAllBuildCaches = false;
+      for (const path of paths) {
+        const kind = batchChanges.get(path)!;
+        const inPages = inside(path, pagesRoot);
+        const inComponents = componentRoots.some(root => inside(path, root));
+        const isDirectPageHtmlEdit = inPages && path.endsWith('.html') && kind === 'change';
+        if (inComponents || kind === 'addDir' || kind === 'unlinkDir') {
+          shouldInvalidateComponents = true;
+        } else if (!isDirectPageHtmlEdit && componentsImportingStylesheet(path).length > 0) {
+          shouldInvalidateComponents = true;
+        }
+        if (isDirectPageHtmlEdit || inComponents) {
+          clearBuildScriptCaches(path);
+        } else {
+          shouldClearAllBuildCaches = true;
+        }
+      }
       // Invalidate input-content memoization once after pre writes. Script
       // result caching remains enabled and rechecks the actual dependency bytes.
-      clearBuildScriptCaches();
-      invalidateComponentListCache();
+      if (shouldClearAllBuildCaches) {
+        clearBuildScriptCaches();
+      }
+      if (shouldInvalidateComponents || shouldClearAllBuildCaches) {
+        invalidateComponentListCache();
+      }
       for (const path of paths) {
         const kind = batchChanges.get(path)!;
         invalidateRuntimeModule(path);
