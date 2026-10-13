@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { parse } from "parse5";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -21,21 +21,17 @@ function createTempSite(files: Record<string, string>): string {
 }
 
 function runBascikCli(cwd: string, args: string[], env: NodeJS.ProcessEnv = {}): { status: number; stdout: string; stderr: string } {
-  try {
-    const stdout = execFileSync(process.execPath, [cliPath, ...args], {
-      cwd,
-      env: { ...process.env, BASCIK_SITE_URL: "https://example.com", ...env },
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { status: 0, stdout, stderr: "" };
-  } catch (err: any) {
-    return {
-      status: err.status ?? 1,
-      stdout: String(err.stdout ?? ""),
-      stderr: String(err.stderr ?? ""),
-    };
-  }
+  const res = spawnSync(process.execPath, [cliPath, ...args], {
+    cwd,
+    env: { ...process.env, BASCIK_SITE_URL: "https://example.com", ...env },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return {
+    status: res.status ?? 1,
+    stdout: String(res.stdout ?? ""),
+    stderr: String(res.stderr ?? ""),
+  };
 }
 
 function assertValidHtml5(html: string, label: string): void {
@@ -292,6 +288,341 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30000);
+
+  it("Archetype 6: Next.js API Routes REST Port (src/api/users.ts, src/api/user/[id].ts, 405 Allow, derived HEAD/OPTIONS, client fetch)", async () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default { http: { port: 19877 } };\n`,
+      "src/api/users.ts": [
+        "const users = [{ id: 1, name: 'Ada' }, { id: 2, name: 'Linus' }, { id: 3, name: 'Grace' }];",
+        "export async function GET() {",
+        "  return Response.json(users);",
+        "}",
+      ].join("\n"),
+      "src/api/user/[id].ts": [
+        "export async function GET(_request: Request, context: { params: { id: string } }) {",
+        "  const parsed = Number.parseInt(context.params.id, 10);",
+        "  const id = Number.isNaN(parsed) ? null : parsed;",
+        "  return Response.json({ id, name: `User ${context.params.id}` });",
+        "}",
+        "export async function PUT(request: Request, context: { params: { id: string } }) {",
+        "  const url = new URL(request.url);",
+        "  const parsed = Number.parseInt(context.params.id, 10);",
+        "  const id = Number.isNaN(parsed) ? null : parsed;",
+        "  const name = url.searchParams.get('name') || `User ${context.params.id}`;",
+        "  return Response.json({ id, name });",
+        "}",
+      ].join("\n"),
+      "src/components/user-list/user-list.html": [
+        '<section id="users-root" class="user-list">',
+        '  <h2>Users</h2>',
+        '  <ul id="list" class="items"></ul>',
+        "</section>",
+        "<script>",
+        '  const list = document.getElementById("list");',
+        '  fetch("/api/users").then(r => r.json()).then(users => {',
+        '    list.innerHTML = users.map(u => `<li class="item"><a href="/user/${u.id}">${u.name}</a></li>`).join("");',
+        "  });",
+        "</script>",
+      ].join("\n"),
+      "src/components/user-list/user-list.css": "#users-root > h2 { margin: 0; } .user-list .item { list-style: none; }",
+      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Users API</title></head><body><user-list /></body></html>",
+      "src/pages/user/[id].html": [
+        "<!DOCTYPE html><html><head><title>User Profile</title></head><body>",
+        "<script data-bascik-routes>",
+        "  export default async () => [{ params: { id: '1' } }, { params: { id: '2' } }, { params: { id: '3' } }];",
+        "</script>",
+        "<script data-bascik-server>",
+        "  export default async (request) => {",
+        "    const url = new URL(request.url);",
+        "    return `<h1 data-path=\"${url.pathname}\">Profile</h1>`;",
+        "  };",
+        "</script>",
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    const buildRes = runBascikCli(dir, ["--build"]);
+    expect(buildRes.status, buildRes.stderr).toBe(0);
+    // Static build warns that API routes require --server
+    expect(buildRes.stdout + buildRes.stderr).toMatch(/api/i);
+
+    const checkRes = runBascikCli(dir, ["--check"]);
+    expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+    const child = spawn(process.execPath, [cliPath, "--server", "--port", "19877"], {
+      cwd: dir,
+      env: { ...process.env, BASCIK_SITE_URL: "https://example.com" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let output = "";
+    child.stdout?.on("data", (chunk) => { output += String(chunk); });
+    child.stderr?.on("data", (chunk) => { output += String(chunk); });
+
+    const waitForServer = (): Promise<void> =>
+      new Promise((resolvePromise, rejectPromise) => {
+        const start = Date.now();
+        const timer = setInterval(() => {
+          if (output.includes("19877")) {
+            clearInterval(timer);
+            resolvePromise();
+          } else if (Date.now() - start > 10000) {
+            clearInterval(timer);
+            rejectPromise(new Error(`Server did not start:\n${output}`));
+          }
+        }, 50);
+      });
+
+    try {
+      await waitForServer();
+
+      const getUsers = await fetch("http://localhost:19877/api/users");
+      expect(getUsers.status).toBe(200);
+      expect(await getUsers.json()).toEqual([
+        { id: 1, name: "Ada" },
+        { id: 2, name: "Linus" },
+        { id: 3, name: "Grace" },
+      ]);
+
+      const getUser = await fetch("http://localhost:19877/api/user/2");
+      expect(getUser.status).toBe(200);
+      expect(await getUser.json()).toEqual({ id: 2, name: "User 2" });
+
+      const putUser = await fetch("http://localhost:19877/api/user/2?name=Grace+Hopper", { method: "PUT" });
+      expect(putUser.status).toBe(200);
+      expect(await putUser.json()).toEqual({ id: 2, name: "Grace Hopper" });
+
+      const nonNumeric = await fetch("http://localhost:19877/api/user/abc");
+      expect(nonNumeric.status).toBe(200);
+      expect(await nonNumeric.json()).toEqual({ id: null, name: "User abc" });
+
+      // 405 Method Not Allowed + Allow header
+      const postUser = await fetch("http://localhost:19877/api/user/2", { method: "POST" });
+      expect(postUser.status).toBe(405);
+      expect(postUser.headers.get("allow")).toContain("GET");
+      expect(postUser.headers.get("allow")).toContain("PUT");
+
+      // Derived HEAD and auto OPTIONS
+      const headUser = await fetch("http://localhost:19877/api/user/2", { method: "HEAD" });
+      expect(headUser.status).toBe(200);
+      expect(await headUser.text()).toBe("");
+
+      const optionsUser = await fetch("http://localhost:19877/api/user/2", { method: "OPTIONS" });
+      expect(optionsUser.status).toBe(204);
+      expect(optionsUser.headers.get("allow")).toContain("GET");
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise((r) => child.once("close", r));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20000);
+
+  it("Archetype 7: Next.js i18n Multi-Locale Routing ([locale]/index.html, [locale]/[...slug] catch-all API, hreflang links)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/locale-switcher/locale-switcher.html": [
+        '<nav id="lang-nav" class="lang-nav" aria-label="Language selector">',
+        '  <a class="lang-link" data-bascik-attr-href="enHref" hreflang="en">English</a>',
+        '  <a class="lang-link" data-bascik-attr-href="frHref" hreflang="fr">Français</a>',
+        '  <a class="lang-link" data-bascik-attr-href="nlHref" hreflang="nl">Nederlands</a>',
+        "</nav>",
+      ].join("\n"),
+      "src/components/locale-switcher/locale-switcher.css": "#lang-nav > a.lang-link { padding: 4px 8px; }",
+      "src/api/i18n/[locale]/[...slug].ts": [
+        "export async function GET(_request: Request, context: { params: { locale: string; slug: string[] } }) {",
+        "  return Response.json({ locale: context.params.locale, path: context.params.slug.join('/') });",
+        "}",
+      ].join("\n"),
+      "src/pages/[locale]/index.html": [
+        "<!DOCTYPE html><html><head><title>i18n</title></head><body>",
+        "<script data-bascik-routes>",
+        "  export default async () => [",
+        "    { params: { locale: 'en' }, data: { greeting: 'Hello World' } },",
+        "    { params: { locale: 'fr' }, data: { greeting: 'Bonjour le monde' } },",
+        "    { params: { locale: 'nl' }, data: { greeting: 'Hallo Wereld' } },",
+        "  ];",
+        "</script>",
+        '<locale-switcher data-bascik-prop-enHref="/en/" data-bascik-prop-frHref="/fr/" data-bascik-prop-nlHref="/nl/" />',
+        "<script data-bascik-build>",
+        "  export default () => {",
+        "    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');",
+        "    return `<h1>${route.data?.greeting ?? ''}</h1>`;",
+        "  };",
+        "</script>",
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      for (const [locale, greeting] of [
+        ["en", "Hello World"],
+        ["fr", "Bonjour le monde"],
+        ["nl", "Hallo Wereld"],
+      ] as const) {
+        const html = readFileSync(join(dir, `dist/${locale}/index.html`), "utf8");
+        assertValidHtml5(html, `Archetype 7 ${locale}/index.html`);
+        expect(html).toContain(`<h1>${greeting}</h1>`);
+        expect(html).toContain('href="/en/"');
+        expect(html).toContain('href="/fr/"');
+        expect(html).toContain('href="/nl/"');
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 8: Portfolio & Agency Landing Page (Modal dialog, filterable grid, unquoted & whitespace-spaced HTML attributes, CSS @layer/@container/@keyframes)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/portfolio-modal/portfolio-modal.html": [
+        "<dialog id = modal-box class = modal-shell>",
+        "  <header id=modal-header>",
+        "    <h3 data-bascik-prop-title></h3>",
+        "    <button id = close-btn class=close-btn type=button commandfor=modal-box>Close</button>",
+        "  </header>",
+        "  <div class=modal-body><div data-bascik-slot></div></div>",
+        "</dialog>",
+        "<script>",
+        '  const dialog = document.getElementById("modal-box");',
+        '  const closeBtn = document.getElementById("close-btn");',
+        '  closeBtn.addEventListener("click", () => dialog.close());',
+        "</script>",
+      ].join("\n"),
+      "src/components/portfolio-modal/portfolio-modal.css": [
+        "@layer modal {",
+        "  .modal-shell { container-name: modal-card; animation: popIn 0.2s ease; }",
+        "  #modal-header > h3 { margin: 0; }",
+        "}",
+        "@keyframes popIn { from { opacity: 0; } to { opacity: 1; } }",
+        "@container modal-card (min-width: 300px) { .modal-body { padding: 16px; } }",
+      ].join("\n"),
+      "src/pages/index.html": [
+        "<!DOCTYPE html><html><head><title>Agency Portfolio</title></head><body>",
+        '<portfolio-modal data-bascik-prop-title="Project Alpha"><p>Alpha details</p></portfolio-modal>',
+        '<portfolio-modal data-bascik-prop-title="Project Beta"><p>Beta details</p></portfolio-modal>',
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 8 portfolio index.html");
+      expect(html).toContain("Project Alpha");
+      expect(html).toContain("Project Beta");
+      // Verify commandfor=modal-box was rewritten to match each instance's scoped dialog id
+      const dialogIds = [...html.matchAll(/<dialog[^>]*\sid\s*=\s*"([^"]+)"/g)].map((m) => m[1]);
+      expect(dialogIds).toHaveLength(2);
+      expect(dialogIds[0]).not.toBe(dialogIds[1]);
+      for (const id of dialogIds) {
+        expect(html).toContain(`commandfor="${id}"`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 9: Sverdle / Interactive Word-Game & Form-State App (Exclusive <details name>, <output for>, table headers, TypeScript companion script)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/word-board/word-board.html": [
+        '<div id="board" class="board">',
+        '  <table><thead><tr><th id="col-guess">Guess</th><th id="col-score">Score</th></tr></thead>',
+        '  <tbody><tr><td headers="col-guess">CRANE</td><td headers="col-score">5/5</td></tr></tbody></table>',
+        '  <form id="guess-form"><input id="letter-a" name="letter"><output for="letter-a">Ready</output></form>',
+        '  <details name="hint-group"><summary>Hint 1</summary><p>Starts with C</p></details>',
+        '  <details name="hint-group"><summary>Hint 2</summary><p>Ends with E</p></details>',
+        "</div>",
+        '<script src="word-board.ts"></script>',
+      ].join("\n"),
+      "src/components/word-board/word-board.ts": [
+        "type BoardState = 'idle' | 'won';",
+        "const board = document.getElementById('board');",
+        "const state: BoardState = 'won';",
+        "if (board && state === 'won') board.classList.add('board-won');",
+      ].join("\n"),
+      "src/components/word-board/word-board.css": "#board table td { padding: 4px; } .board-won { border-color: green; }",
+      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Word Game</title></head><body><word-board /><word-board /></body></html>",
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 9 word-game index.html");
+      // TypeScript type annotation should be stripped
+      expect(html).not.toContain("BoardState");
+      // Exclusive details name groups should be scoped per instance (2 instances x 2 details = 2 distinct names)
+      const detailNames = [...html.matchAll(/<details name="([^"]+)">/g)].map((m) => m[1]);
+      expect(detailNames).toHaveLength(4);
+      expect(detailNames[0]).toBe(detailNames[1]);
+      expect(detailNames[2]).toBe(detailNames[3]);
+      expect(detailNames[0]).not.toBe(detailNames[2]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 10: Band / Event Tour Site with Merch Store, CSP Hashes, Build Manifest, & External Custom Elements", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": [
+        "export default {",
+        "  components: { external: ['spotify-*', 'bandcamp-player'] },",
+        "  scoping: { preserve: ['bandcamp-player'] },",
+        "  generate: { cspHashes: true, manifest: true },",
+        "};",
+      ].join("\n"),
+      "src/components/tour-stop/tour-stop.html": [
+        '<article id="stop" class="tour-stop">',
+        '  <h3 data-bascik-prop-city></h3>',
+        '  <time data-bascik-attr-datetime="date" data-bascik-prop-date></time>',
+        '  <a class="ticket-btn" data-bascik-attr-href="ticketUrl">Tickets</a>',
+        "</article>",
+      ].join("\n"),
+      "src/components/tour-stop/tour-stop.css": "#stop > h3 { text-transform: uppercase; } .tour-stop .ticket-btn { font-weight: bold; }",
+      "src/pages/index.html": [
+        "<!DOCTYPE html><html><head><title>Band Tour</title></head><body>",
+        '<tour-stop data-bascik-prop-city="Seattle" data-bascik-prop-date="2026-11-01" data-bascik-prop-ticketUrl="/tickets/sea" />',
+        '<tour-stop data-bascik-prop-city="Portland" data-bascik-prop-date="2026-11-03" data-bascik-prop-ticketUrl="/tickets/pdx" />',
+        '<spotify-embed track="123"></spotify-embed>',
+        '<bandcamp-player id="literal-player" class="literal-cls"><span id="inner-id">Audio</span></bandcamp-player>',
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 10 band tour index.html");
+      expect(html).toContain('datetime="2026-11-01"');
+      expect(html).toContain('href="/tickets/sea"');
+      expect(html).toContain('<bandcamp-player id="literal-player" class="literal-cls"><span id="inner-id">Audio</span></bandcamp-player>');
+      expect(existsSync(join(dir, "dist/.bascik/csp-hashes.json"))).toBe(true);
+      expect(existsSync(join(dir, "dist/.bascik/manifest.json"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it.each([
     "migration-examples/ports/react-product-table",
