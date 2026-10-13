@@ -2,12 +2,18 @@ import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
-import { cleanStackTrace } from "./stack-trace.ts";
+import { pathToFileURL } from "node:url";
+import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
-import { getRelativePath } from "./file-system.ts";
+import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { runDirectiveHandler } from "./script-runner.ts";
-import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers } from "./module-specifiers.ts";
+import {
+  LeadingSlashSpecifierError,
+  resolveScriptSrcPath,
+  rewriteModuleSpecifiersWithEdits,
+  type SpecifierEdit,
+} from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   ATTR,
@@ -250,14 +256,15 @@ export const executeRoutesScript = async (
   const relPath = filePath
     ? relative(process.cwd(), filePath).replace(/\\/g, "/")
     : "unknown";
+  // Where a routes tag is in the file as written, named as a stack frame names it.
+  const tagLocation = (tagIndex: number, tag: string): string => {
+    if (!filePath) return "";
+    const { tagLine, tagColumn } = directiveSourcePosition(html, tagIndex, tag);
+    return ` in "${getProjectPath(filePath)}" at (line ${tagLine}, column ${tagColumn})`;
+  };
 
   if (matches.length > 1) {
-    const index = matches[1].index ?? 0;
-    const prefix = html.slice(0, index);
-    const prefixLines = prefix.split(/\r?\n/);
-    const loc = filePath
-      ? ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`
-      : "";
+    const loc = tagLocation(matches[1].index ?? 0, scriptOpenTag(matches[1][0], matches[1][1]));
     throw new Error(
       `[bascik] error: More than one <script data-bascik-routes> tag found${loc}. A page has exactly one route list.`,
     );
@@ -279,24 +286,14 @@ export const executeRoutesScript = async (
   const openTag = scriptOpenTag(fullTag, scriptContent);
 
   if (ROUTES_BUILD_CONFLICT_RE.test(openTag)) {
-    const prefix = html.slice(0, index);
-    const prefixLines = prefix.split(/\r?\n/);
-    const loc = filePath
-      ? ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`
-      : "";
     throw new Error(
-      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-build${loc}. Remove one of the attributes.`,
+      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-build${tagLocation(index, openTag)}. Remove one of the attributes.`,
     );
   }
 
   if (ROUTES_SERVER_CONFLICT_RE.test(openTag)) {
-    const prefix = html.slice(0, index);
-    const prefixLines = prefix.split(/\r?\n/);
-    const loc = filePath
-      ? ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`
-      : "";
     throw new Error(
-      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-server${loc}. Remove one of the attributes.`,
+      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-server${tagLocation(index, openTag)}. Remove one of the attributes.`,
     );
   }
 
@@ -331,7 +328,7 @@ export const executeRoutesScript = async (
   const position = directiveSourcePosition(html, index, openTag);
   const locate = (): string => {
     if (!filePath) return "";
-    return ` (in "${getRelativePath(filePath, "pages")}" at line ${position.tagLine}, column ${position.tagColumn})`;
+    return ` (in "${getProjectPath(filePath)}" at line ${position.tagLine}, column ${position.tagColumn})`;
   };
   const rethrowLeadingSlash = (err: unknown): never => {
     if (err instanceof LeadingSlashSpecifierError) {
@@ -404,12 +401,14 @@ export const executeRoutesScript = async (
       ? dirname(resolve(process.cwd(), filePath))
       : process.cwd();
   let preparedScript: string;
+  let specifierEdits: SpecifierEdit[];
   try {
-    const rewritten = rewriteModuleSpecifiers(moduleSource, scriptBaseDir, { importRoot });
+    // Padded first, so the rewrite's edits are in the file's own lines and columns.
     // Without a known file there are no file lines to line up with.
-    preparedScript = moduleFilePath || !filePath
-      ? rewritten
-      : padToSourcePosition(rewritten, position.bodyLine, position.bodyColumn);
+    const padded = moduleFilePath || !filePath
+      ? moduleSource
+      : padToSourcePosition(moduleSource, position.bodyLine, position.bodyColumn);
+    ({ code: preparedScript, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
@@ -426,12 +425,11 @@ export const executeRoutesScript = async (
     if (err?.stdout) process.stdout.write(err.stdout);
     if (err?.stderr) process.stderr.write(err.stderr);
     const msg = err instanceof Error ? err.message : String(err);
-    // The module is padded to the file's own lines, so only the temp path needs renaming.
-    const cleanedMsg = cleanStackTrace(msg, tmpPath, moduleSourcePath, 1);
-    let errorMsg = `[bascik] routes script error`;
-    if (filePath) {
-      errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${position.tagLine}, column ${position.tagColumn})`;
-    }
+    // The module is padded to the file's own lines, so only the temp path needs renaming,
+    // and columns after a rewritten import on the same line need putting back.
+    const remapped = remapRewrittenColumns(msg, [tmpPath, pathToFileURL(tmpPath).href, moduleSourcePath], specifierEdits);
+    const cleanedMsg = cleanStackTrace(remapped, tmpPath, moduleSourcePath, 1);
+    const errorMsg = `[bascik] routes script error${tagLocation(index, openTag)}`;
     const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${cleanedMsg}`);
@@ -452,12 +450,7 @@ export const executeRoutesScript = async (
   } = validateRouteList(handlerResult, paramNames);
 
   if (parseError) {
-    let errorMsg = `[bascik] routes script error`;
-    if (filePath) {
-      const pfx = html.slice(0, index);
-      const lns = pfx.split(/\r?\n/);
-      errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
-    }
+    const errorMsg = `[bascik] routes script error${tagLocation(index, openTag)}`;
     const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
     if (behavior === "error") {
       console.error(`${errorMsg}:\n${parseError}`);

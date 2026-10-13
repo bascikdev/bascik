@@ -32,7 +32,7 @@ Line numbers match when JavaScript is not minified, which is the default for the
 Node.js runs each `<script data-bascik-build>`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` block as a module of its own. When a script throws:
 
 1. **Source Lines and Columns**: The stack names the file the script was written in and the failing line and column in that file (for example, `src/pages/dashboard.html:34:11`). This holds in components too, where markup and `<style>` blocks above the script are moved out before it runs.
-2. **Syntax Errors**: The file, the failing line, and a caret under the token are shown.
+2. **Syntax Errors**: In a build or routes script, the file, the failing line, and a caret under the token are shown. In a server or stream script, Node reports no line, so the file and the line the script starts on are shown.
 3. **Printed Once, Your Frames Only**: Each error is printed once. Node.js internals, Bascik's script runner, and Bascik's request handling are removed from the stack.
 4. **Clickable Terminal Links**: The `file:line:column` locations can be `Cmd + Click`ed (macOS) or `Ctrl + Click`ed (Windows/Linux) in VS Code to jump straight to the source line.
 

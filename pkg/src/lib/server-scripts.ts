@@ -22,14 +22,21 @@
 
 import { resolve, relative, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { BascikConfig } from "./config.ts";
-import { cleanStackTrace } from "./stack-trace.ts";
+import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { directiveSourceColumn, directiveSourcePosition, trimmedStartPosition } from "./directive-source.ts";
 import { ServerScriptError } from "./build-error.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, resolveModuleIdentity, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
-import { LeadingSlashSpecifierError, resolveScriptSrcPath, rewriteModuleSpecifiers, findModuleSpecifiers } from "./module-specifiers.ts";
+import {
+  LeadingSlashSpecifierError,
+  resolveScriptSrcPath,
+  rewriteModuleSpecifiersWithEdits,
+  findModuleSpecifiers,
+  type SpecifierEdit,
+} from "./module-specifiers.ts";
 import { getImportRoot } from "./import-root.ts";
 import {
   composeBufferedResponse,
@@ -331,8 +338,9 @@ export const runServerScriptJob = async (
       ? dirname(resolve(process.cwd(), containingFile))
       : process.cwd();
   let rewrittenCode: string;
+  let specifierEdits: SpecifierEdit[];
   try {
-    rewrittenCode = rewriteModuleSpecifiers(codeToExecute, scriptBaseDir, { importRoot });
+    ({ code: rewrittenCode, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(codeToExecute, scriptBaseDir, { importRoot }));
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
@@ -376,8 +384,15 @@ export const runServerScriptJob = async (
   const err = result.error ?? new Error("Server script error");
   if (result.isNetworkReset) return "";
 
-  const rawTrace = err.stack || err.message;
-  const cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset, columnOffset);
+  // Columns after a rewritten import on the same line are put back first, in module coordinates.
+  const moduleReferences = moduleFilePath ? [moduleFilePath, pathToFileURL(moduleFilePath).href] : [specifier, dataUri];
+  const rawTrace = remapRewrittenColumns(err.stack || err.message, moduleReferences, specifierEdits);
+  let cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset, columnOffset);
+  // An in-process `import()` of a module with a syntax error reports only Node's
+  // own loader frames, so nothing names the file. Point at where the script starts.
+  if (err instanceof SyntaxError && !cleanedMsg.includes(`${originalSourcePath}:`)) {
+    cleanedMsg += `\n    in the script that starts at ${originalSourcePath}:${lineOffset}:${columnOffset + 1}`;
+  }
   const requestPath = new URL(request.url).pathname;
   const errorMsg = `[bascik] server script error at "${requestPath}":\n${cleanedMsg}`;
   if (behavior === "error") throw new ServerScriptError(errorMsg);

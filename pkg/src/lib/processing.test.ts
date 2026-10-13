@@ -2340,6 +2340,38 @@ describe("component load failures (a component build script that throws)", () =>
     expect(errors[0][1]).toEqual({ message: expect.stringContaining("two component files") });
   });
 
+  it("names a failing page build script's own file and line in the overlay, as the terminal does", async () => {
+    // Components load; the page's own build script is what fails.
+    const componentsModule = await import("./components.ts");
+    vi.spyOn(componentsModule, "listComponents").mockResolvedValue({});
+    const { executeBuildScripts } = await import("./build-scripts.ts");
+    const execute = executeBuildScripts as ReturnType<typeof vi.fn>;
+    const originalExecute = execute.getMockImplementation();
+    execute.mockImplementation(async () => {
+      throw new BuildScriptError('[bascik] build script error in "src/pages/index.html" at (line 13, column 5):\nboom', {
+        sourceFile: "src/pages/index.html",
+        line: 13,
+        column: 5,
+      });
+    });
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue('<html><body><script data-bascik-build>boom()</script></body></html>');
+
+    try {
+      await processPageBatch(["src/pages/index.html"]).catch(() => undefined);
+      const errors = await emitted();
+      expect(errors).toHaveLength(1);
+      expect(errors[0][1]).toEqual({
+        message: expect.stringContaining("boom"),
+        file: "src/pages/index.html",
+        line: 13,
+        column: 5,
+      });
+    } finally {
+      if (originalExecute) execute.mockImplementation(originalExecute);
+      else execute.mockReset();
+    }
+  });
+
   it("does not publish when a compile scope owns the failure, so the cycle reports it exactly once", async () => {
     const { withCompilationPublisher } = await import("./compilation-events.ts");
     await expect(

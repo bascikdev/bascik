@@ -121,7 +121,7 @@ describe("build-time script errors (real `bascik --build`)", () => {
   });
 
   it("names the page file's line and column for a page build script, once", () => {
-    const header = `[bascik] build script error in "pages/build.html" at (line 9, column 5):`;
+    const header = `[bascik] build script error in "src/pages/build.html" at (line 9, column 5):`;
     const report = reportFor(output, header);
 
     expect(report).toContain(`at Module.default (src/pages/build.html:${locationOf(BUILD_PAGE, "new Error")})`);
@@ -130,7 +130,7 @@ describe("build-time script errors (real `bascik --build`)", () => {
   });
 
   it("names the component file's line, below the <style> Bascik extracts, once", () => {
-    const header = `[bascik] build script error in "components/failing-card/failing-card.html" at (line 7, column 1):`;
+    const header = `[bascik] build script error in "src/components/failing-card/failing-card.html" at (line 7, column 1):`;
     const report = reportFor(output, header);
 
     expect(report).toContain(
@@ -141,7 +141,7 @@ describe("build-time script errors (real `bascik --build`)", () => {
   });
 
   it("locates a syntax error, which Node reports with no location when it is caught", () => {
-    const report = reportFor(output, `[bascik] build script error in "pages/syntax.html" at (line 9, column 5):`);
+    const report = reportFor(output, `[bascik] build script error in "src/pages/syntax.html" at (line 9, column 5):`);
     const [line, column] = locationOf(SYNTAX_PAGE, "+;").split(":").map(Number);
 
     // Node's own report: the file and line, the source line, and a caret under the token.
@@ -151,7 +151,7 @@ describe("build-time script errors (real `bascik --build`)", () => {
   });
 
   it("names the template's line for a routes script, once", () => {
-    const report = reportFor(output, `[bascik] routes script error in "pages/blog/[slug].html" at (line 9, column 5):`);
+    const report = reportFor(output, `[bascik] routes script error in "src/pages/blog/[slug].html" at (line 9, column 5):`);
 
     expect(report).toContain(`at Module.default (src/pages/blog/[slug].html:${locationOf(ROUTES_TEMPLATE, "new Error")})`);
     expectOnlyUserFrames(report);
@@ -159,7 +159,7 @@ describe("build-time script errors (real `bascik --build`)", () => {
   });
 
   it("names a src= script's own files and lines, not the page", () => {
-    const report = reportFor(output, `[bascik] build script error in "pages/src.html" at (line 9, column 5):`);
+    const report = reportFor(output, `[bascik] build script error in "src/pages/src.html" at (line 9, column 5):`);
 
     expect(report).toMatch(new RegExp(`at explode \\(file://\\S+/src/lib/helper\\.ts:${locationOf(HELPER, "new Error")}\\)`));
     expect(report).toContain("at Module.default (src/lib/explode.ts:2:");
@@ -169,8 +169,43 @@ describe("build-time script errors (real `bascik --build`)", () => {
 
 const SERVER_PAGE = page("Server", `    <script data-bascik-server>\n      const unused = 1;\n\n      export default () => {\n        throw new Error("page server failure");\n      };\n    </script>`);
 const SERVER_COMPONENT = component("data-bascik-server", "component server failure");
+const STREAM_PAGE = page("Stream", `    <p>loading</p>\n    <script data-bascik-stream>\n      export default async () => {\n        throw new Error("page stream failure");\n      };\n    </script>`);
+const SERVER_SYNTAX_PAGE = page("Server syntax", `    <script data-bascik-server>\n      export default () => {\n        return "x" +;\n      };\n    </script>`);
+/** Windows line endings: lines are counted by `\n`, and a `\r` never shifts a column. */
+const CRLF_SERVER_PAGE = page("CRLF", `    <script data-bascik-server>\n      export default () => {\n        throw new Error("crlf server failure");\n      };\n    </script>`).replace(/\n/g, "\r\n");
+const CRLF_BUILD_PAGE = page("CRLF build", `    <script data-bascik-build>\n      export default () => {\n        throw new Error("crlf build failure");\n      };\n    </script>`).replace(/\n/g, "\r\n");
 
-describe("request-time script errors (real `bascik` dev server)", () => {
+describe("build-time script errors in a file with CRLF line endings", () => {
+  let root: string;
+  let output: string;
+
+  beforeAll(async () => {
+    root = await writeProject({
+      "bascik.config.ts": `export default { scripts: { onBuildScriptError: "warn" } };\n`,
+      "src/pages/index.html": page("Home", "    <p>ok</p>"),
+      "src/pages/crlf.html": CRLF_BUILD_PAGE,
+    });
+    ({ output } = await runBuild(root));
+  }, 120_000);
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("names the same line and column as an LF file", () => {
+    const report = reportFor(output, `[bascik] build script error in "src/pages/crlf.html" at (line 9, column 5):`);
+    expect(report).toContain(`at Module.default (src/pages/crlf.html:${locationOf(CRLF_BUILD_PAGE, "new Error")})`);
+    expectOnlyUserFrames(report);
+  });
+});
+
+/** How each server mode is started: the dev server from source, or the production server from a build. */
+const SERVER_MODES = [
+  { mode: "dev server (`bascik`)", args: [] as string[], build: false, portOffset: 0 },
+  { mode: "production server (`bascik --server`)", args: ["--server"], build: true, portOffset: 1 },
+];
+
+describe.each(SERVER_MODES)("request-time script errors (real $mode)", ({ args, build, portOffset }) => {
   let root: string;
   let child: ChildProcess;
   let output = "";
@@ -193,10 +228,19 @@ describe("request-time script errors (real `bascik` dev server)", () => {
       "src/pages/server.html": SERVER_PAGE,
       "src/pages/server-card.html": page("Server card", "    <server-card></server-card>"),
       "src/components/server-card/server-card.html": SERVER_COMPONENT,
+      "src/pages/stream.html": STREAM_PAGE,
+      "src/pages/server-syntax.html": SERVER_SYNTAX_PAGE,
+      "src/pages/crlf.html": CRLF_SERVER_PAGE,
     });
-    const port = 9800 + (process.pid % 150);
+    // The production server reads the sidecar the build wrote, so the recorded
+    // line and column have to survive the build to be right here.
+    if (build) {
+      const { code, output: buildOutput } = await runBuild(root);
+      if (code !== 0) throw new Error(`build exited ${code}:\n${buildOutput}`);
+    }
+    const port = 9800 + (process.pid % 150) + portOffset * 150;
     base = `http://localhost:${port}`;
-    child = spawn(process.execPath, [PKG_ENTRY], {
+    child = spawn(process.execPath, [PKG_ENTRY, ...args], {
       cwd: root,
       env: childEnv({ BASCIK_SERVER_PORT: String(port), BASCIK_ENABLE_TLS: "false" }),
       stdio: ["ignore", "pipe", "pipe"],
@@ -204,7 +248,7 @@ describe("request-time script errors (real `bascik` dev server)", () => {
     child.stdout?.on("data", (data: Buffer) => { output += data.toString(); });
     child.stderr?.on("data", (data: Buffer) => { output += data.toString(); });
     await waitFor(/Server running at/);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     if (child.exitCode === null) {
@@ -217,11 +261,15 @@ describe("request-time script errors (real `bascik` dev server)", () => {
   });
 
   it.each([
-    ["/server", "page server failure", "src/pages/server.html", SERVER_PAGE],
-    ["/server-card", "component server failure", "src/components/server-card/server-card.html", SERVER_COMPONENT],
-  ])("reports %s once, at the line in %s", async (path, message, file, source) => {
+    ["/server", "page server failure", "src/pages/server.html", SERVER_PAGE, 500],
+    ["/server-card", "component server failure", "src/components/server-card/server-card.html", SERVER_COMPONENT, 500],
+    ["/crlf", "crlf server failure", "src/pages/crlf.html", CRLF_SERVER_PAGE, 500],
+    // Headers are committed before a stream script runs, so it cannot become a 500.
+    ["/stream", "page stream failure", "src/pages/stream.html", STREAM_PAGE, 200],
+  ])("reports %s once, at the line in %s", async (path, message, file, source, status) => {
     const response = await fetch(`${base}${path}`);
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(status);
+    await response.text();
     await waitFor(new RegExp(message));
     // Give a second report the time it would take to arrive.
     await new Promise((done) => setTimeout(done, 300));
@@ -231,5 +279,17 @@ describe("request-time script errors (real `bascik` dev server)", () => {
     expectOnlyUserFrames(report);
     expect(report).not.toMatch(/Promise\.all|processTicksAndRejections/);
     expect(output.split(message).length - 1).toBe(1);
+  });
+
+  it("names the file and the line the script starts on for a syntax error, which Node reports with no location", async () => {
+    const response = await fetch(`${base}/server-syntax`);
+    expect(response.status).toBe(500);
+    await response.text();
+    await waitFor(/Unexpected token ';'/);
+
+    const report = reportFor(output, `[bascik] server script error at "/server-syntax":`);
+    expect(report).toContain("SyntaxError: Unexpected token ';'");
+    expect(report).toContain(`in the script that starts at src/pages/server-syntax.html:${locationOf(SERVER_SYNTAX_PAGE, "export default")}`);
+    expectOnlyUserFrames(report);
   });
 });

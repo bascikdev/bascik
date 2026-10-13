@@ -323,10 +323,10 @@ In the dev server, the error also appears as an overlay in every open browser, a
 
 ### Terminal Error Formatting
 
-When a build script fails, Bascik prints the error once. The header names the file and the line and column of the `<script data-bascik-build>` tag. The stack below it gives the line and column of the failing expression in that same file, including in a component, where markup and `<style>` blocks above the script are moved out before it runs. Frames from Node.js internals and from Bascik's own script runner are removed:
+When a build script fails, Bascik prints the error once. The header names the file and the line and column of the `<script data-bascik-build>` tag, as a path from the project root, the same text the stack shows. The stack below it gives the line and column of the failing expression in that same file, including in a component, where markup and `<style>` blocks above the script are moved out before it runs. Frames from Node.js internals and from Bascik's own script runner are removed:
 
 ```text
-[bascik] build script error in "pages/about.html" at (line 9, column 5):
+[bascik] build script error in "src/pages/about.html" at (line 9, column 5):
 Error: Could not load the team list
     at Module.default (src/pages/about.html:13:15)
 ```
@@ -334,7 +334,7 @@ Error: Could not load the team list
 A syntax error is shown with the failing line and a caret under the token:
 
 ```text
-[bascik] build script error in "pages/about.html" at (line 9, column 5):
+[bascik] build script error in "src/pages/about.html" at (line 9, column 5):
 src/pages/about.html:11
         return "x" +;
                     ^

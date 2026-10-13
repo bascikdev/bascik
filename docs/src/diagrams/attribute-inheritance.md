@@ -23,5 +23,5 @@
 
 <!-- demo:attribute-inheritance-id-own-out -->
 ```html
-<div class="bascik__own-id__x extra" id="bascik__own-id__5a888a96__mine">...</div>
+<div class="bascik__own-id__x extra" id="bascik__own-id__a1b2c3d4__mine">...</div>
 ```

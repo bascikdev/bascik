@@ -22,8 +22,8 @@
 
 <!-- demo:scoped-javascript-id-references-out -->
 ```html
-<label for="bascik__signup-form__a1b__email">Email</label>
-<input id="bascik__signup-form__a1b__email"
-  aria-describedby="bascik__signup-form__a1b__email-help">
-<p id="bascik__signup-form__a1b__email-help">Use your work address.</p>
+<label for="bascik__signup-form__a1b2c3d4__email">Email</label>
+<input id="bascik__signup-form__a1b2c3d4__email"
+  aria-describedby="bascik__signup-form__a1b2c3d4__email-help">
+<p id="bascik__signup-form__a1b2c3d4__email-help">Use your work address.</p>
 ```

@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fileURLToPath } from "node:url";
-import { cleanStackTrace } from "./stack-trace.ts";
+import { cleanStackTrace, KEEP_INTERNAL_FRAMES_ENV, remapRewrittenColumns } from "./stack-trace.ts";
+import { rewriteModuleSpecifiersWithEdits } from "./module-specifiers.ts";
 
 /** This directory, which is where Bascik's own modules live in a real install too (dist/lib/). */
 const bascikLib = fileURLToPath(new URL("./", import.meta.url));
@@ -39,9 +40,48 @@ describe("cleanStackTrace – frames that are not the user's", () => {
     expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(rawTrace);
   });
 
-  it("keeps frames of test fixtures that live next to Bascik's modules", () => {
-    const frame = `    at helper (file://${bascikLib}test-fixtures/helper.ts:2:3)`;
-    expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+  it("keeps frames of files in subdirectories, such as test fixtures, which are not Bascik's modules", () => {
+    for (const frame of [
+      `    at helper (file://${bascikLib}test-fixtures/helper.ts:2:3)`,
+      `    at helper (${bascikLib}__fixtures__/helper.ts:2:3)`,
+    ]) {
+      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+    }
+  });
+
+  it("drops a Bascik frame written as a plain path, without the file URL", () => {
+    const rawTrace = `Error: x\n    at default (src/pages/x.html:3:1)\n    at run (${bascikLib}server-scripts.ts:300:9)`;
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe("Error: x\n    at default (src/pages/x.html:3:1)");
+  });
+
+  it(`keeps Bascik's frames when ${KEEP_INTERNAL_FRAMES_ENV}=1`, () => {
+    const frame = `    at ScriptRegistry.invoke (file://${bascikLib}script-registry.ts:326:49)`;
+    vi.stubEnv(KEEP_INTERNAL_FRAMES_ENV, "1");
+    try {
+      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("maps every column after rewritten imports back to the column as written", () => {
+    const source = 'import a from "./a.ts"; import b from "./b.ts"; a(); b(); boom();\nnext();';
+    const { code, edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src/pages", { importRoot: "/project/src" });
+    expect(edits).toHaveLength(2);
+    const [rewrittenLine] = code.split("\n");
+    for (const token of ["a()", "b()", "boom()"]) {
+      const raw = `Error: x\n    at f (data:mod:1:${rewrittenLine.lastIndexOf(token) + 1})`;
+      expect(remapRewrittenColumns(raw, ["data:mod"], edits)).toBe(`Error: x\n    at f (data:mod:1:${source.lastIndexOf(token) + 1})`);
+    }
+    // Lines without a rewrite, and other files, are left alone.
+    expect(remapRewrittenColumns("    at g (data:mod:2:1)", ["data:mod"], edits)).toBe("    at g (data:mod:2:1)");
+    expect(remapRewrittenColumns("    at h (src/lib/x.ts:1:90)", ["data:mod"], edits)).toBe("    at h (src/lib/x.ts:1:90)");
+  });
+
+  it("maps a column inside a rewritten specifier to the start of the specifier as written", () => {
+    const source = 'import a from "./a.ts";';
+    const { edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src", { importRoot: "/project/src" });
+    expect(remapRewrittenColumns("at (m.mjs:1:30)", ["m.mjs"], edits)).toBe(`at (m.mjs:1:${edits[0].column})`);
   });
 
   it("keeps Node's located syntax-error report and drops its version trailer", () => {

@@ -15,7 +15,6 @@ src/components/
 src/components/
   my-card.html
   my-card.css
-  my-card.ts
 ```
 
 <!-- demo:components-layouts-subfolder -->
@@ -24,7 +23,6 @@ src/components/
   my-card/
     my-card.html
     my-card.css
-    my-card.ts
 ```
 
 <!-- demo:components-scope-boundary-page-in -->
@@ -44,7 +42,7 @@ src/components/
 
 <!-- demo:components-scope-boundary-component-out -->
 ```html
-<button id="bascik__site-nav__a1b__menu">
+<button id="bascik__site-nav__a1b2c3d4__menu">
 ```
 
 <!-- demo:components-shared-head-page -->

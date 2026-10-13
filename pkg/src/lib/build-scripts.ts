@@ -41,13 +41,13 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
-import { getRelativePath } from "./file-system.ts";
-import { findComponentRoot } from "./component-roots.ts";
+import { pathToFileURL } from "node:url";
+import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { BuildScriptError, type BuildScriptLocation } from "./build-error.ts";
 import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
-import { cleanStackTrace } from "./stack-trace.ts";
+import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
 import { runDirectiveHandler } from "./script-runner.ts";
 import {
@@ -56,7 +56,9 @@ import {
   resolveScriptSrcPath,
   resolveSpecifierPath,
   rewriteModuleSpecifiers,
+  rewriteModuleSpecifiersWithEdits,
   scanScript,
+  type SpecifierEdit,
 } from "./module-specifiers.ts";
 import { isScriptCacheEnabledForPath, pruneScriptCache } from "./script-cache.ts";
 import { computePackageIdentity, collectPackageSpecifiers, hasDynamicImport } from "./package-identity.ts";
@@ -74,24 +76,6 @@ import {
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
-
-const toPosixPath = (path: string): string => path.replace(/\\/g, "/");
-
-const isInsideDirectory = (path: string, directory: string): boolean => {
-  const root = toPosixPath(resolve(directory));
-  const candidate = toPosixPath(resolve(path));
-  return candidate === root || candidate.startsWith(`${root}/`);
-};
-
-/**
- * How an error message names the file a build script is in: `components/...` for a component,
- * `pages/...` for a page. The pages directory is checked first so a page is never mistaken for a
- * component when a components root happens to contain it.
- */
-const displayPathFor = (filePath: string): string =>
-  !isInsideDirectory(filePath, BascikConfig.directory.pages) && findComponentRoot(filePath) !== undefined
-    ? getRelativePath(filePath, "components")
-    : getRelativePath(filePath, "pages");
 
 // Match <script data-bascik-build …> … </script> (captures inner content).
 const BUILD_SCRIPT_RE = new RegExp(
@@ -621,6 +605,8 @@ export const executeBuildScripts = async (
     moduleSourcePath: string;
     /** Where the opening tag is, for the error header and the dev overlay. */
     location?: BuildScriptLocation;
+    /** The specifier rewrites in `preparedScript`, to put error columns back where they are in the file. */
+    specifierEdits: SpecifierEdit[];
     outputScope: OutputScope | null;
     output?: string;
   }
@@ -638,7 +624,8 @@ export const executeBuildScripts = async (
     const sourceFile = position.sourceFile ?? defaultSourceFile;
     const locatedFile = sourceFile || filePath;
     const location: BuildScriptLocation | undefined = locatedFile
-      ? { sourceFile: displayPathFor(locatedFile), line: position.tagLine, column: position.tagColumn }
+      // The header names the file as the stack does, so both locations open with Cmd+Click.
+      ? { sourceFile: getProjectPath(locatedFile), line: position.tagLine, column: position.tagColumn }
       : undefined;
     const where = location ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})` : "";
     const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
@@ -665,7 +652,7 @@ export const executeBuildScripts = async (
       throw new Error(`[bascik] error: ${err.message}${at}`, { cause: err });
     };
 
-    const htmlRelPath = locatedFile ? relative(process.cwd(), locatedFile).replace(/\\/g, "/") : "unknown";
+    const htmlRelPath = locatedFile ? getProjectPath(locatedFile) : "unknown";
     let moduleSourcePath = htmlRelPath;
     // The script exactly as written. It is trimmed only for the cache key and checks below;
     // the module keeps it untrimmed so every line and column stays where it is in the file.
@@ -689,7 +676,7 @@ export const executeBuildScripts = async (
           trimmedScript = await readFile(resolvedPath, "utf8");
           // A `src=` script is its own file, so its errors name that file and its lines.
           moduleSource = trimmedScript;
-          moduleSourcePath = relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+          moduleSourcePath = getProjectPath(resolvedPath);
           fromSrcFile = true;
         } catch (err) {
           console.warn('[bascik] warning: Failed to read build script src "%s":', srcPath, err);
@@ -698,12 +685,14 @@ export const executeBuildScripts = async (
     }
 
     let preparedScript: string;
+    let specifierEdits: SpecifierEdit[];
     try {
-      const rewritten = resolveBuildScriptImports(moduleSource, scriptBaseDir, { importRoot });
+      // Padded first, so the rewrite's edits are in the file's own lines and columns.
       // Without a known file there are no file lines to line up with.
-      preparedScript = fromSrcFile || !locatedFile
-        ? rewritten
-        : padToSourcePosition(rewritten, position.bodyLine, position.bodyColumn);
+      const padded = fromSrcFile || !locatedFile
+        ? moduleSource
+        : padToSourcePosition(moduleSource, position.bodyLine, position.bodyColumn);
+      ({ code: preparedScript, edits: specifierEdits } = rewriteModuleSpecifiersWithEdits(padded, scriptBaseDir, { importRoot }));
     } catch (err) {
       return annotateLeadingSlash(err);
     }
@@ -749,6 +738,7 @@ export const executeBuildScripts = async (
       tmpPath,
       moduleSourcePath,
       location,
+      specifierEdits,
       outputScope: decodeOutputScope(getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE)),
       sourceFile,
     });
@@ -820,8 +810,11 @@ export const executeBuildScripts = async (
         const msg = err instanceof Error ? err.message : String(err);
         const { location } = task;
         let errorMsg = `[bascik] build script error`;
-        // The module is padded to the file's own lines, so only the temp path needs renaming.
-        const cleanedMsg = cleanStackTrace(msg, task.tmpPath, task.moduleSourcePath, 1);
+        // The module is padded to the file's own lines, so only the temp path needs renaming,
+        // and columns after a rewritten import on the same line need putting back.
+        const moduleReferences = [task.tmpPath, pathToFileURL(task.tmpPath).href, task.moduleSourcePath];
+        const remapped = remapRewrittenColumns(msg, moduleReferences, task.specifierEdits);
+        const cleanedMsg = cleanStackTrace(remapped, task.tmpPath, task.moduleSourcePath, 1);
         if (location) {
           errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }

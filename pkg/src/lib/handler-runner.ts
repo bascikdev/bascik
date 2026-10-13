@@ -189,12 +189,21 @@ main().catch((err) => {
             // One message carries the whole report: what the script wrote to
             // stderr (its error, and anything it logged first). Callers print
             // the message once and do not print stderr separately.
-            const failure = err as Error & { killed?: boolean; signal?: string };
+            const failure = err as Error & { killed?: boolean; signal?: string; code?: unknown };
             const report = cleanedStderr.trim();
             const timedOut = failure.killed === true && failure.signal === killSignal;
-            failure.message = timedOut
-              ? `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms${report ? `\n${report}` : ""}`
-              : report || withoutRunnerFrames(failure.message);
+            // A string code (`ERR_CHILD_PROCESS_STDIO_MAXBUFFER`, `ENOENT`) means Node
+            // itself stopped the child, so the script's stderr is not the reason. A
+            // numeric code is the script's exit code, and stderr is its report.
+            // Checked before the timeout: Node also kills the child, with the same
+            // signal, when its output goes over maxBuffer.
+            const stoppedByNode = typeof failure.code === "string";
+            const withReport = (reason: string): string => (report ? `${reason}\n${report}` : reason);
+            failure.message = stoppedByNode
+              ? withReport(`Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`)
+              : timedOut
+                ? withReport(`Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`)
+                : report || withoutRunnerFrames(failure.message);
             reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
           } else {
             resolve({ stdout: cleanedStdout, stderr: cleanedStderr });

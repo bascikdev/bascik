@@ -284,7 +284,7 @@ Component transpilation failure:
 Build script failure:
 
 ```terminal
-[bascik] build script error in "pages/index.html" at (line 12, column 5):
+[bascik] build script error in "src/pages/index.html" at (line 12, column 5):
 ReferenceError: marked is not defined
 ```
 

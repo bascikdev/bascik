@@ -53,6 +53,14 @@ const stripDirMarker = (normalizedPath: string, configuredDir: string): string =
  * a root outside the project is displayed cwd-relative
  * (`../shared/components/x.html`), never as an absolute path.
  */
+/**
+ * A path relative to the project root, with forward slashes
+ * (`src/pages/about.html`). Used where a message names a line and column, so
+ * the location is the same text a stack frame shows and opens with Cmd+Click.
+ */
+export const getProjectPath = (path: string): string =>
+  relative(process.cwd(), resolve(process.cwd(), path)).replace(/\\/g, "/");
+
 export const getRelativePath = (path: string, parentDir: "pages" | "components"): string => {
   const normalizedPath = path.replace(/\\/g, "/");
 

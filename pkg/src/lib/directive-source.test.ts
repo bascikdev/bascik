@@ -54,6 +54,40 @@ describe("stampDirectiveSources", () => {
     expect(stamped).toContain('data-bascik-source-tag="2:1"');
   });
 
+  it("never rewrites tag-like text inside a browser script, a <style>, or a <textarea>", () => {
+    const inside = [
+      '<script>const tpl = "<script data-bascik-server>";</script>',
+      "<script>const tpl = '<script data-bascik-build data-x=\"1\">';</script>",
+      "<style>/* <script data-bascik-build> */ .a { color: red; }</style>",
+      "<textarea><script data-bascik-stream>x</script></textarea>",
+    ];
+    for (const html of inside) expect(stampDirectiveSources(html, "src/pages/x.html")).toBe(html);
+  });
+
+  it("stamps a directive after a browser script whose strings look like comment delimiters", () => {
+    const html = '<script>const open = "<!--";</script>\n<p>x</p>\n<script data-bascik-build>\n  run();\n</script>\n<script>const close = "-->";</script>';
+    const stamped = stampDirectiveSources(html, "src/pages/a.html");
+    expect(stamped).toContain('data-bascik-source-tag="3:1"');
+    expect(stamped).toContain('<script>const open = "<!--";</script>');
+    expect(stamped).toContain('<script>const close = "-->";</script>');
+  });
+
+  it("leaves every browser script body byte-identical, whatever tag-like text it holds", () => {
+    const fragment = fc.constantFrom(
+      "<script data-bascik-server>", "<script data-bascik-build=\"page\">", "<!--", "-->", '"', "'", ">", "x", "\n", "<p>",
+    );
+    fc.assert(
+      fc.property(fc.array(fragment, { maxLength: 12 }), fc.array(fragment, { maxLength: 12 }), (first, second) => {
+        const browserA = `<script>${first.join("")}</script>`;
+        const browserB = `<script type="module">${second.join("")}</script>`;
+        const html = `${browserA}\n<script data-bascik-build>a()</script>\n${browserB}`;
+        const stamped = stampDirectiveSources(html, "src/pages/x.html");
+        expect(stamped.startsWith(`${browserA}\n<script data-bascik-build data-bascik-source-file=`)).toBe(true);
+        expect(stamped.endsWith(`>a()</script>\n${browserB}`)).toBe(true);
+      }),
+    );
+  });
+
   it("keeps a recorded file or line, and stamps a script once", () => {
     const html = '<script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fb.html">x</script>';
     const once = stampDirectiveSources(html, "src/pages/x.html");

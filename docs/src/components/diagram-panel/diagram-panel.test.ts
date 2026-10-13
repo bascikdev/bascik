@@ -13,6 +13,13 @@ describe('diagram-panel component', () => {
     expect(html).toContain('data-bascik-slot');
   });
 
+  it('is a plain div, since a panel has no heading of its own to name a section', async () => {
+    const html = await readFile(join(dir, 'diagram-panel.html'), 'utf8');
+
+    expect(html).toContain('<div class="panel">');
+    expect(html).not.toContain('<section');
+  });
+
   it('hides the label and arrow when their props are not set', async () => {
     const css = await readFile(join(dir, 'diagram-panel.css'), 'utf8');
 

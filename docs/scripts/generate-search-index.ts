@@ -66,16 +66,34 @@ function decodeAttr(value: string): string {
  * search result can never drift from what the page declares. It is surfaced
  * only for brand queries (see isNavigationalQuery in search-logic.ts).
  */
+/** The value of `name` in one tag's attributes, in either quote style and in any attribute order. */
+function attributeValue(tag: string, name: string): string | undefined {
+  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag);
+  return match ? match[1] ?? match[2] : undefined;
+}
+
+/** The content of `<meta name="description">`, wherever `name` and `content` sit in the tag. */
+export function metaDescription(html: string): string | undefined {
+  for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
+    if (attributeValue(tag, 'name')?.toLowerCase() === 'description') return attributeValue(tag, 'content');
+  }
+  return undefined;
+}
+
 async function homeEntry(): Promise<SearchEntry> {
+  const homePage = join(docsDir, 'src/pages/index.html');
   let title = 'Bascik';
   let text = '';
   try {
-    const html = await readFile(join(docsDir, 'src/pages/index.html'), 'utf8');
-    const t = /<title>([^<]*)<\/title>/.exec(html);
+    const html = await readFile(homePage, 'utf8');
+    const t = /<title>([^<]*)<\/title>/i.exec(html);
     if (t) title = decodeAttr(t[1]).trim();
-    const d = /<meta\s+name="description"\s+content="([^"]*)"/.exec(html);
-    if (d) text = decodeAttr(d[1]).trim();
-  } catch { }
+    const description = metaDescription(html);
+    if (description !== undefined) text = decodeAttr(description).trim();
+  } catch (error) {
+    // The Home result still works without them, but a search snippet that silently disappears is a bug to see.
+    console.warn(`[search-index] warning: could not read the Home page title and description from ${homePage}: ${(error as Error).message}`);
+  }
   return { title, navLabel: 'Bascik', section: 'Home', path: '/', heading: null, text, sitelinks: [...HOME_SITELINKS] };
 }
 

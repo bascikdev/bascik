@@ -9,6 +9,12 @@ describe('roots-demo component', () => {
     const html = await readFile(componentPath, 'utf8');
     const markup = html.slice(html.indexOf('</style>') + '</style>'.length).trim();
 
-    expect(markup.match(/^<(h2|p|div)\b/gm)).toEqual(['<h2', '<p', '<div']);
+    expect(markup.match(/^<(p|div)\b/gm)).toEqual(['<p', '<p', '<div']);
+  });
+
+  it('adds no heading, so the live demo leaves the page outline alone', async () => {
+    const html = await readFile(componentPath, 'utf8');
+
+    expect(html).not.toMatch(/<h[1-6]\b/);
   });
 });

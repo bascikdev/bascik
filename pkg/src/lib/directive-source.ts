@@ -29,8 +29,14 @@ const SOURCE_COLUMN_ATTRIBUTE = "data-bascik-source-column";
 const SOURCE_TAG_ATTRIBUTE = "data-bascik-source-tag";
 
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
-/** A comment, or a script opening tag. Comments come first so a script written inside one is skipped. */
-const COMMENT_OR_SCRIPT_OPEN_RE = /<!--[\s\S]*?-->|<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+/**
+ * A comment, a `<style>` or `<textarea>` element, or a whole script element.
+ * Each match consumes its contents, so a tag-like string inside one (a
+ * `"<script data-bascik-server>"` or a `"<!--"` in a browser script) is never
+ * read as a tag. Only a script element's opening tag is ever rewritten.
+ */
+const SKIPPED_OR_SCRIPT_RE =
+  /<!--[\s\S]*?-->|<(style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
 
 export interface DirectiveSourcePosition {
   /** The file the script was written in, when it is recorded on the tag. */
@@ -64,32 +70,41 @@ const measure = (html: string, index: number, openTag: string): Omit<DirectiveSo
 /**
  * Records file, line, and column on every directive script in a file that was
  * just read from disk. The attributes add no newlines, so positions measured
- * later in the same text are unaffected. Scripts inside comments, and scripts
- * that already carry a position, are left alone.
+ * later in the same text are unaffected. Scripts inside comments, tag-like
+ * text inside other scripts, `<style>`, or `<textarea>`, and scripts that
+ * already carry a position are left alone.
  */
 export const stampDirectiveSources = (html: string, sourceFile: string): string => {
   if (!html.includes("data-bascik-")) return html;
   const encodedFile = encodeURIComponent(sourceFile);
-  return html.replace(COMMENT_OR_SCRIPT_OPEN_RE, (openTag: string, index: number) => {
-    if (openTag.startsWith("<!--") || !DIRECTIVE_SCRIPT_RE.test(openTag)) return openTag;
-    if (
-      getHtmlAttributeValue(openTag, SOURCE_LINE_ATTRIBUTE) !== undefined ||
-      getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE) !== undefined
-    ) {
-      return openTag;
-    }
-    const position = measure(html, index, openTag);
-    const attributes: string[] = [];
-    if (getHtmlAttributeValue(openTag, SOURCE_FILE_ATTRIBUTE) === undefined) {
-      attributes.push(`${SOURCE_FILE_ATTRIBUTE}="${encodedFile}"`);
-    }
-    attributes.push(
-      `${SOURCE_LINE_ATTRIBUTE}="${position.bodyLine}"`,
-      `${SOURCE_COLUMN_ATTRIBUTE}="${position.bodyColumn}"`,
-      `${SOURCE_TAG_ATTRIBUTE}="${position.tagLine}:${position.tagColumn}"`,
-    );
-    return `${openTag.slice(0, -1)} ${attributes.join(" ")}>`;
-  });
+  return html.replace(
+    SKIPPED_OR_SCRIPT_RE,
+    (match: string, _rawTextTag: string | undefined, openTag: string | undefined, rest: string, index: number) => {
+      if (openTag === undefined || !DIRECTIVE_SCRIPT_RE.test(openTag)) return match;
+      return stampOpenTag(html, index, openTag, encodedFile) + rest;
+    },
+  );
+};
+
+/** One directive opening tag with its position added, or unchanged when it already has one. */
+const stampOpenTag = (html: string, index: number, openTag: string, encodedFile: string): string => {
+  if (
+    getHtmlAttributeValue(openTag, SOURCE_LINE_ATTRIBUTE) !== undefined ||
+    getHtmlAttributeValue(openTag, SOURCE_COLUMN_ATTRIBUTE) !== undefined
+  ) {
+    return openTag;
+  }
+  const position = measure(html, index, openTag);
+  const attributes: string[] = [];
+  if (getHtmlAttributeValue(openTag, SOURCE_FILE_ATTRIBUTE) === undefined) {
+    attributes.push(`${SOURCE_FILE_ATTRIBUTE}="${encodedFile}"`);
+  }
+  attributes.push(
+    `${SOURCE_LINE_ATTRIBUTE}="${position.bodyLine}"`,
+    `${SOURCE_COLUMN_ATTRIBUTE}="${position.bodyColumn}"`,
+    `${SOURCE_TAG_ATTRIBUTE}="${position.tagLine}:${position.tagColumn}"`,
+  );
+  return `${openTag.slice(0, -1)} ${attributes.join(" ")}>`;
 };
 
 /**

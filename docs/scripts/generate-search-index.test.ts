@@ -35,6 +35,16 @@ describe('generate-search-index', () => {
     expect(firstEntry).toHaveProperty('text');
   });
 
+  it('reads the meta description whatever the attribute order or quote style', async () => {
+    const { metaDescription } = await import('./generate-search-index.js');
+
+    expect(metaDescription('<meta name="description" content="A">')).toBe('A');
+    expect(metaDescription('<meta content="B" name="description">')).toBe('B');
+    expect(metaDescription("<meta\n  name='description'\n  content='C' />")).toBe('C');
+    expect(metaDescription('<meta name="viewport" content="x"><meta content="D" NAME="Description">')).toBe('D');
+    expect(metaDescription('<meta name="viewport" content="x">')).toBeUndefined();
+  });
+
   it('indexes the Home page first with the ordered sitelinks from nav.ts', async () => {
     await import('./generate-search-index.js');
 

@@ -70,6 +70,7 @@ import {
   getDirectoryPath,
   getDistPagePath,
   deleteDistFile,
+  getProjectPath,
   getRelativePath,
   deepReadDirFlat,
 } from "./file-system.ts";
@@ -410,10 +411,17 @@ const normalizePageError = (
     : new PageProcessingError(pagePath, stage, error);
 
 const publishBuildError = (err: PageProcessingError): void => {
+  // A build script carries where it was written (which may be a component, not the page),
+  // named as the terminal names it, so the overlay and the terminal agree.
+  const located = locateBuildError(err);
+  if (located) {
+    eventEmitter.emit("build-error", { message: err.message, ...located });
+    return;
+  }
   const position = getFilePosition(err.pagePath, err.message, undefined);
   eventEmitter.emit("build-error", {
     message: err.message,
-    file: getRelativePath(err.pagePath, "pages"),
+    file: getProjectPath(err.pagePath),
     line: position?.line,
     column: position?.character,
   });

@@ -1,15 +1,64 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { SpecifierEdit } from "./module-specifiers.ts";
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Bascik's own modules (this directory). A user's error that crossed Bascik on
- * its way up (a server script awaited by the request handler) carries frames
- * from here; they say nothing about the user's code. Test fixtures that live
- * next to the source are user code for the tests that load them.
+ * Bascik's own modules: the files directly in this directory, by file URL or by
+ * path (either separator). A user's error that crossed Bascik on its way up (a
+ * server script awaited by the request handler) carries frames from them; they
+ * say nothing about the user's code. Files in subdirectories (test fixtures)
+ * are not Bascik's modules, so their frames are kept.
  */
 const BASCIK_LIB_URL = new URL("./", import.meta.url).href;
 const BASCIK_LIB_PATH = fileURLToPath(BASCIK_LIB_URL);
+const BASCIK_MODULE_FRAME_RE = new RegExp(
+  `(?:${[BASCIK_LIB_URL, BASCIK_LIB_PATH, BASCIK_LIB_PATH.replace(/\\/g, "/")].map(escapeRegExp).join("|")})[^/\\\\\\s():]+:\\d+`,
+);
+/**
+ * Set to `1` to keep Bascik's own frames, for when the failure starts inside
+ * Bascik (a module hook, the request handler) rather than in the user's code.
+ */
+export const KEEP_INTERNAL_FRAMES_ENV = "BASCIK_KEEP_INTERNAL_FRAMES";
 const isBascikFrame = (line: string): boolean =>
-  (line.includes(BASCIK_LIB_URL) || line.includes(BASCIK_LIB_PATH)) && !line.includes("/test-fixtures/");
+  process.env[KEEP_INTERNAL_FRAMES_ENV] !== "1" && BASCIK_MODULE_FRAME_RE.test(line);
+
+/** The column in the source for `column` on `line` of a module whose specifiers were rewritten by `edits`. */
+const sourceColumnFor = (edits: readonly SpecifierEdit[], line: number, column: number): number => {
+  let shift = 0;
+  for (const edit of edits) {
+    if (edit.line !== line) continue;
+    const start = edit.column + shift;
+    const end = start + edit.newLength;
+    if (column < start) break;
+    // Inside the rewritten specifier: the start of the specifier as written.
+    if (column < end) return edit.column;
+    shift += edit.newLength - edit.oldLength;
+  }
+  return column - shift;
+};
+
+/**
+ * Puts columns back where they are in the source, in frames of a module whose
+ * import specifiers Bascik rewrote to file URLs (longer than `./x.ts`). Only
+ * frames naming one of `moduleReferences` (the names V8 gives that module) are
+ * changed, and only on lines with a rewrite. `edits` are in module coordinates.
+ */
+export const remapRewrittenColumns = (
+  rawTrace: string,
+  moduleReferences: readonly string[],
+  edits: readonly SpecifierEdit[],
+): string => {
+  if (!rawTrace || edits.length === 0) return rawTrace;
+  const references = moduleReferences.filter(Boolean).map(escapeRegExp).join("|");
+  if (!references) return rawTrace;
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const frameRe = new RegExp(`(?<![\\w./-])((?:${references})(?:\\?bascik-gen=\\d+)?):(\\d+):(\\d+)`, "g");
+  return rawTrace.replace(frameRe, (_match, reference: string, lineText: string, columnText: string) => {
+    const line = Number(lineText);
+    return `${reference}:${line}:${sourceColumnFor(edits, line, Number(columnText))}`;
+  });
+};
 
 /** A stack frame that names a source location (`file:line:column`), as opposed to a builtin such as `Promise.all (index 1)`. */
 const hasLocation = (line: string): boolean => /:\d+:\d+\)?\s*$/.test(line);

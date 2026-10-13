@@ -497,7 +497,7 @@ Unlike traditional JavaScript frameworks (such as React or Vue 2) that historica
 <!-- demo:source-html-roots -->
 ```html
 <style>
-  .roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; }
+  .roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
   .roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
   .roots-note {
     padding: 8px 12px;
@@ -507,21 +507,21 @@ Unlike traditional JavaScript frameworks (such as React or Vue 2) that historica
     font-size: 0.85rem;
   }
 </style>
-<h2 class="roots-title">Release notes</h2>
+<p class="roots-title">Release notes</p>
 <p class="roots-lead">Three top-level elements in one file.</p>
 <div class="roots-note">No wrapper element is added.</div>
 ```
 
 <!-- demo:output-html-roots -->
 ```html
-<h2 class="bascik__roots-demo__roots-title">Release notes</h2>
+<p class="bascik__roots-demo__roots-title">Release notes</p>
 <p class="bascik__roots-demo__roots-lead">Three top-level elements in one file.</p>
 <div class="bascik__roots-demo__roots-note">No wrapper element is added.</div>
 ```
 
 <!-- demo:output-css-roots -->
 ```css
-.bascik__roots-demo__roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; }
+.bascik__roots-demo__roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
 .bascik__roots-demo__roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
 .bascik__roots-demo__roots-note {
   padding: 8px 12px;
