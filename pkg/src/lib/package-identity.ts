@@ -125,7 +125,7 @@ const RESOLVER_SOURCE =
 
 let resolverModule: Promise<{ resolveFor: (spec: string) => string } | null> | null = null;
 const resolvedSpecMemo = new Map<string, ResolvedPackage>();
-const packageGraphMemo = new Map<string, string>();
+const entrySpecifiersMemo = new Map<string, string[]>();
 const MAX_PACKAGE_IDENTITY_MEMO = 256;
 
 /**
@@ -313,7 +313,22 @@ export const computePackageIdentity = async (specifiers: string[]): Promise<stri
     // (bounded depth + visited set), so unrelated installed packages are never
     // hashed. Local relative files a package's entry imports are covered by the
     // entry content hash in the common hoisted layout.
-    for (const spec of collectPackageSpecifiers(entry ?? "")) {
+    let childSpecs: string[];
+    if (entry === null) {
+      childSpecs = [];
+    } else {
+      const cachedSpecs = entrySpecifiersMemo.get(entry);
+      if (cachedSpecs) {
+        childSpecs = cachedSpecs;
+      } else {
+        childSpecs = collectPackageSpecifiers(entry);
+        if (entrySpecifiersMemo.size >= MAX_PACKAGE_IDENTITY_MEMO) {
+          entrySpecifiersMemo.delete(entrySpecifiersMemo.keys().next().value as string);
+        }
+        entrySpecifiersMemo.set(entry, childSpecs);
+      }
+    }
+    for (const spec of childSpecs) {
       const children = await resolvePackages([spec]);
       for (const child of children) await visit(child, depth + 1);
     }
@@ -328,11 +343,11 @@ export const computePackageIdentity = async (specifiers: string[]): Promise<stri
 export const resetPackageIdentity = (): void => {
   resolverModule = null;
   resolvedSpecMemo.clear();
-  packageGraphMemo.clear();
+  entrySpecifiersMemo.clear();
 };
 
 /** Clear memoized package specifier resolutions. */
 export const clearPackageIdentityCache = (): void => {
   resolvedSpecMemo.clear();
-  packageGraphMemo.clear();
+  entrySpecifiersMemo.clear();
 };

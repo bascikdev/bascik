@@ -136,6 +136,12 @@ export const convertCssElementSelectorsToClasses = (
  * corrupting class-like text nested inside other attribute values.
  */
 export const injectClassIntoTag = (openTag: string, className: string): string => {
+  if (!/class=/i.test(openTag)) {
+    return openTag.replace(
+      /^<[a-zA-Z0-9-]+/i,
+      (tagHead) => `${tagHead} class="${className}"`,
+    );
+  }
   const stringRanges: Array<{ start: number; end: number }> = [];
   let j = 0;
   let strChar = null;

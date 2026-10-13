@@ -148,9 +148,11 @@ interface ScopedCssCacheEntry {
 }
 
 const scopedCssCache = new Map<string, ScopedCssCacheEntry>();
+const cssDeclaredClassesCache = new Map<string, Set<string>>();
 
 export const clearScopedCssCache = (): void => {
   scopedCssCache.clear();
+  cssDeclaredClassesCache.clear();
 };
 
 export const __scopedCssCacheStatsForTests = {
@@ -287,10 +289,11 @@ const replaceSafeAttr = (
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
+  const attrNeedle = `${attrName}=`;
   return html.replace(
     /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
     (tagMatch) => {
-      if (!tagMatch.includes("=")) return tagMatch;
+      if (!tagMatch.includes(attrNeedle)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
       const stringRanges: Array<{ start: number; end: number }> = [];
       let j = 0;
@@ -395,7 +398,6 @@ export const prefixElementAttribute = (
   // and "a stylesheet that defines nothing" must behave the same.)
   let scopedClassesSet: Set<string> | null = null;
   if (attribute === "class") {
-    scopedClassesSet = new Set<string>();
     const cssSources: string[] = [];
     if (component.cssFileContent) {
       // Resolved once here, so the memo key below holds the imported contents.
@@ -408,10 +410,19 @@ export const prefixElementAttribute = (
     }
     const combinedCss = cssSources.join("\n");
     if (combinedCss) {
-      const { css: shieldedCss } = shieldCssStrings(combinedCss);
-      for (const m of shieldedCss.matchAll(/(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
-        scopedClassesSet.add(m[0]);
+      const cachedSet = cssDeclaredClassesCache.get(combinedCss);
+      if (cachedSet) {
+        scopedClassesSet = cachedSet;
+      } else {
+        scopedClassesSet = new Set<string>();
+        const { css: shieldedCss } = shieldCssStrings(combinedCss);
+        for (const m of shieldedCss.matchAll(/(?<=\.)[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
+          scopedClassesSet.add(m[0]);
+        }
+        cssDeclaredClassesCache.set(combinedCss, scopedClassesSet);
       }
+    } else {
+      scopedClassesSet = new Set<string>();
     }
   }
 
@@ -959,15 +970,20 @@ export const getComponentScripts = async (
 export const namespaceScriptTags = (
   component: BascikComponent,
 ): BascikComponent => {
+  if (!component.fileContent || !/<script\b/i.test(component.fileContent)) {
+    return component;
+  }
   // Script-looking examples in HTML comments are documentation, not browser
   // code. Shield comments before scanning for script tags so a fake opener in
   // a comment cannot be paired with a later real </script> and wrapped into an
   // invalid runtime script.
   const commentShield = createContentShield(component.fileContent);
-  const commentMaskedContent = component.fileContent.replace(
-    /<!--[\s\S]*?-->/g,
-    (comment) => commentShield.hide(comment),
-  );
+  const commentMaskedContent = component.fileContent.includes("<!--")
+    ? component.fileContent.replace(
+        /<!--[\s\S]*?-->/g,
+        (comment) => commentShield.hide(comment),
+      )
+    : component.fileContent;
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(commentMaskedContent.replace(

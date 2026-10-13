@@ -65,7 +65,19 @@ export const shieldElementContents = (
   if (tags.length === 0) return { html, restore: (value) => value };
   const shield = createContentShield(html);
   let result = html;
+  let lower: string | null = null;
   for (const tag of tags) {
+    const entry = tag.toLowerCase();
+    if (!entry.includes("*")) {
+      lower ??= result.toLowerCase();
+      if (!lower.includes(`<${entry}`)) continue;
+    } else {
+      const prefix = entry.slice(0, entry.indexOf("*"));
+      if (prefix !== "") {
+        lower ??= result.toLowerCase();
+        if (!lower.includes(`<${prefix}`)) continue;
+      }
+    }
     const fragment = tagNameFragment(tag);
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
@@ -74,6 +86,7 @@ export const shieldElementContents = (
       (_match, open: string, inner: string, close: string) =>
         `${open}${shield.hide(inner)}${close}`,
     );
+    lower = null;
   }
   return { html: result, restore: shield.restore };
 };
@@ -278,24 +291,39 @@ export const shieldPreservedAttribute = (
 export const stripPreserveDirectives = (
   html: string,
   warn: (message: string) => void = console.warn,
-): string => html.replace(
-  /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?(?=\s|\/?>)/gi,
-  (_directive, quotedValue: string | undefined, doubleValue: string | undefined, singleValue: string | undefined) => {
-    if (quotedValue !== undefined) {
-      for (const token of (doubleValue ?? singleValue ?? "").trim().split(/\s+/).filter(Boolean)) {
-        if (!PRESERVABLE_ATTRIBUTES.has(token)) {
-          warn(`[bascik] warning: data-bascik-preserve ignores unknown token "${token}".`);
+): string => {
+  if (!/data-bascik-preserve/i.test(html)) return html;
+  return html.replace(
+    /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?(?=\s|\/?>)/gi,
+    (_directive, quotedValue: string | undefined, doubleValue: string | undefined, singleValue: string | undefined) => {
+      if (quotedValue !== undefined) {
+        for (const token of (doubleValue ?? singleValue ?? "").trim().split(/\s+/).filter(Boolean)) {
+          if (!PRESERVABLE_ATTRIBUTES.has(token)) {
+            warn(`[bascik] warning: data-bascik-preserve ignores unknown token "${token}".`);
+          }
         }
       }
-    }
-    return "";
-  },
-);
+      return "";
+    },
+  );
+};
 
 // Scanner masks discard content and preserve offsets; they are never restored.
 export const maskElementContents = (html: string, tags: string[]): string => {
   let result = html;
+  let lower: string | null = null;
   for (const tag of tags) {
+    const entry = tag.toLowerCase();
+    if (!entry.includes("*")) {
+      lower ??= result.toLowerCase();
+      if (!lower.includes(`<${entry}`)) continue;
+    } else {
+      const prefix = entry.slice(0, entry.indexOf("*"));
+      if (prefix !== "") {
+        lower ??= result.toLowerCase();
+        if (!lower.includes(`<${prefix}`)) continue;
+      }
+    }
     const fragment = tagNameFragment(tag);
     const attributes = `(?:[^>"']|"[^"]*"|'[^']*')*`;
     result = result.replace(
@@ -304,6 +332,7 @@ export const maskElementContents = (html: string, tags: string[]): string => {
       (_match, open: string, inner: string, close: string) =>
         `${open}${" ".repeat(inner.length)}${close}`,
     );
+    lower = null;
   }
   return result;
 };

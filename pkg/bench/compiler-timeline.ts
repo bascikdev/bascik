@@ -171,8 +171,11 @@ export async function runCompilerTimeline(options: TimelineOptions) {
     // Workspace dependencies are hoisted to the repository root for the docs site.
     await linkDependencies(isRepositoryDocs ? join(repository, 'node_modules') : join(source, 'node_modules'), join(project, 'node_modules'), compiler);
     if (isRepositoryDocs) {
-      // Docs build scripts read these sibling repository files.
+      // Docs build scripts and config read these sibling repository files and directories.
       await cp(join(repository, 'CHANGELOG.md'), join(fixtureRoot, 'CHANGELOG.md'));
+      for (const dir of ['examples', 'skills']) {
+        await cp(join(repository, dir), join(fixtureRoot, dir), { recursive: true });
+      }
       for (const path of ['pkg/test-coverage.json', 'pkg/e2e-test-coverage.json', 'create/test-coverage.json', 'extensions/vscode-bascik/test-coverage.json', 'adapters/cloudflare/test-coverage.json', 'lsp/test-coverage.json']) {
         await mkdir(join(fixtureRoot, path, '..'), { recursive: true });
         await cp(join(repository, path), join(fixtureRoot, path));

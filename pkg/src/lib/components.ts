@@ -652,7 +652,7 @@ export const replaceTag = (
   );
 };
 
-const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
+const componentRegexCache = new WeakMap<ComponentList, { keyCount: number; firstKey: string | undefined; lastKey: string | undefined; regex: RegExp | null }>();
 
 /**
  * Test-only instrumentation: bytes of already-resolved document prefix that a
@@ -684,12 +684,15 @@ export const getFirstComponent = (
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
 
-  const componentNames = Object.keys(componentList)
-    .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-    .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
-  const namesKey = componentNames.join("\0");
+  const rawKeys = Object.keys(componentList);
+  const keyCount = rawKeys.length;
+  const firstKey = rawKeys[0];
+  const lastKey = rawKeys[keyCount - 1];
   let cached = componentRegexCache.get(componentList);
-  if (!cached || cached.namesKey !== namesKey) {
+  if (!cached || cached.keyCount !== keyCount || cached.firstKey !== firstKey || cached.lastKey !== lastKey) {
+    const componentNames = rawKeys
+      .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
+      .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
     // Super important here, reverse, makes it so we're matching on the most specific tag first
     // Meaning, it will find test-comp-clone before test-comp,
     // because reverse, the longer tag will be first in the regexp, and therefore match first.
@@ -699,7 +702,7 @@ export const getFirstComponent = (
     const regex = escapedComponentNames.length === 0
       ? null
       : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "gi");
-    cached = { namesKey, regex };
+    cached = { keyCount, firstKey, lastKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
@@ -904,7 +907,7 @@ export const extractProps = (
   componentContent: string | undefined,
 ): Record<string, string> => {
   const props: Record<string, string> = {};
-  if (!componentContent) return props;
+  if (!componentContent || !/data-bascik-prop-/i.test(componentContent)) return props;
   const openingTag = componentContent.match(
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
