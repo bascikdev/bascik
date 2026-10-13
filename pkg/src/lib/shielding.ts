@@ -147,12 +147,12 @@ type PreserveFrame = {
 
 const getPreserveTokens = (tag: string): Set<string> | null => {
   const match = tag.match(
-    /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?(?=\s|\/?>)/i,
+    /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?(?=\s|\/?>)/i,
   );
   if (!match) return null;
   if (match[1] === undefined) return new Set(PRESERVABLE_ATTRIBUTES);
   return new Set(
-    (match[2] ?? match[3] ?? "")
+    (match[2] ?? match[3] ?? match[4] ?? "")
       .trim()
       .split(/\s+/)
       .filter((token) => PRESERVABLE_ATTRIBUTES.has(token)),
@@ -294,10 +294,10 @@ export const stripPreserveDirectives = (
 ): string => {
   if (!/data-bascik-preserve/i.test(html)) return html;
   return html.replace(
-    /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?(?=\s|\/?>)/gi,
-    (_directive, quotedValue: string | undefined, doubleValue: string | undefined, singleValue: string | undefined) => {
-      if (quotedValue !== undefined) {
-        for (const token of (doubleValue ?? singleValue ?? "").trim().split(/\s+/).filter(Boolean)) {
+    /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?(?=\s|\/?>)/gi,
+    (_directive, rawValue: string | undefined, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+      if (rawValue !== undefined) {
+        for (const token of (doubleValue ?? singleValue ?? unquotedValue ?? "").trim().split(/\s+/).filter(Boolean)) {
           if (!PRESERVABLE_ATTRIBUTES.has(token)) {
             warn(`[bascik] warning: data-bascik-preserve ignores unknown token "${token}".`);
           }

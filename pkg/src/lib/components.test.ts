@@ -370,6 +370,19 @@ describe("extractProps", () => {
     ).toEqual({ title: "Hello", href: "/about" });
   });
 
+  it("extracts whitespace-spaced and unquoted prop values and matches case-insensitively", () => {
+    const props = extractProps(
+      '<my-comp data-bascik-prop-ctaUrl = "/start" data-bascik-prop-variant=primary></my-comp>',
+    );
+    expect(props).toEqual({ ctaUrl: "/start", variant: "primary" });
+    expect(
+      injectProps('<span data-bascik-prop-variant></span>', props),
+    ).toBe("<span>primary</span>");
+    expect(
+      injectPropAttributes('<a data-bascik-attr-href="ctaurl">Go</a>', props),
+    ).toBe('<a href="/start">Go</a>');
+  });
+
   it("returns empty object when no props", () => {
     expect(extractProps("<my-comp></my-comp>")).toEqual({});
   });
@@ -941,6 +954,23 @@ describe("extractInheritableAttributes", () => {
     expect(
       extractInheritableAttributes('<my-nav class="sticky"></my-nav>'),
     ).toEqual({ class: "sticky" });
+  });
+
+  it("extracts whitespace-spaced and unquoted inheritable attributes and named slots", () => {
+    expect(
+      extractInheritableAttributes('<my-nav class = "sticky" data-testid=main-nav />'),
+    ).toEqual({ class: "sticky", "data-testid": "main-nav" });
+
+    expect(
+      extractNamedSlotContent('<div data-bascik-slot = "header"><h1>H</h1></div><div data-bascik-slot=footer><p>F</p></div>'),
+    ).toEqual({ header: "<h1>H</h1>", footer: "<p>F</p>" });
+
+    expect(
+      replaceNamedSlots(
+        '<header data-bascik-slot = "header"></header><footer data-bascik-slot=footer></footer>',
+        { header: "<h1>H</h1>", footer: "<p>F</p>" },
+      ),
+    ).toBe("<h1>H</h1><p>F</p>");
   });
 
   it("extracts multiple inheritable attributes", () => {

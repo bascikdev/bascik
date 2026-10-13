@@ -1031,19 +1031,28 @@ export const extractProps = (
     new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
   )?.[0];
   if (!openingTag) return props;
-  // Accept both double-quoted and single-quoted prop values,
-  // e.g. data-bascik-prop-title="Hi" or data-bascik-prop-title='Hi'.
-  const regexp = /data-bascik-prop-([\w-]+)=("[^"]*"|'[^']*')/gi;
+  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted prop values.
+  const regexp = /data-bascik-prop-([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+?)/gi;
   let match;
   while ((match = regexp.exec(openingTag)) !== null) {
-    const followingCharacter = openingTag[match.index + match[0].length];
-    if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
-      console.warn(
-        `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
-      );
-      continue;
+    const rawVal = match[2];
+    const isQuoted = rawVal.startsWith('"') || rawVal.startsWith("'");
+    if (isQuoted) {
+      const followingCharacter = openingTag[match.index + match[0].length];
+      if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
+        console.warn(
+          `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
+        );
+        continue;
+      }
+      props[match[1]] = decodePropEntities(rawVal.slice(1, -1));
+    } else {
+      // Unquoted value: consume up to whitespace, `/>`, or `>`
+      const unquotedMatch = /^[^\s"'=<>`]+/.exec(openingTag.slice(match.index + match[0].length - rawVal.length));
+      const fullUnquoted = unquotedMatch ? unquotedMatch[0] : rawVal;
+      const cleanUnquoted = fullUnquoted.endsWith("/") ? fullUnquoted.slice(0, -1) : fullUnquoted;
+      props[match[1]] = decodePropEntities(cleanUnquoted);
     }
-    props[match[1]] = decodePropEntities(match[2].slice(1, -1));
   }
   return props;
 };
@@ -1054,6 +1063,11 @@ export const injectPropAttributes = (
 ): string => {
   if (!fileContent) return "";
   if (!fileContent.includes("data-bascik-attr-")) return fileContent;
+
+  const propsLowerMap = new Map<string, string>();
+  for (const [k, v] of Object.entries(props)) {
+    propsLowerMap.set(k.toLowerCase(), v);
+  }
 
   const commentShield = createContentShield(fileContent);
   const withoutComments = fileContent.includes("<!--")
@@ -1102,7 +1116,7 @@ export const injectPropAttributes = (
           continue;
         }
 
-        const propValue = props[propName];
+        const propValue = props[propName] ?? propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
         const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const targetRegex = new RegExp(
@@ -1152,8 +1166,9 @@ export const injectProps = (
     : fileContent;
   const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
   let result = rawShield.html;
+  const resultLower = result.toLowerCase();
   Object.entries(props).forEach(([propName, propValue]) => {
-    if (!result.includes(propName)) return;
+    if (!resultLower.includes(propName.toLowerCase())) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     const escapedPropValue = escapePropValue(propValue);
@@ -1268,13 +1283,13 @@ const parseNamedSlots = (
   // never false-positives.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot=(?:"([^"]+)"|'([^']+)')(?:${ATTR_VALUE})>`,
+    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s"'=<>` + "`" + `/>]+))(?:${ATTR_VALUE})>`,
     "gi",
   );
   let match: RegExpExecArray | null;
   while ((match = openTagRe.exec(masked)) !== null) {
-    const [fullOpen, tagName, doubleName, singleName] = match;
-    const slotName = doubleName ?? singleName;
+    const [fullOpen, tagName, doubleName, singleName, unquotedName] = match;
+    const slotName = doubleName ?? singleName ?? unquotedName;
     if (isInsideNestedComponent(innerContent, match.index, componentNames, masked)) continue;
     const contentStart = match.index + fullOpen.length;
     const closeIndex = findMatchingClose(innerContent, tagName, contentStart, masked);
@@ -1473,14 +1488,18 @@ export const extractInheritableAttributes = (
   );
   if (!openTagMatch || !openTagMatch[1]) return attrs;
   const attrStr = openTagMatch[1];
-  // Accept both double-quoted and single-quoted attribute values.
-  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'))?/g;
+  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted attribute values.
+  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
   let match;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     const [, name, rawValue] = match;
-    const value = rawValue === undefined ? "" : rawValue.slice(1, -1);
-    if (!name.startsWith("data-bascik-")) {
-      attrs[name] = value;
+    if (name.startsWith("data-bascik-")) continue;
+    if (rawValue === undefined) {
+      attrs[name] = "";
+    } else if (rawValue.startsWith('"') || rawValue.startsWith("'")) {
+      attrs[name] = rawValue.slice(1, -1);
+    } else {
+      attrs[name] = rawValue;
     }
   }
   return attrs;
