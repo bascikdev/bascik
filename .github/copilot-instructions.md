@@ -205,6 +205,19 @@ If one of these commands hangs or cannot access the required resource, the comma
   - If all tests pass, stop immediately: do NOT read or print out lists of passing test names.
   - If a test fails, parse and inspect ONLY the specific failure stack trace, expected vs received values, and error line numbers. Ignore all preceding passing output.
 
+### Repeatable Benchmarking & Compiler Comparisons (`pkg/bench/`)
+
+When optimizing the compiler or measuring before-and-after speed differences, use the harness in `pkg/bench/` (documented publicly at `docs/content/internals/benchmarking.md` and internally at `pkg/bench/README.md`):
+
+- **Never use `git stash` to compare against a baseline.** Build an immutable baseline compiler snapshot in a detached `git worktree` under a mode-`0700` `/private/tmp` directory, then remove the worktree.
+- **Same-path paired builds are required for HTML byte parity:** `deriveInstanceId` hashes absolute source paths, so comparing two separate fixture directories changes instance IDs. Use `yarn workspace @bascik/bascik profile:compare` to alternate `baseline` and `candidate` compilers on the **same** private fixture path while verifying `byteIdentical: true` across all emitted HTML files.
+- **Standard three-tier benchmark matrix:**
+  1. **Dedicated pipeline fixture (`--fixture pipeline`):** `yarn workspace @bascik/bascik profile:compare --fixture pipeline --baseline <baseline>/pkg --candidate <candidate>/pkg --mode build --rounds 5 --site-url https://example.com --report-dir "$REPORT_DIR"`. Generates a 25-page, 10-component, 1,000-instance site exercising IDs, element/`#id` CSS rules, `aria-*`/`href="#..."` references, `data-bascik-attr-*`/`data-bascik-prop-*` bindings, and external package build scripts (`marked`).
+  2. **Starter site (`create-bascik`):** Scaffold into `/private/tmp` with `node create/dist/index.js starter-site -y --no-install --no-dev`, link workspace `node_modules` entries (keeping `.cache` private and `@bascik/bascik` as a symlink), and run `profile:compare --project <starter-site> --rounds 5`.
+  3. **Full `docs` site (build and live dev edits):** Run `yarn workspace @bascik/bascik profile:compiler --tools control --modes dev --edits --seed-cache --rounds 3 --compiler <compiler>/pkg --report-dir "$REPORT_DIR"` for dev live-edit latency (`diskMs`), or `profile:compare` on a private `docs` copy for cold/warm multi-worker builds.
+- **Microbenchmarks:** Run `yarn pkg:bench` (`pkg/bench/transpile.bench.ts`) for isolated throughput benchmarks, or import baseline and candidate `dist/lib/*.js` modules into a single Node process for direct interleaved function comparisons.
+- **Clean up private directories:** Always remove temporary `/private/tmp` benchmark roots and detached worktrees once measurements are recorded.
+
 ### Test Framework: Vitest 5
 
 The project uses **Vitest 5** (`"vitest": "^5.0.3"`). Behavior that affects how tests are written here:

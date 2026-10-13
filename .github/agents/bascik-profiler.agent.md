@@ -27,10 +27,17 @@ Keep compiler transpile times, component expansion overhead, and server response
 3. **Built-in Node Performance & Profiling**:
    - Use `node --cpu-prof`, `node --heap-prof`, and `perf_hooks` (`performance.now()`, `PerformanceObserver`) to measure microbenchmarks for HTML/CSS scoping passes.
 
+4. **Paired Compiler Comparison & Timeline Harness (`pkg/bench/`)**:
+   - `yarn pkg:bench` (`pkg/bench/transpile.bench.ts`): Vitest throughput microbenchmarks.
+   - `yarn workspace @bascik/bascik profile:compare`: Alternates `baseline` and `candidate` compiler snapshots on the same private fixture path and verifies `byteIdentical: true` across all emitted HTML. Supports `--fixture pipeline` (built-in 25-page, 1,000-instance pipeline stress fixture) or `--project <private-path>` (`starter-site` or `docs` copy).
+   - `yarn workspace @bascik/bascik profile:compiler`: Captures cold, warm, and live dev-edit (`--edits`) timelines on a private copy of `docs/` or another project.
+   - `yarn workspace @bascik/bascik profile:workload`: Captures HTTP/1.1, HTTP/2 TLS, static, dev, and build workloads.
+   - Reference docs: `docs/content/internals/benchmarking.md` and `pkg/bench/README.md`.
+
 ## Profiling Workflow
 
-1. **Benchmark Baseline**: Measure execution time or memory footprint before code edits.
-2. **Profile**: Run `0x` or `clinic` against large sample builds (such as `docs/` or property test suites).
-3. **Analyze Bottlenecks**: Inspect flamegraphs and hot stacks.
-4. **Optimize**: Apply targeted optimizations (e.g. memoization, pre-compiled regexes, worker pool task batching).
-5. **Verify & Regress Check**: Verify that transpile time improves without causing functional regressions.
+1. **Snapshot Baseline (Never `git stash`)**: Build the baseline revision in a detached `git worktree` under a mode-`0700` `/private/tmp` directory, copy `dist/`, `bin/`, `src/`, and `package.json` into an immutable snapshot folder, and remove the worktree.
+2. **Measure Baseline vs. Candidate**: Run `profile:compare` across the three-tier matrix (`--fixture pipeline`, `create-bascik` starter site, and `docs` site) and `profile:compiler --modes dev --edits --seed-cache` for live-edit latency.
+3. **Profile Hotspots**: Run `0x`, `clinic`, or `--tools cpu` against the private fixture to inspect flamegraphs and hot stacks.
+4. **Optimize**: Apply targeted optimizations (memoization, single-pass regexes, fast-path guards, cache key decoupling).
+5. **Verify Parity & Clean Up**: Confirm `byteIdentical: true` in `comparison.json`, run `BASCIK_VERIFY_SCOPING_TEMPLATES=1 yarn unit:all`, and remove temporary `/private/tmp` directories.

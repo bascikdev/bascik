@@ -161,6 +161,7 @@ export const NAV: NavSection[] = [
       { href: '/internals/diagnostics', label: 'Diagnostics' },
       { href: '/internals/minification', label: 'Minification' },
       { href: '/internals/testing', label: 'Testing Internals' },
+      { href: '/internals/benchmarking', label: 'Benchmarking & Profiling' },
       { href: '/internals/create-app', label: 'Create App' },
       { href: '/internals/ci-cd', label: 'CI / CD' },
     ]

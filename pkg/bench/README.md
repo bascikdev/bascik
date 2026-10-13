@@ -150,9 +150,20 @@ yarn workspace @bascik/bascik profile:compare \
   --report-dir "$REPORT_DIR"
 ```
 
+To run against the built-in pipeline benchmark fixture (25 pages, 10 components, 1,000 component instances with IDs, CSS element and `#id` rules, `aria-*` and `href="#..."` references, `data-bascik-attr-*` and `data-bascik-prop-*` bindings, and `data-bascik-build` scripts) without preparing an external project first, pass `--fixture pipeline`:
+
+```sh
+yarn workspace @bascik/bascik profile:compare \
+  --fixture pipeline \
+  --baseline <baseline>/pkg \
+  --candidate <candidate>/pkg \
+  --mode build --rounds 5 --site-url https://example.com \
+  --report-dir "$REPORT_DIR"
+```
+
 Inputs:
 
-- **Fixture (`--project`).** A Bascik project outside the repository with a real (not symlinked) `node_modules` directory. The project copy that a `profile:compiler` run leaves in its report directory works. Deterministic instance IDs hash absolute source paths, so emitted HTML is only comparable between builds of the same fixture path.
+- **Fixture (`--project` or `--fixture pipeline`).** Either a Bascik project outside the repository with a real (not symlinked) `node_modules` directory, or `--fixture pipeline` to generate the synthetic pipeline-heavy benchmark site inside the report directory. The project copy that a `profile:compiler` run leaves in its report directory also works. Deterministic instance IDs hash absolute source paths, so emitted HTML is only comparable between builds of the same fixture path.
 - **Compilers (`--baseline`, `--candidate`).** Each needs built `dist/`, `bin/`, and `package.json`. A `git worktree` checkout of the baseline revision also records its commit. For the candidate, copy those entries out of `pkg/` into a private directory so later edits do not change the snapshot.
 
 Before each build, the fixture's `node_modules/@bascik/bascik` symlink is pointed at the compiler under test, so config imports and exec scripts use the same snapshot as the compile. The tool refuses to replace anything that is not a symlink.
