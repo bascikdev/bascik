@@ -28,9 +28,3 @@ A button that opens a native modal `<dialog>`. The browser handles focus trappin
 
 - For a confirmation, put a `<form method="dialog">` with two buttons inside the dialog and read `dialog.returnValue` in a `close` listener.
 - To open the dialog without a script, use an invoker command: `<button commandfor="dialog" command="show-modal">`. Check its [browser support](/compatibility) first; it reached Baseline later than `<dialog>`.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs modal-dialog
-```

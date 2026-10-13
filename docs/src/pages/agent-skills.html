@@ -35,14 +35,14 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/tools/agent-skill');
+          export default async () => renderSectionLabel('/agent-skills');
         </script>
 
-        <!-- Content rendered from docs/content/tools/agent-skill.md at build time.
+        <!-- Content rendered from docs/content/agent-skills.md at build time.
              To update page content, edit the MD file, not this file. -->
         <script data-bascik-build>
           import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/tools/agent-skill.md');
+          export default async () => await renderMd('./content/agent-skills.md');
         </script>
 
         <docs-pagination />

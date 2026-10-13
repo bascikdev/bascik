@@ -653,6 +653,10 @@ Do not add `data-bascik-preserve="id"` to the skip link to "keep it working". A 
 
 A hyphenated tag that is not a Bascik component, such as a library's `<heading-anchors>` or `<model-viewer>`, is passed to the browser unchanged. By default each page prints an `Unresolved component tag` warning for it. Declare the tag in [`components.external`](/configuration#componentsexternal) to remove the warning and the `bascik --check` finding. Typos are still reported.
 
+## Example Components
+
+The [Example Components](/example-components) section has working components to read: a header and footer, tabs, a modal dialog, a popover menu, a filter list, a copy button, a contact form, and a theme toggle. Each page shows the live component, its usage, and its full source.
+
 ## Sharing and Distributing Components
 
 Components can be shared across projects or distributed as npm packages:

@@ -12,7 +12,9 @@
  *   <!-- example:tree starter-site -->            the file tree of an example folder
  *
  * The usage shown in the demo box comes from the page's `<!-- demo:usage -->` code block, which is printed as live
- * markup for the preview and escaped for the Usage tab.
+ * markup for the preview and escaped for the Usage tab. The preview is wrapped in `[data-example-stage]`, which
+ * docs/src/css/styles.css gives the starter site's design tokens and a solid page background, so the component renders
+ * the way it does in a real site instead of on the docs checkerboard.
  */
 import { readFile, readdir } from 'node:fs/promises';
 import { extname, join, relative, sep } from 'node:path';
@@ -95,7 +97,7 @@ export async function exampleDemo(mdPath: string, componentPath: string): Promis
   const source = await readFile(componentPath, 'utf8');
   const file = relative('..', componentPath).split(sep).join('/');
   return `<component-demo data-bascik-prop-no-output="true" data-bascik-prop-file="${escapeAttribute(file)}">
-  <div data-bascik-slot="example">${usage.code}</div>
+  <div data-bascik-slot="example"><div data-example-stage>${usage.code}</div></div>
   <div data-bascik-slot="source-usage"><code-block data-bascik-prop-lang="html">${escapeCode(usage.code)}</code-block></div>
   <div data-bascik-slot="source-html"><code-block data-bascik-prop-lang="html" data-bascik-prop-file="${escapeAttribute(file)}">${escapeCode(source.replace(/\n$/, ''))}</code-block></div>
 </component-demo>`;

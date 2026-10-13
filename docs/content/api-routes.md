@@ -16,6 +16,8 @@ export const POST = async (request: Request): Promise<Response> => {
 
 Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax. Server scripts and stream scripts receive this same `Request` object; see [Server Scripts](/server-scripts).
 
+The [Contact Form](/example-components/contact-form) example posts to a route like this one.
+
 > **See it live on Cloudflare Workers.** The [edge API client](https://cloudflare-adapter.bascik.dev/api-demo) calls a deployed `src/api/ping.ts` route from the browser and shows the JSON response. You can also request it directly at [/api/ping](https://cloudflare-adapter.bascik.dev/api/ping).
 
 ## File-Based Routing

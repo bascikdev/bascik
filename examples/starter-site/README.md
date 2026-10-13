@@ -10,7 +10,7 @@ npx bascik --server
 
 ## Copy It
 
-With the [Bascik agent skills](https://bascik.dev/tools/agent-skill) installed, run from your project root:
+With the [Bascik agent skills](https://bascik.dev/agent-skills) installed, run from your project root:
 
 ```sh
 node .agents/skills/bascik/scripts/add-example.mjs starter-site

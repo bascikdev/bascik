@@ -398,6 +398,13 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
     align-items: center;
   }
 
+  /* An example stage (see examples.ts) is its own page background, so the checkerboard and padding step aside. */
+  .demo-preview-content:has(> [data-example-stage]) {
+    padding: 0;
+    background: none;
+    align-items: stretch;
+  }
+
   /* Page-level examples (site-header, site-footer) span the box instead of shrinking to their content. Element names
      inside :is() stay unscoped, so this matches the example's own <header> and <footer>. */
   .demo-preview-content> :is(header, footer) {

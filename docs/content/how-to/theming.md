@@ -64,7 +64,7 @@ Both blocks are needed, one for a saved dark choice and one for a dark system se
 
 ## A Toggle Without a Flash
 
-The saved choice has to be applied before the page renders, or the page flashes the wrong theme. A small script in `<head>` reads `localStorage` and sets `data-theme` synchronously; a button elsewhere changes and saves it. Both are ready to copy in [Theme Toggle](/example-components/theme-toggle).
+The saved choice has to be applied before the page renders, or the page flashes the wrong theme. A small script in `<head>` reads `localStorage` and sets `data-theme` synchronously; a button elsewhere changes and saves it. Both are shown working in [Theme Toggle](/example-components/theme-toggle).
 
 - Put the head script in a component used inside `<head>`. Bascik keeps that component's script in `<head>`, where it runs before the body renders.
 - Keep it tiny and free of imports: anything in `<head>` delays rendering.

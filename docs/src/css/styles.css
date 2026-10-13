@@ -213,6 +213,53 @@ body {
   color-scheme: dark;
 }
 
+/* The stage around a live example component (docs/src/lib/examples.ts). It declares the starter site's design tokens
+   (examples/starter-site/src/pages/css/styles.css) so example components render as they do in a real site, on a solid
+   page background. The docs preview is dark, so the dark side of each light-dark() pair is used. */
+[data-example-stage] {
+  --color-bg: #121316;
+  --color-surface: #1c1e22;
+  --color-text: #e8e9ec;
+  --color-muted: #a2a8b4;
+  --color-border: #33363d;
+  --color-accent: #8ab0ff;
+  --color-accent-contrast: #0b1530;
+  --color-danger: #ff8a80;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+  --radius: 0.5rem;
+  --content-width: 70rem;
+
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  padding: 2rem;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  color-scheme: dark;
+}
+
+/* Page-level examples fill the stage like they fill a page. */
+[data-example-stage]:has(> :is(header, footer)) {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: 0;
+}
+
+[data-example-stage] > footer {
+  margin-top: 0;
+}
+
 /* Remove code-block rounding when inside a component-demo pane */
 [data-demo-pane] { --cblock-radius: 0; --cblock-border: none; --cblock-header-display: none; }
 

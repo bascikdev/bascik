@@ -11,10 +11,21 @@ Copies a text value to the clipboard and announces the result to screen readers.
   }
 
   .button {
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    color: inherit;
     font: inherit;
+    cursor: pointer;
+  }
+
+  .button:hover {
+    border-color: var(--color-accent, currentColor);
   }
 
   .status {
+    color: var(--color-muted, inherit);
     font-size: 0.875em;
   }
 </style>

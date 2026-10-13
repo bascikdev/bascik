@@ -1,8 +1,8 @@
 # Example Components
 
-Working components to copy into your project and change. They are examples, not a component library: there is nothing to install or upgrade, and once copied they are your files.
+Working components that show how Bascik features fit together in real code. They are examples to read and learn from, not a component library: there is nothing to install or upgrade.
 
-Every component works with several instances on one page, passes `bascik --check` and the [linter](/tools/linter), and is tested in a browser on every change. The files live in the [`examples/` folder](https://github.com/bascikdev/bascik/tree/main/examples) of the Bascik repository, and these pages read them directly, so what you see here is what you copy.
+Every component works with several instances on one page, passes `bascik --check` and the [linter](/tools/linter), and is tested in a browser on every change. The files live in the [`examples/` folder](https://github.com/bascikdev/bascik/tree/main/examples) of the Bascik repository, and these pages read them directly, so what you see here is the real source.
 
 ## Components
 
@@ -18,27 +18,25 @@ Every component works with several instances on one page, passes `bascik --check
 | [Contact Form](/example-components/contact-form) | Validation, a JSON `fetch`, preserved field names, and the API route behind it |
 | [Theme Toggle](/example-components/theme-toggle) | Light and dark themes with no flash on load |
 
-The repository also has a complete [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site) that uses these components: shared layout components, per-page SEO tags, a Markdown blog with tags and a feed, `llms.txt`, a contact page, and a 404 page.
+## See a Technique in Use
 
-## Copy a Component
+Other pages explain a feature; these components show it inside something complete.
 
-With the [agent skills](/tools/agent-skill) installed, `add-example.mjs` downloads a component from this site and writes it to the first component folder in your `bascik.config.ts`. It refuses to overwrite a file you changed and writes nothing when it would:
+| To see this | Read | In this example |
+|---|---|---|
+| Per-instance IDs for scripts and ARIA | [Scoped JavaScript](/scoped-javascript) | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list) |
+| Reading slotted content | [Slots](/slots) | [Tab Group](/example-components/tab-group), [Filter List](/example-components/filter-list) |
+| A prop in an attribute | [Props](/props) | [Copy Button](/example-components/copy-button) |
+| Design tokens with fallbacks | [Scoped Styles](/scoped-styles) | Every component |
+| `html:has()` and anchor positioning | [Scoped Styles](/scoped-styles) | [Modal Dialog](/example-components/modal-dialog), [Popover Menu](/example-components/popover-menu) |
+| Page-aware and once-per-site build scripts | [Page-Aware Scripts](/how-to/page-aware-scripts) | [Site Header](/example-components/site-header), [Site Footer](/example-components/site-footer) |
+| Preserved field names and an API route | [Preserve Scoping](/preserve), [API Routes](/api-routes) | [Contact Form](/example-components/contact-form) |
+| Light and dark themes | [Theming](/how-to/theming) | [Theme Toggle](/example-components/theme-toggle) |
 
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs --list
-node .agents/skills/bascik/scripts/add-example.mjs tab-group
-node .agents/skills/bascik/scripts/add-example.mjs starter-site/src/lib/seo.ts
-```
+The previews on these pages sit on a plain page background with the starter site's design tokens, so each component looks as it does in a real site. Each component reads its colors from tokens with neutral fallbacks, so it also works in a project with no token stylesheet.
 
-The script also copies files from the starter site, along with the example components they use. It prints configuration files (`bascik.config.ts`, `package.json`) instead of copying them, so you can merge the settings by hand.
+The repository also has a complete [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site) that uses these components: shared layout components, per-page SEO tags, a Markdown blog with tags and a feed, `llms.txt`, a contact page, and a 404 page. The [agent skills](/agent-skills) use the examples and the starter site as reference when an assistant builds a Bascik project.
 
-Without the skills, copy the files from GitHub. A component is one folder; drop it into `src/components/`.
+## Reading an Example
 
-## Change Them
-
-Rename tags, restyle, and rewrite freely. Keep the scoping rules each component's "How It Works" section explains: find elements with `getElementById`, keep class names static, and derive runtime IDs from a scoped ID. Then check your version:
-
-```sh
-npx bascik --check
-npx @bascik/language-server --check
-```
+Each page shows the live component, how to use it, its full source, and a "How It Works" section that explains the scoping rules it relies on: find elements with `getElementById`, keep class names static, and derive runtime IDs from a scoped ID. Open the Source tab on any preview to see the component file.

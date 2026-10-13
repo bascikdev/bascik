@@ -29,9 +29,3 @@ A footer for every page: secondary links and a copyright line. The links and the
 
 - For columns of links, return several labeled lists from `footerLinks()` and lay them out with a grid.
 - To repeat the header's links, import them from `../site-header/links.ts`, or move one shared list to `src/lib/` and import it as `@/lib/links.ts`.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs site-footer
-```

@@ -24,9 +24,3 @@ Copies a text value to the clipboard and announces the result to screen readers.
 
 - To copy the text of a code block, read `textContent` from an element the component finds by ID instead of a prop.
 - Show the result as an icon change instead of text, but keep the `role="status"` message for screen readers.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs copy-button
-```

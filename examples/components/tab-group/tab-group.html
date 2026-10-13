@@ -11,32 +11,41 @@ Accessible tabs built from the sections passed in. Each child of the default slo
   .tablist {
     display: flex;
     gap: 0.25rem;
-    border-bottom: 1px solid currentColor;
+    border-bottom: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
   }
 
   .tab {
     padding: 0.5rem 1rem;
     border: 0;
     border-bottom: 3px solid transparent;
+    border-radius: var(--radius, 0.5rem) var(--radius, 0.5rem) 0 0;
     background: none;
-    color: inherit;
+    color: var(--color-muted, inherit);
     font: inherit;
     cursor: pointer;
   }
 
+  .tab:hover {
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+  }
+
   .tab[aria-selected="true"] {
-    border-bottom-color: currentColor;
+    border-bottom-color: var(--color-accent, currentColor);
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    color: var(--color-text, inherit);
     font-weight: 700;
   }
 
   .tab:focus-visible,
   .panel:focus-visible {
-    outline: 2px solid currentColor;
+    outline: 2px solid var(--color-accent, currentColor);
     outline-offset: 2px;
   }
 
   .panel {
-    padding-block: 1rem;
+    padding: 1rem;
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    border-radius: 0 0 var(--radius, 0.5rem) var(--radius, 0.5rem);
   }
 </style>
 <div class="tab-group" id="root">

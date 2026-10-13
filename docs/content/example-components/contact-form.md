@@ -33,10 +33,3 @@ API routes need `bascik --server` or a serverless target such as the [Cloudflare
 
 - To send email, call your provider's HTTP API in `POST` after validation and read the API key from `process.env`. Never put the key in browser code.
 - For inline messages instead of the browser's bubbles, add a `<p id="email-error">` per field, point `aria-describedby` at it, and fill it from `input.validationMessage`. Bascik rewrites `aria-describedby` along with the IDs.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs contact-form
-node .agents/skills/bascik/scripts/add-example.mjs starter-site/src/api/contact.ts
-```

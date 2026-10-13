@@ -35,9 +35,3 @@ The navigation lives in a TypeScript file next to the component. Edit the list f
 
 - To share one list between the header and other places, move `links.ts` to `src/lib/` and import it as `@/lib/links.ts`.
 - On small screens the links wrap. For a collapsed menu, put the list inside a [Popover Menu](/example-components/popover-menu) and show it inline above a breakpoint.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs site-header
-```

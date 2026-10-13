@@ -31,9 +31,3 @@ The button above switches this page's theme. It stores the choice in `localStora
 ## Adapt It
 
 - For a three-way system, light, and dark choice, use a `<select>` and remove the stored value for "system". See [Theming](/how-to/theming#three-way-switch).
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs theme-toggle theme-init
-```

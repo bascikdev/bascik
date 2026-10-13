@@ -28,9 +28,3 @@ A dropdown menu with no JavaScript, built on the HTML `popover` attribute. Escap
 
 - For site navigation, pass a `<ul>` of links. For actions, pass `<button>` elements.
 - `popover="manual"` turns off light dismiss, for panels that should stay open until a button closes them.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs popover-menu
-```

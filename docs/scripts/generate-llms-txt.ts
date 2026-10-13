@@ -112,7 +112,7 @@ for (const { section, pages } of NAV) {
 
 lines.push('## Optional');
 lines.push('');
-lines.push('- [Agent Skills](https://bascik.dev/tools/agent-skill): Install the Bascik agent skills (core, scoping, scripts, config, testing, migration) with their helper scripts');
+lines.push('- [Agent Skills](https://bascik.dev/agent-skills): Install the Bascik agent skills (core, scoping, scripts, config, testing, migration) with their helper scripts');
 lines.push('- [Core Skill File](https://bascik.dev/assets/SKILL.md): The core Bascik agent skill as a single SKILL.md');
 lines.push('- [All Skills Archive](https://bascik.dev/assets/skills.tar.gz): Every Bascik agent skill with references and scripts, as a tar.gz');
 lines.push('');

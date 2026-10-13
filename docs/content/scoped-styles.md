@@ -322,6 +322,8 @@ Define your design tokens once in a global stylesheet, then consume them inside 
 }
 ```
 
+The [Example Components](/example-components) use this pattern: each reads tokens such as `var(--color-surface, ...)` with a fallback, so it works with or without a token stylesheet. The [Modal Dialog](/example-components/modal-dialog) shows `html:has()` for a scroll lock, and the [Popover Menu](/example-components/popover-menu) shows anchor positioning without `anchor-name`.
+
 ## CSS @import
 
 Bascik supports standard CSS `@import` statements in component CSS (`.css` files and inline `<style>` blocks):

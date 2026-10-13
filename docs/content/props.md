@@ -82,6 +82,8 @@ The directive is removed from compiled output. If the named prop is missing, Bas
 
 This is the same prop mechanism with a different destination. It adds no variables, expressions, interpolation, or templating syntax. A prop may independently drive both element content and an attribute.
 
+The [Copy Button](/example-components/copy-button) example binds its `text` prop to a `data-text` attribute that its script reads, and uses `label` as the button's content.
+
 ## Naming Conventions
 
 Prop names use the portion of the attribute after `data-bascik-prop-`. You can use lowercase alphanumeric names with hyphens:

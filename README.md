@@ -16,7 +16,7 @@ npm create bascik@latest my-site
 
 The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
 
-Building with an AI assistant? Install the [Bascik agent skills](https://bascik.dev/tools/agent-skill) so GitHub Copilot, Claude Code, Cursor, or Codex knows the component and scoping rules:
+Building with an AI assistant? Install the [Bascik agent skills](https://bascik.dev/agent-skills) so GitHub Copilot, Claude Code, Cursor, or Codex knows the component and scoping rules:
 
 ```sh
 npx skills add bascikdev/bascik

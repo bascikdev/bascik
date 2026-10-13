@@ -30,9 +30,3 @@ Pass `<li>` items in the default slot; the slot sits inside the component's `<ul
 
 - For long lists, debounce the input and filter a data array instead of the DOM. See [Interactivity](/how-to/interactivity#debounce).
 - To filter on more than the visible text, put keywords in a `data-keywords` attribute on each item and match against both.
-
-## Copy It
-
-```sh
-node .agents/skills/bascik/scripts/add-example.mjs filter-list
-```

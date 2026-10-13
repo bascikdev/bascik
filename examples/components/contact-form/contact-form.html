@@ -6,6 +6,9 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
     display: grid;
     gap: 1rem;
     max-width: 32rem;
+    padding: 1.5rem;
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
   }
 
   .field {
@@ -14,21 +17,43 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
   }
 
   .input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-bg, Field);
+    color: inherit;
     font: inherit;
-    padding: 0.5rem;
+  }
+
+  .input:focus-visible {
+    outline: 2px solid var(--color-accent, currentColor);
+    outline-offset: 1px;
   }
 
   .input:user-invalid {
-    outline: 2px solid #c62828;
+    outline: 2px solid var(--color-danger, #c62828);
   }
 
   .submit {
     justify-self: start;
+    padding: 0.5rem 1.25rem;
+    border: 0;
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-accent, #2457d6);
+    color: var(--color-accent-contrast, #ffffff);
     font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .submit:disabled {
+    opacity: 0.6;
+    cursor: progress;
   }
 
   .status {
     margin: 0;
+    color: var(--color-muted, inherit);
   }
 </style>
 <!-- data-bascik-preserve="name" keeps the field names literal. Without it, Bascik scopes them per instance and the

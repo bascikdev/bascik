@@ -76,7 +76,7 @@ Values are space-separated. The valid tokens are `id`, `name`, and `class`:
 
 An unknown token produces a warning and is ignored. Valid tokens beside it still apply.
 
-Preserving only `name` leaves ids scoped, so the `label for="email"` above is still rewritten together with its input id.
+Preserving only `name` leaves ids scoped, so the `label for="email"` above is still rewritten together with its input id. The [Contact Form](/example-components/contact-form) example uses this with a server route that reads the field names.
 
 > **Radio group tradeoff.** Normal `name` scoping gives each component instance an independent radio group while keeping radios within one instance grouped together. Preserving `name` gives every instance the same literal group name, so selecting a radio in one instance can clear the selection in another. Prefer `data-bascik-preserve="name"` only where an external endpoint requires literal names. Do not disable `scoping.attributes.name` site-wide for this case.
 
