@@ -63,14 +63,18 @@ const ATTRIBUTE_RE = /(\s+)([^\s"'>/=]+)(?:(\s*=\s*)("([^"]*)"|'([^']*)'|([^\s"'
 
 const findClassAttribute = (
   attributes: string,
-): { start: number; length: number; prefix: string; value: string; quote: string } | null => {
+): { start: number; length: number; prefix: string; value: string; quote: string; suffix: string } | null => {
   ATTRIBUTE_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = ATTRIBUTE_RE.exec(attributes)) !== null) {
     if (match[2].toLowerCase() !== "class" || match[3] === undefined) continue;
-    const value = match[5] ?? match[6] ?? match[7] ?? "";
+    const rawUnquoted = match[7];
+    const hasTrailingSlash = rawUnquoted !== undefined && rawUnquoted.endsWith("/") && match.index + match[0].length === attributes.length;
+    const unquotedValue = hasTrailingSlash ? rawUnquoted.slice(0, -1) : rawUnquoted;
+    const value = match[5] ?? match[6] ?? unquotedValue ?? "";
     const quote = match[6] !== undefined ? "'" : '"';
-    return { start: match.index, length: match[0].length, prefix: `${match[1]}class${match[3]}`, value, quote };
+    const suffix = hasTrailingSlash ? "/" : "";
+    return { start: match.index, length: match[0].length, prefix: `${match[1]}class${match[3]}`, value, quote, suffix };
   }
   return null;
 };
@@ -89,10 +93,10 @@ const scopeOpenTag = (
     return `<${tagName} class="${elementClass}"${attributes}>`;
   }
 
-  const { start, length, prefix, value, quote } = classMatch;
+  const { start, length, prefix, value, quote, suffix } = classMatch;
   const tokens = value.split(/\s+/).filter(Boolean).map((token) => scope.classes[token] ?? token);
   if (elementClass && !tokens.includes(elementClass)) tokens.push(elementClass);
-  const replacement = `${prefix}${quote}${tokens.join(" ")}${quote}`;
+  const replacement = `${prefix}${quote}${tokens.join(" ")}${quote}${suffix}`;
   const updated = attributes.slice(0, start) + replacement + attributes.slice(start + length);
   return `<${tagName}${updated}>`;
 };

@@ -68,7 +68,7 @@ export const scriptOpenTag = (element: string, body: string): string => {
 };
 
 const ATTR_PAIR_REGEX =
-	/(?:^|\s)([^\s"'=<>\`]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+))/gi;
+	/(?:^|\s)([^\s"'=<>\`\/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\`]+?))(?=\s|\/>|>|$)/gi;
 
 export const getHtmlAttributeValue = (openTag: string, attribute: string): string | undefined => {
 	const target = attribute.toLowerCase();

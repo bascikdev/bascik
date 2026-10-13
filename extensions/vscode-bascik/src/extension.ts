@@ -1604,19 +1604,19 @@ async function createDiagnosticsForDocument(
       );
       const declaredIds = new Set(
         Array.from(
-          referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi),
+          referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`/>]+))/gi),
         )
-          .map((match) => match[1] ?? match[2])
+          .map((match) => match[1] ?? match[2] ?? match[3])
           .filter((id): id is string => Boolean(id)),
       );
       const idReferenceAttributeRegex =
-        /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+        /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+))/gi;
       let idReferenceMatch: RegExpExecArray | null;
       while (
         (idReferenceMatch =
           idReferenceAttributeRegex.exec(referenceScanText)) !== null
       ) {
-        const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? '';
+        const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? idReferenceMatch[4] ?? '';
         for (const id of value.trim().split(/\s+/).filter(Boolean)) {
           if (declaredIds.has(id)) continue;
           const valueOffset = idReferenceMatch[0].indexOf(id);
@@ -1635,13 +1635,13 @@ async function createDiagnosticsForDocument(
           diagnostics.push(diagnostic);
         }
       }
-      const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)')/gi;
+      const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)'|#([^\s"'=<>`/>]+))/gi;
       let fragmentReferenceMatch: RegExpExecArray | null;
       while (
         (fragmentReferenceMatch =
           fragmentReferenceRegex.exec(referenceScanText)) !== null
       ) {
-        const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2];
+        const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2] ?? fragmentReferenceMatch[3];
         if (!id || declaredIds.has(id)) continue;
         const idOffset = fragmentReferenceMatch[0].indexOf(id);
         const start = document.positionAt(
@@ -1661,11 +1661,11 @@ async function createDiagnosticsForDocument(
     }
 
     const preserveDirectiveRegex =
-      /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
+      /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/gi;
     let preserveMatch: RegExpExecArray | null;
     while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {
       if (preserveMatch[1] === undefined) continue;
-      const value = preserveMatch[2] ?? preserveMatch[3] ?? '';
+      const value = preserveMatch[2] ?? preserveMatch[3] ?? preserveMatch[4] ?? '';
       for (const preserveToken of value.trim().split(/\s+/).filter(Boolean)) {
         if (
           preserveToken === 'id' ||
@@ -1697,17 +1697,17 @@ async function createDiagnosticsForDocument(
       (formMatch = formOpenTagRegex.exec(text)) !== null
     ) {
       const actionMatch = formMatch[0].match(
-        /\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i,
+        /\saction\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+))/i,
       );
-      const action = actionMatch?.[1] ?? actionMatch?.[2];
+      const action = actionMatch?.[1] ?? actionMatch?.[2] ?? actionMatch?.[3];
       if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
       const preserveMatch = formMatch[0].match(
-        /\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i,
+        /\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/i,
       );
       const preservesName =
         preserveMatch !== null &&
-        (preserveMatch[1] === undefined ||
-          (preserveMatch[1] ?? preserveMatch[2] ?? '')
+        (preserveMatch[1] === undefined && preserveMatch[2] === undefined && preserveMatch[3] === undefined ||
+          (preserveMatch[1] ?? preserveMatch[2] ?? preserveMatch[3] ?? '')
             .trim()
             .split(/\s+/)
             .includes('name'));
@@ -1726,11 +1726,11 @@ async function createDiagnosticsForDocument(
     if (project && snapshot && isComponentDocument) {
       const componentName = normalizeComponentName(document.uri.fsPath);
       const directiveRegex =
-        /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi;
+        /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi;
       let directiveMatch: RegExpExecArray | null;
       while ((directiveMatch = directiveRegex.exec(text)) !== null) {
         const targetName = directiveMatch[1];
-        const propName = directiveMatch[2] ?? directiveMatch[3];
+        const propName = directiveMatch[2] ?? directiveMatch[3] ?? directiveMatch[4];
         if (
           project.componentUsageSuppliesProp(snapshot, componentName, propName)
         )

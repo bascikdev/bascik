@@ -257,5 +257,16 @@ describe('Bascik Language Server Analyzer', () => {
       expect(codes).not.toContain('css-attribute-selector');
       expect(codes).not.toContain('js-id-setter');
     });
+
+    it('recognizes unquoted and whitespace-spaced ID declarations and references in components', () => {
+      const diags = createDiagnostics(
+        TextDocument.create(`file://${componentPath}`, 'html', 1, '<input id = email /><label for=email>Email</label><a href=#missing>Jump</a>'),
+        componentPath,
+        mockSnapshot,
+      );
+      const messages = diags.map((d) => d.message);
+      expect(messages.some((m) => String(m).includes('"email"'))).toBe(false);
+      expect(messages.some((m) => String(m).includes('"missing"'))).toBe(true);
+    });
   });
 });

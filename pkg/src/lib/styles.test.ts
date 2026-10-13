@@ -224,6 +224,16 @@ describe("convertCssElementSelectorsToClasses", () => {
     );
     expect(elementsConvertedClasses).toEqual(["h1", "h2"]);
   });
+
+  it("scopes element selectors following :is(.a, .b) or :where(.a, .b)", () => {
+    const preScopedCss = ":is(.bascik__my-comp__a, .bascik__my-comp__b) p > span { color: red; }";
+    const { css: result, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(preScopedCss, "my-comp");
+    expect(result).toBe(
+      ":is(.bascik__my-comp__a, .bascik__my-comp__b) .bascik__my-comp__el__p > .bascik__my-comp__el__span { color: red; }",
+    );
+    expect(elementsConvertedClasses).toEqual(["p", "span"]);
+  });
 });
 
 describe("addElementClassesInHtml", () => {
@@ -324,6 +334,36 @@ describe("removeIdSelectors", () => {
     expect(result).not.toContain("[id]");
     expect(result).not.toContain("end}end");
     expect(result).toContain(".normal { color: blue; }");
+  });
+
+  it("does not swallow an enclosing @media or @supports rule when [id] is nested inside it", () => {
+    const input = [
+      "@media (min-width: 600px) {",
+      "  .keep-before { color: green; }",
+      "  [id] { color: red; }",
+      "  .keep-after { color: blue; }",
+      "}",
+    ].join("\n");
+    const result = removeIdSelectors(input);
+    expect(result).not.toContain("[id]");
+    expect(result).not.toContain("color: red");
+    expect(result).toContain("@media (min-width: 600px)");
+    expect(result).toContain(".keep-before { color: green; }");
+    expect(result).toContain(".keep-after { color: blue; }");
+    // Must keep balanced braces
+    expect((result.match(/\{/g) ?? []).length).toBe((result.match(/\}/g) ?? []).length);
+  });
+
+  it("removes only the [id] selector item from a comma-separated selector list while preserving sibling selectors", () => {
+    const result1 = removeIdSelectors(".keep, [id=\"foo\"] { color: red; }");
+    expect(result1).not.toContain("[id");
+    expect(result1).toContain(".keep");
+    expect(result1).toContain("color: red");
+
+    const result2 = removeIdSelectors("[id], .keep { color: blue; }");
+    expect(result2).not.toContain("[id");
+    expect(result2).toContain(".keep");
+    expect(result2).toContain("color: blue");
   });
 });
 

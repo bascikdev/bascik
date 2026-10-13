@@ -145,6 +145,19 @@ describe("rewriteHtmlBasePaths", () => {
       ].join(""),
     );
   });
+
+  it("Does not corrupt quoted attribute strings containing URL-like attribute text with spaces", () => {
+    const html = [
+      `<div data-example="click href = '/keep-literal'"><a href = /real/>Real</a></div>`,
+      `<meta content=/share.png property=og:image/>`,
+    ].join("");
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      [
+        `<div data-example="click href = '/keep-literal'"><a href=/sub/real/>Real</a></div>`,
+        `<meta content=/sub/share.png property=og:image/>`,
+      ].join(""),
+    );
+  });
 });
 
 describe("rewriteCssBasePaths", () => {

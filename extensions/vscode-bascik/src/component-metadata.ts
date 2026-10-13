@@ -83,9 +83,9 @@ function inferMembers(source: string): {
   }
 
   for (const match of masked.matchAll(
-    /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi,
+    /data-bascik-(?:attr-[\w:.-]+|text|html)\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
   )) {
-    const name = match[1] ?? match[2];
+    const name = match[1] ?? match[2] ?? match[3];
     if (name) {
       const normalized = name.toLowerCase();
       const offset = (match.index ?? 0) + match[0].lastIndexOf(name);
@@ -94,7 +94,7 @@ function inferMembers(source: string): {
     }
   }
 
-  const slotRegex = /data-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/gi;
+  const slotRegex = /data-bascik-slot(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/gi;
   for (const match of masked.matchAll(slotRegex)) {
     const name = match[1] ?? match[2] ?? match[3];
     if (name === undefined || name.trim() === '') {

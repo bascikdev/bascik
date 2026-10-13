@@ -79,4 +79,8 @@ describe("minifyCss", () => {
     expect(minifyCss(".a { color : red ; margin :0 }")).toBe(".a{color:red;margin:0}");
     expect(minifyCss(".a { color: red; &:hover { color : blue } }")).toBe(".a{color:red;&:hover{color:blue}}");
   });
+
+  it("preserves a space for an empty CSS custom property value (--empty: ;)", () => {
+    expect(minifyCss(":root { --empty: ; --x: 1px; }")).toBe(":root{--empty: ;--x:1px;}");
+  });
 });

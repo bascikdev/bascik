@@ -254,6 +254,36 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
     expect(result.fileContent).toContain(`id="${scope("email")}"`);
   });
 
+  it("scopes JS DOM calls that include whitespace before '(' or around commas", () => {
+    let component = makeComponent(
+      [
+        '<input id="email" name="email">',
+        '<script>',
+        '  document.getElementById ("email");',
+        '  document.querySelector ("#email");',
+        '  document.querySelectorAll (".js-only");',
+        '  document.getElementsByName ("email");',
+        '  document.getElementsByClassName ("js-only");',
+        '  el.setAttribute ( "id" , "email" );',
+        '  el.setAttribute ( "name" , "email" );',
+        '  el.setAttribute ( "class" , "js-only" );',
+        '</script>',
+      ].join("\n"),
+      ".js-only { color: red; }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(`getElementById ("${scope("email")}")`);
+    expect(component.fileContent).toContain(`querySelector ("#${scope("email")}")`);
+    expect(component.fileContent).toContain(`querySelectorAll (".${scopeClass("js-only")}")`);
+    expect(component.fileContent).toContain(`getElementsByName ("${scope("email")}")`);
+    expect(component.fileContent).toContain(`getElementsByClassName ("${scopeClass("js-only")}")`);
+    expect(component.fileContent).toContain(`setAttribute ( "id" , "${scope("email")}" )`);
+    expect(component.fileContent).toContain(`setAttribute ( "name" , "${scope("email")}" )`);
+    expect(component.fileContent).toContain(`setAttribute ( "class" , "${scopeClass("js-only")}" )`);
+  });
+
   it("scopes aria-labelledby tokens that resolve to local ids", () => {
     const component = makeComponent(
       '<h2 id="title">Title</h2><section aria-labelledby="title"></section>',

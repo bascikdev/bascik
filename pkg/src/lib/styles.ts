@@ -123,7 +123,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
+      /(?<=(?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);
@@ -301,7 +301,19 @@ export const removeIdSelectors = (css: string): string => {
   // Shield string literals first so a `}` inside a quoted value (e.g.
   // content: "x}y") can't terminate the rule match early.
   const { css: shielded, restore } = shieldCssStrings(css);
-  return restore(shielded.replace(/\[id\b[^\]]*\].*?{[\s\S]*?}/gim, ""));
+  const replaced = shielded.replace(
+    /((?:^|[;{}])\s*)([^{};]*?\[id\b[^\]]*\][^{};]*?)(\{[\s\S]*?\})/gim,
+    (_match, prefix: string, selectorHeader: string, block: string) => {
+      const keptSelectors = selectorHeader
+        .split(",")
+        .filter((part) => !/\[id\b/i.test(part))
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (keptSelectors.length === 0) return prefix;
+      return `${prefix}${keptSelectors.join(", ")} ${block}`;
+    },
+  );
+  return restore(replaced);
 };
 
 // ─── CSS #id Selector → Class Conversion ─────────────────────────────────────

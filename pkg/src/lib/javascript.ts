@@ -573,7 +573,7 @@ export const prefixElementAttribute = (
       );
       // querySelector / querySelectorAll / closest / matches — extract ".token" class tokens
       for (const callMatch of src.matchAll(
-        /(?:querySelector(?:All)?|closest|matches)\(\s*["']([^"']*)["']\s*\)/gm,
+        /(?:querySelector(?:All)?|closest|matches)\s*\(\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const tokenMatch of callMatch[1].matchAll(
           /(?<![a-zA-Z0-9_-])\.([a-zA-Z_][a-zA-Z0-9_-]*)/g,
@@ -593,7 +593,7 @@ export const prefixElementAttribute = (
 
       // setAttribute("class", "x y")
       for (const attrMatch of src.matchAll(
-        /setAttribute\(\s*["']class["']\s*,\s*["']([^"']*)["']\s*\)/gm,
+        /setAttribute\s*\(\s*["']class["']\s*,\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const token of attrMatch[1].trim().split(/\s+/)) {
           if (token) addIfNew(token);
@@ -602,7 +602,7 @@ export const prefixElementAttribute = (
 
       // getElementsByClassName("x y")
       for (const byClassMatch of src.matchAll(
-        /getElementsByClassName\(\s*["']([^"']*)["']\s*\)/gm,
+        /getElementsByClassName\s*\(\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const token of byClassMatch[1].trim().split(/\s+/)) {
           if (token) addIfNew(token);
@@ -649,7 +649,7 @@ export const prefixElementAttribute = (
                 "g",
               );
               updatedBody = updatedBody.replace(
-                /((?:querySelector(?:All)?|closest|matches)\(\s*['"][^'"]*['"]\s*\))/gm,
+                /((?:querySelector(?:All)?|closest|matches)\s*\(\s*['"][^'"]*['"]\s*\))/gm,
                 (call) =>
                   call.replace(tokenRegex, (tokenMatch, name: string) => {
                     const scoped = seenAttrMap.get(name);
@@ -663,26 +663,26 @@ export const prefixElementAttribute = (
 
             if (attribute === "id") {
               updatedBody = updatedBody.replace(
-                /(getElementById\(\s*["'])([^"']+)(["']\s*\))/gm,
+                /(getElementById\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
                 rewriteQuotedArg,
               );
               rewriteSelectorCalls("#");
               updatedBody = updatedBody.replace(
-                /(setAttribute\(\s*["']id["'],\s*["'])([^"']+)(["']\s*\))/gm,
+                /(setAttribute\s*\(\s*["']id["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
                 rewriteQuotedArg,
               );
             } else if (attribute === "name") {
               updatedBody = updatedBody.replace(
-                /(getElementsByName\(\s*["'])([^"']+)(["']\s*\))/gm,
+                /(getElementsByName\s*\(\s*["'])([^"']+)(["']\s*\))/gm,
                 rewriteQuotedArg,
               );
               updatedBody = updatedBody.replace(
-                /(setAttribute\(\s*["']name["'],\s*["'])([^"']+)(["']\s*\))/gm,
+                /(setAttribute\s*\(\s*["']name["']\s*,\s*["'])([^"']+)(["']\s*\))/gm,
                 rewriteQuotedArg,
               );
             } else if (attribute === "class") {
               updatedBody = updatedBody.replace(
-                /(getElementsByClassName\(\s*["'])([^"']*)(["']\s*\))/gm,
+                /(getElementsByClassName\s*\(\s*["'])([^"']*)(["']\s*\))/gm,
                 (_full, prefix: string, classes: string, suffix: string) =>
                   `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
               );
@@ -714,7 +714,7 @@ export const prefixElementAttribute = (
                 rewriteFirstClassToken,
               );
               updatedBody = updatedBody.replace(
-                /(setAttribute\(\s*["']class["'],\s*["'])([^"']*)(["']\s*\))/gm,
+                /(setAttribute\s*\(\s*["']class["']\s*,\s*["'])([^"']*)(["']\s*\))/gm,
                 (_full, prefix: string, classes: string, suffix: string) =>
                   `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
               );

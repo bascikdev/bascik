@@ -73,7 +73,7 @@ export const is500Page = (relativePath: string): boolean =>
   getHttpPath(relativePath) === "/500";
 
 const SITEMAP_EXCLUDE_META_RE =
-  /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bname=["']bascik-sitemap["'](?:[^>"']|"[^"]*"|'[^']*')*\bcontent=["']exclude["']|<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bcontent=["']exclude["'](?:[^>"']|"[^"]*"|'[^']*')*\bname=["']bascik-sitemap["']/i;
+  /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bname\s*=\s*(?:["']bascik-sitemap["']|bascik-sitemap(?=[>\s/]))(?:[^>"']|"[^"]*"|'[^']*')*\bcontent\s*=\s*(?:["']exclude["']|exclude(?=[>\s/]))|<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bcontent\s*=\s*(?:["']exclude["']|exclude(?=[>\s/]))(?:[^>"']|"[^"]*"|'[^']*')*\bname\s*=\s*(?:["']bascik-sitemap["']|bascik-sitemap(?=[>\s/]))/i;
 
 /**
  * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.

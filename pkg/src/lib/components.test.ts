@@ -1019,6 +1019,30 @@ describe("mergeAttributesOntoRoot", () => {
     expect(result.match(/class=/g)).toHaveLength(1);
   });
 
+  it("merges class and style onto root elements that use spaces around '=' or unquoted values without duplicating attributes", () => {
+    expect(
+      mergeAttributesOntoRoot('<nav class = "scoped-nav" style = "color: red" id = "main"><a>link</a></nav>', {
+        class: "sticky",
+        style: "font-weight: bold;",
+        id: "ignored-override",
+      }),
+    ).toBe('<nav class="scoped-nav sticky" style="color: red; font-weight: bold;" id = "main"><a>link</a></nav>');
+
+    expect(
+      mergeAttributesOntoRoot('<nav class=scoped-nav id = existing-id><a>link</a></nav>', {
+        class: "sticky",
+        id: "override",
+      }),
+    ).toBe('<nav class="scoped-nav sticky" id = existing-id><a>link</a></nav>');
+  });
+
+  it("matches named slots case-insensitively when camelCase is used", () => {
+    const extracted = extractNamedSlotContent('<div data-bascik-slot="heroHeader"><h1>Hero</h1></div>');
+    expect(
+      replaceNamedSlots('<header data-bascik-slot="heroheader">Fallback</header>', extracted),
+    ).toBe("<h1>Hero</h1>");
+  });
+
   it("adds class attribute to root element that has none", () => {
     const html = "<nav><a>link</a></nav>";
     const result = mergeAttributesOntoRoot(html, { class: "sticky" });

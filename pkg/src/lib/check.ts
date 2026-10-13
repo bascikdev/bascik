@@ -565,8 +565,8 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
       for (const m of src.matchAll(/\bdata-bascik-prop-([\w-]+)\b/gi)) {
         if (m[1]) props.add(m[1].toLowerCase());
       }
-      for (const m of src.matchAll(/\bdata-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi)) {
-        const p = m[1] ?? m[2];
+      for (const m of src.matchAll(/\bdata-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi)) {
+        const p = m[1] ?? m[2] ?? m[3];
         if (p) props.add(p.toLowerCase());
       }
       if (props.size > 0) {

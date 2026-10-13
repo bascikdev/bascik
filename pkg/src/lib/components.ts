@@ -1408,11 +1408,17 @@ export const replaceNamedSlots = (
   // nested same-tag elements inside a placeholder's fallback content are
   // handled correctly, then replace right-to-left to preserve indices.
   const wrappers = parseNamedSlots(fileContent, componentNames);
+  if (wrappers.length === 0) return fileContent;
+  const slotsLowerMap = new Map<string, string>();
+  for (const [key, val] of Object.entries(slots)) {
+    slotsLowerMap.set(key.toLowerCase(), val);
+  }
   let result = fileContent;
   for (let i = wrappers.length - 1; i >= 0; i--) {
     const { slotName, startIndex, endIndex, content } = wrappers[i];
     // Use the element's own inner content as fallback when the slot is not provided
-    const replacement = slotName in slots ? slots[slotName] : content;
+    const matchedSlot = slotName in slots ? slots[slotName] : slotsLowerMap.get(slotName.toLowerCase());
+    const replacement = matchedSlot !== undefined ? matchedSlot : content;
     result = result.slice(0, startIndex) + replacement + result.slice(endIndex);
   }
   return result;
@@ -1534,7 +1540,7 @@ export const mergeAttributesOntoRoot = (
   const [, tagName, existing, close] = rootParts;
   let attrStr = existing || "";
   const existingNames = new Set<string>();
-  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
+  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
   let match: RegExpExecArray | null;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     existingNames.add(match[1].toLowerCase());
@@ -1543,29 +1549,39 @@ export const mergeAttributesOntoRoot = (
   for (const [name, value] of Object.entries(attrs)) {
     const lowerName = name.toLowerCase();
     if (lowerName === "class" && value) {
-      if (/\sclass="/i.test(attrStr)) {
+      if (/\sclass\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /(\sclass=")([^"]*)"/i,
-          (_, prefix, classes) => `${prefix}${classes} ${value}"`,
+          /\s(class)\s*=\s*"([^"]*)"/i,
+          (_, attrName: string, classes: string) => ` ${attrName}="${classes ? `${classes} ` : ""}${value}"`,
         );
-      } else if (/\sclass='/i.test(attrStr)) {
+      } else if (/\sclass\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /(\sclass=')([^']*)'/i,
-          (_, prefix, classes) => `${prefix}${classes} ${value}'`,
+          /\s(class)\s*=\s*'([^']*)'/i,
+          (_, attrName: string, classes: string) => ` ${attrName}='${classes ? `${classes} ` : ""}${value}'`,
+        );
+      } else if (/\sclass\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /\s(class)\s*=\s*([^\s"'=<>`/>]+)/i,
+          (_, attrName: string, classes: string) => ` ${attrName}="${classes} ${value}"`,
         );
       } else {
         attrStr += ` class="${value}"`;
       }
     } else if (lowerName === "style" && value) {
-      if (/\sstyle="/i.test(attrStr)) {
+      if (/\sstyle\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /(\sstyle=")([^"]*)"/i,
-          (_, prefix, style) => `${prefix}${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+          /\s(style)\s*=\s*"([^"]*)"/i,
+          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
-      } else if (/\sstyle='/i.test(attrStr)) {
+      } else if (/\sstyle\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /(\sstyle=')([^']*)'/i,
-          (_, prefix, style) => `${prefix}${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+          /\s(style)\s*=\s*'([^']*)'/i,
+          (_, attrName: string, style: string) => ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+        );
+      } else if (/\sstyle\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /\s(style)\s*=\s*([^\s"'=<>`/>]+)/i,
+          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
       } else {
         attrStr += ` style="${value}"`;
