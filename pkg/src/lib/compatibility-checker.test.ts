@@ -112,6 +112,20 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         'el.toggleAttribute("disabled");',
       ],
     },
+    "js-document-class-query": {
+      kind: "js",
+      positive: [
+        'document.querySelector(".btn");',
+        "document.querySelector('.card-item');",
+      ],
+      negative: [
+        'document.getElementById("btn");',
+        'document.querySelector("#btn");',
+        'root.querySelector(".btn");',
+        'document.querySelectorAll(".btn");',
+        "// bascik-ignore js-document-class-query\ndocument.querySelector('.btn');",
+      ],
+    },
   };
 
   it("covers every rule in compatibility-rules.json with positive and negative test vectors", () => {

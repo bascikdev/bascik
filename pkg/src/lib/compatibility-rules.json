@@ -70,5 +70,14 @@
     "flags": "g",
     "message": "DOM methods taking attribute names (removeAttribute, hasAttribute, toggleAttribute) are not value-scoped by Bascik.",
     "suggestion": "Operate directly on element classList or property references."
+  },
+  {
+    "id": "js-document-class-query",
+    "kind": "js",
+    "severity": "warning",
+    "pattern": "\\bdocument\\.querySelector\\s*\\(\\s*[\"']\\.[a-zA-Z_][\\w-]*[\"']\\s*\\)",
+    "flags": "g",
+    "message": "document.querySelector('.class') is document-wide under deduplicateCss and returns the first instance's element when a component is used multiple times.",
+    "suggestion": "Use document.getElementById() or rootEl.querySelector() for per-instance lookup."
   }
 ]
