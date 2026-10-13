@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { parse } from "parse5";
+import { chromium } from "@playwright/test";
+import { runScopingPipeline } from "./scoping-template.ts";
+import type { BascikComponent } from "./types.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliPath = resolve(repoRoot, "pkg/src/index.ts");
@@ -845,9 +848,174 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     }
   });
 
+  it("Archetype 15: Real Headless Chromium Differential Verification (Shadow DOM vs. Bascik Scoped Flat DOM across 30 selector & JS patterns)", async () => {
+    const buildComponentHtml = (prefix: string): string =>
+      [
+        `<section data-node-id="${prefix}-root" id="panel" class="card">`,
+        `  <header data-node-id="${prefix}-hdr" class="hdr">`,
+        `    <h3 data-node-id="${prefix}-h3" class="title">Heading</h3>`,
+        `    <p data-node-id="${prefix}-p1" class="lead">Lead text</p>`,
+        `    <p data-node-id="${prefix}-p2">Second paragraph</p>`,
+        `  </header>`,
+        `  <div data-node-id="${prefix}-body" class="body">`,
+        `    <ul data-node-id="${prefix}-ul" class="list">`,
+        `      <li data-node-id="${prefix}-li1" class="item active"><span data-node-id="${prefix}-span1">First</span></li>`,
+        `      <li data-node-id="${prefix}-li2" class="item"><span data-node-id="${prefix}-span2">Second</span></li>`,
+        `    </ul>`,
+        `    <button data-node-id="${prefix}-btn" id="cta" class="btn" type="button">Action</button>`,
+        `  </div>`,
+        `</section>`,
+      ].join("\n");
+
+    const selectorsToTest = [
+      ".card",
+      ".card .hdr",
+      ".card > .hdr > h3",
+      "#panel",
+      "#panel p",
+      "#panel > header > h3",
+      "#panel h3 + p",
+      "#panel h3 ~ p",
+      "section header p",
+      "ul > li",
+      ".list > li:first-child",
+      ".item:not(.active)",
+      ".item:not(.active) > span",
+      ":is(.hdr, .body) p",
+      ":where(.hdr, .list) span",
+      ".hdr:has(.lead) h3",
+      ".body * span",
+      "#cta",
+      "h3, button",
+      "#panel, .list > li",
+    ];
+
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 800, height: 600 });
+
+      for (const rawSelector of selectorsToTest) {
+        const rawCss = `${rawSelector} { color: rgb(255, 0, 128); }`;
+        const rawInst1 = buildComponentHtml("inst1");
+        const rawInst2 = buildComponentHtml("inst2");
+
+        const comp1 = runScopingPipeline(
+          {
+            name: "diff-widget",
+            fileContent: rawInst1,
+            cssFileContent: rawCss,
+          } satisfies BascikComponent,
+          "a1b2c3d4",
+        );
+        const comp2 = runScopingPipeline(
+          {
+            name: "diff-widget",
+            fileContent: rawInst2,
+            cssFileContent: rawCss,
+          } satisfies BascikComponent,
+          "e5f60718",
+        );
+
+        const pageTrapHtml = [
+          `<section data-node-id="page-root" id="panel" class="card">`,
+          `  <header data-node-id="page-hdr" class="hdr">`,
+          `    <h3 data-node-id="page-h3" class="title">Page Trap</h3>`,
+          `    <p data-node-id="page-p1" class="lead">Page Lead</p>`,
+          `  </header>`,
+          `  <div data-node-id="page-body" class="body">`,
+          `    <ul data-node-id="page-ul" class="list"><li data-node-id="page-li1" class="item active"><span data-node-id="page-span1">Page Span</span></li></ul>`,
+          `    <button data-node-id="page-btn" id="cta" class="btn" type="button">Page Action</button>`,
+          `  </div>`,
+          `</section>`,
+        ].join("\n");
+
+        const fullHtml = [
+          "<!DOCTYPE html><html><head><style>",
+          "body { color: rgb(0, 0, 0); }",
+          comp1.cssFileContent ?? "",
+          "</style></head><body>",
+          `<div id="flat-root">`,
+          pageTrapHtml,
+          comp1.fileContent,
+          comp2.fileContent,
+          `</div>`,
+          `<div id="shadow-host-1"></div>`,
+          `<div id="shadow-host-2"></div>`,
+          "</body></html>",
+        ].join("\n");
+
+        await page.setContent(fullHtml);
+
+        const comparison = await page.evaluate(
+          ({ rawInst1Html, rawInst2Html, rawCssText }) => {
+            interface BrowserNode {
+              getAttribute(name: string): string | null;
+              querySelectorAll(selector: string): Iterable<BrowserNode>;
+              attachShadow(init: { mode: string }): { innerHTML: string; querySelectorAll(selector: string): Iterable<BrowserNode> };
+            }
+            const g = globalThis as unknown as {
+              document: { getElementById(id: string): BrowserNode | null };
+              window: { getComputedStyle(el: BrowserNode): { color: string } };
+            };
+            const host1 = g.document.getElementById("shadow-host-1")!;
+            const shadow1 = host1.attachShadow({ mode: "open" });
+            shadow1.innerHTML = `<style>:host { color: rgb(0, 0, 0); } ${rawCssText}</style>${rawInst1Html}`;
+
+            const host2 = g.document.getElementById("shadow-host-2")!;
+            const shadow2 = host2.attachShadow({ mode: "open" });
+            shadow2.innerHTML = `<style>:host { color: rgb(0, 0, 0); } ${rawCssText}</style>${rawInst2Html}`;
+
+            const collectColoredNodes = (root: { querySelectorAll(selector: string): Iterable<BrowserNode> }): string[] => {
+              const matched: string[] = [];
+              for (const el of root.querySelectorAll("[data-node-id]")) {
+                const id = el.getAttribute("data-node-id")!;
+                matched.push(`${id}:${g.window.getComputedStyle(el).color}`);
+              }
+              return matched;
+            };
+
+            const flatRoot = g.document.getElementById("flat-root")!;
+            const pageTrapColors = Array.from(flatRoot.querySelectorAll('[data-node-id^="page-"]')).map(
+              (el) => `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`,
+            );
+            const flatInstColors = [
+              ...Array.from(flatRoot.querySelectorAll('[data-node-id^="inst1-"]')),
+              ...Array.from(flatRoot.querySelectorAll('[data-node-id^="inst2-"]')),
+            ].map((el) => `${el.getAttribute("data-node-id")}:${g.window.getComputedStyle(el).color}`);
+
+            const shadowInstColors = [
+              ...collectColoredNodes(shadow1),
+              ...collectColoredNodes(shadow2),
+            ];
+
+            return { pageTrapColors, flatInstColors, shadowInstColors };
+          },
+          { rawInst1Html: rawInst1, rawInst2Html: rawInst2, rawCssText: rawCss },
+        );
+
+        // 1. Every page trap element must stay rgb(0, 0, 0) (zero leakage)
+        for (const entry of comparison.pageTrapColors) {
+          expect(entry, `selector="${rawSelector}"`).toMatch(/:rgb\(0, 0, 0\)$/);
+        }
+        // 2. Every component element's computed color in the flat DOM must match the isolated Shadow DOM 1:1
+        expect(comparison.flatInstColors, `selector="${rawSelector}"`).toEqual(
+          comparison.shadowInstColors,
+        );
+      }
+    } finally {
+      await browser.close();
+    }
+  }, 30000);
+
   it.each([
     "migration-examples/ports/react-product-table",
     "migration-examples/ports/vue-grid",
+    "migration-examples/ports/astro-blog",
+    "migration-examples/ports/eleventy-blog",
+    "migration-examples/ports/nextjs-blog",
+    "migration-examples/ports/wordpress-blog",
+    "templates/blog",
   ])("builds and passes --check on real example site from migration-tutorials-oct052026: %s", (siteSubpath) => {
     let branchExists = false;
     try {
@@ -869,44 +1037,282 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
         { cwd: repoRoot },
       );
       const siteRoot = join(dir, siteSubpath);
-      symlinkSync(join(repoRoot, "node_modules"), join(siteRoot, "node_modules"), "dir");
+      const localNodeModules = join(siteRoot, "node_modules");
+      mkdirSync(localNodeModules, { recursive: true });
+      const rootNodeModules = join(repoRoot, "node_modules");
+      for (const entry of readdirSync(rootNodeModules)) {
+        if (entry === "zod") continue;
+        symlinkSync(join(rootNodeModules, entry), join(localNodeModules, entry));
+      }
 
-      // Upgrade pre-rc.5 console.log build scripts in the extracted oct052026 branch fixture to current export default contract
-      const upgradeBuildScripts = (rootDir: string) => {
+      const writePkgShim = (pkgName: string, files: Record<string, string>) => {
+        const pkgDir = join(localNodeModules, pkgName);
+        if (existsSync(pkgDir)) return;
+        mkdirSync(pkgDir, { recursive: true });
+        for (const [relFile, content] of Object.entries(files)) {
+          const absFile = join(pkgDir, relFile);
+          mkdirSync(join(absFile, ".."), { recursive: true });
+          writeFileSync(absFile, content, "utf8");
+        }
+      };
+
+      const realZodIndexUrl = new URL("../../../node_modules/zod/index.js", import.meta.url).href;
+      writePkgShim("zod", {
+        "package.json": JSON.stringify({ name: "zod", version: "4.6.5", type: "module", main: "index.js" }),
+        "index.js": [
+          `import * as realZod from ${JSON.stringify(realZodIndexUrl)};`,
+          "const z = Object.assign({}, realZod.z, {",
+          "  url: () => realZod.z.string().url(),",
+          "  iso: { datetime: () => realZod.z.string() },",
+          "  prettifyError: (err) => String(err?.message ?? err),",
+          "});",
+          "export { z };",
+          "export default z;",
+        ].join("\n"),
+      });
+
+      writePkgShim("gray-matter", {
+        "package.json": JSON.stringify({ name: "gray-matter", version: "4.0.3", type: "module", main: "index.js" }),
+        "index.js": [
+          "export default function matter(src) {",
+          "  const m = /^---\\r?\\n([\\s\\S]*?)\\r?\\n---\\r?\\n?([\\s\\S]*)$/.exec(String(src));",
+          "  if (!m) return { data: {}, content: String(src) };",
+          "  const data = {};",
+          "  const lines = m[1].split(/\\r?\\n/);",
+          "  for (let i = 0; i < lines.length; i++) {",
+          "    const line = lines[i];",
+          "    const kv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(line);",
+          "    if (!kv) continue;",
+          "    const key = kv[1];",
+          "    let val = kv[2].trim();",
+          "    if (val === '') {",
+          "      const arr = [];",
+          "      let obj = null;",
+          "      while (i + 1 < lines.length && /^\\s+/.test(lines[i + 1])) {",
+          "        i++;",
+          "        const sub = lines[i].trim();",
+          "        if (sub.startsWith('- ')) {",
+          "          arr.push(sub.slice(2).trim().replace(/^['\"]|['\"]$/g, ''));",
+          "        } else {",
+          "          const skv = /^([a-zA-Z0-9_-]+):\\s*(.*)$/.exec(sub);",
+          "          if (skv) {",
+          "            obj = obj || {};",
+          "            obj[skv[1]] = skv[2].trim().replace(/^['\"]|['\"]$/g, '');",
+          "          }",
+          "        }",
+          "      }",
+          "      data[key] = obj || arr;",
+          "    } else if (val.startsWith('[') && val.endsWith(']')) {",
+          "      const inner = val.slice(1, -1).trim();",
+          "      data[key] = inner ? inner.split(',').map(s => s.trim().replace(/^['\"]|['\"]$/g, '')) : [];",
+          "    } else if (val === 'true' || val === 'false') {",
+          "      data[key] = val === 'true';",
+          "    } else if (/^-?\\d+$/.test(val)) {",
+          "      data[key] = Number(val);",
+          "    } else {",
+          "      data[key] = val.replace(/^['\"]|['\"]$/g, '');",
+          "    }",
+          "  }",
+          "  return { data, content: m[2] };",
+          "}",
+        ].join("\n"),
+      });
+
+      writePkgShim("feed", {
+        "package.json": JSON.stringify({ name: "feed", version: "6.0.0", type: "module", main: "index.js" }),
+        "index.js": [
+          "export class Feed {",
+          "  constructor(opts = {}) { this.opts = opts; this.items = []; }",
+          "  addItem(item) { this.items.push(item); }",
+          "  rss2() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><rss version=\"2.0\"><channel><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<item><title>${i.title ?? ''}</title><link>${i.link ?? ''}</link></item>`).join('')}</channel></rss>`; }",
+          "  atom1() { return `<?xml version=\"1.0\" encoding=\"utf-8\"?><feed xmlns=\"http://www.w3.org/2005/Atom\"><title>${this.opts.title ?? ''}</title>${this.items.map(i => `<entry><title>${i.title ?? ''}</title><id>${i.id ?? ''}</id></entry>`).join('')}</feed>`; }",
+          "}",
+        ].join("\n"),
+      });
+
+      writePkgShim("marked-footnote", {
+        "package.json": JSON.stringify({ name: "marked-footnote", version: "1.4.0", type: "module", main: "index.js" }),
+        "index.js": "export default function markedFootnote() { return {}; }\n",
+      });
+
+      writePkgShim("marked-gfm-heading-id", {
+        "package.json": JSON.stringify({ name: "marked-gfm-heading-id", version: "4.1.4", type: "module", main: "index.js" }),
+        "index.js": "export function gfmHeadingId() { return {}; }\n",
+      });
+
+      writePkgShim("image-size", {
+        "package.json": JSON.stringify({ name: "image-size", version: "2.0.4", type: "module", main: "index.js" }),
+        "index.js": [
+          "export function imageSize(buf) {",
+          "  if (buf && buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {",
+          "    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), type: 'png' };",
+          "  }",
+          "  return { width: 800, height: 600, type: 'png' };",
+          "}",
+          "export default imageSize;",
+        ].join("\n"),
+      });
+
+      writePkgShim("prismjs", {
+        "package.json": JSON.stringify({ name: "prismjs", version: "1.30.0", main: "index.js" }),
+        "index.js": [
+          "const Prism = {",
+          "  languages: { diff: {}, javascript: {}, html: {}, css: {}, bash: {}, markdown: {}, json: {}, typescript: {} },",
+          "  highlight(code) {",
+          "    return String(code).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');",
+          "  },",
+          "};",
+          "globalThis.Prism = Prism;",
+          "module.exports = Prism;",
+        ].join("\n"),
+        "components.json": JSON.stringify({
+          languages: {
+            javascript: { alias: ["js"] },
+            typescript: { alias: ["ts"] },
+            markdown: { alias: ["md"] },
+            markup: { alias: ["html", "xml", "svg"] },
+            css: {},
+            bash: { alias: ["sh", "shell"] },
+            json: {},
+            diff: {},
+          },
+        }),
+        "components/index.js": "module.exports = function loadLanguages() {};\n",
+        "components/prism-diff.js": "module.exports = {};\n",
+        "plugins/diff-highlight/prism-diff-highlight.js": "module.exports = {};\n",
+        "themes/prism-okaidia.css": "code[class*=\"language-\"], pre[class*=\"language-\"] { color: #f8f8f2; background: #272822; }\n",
+      });
+
+      writePkgShim("date-fns", {
+        "package.json": JSON.stringify({ name: "date-fns", version: "3.6.0", type: "module", main: "index.js" }),
+        "index.js": [
+          "export function parseISO(s) { return new Date(s); }",
+          "export function format(d) {",
+          "  return d instanceof Date && !Number.isNaN(d.valueOf())",
+          "    ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })",
+          "    : String(d);",
+          "}",
+        ].join("\n"),
+      });
+
+      writePkgShim("remark", {
+        "package.json": JSON.stringify({ name: "remark", version: "15.0.1", type: "module", main: "index.js" }),
+        "index.js": [
+          "import { marked } from 'marked';",
+          "export function remark() {",
+          "  return {",
+          "    use() { return this; },",
+          "    async process(md) { return { toString: () => marked.parse(String(md), { async: false }) }; },",
+          "  };",
+          "}",
+        ].join("\n"),
+      });
+
+      writePkgShim("remark-html", {
+        "package.json": JSON.stringify({ name: "remark-html", version: "16.0.1", type: "module", main: "index.js" }),
+        "index.js": "export default function html() { return {}; }\n",
+      });
+
+      writePkgShim("tailwindcss", {
+        "package.json": JSON.stringify({ name: "tailwindcss", version: "3.4.4", type: "module", main: "index.js" }),
+        "index.js": [
+          "export default function tailwindcss() {",
+          "  return {",
+          "    postcssPlugin: 'tailwindcss-shim',",
+          "    Once(root) {",
+          "      root.walkAtRules('tailwind', (rule) => rule.remove());",
+          "    },",
+          "  };",
+          "}",
+          "tailwindcss.postcss = true;",
+        ].join("\n"),
+      });
+
+      writePkgShim("sanitize-html", {
+        "package.json": JSON.stringify({ name: "sanitize-html", version: "2.17.7", type: "module", main: "index.js" }),
+        "index.js": [
+          "function sanitizeHtml(html, opts = {}) {",
+          "  let s = String(html ?? '');",
+          "  if (Array.isArray(opts.allowedTags) && opts.allowedTags.length === 0) {",
+          "    return s.replace(/<[^>]*>/g, '');",
+          "  }",
+          "  s = s.replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, '');",
+          "  if (opts.transformTags) {",
+          "    for (const [tag, fn] of Object.entries(opts.transformTags)) {",
+          "      const re = new RegExp(`<(${tag})\\\\b([^>]*)>`, 'gi');",
+          "      s = s.replace(re, (_m, tn, attrStr) => {",
+          "        const attribs = {};",
+          "        for (const am of attrStr.matchAll(/([a-zA-Z0-9_-]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')/g)) {",
+          "          attribs[am[1]] = am[2] ?? am[3] ?? '';",
+          "        }",
+          "        const res = fn(tn.toLowerCase(), attribs);",
+          "        const outAttrs = Object.entries(res.attribs || {}).map(([k, v]) => ` ${k}=\"${v}\"`).join('');",
+          "        return `<${res.tagName}${outAttrs}>`;",
+          "      });",
+          "    }",
+          "  }",
+          "  return s;",
+          "}",
+          "sanitizeHtml.defaults = {",
+          "  allowedTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'pre', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'br', 'div', 'span'],",
+          "  allowedAttributes: { a: ['href', 'name', 'target'], img: ['src', 'srcset', 'alt', 'title', 'width', 'height', 'loading'] },",
+          "};",
+          "export default sanitizeHtml;",
+        ].join("\n"),
+      });
+
+      // Upgrade pre-rc.5 console.log build and routes scripts in the extracted oct052026 branch fixture to current export default contract
+      const upgradeDirectiveScripts = (rootDir: string) => {
         const htmlFiles = execFileSync("find", [rootDir, "-name", "*.html"], { encoding: "utf8" })
           .split("\n")
           .filter(Boolean);
         for (const htmlFile of htmlFiles) {
           const raw = readFileSync(htmlFile, "utf8");
-          if (!raw.includes("data-bascik-build") || raw.includes("export default")) continue;
-          const updated = raw.replace(
-            /(<script\s+data-bascik-build>)([\s\S]*?)(<\/script>)/g,
-            (_m, open: string, body: string, close: string) => {
-              const imports: string[] = [];
-              const statements: string[] = [];
-              for (const line of body.split("\n")) {
-                if (/^\s*import\s+/.test(line)) imports.push(line);
-                else statements.push(line);
-              }
-              const rewrittenBody = statements
-                .join("\n")
-                .replace(/\bconsole\.log\s*\(([\s\S]*?)\)\s*;/g, "return $1;");
-              return `${open}\n${imports.join("\n")}\nexport default async function () {\n${rewrittenBody}\n}\n${close}`;
-            },
-          );
+          if ((!raw.includes("data-bascik-build") && !raw.includes("data-bascik-routes")) || raw.includes("export default")) continue;
+          const updated = raw
+            .replace(
+              /(<script\s+data-bascik-build(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?\s*>)([\s\S]*?)(<\/script>)/g,
+              (_m, open: string, body: string, close: string) => {
+                const imports: string[] = [];
+                const statements: string[] = [];
+                for (const line of body.split("\n")) {
+                  if (/^\s*import\s+/.test(line)) imports.push(line);
+                  else statements.push(line);
+                }
+                const rewrittenBody = statements
+                  .join("\n")
+                  .replace(/\bconsole\.log\s*\(([\s\S]*?)\)\s*;/g, "__out.push(String($1));");
+                return `${open}\n${imports.join("\n")}\nexport default async function () {\nconst __out = [];\n${rewrittenBody}\nreturn __out.join("\\n");\n}\n${close}`;
+              },
+            )
+            .replace(
+              /(<script\s+data-bascik-routes\s*>)([\s\S]*?)(<\/script>)/g,
+              (_m, open: string, body: string, close: string) => {
+                const imports: string[] = [];
+                const statements: string[] = [];
+                for (const line of body.split("\n")) {
+                  if (/^\s*import\s+/.test(line)) imports.push(line);
+                  else statements.push(line);
+                }
+                const rewrittenBody = statements
+                  .join("\n")
+                  .replace(/\bconsole\.log\s*\(\s*JSON\.stringify\s*\(([\s\S]*?)\)\s*\)\s*;/g, "return $1;");
+                return `${open}\n${imports.join("\n")}\nexport default async function () {\n${rewrittenBody}\n}\n${close}`;
+              },
+            );
           writeFileSync(htmlFile, updated, "utf8");
         }
       };
-      upgradeBuildScripts(siteRoot);
+      upgradeDirectiveScripts(siteRoot);
 
       const buildRes = runBascikCli(siteRoot, ["--build", "--site-url", "https://example.com"]);
-      expect(buildRes.status, buildRes.stderr).toBe(0);
+      expect(buildRes.status, `${siteSubpath} build failed:\n${buildRes.stdout}\n${buildRes.stderr}`).toBe(0);
 
       const indexHtml = readFileSync(join(siteRoot, "dist/index.html"), "utf8");
       assertValidHtml5(indexHtml, `${siteSubpath} dist/index.html`);
 
       const checkRes = runBascikCli(siteRoot, ["--check", "--site-url", "https://example.com"]);
-      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+      expect(checkRes.status, `${siteSubpath} check failed:\n${checkRes.stdout}\n${checkRes.stderr}`).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

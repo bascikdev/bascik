@@ -42,13 +42,15 @@ describe("compatibility-rules contract & positive/negative probes", () => {
       kind: "css",
       positive: [
         ":is(p, h2) { margin: 0; }",
-        ".prose :where(ul, ol) { padding: 0; }",
+        ":where(ul, ol) { padding: 0; }",
         ".card:has(img) { display: grid; }",
       ],
       negative: [
         ":is(.title, .subtitle) { margin: 0; }",
         ".card:has(.hero-img) { display: grid; }",
-        "/* bascik-ignore css-is-element-names */\n.prose :is(h2, h3) { margin: 0; }",
+        ".prose :is(h2, h3) { margin: 0; }",
+        ".markdown :is(p, ul, ol, blockquote) { margin-block: 1.5rem; }",
+        "/* bascik-ignore css-is-element-names */\n:is(h2, h3) { margin: 0; }",
       ],
     },
     "js-id-setter": {
