@@ -238,7 +238,9 @@ describe.each(SERVER_MODES)("request-time script errors (real $mode)", ({ args, 
       const { code, output: buildOutput } = await runBuild(root);
       if (code !== 0) throw new Error(`build exited ${code}:\n${buildOutput}`);
     }
-    const port = 9800 + (process.pid % 150) + portOffset * 150;
+    // Stay within 9800-9999: `fetch` refuses ports on the WHATWG bad-ports list
+    // (10080 sat inside the old 9800-10099 range and failed with "bad port").
+    const port = 9800 + (process.pid % 100) + portOffset * 100;
     base = `http://localhost:${port}`;
     child = spawn(process.execPath, [PKG_ENTRY, ...args], {
       cwd: root,
