@@ -58,7 +58,7 @@ A contact form that validates in the browser and posts JSON to /api/contact (the
 </style>
 <!-- data-bascik-preserve="name" keeps the field names literal. Without it, Bascik scopes them per instance and the
      server would receive keys like bascik__contact-form__a1b2__email. -->
-<form class="form" id="form" action="/api/contact" method="post" data-bascik-preserve="name" novalidate>
+<form class="form" id="form" action="/api/contact" method="post" data-bascik-preserve="name">
   <div class="field">
     <label for="name">Name</label>
     <input class="input" id="name" name="name" autocomplete="name" required />

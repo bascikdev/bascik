@@ -65,11 +65,16 @@ export async function loadBundle(source = `${docsBaseUrl()}/assets/examples.json
  * `layout` holds absolute paths: root, componentRoot, pagesDir, importRoot, apiDir. Exported for tests.
  */
 export function destinationFor(example, filePath, layout) {
-  const segments = filePath.split('/');
+  const segments = filePath.split(/[\\/]/);
   if (isAbsolute(filePath) || segments.some((segment) => segment === '..' || segment === '' || segment === '.')) {
     throw new Error(`unsafe path in the examples bundle: ${filePath}`);
   }
-  if (example.kind === 'component') return join(layout.componentRoot, example.name, filePath);
+  if (example.kind === 'component') {
+    if (typeof example.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(example.name)) {
+      throw new Error(`unsafe example name in the examples bundle: ${example.name}`);
+    }
+    return join(layout.componentRoot, example.name, filePath);
+  }
   if (REFERENCE_ONLY.has(filePath)) return undefined;
   const [first, second, ...rest] = filePath.split('/');
   if (first === 'src') {

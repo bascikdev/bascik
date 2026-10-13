@@ -18,7 +18,7 @@ This docs site is static, so it has no `/api/contact` route and sending shows th
 ## How It Works
 
 - `data-bascik-preserve="name"` on the `<form>` keeps `name`, `email`, and `message` literal. Bascik scopes `name` attributes per instance by default, so without it `new FormData(form)` would send keys such as `bascik__contact-form__a1b2__email`.
-- `novalidate` hands validation to the script: it calls `checkValidity()` and `reportValidity()`, which shows the browser's messages and focuses the first invalid field. `:user-invalid` styles a field only after the visitor has interacted with it.
+- The form keeps native validation, so without JavaScript the browser still blocks an empty or malformed submit. With JavaScript, the script calls `checkValidity()` and `reportValidity()`, which shows the browser's messages and focuses the first invalid field. `:user-invalid` styles a field only after the visitor has interacted with it.
 - The script sends JSON with `fetch`, disables the button while sending, and writes the outcome to a `role="status"` element.
 
 ## The API Route

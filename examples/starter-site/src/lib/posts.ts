@@ -92,8 +92,12 @@ export function toPost(slug: string, source: string): Post {
   const updated = text('updated') || undefined;
   if (!title) throw new Error(`${where}: front matter needs a title`);
   if (!description) throw new Error(`${where}: front matter needs a description`);
-  if (!ISO_DATE.test(date) || Number.isNaN(Date.parse(date))) throw new Error(`${where}: date must be YYYY-MM-DD`);
-  if (updated && !ISO_DATE.test(updated)) throw new Error(`${where}: updated must be YYYY-MM-DD`);
+  const isValidIsoDate = (value: string): boolean => {
+    const parsed = Date.parse(`${value}T00:00:00Z`);
+    return ISO_DATE.test(value) && !Number.isNaN(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
+  };
+  if (!isValidIsoDate(date)) throw new Error(`${where}: date must be YYYY-MM-DD`);
+  if (updated && !isValidIsoDate(updated)) throw new Error(`${where}: updated must be YYYY-MM-DD`);
   const tags = Array.isArray(data.tags) ? data.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean) : [];
   for (const tag of tags) {
     if (!SLUG.test(tag)) throw new Error(`${where}: tag "${tag}" must be lowercase words joined by hyphens`);

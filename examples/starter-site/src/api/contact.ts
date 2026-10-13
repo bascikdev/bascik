@@ -44,7 +44,8 @@ export const POST = async (request: Request): Promise<Response> => {
   // Replace this with your email or CRM provider. Keep API keys in process.env, never in client code.
   console.log(`[contact] message from ${result.value.email}`);
 
-  // A browser without JavaScript posted a normal form: send it back to the page it came from.
-  if (!isJson) return Response.redirect(new URL('?sent=1', request.headers.get('referer') ?? request.url), 303);
+  // A browser without JavaScript posted a normal form: send it back to the contact page on this origin.
+  // Never trust the Referer header here, it would make this an open redirect.
+  if (!isJson) return Response.redirect(new URL('../contact?sent=1', request.url), 303);
   return Response.json({ ok: true }, { status: 201 });
 };
