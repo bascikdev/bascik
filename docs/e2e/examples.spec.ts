@@ -26,6 +26,25 @@ test.describe('example component pages', () => {
     await expect(page.getByTestId('demo-tab-output')).toBeHidden();
   });
 
+  test('theme toggle changes only its preview and uses separate storage', async ({ page }) => {
+    await page.goto('/example-components/theme-toggle');
+    const preview = page.locator('[data-demo-theme]').filter({ has: page.getByRole('button', { name: 'Dark theme' }) });
+    const toggle = preview.getByRole('button', { name: 'Dark theme' });
+    const documentTheme = await page.locator('html').getAttribute('data-theme');
+    const savedTheme = await page.evaluate(() => localStorage.getItem('theme'));
+
+    await expect(preview).toHaveAttribute('data-demo-theme', 'dark');
+    await toggle.click();
+
+    await expect(preview).toHaveAttribute('data-demo-theme', 'light');
+    expect(await page.locator('html').getAttribute('data-theme')).toBe(documentTheme);
+    expect(await page.evaluate(() => localStorage.getItem('theme'))).toBe(savedTheme);
+    expect(await page.evaluate(() => localStorage.getItem('theme-demo'))).toBe('light');
+
+    await page.reload();
+    await expect(page.locator('[data-demo-theme]').filter({ has: page.getByRole('button', { name: 'Dark theme' }) })).toHaveAttribute('data-demo-theme', 'light');
+  });
+
   test('add-example.mjs downloads the published examples from the docs site', async ({ baseURL }) => {
     const project = mkdtempSync(join(tmpdir(), 'bascik-add-example-'));
     try {

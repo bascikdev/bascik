@@ -103,7 +103,8 @@
   --hero-glow-2: rgba(211,255,141,0.06);
 }
 
-html[data-theme="light"] {
+html[data-theme="light"],
+[data-demo-theme="light"] {
   color-scheme: light;
   --bg:           #f2f3f0;
   --surface:      #eaebe8;
