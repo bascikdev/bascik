@@ -36,8 +36,70 @@
         </script>
         <!-- Content rendered from docs/content/preserve.md at build time. -->
         <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/preserve.md');
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/preserve.md', { to: 'Third-Party Widget Mount Points' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Preserved ids and their references stay literal">
+          <diagram-row data-bascik-prop-label="Both ends scoped together: works" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-scoped-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-scoped-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="Target preserved, link stays literal: works" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-target-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-target-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="Link preserved, target scoped: broken, the link points at nothing" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-link-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/preserve.md', 'preserve-references-link-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/preserve.md', { from: 'Third-Party Widget Mount Points' });
         </script>
         <docs-pagination />
       </main>

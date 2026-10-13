@@ -16,6 +16,8 @@ export const POST = async (request: Request): Promise<Response> => {
 
 Handlers take a standard WHATWG `Request` and return a standard WHATWG `Response`. There is no proprietary context wrapper, no middleware chain, and no custom decorator syntax. Server scripts and stream scripts receive this same `Request` object; see [Server Scripts](/server-scripts).
 
+The [Contact Form](/example-components/contact-form) example posts to a route like this one.
+
 > **See it live on Cloudflare Workers.** The [edge API client](https://cloudflare-adapter.bascik.dev/api-demo) calls a deployed `src/api/ping.ts` route from the browser and shows the JSON response. You can also request it directly at [/api/ping](https://cloudflare-adapter.bascik.dev/api/ping).
 
 ## File-Based Routing
@@ -66,6 +68,10 @@ A route file exports functions corresponding to standard HTTP methods: `GET`, `P
 - **Allowlist dispatch:** Only exported methods are accepted. Any unexported method returns `405 Method Not Allowed` with an accurate `Allow` header listing the permitted methods.
 - **Derived HEAD:** When `GET` is exported but `HEAD` is not, Bascik executes `GET`, returns the status and headers, and automatically strips the body. An explicit `HEAD` export takes precedence.
 - **Auto OPTIONS:** When `OPTIONS` is not exported, Bascik automatically responds with `204 No Content` and the `Allow` header. Bascik does not inject CORS headers by default. Cross-origin access remains entirely under the handler's control.
+
+This recording sends two real requests to a dev server whose `src/api/users/[id].ts` exports only `GET`. The `GET` returns the handler's JSON with a `200`. The `DELETE` is refused with a `405`, and the `Allow` header lists exactly what the route accepts:
+
+![A terminal running two curl commands against a dev server. A GET to /api/users/42 prints the JSON {"id":"42","name":"Ada"} and 200. A DELETE to the same URL prints 405 and an Allow header listing GET, HEAD, and OPTIONS](/assets/demos/api-routes@2x.webp)
 
 ## The Request and Response Contract & Portability
 

@@ -10,6 +10,7 @@ import { maskElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
+import { stampDirectiveSources } from "./directive-source.ts";
 import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
@@ -296,10 +297,11 @@ export const listComponents = async (): Promise<ComponentList> => {
       }
 
       const rawContent = fileContentBuffer.toString();
-      // Record each browser script's source line now: style extraction, build
-      // scripts, and minification below all move scripts around. The stamp adds
-      // no newlines, so build script line numbers are unaffected.
-      const stampedContent = stampScriptLines(rawContent);
+      // Record every script's source position now: style extraction, build
+      // scripts, and minification below all move scripts around. Directive
+      // scripts first, because the browser-script stamp adds characters that
+      // would shift columns on a shared line. Neither stamp adds newlines.
+      const stampedContent = stampScriptLines(stampDirectiveSources(rawContent, fileName));
       // Run build scripts before minification so that generated content
       // stays in its original position (minifyHtml moves <script> tags).
       // Page-aware component build scripts are deferred to page transpilation time.

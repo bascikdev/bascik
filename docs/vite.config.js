@@ -7,7 +7,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'lighthouse/**/*.test.ts'],
-          exclude: ['src/**/*.integration.test.ts'],
+          exclude: ['src/**/*.integration.test.ts', 'scripts/**/*.integration.test.ts'],
           // Recompute every reused scoping result and fail on any difference (pkg scoping-template.ts).
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: '1' },
         },
@@ -15,7 +15,7 @@ export default defineConfig({
       {
         test: {
           name: 'integration',
-          include: ['src/**/*.integration.test.ts'],
+          include: ['src/**/*.integration.test.ts', 'scripts/**/*.integration.test.ts'],
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: '1' },
         },
       },

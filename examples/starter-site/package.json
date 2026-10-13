@@ -1,0 +1,15 @@
+{
+  "name": "bascik-starter-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bascik",
+    "build": "bascik --build",
+    "start": "bascik --server",
+    "check": "bascik --check"
+  },
+  "dependencies": {
+    "@bascik/bascik": "^1.0.0-rc.6",
+    "marked": "^18.0.14"
+  }
+}

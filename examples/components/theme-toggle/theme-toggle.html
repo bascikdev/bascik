@@ -1,0 +1,48 @@
+<!-- @bascik
+A button that switches between light and dark themes and remembers the choice. Needs <theme-init /> in <head> and the color-scheme rules in styles.css. Hidden until its script runs.
+-->
+<style>
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+    border: 1px solid var(--color-border, currentColor);
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+</style>
+<button class="toggle" id="toggle" type="button" hidden>Dark theme</button>
+<script>
+  // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
+  const toggle = document.getElementById('toggle');
+  const media = matchMedia('(prefers-color-scheme: dark)');
+
+  const current = () => document.documentElement.getAttribute('data-theme') ?? (media.matches ? 'dark' : 'light');
+
+  const render = () => {
+    toggle.setAttribute('aria-pressed', String(current() === 'dark'));
+  };
+
+  toggle.addEventListener('click', () => {
+    const next = current() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch {
+      // Not persisted when storage is unavailable; the choice still applies to this page.
+    }
+    render();
+    // Other components can react without reaching into this one.
+    toggle.dispatchEvent(new CustomEvent('theme-change', { bubbles: true, detail: { theme: next } }));
+  });
+
+  media.addEventListener('change', render);
+  // Stay in sync when another toggle, or any other script, changes the theme.
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  render();
+  toggle.hidden = false;
+</script>

@@ -82,7 +82,25 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build' }, { stripDemoBlocks: true });
+          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'data-bascik-build', to: 'Package resolution parity' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="How a build script is cached">
+          <diagram-steps>
+            <diagram-step data-bascik-prop-title="Hash the inputs"
+              data-bascik-prop-detail="Script body, local files it imports, page, site URL, base, route, and each imported package's entry file and manifest." />
+            <diagram-step data-bascik-prop-title="Look up the hash"
+              data-bascik-prop-detail="node_modules/.cache/bascik/script-cache/ holds one entry per hash." />
+            <diagram-step data-bascik-prop-title="Hit: reuse the HTML"
+              data-bascik-prop-detail="No child process starts. Unchanged scripts cost almost nothing." />
+            <diagram-step data-bascik-prop-title="Miss: run and store"
+              data-bascik-prop-detail="The script runs in a fresh Node.js process and its output is saved." />
+          </diagram-steps>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/build-scripts.md', { from: 'Package resolution parity' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

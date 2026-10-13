@@ -232,7 +232,9 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
       return errorResponse(400, "Bad Request", { https });
     }
     if (isUnsafePathname(pathname)) return errorResponse(400, "Bad Request", { https });
-    if (hasHiddenSegment(pathname)) return errorResponse(404, "Not Found", { https });
+    // Same rule as the Node server: dot segments are private except a leading
+    // RFC 8615 /.well-known/ below the site root, which the asset layer serves.
+    if (hasHiddenSegment(pathname, graph.base)) return errorResponse(404, "Not Found", { https });
 
     const baseRelative = stripBase(pathname, graph.base);
     if (baseRelative === null) return errorResponse(404, "Not Found", { https });

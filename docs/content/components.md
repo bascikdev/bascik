@@ -489,10 +489,47 @@ If a component does not use a `<slot>` to accept inner children, always prefer s
 
 Unlike traditional JavaScript frameworks (such as React or Vue 2) that historically required a single root wrapper element or explicit fragment components, Bascik component templates naturally support **multiple top-level HTML elements** in a single `.html` file.
 
+<!-- demo:source-usage-roots -->
 ```html
-<h2>Section Heading</h2>
-<p class="intro">Introductory paragraph text.</p>
-<div class="card">Card content</div>
+<roots-demo />
+```
+
+<!-- demo:source-html-roots -->
+```html
+<style>
+  .roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
+  .roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+  .roots-note {
+    padding: 8px 12px;
+    color: #d3ff8d;
+    border: 1px dashed #d3ff8d;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+</style>
+<p class="roots-title">Release notes</p>
+<p class="roots-lead">Three top-level elements in one file.</p>
+<div class="roots-note">No wrapper element is added.</div>
+```
+
+<!-- demo:output-html-roots -->
+```html
+<p class="bascik__roots-demo__roots-title">Release notes</p>
+<p class="bascik__roots-demo__roots-lead">Three top-level elements in one file.</p>
+<div class="bascik__roots-demo__roots-note">No wrapper element is added.</div>
+```
+
+<!-- demo:output-css-roots -->
+```css
+.bascik__roots-demo__roots-title { margin: 0 0 6px; color: #f0f1f2; font-size: 1.1rem; font-weight: 700; }
+.bascik__roots-demo__roots-lead { margin: 0 0 10px; color: #8d929e; font-size: 0.9rem; }
+.bascik__roots-demo__roots-note {
+  padding: 8px 12px;
+  color: #d3ff8d;
+  border: 1px dashed #d3ff8d;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
 ```
 
 When transpiled, all root-level elements are inserted directly into the page markup in order. No unnecessary wrapper `<div>` or `<Fragment>` tags are added to your rendered HTML. Bascik's scoping engine automatically handles CSS rules, class names, IDs, element selectors, and scripts across every element in the component template.
@@ -615,6 +652,10 @@ Do not add `data-bascik-preserve="id"` to the skip link to "keep it working". A 
 ### Third-Party Custom Elements
 
 A hyphenated tag that is not a Bascik component, such as a library's `<heading-anchors>` or `<model-viewer>`, is passed to the browser unchanged. By default each page prints an `Unresolved component tag` warning for it. Declare the tag in [`components.external`](/configuration#componentsexternal) to remove the warning and the `bascik --check` finding. Typos are still reported.
+
+## Example Components
+
+The [Example Components](/example-components) section has working components to read: a header and footer, tabs, a modal dialog, a popover menu, a filter list, a copy button, a contact form, and a theme toggle. Each page shows the live component, its usage, and its full source.
 
 ## Sharing and Distributing Components
 

@@ -33,6 +33,8 @@ Place the same component on a page more than once and each instance runs indepen
 
 The two counters at the top of this page are the same component. Change either count, then inspect Output → HTML and Output → JS to compare their unique instance IDs.
 
+For a larger case, the [Tab Group](/example-components/tab-group) example builds a tab list at run time and derives every tab and panel ID from its scoped root ID, so several groups on one page never collide.
+
 ## Where Component Scripts Run
 
 A component script is an inline classic script, and where it sits in the page depends on the mode:

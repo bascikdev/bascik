@@ -92,11 +92,11 @@ JavaScript inside that file scopes itself too. Write `document.getElementById('c
 
 There is a historical pattern worth recognizing. A language or platform ships without a feature the community needs. Someone builds a library to fill the gap. The library becomes ubiquitous. Years later, the platform ships the feature natively, but the ecosystem keeps reaching for the library out of habit.
 
-jQuery filled a gap when DOM APIs were inconsistent across browsers. Underscore and Lodash filled a gap when JavaScript lacked functional array utilities. Tailwind filled a gap when organizing CSS at scale was genuinely hard. All of those tools were the right answer for their moment.
+The web has been through this in waves. jQuery, Lodash, and Bootstrap patched the browser itself: inconsistent DOM APIs, missing array utilities, no layout system, no dialogs. Template languages like Jinja, Liquid, and Handlebars let you share layouts and partials across pages. React, Angular, and Vue moved rendering into JavaScript to get components. Tailwind, Sass, and CSS-in-JS made CSS manageable at scale with variables, nesting, and scoped styles. All of those tools were the right answer for their moment.
 
-That moment has passed. Browser DOM APIs are consistent and capable. JavaScript ships with `Array.map`, `Array.filter`, `Object.assign`, optional chaining, and everything Lodash offered for free. CSS ships with custom properties, cascade layers, container queries, `:is()`, `:has()`, and logical properties. The platform caught up.
+Most of what they provided now ships in the browser. DOM APIs are consistent and capable, with `querySelectorAll`, `classList`, and `fetch`. JavaScript ships `Array.map`, `Object.assign`, optional chaining, template literals, and modules. HTML ships `<template>`, `<dialog>`, popovers, and custom elements. CSS ships custom properties, nesting, cascade layers, container queries, `:has()`, and `@scope`. The platform caught up.
 
-The only gap that remains is component organization, a way to write a navigation bar once and reuse it across pages without a runtime. That is the gap Bascik fills, using a build step rather than adding to the runtime.
+Each wave also asked you to learn its own syntax: `$()`, `{{ }}`, JSX, utility class names. None of them let a vanilla HTML file be the component. That is the gap that remains: write a navigation bar once in standard HTML, CSS, and JavaScript, reuse it across pages, and ship standard output with no runtime. Bascik fills it with a build step rather than adding to the runtime.
 
 ## Why Not Web Components?
 

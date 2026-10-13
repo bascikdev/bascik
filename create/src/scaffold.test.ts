@@ -11,6 +11,7 @@ import {
   MY_COUNTER_TEST,
   PACKAGE_JSON,
   PLAYWRIGHT_CONFIG,
+  SKILLS_DIR,
   SITE_FOOTER_CSS,
   SITE_FOOTER_HTML,
   SITE_FOOTER_TEST,
@@ -33,13 +34,14 @@ import {
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("node:fs/promises", () => ({
+  cp: vi.fn(async () => undefined),
   mkdir: vi.fn(async () => undefined),
-  readFile: vi.fn(async () => "# Bascik Skill"),
   writeFile: vi.fn(async () => undefined),
 }));
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, writeFile } from "node:fs/promises";
 
+const mockCp = cp as ReturnType<typeof vi.fn>;
 const mockMkdir = mkdir as ReturnType<typeof vi.fn>;
 const mockWriteFile = writeFile as ReturnType<typeof vi.fn>;
 
@@ -409,8 +411,8 @@ describe("scaffold", () => {
   it("creates all component, page, and e2e directories", async () => {
     await scaffold("my-app", "/tmp");
     const dirs = mockMkdir.mock.calls.map((c) => String(c[0]));
-    expect(dirs.some((d) => d.includes(".github/skills/bascik"))).toBe(true);
-    expect(dirs.some((d) => d.includes(".claude/skills/bascik"))).toBe(true);
+    expect(dirs.some((d) => d.endsWith(".agents/skills"))).toBe(true);
+    expect(dirs.some((d) => d.endsWith(".claude/skills"))).toBe(true);
     expect(dirs.some((d) => d.endsWith("e2e"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/assets"))).toBe(true);
     expect(dirs.some((d) => d.includes("src/pages/css"))).toBe(true);
@@ -420,9 +422,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 28 expected files", async () => {
+  it("writes all 26 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(28);
+    expect(mockWriteFile.mock.calls.length).toBe(26);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -432,11 +434,30 @@ describe("scaffold", () => {
     expect(paths.some((p) => p.endsWith("e2e/app.spec.ts"))).toBe(true);
   });
 
-  it("writes SKILL.md into .github/skills/bascik and .claude/skills/bascik", async () => {
+  it("copies the bundled agent skills into .agents/skills and .claude/skills", async () => {
     await scaffold("my-app", "/tmp");
-    const paths = allWrittenPaths().filter((p) => p.endsWith("SKILL.md"));
-    expect(paths.some((p) => p.includes(".github/skills/bascik"))).toBe(true);
-    expect(paths.some((p) => p.includes(".claude/skills/bascik"))).toBe(true);
+    expect(mockCp).toHaveBeenCalledTimes(2);
+    const destinations = mockCp.mock.calls.map((c) => String(c[1]).replace(/\\/g, "/"));
+    expect(destinations).toEqual(["/tmp/my-app/.agents/skills", "/tmp/my-app/.claude/skills"]);
+    for (const call of mockCp.mock.calls) {
+      expect(call[0]).toBe(SKILLS_DIR);
+      expect(call[2]).toMatchObject({ recursive: true });
+    }
+  });
+
+  it("skips only the README at the root of the bundled skills folder", async () => {
+    await scaffold("my-app", "/tmp");
+    const { filter } = mockCp.mock.calls[0][2] as { filter: (source: string) => boolean };
+    expect(filter(`${SKILLS_DIR}/README.md`)).toBe(false);
+    expect(filter(`${SKILLS_DIR}/bascik/SKILL.md`)).toBe(true);
+    expect(filter(`${SKILLS_DIR}/bascik/references/README.md`)).toBe(true);
+    expect(filter(SKILLS_DIR)).toBe(true);
+  });
+
+  it("no longer writes skills into .github/skills", async () => {
+    await scaffold("my-app", "/tmp");
+    expect(allWrittenPaths().some((p) => p.includes(".github/skills"))).toBe(false);
+    expect(mockMkdir.mock.calls.some((c) => String(c[0]).includes(".github/skills"))).toBe(false);
   });
 
   it("writes root config files", async () => {

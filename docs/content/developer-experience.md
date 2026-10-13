@@ -289,12 +289,12 @@ Line numbers match while JavaScript is not minified, which is the default for th
 
 ### Build and Server Script Stack Trace Remapping
 
-Node.js executes `<script data-bascik-build>` and `<script data-bascik-server>` blocks in ephemeral temporary modules. When a script throws an unhandled exception or encounters an error:
+Node.js runs each `<script data-bascik-build>`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` block as a module of its own. When one throws:
 
-1. **Stack Trace Interception:** Bascik's `cleanStackTrace` engine intercepts the raw error emitted by Node.js.
-2. **File and Line Remapping:** Temporary file paths and line offsets are converted back to the original source HTML file and line position (for example, `src/pages/dashboard.html:34`).
-3. **Noise Reduction:** Internal Node.js runtime frames (`node:internal/*`, `node:diagnostics_channel`, and execution wrappers) are filtered out.
-4. **Clickable Terminal Links:** Terminal error messages display standard `file:line:column` coordinates that you can `Cmd + Click` (macOS) or `Ctrl + Click` (Windows/Linux) in VS Code to jump straight to the failing line.
+1. **Source Lines and Columns:** The stack names the file the script was written in and the failing line and column in that file (for example, `src/pages/dashboard.html:34:11`), including in a component, whose markup and `<style>` blocks above the script are moved out before it runs.
+2. **Syntax Errors:** In a build or routes script, a syntax error shows the file, the failing line, and a caret under the token. In a server or stream script, Node reports no line for a syntax error, so Bascik names the file and the line the script starts on.
+3. **Printed Once:** Each error is printed once, with only your own frames: Node.js internals, Bascik's script runner, and Bascik's request handling are removed. A build or routes error's header names the file and the script tag's line and column; a server or stream error's header names the request path.
+4. **Clickable Terminal Links:** The `file:line:column` locations can be `Cmd + Click`ed (macOS) or `Ctrl + Click`ed (Windows/Linux) in VS Code to jump straight to the failing line.
 
 ### TypeScript and Custom Minifier Source Maps
 

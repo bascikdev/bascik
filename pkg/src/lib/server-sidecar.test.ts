@@ -142,9 +142,10 @@ export default function() { throw new Error('component sidecar failure'); }
         sourceFile: "src/components/failing-card.html",
         sourceLine: 8,
       });
+      // The opening tag's `>` is on line 8 (the recorded line), so the `throw` on the next line is line 9.
       await expect(
         executeServerScripts(extracted, baseRequest, baseContext, undefined, "dist/consumer.html"),
-      ).rejects.toThrow("src/components/failing-card.html:8");
+      ).rejects.toThrow("src/components/failing-card.html:9:");
     } finally {
       BascikConfig.directory.out = previousOutDir;
       await rm(outDir, { recursive: true, force: true });

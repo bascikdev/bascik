@@ -13,6 +13,33 @@ export interface SearchEntry {
   text: string;
   path: string;
   section?: string;
+  title?: string;
+  /** Set only on the Home entry: ordered page paths shown nested beneath it. */
+  sitelinks?: string[];
+}
+
+var GENERIC_SITE_WORDS: Record<string, boolean> = {
+  dev: true, docs: true, documentation: true, website: true, site: true, official: true, home: true, homepage: true,
+};
+
+/**
+ * True when the query is a brand or navigational query for the site itself
+ * ("bascik", "bascik.dev", "bascik docs", "home", or a typed prefix like "basc").
+ * Queries that name a topic ("bascik components") or only a generic word ("docs") are not.
+ */
+export function isNavigationalQuery(q: string): boolean {
+  var s = (q || '').toLowerCase().trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\.(d|de)$/, '');
+  var words = s.split(/[\s./]+/).filter(function (w) { return w.length > 0; });
+  var rest = words.filter(function (w) { return !GENERIC_SITE_WORDS[w]; });
+  if (rest.length === 0) {
+    return words.some(function (w) { return w === 'home' || w === 'homepage'; });
+  }
+  if (rest.length > 1) return false;
+  var w = rest[0];
+  return w === 'bascik' || (w.length >= 4 && 'bascik'.indexOf(w) === 0);
 }
 
 export function tokens(q: string): string[] {
@@ -98,7 +125,27 @@ export function snippet(text: string | null | undefined, q: string, toks: string
  * and < 2000, and no other page ties it), that page's entries are grouped first
  * in document order (page entry, then h2s). Remaining slots fill from score-ordered results.
  */
-export function buildResults(index: SearchEntry[], q: string, toks: string[], limit: number): SearchEntry[] {
+export function buildResults(fullIndex: SearchEntry[], q: string, toks: string[], limit: number): SearchEntry[] {
+  // The Home entry is never scored like a page. It is only surfaced for
+  // navigational queries, always first, with its sitelink pages nested under it.
+  var home: SearchEntry | undefined;
+  var index: SearchEntry[] = [];
+  for (var h = 0; h < fullIndex.length; h++) {
+    var candidate = fullIndex[h];
+    if (candidate.sitelinks && candidate.sitelinks.length) { if (!home) home = candidate; } else index.push(candidate);
+  }
+
+  var seen: Record<string, boolean> = {};
+  var top: SearchEntry[] = [];
+  var sitelinkBases: Record<string, boolean> = {};
+
+  if (home && isNavigationalQuery(q)) {
+    seen[home.path] = true;
+    top.push(home);
+    (home.sitelinks || []).forEach(function (p) { sitelinkBases[basePath(p)] = true; });
+    index = index.filter(function (e) { return !sitelinkBases[basePath(e.path)]; });
+  }
+
   var scored = index
     .map(function (e) { return { e: e, s: score(e, q, toks) }; })
     .filter(function (x) { return x.s > 0; })
@@ -108,9 +155,6 @@ export function buildResults(index: SearchEntry[], q: string, toks: string[], li
   var bestPage = pageMatches.length === 1 ? pageMatches[0]
     : (pageMatches.length > 1 && pageMatches[0].s > pageMatches[1].s) ? pageMatches[0]
       : null;
-
-  var seen: Record<string, boolean> = {};
-  var top: SearchEntry[] = [];
 
   if (bestPage) {
     var dominantBase = bestPage.e.path;
@@ -127,4 +171,18 @@ export function buildResults(index: SearchEntry[], q: string, toks: string[], li
   }
 
   return top.slice(0, limit);
+}
+
+/**
+ * Resolves a Home entry's sitelink paths to their page-level index entries, in
+ * the order the entry declares. Paths missing from the index are skipped.
+ */
+export function buildSitelinks(index: SearchEntry[], homeEntry: SearchEntry): SearchEntry[] {
+  var out: SearchEntry[] = [];
+  (homeEntry.sitelinks || []).forEach(function (p) {
+    for (var i = 0; i < index.length; i++) {
+      if (index[i].path === p && index[i].heading === null) { out.push(index[i]); return; }
+    }
+  });
+  return out;
 }

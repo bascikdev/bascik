@@ -1,6 +1,11 @@
 import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
+  directory: {
+    // The repo-root examples/ components render live on /example-components/* pages. They are the only copy: the pages,
+    // /assets/examples.json, and the tests all read the same files.
+    components: ['src/components', '../examples/components'],
+  },
   components: {
     // <heading-anchors> comes from @zachleat/heading-anchors and is demonstrated on
     // /how-to/third-party-web-components. It is not a Bascik component file.
@@ -10,6 +15,7 @@ export default defineConfig({
     watchPaths: [
       'scripts/',
       'content/',
+      'src/diagrams/',
       'src/lib/',
       'src/css/',
       '../pkg/test-coverage.json',
@@ -31,9 +37,16 @@ export default defineConfig({
       {
         script: 'scripts/publish-agent-skill.ts',
         phase: 'parallel',
-        watch: ['src/pages/assets/SKILL.md'],
-        // Publishes the one intentional Markdown download (/assets/SKILL.md) to dist. Static asset copying
-        // denies .md by design; the authored input is watched, the generated output never is.
+        watch: ['../skills/'],
+        // Publishes the agent skills from the repo-root skills/ directory: /assets/skills.tar.gz (every skill)
+        // and /assets/SKILL.md (the core skill, the one intentional Markdown download). Static asset copying
+        // denies .md by design; the authored skills are watched, the generated outputs never are.
+      },
+      {
+        script: 'scripts/publish-examples.ts',
+        phase: 'parallel',
+        watch: ['../examples/'],
+        // Publishes /assets/examples.json for skills/bascik/scripts/add-example.mjs.
       },
       {
         script: 'scripts/generate-press-kit.ts',
@@ -46,6 +59,12 @@ export default defineConfig({
   },
   assets: {
     inlineStyles: ['src/css/styles.css'],
+  },
+  scripts: {
+    cache: {
+      // Example pages read example files through markers in their Markdown, which the cache key cannot see.
+      exclude: ['src/pages/example-components/**'],
+    },
   },
 });
 
@@ -66,6 +85,7 @@ export const build = defineConfig({
       { script: 'scripts/publish-heading-anchors.ts', phase: 'pre' },
       { script: 'scripts/generate-search-index.ts', phase: 'parallel' },
       { script: 'scripts/publish-agent-skill.ts', phase: 'parallel' },
+      { script: 'scripts/publish-examples.ts', phase: 'parallel' },
       { script: 'scripts/generate-press-kit.ts', phase: 'parallel' },
       { script: 'scripts/generate-llms-txt.ts', phase: 'parallel' },
       { script: 'scripts/generate-og-images.ts', phase: 'parallel' },

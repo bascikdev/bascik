@@ -48,8 +48,10 @@ describe('docs scripts BASCIK_OUT_DIR environment override', () => {
   });
 
   it('publish-agent-skill writes only to BASCIK_OUT_DIR without mutating source directories', async () => {
-    const srcSkillPath = join(docsDir, 'src/pages/assets/SKILL.md');
+    const skillsDir = join(docsDir, '../skills');
+    const srcSkillPath = join(skillsDir, 'bascik/SKILL.md');
     const beforeStat = await stat(srcSkillPath);
+    const beforeSkills = (await readdir(skillsDir, { recursive: true })).sort();
 
     const res = await runNodeScript('publish-agent-skill.ts', isolatedOut);
     expect(res.signal).toBeNull();
@@ -64,10 +66,13 @@ describe('docs scripts BASCIK_OUT_DIR environment override', () => {
 
     const afterStat = await stat(srcSkillPath);
     expect(afterStat.mtimeMs).toBe(beforeStat.mtimeMs);
+    expect((await readdir(skillsDir, { recursive: true })).sort()).toEqual(beforeSkills);
 
-    // Verify no unexpected root artifacts in isolatedOut
-    const isolatedEntries = await readdir(isolatedOut);
-    expect(isolatedEntries).toEqual(['assets']);
+    // Verify no unexpected artifacts in isolatedOut
+    expect((await readdir(isolatedOut)).sort()).toEqual(['.well-known', 'assets']);
+    expect((await readdir(join(isolatedOut, 'assets'))).sort()).toEqual(['SKILL.md', 'skills.tar.gz']);
+    expect(await readdir(join(isolatedOut, '.well-known'))).toEqual(['agent-skills']);
+    expect(await readdir(join(isolatedOut, '.well-known/agent-skills'))).toContain('index.json');
   });
 
   it('generate-search-index writes only to BASCIK_OUT_DIR without mutating source directories', async () => {

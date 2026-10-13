@@ -12,6 +12,7 @@ import { getImportRoot } from "./import-root.ts";
 import { rewriteModuleSpecifiers, resolveScriptSrcPath } from "./module-specifiers.ts";
 import { scanApiRouteFiles, buildApiRouteTree } from "./api-routes.ts";
 import { withBasePath } from "./base-path.ts";
+import { hasHiddenSegment } from "./route-matching.ts";
 import { getHtmlAttributeValue } from "./html-patterns.ts";
 import { SIDECAR_SCHEMA_VERSION, type ServerScriptEntry, type ServerScriptsSidecar } from "./server-sidecar.ts";
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from "./server-scripts.ts";
@@ -114,8 +115,7 @@ export const pageAliasesFor = (httpPath: string, base: string): string[] => {
 /** Whether a dist-relative path may be uploaded as a public static file. */
 export const isPublicAssetPath = (distRelativePath: string): boolean => {
   const normalized = distRelativePath.replace(/\\/g, "/");
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.some((segment) => segment.startsWith(".") && segment !== ".well-known")) return false;
+  if (hasHiddenSegment(normalized)) return false;
   if (normalized.endsWith(".map")) return false;
   if (/\.(br|gz)$/i.test(normalized) || /\.bmeta$/i.test(normalized)) return false;
   return true;

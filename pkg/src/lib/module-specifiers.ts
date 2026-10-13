@@ -494,8 +494,27 @@ export const resolveScriptSrcPath = (
 export const rewriteModuleSpecifiers = (
   source: string,
   baseDir: string,
+  options: RewriteModuleSpecifierOptions,
+): string => rewriteModuleSpecifiersWithEdits(source, baseDir, options).code;
+
+/**
+ * One specifier rewrite, at its 1-based line and column in the source. A
+ * rewrite never adds a newline, so lines are unchanged, and only columns after
+ * a rewrite on the same line move (by `newLength - oldLength`).
+ */
+export interface SpecifierEdit {
+  line: number;
+  column: number;
+  oldLength: number;
+  newLength: number;
+}
+
+/** {@link rewriteModuleSpecifiers}, plus the edits it made, so error columns can be mapped back to the source. */
+export const rewriteModuleSpecifiersWithEdits = (
+  source: string,
+  baseDir: string,
   { importRoot }: RewriteModuleSpecifierOptions,
-): string => {
+): { code: string; edits: SpecifierEdit[] } => {
   const replacements = findModuleSpecifiers(source)
     .map((specifier) => ({
       ...specifier,
@@ -504,14 +523,17 @@ export const rewriteModuleSpecifiers = (
     .filter((specifier): specifier is ModuleSpecifier & { resolved: string } => specifier.resolved !== undefined)
     .sort((left, right) => right.start - left.start);
 
+  const edits: SpecifierEdit[] = [];
   let rewritten = source;
   for (const { start, end, resolved } of replacements) {
+    const href = pathToFileURL(resolved).href;
+    const lineStart = source.lastIndexOf("\n", start - 1) + 1;
+    let line = 1;
+    for (let index = source.indexOf("\n"); index !== -1 && index < start; index = source.indexOf("\n", index + 1)) line++;
+    edits.push({ line, column: start - lineStart + 1, oldLength: end - start, newLength: href.length });
     // String concatenation (not String.replace) so `$&`, `$1`, and similar
     // tokens in paths are inserted literally.
-    rewritten =
-      rewritten.slice(0, start) +
-      pathToFileURL(resolved).href +
-      rewritten.slice(end);
+    rewritten = rewritten.slice(0, start) + href + rewritten.slice(end);
   }
-  return rewritten;
+  return { code: rewritten, edits: edits.reverse() };
 };

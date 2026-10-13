@@ -1,5 +1,109 @@
-import { describe, it, expect } from "vitest";
-import { cleanStackTrace } from "./stack-trace.ts";
+import { describe, it, expect, vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { cleanStackTrace, KEEP_INTERNAL_FRAMES_ENV, remapRewrittenColumns } from "./stack-trace.ts";
+import { rewriteModuleSpecifiersWithEdits } from "./module-specifiers.ts";
+
+/** This directory, which is where Bascik's own modules live in a real install too (dist/lib/). */
+const bascikLib = fileURLToPath(new URL("./", import.meta.url));
+
+describe("cleanStackTrace – frames that are not the user's", () => {
+  it("drops Bascik's own frames and the builtin frames left after the user's last frame", () => {
+    const rawTrace = [
+      "Error: server boom",
+      "    at default (src/pages/srv.html:12:15)",
+      `    at ScriptRegistry.invoke (file://${bascikLib}script-registry.js:326:49)`,
+      `    at async runServerScriptJob (file://${bascikLib}server-scripts.js:242:20)`,
+      "    at async Promise.all (index 1)",
+      `    at async file://${bascikLib}server.js:681:37`,
+    ].join("\n");
+
+    expect(cleanStackTrace(rawTrace, "data:x", "src/pages/srv.html", 1)).toBe(
+      "Error: server boom\n    at default (src/pages/srv.html:12:15)",
+    );
+  });
+
+  it("shifts columns on the module's first line only", () => {
+    const raw = "Error: x\n    at a (data:mod:1:7)\n    at b (data:mod:3:5)";
+    expect(cleanStackTrace(raw, "data:mod", "src/pages/x.html", 10, 20)).toBe(
+      "Error: x\n    at a (src/pages/x.html:10:27)\n    at b (src/pages/x.html:12:5)",
+    );
+  });
+
+  it("keeps a builtin frame that sits between two of the user's frames", () => {
+    const rawTrace = [
+      "Error: inner",
+      "    at load (file:///project/src/lib/data.ts:3:9)",
+      "    at async Promise.all (index 0)",
+      "    at async default (src/pages/x.html:8:5)",
+    ].join("\n");
+
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(rawTrace);
+  });
+
+  it("keeps frames of files in subdirectories, such as test fixtures, which are not Bascik's modules", () => {
+    for (const frame of [
+      `    at helper (file://${bascikLib}test-fixtures/helper.ts:2:3)`,
+      `    at helper (${bascikLib}__fixtures__/helper.ts:2:3)`,
+    ]) {
+      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+    }
+  });
+
+  it("drops a Bascik frame written as a plain path, without the file URL", () => {
+    const rawTrace = `Error: x\n    at default (src/pages/x.html:3:1)\n    at run (${bascikLib}server-scripts.ts:300:9)`;
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe("Error: x\n    at default (src/pages/x.html:3:1)");
+  });
+
+  it(`keeps Bascik's frames when ${KEEP_INTERNAL_FRAMES_ENV}=1`, () => {
+    const frame = `    at ScriptRegistry.invoke (file://${bascikLib}script-registry.ts:326:49)`;
+    vi.stubEnv(KEEP_INTERNAL_FRAMES_ENV, "1");
+    try {
+      expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("maps every column after rewritten imports back to the column as written", () => {
+    const source = 'import a from "./a.ts"; import b from "./b.ts"; a(); b(); boom();\nnext();';
+    const { code, edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src/pages", { importRoot: "/project/src" });
+    expect(edits).toHaveLength(2);
+    const [rewrittenLine] = code.split("\n");
+    for (const token of ["a()", "b()", "boom()"]) {
+      const raw = `Error: x\n    at f (data:mod:1:${rewrittenLine.lastIndexOf(token) + 1})`;
+      expect(remapRewrittenColumns(raw, ["data:mod"], edits)).toBe(`Error: x\n    at f (data:mod:1:${source.lastIndexOf(token) + 1})`);
+    }
+    // Lines without a rewrite, and other files, are left alone.
+    expect(remapRewrittenColumns("    at g (data:mod:2:1)", ["data:mod"], edits)).toBe("    at g (data:mod:2:1)");
+    expect(remapRewrittenColumns("    at h (src/lib/x.ts:1:90)", ["data:mod"], edits)).toBe("    at h (src/lib/x.ts:1:90)");
+  });
+
+  it("maps a column inside a rewritten specifier to the start of the specifier as written", () => {
+    const source = 'import a from "./a.ts";';
+    const { edits } = rewriteModuleSpecifiersWithEdits(source, "/project/src", { importRoot: "/project/src" });
+    expect(remapRewrittenColumns("at (m.mjs:1:30)", ["m.mjs"], edits)).toBe(`at (m.mjs:1:${edits[0].column})`);
+  });
+
+  it("keeps Node's located syntax-error report and drops its version trailer", () => {
+    const tmpPath = "/project/node_modules/.cache/bascik/build-1-abc.mjs";
+    const rawTrace = [
+      `file://${tmpPath}:11`,
+      '        return "x" +;',
+      "                    ^",
+      "",
+      "SyntaxError: Unexpected token ';'",
+      "    at compileSourceTextModule (node:internal/modules/esm/utils:319:16)",
+      "    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:89:18)",
+      "",
+      "Node.js v24.21.0",
+    ].join("\n");
+
+    // The module is padded to the file's lines, so the offset is 1 and the line is unchanged.
+    expect(cleanStackTrace(rawTrace, tmpPath, "src/pages/s.html", 1)).toBe(
+      'src/pages/s.html:11\n        return "x" +;\n                    ^\n\nSyntaxError: Unexpected token \';\'',
+    );
+  });
+});
 
 describe("cleanStackTrace", () => {
   it("returns raw trace if trace is empty or falsy", () => {

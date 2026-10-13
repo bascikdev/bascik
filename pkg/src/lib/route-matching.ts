@@ -431,6 +431,33 @@ export const isUnsafePathname = (pathname: string): boolean =>
   pathname.endsWith("/..") ||
   pathname === "..";
 
-/** Whether any segment of the pathname is a dotfile or dot-directory. */
-export const hasHiddenSegment = (pathname: string): boolean =>
-  pathname.split("/").some((segment) => segment.startsWith("."));
+/** The RFC 8615 well-known URI segment: the one dot-directory a site may publish. */
+export const WELL_KNOWN_SEGMENT = ".well-known";
+
+/**
+ * Whether any segment of a decoded pathname (or a publish-root-relative file
+ * path) is a dotfile or dot-directory, which is never served or published.
+ *
+ * The single exception is RFC 8615 `.well-known` as the FIRST segment below
+ * the site root, so `/.well-known/security.txt` and
+ * `/.well-known/agent-skills/index.json` are public. The match is exact and
+ * case-sensitive, it never applies deeper in the path (`/blog/.well-known/`),
+ * and dot segments inside it (`/.well-known/.env`) stay hidden. Internal
+ * artifacts such as `/.bascik/` therefore remain private.
+ *
+ * `base` is the normalized deployment base (`/` or `/docs/`). Under a
+ * non-root base the site root is the base, so `/docs/.well-known/...` is the
+ * well-known directory; a path outside the base uses the root rule and is
+ * rejected by base matching anyway.
+ */
+export const hasHiddenSegment = (pathname: string, base = "/"): boolean => {
+  let path = pathname;
+  if (base !== "/" && base.length > 1) {
+    const prefix = base.endsWith("/") ? base : `${base}/`;
+    if (path.startsWith(prefix)) path = path.slice(prefix.length - 1);
+  }
+  const segments = path.split("/").filter((segment) => segment.length > 0);
+  return segments.some(
+    (segment, index) => segment.startsWith(".") && !(index === 0 && segment === WELL_KNOWN_SEGMENT),
+  );
+};

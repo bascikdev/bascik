@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <site-head />
+  <script data-bascik-build>
+    // Uses the seo() helper in src/lib/seo.ts. Replace with a plain <title> and description if needed.
+    import { seo } from '@/lib/seo.ts';
+    export default () => seo({ title: 'Blog - Example Site', description: 'Notes, release announcements, and guides from the Example team.' });
+  </script>
+  <link rel="alternate" type="application/atom+xml" title="Example Site" href="/feed.xml" />
+</head>
+
+<body>
+  <site-header><theme-toggle /></site-header>
+  <main id="main" class="container">
+    <h1>Blog</h1>
+    <script data-bascik-build>
+      import { getPosts, postList } from '@/lib/posts.ts';
+      export default async () => postList(await getPosts());
+    </script>
+    <p><a href="/blog/tags/">Browse by tag</a></p>
+  </main>
+  <site-footer />
+</body>
+
+</html>

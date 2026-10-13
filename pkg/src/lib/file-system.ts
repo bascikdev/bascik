@@ -48,6 +48,14 @@ const stripDirMarker = (normalizedPath: string, configuredDir: string): string =
 };
 
 /**
+ * A path relative to the project root, with forward slashes
+ * (`src/pages/about.html`). Used where a message names a line and column, so
+ * the location is the same text a stack frame shows and opens with Cmd+Click.
+ */
+export const getProjectPath = (path: string): string =>
+  relative(process.cwd(), resolve(process.cwd(), path)).replace(/\\/g, "/");
+
+/**
  * Resolve an absolute path to a `parentDir/...` relative path, normalizing
  * separators. For components, the owning root comes from `findComponentRoot`;
  * a root outside the project is displayed cwd-relative

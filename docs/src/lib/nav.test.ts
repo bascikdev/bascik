@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NAV } from './nav.js';
+import { NAV, HOME_SITELINKS } from './nav.js';
 import { renderSectionLabel, renderPagination } from './render-nav.js';
 
 describe('NAV structure', () => {
@@ -26,12 +26,22 @@ describe('NAV structure', () => {
     const uniqueHrefs = new Set(hrefs);
     expect(uniqueHrefs.size).toEqual(hrefs.length);
   });
+
+  it('keeps every Home search sitelink as a unique, internal NAV page', () => {
+    const internal = new Set(NAV.flatMap(s => s.pages.filter(p => !p.external).map(p => p.href)));
+    expect(HOME_SITELINKS.length).toBeGreaterThan(0);
+    expect(new Set(HOME_SITELINKS).size).toBe(HOME_SITELINKS.length);
+    for (const href of HOME_SITELINKS) {
+      expect(internal.has(href)).toBe(true);
+    }
+  });
 });
 
 describe('renderSectionLabel', () => {
   it('returns section label for valid page paths', () => {
     expect(renderSectionLabel('/why-bascik')).toBe('<p class="section-label">Overview</p>');
-    expect(renderSectionLabel('/components')).toBe('<p class="section-label">Features</p>');
+    expect(renderSectionLabel('/components')).toBe('<p class="section-label">Components</p>');
+    expect(renderSectionLabel('/script-imports')).toBe('<p class="section-label">Scripts & Routing</p>');
     expect(renderSectionLabel('/environment-variables')).toBe('<p class="section-label">Reference</p>');
     expect(renderSectionLabel('/testing')).toBe('<p class="section-label">Testing & Debugging</p>');
     expect(renderSectionLabel('/testing/unit-testing')).toBe('<p class="section-label">Testing & Debugging</p>');
@@ -62,7 +72,7 @@ describe('renderSectionLabel', () => {
     const originalPath = process.env.BASCIK_PAGE_PATH;
     process.env.BASCIK_PAGE_PATH = '/components';
     try {
-      expect(renderSectionLabel()).toBe('<p class="section-label">Features</p>');
+      expect(renderSectionLabel()).toBe('<p class="section-label">Components</p>');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }
@@ -240,7 +250,7 @@ describe('renderPagination', () => {
     const originalPath = process.env.BASCIK_PAGE_PATH;
     process.env.BASCIK_PAGE_PATH = '/components';
     try {
-      expect(renderSectionLabel()).toBe('<p class="section-label">Features</p>');
+      expect(renderSectionLabel()).toBe('<p class="section-label">Components</p>');
     } finally {
       process.env.BASCIK_PAGE_PATH = originalPath;
     }

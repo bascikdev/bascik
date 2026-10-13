@@ -1,5 +1,7 @@
 ---
 name: bascik-server-architecture
+metadata:
+  internal: true
 description: Architecture, debugging, and maintenance of Bascik's built-in HTTP/1.1, HTTP/2, TLS, and Server-Sent Events (SSE) server. Use when modifying dev server, prod server, SSE live-reload, request scripts, or socket resilience.
 ---
 

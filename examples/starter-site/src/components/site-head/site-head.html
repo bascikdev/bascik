@@ -1,0 +1,18 @@
+<!-- @bascik
+Shared head markup for every page: charset, viewport, the saved theme, the global stylesheet, and icons. Put it first in <head>, then add each page's own title and description (the seo() helper in src/lib/seo.ts writes both):
+
+  <head>
+    <site-head />
+    <script data-bascik-build>
+      import { seo } from '@/lib/seo.ts';
+      export default () => seo({ title: 'About - Example Site', description: '...' });
+    </script>
+  </head>
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme: dark)" />
+<theme-init />
+<link rel="stylesheet" href="/css/styles.css" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />

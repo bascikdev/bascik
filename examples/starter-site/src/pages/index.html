@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <site-head />
+  <script data-bascik-build>
+    import { seo, jsonLd } from '@/lib/seo.ts';
+    export default () => [
+      seo({ title: 'Example Site - Fast pages, plain HTML', description: 'Example Site builds fast, accessible websites from plain HTML, CSS, and a little JavaScript.', siteName: 'Example Site' }),
+      jsonLd({ '@type': 'WebSite', name: 'Example Site' }),
+    ].join('\n');
+  </script>
+</head>
+
+<body>
+  <site-header><theme-toggle /></site-header>
+  <main id="main" class="container">
+    <h1>Fast pages, plain HTML</h1>
+    <p>Replace this copy with what the site is for, who it is for, and the one thing a visitor should do next.</p>
+    <p><a href="/about">Learn more about us</a></p>
+  </main>
+  <site-footer />
+</body>
+
+</html>

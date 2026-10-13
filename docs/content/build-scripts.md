@@ -189,30 +189,9 @@ Build scripts work inside `<head>` as well as `<body>`. This lets you extract re
 </head>
 ```
 
-## Shared Modules & Import Aliases
+## Imports and npm Packages
 
-Build scripts are standard Node.js ESM modules. You can write utility functions in your project and import them across pages with no special Bascik API required:
-
-```js
-// scripts/render-cards.ts
-import { readFile } from 'node:fs/promises';
-
-export async function renderCards(jsonPath: string) {
-  const items = JSON.parse(await readFile(jsonPath, 'utf8'));
-  return items.map(item => `
-    <div class="card">
-      <h3>${item.title}</h3>
-      <p>${item.description}</p>
-    </div>
-  `).join('\n');
-}
-```
-
-> **Import paths in build scripts:** You can use standard static imports, bare imports, `export ... from`, and dynamic `import()`. Bascik rewrites genuine `./` and `../` ESM specifiers relative to the containing page, component, or external script file.
-
-### Import Root Aliases (`@/`)
-
-Relative paths change shape with the depth of the file that contains them (`../lib/x.ts` at one level, `../../lib/x.ts` at the next), so the same helper import cannot be pasted into every page. For shared helpers, import from the **import root** instead. The default recommendation is `@/`:
+Build scripts are standard Node.js ESM modules, so they can import shared helpers and any installed npm package. Use the `@/` import root alias to reach `src/lib/` helpers from a page at any depth:
 
 ```html
 <script data-bascik-build>
@@ -221,39 +200,7 @@ Relative paths change shape with the depth of the file that contains them (`../l
 </script>
 ```
 
-`@/` resolves against `scripts.importRoot` (default `src`), so `@/lib/md-renderer.ts` is `src/lib/md-renderer.ts` from any page or component, at any nesting depth. The alias also works in `<script data-bascik-server>`, `<script data-bascik-stream>`, `<script data-bascik-routes>`, and in the `src="…"` attribute on those tags.
-
-- **Helper resolution:** Helper `.ts` and `.js` files loaded from disk are executed by Node as-is, so a helper that imports another helper must use standard `./` or `../`.
-- **Data paths:** Quoted data paths passed to functions (`readFile('./content/x.md')`) are not module specifiers and keep their standard `process.cwd()` semantics.
-- **Bare leading `/` is an error:** `import x from '/lib/x.ts'` (or `src="/lib/x.ts"`) inside a Bascik script is rejected because a leading slash is ambiguous between the filesystem root and site root. The error names both valid rewrites: `@/lib/x.ts` for the import root or `./lib/x.ts` for a path relative to the file. Plain client `<script>` tags are unaffected.
-
-Editing an alias-imported helper rebuilds dependent pages only when its path is covered by `directory.*` or `pipeline.watchPaths`. The import-root watcher invalidates request-time modules, but does not trigger compilation. Add build helper directories such as `src/lib/` to `pipeline.watchPaths`. See [Configuration](/configuration#scripts) for `scripts.importRoot` and [Monorepos](/how-to/monorepos) for pointing it at a shared directory.
-
-## npm Packages in Build Scripts
-
-A Bascik project is a standard Node.js project, so any npm package can be installed and used in build scripts. Install it once and import it anywhere:
-
-```sh
-npm install gray-matter
-```
-
-```html
-<script data-bascik-build>
-  import { readFile } from 'node:fs/promises';
-  import matter from 'gray-matter';
-
-  export default async function () {
-    const raw = await readFile('./content/post.md', 'utf8');
-    const { data, content } = matter(raw);
-    return `
-      <article>
-        <h1>${data.title}</h1>
-        <p class="date">${data.date}</p>
-      </article>
-    `;
-  }
-</script>
-```
+The alias, the rules for relative paths, and npm packages work the same in every script kind. See [Script Imports](/script-imports) for the full guide. To rebuild pages when a helper changes, add its directory to `pipeline.watchPaths`; see [Watch Paths](/watch-paths).
 
 ## Environment Variables
 
@@ -323,13 +270,26 @@ In the dev server, the error also appears as an overlay in every open browser, a
 
 ### Terminal Error Formatting
 
-When a build script fails, Bascik prints the page file path along with the exact line and column number of the `<script data-bascik-build>` tag. Bascik automatically filters out internal V8 and child-process execution noise, remapping execution offsets back to your source file:
+When a build script fails, Bascik prints the error once. The header names the file and the line and column of the `<script data-bascik-build>` tag, as a path from the project root, the same text the stack shows. The stack below it gives the line and column of the failing expression in that same file, including in a component, where markup and `<style>` blocks above the script are moved out before it runs. Frames from Node.js internals and from Bascik's own script runner are removed:
 
 ```text
-[bascik] build script error in "src/pages/about.html" at (line 14, column 3):
-Error: Cannot find module 'marked'
-    at src/pages/about.html:18:12
+[bascik] build script error in "src/pages/about.html" at (line 9, column 5):
+Error: Could not load the team list
+    at Module.default (src/pages/about.html:13:15)
 ```
+
+A syntax error is shown with the failing line and a caret under the token:
+
+```text
+[bascik] build script error in "src/pages/about.html" at (line 9, column 5):
+src/pages/about.html:11
+        return "x" +;
+                    ^
+
+SyntaxError: Unexpected token ';'
+```
+
+A script loaded with `src=` is its own file, so its frames name that file and its lines. Errors thrown in an imported helper keep the helper's path and line.
 
 In VS Code or modern terminal emulators, `Cmd + Click` (or `Ctrl + Click`) the file reference directly in the error log to jump straight to the source HTML line where the script failed.
 

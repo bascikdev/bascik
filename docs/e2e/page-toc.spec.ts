@@ -37,9 +37,9 @@ test.describe('"On this page" table of contents', () => {
     await page.getByRole('button', { name: 'Search docs' }).first().click();
     await page.getByPlaceholder('Search docs…').fill('@/');
     await page.getByRole('listbox', { name: 'Search results' })
-      .getByRole('link', { name: /Build Scripts › Import Root Aliases/ }).click();
+      .getByRole('link', { name: /Script Imports › Import Root Aliases/ }).click();
 
-    await expect(page).toHaveURL(/\/build-scripts#import-root-aliases$/);
+    await expect(page).toHaveURL(/\/script-imports#import-root-aliases$/);
     const toc = page.getByRole('navigation', { name: 'On this page' });
     const target = toc.getByRole('link', { name: 'Import Root Aliases (@/)', exact: true });
     await expect(target).toHaveAttribute('aria-current', 'location');

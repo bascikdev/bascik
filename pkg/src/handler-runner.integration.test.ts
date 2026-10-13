@@ -305,6 +305,36 @@ describe("runDirectiveHandler real child processes (handler and result transport
     }
   });
 
+  it("names a timeout as the reason, followed by what the script logged first", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+    try {
+      const hangModule = join(dir, "hang-logged.mjs");
+      // The interval keeps the event loop alive; a bare never-settling promise would let the child exit.
+      await writeFile(hangModule, `export default async () => { console.error("still loading"); await new Promise(() => setInterval(() => {}, 1000)); };`, "utf8");
+
+      const failure = await runDirectiveHandler(hangModule, "build", { timeoutMs: 300 }).catch((err: Error) => err);
+      expect((failure as Error).message).toBe("Directive script (data-bascik-build) timed out after 300ms\nstill loading");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Node's reason when it stops the child, instead of replacing it with the script's stderr", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+    try {
+      const noisyModule = join(dir, "noisy.mjs");
+      await writeFile(noisyModule, `console.error("warning: deprecated option"); console.log("x".repeat(5000)); export default () => "";`, "utf8");
+
+      const failure = await runDirectiveHandler(noisyModule, "build", { maxBuffer: 1000 }).catch((err: Error) => err);
+      const message = (failure as Error).message;
+      expect(message).toMatch(/^Directive script \(data-bascik-build\) failed: stdout maxBuffer length exceeded/);
+      expect(message).toContain("warning: deprecated option");
+      expect(message).not.toContain("timed out");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("handles parallel child processes correctly using single-slot semaphore", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     const sem = new Semaphore(1);

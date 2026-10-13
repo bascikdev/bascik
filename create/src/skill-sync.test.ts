@@ -1,17 +1,30 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SKILLS_DIR } from "./scaffold.js";
 
-describe("SKILL.md asset synchronization", () => {
-  it("docs and create SKILL.md copies are byte-identical", async () => {
-    const docsSkillPath = resolve(import.meta.dirname, "../../docs/src/pages/assets/SKILL.md");
-    const createSkillPath = resolve(import.meta.dirname, "../assets/SKILL.md");
+const sourceDir = resolve(import.meta.dirname, "../../skills");
 
-    const [docsSkill, createSkill] = await Promise.all([
-      readFile(docsSkillPath),
-      readFile(createSkillPath),
-    ]);
+async function listFiles(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
+    .map((entry) => join(entry.parentPath, entry.name).slice(dir.length + 1).replace(/\\/g, "/"))
+    .sort();
+}
 
-    expect(docsSkill.equals(createSkill)).toBe(true);
+describe("agent skills asset synchronization", () => {
+  it("create/assets/skills is a byte-identical copy of the repo-root skills/ directory", async () => {
+    expect(resolve(SKILLS_DIR)).toBe(resolve(import.meta.dirname, "../assets/skills"));
+    const [sourceFiles, bundledFiles] = await Promise.all([listFiles(sourceDir), listFiles(SKILLS_DIR)]);
+    expect(sourceFiles).toContain("bascik/SKILL.md");
+    expect(bundledFiles, "run `yarn create:prepack` to refresh create/assets/skills").toEqual(sourceFiles);
+    for (const file of sourceFiles) {
+      const [source, bundled] = await Promise.all([
+        readFile(join(sourceDir, file)),
+        readFile(join(SKILLS_DIR, file)),
+      ]);
+      expect(bundled.equals(source), `${file} differs; run \`yarn create:prepack\``).toBe(true);
+    }
   });
 });

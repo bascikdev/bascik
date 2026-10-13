@@ -325,4 +325,4 @@ await writeFile('node_modules/.cache/site/posts.json', JSON.stringify(snapshot))
 6. Compare the built output against your old sitemap, and configure redirects on your host for any URLs that change. WordPress serves its feed at `/feed/`; a static feed is usually a file such as `/feed.xml`, so redirect the old address.
 7. Choose your approach for dynamic features such as comments, search, and archives using Bascik API routes, server scripts, or dedicated services.
 
-> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to convert theme templates, see the [Agent Skill](/tools/agent-skill) documentation for guidelines on providing context to AI tools.
+> **AI-Assisted Migration:** If you use LLMs or AI coding assistants to convert theme templates, see the [Agent Skills](/agent-skills) documentation for guidelines on providing context to AI tools.

@@ -16,6 +16,12 @@ npm create bascik@latest my-site
 
 The CLI scaffolds a starter site and starts the dev server with live reload. See the [Getting Started guide](https://bascik.dev/getting-started) for manual setup in an existing project.
 
+Building with an AI assistant? Install the [Bascik agent skills](https://bascik.dev/agent-skills) so GitHub Copilot, Claude Code, Cursor, or Codex knows the component and scoping rules:
+
+```sh
+npx skills add bascikdev/bascik
+```
+
 ## What It Looks Like
 
 A component is an HTML file named after its tag. Its `<style>` and `<script>` are scoped to it at build time, so class names and DOM queries never collide with other components.
@@ -74,6 +80,7 @@ Use the tag in any page or component. There is no import, export, or registratio
 | `extensions/vscode-bascik/` | The VS Code extension — see [extensions/vscode-bascik/README.md](extensions/vscode-bascik/README.md) |
 | `lsp/`      | The `@bascik/language-server` LSP server — editor-agnostic intelligence for any LSP-compatible editor — see [lsp/README.md](lsp/README.md) |
 | `docs/`     | Documentation site at [bascik.dev](https://bascik.dev) — built with Bascik itself |
+| `skills/`   | Public agent skills for AI assistants, installed with `npx skills add bascikdev/bascik`. See [skills/README.md](skills/README.md) |
 
 ---
 

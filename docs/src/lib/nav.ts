@@ -23,6 +23,19 @@ export interface NavSection {
   pages: NavPage[];
 }
 
+/**
+ * Pages the docs search shows nested under the Home result for brand queries
+ * such as "bascik". Order is display order. Every href must exist in NAV.
+ */
+export const HOME_SITELINKS: string[] = [
+  '/getting-started',
+  '/why-bascik',
+  '/developer-experience',
+  '/vs-frameworks',
+  '/components',
+  '/scoped-styles',
+];
+
 export const NAV: NavSection[] = [
   {
     section: 'Overview', pages: [
@@ -33,7 +46,7 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Features', pages: [
+    section: 'Components', pages: [
       { href: '/components', label: 'Components' },
       { href: '/scoped-styles', label: 'Scoped Styles' },
       { href: '/scoped-javascript', label: 'Scoped JavaScript' },
@@ -41,12 +54,17 @@ export const NAV: NavSection[] = [
       { href: '/slots', label: 'Slots' },
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
+    ]
+  },
+  {
+    section: 'Scripts & Routing', pages: [
       { href: '/build-scripts', label: 'Build Scripts' },
       { href: '/server-scripts', label: 'Server Scripts' },
       { href: '/stream-scripts', label: 'Stream Scripts' },
       { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/api-routes', label: 'API Routes' },
       { href: '/exec-scripts', label: 'Exec Scripts' },
+      { href: '/script-imports', label: 'Script Imports' },
       { href: '/watch-paths', label: 'Watch Paths' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
     ]
@@ -67,7 +85,7 @@ export const NAV: NavSection[] = [
     section: 'Tooling', pages: [
       { href: '/tools/linter', label: 'Linter' },
       { href: '/tools/vscode-extension', label: 'VS Code Extension' },
-      { href: '/tools/agent-skill', label: 'Agent Skill' },
+      { href: '/agent-skills', label: 'Agent Skills' },
     ]
   },
   {
@@ -97,6 +115,8 @@ export const NAV: NavSection[] = [
       { href: '/how-to/markdown', label: 'Markdown' },
       { href: '/how-to/page-aware-scripts', label: 'Page-Aware Scripts' },
       { href: '/how-to/templating', label: 'Templating' },
+      { href: '/how-to/interactivity', label: 'Interactivity' },
+      { href: '/how-to/theming', label: 'Theming' },
       { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
       { href: '/how-to/third-party-web-components', label: 'Third-Party Web Components' },
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
@@ -104,6 +124,20 @@ export const NAV: NavSection[] = [
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
       { href: '/how-to/monorepos', label: 'Monorepos' },
       { href: '/libraries', label: 'JavaScript Libraries' },
+    ]
+  },
+  {
+    section: 'Example Components', pages: [
+      { href: '/example-components', label: 'Overview' },
+      { href: '/example-components/site-header', label: 'Site Header' },
+      { href: '/example-components/site-footer', label: 'Site Footer' },
+      { href: '/example-components/tab-group', label: 'Tab Group' },
+      { href: '/example-components/modal-dialog', label: 'Modal Dialog' },
+      { href: '/example-components/popover-menu', label: 'Popover Menu' },
+      { href: '/example-components/copy-button', label: 'Copy Button' },
+      { href: '/example-components/filter-list', label: 'Filter List' },
+      { href: '/example-components/contact-form', label: 'Contact Form' },
+      { href: '/example-components/theme-toggle', label: 'Theme Toggle' },
     ]
   },
   {

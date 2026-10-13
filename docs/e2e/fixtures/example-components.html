@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <site-head />
+  <script data-bascik-build>
+    import { seo } from '@/lib/seo.ts';
+    export default () => seo({ title: 'Example Components Test Page', description: 'Two instances of every example component, for the browser tests in docs/e2e/examples.spec.ts.' });
+  </script>
+  <meta name="robots" content="noindex" />
+  <meta name="bascik-sitemap" content="exclude" />
+</head>
+
+<body>
+  <!--
+    Test fixture, not a docs page. docs/e2e/examples.spec.ts copies it into a temporary copy of the starter site as
+    src/pages/example-components.html, builds it, and checks that two instances of each example component work
+    independently. Keep the data-testid wrappers; docs/scripts/examples-bundle.test.ts checks that every example
+    component appears here twice.
+  -->
+  <site-header />
+  <main id="main" class="container">
+    <h1>Example Components</h1>
+
+    <div data-testid="tabs-a">
+      <tab-group data-bascik-prop-label="Plans A">
+        <section data-tab="Monthly">
+          <p>A monthly</p>
+        </section>
+        <section data-tab="Yearly">
+          <p>A yearly</p>
+        </section>
+        <section data-tab="Lifetime">
+          <p>A lifetime</p>
+        </section>
+      </tab-group>
+    </div>
+    <div data-testid="tabs-b">
+      <tab-group data-bascik-prop-label="Plans B">
+        <section data-tab="One">
+          <p>B one</p>
+        </section>
+        <section data-tab="Two">
+          <p>B two</p>
+        </section>
+      </tab-group>
+    </div>
+
+    <div data-testid="dialog-a">
+      <modal-dialog data-bascik-prop-trigger="Open A" data-bascik-prop-title="Dialog A">
+        <p>Body A</p>
+      </modal-dialog>
+    </div>
+    <div data-testid="dialog-b">
+      <modal-dialog data-bascik-prop-trigger="Open B" data-bascik-prop-title="Dialog B">
+        <p>Body B</p>
+      </modal-dialog>
+    </div>
+
+    <div data-testid="menu-a">
+      <popover-menu data-bascik-prop-label="Menu A"><a href="/about">About A</a></popover-menu>
+    </div>
+    <div data-testid="menu-b">
+      <popover-menu data-bascik-prop-label="Menu B"><a href="/blog/">Blog B</a></popover-menu>
+    </div>
+
+    <div data-testid="copy-a">
+      <copy-button data-bascik-prop-text="alpha text" data-bascik-prop-label="Copy A" />
+    </div>
+    <div data-testid="copy-b">
+      <copy-button data-bascik-prop-text="beta text" data-bascik-prop-label="Copy B" />
+    </div>
+
+    <div data-testid="filter-a">
+      <filter-list data-bascik-prop-label="Filter A">
+        <li>Apple</li>
+        <li>Banana</li>
+        <li>Cherry</li>
+      </filter-list>
+    </div>
+    <div data-testid="filter-b">
+      <filter-list data-bascik-prop-label="Filter B">
+        <li>Red</li>
+        <li>Green</li>
+      </filter-list>
+    </div>
+
+    <div data-testid="form-a"><contact-form /></div>
+    <div data-testid="form-b"><contact-form /></div>
+
+    <div data-testid="theme-a"><theme-toggle /></div>
+    <div data-testid="theme-b"><theme-toggle /></div>
+
+    <!-- The second header and footer; the first pair is the page's own, outside <main>. -->
+    <div data-testid="header-b"><site-header data-bascik-prop-name="Second Site"><p>Header B slot</p></site-header></div>
+    <div data-testid="footer-b"><site-footer data-bascik-prop-name="Second Holder" /></div>
+  </main>
+  <site-footer />
+</body>
+
+</html>

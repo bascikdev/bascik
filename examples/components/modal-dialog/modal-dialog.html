@@ -1,0 +1,84 @@
+<!-- @bascik
+A button that opens a native modal <dialog>. Escape, the close button, and a click on the backdrop close it, and the browser returns focus to the button.
+@prop trigger - Text of the button that opens the dialog.
+@prop title - Dialog heading, also its accessible name.
+@slot default - Dialog body content.
+-->
+<style>
+  .trigger {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-surface, color-mix(in srgb, currentColor 8%, transparent));
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .trigger:hover {
+    border-color: var(--color-accent, currentColor);
+  }
+
+  .dialog {
+    width: min(32rem, calc(100vw - 2rem));
+    padding: 0;
+    border: 1px solid var(--color-border, color-mix(in srgb, currentColor 30%, transparent));
+    border-radius: var(--radius, 0.5rem);
+    background: var(--color-bg, Canvas);
+    color: var(--color-text, CanvasText);
+    box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.35);
+  }
+
+  .dialog::backdrop {
+    background: rgb(0 0 0 / 0.5);
+  }
+
+  /* Lock page scrolling while this dialog is open. `html` is never renamed, the class is. */
+  html:has(.dialog[open]) {
+    overflow: hidden;
+  }
+
+  .content {
+    padding: 1.25rem;
+  }
+
+  .header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .title {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+
+  .close {
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+</style>
+<button class="trigger" id="trigger" type="button" aria-haspopup="dialog" data-bascik-prop-trigger>Open</button>
+<dialog class="dialog" id="dialog" aria-labelledby="title">
+  <div class="content">
+    <div class="header">
+      <h2 class="title" id="title" data-bascik-prop-title>Dialog</h2>
+      <button class="close" id="close" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div data-bascik-slot></div>
+  </div>
+</dialog>
+<script>
+  const dialog = document.getElementById('dialog');
+  document.getElementById('trigger').addEventListener('click', () => dialog.showModal());
+  document.getElementById('close').addEventListener('click', () => dialog.close());
+  // The dialog has no padding, so a click whose target is the dialog itself landed on the backdrop.
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+</script>

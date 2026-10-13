@@ -83,20 +83,40 @@ function runSearch(query) {
     return;
   }
 
+  var sitelinks = top[0] && top[0].sitelinks ? buildSitelinks(index, top[0]) : [];
+  var total = top.length + sitelinks.length;
+
   if (statusEl) {
-    statusEl.textContent = top.length + ' ' + (top.length === 1 ? 'result' : 'results') + ' found.';
+    statusEl.textContent = total + ' ' + (total === 1 ? 'result' : 'results') + ' found.';
   }
 
-  list.innerHTML = top.map(function (e) {
+  function resultLink(e) {
     var label = e.heading
       ? esc(e.navLabel) + ' <span class="sr-sep">\u203a</span> ' + esc(e.heading)
       : esc(e.navLabel);
     var snip = snippet(e.text, q, toks);
     var snipHtml = snip ? '<span class="sr-text">' + esc(snip) + '</span>' : '';
-    return '<li role="option"><a href="' + esc(e.path) + '" class="sr-link">'
+    return '<a href="' + esc(e.path) + '" class="sr-link">'
       + '<span class="sr-section">' + esc(e.section || '') + '</span>'
       + '<span class="sr-label">' + label + '</span>'
-      + snipHtml + '</a></li>';
+      + snipHtml + '</a>';
+  }
+
+  // Home result with its popular pages nested under it, in the same result.
+  function homeGroup(e) {
+    var items = sitelinks.map(function (s) {
+      return '<li role="option"><a href="' + esc(s.path) + '" class="sr-sitelink" data-testid="search-sitelink">'
+        + esc(s.navLabel) + '</a></li>';
+    }).join('');
+    return '<li role="group" aria-label="Bascik home and popular pages" class="sr-group" data-testid="search-home-result">'
+      + '<div role="option">' + resultLink(e) + '</div>'
+      + (items ? '<ul class="sr-sitelinks" role="presentation">' + items + '</ul>' : '')
+      + '</li>';
+  }
+
+  list.innerHTML = top.map(function (e, i) {
+    if (i === 0 && e.sitelinks) return homeGroup(e);
+    return '<li role="option">' + resultLink(e) + '</li>';
   }).join('');
 
   var links = Array.from(list.querySelectorAll('a[href]'));

@@ -23,8 +23,8 @@ Running `npx create-bascik <name>` writes this structure:
   .vscode/
     launch.json
     extensions.json
-  .github/skills/bascik/SKILL.md
-  .claude/skills/bascik/SKILL.md
+  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
+  .claude/skills/        the same skills for Claude Code
   e2e/
     playwright.config.ts
     app.spec.ts
@@ -76,7 +76,7 @@ cd create
 npm run build
 ```
 
-The `npm link` symlink points at the `create/` directory, so a fresh `dist/` is picked up immediately without relinking. `npm link` also runs `prepare`, which copies the latest SKILL.md from docs and rebuilds `dist/`, so the initial link after a fresh checkout needs no separate build step.
+The `npm link` symlink points at the `create/` directory, so a fresh `dist/` is picked up immediately without relinking. `npm link` also runs `prepare`, which copies the latest agent skills from the repository's `skills/` folder into `assets/skills/` and rebuilds `dist/`, so the initial link after a fresh checkout needs no separate build step.
 
 ## Tests
 
@@ -103,7 +103,7 @@ From the repo root, run:
 yarn create:test-site
 ```
 
-This builds `create-bascik` (copying the latest `SKILL.md` from `docs/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
+This builds `create-bascik` (copying the latest agent skills from `skills/`) and runs the scaffolding CLI to create a test project at `my-site/`. It skips the generated project's npm install, then builds the site using the `@bascik/bascik` package already linked from `pkg/` in the monorepo workspace. This lets CI test the current package changes before an RC is published.
 
 The `-y` flag selects the defaults non-interactively, while `--no-install` and `--no-dev` skip npm install and dev server startup.
 

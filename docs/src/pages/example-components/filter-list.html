@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <docs-head />
+  <script data-bascik-build>
+    import { canonical } from '@/lib/canonical.ts';
+    export default async () => await canonical();
+  </script>
+  <script data-bascik-build>
+    import { openGraph } from '@/lib/open-graph.ts';
+    export default async () => await openGraph();
+  </script>
+  <script data-bascik-build>
+    import { breadcrumbLd } from '@/lib/breadcrumb-ld.ts';
+    export default async () => await breadcrumbLd();
+  </script>
+  <script data-bascik-build>
+    import { articleSchema } from '@/lib/article-schema.ts';
+    export default async () => await articleSchema();
+  </script>
+  <meta name="description"
+    content="A live text filter for a slotted list, written as a Bascik component that finds its items by ID so several lists on a page stay separate." />
+  <title>Live Filter List Component Example - Bascik</title>
+</head>
+
+<body>
+
+  <docs-nav />
+
+  <div class="container">
+    <div class="docs-layout">
+
+      <docs-sidebar />
+
+      <main class="docs-content" id="main-content">
+        <script data-bascik-build>
+          import { renderSectionLabel } from '@/lib/render-nav.ts';
+          export default async () => renderSectionLabel('/example-components/filter-list');
+        </script>
+        <!-- Rendered from docs/content/example-components/filter-list.md. The example code is read from the repo-root examples/
+             folder at build time; edit it there, never in the Markdown. -->
+        <script data-bascik-build>
+          import { renderExample } from '@/lib/examples.ts';
+          export default async () => await renderExample('./content/example-components/filter-list.md', '../examples/components/filter-list/filter-list.html');
+        </script>
+
+        <docs-pagination />
+      </main>
+    </div>
+  </div>
+
+  <docs-footer />
+
+</body>
+
+</html>

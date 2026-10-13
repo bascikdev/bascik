@@ -22,6 +22,21 @@ describe('docs-search component template', () => {
     expect(html).toContain('docs-search-dom.js');
   });
 
+  it('styles the nested Home sitelinks', async () => {
+    const css = await readFile(cssPath, 'utf8');
+
+    expect(css).toContain('.sr-sitelinks');
+    expect(css).toContain('.sr-sitelink');
+  });
+
+  it('wires Home sitelink rendering in the DOM script', async () => {
+    const dom = await readFile(join(process.cwd(), 'src/components/docs-search/docs-search-dom.js'), 'utf8');
+
+    expect(dom).toContain('buildSitelinks(');
+    expect(dom).toContain('search-home-result');
+    expect(dom).toContain('search-sitelink');
+  });
+
   it('contains sr-only styles for search status live region', async () => {
     const css = await readFile(cssPath, 'utf8');
 

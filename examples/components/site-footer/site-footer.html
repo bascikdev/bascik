@@ -1,0 +1,63 @@
+<!-- @bascik
+A site footer: secondary links and a copyright line. The links live in links.ts next to this file, and the year is written at build time, so the footer ships no JavaScript.
+@prop name - Copyright holder. Defaults to "Example Site".
+-->
+<style>
+  .footer {
+    margin-top: var(--space-6, 4rem);
+    border-top: 1px solid var(--color-border, currentColor);
+    color: var(--color-muted, inherit);
+    font-size: 0.9rem;
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3, 1rem);
+    max-width: var(--content-width, 70rem);
+    margin-inline: auto;
+    padding: var(--space-4, 1.5rem) var(--space-3, 1rem);
+  }
+
+  /* Two classes outrank a site-wide rule such as `.content ul` or `.content p`, so the resets below always apply. */
+  .footer .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3, 1rem);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .links li {
+    margin: 0;
+  }
+
+  .links a {
+    color: inherit;
+  }
+
+  .footer .copyright {
+    margin: 0;
+  }
+</style>
+<footer class="footer">
+  <div class="row">
+    <nav aria-label="Footer">
+      <!-- The footer is the same on every page, so this runs once for the whole site and the output is reused. -->
+      <script data-bascik-build>
+        import { footerLinks } from './links.ts';
+        export default () => footerLinks();
+      </script>
+    </nav>
+    <p class="copyright">
+      &copy;
+      <script data-bascik-build>
+        export default () => String(new Date().getFullYear());
+      </script>
+      <span data-bascik-prop-name>Example Site</span>
+    </p>
+  </div>
+</footer>

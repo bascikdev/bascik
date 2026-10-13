@@ -1,5 +1,7 @@
 ---
 name: bascik-vscode-extension
+metadata:
+  internal: true
 description: Development, syntax grammars, language diagnostics, and testing for the official Bascik VS Code Extension. Use when updating extensions/vscode-bascik, modifying rules.ts, adding compatibility diagnostics, or testing extension features.
 ---
 

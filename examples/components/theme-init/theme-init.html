@@ -1,0 +1,13 @@
+<!-- @bascik
+Applies the saved light or dark theme before first paint. Place it in <head> of every page so there is no flash of the wrong theme; its script stays in <head> and runs before the body renders. Pairs with <theme-toggle />.
+-->
+<!-- Tells the browser both schemes are supported before any CSS loads, so form controls and the canvas match. -->
+<meta name="color-scheme" content="light dark" />
+<script>
+  try {
+    const theme = localStorage.getItem('theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+  } catch {
+    // Storage can be unavailable (private mode, blocked cookies). The operating system theme then applies.
+  }
+</script>

@@ -1,0 +1,11 @@
+<!-- @bascik
+One labeled panel in a diagram-row. Usually holds a code-block.
+@prop label - Optional caption above the panel.
+@prop arrow - Optional. An arrow character, such as a down arrow, drawn in the gap above the panel. Use it in a stacked row.
+@slot default - The panel body.
+-->
+<div class="panel">
+  <span class="panel-arrow" aria-hidden="true" data-bascik-prop-arrow></span>
+  <p class="panel-label" data-bascik-prop-label></p>
+  <div data-bascik-slot></div>
+</div>

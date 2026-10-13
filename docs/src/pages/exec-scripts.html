@@ -39,8 +39,24 @@
           export default async () => renderSectionLabel('/exec-scripts');
         </script>
         <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/exec-scripts.md');
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/exec-scripts.md', { to: 'Configuration Options' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="One build, three phases">
+          <diagram-steps>
+            <diagram-step data-bascik-prop-title="'pre' scripts"
+              data-bascik-prop-detail="Awaited before any page or component is transpiled. Fetch data, prepare catalogs." />
+            <diagram-step data-bascik-prop-title="Pages and components"
+              data-bascik-prop-detail="Transpile and write to dist/. 'parallel' scripts start alongside this step." />
+            <diagram-step data-bascik-prop-title="'post' scripts"
+              data-bascik-prop-detail="Run once everything is on disk. Build a search index, post-process bundles." />
+          </diagram-steps>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/exec-scripts.md', { from: 'Configuration Options' });
         </script>
 
         <docs-pagination />

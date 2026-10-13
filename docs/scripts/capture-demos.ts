@@ -14,6 +14,7 @@
  *   exec-watch        the terminal: editing a watched file reruns an exec script and rebuilds only its page
  *   dynamic-routes    editor above a browser: a URL is a 404 until a route is added to the template's routes script
  *   sitemap           the terminal: `bascik --build` with a site URL, then the generated sitemap.xml
+ *   api-routes        the terminal: curl against a real dev server answering an API route, then a 405 with its Allow header
  *   devtools-breakpoint  the browser above real Chrome DevTools: a breakpoint in a component script, on its file's line
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
@@ -938,6 +939,48 @@ async function sitemap(): Promise<Frame[]> {
   }
 }
 
+/** A real route: one GET handler, so every other method is refused with an Allow header. */
+const USERS_ROUTE = `export const GET = async (
+  _request: Request,
+  context: { params: Record<string, string> }
+): Promise<Response> => {
+  return Response.json({ id: context.params.id, name: 'Ada' });
+};
+`;
+
+async function apiRoutes(): Promise<Frame[]> {
+  const project = await createStarterProject();
+  await mkdir(join(project.dir, 'src/api/users'), { recursive: true });
+  await writeFile(join(project.dir, 'src/api/users/[id].ts'), USERS_ROUTE);
+  const server = await startDevServer(project.dir, PORT);
+  const browser = await chromium.launch();
+  try {
+    // Only the port differs from what the reader would type: this is the command, run as written.
+    const typed =
+      "curl -s -w ' %{http_code}\\n' localhost:8080/api/users/42; " +
+      "curl -s -X DELETE -o /dev/null -w '%{http_code} %header{allow}\\n' localhost:8080/api/users/42";
+    const recording = await recordCommand({
+      command: '/bin/sh',
+      args: ['-c', typed.split('localhost:8080').join(`localhost:${PORT}`)],
+      cwd: project.dir,
+    });
+    const text = recording.chunks.map((chunk) => chunk.text).join('');
+    if (!text.includes('"name":"Ada"} 200') || !/405 GET, HEAD, OPTIONS/.test(text)) {
+      throw new Error(`The requests did not return the expected responses:\n${text}`);
+    }
+    return await renderTerminal(browser, { title: 'curl', rows: 6, width: 780 }, {
+      typed,
+      recording,
+      maxGapMs: 600,
+      finalHoldMs: OUTRO_HOLD + 1000,
+    });
+  } finally {
+    await browser.close();
+    await server.stop();
+    await project.cleanup();
+  }
+}
+
 /** The DevTools frontend port. Separate from the dev server's. */
 const DEVTOOLS_PORT = 9334;
 
@@ -1056,6 +1099,7 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
   'exec-watch': execWatch,
   'dynamic-routes': dynamicRoutes,
   sitemap,
+  'api-routes': apiRoutes,
   'devtools-breakpoint': devtoolsBreakpoint,
 };
 

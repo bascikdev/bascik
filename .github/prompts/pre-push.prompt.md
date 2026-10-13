@@ -1,6 +1,6 @@
 ---
 agent: agent
-description: Pre-push checklist: code review & TDD, doc/README updates, check spelling/standards, test workspace (including Lighthouse CLI), update coverage, update SKILL.md, and propagate.
+description: Pre-push checklist: code review & TDD, doc/README updates, check spelling/standards, test workspace (including Lighthouse CLI), update coverage, update the agent skills in skills/, and propagate.
 ---
 
 Run these steps in order before pushing.
@@ -16,7 +16,7 @@ Run these steps in order before pushing.
    - Lighthouse CLI (`docs:lighthouse`) runs the same underlying engine (axe-core / Chrome Lighthouse) as DevTools. Review Lighthouse output and reports in `.lighthouseci/`.
    - Parse test results efficiently: check pass/fail status first. If any audit or test fails or drops below threshold, inspect and fix all flagged issues before pushing—including ARIA role/children attributes, color contrast ratios, console errors, broken schema scripts, and performance bottlenecks.
 5. `yarn coverage:all`
-6. Read `docs/src/pages/assets/SKILL.md` and review changes in `docs/content/` on this branch. Update SKILL.md to reflect any new, changed, or removed APIs and patterns based on documentation updates. Keep entries concise and practical - only change what the review reveals needs changing.
+6. Review changes in `docs/content/` and `pkg/src/` on this branch against the public agent skills in `skills/` (each `SKILL.md` and its scripts). Update the matching skill to reflect any new, changed, or removed APIs, defaults, and patterns. Keep entries concise and practical - only change what the review reveals needs changing. If a skill script changed, run it against `pkg/e2e/` or `docs/`. Run `codespell skills/` since `yarn check:spelling` does not cover it.
 7. `yarn create:prepack`
 
-Confirm which sections of SKILL.md were added, changed, or removed, whether coverage files were updated, and that codespell, webhint, and static analysis checks passed cleanly.
+Confirm which skills (and sections) were added, changed, or removed, whether coverage files were updated, and that codespell, webhint, and static analysis checks passed cleanly.

@@ -233,6 +233,15 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     expect((await harness.fetch("/.env")).status).toBe(404);
     expect((await harness.fetch("/.bascik/")).status).toBe(404);
   });
+
+  it("serves the RFC 8615 /.well-known/ directory and keeps its dot children private", async () => {
+    const res = await harness.fetch("/.well-known/security.txt");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("Contact: mailto:security@example.com\n");
+    const hidden = await harness.fetch("/.well-known/.private/secret.txt");
+    expect(hidden.status).toBe(404);
+    expect(await hidden.text()).not.toContain("well-known private marker");
+  });
 });
 
 describe("cloudflare adapter: missing binding diagnostics", () => {

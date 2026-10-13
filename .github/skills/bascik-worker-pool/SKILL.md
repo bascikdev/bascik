@@ -1,5 +1,7 @@
 ---
 name: bascik-worker-pool
+metadata:
+  internal: true
 description: Architecture, IPC communication, lifecycle management, and error handling for Node.js worker_threads in Bascik. Use when modifying worker pools, page compilation workers, task queues, or thread concurrency.
 ---
 

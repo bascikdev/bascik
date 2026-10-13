@@ -102,6 +102,48 @@ test.describe('Docs Component E2E Tests', () => {
     await expect(modal).toBeHidden();
   });
 
+  test('docs-search shows Home first with popular pages nested under it for a brand query', async ({ page }) => {
+    await page.goto('/getting-started');
+
+    await page.getByRole('button', { name: 'Search docs' }).first().click();
+    await page.getByPlaceholder('Search docs…').fill('bascik');
+
+    const home = page.getByTestId('search-home-result');
+    await expect(home).toBeVisible();
+
+    const resultsList = page.getByRole('listbox', { name: 'Search results' });
+    await expect(resultsList.locator(':scope > li').first()).toHaveAttribute('data-testid', 'search-home-result');
+
+    await expect(home.getByRole('link').first()).toHaveAttribute('href', '/');
+    await expect(home.getByTestId('search-sitelink')).toHaveText([
+      'Getting Started',
+      'Why Bascik',
+      'Developer Experience',
+      'Bascik vs Frameworks',
+      'Components',
+      'Scoped Styles',
+    ]);
+
+    // Sitelink pages are not repeated as separate results further down
+    await expect(resultsList.locator(':scope > li > a[href="/components"]')).toHaveCount(0);
+
+    // Arrow keys move from the input through Home, then its nested links
+    await page.keyboard.press('ArrowDown');
+    await expect(home.getByRole('link').first()).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(home.getByTestId('search-sitelink').first()).toBeFocused();
+  });
+
+  test('docs-search does not show Home for a topic query', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByRole('button', { name: 'Search docs' }).first().click();
+    await page.getByPlaceholder('Search docs…').fill('scoped styles');
+
+    await expect(page.getByRole('listbox', { name: 'Search results' }).locator('li').first()).toBeVisible();
+    await expect(page.getByTestId('search-home-result')).toHaveCount(0);
+  });
+
   test('docs-search prefetches a result on hover', async ({ page }) => {
     await page.goto('/');
 

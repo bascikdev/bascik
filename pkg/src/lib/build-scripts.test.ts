@@ -1709,21 +1709,41 @@ describe("build-script output cache", () => {
     const error = await executeBuildScripts(html, "src/pages/about.html").catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BuildScriptError);
-    expect(error).toMatchObject({ sourceFile: "pages/about.html", line: 3, column: 5 });
+    // The project-relative path, the same text the stack's frames show, so it opens with Cmd+Click.
+    expect(error).toMatchObject({ sourceFile: "src/pages/about.html", line: 3, column: 5 });
     // The text keeps its existing shape, so the CLI's duplicate-message filter still recognizes it.
-    expect((error as Error).message).toContain('[bascik] build script error in "pages/about.html" at (line 3, column 5)');
+    expect((error as Error).message).toContain('[bascik] build script error in "src/pages/about.html" at (line 3, column 5)');
   });
 
-  it("labels a script in a component file as a component, not as a page", async () => {
+  it("names a script in a component file by the component file's project path", async () => {
     rejectWith("ReferenceError: Strin is not defined");
     const html = "<footer><script data-bascik-build>Strin()</script></footer>";
 
     const error = await executeBuildScripts(html, "src/components/site-footer/site-footer.html").catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BuildScriptError);
-    expect(error).toMatchObject({ sourceFile: "components/site-footer/site-footer.html", line: 1, column: 9 });
-    expect((error as Error).message).toContain('in "components/site-footer/site-footer.html"');
-    expect((error as Error).message).not.toContain('"pages/');
+    expect(error).toMatchObject({ sourceFile: "src/components/site-footer/site-footer.html", line: 1, column: 9 });
+    expect((error as Error).message).toContain('in "src/components/site-footer/site-footer.html"');
+    expect((error as Error).message).not.toContain('pages/');
+  });
+
+  it("puts a column after a rewritten import on the same line back where it is in the file", async () => {
+    // The module imports `./helper.ts` (rewritten to a longer file URL), then throws on the same line.
+    const html = '<p>x</p>\n<script data-bascik-build>import "./helper.ts"; boom();</script>';
+    let moduleLine = "";
+    mockExecFile.mockImplementation((_cmd: unknown, _args: unknown, _opts: unknown, cb: (err: Error) => void) => {
+      const written = vi.mocked(writeFile).mock.calls.map(([path, text]) => [String(path), String(text)])
+        .filter(([path]) => /build-\d+-/.test(path)).at(-1)?.[1] ?? "";
+      moduleLine = written.split("\n")[1];
+      // V8 reports the column of `boom` in the module as run, after the rewrite.
+      cb(new Error(`ReferenceError: boom is not defined\n    at Module.default (src/pages/col.html:2:${moduleLine.indexOf("boom") + 1})`));
+    });
+
+    const failure = await executeBuildScripts(html, "src/pages/col.html").catch((e: unknown) => e);
+
+    expect(moduleLine).toContain('import "file://');
+    const fileColumn = html.split("\n")[1].indexOf("boom") + 1;
+    expect((failure as Error).message).toContain(`at Module.default (src/pages/col.html:2:${fileColumn})`);
   });
 
   it("forwards stderr for each isolated script run", async () => {

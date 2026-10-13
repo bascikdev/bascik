@@ -59,6 +59,8 @@ Use `data-bascik-slot="name"` in the component template to define named slot zon
 
 The first demo on this page combines named `eyebrow`, `title`, and `actions` slots with a default body slot. Open its Source tab to compare the component template with its usage.
 
+Slotted content can also be read by the component's script. The [Tab Group](/example-components/tab-group) turns each slotted section into a tab, and the [Filter List](/example-components/filter-list) filters its slotted `<li>` items.
+
 > **How it works:** Named slot wrappers in the usage inner HTML are extracted by name and injected into the matching `data-bascik-slot="name"` placeholder in the template. Everything left over goes into the default slot.
 >
 > **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.

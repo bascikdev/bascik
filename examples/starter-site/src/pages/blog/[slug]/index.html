@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <site-head />
+  <!-- One page per post at /blog/<slug>/. The routes script reads every post once and hands each page its data. -->
+  <script data-bascik-routes>
+    import { getPosts } from '@/lib/posts.ts';
+    export default async () => (await getPosts()).map((post) => ({ params: { slug: post.slug }, data: post }));
+  </script>
+  <script data-bascik-build>
+    import { seo, jsonLd, article } from '@/lib/seo.ts';
+    export default () => {
+      const { data: post } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+      return [
+        seo({ title: `${post.title} - Example Site`, description: post.description, type: 'article', publishedTime: post.date, modifiedTime: post.updated }),
+        jsonLd(article({ headline: post.title, description: post.description, datePublished: post.date, dateModified: post.updated })),
+      ].join('\n');
+    };
+  </script>
+  <link rel="stylesheet" href="/css/prose.css" />
+</head>
+
+<body>
+  <site-header><theme-toggle /></site-header>
+  <main id="main" class="container">
+    <script data-bascik-build>
+      import { escapeHtml, formatDate } from '@/lib/posts.ts';
+      export default () => {
+        const { data: post } = JSON.parse(process.env.BASCIK_ROUTE || '{}');
+        const tags = post.tags.map((tag) => `<a href="/blog/tags/${tag}/">${escapeHtml(tag)}</a>`).join(', ');
+        // post.html is trusted: it comes from your own Markdown files. Sanitize HTML from a CMS or users.
+        return `<article>
+  <h1>${escapeHtml(post.title)}</h1>
+  <p><time datetime="${post.date}">${formatDate(post.date)}</time>${tags ? ` · ${tags}` : ''}</p>
+  <div class="prose">${post.html}</div>
+</article>`;
+      };
+    </script>
+    <p><a href="/blog/">All posts</a></p>
+  </main>
+  <site-footer />
+</body>
+
+</html>

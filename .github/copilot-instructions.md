@@ -2,7 +2,7 @@
 
 Repository-wide instructions are labeled accordingly.
 
-**Docs work:** the rules for creating or editing anything under `/docs/` live in `.github/instructions/docs.instructions.md` (scoped with `applyTo: "docs/**"`). Read that file before touching docs pages, `docs/content/*.md`, or `SKILL.md`.
+**Docs work:** the rules for creating or editing anything under `/docs/` live in `.github/instructions/docs.instructions.md` (scoped with `applyTo: "docs/**"`). Read that file before touching docs pages, `docs/content/*.md`, the public agent skills in `skills/`, or any docs image or diagram.
 
 ## Keeping the Changelog Up to Date
 
@@ -15,6 +15,7 @@ Repository-wide instructions are labeled accordingly.
 - New capability: add a row with ✅ and a concise Notes entry.
 - Fixed or improved: update the Status and/or Notes of the existing row.
 - Intentionally unsupported: add a row with 🚫 and an explanation.
+- If the change affects a rule summarized in `skills/bascik-compatibility/SKILL.md` (its list of surprises and its lint rule table), update the skill too. A new rule in `compatibility-rules.json` must get a row in the skill's lint rule table; `docs/scripts/skill-compat-monorepo.test.ts` fails otherwise. The skill's `lookup.mjs` parses the built `/compatibility` page, and `docs/e2e/skill-compat-lookup.spec.ts` fails if the page's table markup changes in a way the script cannot read.
 
 After editing `compatibility.md`, do not run `#pre-push.prompt.md` or pre-push scripts automatically. The user handles running pre-push steps.
 
@@ -36,6 +37,16 @@ yarn docs:build
 
 Then inspect the relevant `docs/dist/` output to confirm the pkg change has the intended effect.
 
+## Keeping Docs Visuals in Sync
+
+Docs visuals have three kinds, each with one home. Do not add a second mechanism for the same job.
+
+- **Recordings** (real editor, browser, or terminal) are WebP or animated WebP produced by the single script `docs/scripts/capture-demos.ts`, and shown as Markdown images. Run from `docs/`: `node scripts/capture-demos.ts <scene>`. Use Node 24 (`~/.nvm/versions/node/v24.17.0/bin`). Images are only for things that must be a picture of a real program.
+- **Diagrams** (flows, file trees, "you write / Bascik emits" comparisons) are the `diagram-*` Bascik components placed in the page shell. Their code lives in `<!-- demo:id -->` blocks in `docs/src/diagrams/<page>.md`, not in `docs/content/`.
+- **Live examples** that must run in the page are `<component-demo>` blocks.
+
+**Whenever you change behavior or wording that a diagram or recording restates**, update it in the same task: the diagram's props or its demo blocks in `docs/src/diagrams/`, or re-render the recording scene. A diagram that disagrees with the prose is worse than none. Examples: exec phases, stream ordering, preserve reference rules, scoped output names, the `Allow` header in the API routes recording. Full rules, including where a diagram goes in a shell, are in `.github/instructions/docs.instructions.md` under "Visuals".
+
 ## Tests and Coverage
 
 **When adding, removing, or significantly changing tests in `pkg/src/` or `pkg/e2e/`:**
@@ -48,7 +59,7 @@ Then inspect the relevant `docs/dist/` output to confirm the pkg change has the 
 **When changing server components in `pkg/src/lib/` (or adding to the live-reload / SSE / watch / request script systems):**
 Update `docs/content/internals/server.md` to reflect the change. This page is the source of truth for how the server architecture works across dev and production modes.
 
-**General principle:** the files that must stay in sync are `llms.txt`, `SKILL.md`, the relevant `docs/content/internals/*.md`, and the coverage JSON files. The copilot-instructions file is the enforcement mechanism: add notes here when a new sync relationship is created.
+**General principle:** the files that must stay in sync are `llms.txt`, the public agent skills in `skills/`, the relevant `docs/content/internals/*.md`, and the coverage JSON files. The copilot-instructions file is the enforcement mechanism: add notes here when a new sync relationship is created.
 
 ### Coverage JSON Files
 
@@ -65,9 +76,13 @@ Five coverage files feed the testing page (`docs/src/pages/internals/testing.htm
 
 `yarn coverage:all` regenerates all seven. `pkg/test-coverage.json` is generated from the `unit` project only, so it must never include integration coverage.
 
-### SKILL.md Copies
+### Public Agent Skills (`skills/`)
 
-`docs/src/pages/assets/SKILL.md` is the source of truth. `create/assets/SKILL.md` is a byte-identical copy, enforced by `create/src/skill-sync.test.ts`. If you change one, mirror the change to the other in the same task or `yarn unit:all` fails. `yarn create:prepack` performs the copy.
+The repo-root `skills/` folder is the source of truth for the user-facing agent skills (`bascik`, `bascik-components`, `bascik-compatibility`, `bascik-scripts`, `bascik-seo`, `bascik-config`, `bascik-testing`, `bascik-migrate`) and their `scripts/`. Skills hold rules and route to docs pages; they hold no reference copies of the docs. Example code lives once, in the repo-root `examples/` folder, rendered on `/example-components/*` docs pages and published as `/assets/examples.json` for `skills/bascik/scripts/add-example.mjs` (see `.github/instructions/docs.instructions.md`, "Examples"). It is distributed these ways: `npx skills add bascikdev/bascik` (reads GitHub), `npx skills add https://bascik.dev` (reads `/.well-known/agent-skills/index.json`), `https://bascik.dev/assets/skills.tar.gz` and `https://bascik.dev/assets/SKILL.md` (all three published by `docs/scripts/publish-agent-skill.ts`), and the `create-bascik` scaffold.
+
+- `create/assets/skills/` is a byte-identical copy enforced by `create/src/skill-sync.test.ts`. After editing `skills/`, run `yarn create:prepack` in the same task or `yarn unit:all` fails.
+- `pkg/src/lib/agent-skill-config-defaults.test.ts` checks the defaults table in `skills/bascik-config/scripts/audit-config.mjs` against `pkg/src/lib/config.ts`. When a config default changes, update that table.
+- When a `pkg/src/` change alters user-facing behavior that a skill describes, update the skill in the same task. Authoring rules are in `.github/instructions/docs.instructions.md` under "Updating the Agent Skills".
 
 ### Testing Philosophy & Bug Prevention
 
@@ -132,7 +147,9 @@ This repo ships its own agent customizations. Know which is which before editing
 - `.github/skills/<name>/SKILL.md`: 12 project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
 - `.github/agents/*.agent.md`: 8 agent definitions (developer, docs, planner, PR reviewer, pre-push, profiler, regression, supervisor).
 - `.agents/skills/<name>/SKILL.md`: 3 externally sourced skills (`playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
-- `create/` scaffolds `SKILL.md` into a new project at `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`.
+- `skills/<name>/SKILL.md`: 8 public, user-facing skills for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
+- Contributor skills in `.github/skills/` carry `metadata: internal: true` so `npx skills add bascikdev/bascik` does not offer them. Keep that on any new contributor skill.
+- `create/` copies the public skills into a new project at `.agents/skills/` and `.claude/skills/`.
 
 When a skill's guidance conflicts with this file, this file wins. When you change a skill, check whether the corresponding `docs/content/*.md` page needs the same change.
 

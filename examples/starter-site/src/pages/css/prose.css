@@ -1,0 +1,56 @@
+/* src/pages/css/prose.css: typography for rendered Markdown. A global stylesheet, so plain element selectors match
+   HTML that build scripts print. Link it from pages that render Markdown and wrap the HTML in <div class="prose">:
+   <link rel="stylesheet" href="/css/prose.css" />
+   Uses the tokens from styles.css, with fallbacks so it also works on its own. */
+
+.prose {
+  max-width: var(--measure, 65ch);
+}
+
+.prose h2,
+.prose h3 {
+  margin-block: 2rem 0.75rem;
+  line-height: 1.25;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose pre,
+.prose table {
+  margin-block: 0 1rem;
+}
+
+.prose blockquote {
+  margin-inline: 0;
+  padding-left: 1rem;
+  border-left: 4px solid var(--color-border, currentColor);
+  color: var(--color-muted, inherit);
+}
+
+.prose pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: var(--radius, 0.5rem);
+  background: var(--color-surface, rgb(0 0 0 / 0.05));
+}
+
+.prose code {
+  font-size: 0.9em;
+}
+
+.prose img {
+  border-radius: var(--radius, 0.5rem);
+}
+
+.prose table {
+  border-collapse: collapse;
+}
+
+.prose th,
+.prose td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border, currentColor);
+  text-align: left;
+}

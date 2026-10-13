@@ -19,8 +19,8 @@ my-project/
   .gitignore
   .vscode/
     launch.json
-  .github/skills/bascik/SKILL.md
-  .claude/skills/bascik/SKILL.md
+  .agents/skills/        Bascik agent skills (bascik, bascik-components, ...) with scripts
+  .claude/skills/        the same skills for Claude Code
   e2e/
     playwright.config.ts
     app.spec.ts
@@ -284,7 +284,7 @@ Component transpilation failure:
 Build script failure:
 
 ```terminal
-[bascik] build script error in "pages/index.html" at (line 12, column 5):
+[bascik] build script error in "src/pages/index.html" at (line 12, column 5):
 ReferenceError: marked is not defined
 ```
 

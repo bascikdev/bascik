@@ -1,5 +1,7 @@
 ---
 name: bascik-code-navigation
+metadata:
+  internal: true
 description: "Use when finding code in pkg, locating an implementation, tracing module dependencies, finding importers or nearby tests, or avoiding repeated broad searches in Bascik."
 ---
 

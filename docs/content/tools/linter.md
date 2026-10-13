@@ -39,6 +39,14 @@ Check a specific path or page:
 npx @bascik/language-server --check src/pages
 ```
 
+The checker reads `bascik.config.ts` to know which folders hold components. A component folder outside the project, such as a monorepo's shared components, is not under the directory you check, so check it separately. Run from the site, the checker uses the site's config for any folder listed in its `directory.components`; `--project` names the project explicitly from anywhere:
+
+```sh
+cd sites/marketing
+npx @bascik/language-server --check ../../shared/components
+npx @bascik/language-server --check ../../shared/components --project .
+```
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks:

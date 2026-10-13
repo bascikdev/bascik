@@ -43,6 +43,21 @@
           export default async () => await renderMd('./content/watch-paths.md');
         </script>
 
+        <diagram-figure data-bascik-prop-title="What a saved file triggers in development">
+          <diagram-steps>
+            <diagram-step data-bascik-prop-title="Change detected"
+              data-bascik-prop-detail="A watched page, component, watch path, or exec input is added, edited, or deleted." />
+            <diagram-step data-bascik-prop-title="Dependents found"
+              data-bascik-prop-detail="Bascik works out which pages use the file." />
+            <diagram-step data-bascik-prop-title="Matching scripts rerun"
+              data-bascik-prop-detail="Only exec scripts that watch the file run, in phase order." />
+            <diagram-step data-bascik-prop-title="Pages rebuild"
+              data-bascik-prop-detail="Known dependents re-transpile. An unknown dependent rebuilds every page." />
+            <diagram-step data-bascik-prop-title="Browser reloads"
+              data-bascik-prop-detail="Reloads publish after the cycle succeeds. A failure shows the overlay instead." />
+          </diagram-steps>
+        </diagram-figure>
+
         <docs-pagination />
 
       </main>

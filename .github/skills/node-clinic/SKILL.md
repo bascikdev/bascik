@@ -1,5 +1,7 @@
 ---
 name: node-clinic
+metadata:
+  internal: true
 description: Diagnose, profile, and optimize Node.js performance bottlenecks using Clinic.js (Clinic Doctor, Flame, Bubbleprof, and HeapProfiler). Use when troubleshooting CPU spikes, event loop delays, async latency, memory leaks, or profiling Node.js applications under load.
 ---
 

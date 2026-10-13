@@ -135,7 +135,51 @@
         <!-- Remaining reference follows the runnable examples. -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/props.md', { from: 'Props with Existing Attributes', to: 'See it in action' });
+          export default async () => await renderMdRange('./content/props.md', { from: 'Props with Existing Attributes', to: 'Naming Conventions' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="One prop mechanism, two destinations">
+          <diagram-row data-bascik-prop-label="Into an element's content" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/props.md', 'props-destinations-content-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/props.md', 'props-destinations-content-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="Into an attribute" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/props.md', 'props-destinations-attr-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/props.md', 'props-destinations-attr-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/props.md', { from: 'Naming Conventions', to: 'See it in action' });
         </script>
 
         <docs-pagination />

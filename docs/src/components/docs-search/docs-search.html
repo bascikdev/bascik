@@ -36,11 +36,13 @@
   import { stripTypeScriptTypes } from 'node:module';
   import { join, resolve } from 'node:path';
   export default async function () {
-    const base = existsSync(resolve(process.cwd(), 'src/components/docs-search'))
-      ? resolve(process.cwd(), 'src/components/docs-search')
-      : resolve(process.cwd(), 'docs/src/components/docs-search');
-    const logic = await readFile(join(base, 'search-logic.ts'), 'utf8');
-    const dom = await readFile(join(base, 'docs-search-dom.js'), 'utf8');
+    // The paths are string literals passed to a call so the script cache key and
+    // the dev watcher see both files as dependencies. Without that, editing
+    // either file would keep serving a stale cached bundle.
+    const root = existsSync(resolve(process.cwd(), 'src/components/docs-search')) ? process.cwd() : resolve(process.cwd(), 'docs');
+    const here = (p) => join(root, p);
+    const logic = await readFile(here('src/components/docs-search/search-logic.ts'), 'utf8');
+    const dom = await readFile(here('src/components/docs-search/docs-search-dom.js'), 'utf8');
     // Node's strip-only mode erases the types and the interface; the export
     // keywords go because both files are concatenated into one classic IIFE.
     const fns = stripTypeScriptTypes(logic)

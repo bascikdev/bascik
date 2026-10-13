@@ -222,7 +222,23 @@
 
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/stream-scripts.md', { from: 'data-bascik-stream' }, { stripDemoBlocks: true });
+          export default async () => await renderMdRange('./content/stream-scripts.md', { from: 'data-bascik-stream', to: 'Placeholders That Do Not Shift Layout' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="A page with both server and stream scripts">
+          <diagram-steps>
+            <diagram-step data-bascik-prop-title="Prepare"
+              data-bascik-prop-detail="Every data-bascik-server script runs first. A failure can still become a 500." />
+            <diagram-step data-bascik-prop-title="Commit and flush"
+              data-bascik-prop-detail="Headers and the HTML before the first stream script go to the browser at once." />
+            <diagram-step data-bascik-prop-title="Stream"
+              data-bascik-prop-detail="Stream scripts run concurrently, and their output is flushed in source order." />
+          </diagram-steps>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/stream-scripts.md', { from: 'Placeholders That Do Not Shift Layout' }, { stripDemoBlocks: true });
         </script>
 
         <docs-pagination />

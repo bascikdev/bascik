@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import config from '../bascik.config.ts';
+import { HOME_SITELINKS } from '../src/lib/nav.ts';
 
 describe('generate-search-index', () => {
   it('keeps browser-only generation independent of compilation watches', () => {
@@ -32,6 +33,37 @@ describe('generate-search-index', () => {
     expect(firstEntry).toHaveProperty('section');
     expect(firstEntry).toHaveProperty('path');
     expect(firstEntry).toHaveProperty('text');
+  });
+
+  it('reads the meta description whatever the attribute order or quote style', async () => {
+    const { metaDescription } = await import('./generate-search-index.js');
+
+    expect(metaDescription('<meta name="description" content="A">')).toBe('A');
+    expect(metaDescription('<meta content="B" name="description">')).toBe('B');
+    expect(metaDescription("<meta\n  name='description'\n  content='C' />")).toBe('C');
+    expect(metaDescription('<meta name="viewport" content="x"><meta content="D" NAME="Description">')).toBe('D');
+    expect(metaDescription('<meta name="viewport" content="x">')).toBeUndefined();
+  });
+
+  it('indexes the Home page first with the ordered sitelinks from nav.ts', async () => {
+    await import('./generate-search-index.js');
+
+    const searchIndexFile = path.resolve(import.meta.dirname, '../dist/assets/search-index.json');
+    const entries: Array<{ title: string; navLabel: string; section: string; path: string; heading: string | null; text: string; sitelinks?: string[] }> =
+      JSON.parse(await fs.readFile(searchIndexFile, 'utf8'));
+
+    const home = entries[0];
+    expect(home.path).toBe('/');
+    expect(home.heading).toBeNull();
+    expect(home.section).toBe('Home');
+    expect(home.title).toContain('Bascik');
+    expect(home.text).toContain('build tool for HTML components');
+    expect(home.sitelinks).toEqual(HOME_SITELINKS);
+    expect(entries.filter(e => e.sitelinks).length).toBe(1);
+
+    for (const href of HOME_SITELINKS) {
+      expect(entries.some(e => e.path === href && e.heading === null)).toBe(true);
+    }
   });
 
   it('indexes code block contents and h3 headings for deduplicateCss across pages', async () => {

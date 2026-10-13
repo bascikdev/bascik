@@ -17,7 +17,7 @@
  * 3. Component expansion occurs (e.g. `<header class="header">`, `<footer class="footer">`, `<my-counter>`).
  * 4. Build scripts execute at build time (e.g. copyright year in site footer).
  * 5. Static assets and favicons are preserved and copied to dist/.
- * 6. Scaffolding copied the real SKILL.md asset into `.github/skills/bascik/SKILL.md` and `.claude/skills/bascik/SKILL.md`.
+ * 6. Scaffolding copied the real agent skills (SKILL.md, references/, scripts/) into `.agents/skills/` and `.claude/skills/`.
  * 7. Negative-control sensitivity: A corrupted scaffolded page (invalid syntax / broken component) is rejected by the compiler.
  * 8. Execution mode parity: Verified across both default and worker build pipelines.
  */
@@ -30,7 +30,7 @@ import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { scaffold } from "./scaffold.ts";
+import { SKILLS_DIR, scaffold } from "./scaffold.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -109,11 +109,17 @@ describe("scaffold-to-compiler integration", () => {
     // 1. Run real scaffold
     await scaffold(projectName, parentDir);
 
-    // Verify SKILL.md was copied from real assets
-    const githubSkill = await readFile(join(projectDir, ".github/skills/bascik/SKILL.md"), "utf8");
-    const claudeSkill = await readFile(join(projectDir, ".claude/skills/bascik/SKILL.md"), "utf8");
-    expect(githubSkill.length).toBeGreaterThan(100);
-    expect(claudeSkill).toBe(githubSkill);
+    // Verify the agent skills were copied from real assets, with their scripts
+    for (const file of ["bascik/SKILL.md", "bascik/scripts/verify.mjs", "bascik-components/SKILL.md", "bascik-config/scripts/audit-config.mjs"]) {
+      const agentsCopy = await readFile(join(projectDir, ".agents/skills", file), "utf8");
+      const claudeCopy = await readFile(join(projectDir, ".claude/skills", file), "utf8");
+      const bundled = await readFile(join(SKILLS_DIR, file), "utf8");
+      expect(agentsCopy.length, file).toBeGreaterThan(100);
+      expect(agentsCopy, file).toBe(bundled);
+      expect(claudeCopy, file).toBe(bundled);
+    }
+    expect(existsSync(join(projectDir, ".agents/skills/README.md"))).toBe(false);
+    expect(existsSync(join(projectDir, ".github/skills"))).toBe(false);
 
     // 2. Compile via real Bascik CLI child process
     const buildResult = await runBascikBuild(projectDir);

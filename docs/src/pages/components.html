@@ -273,10 +273,178 @@
           </div>
         </component-demo>
 
-        <!-- Section: Subfolder Layout (plain prose, no demo) -->
+        <!-- Section: Subfolder Layout through Multiple Root Elements intro (plain prose) -->
         <script data-bascik-build>
           import { renderMdRange } from '@/lib/md-renderer.ts';
-          export default async () => await renderMdRange('./content/components.md', { from: 'Subfolder Layout' });
+          export default async () => await renderMdRange('./content/components.md', { from: 'Subfolder Layout', to: 'Component Naming and Hyphens' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Four ways to lay out the same component"
+          data-bascik-prop-footer="The tag name comes from the filename, not the folder, so every one registers the my-card tag.">
+          <diagram-row>
+            <diagram-panel data-bascik-prop-label="HTML only">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-html-only');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Single file">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-single-file');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row>
+            <diagram-panel data-bascik-prop-label="Companion files">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-companion');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Subfolder">
+              <code-block data-bascik-prop-lang="text">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-layouts-subfolder');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/components.md', { from: 'Component Naming and Hyphens', to: 'Multiple Root Elements' });
+        </script>
+
+        <!-- Section: Multiple Root Elements -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/components.md', { from: 'Multiple Root Elements', to: 'Component Structure & Tag Ordering' }, { stripDemoBlocks: true });
+        </script>
+
+        <component-demo data-bascik-prop-file="src/components/roots-demo/">
+          <div data-bascik-slot="example">
+            <!-- The preview pane lays children out in a row. A block wrapper stacks the three roots as they would sit in a page. -->
+            <div style="width: 100%">
+              <roots-demo />
+            </div>
+          </div>
+          <div data-bascik-slot="source-usage">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/components.md', 'source-usage-roots');
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="source-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/components.md', 'source-html-roots');
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="output-html">
+            <code-block data-bascik-prop-lang="html">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/components.md', 'output-html-roots');
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="output-css">
+            <code-block data-bascik-prop-lang="css">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/components.md', 'output-css-roots');
+              </script>
+            </code-block>
+          </div>
+        </component-demo>
+
+        <!-- Section: Component Structure & Tag Ordering onward (plain prose) -->
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/components.md', { from: 'Component Structure & Tag Ordering', to: 'Shared Head Tags & Layout Component Decomposition' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="Where scoping starts and stops">
+          <diagram-row data-bascik-prop-label="Page shell: src/pages/about.html">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-page-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-page-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+          <diagram-row data-bascik-prop-label="Component template: src/components/site-nav.html" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="You write">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-component-in');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="Bascik emits" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-scope-boundary-component-out');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/components.md', { from: 'Shared Head Tags & Layout Component Decomposition', to: 'Accessible Skip Links and Focus Order' });
+        </script>
+
+        <diagram-figure data-bascik-prop-title="A component inside the head element">
+          <diagram-row data-bascik-prop-label="One tag in every page shell" data-bascik-prop-direction="stack">
+            <diagram-panel data-bascik-prop-label="src/pages/index.html">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-shared-head-page');
+                </script>
+              </code-block>
+            </diagram-panel>
+            <diagram-panel data-bascik-prop-label="dist/index.html" data-bascik-prop-arrow="↓">
+              <code-block data-bascik-prop-lang="html">
+                <script data-bascik-build>
+                  import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                  export default async () => await extractDemoBlock('./src/diagrams/components.md', 'components-shared-head-built');
+                </script>
+              </code-block>
+            </diagram-panel>
+          </diagram-row>
+        </diagram-figure>
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/components.md', { from: 'Accessible Skip Links and Focus Order' });
         </script>
 
         <docs-pagination />
