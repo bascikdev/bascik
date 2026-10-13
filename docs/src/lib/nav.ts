@@ -46,7 +46,7 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Features', pages: [
+    section: 'Components', pages: [
       { href: '/components', label: 'Components' },
       { href: '/scoped-styles', label: 'Scoped Styles' },
       { href: '/scoped-javascript', label: 'Scoped JavaScript' },
@@ -54,12 +54,17 @@ export const NAV: NavSection[] = [
       { href: '/slots', label: 'Slots' },
       { href: '/props', label: 'Props' },
       { href: '/attribute-inheritance', label: 'Attribute Inheritance' },
+    ]
+  },
+  {
+    section: 'Scripts & Routing', pages: [
       { href: '/build-scripts', label: 'Build Scripts' },
       { href: '/server-scripts', label: 'Server Scripts' },
       { href: '/stream-scripts', label: 'Stream Scripts' },
       { href: '/dynamic-routes', label: 'Dynamic Routes' },
       { href: '/api-routes', label: 'API Routes' },
       { href: '/exec-scripts', label: 'Exec Scripts' },
+      { href: '/script-imports', label: 'Script Imports' },
       { href: '/watch-paths', label: 'Watch Paths' },
       { href: '/sitemap', label: 'Sitemap & robots.txt' },
     ]

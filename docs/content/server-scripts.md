@@ -123,7 +123,7 @@ export function getSessionUser(request: Request): string {
 }
 ```
 
-Import it from any server script using the `@/` import root alias:
+Import it from any server script using the `@/` import root alias (see [Script Imports](/script-imports)):
 
 ```html
 <script data-bascik-server>

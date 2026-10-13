@@ -13,7 +13,8 @@ describe('generate-llms-txt', () => {
     expect(content).toContain('> Bascik is a build tool for HTML components.');
     expect(content).toContain('## Overview');
     expect(content).toContain('- [Getting Started](https://bascik.dev/getting-started):');
-    expect(content).toContain('## Features');
+    expect(content).toContain('## Components');
+    expect(content).toContain('## Scripts & Routing');
     expect(content).toContain('## Reference');
   });
 });
