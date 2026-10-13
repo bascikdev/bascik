@@ -41,8 +41,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "mkdir -p assets && ([ -f ../docs/src/pages/assets/SKILL.md ] && cp ../docs/src/pages/assets/SKILL.md assets/SKILL.md || true) && tsc -p tsconfig.build.json",
-    "prepack": "mkdir -p assets && cp ../docs/src/pages/assets/SKILL.md assets/SKILL.md",
+    "prepare": "([ -d ../skills ] && rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills || true) && tsc -p tsconfig.build.json",
+    "prepack": "rm -rf assets/skills && mkdir -p assets && cp -R ../skills assets/skills",
     "typecheck": "tsc --noEmit",
     "unit": "vitest run",
     "test": "vitest",

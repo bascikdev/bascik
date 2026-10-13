@@ -1,5 +1,7 @@
 ---
 name: mdn-web-docs
+metadata:
+  internal: true
 description: Look up, reference, and verify HTML, CSS, JavaScript, Web APIs, accessibility, and browser compatibility data using MDN Web Docs. Use when checking Web API signatures, CSS property syntax, Baseline support status, or vanilla JS patterns.
 ---
 

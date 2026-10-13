@@ -32,9 +32,10 @@ export default defineConfig({
       {
         script: 'scripts/publish-agent-skill.ts',
         phase: 'parallel',
-        watch: ['src/pages/assets/SKILL.md'],
-        // Publishes the one intentional Markdown download (/assets/SKILL.md) to dist. Static asset copying
-        // denies .md by design; the authored input is watched, the generated output never is.
+        watch: ['../skills/'],
+        // Publishes the agent skills from the repo-root skills/ directory: /assets/skills.tar.gz (every skill)
+        // and /assets/SKILL.md (the core skill, the one intentional Markdown download). Static asset copying
+        // denies .md by design; the authored skills are watched, the generated outputs never are.
       },
       {
         script: 'scripts/generate-press-kit.ts',

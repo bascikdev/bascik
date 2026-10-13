@@ -19,7 +19,9 @@ async function getMarkdownFiles(dir: string): Promise<string[]> {
 describe('build and routes script docs contract', () => {
   it('ensures all active <script data-bascik-build> examples use default export and do not use console.log as the content return channel', async () => {
     const contentFiles = await getMarkdownFiles(path.join(DOCS_ROOT, 'content'));
-    const allFiles = [...contentFiles, path.join(DOCS_ROOT, 'src/pages/assets/SKILL.md')];
+    const skillFiles = await getMarkdownFiles(path.join(DOCS_ROOT, '../skills'));
+    expect(skillFiles.length).toBeGreaterThan(0);
+    const allFiles = [...contentFiles, ...skillFiles];
 
     const violations: { file: string; type: string; snippet: string }[] = [];
 

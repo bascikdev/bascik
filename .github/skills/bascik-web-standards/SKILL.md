@@ -1,5 +1,7 @@
 ---
 name: bascik-web-standards
+metadata:
+  internal: true
 description: Reference and compliance guidelines for W3C, WHATWG, and ECMA web standards in Bascik. Use when implementing HTML component scoping, CSS selector parsing, DOM query rewriting, custom element syntax, ARIA semantics, or ensuring spec-compliant build output.
 ---
 

@@ -43,12 +43,12 @@
           export default async () => (await renderMdRange('./content/scoped-styles.md', { to: 'Where Scoped CSS Can Live' })) + (await renderMdRange('./content/scoped-styles.md', { from: 'See it in action', to: 'Source and output' }));
         </script>
 
-        <component-demo data-bascik-prop-file="src/components/my-card/">
+        <component-demo data-bascik-prop-file="plan-card + alert-card">
           <div data-bascik-slot="example">
-            <my-card>
-              <h3>Isolated Styles</h3>
-              <p>Click to toggle the active state.</p>
-            </my-card>
+            <div class="grid-2" style="width: 100%">
+              <plan-card />
+              <alert-card />
+            </div>
           </div>
           <div data-bascik-slot="source-usage">
             <code-block data-bascik-prop-lang="html">
@@ -66,11 +66,27 @@
               </script>
             </code-block>
           </div>
+          <div data-bascik-slot="source-css">
+            <code-block data-bascik-prop-lang="css">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'source-css');
+              </script>
+            </code-block>
+          </div>
           <div data-bascik-slot="output-html">
             <code-block data-bascik-prop-lang="html">
               <script data-bascik-build>
                 import { extractDemoBlock } from '@/lib/md-renderer.ts';
                 export default async () => await extractDemoBlock('./content/scoped-styles.md', 'output-html');
+              </script>
+            </code-block>
+          </div>
+          <div data-bascik-slot="output-css">
+            <code-block data-bascik-prop-lang="css">
+              <script data-bascik-build>
+                import { extractDemoBlock } from '@/lib/md-renderer.ts';
+                export default async () => await extractDemoBlock('./content/scoped-styles.md', 'output-css');
               </script>
             </code-block>
           </div>
@@ -138,7 +154,8 @@
         </script>
 
         <diagram-figure data-bascik-prop-title="Declared in the component, scoped. Declared elsewhere, left alone.">
-          <diagram-row data-bascik-prop-label="site-nav.css declares .dnav-logo, but not .skip-link" data-bascik-prop-direction="stack">
+          <diagram-row data-bascik-prop-label="site-nav.css declares .dnav-logo, but not .skip-link"
+            data-bascik-prop-direction="stack">
             <diagram-panel data-bascik-prop-label="You write">
               <code-block data-bascik-prop-lang="html">
                 <script data-bascik-build>

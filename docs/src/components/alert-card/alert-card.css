@@ -1,0 +1,29 @@
+.card {
+  padding: 20px;
+  background: #2a1712;
+  border-left: 4px solid #ff8a5c;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #ff8a5c;
+  color: #ff8a5c;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a5c;
+}
+
+p {
+  margin: 0;
+  color: #e6c4b8;
+  font-style: italic;
+}

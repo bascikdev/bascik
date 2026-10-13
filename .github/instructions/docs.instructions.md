@@ -13,7 +13,7 @@ These rules apply to all work inside `/docs/`. They must be read before creating
 The Markdown files serve three purposes simultaneously:
 1. They are the canonical source for the rendered docs page (via `data-bascik-build`)
 2. They feed `llms.txt` (generated automatically via `exec` in `docs/bascik.config.ts`)
-3. They feed `SKILL.md` (the Copilot skill file at `docs/src/pages/assets/SKILL.md`, served at `/assets/SKILL.md`)
+3. They are the reference the public agent skills in the repo-root `skills/` folder are written from. The docs build publishes those skills as `/assets/skills.tar.gz` and the core skill as `/assets/SKILL.md` (see "Updating the Agent Skills" below)
 
 **When adding or updating docs content:**
 - Write the prose and code examples in the appropriate `docs/content/topic.md` file
@@ -89,7 +89,7 @@ Three kinds of visual, each with one home. Do not mix them up, and do not add a 
 
 Markdown cannot hold a component, so a diagram goes in the page shell, at the end of the section it illustrates. Split that page's `renderMdRange` call at the heading that follows the section, put the diagram between the two ranges, and pass `{ stripDemoBlocks: true }` to any range that contains the diagram's code blocks.
 
-Code shown in a panel is written once, as a demo block in `docs/src/diagrams/<page>.md` (the file named after the page), and read back with `extractDemoBlock('./src/diagrams/<page>.md', '<diagram-id>-<panel>')`. It lives there and not in `docs/content/` on purpose: a diagram restates prose and code the page already has, so its blocks must not feed the page's search entries or its Markdown. This is the one exception to "code in slots comes from `docs/content/`": that rule exists so `llms.txt` and `SKILL.md` see the code, and a diagram adds nothing they do not already have. Name each block `<diagram-id>-<panel>`:
+Code shown in a panel is written once, as a demo block in `docs/src/diagrams/<page>.md` (the file named after the page), and read back with `extractDemoBlock('./src/diagrams/<page>.md', '<diagram-id>-<panel>')`. It lives there and not in `docs/content/` on purpose: a diagram restates prose and code the page already has, so its blocks must not feed the page's search entries or its Markdown. This is the one exception to "code in slots comes from `docs/content/`": that rule exists so `llms.txt` and the search index see the code, and a diagram adds nothing they do not already have. Name each block `<diagram-id>-<panel>`:
 
 ````markdown
 <!-- demo:scoped-styles-global-classes-in -->
@@ -120,23 +120,32 @@ For a comparison, use a `diagram-row` per pair of panels. Add `data-bascik-prop-
 - Callout/tip boxes: Markdown blockquote (`> **Label.** body text`)
 - No inline HTML in MD files: keep MD pure Markdown
 
-## Updating SKILL.md and create/assets/SKILL.md
+## Updating the Agent Skills (`skills/`)
 
 **Do not run `#pre-push.prompt.md` or pre-push scripts automatically.** The user handles running pre-push steps.
 
 Note: `llms.txt` and search index are generated automatically when running `yarn docs:build` (or during dev server via `exec` in `docs/bascik.config.ts`). **Lifecycle/generation scripts executed by `exec` must write their generated output files directly to the output directory (`dist/`), never to the source directories (`src/`), to avoid polluting the source tree with build-time artifacts.**
 
-If manually updating or propagating `SKILL.md` when specifically requested:
+The public skills live in the repo-root `skills/` folder, one directory per skill (`bascik`, `bascik-scoping`, `bascik-scripts`, `bascik-config`, `bascik-testing`, `bascik-migrate`). That folder is the source of truth for every distribution channel:
 
-```sh
-yarn create:prepack
-```
+- `npx skills add bascikdev/bascik` reads it straight from GitHub.
+- `docs/scripts/publish-agent-skill.ts` (an `exec` producer) writes `/assets/skills.tar.gz`, the RFC 8615 discovery index `/.well-known/agent-skills/index.json` with one `<name>.tar.gz` per skill (so `npx skills add https://bascik.dev` works), and copies `skills/bascik/SKILL.md` to `/assets/SKILL.md`.
+- `create-bascik` bundles a copy in `create/assets/skills/`, which the scaffold copies into `.agents/skills/` and `.claude/skills/`. Refresh it with `yarn create:prepack`; `create/src/skill-sync.test.ts` fails when the copy drifts.
 
-These files must stay in sync. A content change that lands in `docs/content/*.md` but not `SKILL.md` (or vice versa) means Copilot is working from stale guidance, which is how bugs like "use `querySelector` for per-instance elements" go undetected.
+The skills are written by hand from `docs/content/`, not generated. When a docs change alters a rule, default, API, or pitfall, update the matching skill (and its `references/` file) in the same task. A content change that lands in `docs/content/*.md` but not in `skills/` (or the reverse) means assistants work from stale guidance, which is how bugs like "use `querySelector` for per-instance elements" go undetected.
+
+Structure rules:
+
+- Each `SKILL.md` stays under 500 lines with prescriptive rules up front; detail goes in `references/*.md`, one level deep. `name` must match the directory name.
+- Scripts are dependency-free Node.js (22.18+) `.mjs` files that run from the user's project root. Shared helpers live in `skills/bascik/scripts/lib/`; other skills refer to `<skills-dir>/bascik/scripts/...` rather than copying them.
+- `skills/bascik-config/scripts/audit-config.mjs` hard-codes config defaults. `pkg/src/lib/agent-skill-config-defaults.test.ts` fails when they drift from `pkg/src/lib/config.ts`; update the table when a default changes.
+- After changing a script, run it against a real project (for example `pkg/e2e/` or `docs/`) before finishing.
+- Contributor-only skills in `.github/skills/` must carry `metadata: internal: true` so `npx skills add` does not offer them. Check with `npx skills add . --list` from the repo root.
+- `docs/scripts/skill-bundle.test.ts` checks frontmatter, line counts, and relative links; the docs hygiene tests scan `skills/**/*.md` for outdated script patterns.
 
 ### Skill Authoring & Best Practices (agentskills.io)
 
-When updating `SKILL.md`, follow the official Agent Skills best practices (https://agentskills.io/skill-creation/best-practices):
+When updating a skill, follow the official Agent Skills best practices (https://agentskills.io/skill-creation/best-practices):
 
 - **Illustrative vs. Literal Code Examples:** Frame code blocks and configuration options (such as `exec` script arrays, BYOMinifier custom transformers, or page-aware canonical helpers) with explicit commentary indicating they are illustrative examples. AI agents must understand what capabilities exist without copying example script paths or filenames literally.
 - **Add What the Agent Lacks, Omit What It Knows:** Focus on Bascik-specific mechanics, transforms, scoping rules, and gotchas. Omit generic explanations of HTML, CSS, JavaScript, or standard web concepts.
@@ -155,7 +164,7 @@ Interactive demos use `<component-demo>` with named slots. **Code examples insid
 
 ### Why MD-first
 
-MD files feed `llms.txt` and `SKILL.md`. If code examples only exist in HTML slots, LLMs never see them. Write example code in the relevant `docs/content/topic.md` file first; the HTML slot reads from there.
+MD files feed `llms.txt`, the search index, and the agent skills' docs lookup scripts. If code examples only exist in HTML slots, LLMs never see them. Write example code in the relevant `docs/content/topic.md` file first; the HTML slot reads from there.
 
 ### How to add a demo code block to an MD file
 

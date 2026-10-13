@@ -20,7 +20,9 @@ async function getMarkdownFiles(dir: string): Promise<string[]> {
 describe('server and stream script docs hygiene', () => {
   it('does not contain deprecated server script patterns, BASCIK_REQUEST, or { req }', async () => {
     const contentFiles = await getMarkdownFiles(path.join(DOCS_ROOT, 'content'));
-    const allFiles = [...contentFiles, path.join(DOCS_ROOT, 'src/pages/assets/SKILL.md')];
+    const skillFiles = await getMarkdownFiles(path.join(DOCS_ROOT, '../skills'));
+    expect(skillFiles.length).toBeGreaterThan(0);
+    const allFiles = [...contentFiles, ...skillFiles];
 
     const violations: { file: string; type: string; snippet: string }[] = [];
 

@@ -5,11 +5,25 @@
  * Separated from the CLI entry so it can be unit-tested without I/O.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { cp, mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SKILL_MD_PATH = fileURLToPath(new URL("../assets/SKILL.md", import.meta.url));
+/** The agent skills bundled from the repo-root skills/ directory (copied in by prepare/prepack). */
+export const SKILLS_DIR = fileURLToPath(new URL("../assets/skills", import.meta.url));
+
+/**
+ * Project directories that receive the agent skills. `.agents/skills` is the shared location read by GitHub
+ * Copilot, Cursor, Codex, Gemini CLI, OpenCode, and others; Claude Code reads `.claude/skills`.
+ */
+export const SKILL_DESTINATIONS = [".agents/skills", ".claude/skills"] as const;
+
+/** Copy every skill directory, skipping the human-facing README at the root of the skills folder. */
+const copySkills = (destination: string): Promise<void> =>
+  cp(SKILLS_DIR, destination, {
+    recursive: true,
+    filter: (source) => resolve(source) !== resolve(SKILLS_DIR, "README.md"),
+  });
 
 // ─── Root files ───────────────────────────────────────────────────────────────
 
@@ -858,8 +872,7 @@ export async function scaffold(
   // Create all directories up front
   await Promise.all([
     mkdir(join(root, ".vscode"), { recursive: true }),
-    mkdir(join(root, ".github", "skills", "bascik"), { recursive: true }),
-    mkdir(join(root, ".claude", "skills", "bascik"), { recursive: true }),
+    ...SKILL_DESTINATIONS.map((dir) => mkdir(join(root, ...dir.split("/")), { recursive: true })),
     mkdir(join(root, "e2e"), { recursive: true }),
     mkdir(join(root, "src", "pages", "assets"), { recursive: true }),
     mkdir(join(root, "src", "pages", "css"), { recursive: true }),
@@ -870,17 +883,16 @@ export async function scaffold(
     mkdir(join(root, "src", "components", "my-counter"), { recursive: true }),
   ]);
 
-  const skillMd = await readFile(SKILL_MD_PATH, "utf8");
-
   await Promise.all([
+    // Agent skills (SKILL.md files with their references/ and scripts/)
+    ...SKILL_DESTINATIONS.map((dir) => copySkills(join(root, ...dir.split("/")))),
+
     // Root
     writeFile(join(root, "package.json"), PACKAGE_JSON(projectName), "utf8"),
     writeFile(join(root, "vite.config.js"), VITE_CONFIG, "utf8"),
     writeFile(join(root, ".gitignore"), GITIGNORE, "utf8"),
     writeFile(join(root, ".vscode", "launch.json"), VSCODE_LAUNCH_JSON, "utf8"),
     writeFile(join(root, ".vscode", "extensions.json"), VSCODE_EXTENSIONS_JSON, "utf8"),
-    writeFile(join(root, ".github", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),
-    writeFile(join(root, ".claude", "skills", "bascik", "SKILL.md"), skillMd, "utf8"),
 
     // E2E
     writeFile(join(root, "e2e", "playwright.config.ts"), PLAYWRIGHT_CONFIG, "utf8"),

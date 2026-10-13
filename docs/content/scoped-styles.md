@@ -505,99 +505,173 @@ This guide focuses on the CSS behavior you write and observe. The compiler imple
 
 ## See it in action
 
-Click the card to toggle its active state. Hover for the hover state. Both are isolated to this component.
+Two components sit side by side on the same page. Their markup is identical: both use `.card`, `.tag`, and `.title`, and both style a bare `p`. Each still keeps its own look, because Bascik rewrites every selector into its component's namespace. Neither stylesheet reaches the other card or the page around them.
 
 ### Source and output
 
-**Source** (`my-card.html`, CSS, HTML, and JS in one file):
+**Source** (`plan-card` and `alert-card`, each an `.html` file with a paired `.css` file):
 
 <!-- demo:source-usage -->
 ```html
-<my-card>
-  <h3>Isolated Styles</h3>
-  <p>Click to toggle the active state.</p>
-</my-card>
+<plan-card></plan-card>
+<alert-card></alert-card>
 ```
 
 <!-- demo:source-html -->
 ```html
-<style>
-  .card {
-    padding: 26px 28px;
-    background: #242628;
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 10px;
+<!-- src/components/plan-card/plan-card.html -->
+<article class="card">
+  <span class="tag">plan-card</span>
+  <h3 class="title">Pro plan</h3>
+  <p>Same class names as the card beside it.</p>
+</article>
 
-    h3 { margin: 0 0 8px; color: #f0f1f2; }
-    p  { margin: 0; color: #8d929e; }
-
-    &:hover {
-      border-color: rgba(211,255,141,0.35);
-      box-shadow: 0 0 0 1px rgba(211,255,141,0.12);
-    }
-
-    &.active {
-      background: rgba(211,255,141,0.07);
-      border-color: rgba(211,255,141,0.5);
-      box-shadow: 0 0 0 1px rgba(211,255,141,0.25), 0 0 20px rgba(211,255,141,0.08);
-
-      h3 { color: #d3ff8d; }
-    }
-  }
-</style>
-<div class="card" id="card">
-  <div data-bascik-slot></div>
-</div>
-<script>
-  const card = document.getElementById('card');
-  card.addEventListener('click', () => {
-    card.classList.toggle('active');
-  });
-</script>
+<!-- src/components/alert-card/alert-card.html -->
+<article class="card">
+  <span class="tag">alert-card</span>
+  <h3 class="title">Disk almost full</h3>
+  <p>Same class names, its own styles.</p>
+</article>
 ```
 
-**Compiled output** (class names and IDs scoped, script wrapped in IIFE):
+<!-- demo:source-css -->
+```css
+/* src/components/plan-card/plan-card.css */
+.card {
+  padding: 24px;
+  border-radius: 16px;
+  background: #1d2612;
+  border: 1px solid rgba(211, 255, 141, 0.35);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d3ff8d;
+  color: #16210a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-size: 1.3rem;
+  color: #d3ff8d;
+}
+
+p {
+  margin: 0;
+  color: #c9d6b5;
+}
+
+/* src/components/alert-card/alert-card.css */
+.card {
+  padding: 20px;
+  background: #2a1712;
+  border-left: 4px solid #ff8a5c;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #ff8a5c;
+  color: #ff8a5c;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a5c;
+}
+
+p {
+  margin: 0;
+  color: #e6c4b8;
+  font-style: italic;
+}
+```
+
+**Compiled output** (each class and element selector carries its component's name):
 
 <!-- demo:output-html -->
 ```html
-<style>
-  .bascik__my-card__card {
-    padding: 26px 28px;
-    background: #242628;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
-  }
-  .bascik__my-card__card .bascik__my-card__el__h3 {
-    margin: 0 0 8px;
-    color: #f0f1f2;
-  }
-  .bascik__my-card__card .bascik__my-card__el__p {
-    margin: 0;
-    color: #8d929e;
-  }
-  .bascik__my-card__card:hover {
-    border-color: rgba(211, 255, 141, 0.35);
-    box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.12);
-  }
-  .bascik__my-card__card.bascik__my-card__active {
-    background: rgba(211, 255, 141, 0.07);
-    border-color: rgba(211, 255, 141, 0.5);
-    box-shadow: 0 0 0 1px rgba(211, 255, 141, 0.25), 0 0 20px rgba(211, 255, 141, 0.08);
-  }
-  .bascik__my-card__card.bascik__my-card__active .bascik__my-card__el__h3 {
-    color: #d3ff8d;
-  }
-</style>
-<div class="bascik__my-card__card" id="bascik__my-card__a1b__card">
-  <h3>Isolated Styles</h3>
-  <p>Click to toggle the active state.</p>
-</div>
-<script>
-  (function(){
-  const card = document.getElementById('bascik__my-card__a1b__card');
-  card.addEventListener('click', () => {
-    card.classList.toggle('bascik__my-card__active');
-  });
-  })();
-</script>
+<article class="bascik__plan-card__card">
+  <span class="bascik__plan-card__tag">plan-card</span>
+  <h3 class="bascik__plan-card__title">Pro plan</h3>
+  <p class="bascik__plan-card__el__p">Same class names as the card beside it.</p>
+</article>
+
+<article class="bascik__alert-card__card">
+  <span class="bascik__alert-card__tag">alert-card</span>
+  <h3 class="bascik__alert-card__title">Disk almost full</h3>
+  <p class="bascik__alert-card__el__p">Same class names, its own styles.</p>
+</article>
+```
+
+<!-- demo:output-css -->
+```css
+/* Hoisted into the page <head>, one block per component */
+.bascik__plan-card__card {
+  padding: 24px;
+  border-radius: 16px;
+  background: #1d2612;
+  border: 1px solid rgba(211, 255, 141, 0.35);
+}
+
+.bascik__plan-card__tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d3ff8d;
+  color: #16210a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.bascik__plan-card__title {
+  margin: 12px 0 6px;
+  font-size: 1.3rem;
+  color: #d3ff8d;
+}
+
+.bascik__plan-card__el__p {
+  margin: 0;
+  color: #c9d6b5;
+}
+
+.bascik__alert-card__card {
+  padding: 20px;
+  background: #2a1712;
+  border-left: 4px solid #ff8a5c;
+}
+
+.bascik__alert-card__tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid #ff8a5c;
+  color: #ff8a5c;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.bascik__alert-card__title {
+  margin: 12px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff8a5c;
+}
+
+.bascik__alert-card__el__p {
+  margin: 0;
+  color: #e6c4b8;
+  font-style: italic;
+}
 ```

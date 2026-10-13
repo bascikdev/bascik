@@ -554,6 +554,22 @@ describe("copyStaticAssets", () => {
     }
   });
 
+  it("publishes files under a top-level .well-known directory (RFC 8615) and nothing else hidden", () => {
+    expect(isStaticAssetPath("pages/.well-known/security.txt", "pages")).toBe(true);
+    expect(isStaticAssetPath("pages/.well-known/agent-skills/index.json", "pages")).toBe(true);
+    expect(isStaticAssetPath("/abs/site/src/pages/.well-known/assetlinks.json", "/abs/site/src/pages")).toBe(true);
+    // Only directly under the publish root, never nested or with a hidden child.
+    expect(isStaticAssetPath("pages/blog/.well-known/security.txt", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/.env", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/.secret/key.json", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.Well-Known/security.txt", "pages")).toBe(false);
+    // The normal deny-list still applies inside .well-known.
+    expect(isStaticAssetPath("pages/.well-known/notes.md", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/handler.ts", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/index.html", "pages")).toBe(false);
+    expect(isStaticAssetPath("pages/.well-known/node_modules/x.js", "pages")).toBe(false);
+  });
+
   it("copies non-HTML static assets and ignores HTML, TS, and test files", async () => {
     vi.mocked(readFile)
       .mockResolvedValueOnce("body { color: red; }" as any)

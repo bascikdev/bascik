@@ -46,7 +46,7 @@ import {
 } from "./server-lifecycle.ts";
 import { SseManager } from "./sse.ts";
 import { apiRouteRegistry } from "./server-api.ts";
-import { InvalidApiPathError } from "./route-matching.ts";
+import { InvalidApiPathError, hasHiddenSegment } from "./route-matching.ts";
 import { createWebRequest, getRightmostHeaderValue, requestOrigin } from "./api-runtime.ts";
 import { NODE_PLATFORM } from "./request-execution.ts";
 
@@ -477,7 +477,9 @@ export const createRequestHandler = () => {
         return;
       }
 
-      if (pathname.split("/").some((segment) => segment.startsWith("."))) {
+      // Dot segments are private (dist/.bascik/, .env, .git). The one public
+      // exception is a leading RFC 8615 /.well-known/ below the site root.
+      if (hasHiddenSegment(pathname, BascikConfig.base)) {
         responseStatus = 404;
         res.respond(404, { "content-type": "text/plain; charset=utf-8", ...secHeaders });
         res.end("Not Found");

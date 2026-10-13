@@ -1,0 +1,27 @@
+.card {
+  padding: 24px;
+  border-radius: 16px;
+  background: #1d2612;
+  border: 1px solid rgba(211, 255, 141, 0.35);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #d3ff8d;
+  color: #16210a;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.title {
+  margin: 12px 0 6px;
+  font-size: 1.3rem;
+  color: #d3ff8d;
+}
+
+p {
+  margin: 0;
+  color: #c9d6b5;
+}

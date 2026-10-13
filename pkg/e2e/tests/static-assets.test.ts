@@ -41,6 +41,32 @@ test.describe('Static Assets & Inlined Styles handling', () => {
     }
   });
 
+  test('serves the RFC 8615 /.well-known/ directory copied from src/pages/.well-known/', async ({ request }) => {
+    const security = await request.get('/.well-known/security.txt');
+    expect(security.status()).toBe(200);
+    expect(security.headers()['content-type']).toContain('text/plain');
+    expect(await security.text()).toContain('Contact: mailto:security@example.com');
+
+    const index = await request.get('/.well-known/agent-skills/index.json');
+    expect(index.status()).toBe(200);
+    expect(index.headers()['content-type']).toContain('application/json');
+    expect(await index.json()).toMatchObject({ fixture: 'bascik-e2e-well-known' });
+  });
+
+  test('keeps dot segments private inside and outside /.well-known/', async ({ request }) => {
+    for (const path of [
+      '/.well-known/.private/secret.txt',
+      '/.well-known/%2Eprivate/secret.txt',
+      '/blog-wk/.well-known/nested.txt',
+      '/.Well-Known/security.txt',
+      '/.well-known/../.env',
+    ]) {
+      const response = await request.get(path);
+      expect(response.status(), path).toBeGreaterThanOrEqual(400);
+      expect(await response.text(), path).not.toContain(SECRET_MARKER);
+    }
+  });
+
   test('serves page assets whose extension is outside MIME_MAP', async ({ request }) => {
     const response = await request.get('/templates/card.hbs');
     expect(response.status()).toBe(200);

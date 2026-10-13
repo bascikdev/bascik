@@ -1,5 +1,7 @@
 ---
 name: webhint
+metadata:
+  internal: true
 description: Guide for configuring and using Webhint (hint) for accessibility, cross-browser compatibility, web standards, and performance auditing. Use when creating or modifying .hintrc files, configuring hints, overriding severities, setting up ignoredUrls, or integrating webhint in VS Code and CI.
 ---
 

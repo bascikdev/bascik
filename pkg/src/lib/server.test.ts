@@ -897,6 +897,59 @@ describe("startHttp2Server – path traversal protection", () => {
     },
   );
 
+  it.each([
+    "/.well-known/.env",
+    "/.well-known/agent-skills/.secret/a.json",
+    "/blog/.well-known/security.txt",
+    "/.Well-Known/security.txt",
+    "/%2Ewell-known/%2Eenv",
+  ])("returns 404 for hidden path %s even next to .well-known", async (path) => {
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders(path, "GET"));
+
+    expect(stream.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+    expect(stream.end).toHaveBeenCalledWith("Not Found");
+    expect(mockStat).not.toHaveBeenCalled();
+  });
+
+  it.each(["/.well-known/security.txt", "/%2Ewell-known/agent-skills/index.json"])(
+    "looks up %s in dist/.well-known instead of rejecting it as hidden",
+    async (path) => {
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+      mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+
+      await handler(stream, makeHeaders(path, "GET"));
+
+      expect(mockStat).toHaveBeenCalledTimes(1);
+      const looked = String(mockStat.mock.calls[0][0]).replace(/\\/g, "/");
+      expect(looked.endsWith(decodeURIComponent(path))).toBe(true);
+    },
+  );
+
+  it("serves the base-relative .well-known directory under a non-root base", async () => {
+    const { BascikConfig } = await import("./config.ts");
+    const previousBase = (BascikConfig as any).base;
+    (BascikConfig as any).base = "/docs/";
+    try {
+      const handler = getStreamHandler()!;
+      const inside = makeStream();
+      mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+      await handler(inside, makeHeaders("/docs/.well-known/security.txt", "GET"));
+      expect(mockStat).toHaveBeenCalledTimes(1);
+      expect(String(mockStat.mock.calls[0][0]).replace(/\\/g, "/").endsWith("/.well-known/security.txt")).toBe(true);
+
+      const hidden = makeStream();
+      await handler(hidden, makeHeaders("/docs/.env", "GET"));
+      expect(hidden.respond).toHaveBeenCalledWith(expect.objectContaining({ ":status": 404 }));
+      expect(mockStat).toHaveBeenCalledTimes(1);
+    } finally {
+      (BascikConfig as any).base = previousBase;
+    }
+  });
+
   it("serves a file whose name contains literal %2F without escaping (not a traversal)", async () => {
     // path.resolve treats %2F as a literal character, not a /; the guard passes
     // and stat is called. Mock stat succeeds, then createReadStream is set up.

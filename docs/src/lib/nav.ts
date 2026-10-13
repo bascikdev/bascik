@@ -85,7 +85,7 @@ export const NAV: NavSection[] = [
     section: 'Tooling', pages: [
       { href: '/tools/linter', label: 'Linter' },
       { href: '/tools/vscode-extension', label: 'VS Code Extension' },
-      { href: '/tools/agent-skill', label: 'Agent Skill' },
+      { href: '/tools/agent-skill', label: 'Agent Skills' },
     ]
   },
   {

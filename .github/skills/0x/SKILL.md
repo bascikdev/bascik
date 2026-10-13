@@ -1,5 +1,7 @@
 ---
 name: 0x
+metadata:
+  internal: true
 description: Guide for profiling Node.js applications and generating interactive flamegraphs using 0x. Use when diagnosing CPU bottlenecks, analyzing event loop blocking, inspecting flamegraphs, using 0x CLI flags or programmatic API, or configuring production profile capture.
 ---
 

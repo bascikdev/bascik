@@ -145,8 +145,18 @@ To keep deployment artifacts clean, the following files are excluded from static
 - **API route handlers**: files in `src/api/` (`directory.api`) are runtime handlers executed in server mode and are never copied to static `dist/`. Because handler source code is strictly protected and never published, accessing private environment secrets via `process.env` in handlers remains secure.
 - **Test files**: any test file matching `*.test.*` or `*.spec.*` (e.g. `styles.test.ts`)
 - **Inlined stylesheets**: global CSS files configured in `assets.inlineStyles` (injected directly into `<head>`)
-- **Hidden paths**: every dotfile and every file below a dot-directory
+- **Hidden paths**: every dotfile and every file below a dot-directory, except a top-level `.well-known/` directory (see below)
 - **Dependencies**: every file below a `node_modules` directory
+
+### Well-Known URIs
+
+Files in `src/pages/.well-known/` are published to `dist/.well-known/` and served at `/.well-known/`, the [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615) location for files such as `security.txt`, `assetlinks.json`, and `agent-skills/index.json`:
+
+```text
+src/pages/.well-known/security.txt   ->  https://example.com/.well-known/security.txt
+```
+
+This is the only dot-directory Bascik publishes, and only directly under `src/pages/`. Dotfiles inside it (`.well-known/.env`) and a `.well-known` folder anywhere else (`src/pages/blog/.well-known/`) are still excluded, and the usual deny-list applies to the files inside it, so `.md`, `.ts`, and `.html` files there are not copied. With a non-root `base` such as `/docs/`, the directory is served at `/docs/.well-known/`. The dev server, `bascik --server`, and the Cloudflare adapter all serve it. Files without an extension (for example `apple-app-site-association`) are served as pages, not assets, so give them an extension or serve them from an [API route](/api-routes).
 
 Treat `directory.pages` as the publish tree. Colocate assets with a page or organize shared files under folders such as `src/pages/assets/`, `src/pages/images/`, and `src/pages/fonts/`. Keep tests and source-only helpers outside that tree. Use `assets.exclude` for project-specific exclusions; its globs match relative to `directory.pages`, and the built-in exclusions always apply.
 

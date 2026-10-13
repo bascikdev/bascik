@@ -17,6 +17,7 @@ const mime: Record<string, string> = {
   '.js': 'application/javascript',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain',
+  '.json': 'application/json',
 };
 
 createServer((req, res) => {
@@ -26,12 +27,6 @@ createServer((req, res) => {
     url = decodeURIComponent(rawUrl);
   } catch { }
 
-  // Deny dotfiles and dot-directories (e.g. /.env, /.bascik/manifest.json)
-  if (url.split('/').some((segment) => segment.startsWith('.'))) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    return res.end('404 Not Found');
-  }
-
   if (base !== '/') {
     const prefix = base.replace(/\/$/, '');
     if (url === prefix || url === base) url = '/';
@@ -40,6 +35,14 @@ createServer((req, res) => {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       return res.end('404 Not Found');
     }
+  }
+
+  // Like a real static host: deny dotfiles and dot-directories (e.g. /.env,
+  // /.bascik/manifest.json, `..`) but serve a leading RFC 8615 /.well-known/.
+  const segments = url.split('/').filter(Boolean);
+  if (segments.some((segment, index) => segment.startsWith('.') && !(index === 0 && segment === '.well-known'))) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('404 Not Found');
   }
   let target = resolve(distDir, `.${url === '/' ? '/index.html' : url}`);
   if (url.endsWith('/') && url !== '/') target = join(target, 'index.html');

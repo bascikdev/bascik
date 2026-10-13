@@ -69,6 +69,9 @@ export const createServerlessFixture = async (name: string, options: { base?: st
     "src/pages/index.html",
     `<!DOCTYPE html><html><head><title>Static</title></head><body><h1 data-testid="static-heading">Static home</h1></body></html>`,
   );
+  // RFC 8615: a leading .well-known directory is the one public dot-directory.
+  await write(root, "src/pages/.well-known/security.txt", "Contact: mailto:security@example.com\n");
+  await write(root, "src/pages/.well-known/.private/secret.txt", "well-known private marker\n");
   await write(
     root, // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
     "src/pages/account.html",

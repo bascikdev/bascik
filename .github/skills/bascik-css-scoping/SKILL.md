@@ -1,5 +1,7 @@
 ---
 name: bascik-css-scoping
+metadata:
+  internal: true
 description: Build-time CSS scoping, AST transformations, and PostCSS plugins in Bascik. Use when modifying CSS scoping logic, handling nesting, keyframes, container queries, custom properties, or specificity isolation.
 ---
 

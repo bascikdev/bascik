@@ -25,8 +25,8 @@ npm create bascik@latest
 
 ```text
 my-site/
-├── .github/skills/bascik/SKILL.md  ← AI Copilot skill file
-├── .claude/skills/bascik/SKILL.md  ← Claude skill file
+├── .agents/skills/                 ← Bascik agent skills for Copilot, Cursor, Codex, and others
+├── .claude/skills/                 ← The same skills for Claude Code
 ├── .vscode/
 │   ├── launch.json                 ← Debug launchers for dev server and tests
 │   └── extensions.json             ← Recommends official Bascik extension

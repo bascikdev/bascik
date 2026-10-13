@@ -91,7 +91,7 @@ lines.push('> Bascik is a build tool for HTML components. It scopes and assemble
 lines.push('');
 lines.push('Bascik resolves custom HTML tags to component source HTML, scopes CSS and JavaScript, rewrites DOM selectors, and outputs plain static HTML pages with zero framework runtime.');
 lines.push('');
-lines.push('For the complete, centralized developer reference and AI assistant instructions, see [SKILL.md](https://bascik.dev/assets/SKILL.md).');
+lines.push('AI assistants: install the Bascik agent skills with `npx skills add bascikdev/bascik` (or `curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills`). The core skill is also at [SKILL.md](https://bascik.dev/assets/SKILL.md).');
 lines.push('');
 
 for (const { section, pages } of NAV) {
@@ -112,7 +112,9 @@ for (const { section, pages } of NAV) {
 
 lines.push('## Optional');
 lines.push('');
-lines.push('- [Complete Skill File](https://bascik.dev/assets/SKILL.md): Complete centralized developer reference and skill guide for LLMs and AI assistants');
+lines.push('- [Agent Skills](https://bascik.dev/tools/agent-skill): Install the Bascik agent skills (core, scoping, scripts, config, testing, migration) with their helper scripts');
+lines.push('- [Core Skill File](https://bascik.dev/assets/SKILL.md): The core Bascik agent skill as a single SKILL.md');
+lines.push('- [All Skills Archive](https://bascik.dev/assets/skills.tar.gz): Every Bascik agent skill with references and scripts, as a tar.gz');
 lines.push('');
 
 const output = lines.join('\n');

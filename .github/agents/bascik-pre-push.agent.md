@@ -1,6 +1,6 @@
 ---
 name: Bascik Pre-push Auditor
-description: "Pre-push verification specialist for Bascik. Use to run and report on pre-push checklists: spelling, webhint standards, typechecks, token-efficient granular test execution, coverage syncing, and SKILL.md propagation."
+description: "Pre-push verification specialist for Bascik. Use to run and report on pre-push checklists: spelling, webhint standards, typechecks, token-efficient granular test execution, coverage syncing, and agent skill (skills/) propagation."
 model: ['OpenAI: GPT-5.6 Sol (openrouter)', 'Anthropic: Claude Sonnet 5 (openrouter)', 'DeepSeek: DeepSeek V4 Flash 0731 (openrouter)', 'Meta: Muse Spark 1.3 (openrouter)', 'Anthropic: Claude Sonnet 4.6 (openrouter)','Google: Gemini 3.8 Flash (openrouter)' ]
 user-invocable: true
 argument-hint: "Run pre-push verification audit for this branch..."
@@ -32,7 +32,7 @@ You are a pre-push auditing specialist for **Bascik**. Your responsibility is au
    - Lighthouse audit: `yarn docs:lighthouse`
 5. **Coverage & Skills Sync**:
    - `yarn coverage:all`
-   - Verify if `docs/content/` changed and update `docs/src/pages/assets/SKILL.md` accordingly.
+   - Verify if `docs/content/` or `pkg/src/` changed user-facing behavior and update the matching skill in `skills/` accordingly.
    - Run `yarn create:prepack`.
 
 ## Constraints

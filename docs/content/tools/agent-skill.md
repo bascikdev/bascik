@@ -1,66 +1,107 @@
-# Agent Skill
+# Agent Skills
 
-Download the Bascik skill file and attach it to GitHub Copilot, Cursor, Claude, or any AI assistant that supports instruction files, so it understands Bascik's component model, scoping rules, and conventions out of the box.
+Install the Bascik agent skills so GitHub Copilot, Claude Code, Cursor, Codex, or any assistant that supports Agent Skills knows how to build with Bascik, and can run scripts that check its own work.
 
-The Bascik skill file (`SKILL.md`) teaches any AI assistant, GitHub Copilot, Cursor, Claude, or others that support instruction files, the full details of how Bascik works: its component model, scoping system, config options, CLI, and conventions.
+Most Bascik sites are now written with an AI assistant, so the assistant has to understand Bascik as well as you do. The Bascik skills follow the open [Agent Skills](https://agentskills.io) format. Each one covers one area, loads only when a task needs it, and ships Node.js scripts the assistant runs to compile a preview, inventory components, lint, audit config, and look up the live docs.
 
-Add it once, and your AI assistant can accurately answer questions about Bascik, generate correct components, and help debug scoping issues without needing to look anything up.
+## Install
 
-## Download and Install
+Run one of these from the root of your project.
 
-Run the following from the root of your repo in your terminal. This will create the `skills/bascik` directory and download and install the Bascik `SKILL.md` file.
-
-### Add the Skill to VSCode
+### With the skills CLI
 
 ```sh
-mkdir -p .github/skills/bascik && curl -L -o .github/skills/bascik/SKILL.md https://bascik.dev/assets/SKILL.md
-
+npx skills add bascikdev/bascik
 ```
 
-### Add the Skill to Cursor
+The [skills CLI](https://skills.sh) detects the assistants you use and installs the skills where each one looks for them. Add `--skill bascik` to install only the core skill, or `--skill '*' -y` to install all of them without prompts.
+
+You can also install from this site instead of GitHub. Every release of the docs publishes an [RFC 8615](https://www.rfc-editor.org/rfc/rfc8615) skills index at `https://bascik.dev/.well-known/agent-skills/index.json`, and the skills CLI reads it:
 
 ```sh
-mkdir -p .cursor/skills/bascik && curl -L -o .cursor/skills/bascik/SKILL.md https://bascik.dev/assets/SKILL.md
+npx skills add https://bascik.dev
 ```
 
-### Add the Skill to Claude
+### With curl
+
+Download every skill into the shared `.agents/skills/` folder, which GitHub Copilot, Cursor, Codex, Gemini CLI, and OpenCode read:
 
 ```sh
-mkdir -p .claude/skills/bascik && curl -L -o .claude/skills/bascik/SKILL.md https://bascik.dev/assets/SKILL.md
+mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills
 ```
 
-### Download Only
+Claude Code reads `.claude/skills/` instead:
 
-Download the Bascik [SKILL.md](https://bascik.dev/assets/SKILL.md) directly.
+```sh
+mkdir -p .claude/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .claude/skills
+```
 
-## Keeping the Skill Updated
+VS Code also reads `.github/skills/`, so you can extract into that folder if your repository keeps its Copilot customizations there.
 
-An easy way to keep the skill file current is to simply instruct your AI assistant or agent to update itself from time to time.
+On Windows, `curl.exe` and `tar` ship with Windows 10 and later. Download the archive to a file first, because older PowerShell versions do not pipe binary data:
 
-Since the skill file is hosted at a stable static URL (`https://bascik.dev/assets/SKILL.md`), you can add a brief instruction to your agent's system prompt or workspace instructions (such as a `.prompt.md`, `.instructions.md`, or your assistant's rules) telling it to keep the file updated.
+```sh
+mkdir .agents\skills -Force
+curl.exe -fsSLo skills.tar.gz https://bascik.dev/assets/skills.tar.gz
+tar -xzf skills.tar.gz -C .agents/skills
+del skills.tar.gz
+```
 
-### Recommended Prompt for Your Agent
+### New projects
 
-Add an instruction like the following to your agent configuration files:
+Projects created with `npm create bascik@latest` include every skill in `.agents/skills/` and `.claude/skills/`, so there is nothing to install.
 
-> When working in this repository, check if the Bascik skill file (`SKILL.md`) is present and up to date. If you need to update it, run the following download command to fetch the latest version of the guidelines:
-> 
-> ```sh
-> curl -L -o .github/skills/bascik/SKILL.md https://bascik.dev/assets/SKILL.md
-> ```
+### Single file
 
-This ensures your AI assistant always operates with the most up-to-date syntax, conventions, and compatibility guidelines with zero manual effort required from you.
+The core skill is also available on its own at [https://bascik.dev/assets/SKILL.md](https://bascik.dev/assets/SKILL.md), for tools that accept one instruction file. It tells the assistant how to install the rest when the companion skills or scripts are missing.
 
-## What's inside
+## The Skills
 
-The skill covers:
+| Skill | The assistant loads it when |
+|---|---|
+| `bascik` | Working in any Bascik project: layout, components, slots, props, the CLI, and checking output. Start here |
+| `bascik-scoping` | Writing component CSS or `<script>` code, or compiled class and ID names look wrong |
+| `bascik-scripts` | Using build, routes, server, or stream scripts, Markdown, or API routes |
+| `bascik-config` | Creating or editing `bascik.config.ts`, adding exec scripts, or deploying |
+| `bascik-testing` | Writing unit or E2E tests, debugging, validating `dist/`, or tuning Lighthouse scores |
+| `bascik-migrate` | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress |
 
-- Component authoring, slots, and props
-- Scoped CSS and scoped JavaScript rules and constraints
-- Build scripts (`data-bascik-build`)
-- Configuration options (`bascik.config.ts`)
-- CLI commands and workflow
-- The scoping compatibility table
-- Folder structure and naming conventions
+Each skill keeps its main instructions short and puts detail in a `references/` folder the assistant reads only when it needs it. The skills put the rules that matter most up front: target per-instance elements with `id` and `getElementById`, keep props to text and use slots for markup, do not create a config file without a reason, and never write generated files into `src/`.
 
-> **Keeping it current.** `SKILL.md` is regenerated from the same Markdown source files that power this docs site. When the docs update, so does the skill file.
+## Scripts the Assistant Runs
+
+The skills include dependency-free Node.js scripts (Node 22.18 or newer). The assistant runs them from the project root, and they use the project's own installed Bascik.
+
+| Script | What it does |
+|---|---|
+| `bascik/scripts/verify.mjs` | Runs `bascik --check` and the [linter](/tools/linter), and with `--build` a production build, then reports each step |
+| `bascik/scripts/preview.mjs` | Compiles a snippet or an existing page with your components and config in a scratch directory, and prints readable output |
+| `bascik/scripts/list-components.mjs` | Lists every component with its props, slots, companion files, and `@bascik` description |
+| `bascik/scripts/new-component.mjs` | Creates a component folder that follows the naming and ordering rules |
+| `bascik/scripts/search-docs.mjs` | Searches this documentation site |
+| `bascik/scripts/read-doc.mjs` | Prints a docs page as text, such as `/scoped-javascript` |
+| `bascik-config/scripts/audit-config.mjs` | Flags config values that restate defaults, `siteUrl` in config, missing exec scripts, and watched output paths |
+
+For example, after writing a component the assistant can confirm that two instances get separate IDs:
+
+```sh
+node .agents/skills/bascik/scripts/preview.mjs '<like-button data-bascik-prop-label="Like" />' --count 2 --body
+```
+
+Only `new-component.mjs` writes to your project. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
+
+## Keeping the Skills Updated
+
+With the skills CLI, update everything it installed:
+
+```sh
+npx skills update
+```
+
+With curl, run the same install command again; it overwrites the files in place.
+
+You can also ask your assistant to do this. Add an instruction like the following to your repository's agent instructions (such as `AGENTS.md`, `.github/copilot-instructions.md`, or `CLAUDE.md`):
+
+> Before working on Bascik code, make sure the Bascik agent skills are installed and current. Run `npx skills update` if they were installed with the skills CLI. Otherwise run `mkdir -p .agents/skills && curl -fsSL https://bascik.dev/assets/skills.tar.gz | tar -xz -C .agents/skills`.
+
+> **Source.** The skills live in the [`skills/` folder](https://github.com/bascikdev/bascik/tree/main/skills) of the Bascik repository and are published with each docs release. Tests keep the skills' defaults, scripts, and links in step with the compiler.

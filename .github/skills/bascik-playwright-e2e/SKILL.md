@@ -1,5 +1,7 @@
 ---
 name: bascik-playwright-e2e
+metadata:
+  internal: true
 description: Multi-environment End-to-End (E2E) testing patterns for Bascik across static build, dev server, HTTP/1.1, and HTTP/2 production servers. Use when authoring or debugging E2E tests, verifying live-reload, or testing minified production builds.
 ---
 

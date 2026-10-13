@@ -1,5 +1,7 @@
 ---
 name: bascik-lighthouse-performance
+metadata:
+  internal: true
 description: Auditing, configuration, and performance tuning with Lighthouse CI (LHCI) in Bascik. Use when configuring lighthouserc.json, auditing Core Web Vitals, diagnosing LCP/CLS shifts, or ensuring 100/100 performance budgets.
 ---
 

@@ -1,45 +1,72 @@
 <figure class="shift">
-  <figcaption class="shift-caption">Then a library, now the platform</figcaption>
-  <ul class="shift-list">
+  <figcaption class="shift-caption">
+    <span class="shift-kicker">Twenty years of workarounds</span>
+    <span class="shift-title">Every wave bolted something onto the web. The browser absorbed most of it.</span>
+  </figcaption>
+  <div class="shift-heads">
+    <span>What we reached for</span>
+    <span>Built into the browser now</span>
+  </div>
+  <ol class="shift-list">
     <li class="shift-row">
       <div class="shift-then">
-        <span class="shift-tool">jQuery</span>
-        <span class="shift-gap">Inconsistent DOM APIs</span>
+        <span class="shift-era">2006 · Patch the browser</span>
+        <span class="shift-tool">jQuery, Lodash, Bootstrap</span>
+        <span class="shift-syntax">$('.nav').hide()</span>
       </div>
       <span class="shift-arrow" aria-hidden="true">→</span>
       <div class="shift-now">
         <code>querySelectorAll</code> <code>classList</code> <code>fetch</code>
+        <code>Array.map</code> <code>?.</code> <code>&lt;dialog&gt;</code>
       </div>
     </li>
     <li class="shift-row">
       <div class="shift-then">
-        <span class="shift-tool">Lodash, Underscore</span>
-        <span class="shift-gap">Missing array and object utilities</span>
+        <span class="shift-era">2008 · Template the HTML</span>
+        <span class="shift-tool">Jinja, Liquid, Handlebars</span>
+        <span class="shift-syntax">{{&gt; nav }}</span>
       </div>
       <span class="shift-arrow" aria-hidden="true">→</span>
       <div class="shift-now">
-        <code>Array.map</code> <code>Object.assign</code> <code>?.</code>
+        <code>&lt;template&gt;</code> <code>`template literals`</code>
       </div>
     </li>
     <li class="shift-row">
       <div class="shift-then">
-        <span class="shift-tool">Tailwind</span>
-        <span class="shift-gap">Organizing CSS at scale</span>
+        <span class="shift-era">2013 · Render it in JavaScript</span>
+        <span class="shift-tool">React, Angular, Vue</span>
+        <span class="shift-syntax">&lt;Nav items={items} /&gt;</span>
       </div>
       <span class="shift-arrow" aria-hidden="true">→</span>
       <div class="shift-now">
-        <code>@layer</code> <code>@container</code> <code>:has()</code> <code>var()</code>
+        <code>customElements</code> <code>import</code> <code>popover</code>
+      </div>
+    </li>
+    <li class="shift-row">
+      <div class="shift-then">
+        <span class="shift-era">2017 · Rethink CSS</span>
+        <span class="shift-tool">Tailwind, Sass, CSS-in-JS</span>
+        <span class="shift-syntax">class="flex p-4 md:p-8"</span>
+      </div>
+      <span class="shift-arrow" aria-hidden="true">→</span>
+      <div class="shift-now">
+        <code>var()</code> <code>&amp; nesting</code> <code>@layer</code>
+        <code>@container</code> <code>:has()</code> <code>@scope</code>
       </div>
     </li>
     <li class="shift-row shift-row-open">
       <div class="shift-then">
-        <span class="shift-tool">Unsolved until now</span>
-        <span class="shift-gap">Reusable HTML components without a runtime</span>
+        <span class="shift-era">Still missing</span>
+        <span class="shift-tool">A vanilla HTML file as the component</span>
+        <span class="shift-syntax">site-nav.html → &lt;site-nav /&gt;</span>
       </div>
       <span class="shift-arrow" aria-hidden="true">→</span>
-      <div class="shift-now">
+      <div class="shift-now shift-now-open">
         <span class="shift-answer">Bascik</span>
+        <span class="shift-answer-detail">Standard HTML, CSS, and JavaScript in. Standard HTML, CSS, and JavaScript out.
+          No new syntax, no runtime.</span>
       </div>
     </li>
-  </ul>
+  </ol>
+  <p class="shift-footnote">Each wave taught its own syntax. None of them let vanilla HTML be the component.</p>
 </figure>

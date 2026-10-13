@@ -19,8 +19,8 @@ my-project/
   .gitignore
   .vscode/
     launch.json
-  .github/skills/bascik/SKILL.md
-  .claude/skills/bascik/SKILL.md
+  .agents/skills/        Bascik agent skills (bascik, bascik-scoping, ...) with scripts
+  .claude/skills/        the same skills for Claude Code
   e2e/
     playwright.config.ts
     app.spec.ts

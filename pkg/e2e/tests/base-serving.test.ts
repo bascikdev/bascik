@@ -22,6 +22,13 @@ test('serves a subdirectory deployment consistently', async ({ page, request }, 
 
   expect((await request.get('/sub/image.svg')).status()).toBe(200);
 
+  // Under a base, the site root is the base, so /.well-known/ lives below it.
+  const wellKnown = await request.get('/sub/.well-known/security.txt');
+  expect(wellKnown.status()).toBe(200);
+  expect(await wellKnown.text()).toContain('Contact: mailto:base@example.com');
+  expect((await request.get('/.well-known/security.txt')).status()).toBe(404);
+  expect((await request.get('/sub/.env')).status()).toBe(404);
+
   if (testInfo.project.name === 'base-static') {
     const sitemap = await (await request.get('/sub/sitemap.xml')).text();
     expect(sitemap).toContain('http://localhost:9550/sub/nested/');

@@ -1,5 +1,6 @@
 import { matchesGlob, relative } from "node:path";
 import { BascikConfig } from "./config.ts";
+import { hasHiddenSegment } from "./route-matching.ts";
 
 const STATIC_ASSET_DENIED_EXTENSIONS = new Set([
   ".html",
@@ -39,8 +40,10 @@ export const isStaticAssetPath = (
   const relativePath = relative(sourceRoot, filePath).replace(/\\/g, "/");
   if (relativePath === ".." || relativePath.startsWith("../")) return false;
 
+  // Dotfiles and dot-directories never publish, except a top-level RFC 8615
+  // `.well-known/` directory, which is copied to `<out>/.well-known/`.
   const segments = relativePath.split("/").filter(Boolean);
-  if (segments.some((segment) => segment.startsWith(".") || segment === "node_modules")) {
+  if (hasHiddenSegment(relativePath) || segments.includes("node_modules")) {
     return false;
   }
   if (!/\.[a-zA-Z0-9]+$/.test(relativePath)) return false;

@@ -4,10 +4,14 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
+import { DISCOVERY_SCHEMA, collectSkillFiles, listSkillNames, readTar } from '../scripts/skill-bundle.ts';
 
 const docsDir = fileURLToPath(new URL('..', import.meta.url));
 const pkgIndex = join(docsDir, '../pkg/dist/index.js');
-const authored = join(docsDir, 'src/pages/assets/SKILL.md');
+const skillsDir = join(docsDir, '../skills');
+const authored = join(skillsDir, 'bascik/SKILL.md');
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -45,6 +49,40 @@ test.describe('Agent skill download', () => {
     expect(Buffer.from(await response.body()).equals(source)).toBe(true);
     for (const path of ['/content/getting-started.md', '/getting-started.md', '/assets/../content/getting-started.md']) {
       expect((await request.get(path, { maxRedirects: 0 })).status()).not.toBe(200);
+    }
+  });
+
+  test('production server delivers /assets/skills.tar.gz with every skill file byte for byte', async ({ request }) => {
+    const response = await request.get('/assets/skills.tar.gz');
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('gzip');
+    // `curl ... | tar -xz` needs the gzip bytes themselves, never a transfer-decoded body.
+    expect(response.headers()['content-encoding'] ?? 'identity').toBe('identity');
+    const files = readTar(gunzipSync(await response.body()));
+    const sources = await collectSkillFiles(skillsDir);
+    expect([...files.keys()]).toEqual(sources.map(file => file.path));
+    for (const source of sources) expect(files.get(source.path)?.equals(source.data), source.path).toBe(true);
+  });
+
+  test('production server publishes /.well-known/agent-skills/ for `npx skills add https://bascik.dev`', async ({ request }) => {
+    const indexResponse = await request.get('/.well-known/agent-skills/index.json');
+    expect(indexResponse.status()).toBe(200);
+    expect(indexResponse.headers()['content-type']).toContain('application/json');
+    const index = await indexResponse.json();
+    expect(index.$schema).toBe(DISCOVERY_SCHEMA);
+    expect(index.skills.map((skill: { name: string }) => skill.name)).toEqual(await listSkillNames(skillsDir));
+    for (const entry of index.skills) {
+      // Resolve the way the skills CLI does: relative to the index URL.
+      const artifact = await request.get(new URL(entry.url, 'http://x/.well-known/agent-skills/index.json').pathname);
+      expect(artifact.status(), entry.url).toBe(200);
+      expect(artifact.headers()['content-encoding'] ?? 'identity').toBe('identity');
+      const bytes = await artifact.body();
+      expect(entry.digest).toBe(`sha256:${createHash('sha256').update(bytes).digest('hex')}`);
+      const skillMd = readTar(gunzipSync(bytes)).get('SKILL.md');
+      expect(skillMd?.equals(await readFile(join(skillsDir, entry.name, 'SKILL.md'))), entry.name).toBe(true);
+    }
+    for (const hidden of ['/.bascik/manifest.json', '/.well-known/.env', '/assets/.well-known/agent-skills/index.json']) {
+      expect((await request.get(hidden)).status(), hidden).toBe(404);
     }
   });
 

@@ -7,18 +7,45 @@
 }
 
 .shift-caption {
-  margin: 0 0 14px;
+  display: grid;
+  gap: 6px;
+  margin: 0 0 18px;
+}
+
+.shift-kicker,
+.shift-heads,
+.shift-era {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-/* Two classes, so the reset outranks the docs-wide `.docs-content ul` and `li` rules. */
+.shift-title {
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* Same three columns as each row, so the headings sit over their column. */
+.shift-heads {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) 1.2rem minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 17px 8px;
+}
+
+.shift-heads span:last-child {
+  grid-column: 3;
+}
+
+/* Two classes, so the reset outranks the docs-wide `.docs-content ol` and `li` rules. */
 .shift .shift-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -26,7 +53,7 @@
 
 .shift .shift-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.1fr) 1.2rem minmax(0, 1fr);
   gap: 16px;
   align-items: center;
   margin: 0;
@@ -39,7 +66,8 @@
 
 .shift-then {
   display: grid;
-  gap: 2px;
+  gap: 4px;
+  justify-items: start;
 }
 
 .shift-tool {
@@ -47,14 +75,22 @@
   font-weight: 700;
 }
 
-.shift-gap {
+/* A span, not `<code>`: the default `scoping.preserve: ["code"]` keeps a
+`<code>` element's class unscoped. Muted and dashed, so each wave's own syntax
+reads as the workaround and the green chips read as the platform. */
+.shift-syntax {
+  padding: 1px 6px;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
 }
 
 .shift-arrow {
   color: var(--text-muted);
   font-size: 1.2rem;
+  text-align: center;
 }
 
 .shift-now {
@@ -64,18 +100,44 @@
 }
 
 .shift .shift-row-open {
+  margin-top: 6px;
+  padding: 18px 16px;
   background: var(--accent-dim);
   border-color: var(--accent-border);
 }
 
-.shift-row-open .shift-tool,
+.shift-row-open .shift-era,
 .shift-row-open .shift-arrow,
 .shift-answer {
   color: var(--accent-fg);
 }
 
+.shift-row-open .shift-syntax {
+  color: var(--accent-fg);
+  border-style: solid;
+  border-color: var(--accent-border);
+}
+
+.shift-now-open {
+  display: grid;
+  gap: 4px;
+}
+
 .shift-answer {
-  font-weight: 700;
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.shift-answer-detail {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.shift-footnote {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 @media (max-width: 600px) {
@@ -83,9 +145,13 @@
     padding: 14px;
   }
 
+  .shift-heads {
+    display: none;
+  }
+
   .shift .shift-row {
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+    gap: 10px;
   }
 
   .shift-arrow {

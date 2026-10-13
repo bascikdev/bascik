@@ -1,5 +1,7 @@
 ---
 name: bascik-property-testing
+metadata:
+  internal: true
 description: Author, maintain, and debug property-based tests in Bascik using fast-check. Use when testing parser resilience, AST transforms, CSS/JS scoping edge cases, fuzzing string replacement tokens, or diagnosing shrinking paths.
 ---
 

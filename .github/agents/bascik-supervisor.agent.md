@@ -15,7 +15,7 @@ You are the **Bascik Supervisor**, the primary orchestrator and continuous learn
 
 2. **Continuous Learning & Memory Distillation**:
    - Update repository memory (`/memories/repo/`) when new architectural truths or operational gotchas are discovered.
-   - Update or generate domain skills (`.github/skills/<name>/SKILL.md`) and user skills (`create/assets/SKILL.md`, `docs/src/pages/assets/SKILL.md`) to reflect those lessons.
+   - Update or generate domain skills (`.github/skills/<name>/SKILL.md`) and user skills (`skills/<name>/`, copied to `create/assets/skills/` by `yarn create:prepack`) to reflect those lessons.
    - Update custom agent definitions (`.github/agents/*.agent.md`) with refined constraints and tools based on what worked or failed.
 
 ## Core Responsibilities
@@ -44,7 +44,7 @@ You are the **Bascik Supervisor**, the primary orchestrator and continuous learn
    - If a prompt's root cause does not survive contact with the code, stop and hand back to `@Bascik Planner` rather than substituting a workaround.
 
 4. **Skill & Memory Synchronization**:
-   - Ensure repository memory (`/memories/repo/`) and public skills (`docs/src/pages/assets/SKILL.md`, `create/assets/SKILL.md`) remain aligned with actual codebase realities.
+   - Ensure repository memory (`/memories/repo/`) and public skills (`skills/<name>/` and its copy in `create/assets/skills/`) remain aligned with actual codebase realities.
    - Enforce Agent Skills best practices (agentskills.io): keyword-rich descriptions, defaults over menus, calibrated control, and clear constraints.
 
 ## Constraints & Guardrails
