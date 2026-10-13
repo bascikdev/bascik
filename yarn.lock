@@ -139,7 +139,7 @@ __metadata:
     vite: "npm:^8.3.2"
     vitest: "npm:^5.0.3"
   peerDependencies:
-    "@bascik/bascik": ^1.0.0-rc.6
+    "@bascik/bascik": ^1.0.0-rc.7
   languageName: unknown
   linkType: soft
 
