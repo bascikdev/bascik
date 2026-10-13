@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
 import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { runDirectiveHandler } from "./script-runner.ts";
@@ -326,11 +327,11 @@ export const executeRoutesScript = async (
   // A leading-slash specifier or src= is a hard error regardless of
   // onRoutesScriptError: it is a syntax mistake in the author's HTML, not a
   // runtime failure of their script.
+  // Recorded when the page was read; `html` itself is the page as written when it was not.
+  const position = directiveSourcePosition(html, index, openTag);
   const locate = (): string => {
     if (!filePath) return "";
-    const pfx = html.slice(0, index);
-    const lns = pfx.split(/\r?\n/);
-    return ` (in "${getRelativePath(filePath, "pages")}" at line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
+    return ` (in "${getRelativePath(filePath, "pages")}" at line ${position.tagLine}, column ${position.tagColumn})`;
   };
   const rethrowLeadingSlash = (err: unknown): never => {
     if (err instanceof LeadingSlashSpecifierError) {
@@ -340,6 +341,8 @@ export const executeRoutesScript = async (
   };
 
   let trimmedScript = scriptContent.trim();
+  // The module keeps the script untrimmed, so its lines and columns stay where they are in the file.
+  let moduleSource = scriptContent;
   let moduleFilePath: string | undefined;
   if (!trimmedScript) {
     const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
@@ -357,6 +360,7 @@ export const executeRoutesScript = async (
       moduleFilePath = resolvedPath;
       try {
         trimmedScript = await readFile(resolvedPath, "utf8");
+        moduleSource = trimmedScript;
       } catch (err) {
         console.warn(
           '[bascik] warning: Failed to read routes script src "%s":',
@@ -367,12 +371,6 @@ export const executeRoutesScript = async (
     }
   }
 
-  const prefix = html.slice(0, index);
-  const lines = prefix.split(/\r?\n/);
-  const lineOffset = lines.length;
-  const openTagLines = openTag.split(/\r?\n/).length - 1;
-  const startLine = lineOffset + openTagLines;
-
   const tempDir = join(process.cwd(), "node_modules", ".cache", "bascik");
   await mkdir(tempDir, { recursive: true });
   const tmpPath = join(
@@ -380,7 +378,9 @@ export const executeRoutesScript = async (
     `routes-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
   );
 
-  const sourceUrlComment = filePath ? `\n//# sourceURL=${relPath}` : "";
+  // A `src=` script is its own file, so its errors name that file and its lines.
+  const moduleSourcePath = moduleFilePath ? relative(process.cwd(), moduleFilePath).replace(/\\/g, "/") : relPath;
+  const sourceUrlComment = filePath || moduleFilePath ? `\n//# sourceURL=${moduleSourcePath}` : "";
 
   const siteUrl = getSiteUrl();
   const extraEnv: Record<string, string> = {
@@ -405,7 +405,11 @@ export const executeRoutesScript = async (
       : process.cwd();
   let preparedScript: string;
   try {
-    preparedScript = rewriteModuleSpecifiers(trimmedScript, scriptBaseDir, { importRoot });
+    const rewritten = rewriteModuleSpecifiers(moduleSource, scriptBaseDir, { importRoot });
+    // Without a known file there are no file lines to line up with.
+    preparedScript = moduleFilePath || !filePath
+      ? rewritten
+      : padToSourcePosition(rewritten, position.bodyLine, position.bodyColumn);
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
@@ -418,15 +422,15 @@ export const executeRoutesScript = async (
     if (stderr) process.stderr.write(stderr);
     handlerResult = result;
   } catch (err: any) {
+    // The script's own output, printed once. Its error report is the message below.
     if (err?.stdout) process.stdout.write(err.stdout);
     if (err?.stderr) process.stderr.write(err.stderr);
     const msg = err instanceof Error ? err.message : String(err);
-    const cleanedMsg = cleanStackTrace(msg, tmpPath, relPath, startLine);
+    // The module is padded to the file's own lines, so only the temp path needs renaming.
+    const cleanedMsg = cleanStackTrace(msg, tmpPath, moduleSourcePath, 1);
     let errorMsg = `[bascik] routes script error`;
     if (filePath) {
-      const pfx = html.slice(0, index);
-      const lns = pfx.split(/\r?\n/);
-      errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${lns.length}, column ${lns[lns.length - 1].length + 1})`;
+      errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${position.tagLine}, column ${position.tagColumn})`;
     }
     const behavior = BascikConfig.scripts?.onRoutesScriptError ?? "error";
     if (behavior === "error") {

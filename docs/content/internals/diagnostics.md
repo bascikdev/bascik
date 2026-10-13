@@ -159,51 +159,22 @@ In dev mode the same page records are logged, but they do not reject the batch. 
 
 During build and server execution, Bascik extracts `<script data-bascik-build>` and `<script data-bascik-server>` blocks into ephemeral temporary files before executing them with Node.js.
 
-When a script throws an unhandled exception, Node.js formats the stack trace using the temporary file path and a 1-based line number relative to the temporary file's start:
+Each script is a module of its own, so V8 numbers its lines from 1. Bascik makes those numbers the file's own in three steps:
 
-```text
-Error: Failed to fetch API data
-    at file:///tmp/bascik-script-a1b2c3.mjs:4:11
-```
+1. **Record the position when the file is read** (`directive-source.ts`). `stampDirectiveSources` adds `data-bascik-source-file`, `data-bascik-source-line`, `data-bascik-source-column` (where the body starts), and `data-bascik-source-tag` (where the opening tag starts) to every directive script in a page or component as soon as it is read from disk. Later steps move scripts: a component's `<style>` blocks are extracted, a dynamic route's routes script is removed, components are expanded into the page, and the HTML may be minified. The attributes add no newlines, and they never reach the output: build and routes scripts are replaced, and server scripts are extracted to the sidecar (which keeps `sourceLine` and `sourceColumn`).
+2. **Line the module up with that position.** For build and routes scripts, `padToSourcePosition` puts the untrimmed body at its recorded line and column, and the module ends in `//# sourceURL=<file>`, so V8 reports the file's lines and columns directly. Inline server and stream scripts are not padded: their module text is their identity in the in-process script registry, and the same script used on several pages at different positions must stay one module with shared state. Their errors are mapped instead: `trimmedStartPosition` finds where the trimmed module's first character is in the file, and `cleanStackTrace` adds that line offset, plus a column offset on the module's first line. A `src=` script is its own file and needs neither.
+3. **Clean the report** (`stack-trace.ts`). `cleanStackTrace` renames the temp module path (which appears in syntax-error headers) to the source file, and removes Node.js internal frames, Node's version trailer, Bascik's own frames (`lib/`), and builtin frames left after the user's last frame.
 
-### The `cleanStackTrace` Utility
-
-`cleanStackTrace` intercepts raw trace strings and converts ephemeral file references back to the source HTML document:
-
-```ts
-export const cleanStackTrace = (
-  rawTrace: string,
-  tmpPath: string,
-  realPath: string,
-  lineOffset: number,
-): string => {
-  if (!rawTrace) return rawTrace;
-
-  const escapedTmpPath = tmpPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  let fileUri = tmpPath;
-  try {
-    fileUri = pathToFileURL(tmpPath).href;
-  } catch {}
-  const escapedFileUri = fileUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  const regex = new RegExp(`(?:${escapedFileUri}|${escapedTmpPath}):(\\d+)`, "g");
-
-  return rawTrace.replace(regex, (match, lineStr) => {
-    const lineNum = parseInt(lineStr, 10);
-    const mappedLine = lineOffset + lineNum - 1;
-    return `${realPath}:${mappedLine}`;
-  });
-};
-```
+A caught `SyntaxError` from `import()` carries no location, so the build-script runner re-throws it at the module's top level, where Node prints the file, the line, and a caret. The runner removes its own `runner.mjs` frames and returns one message carrying the whole report, which the caller prints once. Server scripts run in-process: the script registry returns failures without logging them, `runServerScriptJob` reports them according to `onServerScriptError`, and a `ServerScriptError` is printed by its message alone, so Bascik's request-handling stack never follows it.
 
 ### Terminal Link Integration
 
-With `cleanStackTrace` applied, error output in the terminal references actual workspace files:
+The resulting output references actual workspace files:
 
 ```text
-Error: Failed to fetch API data
-    at src/pages/dashboard.html:28
+[bascik] build script error in "components/team-card/team-card.html" at (line 7, column 1):
+Error: Could not load the team list
+    at Module.default (src/components/team-card/team-card.html:9:11)
 ```
 
 Developers can click or Cmd+Click the path in VS Code or supported terminals to jump straight to the exact line in their source HTML file.

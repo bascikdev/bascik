@@ -24,6 +24,8 @@ import { resolve, relative, dirname } from "node:path";
 import { readFile } from "node:fs/promises";
 import { BascikConfig } from "./config.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
+import { directiveSourceColumn, directiveSourcePosition, trimmedStartPosition } from "./directive-source.ts";
+import { ServerScriptError } from "./build-error.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
 import { scriptRegistry, resolveModuleIdentity, type ScriptExecutionResult } from "./script-registry.ts";
 import { stripAnsiEscapeCodes } from "./script-runner.ts";
@@ -121,7 +123,9 @@ interface ScriptJob {
   placeholderId?: string;
   srcPath?: string;
   sourceFile?: string;
+  /** The line and column the script's body starts at in `sourceFile`, recorded when the file was read. */
   sourceLine?: number;
+  sourceColumn?: number;
 }
 
 const inlineDependencies = new WeakMap<ScriptJob, { source: string; keys: string[] }>();
@@ -204,6 +208,7 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
     if (annotatedSourceFile) sourceFile = decodeURIComponent(annotatedSourceFile);
     const annotatedSourceLine = getHtmlAttributeValue(fullTag, "data-bascik-source-line");
     if (annotatedSourceLine) sourceLine = Number.parseInt(annotatedSourceLine, 10);
+    let sourceColumn = directiveSourceColumn(openTag);
 
     if (placeholderValue) {
       placeholderId = placeholderValue;
@@ -227,13 +232,18 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
       scriptContent = entry.source;
       sourceFile = entry.sourceFile;
       sourceLine = entry.sourceLine;
+      sourceColumn = entry.sourceColumn;
       if (entry.modulePath && !srcPath) srcPath = entry.modulePath;
     }
 
-    const prefix = html.slice(0, index);
-    const lineOffset = prefix.split(/\r?\n/).length;
-    const openTagLines = openTag.split(/\r?\n/).length - 1;
-    const startLine = lineOffset + openTagLines;
+    // Recorded when the file was read. Without a record (a script supplied in
+    // HTML that was never transformed), it is measured in `html` itself.
+    const measured = directiveSourcePosition(html, index, openTag);
+    const startLine = measured.bodyLine;
+    if (sourceLine === undefined) {
+      sourceLine = measured.bodyLine;
+      sourceColumn ??= measured.bodyColumn;
+    }
 
     if (index > cursor) {
       segments.push({ kind: "static", bytes: Buffer.from(html.slice(cursor, index), "utf8") });
@@ -251,7 +261,7 @@ export const planServerScripts = (html: string, filePath?: string): ServerScript
     segments.push({
       kind: "script",
       mode,
-      job: { fullTag, scriptContent, openTag, index, length, startLine, mode, placeholderId, srcPath, sourceFile, sourceLine },
+      job: { fullTag, scriptContent, openTag, index, length, startLine, mode, placeholderId, srcPath, sourceFile, sourceLine, sourceColumn },
     });
     cursor = index + length;
   }
@@ -326,17 +336,22 @@ export const runServerScriptJob = async (
   } catch (err) {
     return rethrowLeadingSlash(err);
   }
-  const trimmedCode = rewrittenCode.trim();
-  const authoredLeadingLines = (rewrittenCode.slice(0, rewrittenCode.indexOf(trimmedCode)).match(/\n/g) ?? []).length;
-  const lineOffset = job.sourceLine === undefined || moduleFilePath
-    ? job.startLine
-    : job.sourceLine + authoredLeadingLines;
+  // Inline modules are NOT padded: the module text is the module's identity, and the same
+  // script on two pages (at different positions) must stay one module with shared state.
+  // Lines and columns are mapped when an error is reported instead.
   const dataUri = `data:text/javascript;charset=utf-8,${encodeURIComponent(rewrittenCode)}`;
   const specifier = moduleFilePath ?? dataUri + inlineGenerationSuffix(job, rewrittenCode);
 
-  const originalSourcePath = containingFile
-    ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
-    : new URL(request.url).pathname;
+  // A `src=` module is its own file; V8 already names it and its lines.
+  const originalSourcePath = moduleFilePath
+    ? relative(process.cwd(), moduleFilePath).replace(/\\/g, "/")
+    : containingFile
+      ? relative(process.cwd(), containingFile).replace(/\\/g, "/")
+      : new URL(request.url).pathname;
+  // Where the trimmed module's first character is in the file.
+  const { line: lineOffset, columnOffset } = moduleFilePath
+    ? { line: 1, columnOffset: 0 }
+    : trimmedStartPosition(job.scriptContent, job.sourceLine ?? job.startLine, job.sourceColumn ?? 1);
 
   const result: ScriptExecutionResult<unknown> = await scriptRegistry.invoke(
     specifier,
@@ -362,10 +377,10 @@ export const runServerScriptJob = async (
   if (result.isNetworkReset) return "";
 
   const rawTrace = err.stack || err.message;
-  const cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset);
+  const cleanedMsg = cleanStackTrace(rawTrace, specifier, originalSourcePath, lineOffset, columnOffset);
   const requestPath = new URL(request.url).pathname;
   const errorMsg = `[bascik] server script error at "${requestPath}":\n${cleanedMsg}`;
-  if (behavior === "error") throw new Error(errorMsg);
+  if (behavior === "error") throw new ServerScriptError(errorMsg);
   if (behavior === "warn") console.warn(errorMsg);
   return "";
 };

@@ -36,6 +36,18 @@ export class BuildScriptError extends Error {
   }
 }
 
+/**
+ * A `data-bascik-server` or `data-bascik-stream` script that failed. The message
+ * is the complete report: the header and the user's cleaned stack. Whoever logs
+ * it prints the message, not `stack`, which would add Bascik's own frames.
+ */
+export class ServerScriptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServerScriptError";
+  }
+}
+
 /** The location shape the browser overlay reads. */
 export interface LocatedFailure {
   file: string;

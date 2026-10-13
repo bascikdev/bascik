@@ -105,7 +105,7 @@ describe("minifyHtml – script hoisting (documents build-script ordering requir
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("listComponents – build script execution order", () => {
-  it("calls executeBuildScripts with the raw file content for each component", async () => {
+  it("calls executeBuildScripts with the raw file content, each directive script stamped with its source position", async () => {
     const rawHtml =
       '<aside class="sidebar"><script data-bascik-build>gen()</script></aside>';
     mockDeepReadDirFlat.mockResolvedValue(["src/components/my-sidebar.html"]);
@@ -113,8 +113,10 @@ describe("listComponents – build script execution order", () => {
 
     await listComponents();
 
+    // Recorded before anything moves the script: the tag starts at column 24, its body at 50.
     expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
-      rawHtml,
+      '<aside class="sidebar"><script data-bascik-build data-bascik-source-file="src%2Fcomponents%2Fmy-sidebar.html" ' +
+        'data-bascik-source-line="1" data-bascik-source-column="50" data-bascik-source-tag="1:24">gen()</script></aside>',
       "src/components/my-sidebar.html",
     );
   });
@@ -551,7 +553,7 @@ describe("listComponents – page-aware component build script deferral", () => 
     const result = await listComponents();
 
     expect(mockExecuteBuildScripts).toHaveBeenCalledWith(
-      rawHtml,
+      expect.stringContaining("<div><script data-bascik-build data-bascik-source-file="),
       "src/components/static-comp.html",
     );
     expect(result["static-comp"].fileContent).toContain("<span>static</span>");
@@ -602,7 +604,7 @@ describe("listComponents – page-aware component build script deferral", () => 
     mockDeepReadDirFlat.mockResolvedValue(["src/components/mixed-comp.html"]);
     mockReadFile.mockResolvedValue(Buffer.from(rawHtml));
     mockExecuteBuildScripts.mockImplementation(async (html: string) =>
-      html.replace("<script data-bascik-build>staticPart()</script>", "<p>Static</p>"),
+      html.replace(/<script data-bascik-build [^>]*>staticPart\(\)<\/script>/, () => "<p>Static</p>"),
     );
 
     const result = await listComponents();

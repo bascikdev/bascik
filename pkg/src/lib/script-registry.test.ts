@@ -18,6 +18,7 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import { realpathSync } from "node:fs";
 import { assertRegistryReleased } from "./module-retention.test-helper.ts";
+import { cleanStackTrace } from "./stack-trace.ts";
 import {
   ScriptRegistry,
   scriptRegistry,
@@ -188,7 +189,7 @@ describe("ScriptRegistry", () => {
   });
 
   // 7. The real error is logged with the module identity and a cleaned stack.
-  it("logs errors to stderr with module identity and cleaned stack trace", async () => {
+  it("returns a failure without logging it, so the caller reports it once per onServerScriptError", async () => {
     const filePath = join(tempDir, "logged-error.mjs");
     await writeFile(
       filePath,
@@ -198,18 +199,19 @@ describe("ScriptRegistry", () => {
       }`
     );
 
-    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
 
     const registry = new ScriptRegistry({ isDev: false });
     const result = await registry.invoke(filePath, [], { originalSourcePath: "src/pages/index.html", lineOffset: 12 });
 
     expect(result.ok).toBe(false);
-    expect(stderrSpy).toHaveBeenCalled();
-    const logOutput = stderrSpy.mock.calls.map((c) => c.join(" ")).join("\n");
-    expect(logOutput).toContain("Logged failure");
-    expect(logOutput).toContain("src/pages/index.html");
+    expect(result.error?.message).toBe("Logged failure");
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
 
-    stderrSpy.mockRestore();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   // 8. A client disconnect is not logged as a server fault.
@@ -834,15 +836,16 @@ describe("ScriptRegistry module identity (prompt 112)", () => {
       await writeFile(filePath, `export default function() {\n  throw new Error('gen failure');\n}\n`);
       registry.invalidate(filePath);
 
-      const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => { });
       const result = await registry.invoke(filePath, [], { originalSourcePath: "src/pages/index.html", lineOffset: 40 });
       expect(result.ok).toBe(false);
-      const logOutput = stderrSpy.mock.calls.map((c) => c.join(" ")).join("\n");
-      stderrSpy.mockRestore();
+      // The real stack names the generation URL; the caller's cleaner (as server scripts use it) removes it.
+      const rawTrace = result.error!.stack!;
+      expect(rawTrace).toContain("bascik-gen");
+      const cleaned = cleanStackTrace(rawTrace, filePath, "src/pages/index.html", 40);
 
       // Frame line 2 of the module plus offset 40 minus 1 equals authored line 41.
-      expect(logOutput).toContain("src/pages/index.html:41");
-      expect(logOutput).not.toContain("bascik-gen");
+      expect(cleaned).toContain("src/pages/index.html:41");
+      expect(cleaned).not.toContain("bascik-gen");
     });
   });
 

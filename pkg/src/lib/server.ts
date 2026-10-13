@@ -17,6 +17,7 @@ import { createResponseSink } from "./response-sink.ts";
 import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
+import { ServerScriptError } from "./build-error.ts";
 import {
   getEncodedEtag,
   resolveCacheControl,
@@ -223,7 +224,9 @@ export const onError = (error: unknown, res: BascikResponse, req?: BascikRequest
     }
   }
 
-  console.error("Request/Stream error:", error);
+  // A server script's report is complete already; its stack would only add Bascik's frames.
+  if (error instanceof ServerScriptError) console.error(error.message);
+  else console.error("Request/Stream error:", error);
 };
 
 /**

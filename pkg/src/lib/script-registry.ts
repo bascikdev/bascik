@@ -39,7 +39,6 @@
 
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { cleanStackTrace } from "./stack-trace.ts";
 import {
   moduleGraph,
   createModuleGraph,
@@ -479,16 +478,9 @@ export class ScriptRegistry {
       settled = true;
       const err = toError(rawError);
       const isNetReset = isNetworkResetError(rawError);
-      // An upstream abort (the response sink aborts with "client disconnected"
-      // on a dropped connection) is a client event, not a script fault, so it
-      // is not reported as an error. A timeout also aborts the internal
-      // controller but never the upstream signal, so it is tracked separately.
-      const upstreamAborted = !didTimeout && options.signal?.aborted === true;
-
-      if (!isNetReset && !didTimeout && !upstreamAborted) {
-        this.logError(err, resolvedPath, options);
-      }
-
+      // The error is returned, not logged: the caller decides whether a failure
+      // is reported (`onServerScriptError`), so logging here printed every error
+      // twice and ignored `onServerScriptError: "ignore"`.
       return {
         ok: false,
         error: err,
@@ -512,23 +504,6 @@ export class ScriptRegistry {
     }
   }
 
-  private logError(
-    err: Error,
-    resolvedPath: string,
-    options: ScriptExecutionOptions,
-  ): void {
-    const rawTrace = err.stack || err.message;
-    // Frames may carry the dev generation query (`?bascik-gen=N`) after the
-    // path or file URL; cleanStackTrace strips it while remapping lines.
-    const cleanedTrace = cleanStackTrace(
-      rawTrace,
-      resolvedPath,
-      options.originalSourcePath ?? resolvedPath,
-      options.lineOffset ?? 1,
-    );
-
-    console.error(`[bascik:script-registry] Error executing module "${options.originalSourcePath ?? resolvedPath}":\n${cleanedTrace}`);
-  }
 }
 
 /**

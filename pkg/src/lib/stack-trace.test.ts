@@ -1,5 +1,69 @@
 import { describe, it, expect } from "vitest";
+import { fileURLToPath } from "node:url";
 import { cleanStackTrace } from "./stack-trace.ts";
+
+/** This directory, which is where Bascik's own modules live in a real install too (dist/lib/). */
+const bascikLib = fileURLToPath(new URL("./", import.meta.url));
+
+describe("cleanStackTrace – frames that are not the user's", () => {
+  it("drops Bascik's own frames and the builtin frames left after the user's last frame", () => {
+    const rawTrace = [
+      "Error: server boom",
+      "    at default (src/pages/srv.html:12:15)",
+      `    at ScriptRegistry.invoke (file://${bascikLib}script-registry.js:326:49)`,
+      `    at async runServerScriptJob (file://${bascikLib}server-scripts.js:242:20)`,
+      "    at async Promise.all (index 1)",
+      `    at async file://${bascikLib}server.js:681:37`,
+    ].join("\n");
+
+    expect(cleanStackTrace(rawTrace, "data:x", "src/pages/srv.html", 1)).toBe(
+      "Error: server boom\n    at default (src/pages/srv.html:12:15)",
+    );
+  });
+
+  it("shifts columns on the module's first line only", () => {
+    const raw = "Error: x\n    at a (data:mod:1:7)\n    at b (data:mod:3:5)";
+    expect(cleanStackTrace(raw, "data:mod", "src/pages/x.html", 10, 20)).toBe(
+      "Error: x\n    at a (src/pages/x.html:10:27)\n    at b (src/pages/x.html:12:5)",
+    );
+  });
+
+  it("keeps a builtin frame that sits between two of the user's frames", () => {
+    const rawTrace = [
+      "Error: inner",
+      "    at load (file:///project/src/lib/data.ts:3:9)",
+      "    at async Promise.all (index 0)",
+      "    at async default (src/pages/x.html:8:5)",
+    ].join("\n");
+
+    expect(cleanStackTrace(rawTrace, "/tmp/x.mjs", "src/pages/x.html", 1)).toBe(rawTrace);
+  });
+
+  it("keeps frames of test fixtures that live next to Bascik's modules", () => {
+    const frame = `    at helper (file://${bascikLib}test-fixtures/helper.ts:2:3)`;
+    expect(cleanStackTrace(`Error: x\n${frame}`, "/tmp/x.mjs", "src/pages/x.html", 1)).toContain(frame);
+  });
+
+  it("keeps Node's located syntax-error report and drops its version trailer", () => {
+    const tmpPath = "/project/node_modules/.cache/bascik/build-1-abc.mjs";
+    const rawTrace = [
+      `file://${tmpPath}:11`,
+      '        return "x" +;',
+      "                    ^",
+      "",
+      "SyntaxError: Unexpected token ';'",
+      "    at compileSourceTextModule (node:internal/modules/esm/utils:319:16)",
+      "    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:89:18)",
+      "",
+      "Node.js v24.21.0",
+    ].join("\n");
+
+    // The module is padded to the file's lines, so the offset is 1 and the line is unchanged.
+    expect(cleanStackTrace(rawTrace, tmpPath, "src/pages/s.html", 1)).toBe(
+      'src/pages/s.html:11\n        return "x" +;\n                    ^\n\nSyntaxError: Unexpected token \';\'',
+    );
+  });
+});
 
 describe("cleanStackTrace", () => {
   it("returns raw trace if trace is empty or falsy", () => {

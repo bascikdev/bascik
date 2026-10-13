@@ -109,24 +109,7 @@ import { createExternalTagMatcher } from "./external-components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 import { scopeComponentInstance } from "./scoping-template.ts";
 import { numberInstanceSourceUrls } from "./script-source-lines.ts";
-
-const annotateComponentScriptSources = (html: string, sourceFile: string): string => {
-  const encodedSourceFile = encodeURIComponent(sourceFile);
-  return html.replace(
-    /<script\b([^>]*\bdata-bascik-(?:build|server)\b[^>]*)>/gi,
-    (openTag, attributes: string, offset: number) => {
-      const openingLine = html.slice(0, offset).split(/\r?\n/).length +
-        openTag.split(/\r?\n/).length - 1;
-      const sourceFileAttribute = /\bdata-bascik-source-file=/i.test(attributes)
-        ? ""
-        : ` data-bascik-source-file="${encodedSourceFile}"`;
-      const sourceLineAttribute = /\bdata-bascik-source-line=/i.test(attributes)
-        ? ""
-        : ` data-bascik-source-line="${openingLine}"`;
-      return `<script${attributes}${sourceFileAttribute}${sourceLineAttribute}>`;
-    },
-  );
-};
+import { stampDirectiveSources } from "./directive-source.ts";
 
 import { isJavaScriptScript } from "./script-types.ts";
 import { memoizedMinifyJs } from "./js-minifier.ts";
@@ -599,10 +582,9 @@ export const recursivelyTranspile = (
       const props = extractProps(component.content);
       component.fileContent = injectPropAttributes(component.fileContent, props);
       if (component.fileName) {
-        component.fileContent = annotateComponentScriptSources(
-          component.fileContent,
-          component.fileName,
-        );
+        // Components read by listComponents were stamped from the raw file; this
+        // only fills in components supplied some other way.
+        component.fileContent = stampDirectiveSources(component.fileContent, component.fileName);
       }
 
       // Run the scoping pipeline — each step is `BascikComponent → BascikComponent`.
@@ -794,7 +776,7 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
 
   let rawHtml: string;
   try {
-    rawHtml = (await readFile(pagePath)).toString();
+    rawHtml = stampDirectiveSources((await readFile(pagePath)).toString(), pagePath);
   } catch (err) {
     console.warn(
       `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
@@ -1494,7 +1476,8 @@ export const transpilePage = async (
       pause();
       const fileBuf = await pendingRead;
       resume();
-      rawHtml = fileBuf.toString();
+      // Directive scripts record where they are before the routes script is removed.
+      rawHtml = stampDirectiveSources(fileBuf.toString(), pagePath);
       if (isDynamicRoute(pagePath)) {
         const pendingRoutes = executeRoutesScript(rawHtml, pagePath);
         pause();

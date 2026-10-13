@@ -323,13 +323,26 @@ In the dev server, the error also appears as an overlay in every open browser, a
 
 ### Terminal Error Formatting
 
-When a build script fails, Bascik prints the page file path along with the exact line and column number of the `<script data-bascik-build>` tag. Bascik automatically filters out internal V8 and child-process execution noise, remapping execution offsets back to your source file:
+When a build script fails, Bascik prints the error once. The header names the file and the line and column of the `<script data-bascik-build>` tag. The stack below it gives the line and column of the failing expression in that same file, including in a component, where markup and `<style>` blocks above the script are moved out before it runs. Frames from Node.js internals and from Bascik's own script runner are removed:
 
 ```text
-[bascik] build script error in "src/pages/about.html" at (line 14, column 3):
-Error: Cannot find module 'marked'
-    at src/pages/about.html:18:12
+[bascik] build script error in "pages/about.html" at (line 9, column 5):
+Error: Could not load the team list
+    at Module.default (src/pages/about.html:13:15)
 ```
+
+A syntax error is shown with the failing line and a caret under the token:
+
+```text
+[bascik] build script error in "pages/about.html" at (line 9, column 5):
+src/pages/about.html:11
+        return "x" +;
+                    ^
+
+SyntaxError: Unexpected token ';'
+```
+
+A script loaded with `src=` is its own file, so its frames name that file and its lines. Errors thrown in an imported helper keep the helper's path and line.
 
 In VS Code or modern terminal emulators, `Cmd + Click` (or `Ctrl + Click`) the file reference directly in the error log to jump straight to the source HTML line where the script failed.
 

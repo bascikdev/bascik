@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BascikConfig } from "./config.ts";
 import { SCRIPT_END_TAG, SERVER_ATTR_NAME, STREAM_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
+import { directiveSourceColumn } from "./directive-source.ts";
 
 /**
  * How a request-time script participates in the response (prompt 65).
@@ -17,7 +18,10 @@ export interface ServerScriptEntry {
   source: string;
   modulePath?: string;
   sourceFile?: string;
+  /** The line the script's body starts on in `sourceFile`. */
   sourceLine?: number;
+  /** The column the body starts at on that line. Absent in sidecars written before it was recorded. */
+  sourceColumn?: number;
 }
 
 export interface ServerScriptsSidecar {
@@ -64,8 +68,9 @@ class ServerSidecarRegistry {
     sourceFile?: string,
     sourceLine?: number,
     mode: ServerScriptMode = "server",
+    sourceColumn?: number,
   ): void {
-    this.scripts.set(id, { id, mode, source, modulePath, sourceFile, sourceLine });
+    this.scripts.set(id, { id, mode, source, modulePath, sourceFile, sourceLine, sourceColumn });
   }
 
   recordScripts(scripts: Record<string, ServerScriptEntry>): void {
@@ -235,7 +240,8 @@ export const extractServerScriptsToSidecar = (
         : sourceFile;
       const annotatedSourceLine = getHtmlAttributeValue(openTag, "data-bascik-source-line");
       const sourceLine = annotatedSourceLine ? Number.parseInt(annotatedSourceLine, 10) : undefined;
-      serverSidecarRegistry.recordScript(id, scriptContent, srcPath, scriptSourceFile, sourceLine, mode);
+      const sourceColumn = directiveSourceColumn(openTag);
+      serverSidecarRegistry.recordScript(id, scriptContent, srcPath, scriptSourceFile, sourceLine, mode, sourceColumn);
       if (outMap) {
         outMap[id] = {
           id,
@@ -244,6 +250,7 @@ export const extractServerScriptsToSidecar = (
           modulePath: srcPath,
           sourceFile: scriptSourceFile,
           sourceLine,
+          ...(sourceColumn !== undefined ? { sourceColumn } : {}),
         };
       }
       const marker = mode === "stream" ? " data-bascik-stream" : "";

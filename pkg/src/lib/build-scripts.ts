@@ -43,7 +43,8 @@ import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { getRelativePath } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
-import { BuildScriptError } from "./build-error.ts";
+import { BuildScriptError, type BuildScriptLocation } from "./build-error.ts";
+import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
 import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace } from "./stack-trace.ts";
@@ -611,11 +612,15 @@ export const executeBuildScripts = async (
     fullTag: string;
     index: number;
     openTag: string;
+    /** The module text: the script, padded so its lines and columns are the file's own. */
     preparedScript: string;
     cacheKey: string | null;
-    startLine: number;
     tmpPath: string;
     sourceFile: string;
+    /** The file V8 names the module after (`//# sourceURL`): the HTML file, or the `src=` file. */
+    moduleSourcePath: string;
+    /** Where the opening tag is, for the error header and the dev overlay. */
+    location?: BuildScriptLocation;
     outputScope: OutputScope | null;
     output?: string;
   }
@@ -627,29 +632,22 @@ export const executeBuildScripts = async (
     const index = match.index ?? 0;
 
     const openTag = scriptOpenTag(fullTag, scriptContent);
-    const annotatedSourceFile = getHtmlAttributeValue(openTag, "data-bascik-source-file");
-    const sourceFile = annotatedSourceFile
-      ? decodeURIComponent(annotatedSourceFile)
-      : defaultSourceFile;
+    // Where the script was written: recorded when its file was read, because
+    // `html` may already be transformed (styles extracted, components expanded).
+    const position = directiveSourcePosition(html, index, openTag);
+    const sourceFile = position.sourceFile ?? defaultSourceFile;
+    const locatedFile = sourceFile || filePath;
+    const location: BuildScriptLocation | undefined = locatedFile
+      ? { sourceFile: displayPathFor(locatedFile), line: position.tagLine, column: position.tagColumn }
+      : undefined;
+    const where = location ? ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})` : "";
     const useCache = isScriptCacheEnabledForPath(sourceFile || filePath);
     if (BUILD_SERVER_CONFLICT_RE.test(openTag)) {
-      let errorMsg = `[bascik] error: <script> tag has both data-bascik-build and data-bascik-server`;
-      if (filePath) {
-        const prefix = html.slice(0, index);
-        const prefixLines = prefix.split(/\r?\n/);
-        errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`;
-      }
-      throw new Error(`${errorMsg}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
+      throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-server${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
     }
 
     if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
-      let errorMsg = `[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes`;
-      if (filePath) {
-        const prefix = html.slice(0, index);
-        const prefixLines = prefix.split(/\r?\n/);
-        errorMsg += ` in "${getRelativePath(filePath, "pages")}" at (line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`;
-      }
-      throw new Error(`${errorMsg}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
+      throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
     }
 
     let scriptBaseDir = sourceFile
@@ -663,15 +661,16 @@ export const executeBuildScripts = async (
     // runtime failure of their script, so it is never downgraded to a warning.
     const annotateLeadingSlash = (err: unknown): never => {
       if (!(err instanceof LeadingSlashSpecifierError)) throw err;
-      let errorMsg = `[bascik] error: ${err.message}`;
-      if (filePath) {
-        const prefix = html.slice(0, index);
-        const prefixLines = prefix.split(/\r?\n/);
-        errorMsg += ` (in "${getRelativePath(filePath, "pages")}" at line ${prefixLines.length}, column ${prefixLines[prefixLines.length - 1].length + 1})`;
-      }
-      throw new Error(errorMsg, { cause: err });
+      const at = location ? ` (in "${location.sourceFile}" at line ${location.line}, column ${location.column})` : "";
+      throw new Error(`[bascik] error: ${err.message}${at}`, { cause: err });
     };
 
+    const htmlRelPath = locatedFile ? relative(process.cwd(), locatedFile).replace(/\\/g, "/") : "unknown";
+    let moduleSourcePath = htmlRelPath;
+    // The script exactly as written. It is trimmed only for the cache key and checks below;
+    // the module keeps it untrimmed so every line and column stays where it is in the file.
+    let moduleSource = scriptContent;
+    let fromSrcFile = false;
     let trimmedScript = scriptContent.trim();
     if (!trimmedScript) {
       const srcPath = getHtmlAttributeValue(openTag, "src");
@@ -688,6 +687,10 @@ export const executeBuildScripts = async (
         scriptBaseDir = dirname(resolvedPath);
         try {
           trimmedScript = await readFile(resolvedPath, "utf8");
+          // A `src=` script is its own file, so its errors name that file and its lines.
+          moduleSource = trimmedScript;
+          moduleSourcePath = relative(process.cwd(), resolvedPath).replace(/\\/g, "/");
+          fromSrcFile = true;
         } catch (err) {
           console.warn('[bascik] warning: Failed to read build script src "%s":', srcPath, err);
         }
@@ -696,7 +699,11 @@ export const executeBuildScripts = async (
 
     let preparedScript: string;
     try {
-      preparedScript = resolveBuildScriptImports(trimmedScript, scriptBaseDir, { importRoot });
+      const rewritten = resolveBuildScriptImports(moduleSource, scriptBaseDir, { importRoot });
+      // Without a known file there are no file lines to line up with.
+      preparedScript = fromSrcFile || !locatedFile
+        ? rewritten
+        : padToSourcePosition(rewritten, position.bodyLine, position.bodyColumn);
     } catch (err) {
       return annotateLeadingSlash(err);
     }
@@ -728,12 +735,6 @@ export const executeBuildScripts = async (
         : null;
     const cacheKey = scriptIsNonCacheable ? null : computeKey;
 
-    const prefix = html.slice(0, index);
-    const lines = prefix.split(/\r?\n/);
-    const lineOffset = lines.length;
-    const openTagLines = openTag.split(/\r?\n/).length - 1;
-    const startLine = lineOffset + openTagLines;
-
     const tmpPath = join(
       tempDir,
       `build-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
@@ -745,8 +746,9 @@ export const executeBuildScripts = async (
       openTag,
       preparedScript,
       cacheKey,
-      startLine,
       tmpPath,
+      moduleSourcePath,
+      location,
       outputScope: decodeOutputScope(getHtmlAttributeValue(openTag, OUTPUT_SCOPE_ATTRIBUTE)),
       sourceFile,
     });
@@ -798,11 +800,7 @@ export const executeBuildScripts = async (
     // duplicate, so there is no blind fallback retry. Siblings keep their own
     // output; a failed script contributes an empty replacement.
     for (const task of uncachedTasks) {
-      const taskActiveFile = task.sourceFile || filePath;
-      const taskRelPath = taskActiveFile
-        ? relative(process.cwd(), taskActiveFile).replace(/\\/g, "/")
-        : "unknown";
-      const taskSourceUrlComment = taskActiveFile ? `\n//# sourceURL=${taskRelPath}` : "";
+      const taskSourceUrlComment = task.moduleSourcePath !== "unknown" ? `\n//# sourceURL=${task.moduleSourcePath}` : "";
       const taskEnv = {
         ...extraEnv,
         BASCIK_SOURCE_FILE: task.sourceFile,
@@ -816,20 +814,15 @@ export const executeBuildScripts = async (
         if (task.cacheKey !== null) await writeScriptCache(cacheDir, task.cacheKey, output);
         task.output = output;
       } catch (err: any) {
+        // The script's own output, printed once. Its error report is the message below.
         if (err?.stdout) process.stdout.write(err.stdout);
         if (err?.stderr) process.stderr.write(err.stderr);
         const msg = err instanceof Error ? err.message : String(err);
+        const { location } = task;
         let errorMsg = `[bascik] build script error`;
-        const cleanedMsg = cleanStackTrace(msg, task.tmpPath, taskRelPath, task.startLine);
-        let location: { sourceFile: string; line: number; column: number } | undefined;
-        if (filePath) {
-          const prefix = html.slice(0, task.index);
-          const lines = prefix.split(/\r?\n/);
-          location = {
-            sourceFile: displayPathFor(filePath),
-            line: lines.length,
-            column: lines[lines.length - 1].length + 1,
-          };
+        // The module is padded to the file's own lines, so only the temp path needs renaming.
+        const cleanedMsg = cleanStackTrace(msg, task.tmpPath, task.moduleSourcePath, 1);
+        if (location) {
           errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
         }
         // Nothing was memoized for this key; drop its pending dependency list

@@ -85,6 +85,7 @@ export interface TranspilePageResult {
     modulePath?: string;
     sourceFile?: string;
     sourceLine?: number;
+    sourceColumn?: number;
   }>;
   /**
    * Inline script/style CSP hashes for this page's final emitted HTML,

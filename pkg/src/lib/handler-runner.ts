@@ -31,6 +31,7 @@ export interface DirectiveHandlerOptions {
 
 const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024; // 10 MiB budget
 const ENVELOPE_VERSION = 1;
+const killSignal = "SIGTERM";
 
 /**
  * Executes a prepared user module in a fresh Node.js child process, invoking its default export
@@ -85,15 +86,18 @@ const resultFile = process.env.BASCIK_DIRECTIVE_RESULT_FILE;
 const kind = process.env.BASCIK_DIRECTIVE_KIND;
 const maxBytes = parseInt(process.env.BASCIK_DIRECTIVE_MAX_BYTES || "10485760", 10);
 
-async function main() {
-  let mod;
-  try {
-    mod = await import(${JSON.stringify(targetFileUrl)});
-  } catch (err) {
-    console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
-    process.exit(1);
-  }
+let mod;
+try {
+  mod = await import(${JSON.stringify(targetFileUrl)});
+} catch (err) {
+  // A caught SyntaxError carries no location. Left uncaught at the top level,
+  // Node prints the file, the line, and a caret under the offending token.
+  if (err instanceof SyntaxError) throw err;
+  console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
+  process.exit(1);
+}
 
+async function main() {
   if (typeof mod.default !== "function") {
     const hasDefault = "default" in mod;
     const msg = hasDefault
@@ -156,6 +160,15 @@ main().catch((err) => {
 
   await writeFile(runnerScriptPath, runnerCode, { encoding: "utf8", mode: 0o600 });
 
+  // The runner's own frames (`at main (file:///…/runner.mjs:29:31)`) sit under
+  // every error the user's script throws. They are Bascik's, so they are removed.
+  const runnerReferences = [runnerScriptPath, pathToFileURL(runnerScriptPath).href];
+  const withoutRunnerFrames = (text: string): string =>
+    text
+      .split("\n")
+      .filter((line) => !(line.trimStart().startsWith("at ") && runnerReferences.some((ref) => line.includes(ref))))
+      .join("\n");
+
   await semaphore.acquire();
   let cleanupSpill: () => Promise<void> = async () => {};
 
@@ -171,9 +184,18 @@ main().catch((err) => {
           if (settled) return;
           settled = true;
           const cleanedStdout = rawStdout ? stripAnsiEscapeCodes(rawStdout) : "";
-          const cleanedStderr = rawStderr ? stripAnsiEscapeCodes(rawStderr) : "";
+          const cleanedStderr = rawStderr ? withoutRunnerFrames(stripAnsiEscapeCodes(rawStderr)) : "";
           if (err) {
-            reject(Object.assign(err, { stdout: cleanedStdout, stderr: cleanedStderr }));
+            // One message carries the whole report: what the script wrote to
+            // stderr (its error, and anything it logged first). Callers print
+            // the message once and do not print stderr separately.
+            const failure = err as Error & { killed?: boolean; signal?: string };
+            const report = cleanedStderr.trim();
+            const timedOut = failure.killed === true && failure.signal === killSignal;
+            failure.message = timedOut
+              ? `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms${report ? `\n${report}` : ""}`
+              : report || withoutRunnerFrames(failure.message);
+            reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
           } else {
             resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
           }
@@ -187,7 +209,7 @@ main().catch((err) => {
             env: childEnv as Record<string, string>,
             timeout: timeoutMs,
             maxBuffer,
-            killSignal: "SIGTERM",
+            killSignal,
           },
           (err, rawStdout, rawStderr) => {
             settle(err, rawStdout ?? "", rawStderr ?? "");
@@ -203,7 +225,7 @@ main().catch((err) => {
     } catch {
       throw Object.assign(
         new Error(
-          `Directive script (data-bascik-${kind}) exited successfully but produced no result file.\n${stderr}`,
+          `Directive script (data-bascik-${kind}) exited successfully but produced no result file.`,
         ),
         { stdout, stderr },
       );
