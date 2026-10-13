@@ -49,6 +49,8 @@ test.describe('browser TypeScript is stripped on supported paths', () => {
     const html = await response.text();
 
     expect(html).not.toContain('text/typescript');
+    expect(html).toContain('data-type="custom-meta"');
+    expect(html).toContain('data-src="/lazy.js"');
     expect(html).not.toContain('as HTMLElement');
     expect(html).not.toContain(': number');
     expect(html).not.toContain('interface Tick');
@@ -68,8 +70,8 @@ test.describe('browser TypeScript is stripped on supported paths', () => {
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)) {
       const attrs = m[1];
       const body = m[2];
-      if (/\bsrc\s*=/.test(attrs)) continue;
-      if (/\btype\s*=/.test(attrs) && !/text\/javascript|module/i.test(attrs)) continue;
+      if (/\s+src\s*=/.test(attrs)) continue;
+      if (/\s+type\s*=/.test(attrs) && !/text\/javascript|module/i.test(attrs)) continue;
       expect(() => new Function(body), body.slice(0, 200)).not.toThrow();
       const idx = body.indexOf('//# sourceURL');
       if (idx !== -1) {

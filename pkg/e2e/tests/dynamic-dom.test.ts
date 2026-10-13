@@ -9,9 +9,10 @@
  *   because "item" is a known class (declared via the sentinel <span>).
  *   Result: li.className = "bascik__dynamic-dom__item"
  *
- * - `li.setAttribute("class", "item unscoped-item")` is NOT scoped: bascik
- *   does not rewrite string literals inside setAttribute calls.
- *   Result: class remains "item unscoped-item" — the scoped CSS does not apply.
+ * - `li.setAttribute("class", "item unscoped-item")` scopes known classes and
+ *   preserves unknown global classes: "item" is in the component CSS so it is
+ *   rewritten to "bascik__dynamic-dom__item", while "unscoped-item" is not in
+ *   the component CSS and stays literal.
  *
  * - `list.innerHTML = ""` is NOT rewritten — innerHTML clears work as-is.
  *
@@ -102,11 +103,11 @@ test.describe('dynamic-dom-test page', () => {
     expect(color).toBe('rgb(74, 222, 128)');
   });
 
-  // ── 4. Unscoped setAttribute ──────────────────────────────────────────────
+  // ── 4. Multi-class setAttribute (scoped + global token) ───────────────────
   //
-  // li.setAttribute("class", "item unscoped-item") is NOT rewritten by bascik.
-  // The class stays as the literal string "item unscoped-item", so the scoped
-  // CSS (.bascik__dynamic-dom__item) does not match the element.
+  // li.setAttribute("class", "item unscoped-item") rewrites known component
+  // classes ("item" -> "bascik__dynamic-dom__item") while leaving unknown
+  // global classes ("unscoped-item") untouched.
 
   test('add-unscoped-btn appends one child to the list', async ({ page }) => {
     const { a } = getInstances(page);
@@ -114,12 +115,11 @@ test.describe('dynamic-dom-test page', () => {
     await expect(list(a).locator('li')).toHaveCount(1);
   });
 
-  test('unscoped item has unscoped class (setAttribute not rewritten)', async ({ page }) => {
+  test('setAttribute("class", ...) scopes known class and preserves unscoped class', async ({ page }) => {
     const { a } = getInstances(page);
     await btn(a, 'add-unscoped-btn').click();
     const li = list(a).locator('li').first();
-    // setAttribute string literal is not transformed — class stays literal
-    await expect(li).toHaveAttribute('class', 'item unscoped-item');
+    await expect(li).toHaveAttribute('class', 'bascik__dynamic-dom__item unscoped-item');
   });
 
   // ── 5. clear-btn (innerHTML = "") ─────────────────────────────────────────
