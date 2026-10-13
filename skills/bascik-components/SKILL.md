@@ -72,7 +72,7 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 | `contact-form` | Preserved field names, validation, JSON `fetch`, the API route behind it |
 | `theme-toggle`, `theme-init` | Theme with no flash, `aria-pressed`, a `theme-change` event |
 
-`node <skills-dir>/bascik/scripts/add-example.mjs <name>`. Each page at `https://bascik.dev/examples/<name>` explains how it works and how to adapt it.
+`node <skills-dir>/bascik/scripts/add-example.mjs <name>`. Each page at `https://bascik.dev/example-components/<name>` explains how it works and how to adapt it.
 
 ## Look it up
 

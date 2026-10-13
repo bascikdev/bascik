@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="A complete example Bascik site with layout components, per-page SEO tags, a Markdown blog with tags and a feed, llms.txt, and a contact page." />
-  <title>Starter Site Example: Layout, SEO, Blog - Bascik</title>
+    content="A site footer with links and a copyright year written at build time, so the footer is plain HTML and ships no JavaScript." />
+  <title>Site Footer Component Example - Bascik</title>
 </head>
 
 <body>
@@ -36,13 +36,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/examples/starter-site');
+          export default async () => renderSectionLabel('/examples/site-footer');
         </script>
-        <!-- Rendered from docs/content/examples/starter-site.md. The example code is read from the repo-root examples/
+        <!-- Rendered from docs/content/examples/site-footer.md. The example code is read from the repo-root examples/
              folder at build time; edit it there, never in the Markdown. -->
         <script data-bascik-build>
           import { renderExample } from '@/lib/examples.ts';
-          export default async () => await renderExample('./content/examples/starter-site.md');
+          export default async () => await renderExample('./content/examples/site-footer.md', '../examples/components/site-footer/site-footer.html');
         </script>
 
         <docs-pagination />

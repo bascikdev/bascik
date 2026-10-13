@@ -82,7 +82,7 @@ The skills include dependency-free Node.js scripts (Node 22.18 or newer). The as
 | `bascik/scripts/new-component.mjs` | Creates a component folder that follows the naming and ordering rules |
 | `bascik/scripts/search-docs.mjs` | Searches this documentation site |
 | `bascik/scripts/read-doc.mjs` | Prints a docs page as text, such as `/scoped-javascript` |
-| `bascik/scripts/add-example.mjs` | Copies an [example](/examples) into the right folders of your project, and refuses to overwrite your files |
+| `bascik/scripts/add-example.mjs` | Copies an [example](/example-components) into the right folders of your project, and refuses to overwrite your files |
 | `bascik/scripts/check-links.mjs` | Finds broken internal links, missing assets, and dead `#fragment` targets in `dist/`, honoring `base` |
 | `bascik-components/scripts/check-tokens.mjs` | Reports CSS custom properties that components read but no global stylesheet declares |
 | `bascik-compatibility/scripts/lookup.mjs` | Searches the [compatibility matrix](/compatibility) for a pattern, such as `container` or `setAttribute` |
@@ -100,9 +100,9 @@ node .agents/skills/bascik/scripts/preview.mjs '<like-button data-bascik-prop-la
 
 Only `new-component.mjs`, `add-example.mjs`, and `new-post.mjs` write to your project. `preview.mjs` builds into a temporary folder under `node_modules/.cache/bascik/` and deletes it afterward, so your `dist/` is never touched. The docs scripts read the public search index at `https://bascik.dev/assets/search-index.json`.
 
-## Examples
+## Example Components
 
-The [Examples](/examples) section of this site has tested components and a complete starter site. The skills tell the assistant to start from them, and `add-example.mjs` downloads them from this site, so the files the assistant copies are the ones these pages show:
+The [Example Components](/example-components) section of this site has tested components, and the Bascik repository has a complete [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site). The skills tell the assistant to start from them, and `add-example.mjs` downloads them from this site, so the files the assistant copies are the ones these pages show:
 
 ```sh
 node .agents/skills/bascik/scripts/add-example.mjs --list

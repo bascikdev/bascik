@@ -29,7 +29,7 @@ const LABEL_H1_EXCEPTIONS: Record<string, { label: string; h1: string }> = {
   '/switch': { label: 'Overview', h1: 'Switch to Bascik' },
   '/testing': { label: 'Overview', h1: 'Testing and Debugging Overview' },
   '/lighthouse': { label: 'Overview', h1: 'Lighthouse 100s Overview' },
-  '/examples': { label: 'Overview', h1: 'Examples Overview' },
+  '/example-components': { label: 'Overview', h1: 'Example Components' },
   '/testing/build-scripts': { label: 'Build Scripts', h1: 'Testing Build Scripts' },
   '/testing/exec-scripts': { label: 'Exec Scripts', h1: 'Testing Exec Scripts' },
   '/testing/server-scripts': { label: 'Server Scripts', h1: 'Testing Server Scripts' },

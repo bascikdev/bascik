@@ -100,20 +100,6 @@ pre {
   border: 0;
 }
 
-.skip-link {
-  position: absolute;
-  left: var(--space-3);
-  top: -10rem;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  z-index: 100;
-}
-
-.skip-link:focus {
-  top: var(--space-3);
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

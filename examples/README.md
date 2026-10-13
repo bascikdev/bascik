@@ -5,7 +5,7 @@ Example components and an example site to copy into your own Bascik project and 
 - `components/`: standalone components (tabs, dialog, menu, copy button, filter list, contact form, theme toggle). The docs site renders every one of them.
 - `starter-site/`: a complete site that uses them, with layout components, SEO helpers, a blog, and a feed.
 
-Browse them at https://bascik.dev/examples. To copy one into a project:
+Browse them at https://bascik.dev/example-components. To copy one into a project:
 
 ```sh
 node .agents/skills/bascik/scripts/add-example.mjs --list

@@ -1,6 +1,6 @@
 # Theming
 
-Bascik styles a site in two layers: one global stylesheet that declares design tokens and base styles, and component CSS that uses those tokens. This page covers the token stylesheet, light and dark themes, a theme toggle with no flash on load, and web fonts. The [Starter Site](/examples/starter-site) uses all of it.
+Bascik styles a site in two layers: one global stylesheet that declares design tokens and base styles, and component CSS that uses those tokens. This page covers the token stylesheet, light and dark themes, a theme toggle with no flash on load, and web fonts. The [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site) in the Bascik repository uses all of it.
 
 ## Two Layers
 
@@ -64,7 +64,7 @@ Both blocks are needed, one for a saved dark choice and one for a dark system se
 
 ## A Toggle Without a Flash
 
-The saved choice has to be applied before the page renders, or the page flashes the wrong theme. A small script in `<head>` reads `localStorage` and sets `data-theme` synchronously; a button elsewhere changes and saves it. Both are ready to copy in [Theme Toggle](/examples/theme-toggle).
+The saved choice has to be applied before the page renders, or the page flashes the wrong theme. A small script in `<head>` reads `localStorage` and sets `data-theme` synchronously; a button elsewhere changes and saves it. Both are ready to copy in [Theme Toggle](/example-components/theme-toggle).
 
 - Put the head script in a component used inside `<head>`. Bascik keeps that component's script in `<head>`, where it runs before the body renders.
 - Keep it tiny and free of imports: anything in `<head>` delays rendering.

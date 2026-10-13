@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="A contact form component with browser validation, a JSON fetch, literal field names, and the API route that handles it with or without JavaScript." />
-  <title>Contact Form and API Route Example - Bascik</title>
+    content="A live text filter for a slotted list, written as a Bascik component that finds its items by ID so several lists on a page stay separate." />
+  <title>Live Filter List Component Example - Bascik</title>
 </head>
 
 <body>
@@ -36,13 +36,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/examples/contact-form');
+          export default async () => renderSectionLabel('/example-components/filter-list');
         </script>
-        <!-- Rendered from docs/content/examples/contact-form.md. The example code is read from the repo-root examples/
+        <!-- Rendered from docs/content/example-components/filter-list.md. The example code is read from the repo-root examples/
              folder at build time; edit it there, never in the Markdown. -->
         <script data-bascik-build>
           import { renderExample } from '@/lib/examples.ts';
-          export default async () => await renderExample('./content/examples/contact-form.md', '../examples/components/contact-form/contact-form.html');
+          export default async () => await renderExample('./content/example-components/filter-list.md', '../examples/components/filter-list/filter-list.html');
         </script>
 
         <docs-pagination />

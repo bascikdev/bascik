@@ -1,5 +1,6 @@
-// src/lib/nav.ts: the site's main navigation, in one place. site-header renders it on every page and marks the
-// current page with aria-current="page". Paths are relative to the deployment base; Bascik adds the base for you.
+// links.ts: the main navigation, in one place. Edit this list for your site. site-header.html imports it from a
+// build script, so the links are plain HTML in every page and the current page is marked without JavaScript.
+// Paths are relative to the deployment base; Bascik adds the base for you.
 
 export interface NavLink {
   label: string;
@@ -27,12 +28,9 @@ export function isCurrent(href: string, pagePath: string): boolean {
   return current === target || current.startsWith(`${target}/`);
 }
 
-/**
- * The nav list for the page being built. Call it from a build script marked data-bascik-build="page": a component
- * build script that only reaches BASCIK_PAGE_PATH through a helper otherwise runs once for the whole site.
- */
-export function navLinks(pagePath = process.env.BASCIK_PAGE_PATH || '/'): string {
-  const items = NAV_LINKS.map((link) => {
+/** The nav list for one page. `pagePath` is the page being built, from BASCIK_PAGE_PATH. */
+export function navLinks(pagePath = '/', links: NavLink[] = NAV_LINKS): string {
+  const items = links.map((link) => {
     const exact = normalize(link.href) === normalize(pagePath);
     // aria-current="page" for the page itself, "true" for the section it belongs to.
     const current = exact ? ' aria-current="page"' : isCurrent(link.href, pagePath) ? ' aria-current="true"' : '';

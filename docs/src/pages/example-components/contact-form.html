@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="A copy-to-clipboard button component that copies its own text per instance and announces success or failure to screen readers." />
-  <title>Copy to Clipboard Button Example - Bascik</title>
+    content="A contact form component with browser validation, a JSON fetch, literal field names, and the API route that handles it with or without JavaScript." />
+  <title>Contact Form and API Route Example - Bascik</title>
 </head>
 
 <body>
@@ -36,13 +36,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/examples/copy-button');
+          export default async () => renderSectionLabel('/example-components/contact-form');
         </script>
-        <!-- Rendered from docs/content/examples/copy-button.md. The example code is read from the repo-root examples/
+        <!-- Rendered from docs/content/example-components/contact-form.md. The example code is read from the repo-root examples/
              folder at build time; edit it there, never in the Markdown. -->
         <script data-bascik-build>
           import { renderExample } from '@/lib/examples.ts';
-          export default async () => await renderExample('./content/examples/copy-button.md', '../examples/components/copy-button/copy-button.html');
+          export default async () => await renderExample('./content/example-components/contact-form.md', '../examples/components/contact-form/contact-form.html');
         </script>
 
         <docs-pagination />

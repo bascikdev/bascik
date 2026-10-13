@@ -175,7 +175,7 @@ The full page index is at https://bascik.dev/llms.txt.
 
 ## Start from an example
 
-https://bascik.dev/examples has tested components (tabs, dialog, popover menu, copy button, filter list, contact form, theme toggle) and a complete starter site (layout components, SEO helper, Markdown blog, feed, `llms.txt`, contact page). Copy instead of writing from scratch, then adapt:
+https://bascik.dev/example-components has tested components (tabs, dialog, popover menu, copy button, filter list, contact form, theme toggle). `add-example.mjs` also offers `starter-site`, a complete site (layout components, SEO helper, Markdown blog, feed, `llms.txt`, contact page) whose README is at https://github.com/bascikdev/bascik/tree/main/examples/starter-site. Copy instead of writing from scratch, then adapt:
 
 ```sh
 node <skill-dir>/scripts/add-example.mjs --list
@@ -189,9 +189,9 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 
 1. `npm create bascik@latest my-site -y`, or read the existing project first with `list-components.mjs`. Add `BASCIK_SITE_URL=https://example.com` to `.env`.
 2. Plan the pages and URLs (one purpose and one `<h1>` each), the shared layout (head, header, footer), repeated content (a collection in `content/`), and anything that needs a server (API routes, per-request markup). Ask when the plan is unclear.
-3. Copy the foundation: `add-example.mjs starter-site`, or only the parts you need. Then replace the example name, navigation (`src/lib/nav.ts`), colors (tokens in `src/pages/css/styles.css`), and every page's `seo({ title, description })`.
+3. Copy the foundation: `add-example.mjs starter-site`, or only the parts you need. Then replace the example name, navigation (`src/components/site-header/links.ts`), colors (tokens in `src/pages/css/styles.css`), and every page's `seo({ title, description })`.
 4. Add pages, components (`new-component.mjs`), and interactive examples. Load the companion skill for each area.
-5. Before launch: `npx bascik --build`, then `verify.mjs`, `check-links.mjs`, the `bascik-seo` audit, and the `bascik-components` token check. Read `/examples/starter-site#build-and-check-it` for the manual checklist.
+5. Before launch: `npx bascik --build`, then `verify.mjs`, `check-links.mjs`, the `bascik-seo` audit, and the `bascik-components` token check. The starter site README's "Build and Check It" section has the manual checklist.
 
 ## Companion skills
 

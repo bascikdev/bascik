@@ -277,7 +277,7 @@ Read an entire folder of Markdown files and generate a list or index page:
 
 > **Exclude listing pages from the cache.** The [build script cache](/build-scripts) keys on the files a script names literally. It cannot see the result of `readdir`, so without an exclusion a new or renamed post does not appear until the cache is cleared. Add every page that reads the folder to `scripts.cache.exclude`, and add `content/` and your helper folder to `pipeline.watchPaths` so the dev server rebuilds on edits.
 
-The [Starter Site](/examples/starter-site#blog) example has a complete blog: one helper that reads and validates every post, post and tag pages from dynamic routes, drafts that only appear in the dev server, and an Atom feed.
+The [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site#blog) in the Bascik repository has a complete blog: one helper that reads and validates every post, post and tag pages from dynamic routes, drafts that only appear in the dev server, and an Atom feed.
 
 ## markdown-it
 

@@ -13,7 +13,7 @@ A form that validates in the browser, posts JSON to an API route, and announces 
 
 <!-- example:demo -->
 
-This docs site is static, so it has no `/api/contact` route and sending shows the error message. The [Starter Site](/examples/starter-site) includes the handler and runs it under `bascik --server`.
+This docs site is static, so it has no `/api/contact` route and sending shows the error message. The [starter site](https://github.com/bascikdev/bascik/tree/main/examples/starter-site) in the Bascik repository includes the handler and runs it under `bascik --server`.
 
 ## How It Works
 

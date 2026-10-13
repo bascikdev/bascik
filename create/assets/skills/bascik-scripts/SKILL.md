@@ -127,7 +127,7 @@ There is no content API. A collection is a folder such as `content/posts/`, one 
 node <skills-dir>/bascik-scripts/scripts/new-post.mjs "Launching the new site" --tags news,release --description "What changed and why."
 ```
 
-Details: `read-doc.mjs /how-to/markdown`, `/examples/starter-site`.
+Details: `read-doc.mjs /how-to/markdown`, and the working blog in `add-example.mjs starter-site/src/pages/blog`.
 
 ## Look it up
 

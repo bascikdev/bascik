@@ -47,7 +47,7 @@ The skills ship dependency-free Node.js scripts (Node 22.18+) that agents run fr
 | `bascik/scripts/new-component.mjs` | Create a component that follows the conventions |
 | `bascik/scripts/search-docs.mjs` | Search the live docs |
 | `bascik/scripts/read-doc.mjs` | Print a docs page as text |
-| `bascik/scripts/add-example.mjs` | Copy an example from https://bascik.dev/examples into the project |
+| `bascik/scripts/add-example.mjs` | Copy an example from https://bascik.dev/example-components into the project |
 | `bascik/scripts/check-links.mjs` | Find broken internal links and `#fragments` in `dist/` |
 | `bascik-components/scripts/check-tokens.mjs` | Find CSS custom properties components use but nothing declares |
 | `bascik-compatibility/scripts/lookup.mjs` | Search Bascik's live compatibility matrix |

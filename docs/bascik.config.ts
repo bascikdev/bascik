@@ -2,7 +2,7 @@ import { defineConfig } from '@bascik/bascik/config';
 
 export default defineConfig({
   directory: {
-    // The repo-root examples/ components render live on /examples/* pages. They are the only copy: the pages,
+    // The repo-root examples/ components render live on /example-components/* pages. They are the only copy: the pages,
     // /assets/examples.json, and the tests all read the same files.
     components: ['src/components', '../examples/components'],
   },
@@ -24,8 +24,6 @@ export default defineConfig({
       '../extensions/vscode-bascik/test-coverage.json',
       '../adapters/cloudflare/test-coverage.json',
       'test-coverage.json',
-      // /examples/starter-site shows these files; the component folder is already watched as a component root.
-      '../examples/starter-site/',
     ],
     exec: [
       // Copies the npm custom element into dist/assets/vendor/. 'pre' so it exists before pages load it.
@@ -65,7 +63,7 @@ export default defineConfig({
   scripts: {
     cache: {
       // Example pages read example files through markers in their Markdown, which the cache key cannot see.
-      exclude: ['src/pages/examples/**'],
+      exclude: ['src/pages/example-components/**'],
     },
   },
 });

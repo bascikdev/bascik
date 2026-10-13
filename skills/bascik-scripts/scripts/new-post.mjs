@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 
 const HELP = `Usage: node new-post.mjs "Post title" [--description "..."] [--tags a,b] [--date YYYY-MM-DD] [--slug custom-slug] [--draft] [--dir content/posts]
 
-Writes content/posts/<slug>.md with the front matter that the starter site's src/lib/posts.ts validates (https://bascik.dev/examples/starter-site).
+Writes content/posts/<slug>.md with the front matter that the starter site's src/lib/posts.ts validates (https://github.com/bascikdev/bascik/tree/main/examples/starter-site).
 The slug comes from the title unless --slug is given. Refuses to overwrite an existing post.`;
 
 /** Lowercase words joined by hyphens, ASCII only. Exported for tests. */

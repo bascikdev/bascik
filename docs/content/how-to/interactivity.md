@@ -1,6 +1,6 @@
 # Interactivity
 
-Bascik ships no runtime, so every interactive behavior is HTML, CSS, or a small component `<script>`. This page lists the patterns that work well with Bascik's scoping, from no code at all to fetch calls and events between components. The [Examples](/examples) apply them in complete components.
+Bascik ships no runtime, so every interactive behavior is HTML, CSS, or a small component `<script>`. This page lists the patterns that work well with Bascik's scoping, from no code at all to fetch calls and events between components. The [Examples](/example-components) apply them in complete components.
 
 ## Decide in This Order
 
@@ -16,8 +16,8 @@ A framework runtime or a client-side router is never needed to make a Bascik pag
 | Need | Use | Notes |
 |---|---|---|
 | Accordion, FAQ, "show more" | `<details>` and `<summary>` | `name="faq"` on several makes them exclusive. In a component, `name` is scoped per instance, so each instance is its own group; add `data-bascik-preserve="name"` to group across instances |
-| Dropdown or popup panel | `<button popovertarget="menu">` and `<div id="menu" popover>` | Bascik rewrites the ID and `popovertarget` together. `popover="manual"` turns off light dismiss. See [Popover Menu](/examples/popover-menu) |
-| Modal | `<dialog>` and `showModal()` | A two-line script, or an invoker command: `<button commandfor="d" command="show-modal">`. See [Modal Dialog](/examples/modal-dialog) |
+| Dropdown or popup panel | `<button popovertarget="menu">` and `<div id="menu" popover>` | Bascik rewrites the ID and `popovertarget` together. `popover="manual"` turns off light dismiss. See [Popover Menu](/example-components/popover-menu) |
+| Modal | `<dialog>` and `showModal()` | A two-line script, or an invoker command: `<button commandfor="d" command="show-modal">`. See [Modal Dialog](/example-components/modal-dialog) |
 | Form rules | `required`, `type="email"`, `minlength`, `pattern` | Style with `:user-invalid`, which applies only after the visitor interacts |
 | Native pickers | `<input type="date">`, `<select>`, `<datalist>` | |
 | Page transitions | `@view-transition { navigation: auto; }` in a global stylesheet | Cross-document view transitions; other browsers navigate normally |
@@ -57,7 +57,7 @@ Keep state in variables, write one function that applies all of it to the DOM, a
 - **Derive runtime IDs from a scoped ID** (`` `${root.id}-panel-${i}` ``) and set them with `setAttribute('id', ...)`, never `el.id =`.
 - **Render something useful without JavaScript.** Mark script-only controls `hidden` and remove the attribute in the script.
 - **Re-sync form-driven state on `pageshow`.** Back and reload can restore an input's value without firing `input`.
-- **Preserve field names a server reads** with `data-bascik-preserve="name"` on the `<form>`. See [Contact Form](/examples/contact-form).
+- **Preserve field names a server reads** with `data-bascik-preserve="name"` on the `<form>`. See [Contact Form](/example-components/contact-form).
 
 ## Fetch With Loading and Error States
 
@@ -125,7 +125,7 @@ const readPrefs = () => {
 };
 ```
 
-State that must be right on the first paint, such as the theme, belongs in a small synchronous script in `<head>`. See [Theme Toggle](/examples/theme-toggle).
+State that must be right on the first paint, such as the theme, belongs in a small synchronous script in `<head>`. See [Theme Toggle](/example-components/theme-toggle).
 
 ## Events Between Components
 

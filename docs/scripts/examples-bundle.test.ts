@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BUNDLE_VERSION, componentDescription, componentTagsIn, createExamplesBundle, readmeDescription, titleOf } from './examples-bundle.ts';
+import { BUNDLE_VERSION, DOCUMENTED_WITH, componentDescription, componentTagsIn, createExamplesBundle, readmeDescription, titleOf } from './examples-bundle.ts';
 import { fileTree, githubUrl } from '../src/lib/examples.ts';
 import { NAV } from '../src/lib/nav.ts';
 
@@ -12,8 +12,6 @@ const docsRoot = fileURLToPath(new URL('..', import.meta.url));
 const examplesDir = join(docsRoot, '../examples');
 const componentNames = readdirSync(join(examplesDir, 'components')).sort();
 
-// Components that are documented on another component's page instead of their own.
-const DOCUMENTED_WITH: Record<string, string> = { 'theme-init': 'theme-toggle' };
 
 describe('examples-bundle helpers', () => {
   it('titles names and reads descriptions from @bascik comments and READMEs', () => {
@@ -50,7 +48,8 @@ describe('the published bundle', async () => {
   it('has every component and site, each with a description and files', () => {
     expect(bundle.version).toBe(BUNDLE_VERSION);
     expect(bundle.examples.filter((e) => e.kind === 'component').map((e) => e.name)).toEqual(componentNames);
-    expect(byName.get('starter-site')?.kind).toBe('site');
+    expect(byName.get('starter-site')).toMatchObject({ kind: 'site', docs: 'https://github.com/bascikdev/bascik/tree/main/examples/starter-site' });
+    expect(byName.get('theme-init')?.docs).toBe('/example-components/theme-toggle');
     for (const example of bundle.examples) {
       expect(example.description, example.name).not.toBe('');
       expect(example.files.length, example.name).toBeGreaterThan(0);
@@ -71,16 +70,16 @@ describe('the published bundle', async () => {
 
 describe('every example component is documented and exercised', () => {
   const navHrefs = new Set(NAV.flatMap((section) => section.pages.map((page) => page.href)));
-  const kitchenSink = readFileSync(join(docsRoot, 'src/pages/examples/kitchen-sink.html'), 'utf8');
+  const testPage = readFileSync(join(docsRoot, 'e2e/fixtures/example-components.html'), 'utf8');
 
   it.each(componentNames)('%s', (name) => {
     const page = DOCUMENTED_WITH[name] ?? name;
-    expect(existsSync(join(docsRoot, `src/pages/examples/${page}.html`)), `add src/pages/examples/${page}.html`).toBe(true);
-    expect(existsSync(join(docsRoot, `content/examples/${page}.md`)), `add content/examples/${page}.md`).toBe(true);
-    expect(navHrefs.has(`/examples/${page}`), `add /examples/${page} to nav.ts`).toBe(true);
+    expect(existsSync(join(docsRoot, `src/pages/example-components/${page}.html`)), `add src/pages/example-components/${page}.html`).toBe(true);
+    expect(existsSync(join(docsRoot, `content/example-components/${page}.md`)), `add content/example-components/${page}.md`).toBe(true);
+    expect(navHrefs.has(`/example-components/${page}`), `add /example-components/${page} to nav.ts`).toBe(true);
     if (!DOCUMENTED_WITH[name]) {
-      const instances = kitchenSink.match(new RegExp(`<${name}\\b`, 'g'))?.length ?? 0;
-      expect(instances, `put two <${name}> instances on the kitchen sink page`).toBeGreaterThanOrEqual(2);
+      const instances = testPage.match(new RegExp(`<${name}\\b`, 'g'))?.length ?? 0;
+      expect(instances, `put two <${name}> instances in e2e/fixtures/example-components.html`).toBeGreaterThanOrEqual(2);
     }
   });
 });

@@ -22,7 +22,8 @@ const starterDir = join(examplesDir, 'starter-site');
 // The starter site's .ts helpers live outside docs/ (outside this tsconfig's rootDir), so load them by computed path.
 const starter = (path: string): Promise<any> => import(join(starterDir, path));
 const { escapeHtml, groupByTag, parseFrontMatter, toPost } = await starter('src/lib/posts.ts');
-const { isCurrent, navLinks } = await starter('src/lib/nav.ts');
+const { isCurrent, navLinks } = await import(join(examplesDir, 'components/site-header/links.ts'));
+const { footerLinks } = await import(join(examplesDir, 'components/site-footer/links.ts'));
 const { absoluteUrl, jsonLd, seo } = await starter('src/lib/seo.ts');
 const { POST, validateContact } = await starter('src/api/contact.ts');
 const bundle = await createExamplesBundle(examplesDir);
@@ -249,7 +250,13 @@ describe('new-post and posts.ts', () => {
   });
 });
 
-describe('nav.ts', () => {
+describe('site-footer links.ts', () => {
+  it('escapes labels and hrefs', () => {
+    expect(footerLinks([{ label: 'A & B', href: '/a?x="1"' }])).toBe('<ul class="links"><li><a href="/a?x=&quot;1&quot;">A &amp; B</a></li></ul>');
+  });
+});
+
+describe('site-header links.ts', () => {
   it('marks the current page and its section', () => {
     expect(isCurrent('/', '/')).toBe(true);
     expect(isCurrent('/', '/about')).toBe(false);

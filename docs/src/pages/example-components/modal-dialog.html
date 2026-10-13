@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="A dropdown menu with no JavaScript, built on the HTML popover attribute and CSS anchor positioning, that works with many instances on a page." />
-  <title>Popover Dropdown Menu Example - Bascik</title>
+    content="A modal dialog component built on native dialog and showModal(), with a backdrop click to close and a scroll lock using html:has()." />
+  <title>Modal Dialog Component Example - Bascik</title>
 </head>
 
 <body>
@@ -36,13 +36,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/examples/popover-menu');
+          export default async () => renderSectionLabel('/example-components/modal-dialog');
         </script>
-        <!-- Rendered from docs/content/examples/popover-menu.md. The example code is read from the repo-root examples/
+        <!-- Rendered from docs/content/example-components/modal-dialog.md. The example code is read from the repo-root examples/
              folder at build time; edit it there, never in the Markdown. -->
         <script data-bascik-build>
           import { renderExample } from '@/lib/examples.ts';
-          export default async () => await renderExample('./content/examples/popover-menu.md', '../examples/components/popover-menu/popover-menu.html');
+          export default async () => await renderExample('./content/example-components/modal-dialog.md', '../examples/components/modal-dialog/modal-dialog.html');
         </script>
 
         <docs-pagination />

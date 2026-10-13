@@ -38,4 +38,4 @@ Each child of the slot becomes one panel, and its `data-tab` attribute is the ta
 node .agents/skills/bascik/scripts/add-example.mjs tab-group
 ```
 
-The command copies `tab-group/tab-group.html` into your first component folder. See [Examples](/examples) for other ways to copy it.
+The command copies `tab-group/tab-group.html` into your first component folder. See [Examples](/example-components) for other ways to copy it.

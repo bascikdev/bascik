@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copy an example component or site from https://bascik.dev/examples into the current Bascik project.
+// Copy an example component or site from https://bascik.dev/example-components into the current Bascik project.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -9,7 +9,7 @@ import { listComponents } from './lib/components.mjs';
 const HELP = `Usage: node add-example.mjs --list
        node add-example.mjs <example>[/<path>] [...more] [--dry-run] [--force]
 
-Copies examples from https://bascik.dev/examples into this project. Every example is tested with the real compiler
+Copies examples from https://bascik.dev/example-components into this project. Every example is tested with the real compiler
 and in a browser before it is published.
 
 References:
@@ -143,7 +143,8 @@ async function main() {
   } catch (error) {
     fail(`add-example: ${error.message}`);
   }
-  const docs = docsBaseUrl();
+  // An example's docs link is a docs path, or a full URL for examples without a docs page (sites link to GitHub).
+  const docsLink = (example) => new URL(example.docs, `${docsBaseUrl()}/`).href;
 
   if (values.list) {
     for (const kind of ['component', 'site']) {
@@ -153,7 +154,7 @@ async function main() {
       for (const example of examples) {
         const firstSentence = example.description.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? example.description;
         console.log(`  ${example.name.padEnd(16)} ${firstSentence}`);
-        console.log(`  ${''.padEnd(16)} ${docs}${example.docs}`);
+        console.log(`  ${''.padEnd(16)} ${docsLink(example)}`);
       }
     }
     return;
@@ -210,7 +211,7 @@ async function main() {
   const show = (path) => relative(root, path).replace(/\\/g, '/');
   const conflicts = plan.filter(({ file, destination }) => existsSync(destination) && readFileSync(destination, 'utf8') !== file.content);
   if (conflicts.length && !values.force) {
-    const list = conflicts.map(({ example, file, destination }) => `  ${show(destination)}  (compare with ${docs}${example.docs}, file ${file.path})`);
+    const list = conflicts.map(({ example, file, destination }) => `  ${show(destination)}  (compare with ${docsLink(example)}, file ${file.path})`);
     fail(`add-example: these files already exist and differ; nothing was written. Merge by hand, or rerun with --force:\n${list.join('\n')}`);
   }
 

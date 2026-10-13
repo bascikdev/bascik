@@ -55,7 +55,7 @@ Also run `node <skills-dir>/bascik/scripts/check-links.mjs` for broken links and
 | Control `sitemap.xml`, `robots.txt`, and lastmod dates | `/sitemap` |
 | Publish `llms.txt` and support AI agents | `/lighthouse/agentic-browsing` |
 | Generate per-page canonical URLs and titles | `/how-to/page-aware-scripts` |
-| See the helper in a working site | `/examples/starter-site#seo-tags` |
+| See the helper in a working site | `add-example.mjs starter-site/src/lib/seo.ts`, or the starter site README on GitHub |
 | Serve files under `/.well-known/` | `/deployment#well-known-uris` |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

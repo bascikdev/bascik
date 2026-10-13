@@ -20,8 +20,8 @@
     export default async () => await articleSchema();
   </script>
   <meta name="description"
-    content="A light and dark theme toggle that remembers the choice, plus a head script that applies it before the first paint so the theme never flashes." />
-  <title>Dark Mode Theme Toggle Example - Bascik</title>
+    content="Accessible tabs as a Bascik component: arrow-key navigation, runtime ARIA IDs that stay unique per instance, and stacked sections without JavaScript." />
+  <title>Accessible Tabs Component Example - Bascik</title>
 </head>
 
 <body>
@@ -36,13 +36,13 @@
       <main class="docs-content" id="main-content">
         <script data-bascik-build>
           import { renderSectionLabel } from '@/lib/render-nav.ts';
-          export default async () => renderSectionLabel('/examples/theme-toggle');
+          export default async () => renderSectionLabel('/example-components/tab-group');
         </script>
-        <!-- Rendered from docs/content/examples/theme-toggle.md. The example code is read from the repo-root examples/
+        <!-- Rendered from docs/content/example-components/tab-group.md. The example code is read from the repo-root examples/
              folder at build time; edit it there, never in the Markdown. -->
         <script data-bascik-build>
           import { renderExample } from '@/lib/examples.ts';
-          export default async () => await renderExample('./content/examples/theme-toggle.md', '../examples/components/theme-toggle/theme-toggle.html');
+          export default async () => await renderExample('./content/example-components/tab-group.md', '../examples/components/tab-group/tab-group.html');
         </script>
 
         <docs-pagination />

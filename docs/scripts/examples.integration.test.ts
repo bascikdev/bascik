@@ -143,7 +143,7 @@ describe('add-example.mjs into a fresh project', () => {
   it('copies the whole starter site and every component it uses, then builds and verifies', () => {
     const copied = addExample(['starter-site']);
     expect(copied.status, output(copied)).toBe(0);
-    for (const used of ['theme-init', 'theme-toggle', 'contact-form']) {
+    for (const used of ['site-header', 'site-footer', 'theme-init', 'theme-toggle', 'contact-form']) {
       expect(readFileSync(join(ws.dir, 'site/src/components', used, `${used}.html`), 'utf8')).toBe(
         readFileSync(join(examplesDir, 'components', used, `${used}.html`), 'utf8'),
       );
@@ -172,6 +172,8 @@ describe('add-example.mjs into a fresh project', () => {
       '<filter-list data-bascik-prop-label="Filter"><li>One</li><li>Two</li></filter-list>',
       '<contact-form />',
       '<theme-toggle />',
+      '<site-header><theme-toggle /></site-header>',
+      '<site-footer />',
     ].join('\n');
     ws.write(
       'site/src/pages/widgets.html',
@@ -187,11 +189,11 @@ describe('add-example.mjs into a fresh project', () => {
   }, 180_000);
 
   it('refuses to overwrite an edited file and writes nothing', () => {
-    const navFile = join(ws.dir, 'site/src/lib/nav.ts');
+    const navFile = join(ws.dir, 'site/src/components/site-header/links.ts');
     writeFileSync(navFile, '// edited by the user\n');
-    const again = addExample(['starter-site/src/lib']);
+    const again = addExample(['site-header']);
     expect(again.status).toBe(1);
-    expect(again.stderr).toContain('src/lib/nav.ts');
+    expect(again.stderr).toContain('src/components/site-header/links.ts');
     expect(again.stderr).toContain('nothing was written');
     expect(readFileSync(navFile, 'utf8')).toBe('// edited by the user\n');
   });

@@ -127,17 +127,17 @@ export const NAV: NavSection[] = [
     ]
   },
   {
-    section: 'Examples', pages: [
-      { href: '/examples', label: 'Overview' },
-      { href: '/examples/kitchen-sink', label: 'Kitchen Sink' },
-      { href: '/examples/starter-site', label: 'Starter Site' },
-      { href: '/examples/tab-group', label: 'Tab Group' },
-      { href: '/examples/modal-dialog', label: 'Modal Dialog' },
-      { href: '/examples/popover-menu', label: 'Popover Menu' },
-      { href: '/examples/copy-button', label: 'Copy Button' },
-      { href: '/examples/filter-list', label: 'Filter List' },
-      { href: '/examples/contact-form', label: 'Contact Form' },
-      { href: '/examples/theme-toggle', label: 'Theme Toggle' },
+    section: 'Example Components', pages: [
+      { href: '/example-components', label: 'Overview' },
+      { href: '/example-components/site-header', label: 'Site Header' },
+      { href: '/example-components/site-footer', label: 'Site Footer' },
+      { href: '/example-components/tab-group', label: 'Tab Group' },
+      { href: '/example-components/modal-dialog', label: 'Modal Dialog' },
+      { href: '/example-components/popover-menu', label: 'Popover Menu' },
+      { href: '/example-components/copy-button', label: 'Copy Button' },
+      { href: '/example-components/filter-list', label: 'Filter List' },
+      { href: '/example-components/contact-form', label: 'Contact Form' },
+      { href: '/example-components/theme-toggle', label: 'Theme Toggle' },
     ]
   },
   {

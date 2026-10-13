@@ -14,6 +14,11 @@ import { join, relative, sep } from 'node:path';
 
 export const BUNDLE_VERSION = 1;
 
+const GITHUB_EXAMPLES = 'https://github.com/bascikdev/bascik/tree/main/examples/';
+
+/** Components documented on another component's page instead of their own. Exported for tests. */
+export const DOCUMENTED_WITH: Record<string, string> = { 'theme-init': 'theme-toggle' };
+
 export interface ExampleFile {
   /** Path relative to the example folder, with forward slashes. */
   path: string;
@@ -30,7 +35,7 @@ export interface Example {
   kind: 'component' | 'site';
   title: string;
   description: string;
-  /** Docs page for the example, relative to the docs origin. */
+  /** Docs page for a component, relative to the docs origin, or the GitHub folder of a site. */
   docs: string;
   files: ExampleFile[];
 }
@@ -108,7 +113,7 @@ export async function createExamplesBundle(examplesDir: string): Promise<Example
     const main = files.find((file) => file.path === `${name}.html`)!;
     const description = componentDescription(main.content);
     if (!description) throw new Error(`examples-bundle: ${name}.html needs a description in its @bascik comment`);
-    examples.push({ name, kind: 'component', title: titleOf(name), description, docs: `/examples/${name}`, files });
+    examples.push({ name, kind: 'component', title: titleOf(name), description, docs: `/example-components/${DOCUMENTED_WITH[name] ?? name}`, files });
   }
 
   for (const entry of await readdir(examplesDir, { withFileTypes: true })) {
@@ -131,7 +136,9 @@ export async function createExamplesBundle(examplesDir: string): Promise<Example
     const readme = files.find((file) => file.path === 'README.md');
     const description = readme ? readmeDescription(readme.content) : '';
     if (!description) throw new Error(`examples-bundle: ${entry.name}/README.md needs a description paragraph`);
-    examples.push({ name: entry.name, kind: 'site', title: titleOf(entry.name), description, docs: `/examples/${entry.name}`, files });
+    // Sites have no docs page; their README on GitHub explains them.
+    const docs = `${GITHUB_EXAMPLES}${entry.name}`;
+    examples.push({ name: entry.name, kind: 'site', title: titleOf(entry.name), description, docs, files });
   }
 
   return { version: BUNDLE_VERSION, examples };
