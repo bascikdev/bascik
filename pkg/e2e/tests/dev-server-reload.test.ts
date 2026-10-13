@@ -178,32 +178,31 @@ test.describe('Dev Server Live-Reload & Watch Engine', () => {
   });
 
   test.afterEach(async () => {
-    // Avoid emitting watcher events for unchanged fixtures between tests.
-    await restoreFileIfChanged(pagePath, originalPageContent);
-    await restoreFileIfChanged(secondPagePath, originalSecondPageContent);
-    await restoreFileIfChanged(componentPath, originalComponentContent);
-    await restoreFileIfChanged(contentDocPath, originalContentDoc);
-    await restoreFileIfChanged(subfolderPagePath, originalSubfolderPage);
+    const restoreAndConsumeReload = async (
+      filePath: string,
+      originalContent: string,
+      httpPath: string,
+    ): Promise<void> => {
+      const current = await readFile(filePath, 'utf8').catch(() => null);
+      if (current !== originalContent) {
+        const { reload } = await subscribeToServerReload(httpPath);
+        await writeFile(filePath, originalContent, 'utf8');
+        await reload.catch(() => { });
+      }
+    };
+
+    // Avoid emitting watcher events for unchanged fixtures between tests, and
+    // consume the SSE reload for any restored fixture so it cannot interrupt
+    // the next test's initial page.goto().
+    await restoreAndConsumeReload(pagePath, originalPageContent, '/scope-test');
+    await restoreAndConsumeReload(secondPagePath, originalSecondPageContent, '/isolation-test');
+    await restoreAndConsumeReload(componentPath, originalComponentContent, '/scope-test');
+    await restoreAndConsumeReload(contentDocPath, originalContentDoc, '/watch-content-test');
+    await restoreAndConsumeReload(subfolderPagePath, originalSubfolderPage, '/subfolder/route-test');
     await restoreFileIfChanged(missingHelperPath, originalMissingHelper);
-    // Restoring the inlined global stylesheet rebuilds every page and
-    // broadcasts a reload to any open /scope-test tab. Subscribe first so the
-    // event cannot be missed, then wait for it, so that reload is consumed
-    // here rather than arriving during the next test.
-    const cssChanged = (await readFile(inlinedGlobalCssPath, 'utf8').catch(() => null)) !== originalInlinedGlobalCss;
-    if (cssChanged) {
-      const { reload } = await subscribeToServerReload('/scope-test');
-      await restoreFileIfChanged(inlinedGlobalCssPath, originalInlinedGlobalCss);
-      await reload;
-    }
-    await restoreFileIfChanged(scopeTestCssPath, originalScopeTestCss);
-    // Restoring the imported partial rebuilds /css-import-test; consume that
-    // reload here so it cannot land on a later test's page.
-    const partialChanged = (await readFile(importedPartialPath, 'utf8').catch(() => null)) !== originalImportedPartial;
-    if (partialChanged) {
-      const { reload } = await subscribeToServerReload('/css-import-test');
-      await restoreFileIfChanged(importedPartialPath, originalImportedPartial);
-      await reload;
-    }
+    await restoreAndConsumeReload(inlinedGlobalCssPath, originalInlinedGlobalCss, '/scope-test');
+    await restoreAndConsumeReload(scopeTestCssPath, originalScopeTestCss, '/scope-test');
+    await restoreAndConsumeReload(importedPartialPath, originalImportedPartial, '/css-import-test');
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
     await rm(dynamicHeadMetaCompPath, { force: true });

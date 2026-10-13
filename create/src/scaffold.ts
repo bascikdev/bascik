@@ -49,7 +49,7 @@ export const PACKAGE_JSON = (name: string): string =>
         "@bascik/bascik": "^1.0.0-rc.6",
       },
       devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.2",
+        "@bascik/language-server": "^0.1.0-rc.3",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",

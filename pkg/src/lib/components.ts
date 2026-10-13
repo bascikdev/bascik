@@ -133,6 +133,7 @@ export const NATIVE_HTML_ELEMENTS = new Set([
 ]);
 
 let componentListCache: ComponentList | null = null;
+const componentCompatFingerprints = new Map<string, string>();
 
 export const invalidateComponentListCache = () => {
   componentListCache = null;
@@ -187,6 +188,28 @@ const warnComponentCompatibility = async (
   componentCssFileNames: string[],
   companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined,
 ): Promise<void> => {
+  const cssFileName = componentCssFileNames.find(
+    (c) => c.replace(/\.css$/, ".html") === fileName,
+  );
+  let rawCss = "";
+  if (cssFileName) {
+    try {
+      rawCss = await readFile(cssFileName, "utf8");
+    } catch {
+      rawCss = "";
+    }
+  }
+  const companionFingerprint = companionScripts && companionScripts.scriptMap.size > 0
+    ? [...new Map([...companionScripts.scriptMap.values()].map((s) => [s.relPath, s.code])).entries()]
+        .map(([rel, code]) => `${rel}::${code}`)
+        .join("\0")
+    : "";
+  const fingerprint = `${rawHtml}\0${rawCss}\0${companionFingerprint}`;
+  if (componentCompatFingerprints.get(fileName) === fingerprint) {
+    return;
+  }
+  componentCompatFingerprints.set(fileName, fingerprint);
+
   const relHtml = relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
   const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) => {
     const newlines = match.match(/\n/g);
@@ -246,18 +269,10 @@ const warnComponentCompatibility = async (
     }
   }
 
-  const cssFileName = componentCssFileNames.find(
-    (c) => c.replace(/\.css$/, ".html") === fileName,
-  );
-  if (cssFileName) {
-    try {
-      const rawCss = await readFile(cssFileName, "utf8");
-      const relCss = relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
-      for (const m of findCompatibilityMatches(rawCss, "css")) {
-        emitWarning(relCss, getLineAtOffset(rawCss, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
-      }
-    } catch {
-      // ignore unreadable companion css
+  if (cssFileName && rawCss) {
+    const relCss = relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
+    for (const m of findCompatibilityMatches(rawCss, "css")) {
+      emitWarning(relCss, getLineAtOffset(rawCss, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
     }
   }
 

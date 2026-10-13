@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseCliOptions } from "./cli.js";
 import {
   E2E_APP_SPEC,
@@ -137,6 +139,20 @@ describe("PACKAGE_JSON", () => {
   it("includes Bascik as a dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.dependencies["@bascik/bascik"]).toBeDefined();
+  });
+
+  it("pins @bascik/bascik and @bascik/language-server to the current workspace versions", () => {
+    const repoRoot = resolve(import.meta.dirname, "../..");
+    const pkgJson = JSON.parse(readFileSync(resolve(repoRoot, "pkg/package.json"), "utf8")) as { version: string };
+    const lspJson = JSON.parse(readFileSync(resolve(repoRoot, "lsp/package.json"), "utf8")) as { version: string };
+    const adapterJson = JSON.parse(readFileSync(resolve(repoRoot, "adapters/cloudflare/package.json"), "utf8")) as {
+      peerDependencies: Record<string, string>;
+    };
+    const scaffolded = JSON.parse(PACKAGE_JSON("my-app"));
+
+    expect(scaffolded.dependencies["@bascik/bascik"]).toBe(`^${pkgJson.version}`);
+    expect(scaffolded.devDependencies["@bascik/language-server"]).toBe(`^${lspJson.version}`);
+    expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(`^${pkgJson.version}`);
   });
 
   it("uses the supplied name", () => {
