@@ -900,6 +900,16 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
     expect(result.cssFileContent).toContain(`.${scopeClass("hidden")}`);
   });
 
+  it("scopes a JS-only class used in getElementsByClassName", () => {
+    const c = makeComponent(
+      '<div></div><script>const items = document.getElementsByClassName("js-only-cls");</script>',
+      ".js-only-cls { display: flex; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(`getElementsByClassName("${scopeClass("js-only-cls")}")`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("js-only-cls")}`);
+  });
+
   it("does not double-scope a class appearing in both HTML and querySelector", () => {
     const c = makeScopedComponent(
       '<div class="card"></div><script>el.querySelector(".card")</script>',

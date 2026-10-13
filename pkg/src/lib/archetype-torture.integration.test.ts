@@ -624,6 +624,227 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     }
   });
 
+  it("Archetype 11: Modern CSS Torture Chamber (Recursive @import with @layer/@supports/@media, @property, @counter-style, @position-try, view-transition-name, keyframes named color/flex, unquoted [href$=.pdf])", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default { minify: { identifiers: false } };\n`,
+      "src/components/css-torture/tokens.css": [
+        "@property --accent-size { syntax: '<length>'; inherits: false; initial-value: 8px; }",
+        ":root { --accent-size: 12px; }",
+      ].join("\n"),
+      "src/components/css-torture/css-torture.css": [
+        '@import "./tokens.css" layer(tokens) supports(display: grid) (min-width: 300px);',
+        "@counter-style custom-bullets { system: cyclic; symbols: '▸'; }",
+        "@keyframes color { from { opacity: 0; } to { opacity: 1; } }",
+        "@keyframes flex { from { transform: scale(0.95); } to { transform: scale(1); } }",
+        "@position-try --pop-flip { bottom: anchor(top); }",
+        ".shell {",
+        "  display: flex;",
+        "  color: red;",
+        "  container-name: card-box;",
+        "  anchor-name: --pop-anchor;",
+        "  view-transition-name: hero-card;",
+        "  animation: color 1s ease, flex 2s linear;",
+        "  padding: var(--accent-size);",
+        "}",
+        ".popover { position-anchor: --pop-anchor; }",
+        "::view-transition-old(hero-card) { opacity: 0; }",
+        "@container card-box (min-width: 200px) {",
+        "  #panel ul > li { list-style: custom-bullets; }",
+        "  .shell a[href$=.pdf] span { text-decoration: underline; }",
+        "}",
+      ].join("\n"),
+      "src/components/css-torture/css-torture.html": [
+        '<div class="shell">',
+        '  <section id="panel">',
+        '    <ul><li><a href="/manual.pdf"><span>Download PDF</span></a></li></ul>',
+        "  </section>",
+        '  <div class="popover">Tip</div>',
+        "</div>",
+      ].join("\n"),
+      "src/pages/index.html": "<!DOCTYPE html><html><head><title>CSS Torture</title></head><body><css-torture /></body></html>",
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 11 CSS Torture");
+      expect(html).toContain("display:flex");
+      expect(html).toContain("color:red");
+      expect(html).toContain("[href$=.pdf]");
+      expect(html).toContain("bascik__css-torture__keyframe__color");
+      expect(html).toContain("bascik__css-torture__keyframe__flex");
+      expect(html).toContain("bascik__css-torture__container__card-box");
+      expect(html).toContain("bascik__css-torture__counter__custom-bullets");
+      expect(html).toContain("--bascik__css-torture__anchor__pop-anchor");
+      expect(html).toContain("bascik__css-torture__vtn__hero-card");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 12: Page-Aware Build Script & Dynamic Route Torture Chamber (data-bascik-build='page', >32KB BASCIK_ROUTE payload, pre/post exec hooks)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": [
+        "export default {",
+        "  minify: { identifiers: false },",
+        "  pipeline: {",
+        "    exec: [",
+        "      { script: 'scripts/post-feed.ts', phase: 'post' },",
+        "    ],",
+        "  },",
+        "};",
+      ].join("\n"),
+      "scripts/post-feed.ts": [
+        "import { writeFileSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        "writeFileSync(join(process.env.BASCIK_OUT_DIR || 'dist', 'feed.xml'), '<rss></rss>');",
+      ].join("\n"),
+      "src/components/breadcrumbs/breadcrumbs.html": [
+        '<nav id="crumb-nav" class="crumbs">',
+        '  <script data-bascik-build="page">',
+        "    export default () => {",
+        "      const pagePath = process.env.BASCIK_PAGE_PATH || '/';",
+        '      return `<ol class="crumb-list"><li><a href="${pagePath}">Current: ${pagePath}</a></li></ol>`;',
+        "    };",
+        "  </script>",
+        "</nav>",
+      ].join("\n"),
+      "src/components/breadcrumbs/breadcrumbs.css": ".crumbs .crumb-list { display: flex; } li a { color: navy; }",
+      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Home</title></head><body><breadcrumbs /></body></html>",
+      "src/pages/articles/[slug].html": [
+        "<!DOCTYPE html><html><head><title>Article</title></head><body>",
+        "<script data-bascik-routes>",
+        "  export default async () => [",
+        "    { params: { slug: 'deep-dive' }, data: { body: 'A'.repeat(40000), summary: 'Large payload' } },",
+        "  ];",
+        "</script>",
+        "<breadcrumbs />",
+        "<script data-bascik-build>",
+        "  export default () => {",
+        "    const route = JSON.parse(process.env.BASCIK_ROUTE || '{}');",
+        "    return `<article data-len=\"${route.data?.body?.length ?? 0}\">${route.data?.summary ?? ''}</article>`;",
+        "  };",
+        "</script>",
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const articleHtml = readFileSync(join(dir, "dist/articles/deep-dive.html"), "utf8");
+      assertValidHtml5(articleHtml, "Archetype 12 deep-dive.html");
+      expect(articleHtml).toContain('data-len="40000"');
+      expect(articleHtml).toContain("Large payload");
+      // Page-aware component build script output must be scoped with the component's classes and element classes!
+      expect(articleHtml).toContain('class="bascik__breadcrumbs__crumb-list"');
+      expect(articleHtml).toContain('class="bascik__breadcrumbs__el__li"');
+      expect(articleHtml).toContain('class="bascik__breadcrumbs__el__a"');
+      expect(articleHtml).toContain("Current: /articles/deep-dive");
+      expect(existsSync(join(dir, "dist/feed.xml"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 13: HTML Tokenizer & Minifier Torture Chamber (<template>, SVG foreignObject, JS regex/division/ASI, <pre> comments, <textarea> closing tags)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/complex-widget/complex-widget.html": [
+        '<div id="widget" class="widget">',
+        '  <template id="row-tpl"><p class="tpl-row">Template Row</p></template>',
+        '  <pre><!-- preserved comment inside pre --><code>const x = 1 &lt; 2;</code></pre>',
+        '  <textarea aria-label="Raw">&lt;/body&gt;&lt;/html&gt;</textarea>',
+        '  <svg viewBox="0 0 100 100"><foreignObject width="100" height="100"><div class="fo-inner">Foreign</div></foreignObject></svg>',
+        "</div>",
+        "<script>",
+        '  const root = document.getElementById("widget");',
+        '  const ratio = (100 / 2) / 5;',
+        '  const re = /\\/[a-z]+\\//g;',
+        '  const tpl = `nested ${`inner ${1 + 2}`} end`;',
+        '  if (root && re.test("/abc/") && ratio === 10 && tpl) {',
+        '    const found = document.getElementsByClassName("js-discovered-only");',
+        '    if (found.length === 0) root.classList.add("js-discovered-only");',
+        "  }",
+        "</script>",
+      ].join("\n"),
+      "src/components/complex-widget/complex-widget.css": [
+        ".widget { position: relative; }",
+        ".tpl-row, .fo-inner, .js-discovered-only { color: green; }",
+        "p { margin: 0; }",
+      ].join("\n"),
+      "src/pages/index.html": "<!DOCTYPE html><html><head><title>Tokenizer Torture</title></head><body><complex-widget /></body></html>",
+    });
+
+    try {
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const checkRes = runBascikCli(dir, ["--check"]);
+      expect(checkRes.status, checkRes.stdout + checkRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 13 Tokenizer Torture");
+      expect(html).toContain("<!-- preserved comment inside pre -->");
+      expect(html).toContain("Foreign");
+      // Verify getElementsByClassName("js-discovered-only") and classList.add("js-discovered-only") received the same scoped class
+      const getByCls = html.match(/getElementsByClassName\("([^"]+)"\)/)?.[1];
+      const addCls = html.match(/classList\.add\("([^"]+)"\)/)?.[1];
+      expect(getByCls).toBeDefined();
+      expect(getByCls).toBe(addCls);
+      expect(getByCls).not.toBe("js-discovered-only");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Archetype 14: CLI --lint --fix Auto-Repair Torture Chamber (Auto-fixing missing-prop-prefix across multiple components and pages)", () => {
+    const dir = createTempSite({
+      "bascik.config.ts": `export default {};\n`,
+      "src/components/hero-banner/hero-banner.html": [
+        '<section class="hero">',
+        '  <h1 data-bascik-prop-headline></h1>',
+        '  <a data-bascik-attr-href="ctaUrl" data-bascik-prop-ctaLabel></a>',
+        "</section>",
+      ].join("\n"),
+      "src/components/hero-banner/hero-banner.css": ".hero { padding: 20px; }",
+      "src/pages/index.html": [
+        "<!DOCTYPE html><html><head><title>AutoFix</title></head><body>",
+        '<hero-banner headline="Welcome" ctaUrl="/start" ctaLabel="Get Started" />',
+        "</body></html>",
+      ].join("\n"),
+    });
+
+    try {
+      // 1. Before --fix, --lint reports 3 missing-prop-prefix warnings
+      const initialLint = runBascikCli(dir, ["--lint"]);
+      expect(initialLint.stdout).toContain("Component props missing data-bascik-prop-* prefix (3)");
+
+      // 2. Run bascik --lint --fix
+      const fixRes = runBascikCli(dir, ["--lint", "--fix"]);
+      expect(fixRes.status, fixRes.stderr).toBe(0);
+      expect(fixRes.stdout).not.toContain("Component props missing data-bascik-prop-* prefix");
+
+      // 3. Build and verify all 3 props now render into the compiled HTML
+      const buildRes = runBascikCli(dir, ["--build"]);
+      expect(buildRes.status, buildRes.stderr).toBe(0);
+
+      const html = readFileSync(join(dir, "dist/index.html"), "utf8");
+      assertValidHtml5(html, "Archetype 14 AutoFix index.html");
+      expect(html).toContain("<h1>Welcome</h1>");
+      expect(html).toContain('href="/start"');
+      expect(html).toContain(">Get Started</a>");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     "migration-examples/ports/react-product-table",
     "migration-examples/ports/vue-grid",

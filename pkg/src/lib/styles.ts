@@ -272,13 +272,24 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
     );
   }
   if (scopedNames.size === 0) return css;
-  // One pass over whole identifiers inside non-string/non-url CSS so a later
-  // keyframe name never matches inside an earlier generated name or a longer name.
+  // Scope @keyframes declarations and animation / animation-name property values
+  // so a keyframe named `color`, `flex`, `grid`, or `in` never clobbers CSS
+  // property names, unrelated declarations, or selectors.
   const { css: shielded, restore } = shieldCssStrings(css);
-  const replaced = shielded.replace(
-    /(?<![@.\w#-])([\w-]+)(?![\w-])/g,
-    (name: string) => scopedNames.get(name) ?? name,
-  );
+  const replaced = shielded
+    .replace(
+      /(@keyframes\s+)([\w-]+)(?=\s*\{)/gi,
+      (_match, prefix: string, name: string) =>
+        `${prefix}${scopedNames.get(name) ?? name}`,
+    )
+    .replace(
+      /((?:^|[;{]\s*)(?:-[a-z]+-)?animation(?:-name)?\s*:\s*)([^;{}]+)/gim,
+      (_match, prefix: string, value: string) =>
+        `${prefix}${value.replace(
+          /(?<![@.\w#-])([\w-]+)(?![\w(-])/g,
+          (name: string) => scopedNames.get(name) ?? name,
+        )}`,
+    );
   return restore(replaced);
 };
 
@@ -406,10 +417,15 @@ export const shieldCssStrings = (
   css: string,
 ): { css: string; restore: (s: string) => string } => {
   const shield = createContentShield(css);
-  // Quoted strings (with escape handling) and url(...) contents.
+  // Quoted strings (with escape handling), url(...) contents, and unquoted
+  // attribute-selector values (so a[href$=.pdf] keeps `[...]` visible to
+  // selector passes while hiding `.pdf` from class-selector regexes).
   const shielded = css.replace(
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)/gi,
-    (match) => shield.hide(match),
+    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
+    (match, _str?: string, attrPrefix?: string, unquotedVal?: string) =>
+      attrPrefix !== undefined && unquotedVal !== undefined
+        ? `${attrPrefix}${shield.hide(unquotedVal)}`
+        : shield.hide(match),
   );
   return {
     css: shielded,
@@ -926,7 +942,7 @@ export const scopeContainerNames = (
   const containerNames = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   shielded.replace(
-    /container(?:-name)?\s*:\s*([\w-]+)/g,
+    /(?<![\w-])container(?:-name)?\s*:\s*([\w-]+)/g,
     (_: string, name: string) => {
       if (name !== "none") containerNames.add(name);
       return "";
@@ -941,7 +957,7 @@ export const scopeContainerNames = (
   });
   const replaced = shielded
     .replace(/(?<=@container\s+)([\w-]+)(?=\s*[({])/gm, (name: string) => scopedNames.get(name) ?? name)
-    .replace(/(container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
+    .replace(/((?<![\w-])container(?:-name)?\s*:\s*)([\w-]+)/gm, (match: string, prefix: string, name: string) => {
       const scoped = scopedNames.get(name);
       return scoped === undefined ? match : `${prefix}${scoped}`;
     });
@@ -966,7 +982,7 @@ export const scopeViewTransitionNames = (
   const names = new Set<string>();
   const { css: shielded, restore } = shieldCssStrings(css);
   shielded.replace(
-    /view-transition-name\s*:\s*([\w-]+)/g,
+    /(?<![\w-])view-transition-name\s*:\s*([\w-]+)/g,
     (_: string, name: string) => {
       if (name !== "none" && name !== "auto") names.add(name);
       return "";
@@ -983,7 +999,7 @@ export const scopeViewTransitionNames = (
   });
   const replaced = shielded
     .replace(
-      /(view-transition-name\s*:\s*)([\w-]+)(?![\w-])/gm,
+      /((?<![\w-])view-transition-name\s*:\s*)([\w-]+)(?![\w-])/gm,
       (match: string, prefix: string, name: string) => {
         const scoped = scopedNames.get(name);
         return scoped === undefined ? match : `${prefix}${scoped}`;
@@ -1047,11 +1063,11 @@ export const scopeCounterStyleNames = (
     // The @counter-style declaration
     .replace(/(@counter-style\s+)([\w-]+)(?=\s*\{)/gm, scopeName)
     // list-style and list-style-type property references
-    .replace(/(list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
+    .replace(/((?<![\w-])list-style(?:-type)?\s*:\s*)([\w-]+)/gm, scopeName)
     // counter() second argument: counter(name, style)
-    .replace(/(counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
+    .replace(/((?<![\w-])counter\([^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName)
     // counters() third argument: counters(name, sep, style)
-    .replace(/(counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
+    .replace(/((?<![\w-])counters\([^,)]+,\s*[^,)]+,\s*)([\w-]+)(?=[^)]*\))/gm, scopeName);
   return restore(replaced);
 };
 
@@ -1083,7 +1099,7 @@ export const scopeAnchorNames = (
   const { css: shielded, restore } = shieldCssStrings(css);
   // Collect all anchor-name: --name declarations and @position-try --name declarations
   shielded.replace(
-    /anchor-name\s*:\s*--(\w[\w-]*)/g,
+    /(?<![\w-])anchor-name\s*:\s*--(\w[\w-]*)/g,
     (_: string, name: string) => {
       names.add(name);
       return "";
@@ -1110,8 +1126,8 @@ export const scopeAnchorNames = (
     return scoped === undefined ? match : `${prefix}--${scoped}`;
   };
   const replaced = shielded
-    .replace(/(anchor-name\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
-    .replace(/(position-anchor\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
+    .replace(/((?<![\w-])anchor-name\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
+    .replace(/((?<![\w-])position-anchor\s*:\s*)--(\w[\w-]*)(?![\w-])/gm, scopeName)
     .replace(/(@position-try\s+)--(\w[\w-]*)(?=\s*\{)/gm, scopeName);
   return restore(replaced);
 };

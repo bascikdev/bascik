@@ -130,6 +130,8 @@ describe("rewriteHtmlBasePaths", () => {
       `<script>const template = '<img src="/script.png">';</script>`,
       `<textarea><img src="/textarea.png"></textarea>`,
       `<img alt="greater > than" src="/active.png">`,
+      `<div data-example="click href='/keep-literal'"><a href="/real">Real</a></div>`,
+      `<img src=/unquoted.png/>`,
     ].join("");
 
     expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
@@ -138,6 +140,8 @@ describe("rewriteHtmlBasePaths", () => {
         `<script>const template = '<img src="/script.png">';</script>`,
         `<textarea><img src="/textarea.png"></textarea>`,
         `<img alt="greater > than" src="/sub/active.png">`,
+        `<div data-example="click href='/keep-literal'"><a href="/sub/real">Real</a></div>`,
+        `<img src=/sub/unquoted.png/>`,
       ].join(""),
     );
   });

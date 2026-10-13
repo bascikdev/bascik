@@ -46,6 +46,27 @@ describe("CSS name scoping replaces whole names only", () => {
     );
   });
 
+  it("does not scope CSS property names that end with container-name (e.g. --container-name or scroll-container)", () => {
+    const css = ".x { container-name: panel; --my-container-name: panel; scroll-container: panel; }\n@container panel (min-width: 1px) {}";
+    const result = scopeContainerNames(css, "my-comp");
+    expect(result).toBe(
+      `.x { container-name: ${container("panel")}; --my-container-name: panel; scroll-container: panel; }\n@container ${container("panel")} (min-width: 1px) {}`,
+    );
+  });
+
+  it("does not mangle unquoted file extensions in CSS attribute selectors like a[href$=.pdf]", () => {
+    const component = prefixElementAttribute(
+      {
+        name: "my-comp",
+        fileContent: '<div class="card"><a href="/doc.pdf">PDF</a></div>',
+        cssFileContent: ".card a[href$=.pdf] { color: red; }",
+      },
+      "class",
+      "12345678",
+    );
+    expect(component.cssFileContent).toContain("[href$=.pdf]");
+  });
+
   it("does not rewrite a counter style inside another counter style's generated name", () => {
     const css = "@counter-style c { system: cyclic; symbols: x; }\n@counter-style b { system: cyclic; symbols: y; }\n" +
       "li::before { content: counter(item, c) counters(item, \".\", c) counter(item, b); }";
@@ -73,6 +94,19 @@ describe("CSS name scoping replaces whole names only", () => {
       `@keyframes ${keyframe("a")} { to { opacity: 1 } }\n` +
       `@keyframes ${keyframe("b")} { to { opacity: 0 } }\n` +
       `.a { animation: ${keyframe("a")} 1s, ${keyframe("b")} 2s; content: "a b"; }`,
+    );
+  });
+
+  it("does not rewrite CSS property names or unrelated property values when a keyframe is named color, ease, none, or flex", () => {
+    const css =
+      "@keyframes color { from { opacity: 0; } to { opacity: 1; } }\n" +
+      "@keyframes flex { from { opacity: 0; } to { opacity: 1; } }\n" +
+      ".box { display: flex; color: red; transition: color 0.2s ease; animation: color 1s ease, flex 2s; animation-name: color, flex; }";
+    const result = prefixKeyframes(css, "my-comp");
+    expect(result).toBe(
+      `@keyframes ${keyframe("color")} { from { opacity: 0; } to { opacity: 1; } }\n` +
+      `@keyframes ${keyframe("flex")} { from { opacity: 0; } to { opacity: 1; } }\n` +
+      `.box { display: flex; color: red; transition: color 0.2s ease; animation: ${keyframe("color")} 1s ease, ${keyframe("flex")} 2s; animation-name: ${keyframe("color")}, ${keyframe("flex")}; }`,
     );
   });
 

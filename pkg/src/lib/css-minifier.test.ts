@@ -62,6 +62,19 @@ describe("minifyCss", () => {
     );
   });
 
+  it("keeps the space after a pseudo-class before a descendant element or class selector", () => {
+    // `.card:hover span` and `.list > :first-child a` have a space after `:hover` / `:first-child`
+    // that is a descendant combinator, not a declaration colon!
+    const input = [
+      ".card:hover span { color: red; }",
+      ".list > :first-child a { color: blue; }",
+      ".box:focus-within .inner { opacity: 1; }",
+    ].join("\n");
+    expect(minifyCss(input)).toBe(
+      ".card:hover span{color:red;}.list > :first-child a{color:blue;}.box:focus-within .inner{opacity:1;}",
+    );
+  });
+
   it("still removes spaces around declaration colons", () => {
     expect(minifyCss(".a { color : red ; margin :0 }")).toBe(".a{color:red;margin:0}");
     expect(minifyCss(".a { color: red; &:hover { color : blue } }")).toBe(".a{color:red;&:hover{color:blue}}");

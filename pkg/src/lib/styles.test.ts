@@ -1054,6 +1054,30 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
     );
   });
 
+  it("converts multi-hop element selectors after a comma in a selector list: h1, div p, section > span { }", () => {
+    const pre = "h1, div p, section > span + a { margin: 0; }";
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toBe(
+      ".bascik__my-comp__el__h1, .bascik__my-comp__el__div .bascik__my-comp__el__p, .bascik__my-comp__el__section > .bascik__my-comp__el__span + .bascik__my-comp__el__a { margin: 0; }",
+    );
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["h1", "div", "p", "section", "span", "a"]),
+    );
+  });
+
+  it("converts descendant element selectors after an element with an attribute selector: a[href$='.pdf'] span { }", () => {
+    const pre = `a[href$=".pdf"] span, input[type=checkbox]:checked + label { color: red; }`;
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toBe(
+      `.bascik__my-comp__el__a[href$=".pdf"] .bascik__my-comp__el__span, .bascik__my-comp__el__input[type=checkbox]:checked + .bascik__my-comp__el__label { color: red; }`,
+    );
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["a", "span", "input", "label"]),
+    );
+  });
+
   it.each([
     [".bascik__my-comp__list>li { color: red; }", ".bascik__my-comp__list>.bascik__my-comp__el__li"],
     [".bascik__my-comp__list >li { color: red; }", ".bascik__my-comp__list >.bascik__my-comp__el__li"],

@@ -269,6 +269,7 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
         `#${id1} ${t2}`,
         `#${id1} > ${t2} > ${t3}`,
         `#${id1} ${t3} + ${t2}`,
+        `#${id1} ${t3} ~ ${t2}`,
         `${t1} ${t2} ${t3}`,
         `${t1} > ${t2}`,
         `.${c2} > ${t3}`,
@@ -276,6 +277,8 @@ describe("Semantic differential CSS scoping vs. isolated component DOM", () => {
         `${t3}:first-child`,
         `.${c1}:not(.${c2})`,
         `${t1}, ${t3}`,
+        `${t1}, ${t2} > ${t3}`,
+        `#${id1}, .${c2} ${t3}`,
       ),
   );
 

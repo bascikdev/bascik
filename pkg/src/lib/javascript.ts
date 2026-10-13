@@ -599,6 +599,15 @@ export const prefixElementAttribute = (
           if (token) addIfNew(token);
         }
       }
+
+      // getElementsByClassName("x y")
+      for (const byClassMatch of src.matchAll(
+        /getElementsByClassName\(\s*["']([^"']*)["']\s*\)/gm,
+      )) {
+        for (const token of byClassMatch[1].trim().split(/\s+/)) {
+          if (token) addIfNew(token);
+        }
+      }
     }
   }
 
