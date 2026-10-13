@@ -1131,6 +1131,13 @@ describe("collectAllScriptDeps", () => {
       /has both data-bascik-build and data-bascik-routes/,
     );
   });
+
+  it("throws an error when script tag has both data-bascik-build and data-bascik-stream", async () => {
+    const html = "<script data-bascik-build data-bascik-stream>console.log(1)</script>";
+    await expect(executeBuildScripts(html, "src/pages/index.html")).rejects.toThrow(
+      /has both data-bascik-build and data-bascik-stream/,
+    );
+  });
 });
 
 // ─── script output cache ─────────────────────────────────────────────────────

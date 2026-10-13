@@ -1052,6 +1052,43 @@ describe("mergeAttributesOntoRoot", () => {
       }),
     ).toBe('<div style="color: red; font-weight: bold;">Card</div>');
   });
+
+  it("does not corrupt data-class or data-style attributes on the root element when merging class or style", () => {
+    expect(
+      mergeAttributesOntoRoot('<div data-class="foo" data-style="bar" class="base">Card</div>', {
+        class: "extra",
+        style: "color: red;",
+      }),
+    ).toBe('<div data-class="foo" data-style="bar" class="base extra" style="color: red;">Card</div>');
+  });
+
+  it("ignores slot and prop markers inside HTML comments, <script>, and <textarea>", () => {
+    const template =
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+      '<script>const s = \'<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>\';</script>' +
+      '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+      '<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>';
+    const withProps = injectProps(template, { title: "Title" });
+    const withNamed = replaceNamedSlots(withProps, { header: "<h1>Header</h1>" });
+    const withDefault = replaceDefaultSlots(withNamed, "<span>Body</span>");
+
+    expect(withDefault).toBe(
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+      '<script>const s = \'<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>\';</script>' +
+      '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+      '<p>Title</p><h1>Header</h1><span>Body</span>',
+    );
+  });
+
+  it("accepts single-quoted named slot wrappers and close tags with trailing whitespace", () => {
+    const usage = "<div data-bascik-slot='header'><h1>H</h1></div ><p>Body</p>";
+    expect(extractNamedSlotContent(usage)).toEqual({ header: "<h1>H</h1>" });
+    expect(extractDefaultSlotContent(usage)).toBe("<p>Body</p>");
+
+    const template = "<footer><div data-bascik-slot='header'>fallback</div ><div data-bascik-slot>def</div ></footer>";
+    const namedReplaced = replaceNamedSlots(template, { header: "<h1>H</h1>" });
+    expect(replaceDefaultSlots(namedReplaced, "<p>Body</p>")).toBe("<footer><h1>H</h1><p>Body</p></footer>");
+  });
 });
 
 describe("getTag – multiline and complex attributes", () => {

@@ -887,6 +887,38 @@ describe("checkProject", () => {
       expect(ordering.every((i) => i.severity === "warning")).toBe(true);
     });
 
+    it("ignores markup-like text inside <style> and <script> when checking component structure order and compatibility", async () => {
+      await setupProject({
+        "pages/index.html": "<clean-card></clean-card>",
+        "components/clean-card/clean-card.html": [
+          '<style>.x::before { content: "<div"; } /* :is(p) */</style>',
+          '<div data-note="x > y" data-bascik-preserve><clean-card></clean-card></div>',
+          '<script>// el.id = "commented";</script>',
+          '<script data-bascik-build>const node = { id: "server-only" }; node.id = "ok";</script>',
+        ].join("\n"),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "clean-card": { fileName: join(workDir, "components/clean-card/clean-card.html") },
+      });
+
+      const findings = await checkProject();
+      expect(findings.items).toEqual([]);
+    });
+
+    it("detects unknown data-bascik-* attributes after a quoted > on the same tag", async () => {
+      await setupProject({
+        "pages/index.html": '<div title="a > b" data-bascik-typo="1"></div>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const unknown = findings.items.filter((i) => i.category === "unknown-bascik-attribute");
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0].message).toContain('"data-bascik-typo"');
+    });
+
     it("does not emit missing-required-prop warnings because the cheap global heuristic is too noisy", async () => {
       await setupProject({
         "pages/index.html": "<card-title></card-title>",

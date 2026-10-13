@@ -37,7 +37,7 @@ const SCRIPT_OPEN_TAG_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 /** Scripts that end up in the browser with a sourceURL: classic, module, and `text/typescript` (stripped later). */
 const getsSourceUrl = (openTag: string): boolean =>
   !DIRECTIVE_SCRIPT_RE.test(openTag) &&
-  !/\bsrc\s*=/i.test(openTag) &&
+  !/\s+src\s*=/i.test(openTag) &&
   (isJavaScriptScript(openTag) || getScriptType(openTag) === "text/typescript");
 
 /** Adds the stamp to a script open tag (`<script ...>`). */

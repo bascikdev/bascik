@@ -254,6 +254,17 @@ describe("transformTypeScriptScriptTags", () => {
     expect(out).not.toContain(": string");
   });
 
+  it("does not strip data-type or treat data-src as external when transforming TypeScript scripts", async () => {
+    const html =
+      '<!-- <script type="text/typescript">enum Broken { A }</script> -->' +
+      '<textarea><script type="text/typescript">enum Broken { A }</script></textarea>' +
+      '<script data-type="custom" data-src="/lazy.js" type="text/typescript">let a: number = 1;</script>';
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
+    expect(out).toContain('<script data-type="custom" data-src="/lazy.js">let a         = 1;</script>');
+    expect(out).toContain('<!-- <script type="text/typescript">enum Broken { A }</script> -->');
+    expect(out).toContain('<textarea><script type="text/typescript">enum Broken { A }</script></textarea>');
+  });
+
   it("leaves ordinary inline scripts, module scripts, external scripts, JSON, and directive scripts untouched", async () => {
     const html = [
       "<script>let a: number = 1;</script>",

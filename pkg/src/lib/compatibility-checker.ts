@@ -37,6 +37,16 @@ export function findCompatibilityMatches(
   text: string,
   kind: "css" | "js",
 ): CompatibilityMatch[] {
+  const scannable =
+    kind === "css"
+      ? text.replace(
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
+          (m, stringOrUrl?: string) => (stringOrUrl ? stringOrUrl : m.replace(/[^\n]/g, " ")),
+        )
+      : text.replace(
+          /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|`(?:[^`\\]|\\[\s\S])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+          (m, str?: string) => (str ? str : m.replace(/[^\n]/g, " ")),
+        );
   const matches: CompatibilityMatch[] = [];
   for (const rule of compatibilityRules) {
     if (rule.kind !== kind) continue;
@@ -45,7 +55,7 @@ export function findCompatibilityMatches(
       : `${rule.regex.flags}g`;
     const regex = new RegExp(rule.regex.source, flags);
     let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) !== null) {
+    while ((m = regex.exec(scannable)) !== null) {
       matches.push({
         rule,
         index: m.index,

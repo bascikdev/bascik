@@ -72,14 +72,19 @@ export const is404Page = (relativePath: string): boolean =>
 export const is500Page = (relativePath: string): boolean =>
   getHttpPath(relativePath) === "/500";
 
+const SITEMAP_EXCLUDE_META_RE =
+  /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bname=["']bascik-sitemap["'](?:[^>"']|"[^"]*"|'[^']*')*\bcontent=["']exclude["']|<meta\b(?:[^>"']|"[^"]*"|'[^']*')*\bcontent=["']exclude["'](?:[^>"']|"[^"]*"|'[^']*')*\bname=["']bascik-sitemap["']/i;
+
 /**
  * Check whether a page HTML contains `<meta name="bascik-sitemap" content="exclude">`.
  */
 export const isPageExcludedFromSitemap = async (pageFilePath: string): Promise<boolean> => {
   try {
     const content = await readFile(pageFilePath, "utf8");
-    return /<meta\b[^>]*\bname=["']bascik-sitemap["'][^>]*\bcontent=["']exclude["']/i.test(content) ||
-      /<meta\b[^>]*\bcontent=["']exclude["'][^>]*\bname=["']bascik-sitemap["']/i.test(content);
+    const scannable = content
+      .replace(/<!--[\s\S]*?(?:-->|$)/g, () => "")
+      .replace(/<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi, () => "");
+    return SITEMAP_EXCLUDE_META_RE.test(scannable);
   } catch {
     return false;
   }
@@ -202,17 +207,22 @@ export const generateSitemapFiles = async (
     // Remove duplicates and filter excluded meta
     const uniqueRawPaths = Array.from(new Set(validPaths));
     const entries: SitemapUrlEntry[] = [];
+    const outDir = resolve(process.cwd(), BascikConfig.directory.out);
 
     for (const relPath of uniqueRawPaths) {
-      const pageFile = resolve(pagesDir, relPath.replace(/^pages[\\/]/, ""));
-      if (existsSync(pageFile)) {
-        const isExcluded = await isPageExcludedFromSitemap(pageFile);
+      const pageSubpath = relPath.replace(/^pages[\\/]/, "");
+      const pageFile = resolve(pagesDir, pageSubpath);
+      const distFile = resolve(outDir, pageSubpath);
+      const hasSourceFile = existsSync(pageFile);
+      const excludeCheckPath = hasSourceFile ? pageFile : existsSync(distFile) ? distFile : null;
+      if (excludeCheckPath) {
+        const isExcluded = await isPageExcludedFromSitemap(excludeCheckPath);
         if (isExcluded) continue;
       }
 
       const encodedPath = encodeUrlPath(getHttpPath(relPath));
       let lastmod: string | undefined;
-      if (sitemapLastmod && existsSync(pageFile)) {
+      if (sitemapLastmod && hasSourceFile) {
         try {
           const stat = statSync(pageFile);
           lastmod = stat.mtime.toISOString().split("T")[0];

@@ -394,20 +394,32 @@ export const prefixElementAttribute = (
   // Shield <meta> elements from name-attribute scoping. The `name` attribute
   // on <meta> refers to a standardized metadata vocabulary (e.g. "viewport",
   // "description", "robots") and must never be mangled by the scoping pipeline.
-  const shieldedMetaTags: string[] = [];
-  if (attribute === "name") {
+  const metaShield = attribute === "name" ? createContentShield(component.fileContent) : null;
+  if (metaShield) {
     component.fileContent = component.fileContent.replace(
-      /<meta\b[^>]*(?:\/>|>)/gi,
-      (tag) => {
-        const idx = shieldedMetaTags.push(tag) - 1;
-        return `\x00BMETATAG${idx}\x00`;
-      },
+      /<meta\b(?:[^>"']|"[^"]*"|'[^']*')*(?:\/>|>)/gi,
+      (tag) => metaShield.hide(tag),
     );
   }
 
-  // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`
-  let scopedAttrsHtml = replaceSafeAttr(
-    component.fileContent,
+  // Use replaceSafeAttr instead of a global regex to ignore `class="x"` inside `data-foo='class="x"'`.
+  // Shield HTML comments and <textarea> content so commented-out markup and
+  // form values are never rewritten, while keeping <script> bodies live so
+  // static HTML string literals inside client, server, and stream scripts have
+  // their class/id/name attributes scoped.
+  const nonScriptRawShield = (() => {
+    const commentShield = createContentShield(component.fileContent);
+    const withoutComments = component.fileContent.includes("<!--")
+      ? component.fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+      : component.fileContent;
+    const rawElements = shieldElementContents(withoutComments, ["style", "textarea"]);
+    return {
+      html: rawElements.html,
+      restore: (value: string) => commentShield.restore(rawElements.restore(value)),
+    };
+  })();
+  let scopedAttrsHtml = nonScriptRawShield.restore(replaceSafeAttr(
+    nonScriptRawShield.html,
     attribute,
     (fullMatch, prefix, quotedVal) => {
       const quote = quotedVal[0];
@@ -429,7 +441,7 @@ export const prefixElementAttribute = (
         .join(" ");
       return `${prefix}${quote}${newInner}${quote}`;
     },
-  );
+  ));
 
   if (attribute === "id" && declaredIds.size > 0) {
     const scopedIds = new Map(
@@ -549,214 +561,121 @@ export const prefixElementAttribute = (
       seenAttrMap.set(attributeName, obfuscatedAttributeName);
     }
   }
-  const uniqueAttributesToReplace = Array.from(seenAttrMap.entries()).map(
-    ([attributeName, obfuscatedAttributeName]) => ({
-      attributeName,
-      obfuscatedAttributeName,
-    }),
-  );
 
   // Rewrite DOM selector references in script blocks to use the scoped attribute values.
-  const scopedHtml = scopedAttrsHtml.replace(
-    /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
-    (match, open) => {
-      if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
-      let updatedMatch = match;
-      uniqueAttributesToReplace.forEach(
-        ({ attributeName, obfuscatedAttributeName }) => {
-          if (!updatedMatch.includes(attributeName)) return;
-          const rewriteSelectorRef = (regexp: RegExp, dot = ""): string => {
-            // https://www.codemzy.com/blog/regex-groups-with-replace
-            return updatedMatch.replace(regexp, (_match, start, _middle, end) => {
-              return `${start}${dot}${obfuscatedAttributeName}${end}`;
-            });
-          };
+  // One pass per pattern over whole tokens so a later attribute name never
+  // matches inside an earlier generated name or a longer attribute name.
+  const scopedHtml =
+    seenAttrMap.size === 0
+      ? scopedAttrsHtml
+      : scopedAttrsHtml.replace(
+          /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi,
+          (match, open: string, body: string, close: string) => {
+            if (DIRECTIVE_SCRIPT_RE.test(open)) return match;
+            let updatedBody = body;
 
-          // Escape the attribute name once for use in RegExp patterns.
-          const escapedAttr = attributeName.replace(
-            /[.*+?^${}()|[\]\\]/g,
-            "\\$&",
-          );
+            const rewriteQuotedArg = (
+              full: string,
+              prefix: string,
+              value: string,
+              suffix: string,
+            ): string => {
+              const scoped = seenAttrMap.get(value);
+              return scoped === undefined ? full : `${prefix}${scoped}${suffix}`;
+            };
 
-          // Rewrite the full selector string of a querySelector-family call,
-          // replacing every occurrence of the scoped token.  Handles both
-          // single-token selectors ("#id", ".cls") and compound selectors
-          // (".foo .bar", "#id .child", etc.).
-          // Limitation: adjacent-class compound selectors without a space
-          // (.foo.bar) are not rewritten for the non-leading token because
-          // `.bar` is preceded by a word character.  Use a space or combinator
-          // to separate selectors instead.
-          const rewriteInSelectorString = (
-            method: string,
-            prefix: string,
-          ): void => {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const methodCallRegex = new RegExp(`(${method}\\(\\s*['"][^'"]*['"]\\s*\\))`, "gm");
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const tokenRegex = new RegExp(
-              `(?<![a-zA-Z0-9_-])\\${prefix}${escapedAttr}(?![a-zA-Z0-9_-])`,
-              "g",
-            );
-            updatedMatch = updatedMatch.replace(
-              methodCallRegex,
-              (call) =>
-                call.replace(
-                  // Token must NOT be immediately preceded or followed by
-                  // alphanumeric, underscore, or hyphen (avoids partial
-                  // matches inside already-scoped names like __myClass).
-                  tokenRegex,
-                  () => `${prefix}${obfuscatedAttributeName}`,
-                ),
-            );
-          };
+            const rewriteSelectorCalls = (prefix: string): void => {
+              const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+              const tokenRegex = new RegExp(
+                `(?<![a-zA-Z0-9_-])${escapedPrefix}([^\\s"'#.,>+~:[\\]()]+)(?![a-zA-Z0-9_-])`,
+                "g",
+              );
+              updatedBody = updatedBody.replace(
+                /((?:querySelector(?:All)?|closest|matches)\(\s*['"][^'"]*['"]\s*\))/gm,
+                (call) =>
+                  call.replace(tokenRegex, (tokenMatch, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined ? tokenMatch : `${prefix}${scoped}`;
+                  }),
+              );
+            };
 
-          if (attribute === "id") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByIdRegex = new RegExp(
-              `(?<start>getElementById\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByIdRegex);
-            // querySelector-family — compound-aware
-            for (const method of [
-              "querySelector",
-              "querySelectorAll",
-              "closest",
-              "matches",
-            ]) {
-              rewriteInSelectorString(method, "#");
-            }
-            // element.setAttribute("id", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setIdRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']id["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setIdRegex);
-          } else if (attribute === "name") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByNameRegex = new RegExp(
-              `(?<start>getElementsByName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByNameRegex);
-            // element.setAttribute("name", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setNameRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']name["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setNameRegex);
-          } else if (attribute === "class") {
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const getByClassRegex = new RegExp(
-              `(?<start>getElementsByClassName\\(\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(getByClassRegex);
-            // querySelector-family — compound-aware
-            for (const method of [
-              "querySelector",
-              "querySelectorAll",
-              "closest",
-              "matches",
-            ]) {
-              rewriteInSelectorString(method, ".");
-            }
-            // classList.add / classList.remove — multi-arg aware.
-            // Match the entire call then replace every quoted token matching
-            // the class name. Handles both `classList.add("x")` and
-            // `classList.add("x", "y", …)` forms.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classTokenAllRegex = new RegExp(`(["'])${escapedAttr}\\1`, "g");
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.(?:add|remove)\s*\(/gm,
-              (call) =>
+            const rewriteSpaceSeparatedTokens = (value: string): string =>
+              value.replace(/\S+/g, (token) => seenAttrMap.get(token) ?? token);
+
+            if (attribute === "id") {
+              updatedBody = updatedBody.replace(
+                /(getElementById\(\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+              rewriteSelectorCalls("#");
+              updatedBody = updatedBody.replace(
+                /(setAttribute\(\s*["']id["'],\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+            } else if (attribute === "name") {
+              updatedBody = updatedBody.replace(
+                /(getElementsByName\(\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+              updatedBody = updatedBody.replace(
+                /(setAttribute\(\s*["']name["'],\s*["'])([^"']+)(["']\s*\))/gm,
+                rewriteQuotedArg,
+              );
+            } else if (attribute === "class") {
+              updatedBody = updatedBody.replace(
+                /(getElementsByClassName\(\s*["'])([^"']*)(["']\s*\))/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+              rewriteSelectorCalls(".");
+              const rewriteAllClassTokens = (call: string): string =>
                 call.replace(
-                  classTokenAllRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.toggle — rewrites the class-name (first) arg only.
-            // Deliberately does NOT require `)` after the closing quote so
-            // `classList.toggle("open", condition)` is handled correctly.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classTokenSingleRegex = new RegExp(`(["'])${escapedAttr}\\1`);
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.toggle\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenSingleRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.contains — always single arg
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.contains\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenSingleRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // classList.replace(oldToken, newToken) — rewrites both args if
-            // either matches a scoped class name.
-            updatedMatch = replaceBalancedCall(
-              updatedMatch,
-              /classList\.replace\s*\(/gm,
-              (call) =>
-                call.replace(
-                  classTokenAllRegex,
-                  (_match, quote: string) =>
-                    `${quote}${obfuscatedAttributeName}${quote}`,
-                ),
-            );
-            // element.setAttribute("class", "value")
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const setClassRegex = new RegExp(
-              `(?<start>setAttribute\\(\\s*["']class["'],\\s*["'])(?<middle>${escapedAttr})(?<end>["']\\s*\\))`,
-              "gm",
-            );
-            updatedMatch = rewriteSelectorRef(setClassRegex);
-            // element.className setter — handles both single-class and
-            // space-separated multi-class assignments (className = "…" or
-            // className += "…").  Replaces each known class token in the
-            // string value using the same word-boundary guards as above.
-            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-            const classNameTokenRegex = new RegExp(
-              `(?<![a-zA-Z0-9_-])${escapedAttr}(?![a-zA-Z0-9_-])`,
-              "g",
-            );
-            updatedMatch = updatedMatch.replace(
-              /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
-              (_, prefix, classes, suffix) => {
-                const replaced = classes.replace(
-                  classNameTokenRegex,
-                  () => obfuscatedAttributeName,
+                  /(["'])([^"']+)\1/g,
+                  (quoted, quote: string, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
+                  },
                 );
-                return `${prefix}${replaced}${suffix}`;
-              },
-            );
-          }
-        },
-      );
-      return updatedMatch;
-    },
-  );
+              const rewriteFirstClassToken = (call: string): string =>
+                call.replace(
+                  /(["'])([^"']+)\1/,
+                  (quoted, quote: string, name: string) => {
+                    const scoped = seenAttrMap.get(name);
+                    return scoped === undefined ? quoted : `${quote}${scoped}${quote}`;
+                  },
+                );
+              updatedBody = replaceBalancedCall(
+                updatedBody,
+                /classList\.(?:add|remove|replace)\s*\(/gm,
+                rewriteAllClassTokens,
+              );
+              updatedBody = replaceBalancedCall(
+                updatedBody,
+                /classList\.(?:toggle|contains)\s*\(/gm,
+                rewriteFirstClassToken,
+              );
+              updatedBody = updatedBody.replace(
+                /(setAttribute\(\s*["']class["'],\s*["'])([^"']*)(["']\s*\))/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+              updatedBody = updatedBody.replace(
+                /(\bclassName\s*\+?=\s*["'])([^"']*)(['"])/gm,
+                (_full, prefix: string, classes: string, suffix: string) =>
+                  `${prefix}${rewriteSpaceSeparatedTokens(classes)}${suffix}`,
+              );
+            }
+
+            return `${open}${updatedBody}${close}`;
+          },
+        );
   component.fileContent = scopedHtml;
 
   // Restore shielded <meta> elements.
-  if (shieldedMetaTags.length > 0) {
-    component.fileContent = component.fileContent.replace(
-      /\x00BMETATAG(\d+)\x00/g,
-      (_, idx) => shieldedMetaTags[parseInt(idx, 10)],
-    );
+  if (metaShield) {
+    component.fileContent = metaShield.restore(component.fileContent);
   }
 
   // CSS
@@ -1041,7 +960,7 @@ export const namespaceScriptTags = (
       const type = getScriptType(cleanOpen);
       const isJsType = isJavaScriptScript(cleanOpen);
 
-      const isExternal = /\bsrc\s*=/i.test(cleanOpen);
+      const isExternal = /\s+src\s*=/i.test(cleanOpen);
       const shouldWrap = !isExternal &&
         (type === undefined || type === "text/javascript");
 

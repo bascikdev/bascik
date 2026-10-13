@@ -46,6 +46,17 @@ describe("computePageCspHashes end tags", () => {
   it("does not end a script at a lookalike tag", () => {
     expect(computePageCspHashes("<script>a('</scripts>')</script>").scripts).toEqual([sha("a('</scripts>')")]);
   });
+
+  it("ignores script and style tags inside HTML comments, <textarea>, and JavaScript string literals", () => {
+    const html =
+      "<!-- <script>commented()</script><style>.commented{}</style> -->" +
+      "<textarea><script>typed()</script><style>.typed{}</style></textarea>" +
+      '<script>const s = "<style>.fake{}</style>";</script>' +
+      "<style>.real{}</style>";
+    const hashes = computePageCspHashes(html);
+    expect(hashes.scripts).toEqual([sha('const s = "<style>.fake{}</style>";')]);
+    expect(hashes.styles).toEqual([sha(".real{}")]);
+  });
 });
 
 describe("csp-hashes manifest", () => {

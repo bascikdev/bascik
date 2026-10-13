@@ -1103,6 +1103,25 @@ describe("pageProcessing – inlineStyles", () => {
     expect(pageContent).not.toContain('body {  color:  red;  }');
   });
 
+  it("preserves media and custom attributes on page-level <style> tags when minify.css is true", async () => {
+    (BascikConfig.minify as any).css = true;
+    const html =
+      '<!DOCTYPE html><html><head><style media="print" data-theme="print">.print-only { display: block; }</style></head><body><p data-note="x > y">Body</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toContain('<style media="print" data-theme="print">.print-only{display:block;}</style>');
+  });
+
+  it("does not emit false unresolved component warnings when script or style open tags contain a quoted >", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const html =
+      '<!DOCTYPE html><html><head></head><body><script data-note="a > b">const tpl = "<fake-comp></fake-comp>";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
+    await transpilePage(PAGE_PATH, {});
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("minifies inlined CSS using a custom minify.css function", async () => {
     (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (BascikConfig.minify as any).css = async (css: string) => `/* custom */ ${css.trim()}`;

@@ -45,7 +45,7 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`,
 
 const SCRIPT_TAG_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
 
-const TYPE_ATTR_RE = /\s*\btype\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
+const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
 
 /**
  * Node emits a one-time `ExperimentalWarning` the first time
@@ -266,11 +266,19 @@ export const transformTypeScriptScriptTags = async (
   if (!diagnose && !/text\/typescript/i.test(html)) return html;
   const transformEnabled = isBrowserTypeScriptEnabled();
 
+  const scannable = html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
+    .replace(
+      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_match, tag: string, attrs: string, inner: string, close: string) =>
+        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
+    );
+
   const ops: Array<{ index: number; len: number; open: string; body: string; close: string }> = [];
-  for (const m of html.matchAll(SCRIPT_TAG_RE)) {
+  for (const m of scannable.matchAll(SCRIPT_TAG_RE)) {
     const [full, open, body, close] = m as unknown as [string, string, string, string];
     if (DIRECTIVE_SCRIPT_RE.test(open)) continue;
-    if (/\bsrc\s*=/i.test(open)) continue;
+    if (/(?:^|\s)src\s*=/i.test(open)) continue;
 
     if (isTypeScriptScriptTag(open)) {
       if (transformEnabled) ops.push({ index: m.index ?? 0, len: full.length, open, body, close });

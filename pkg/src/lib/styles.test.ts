@@ -245,6 +245,20 @@ describe("addElementClassesInHtml", () => {
       '<header class="bascik__site-header__el__header"><header class="x bascik__site-header__el__header"></header><header class="bascik__site-header__el__header"\n  data-x></header><header class="bascik__site-header__el__header" /><header-link data-x="1">link</header-link></header>',
     );
   });
+
+  it("does not inject element classes into HTML comments or raw-text elements", () => {
+    const html =
+      '<!-- <p>commented</p> -->' +
+      '<script>const s = "<p>scripted</p>";</script>' +
+      '<textarea><p>typed</p></textarea>' +
+      '<p>real</p>';
+    expect(addElementClassesInHtml(html, "my-comp", ["p"])).toBe(
+      '<!-- <p>commented</p> -->' +
+      '<script>const s = "<p>scripted</p>";</script>' +
+      '<textarea><p>typed</p></textarea>' +
+      '<p class="bascik__my-comp__el__p">real</p>',
+    );
+  });
 });
 
 describe("addIdClassesInHtml", () => {
@@ -252,6 +266,20 @@ describe("addIdClassesInHtml", () => {
     const html = "<div id=\"btn\" class='btn-base'></div>";
     const result = addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }]);
     expect(result).toContain("class='btn-base bascik__my-comp__id__btn'");
+  });
+
+  it("does not inject id classes into HTML comments or raw-text elements", () => {
+    const html =
+      '<!-- <div id="btn"></div> -->' +
+      '<script>const s = \'<div id="btn"></div>\';</script>' +
+      '<textarea><div id="btn"></div></textarea>' +
+      '<div id="btn"></div>';
+    expect(addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }])).toBe(
+      '<!-- <div id="btn"></div> -->' +
+      '<script>const s = \'<div id="btn"></div>\';</script>' +
+      '<textarea><div id="btn"></div></textarea>' +
+      '<div class="bascik__my-comp__id__btn" id="btn"></div>',
+    );
   });
 });
 

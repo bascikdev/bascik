@@ -70,6 +70,7 @@ import {
   BUILD_FLAG,
   SERVER_FLAG,
   ROUTES_FLAG,
+  STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
   getHtmlAttributeValue,
@@ -90,6 +91,11 @@ const BUILD_SERVER_CONFLICT_RE = new RegExp(
 
 const BUILD_ROUTES_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${ROUTES_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const BUILD_STREAM_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -635,6 +641,10 @@ export const executeBuildScripts = async (
 
     if (BUILD_ROUTES_CONFLICT_RE.test(openTag)) {
       throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-routes${where}. A script cannot be both a build script and a routes script. Remove one of the attributes.`);
+    }
+
+    if (BUILD_STREAM_CONFLICT_RE.test(openTag)) {
+      throw new Error(`[bascik] error: <script> tag has both data-bascik-build and data-bascik-stream${where}. A script can only run at build time or at request time — not both. Remove one of the attributes.`);
     }
 
     let scriptBaseDir = sourceFile

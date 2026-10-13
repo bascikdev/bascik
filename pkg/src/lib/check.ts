@@ -273,7 +273,7 @@ const extractOpenTagData = (html: string): OpenTagData[] => {
   const out: OpenTagData[] = [];
   const noComments = stripComments(html);
   const stripped = stripElementContents(noComments);
-  const regex = /<[a-z][a-z0-9:-]*\b([^>]*)>/gi;
+  const regex = /<[a-z][a-z0-9:-]*\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(stripped)) !== null) {
     out.push({
@@ -282,6 +282,20 @@ const extractOpenTagData = (html: string): OpenTagData[] => {
     });
   }
   return out;
+};
+
+const maskPreservedSubtrees = (html: string): string => {
+  let result = html;
+  const re =
+    /(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
+  let previous = "";
+  while (previous !== result) {
+    previous = result;
+    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
+      return `${open}${" ".repeat(inner.length)}${close}`;
+    });
+  }
+  return result;
 };
 
 const extractAttributeNames = (attrs: string): string[] => {
@@ -362,19 +376,6 @@ const resolveConfigSourcePath = (): string => {
 };
 
 const canonicalPath = (filePath: string): string => resolve(process.cwd(), filePath).replace(/\\/g, "/");
-
-const maskPreservedSubtrees = (html: string): string => {
-  let result = html;
-  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
-  let previous = "";
-  while (previous !== result) {
-    previous = result;
-    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
-      return `${open}${" ".repeat(inner.length)}${close}`;
-    });
-  }
-  return result;
-};
 
 const findComponentCycles = (
   graph: Map<string, Set<string>>,
@@ -728,9 +729,10 @@ export const checkProject = async (): Promise<CheckFindings> => {
     try {
       const html = await readFile(filePath, "utf8");
       const noComments = stripComments(html);
-      const firstHtmlTag = noComments.search(/<(?!\/?(?:style|script)\b)[a-z]/i);
-      const firstScript = noComments.search(/<script\b/i);
-      const firstStyle = noComments.search(/<style\b/i);
+      const structureScan = stripElementContents(noComments);
+      const firstHtmlTag = structureScan.search(/<(?!\/?(?:style|script)\b)[a-z]/i);
+      const firstScript = structureScan.search(/<script\b/i);
+      const firstStyle = structureScan.search(/<style\b/i);
 
       if (firstScript >= 0 && (firstHtmlTag < 0 || firstScript < firstHtmlTag)) {
         items.push({
@@ -738,7 +740,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
           severity: "warning",
           message: "component template convention: place <script> blocks after HTML markup.",
           // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
-          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstScript) }],
+          locations: [{ filePath: toDisplay(filePath), line: getLineAt(structureScan, firstScript) }],
         });
       }
 
@@ -748,14 +750,20 @@ export const checkProject = async (): Promise<CheckFindings> => {
           severity: "warning",
           message: "component template convention: place <style> blocks above HTML markup.",
           // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
-          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
+          locations: [{ filePath: toDisplay(filePath), line: getLineAt(structureScan, firstStyle) }],
         });
       }
 
       // ── Scoping compatibility analysis in component HTML, inline styles & scripts ──
+      const nonCodeScan = maskElementContents(noComments, [
+        "textarea",
+        ...(BascikConfig.scoping?.preserve ?? ["code"])
+          .map((t) => String(t))
+          .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t)),
+      ]);
       const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
       let styleMatch: RegExpExecArray | null;
-      while ((styleMatch = styleBlockRegex.exec(html)) !== null) {
+      while ((styleMatch = styleBlockRegex.exec(nonCodeScan)) !== null) {
         const styleBody = styleMatch[2] ?? "";
         const styleOffset = styleMatch.index + styleMatch[1].length;
         const matches = findCompatibilityMatches(styleBody, "css");
@@ -772,11 +780,24 @@ export const checkProject = async (): Promise<CheckFindings> => {
 
       const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
       let scriptMatch: RegExpExecArray | null;
-      while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
+      while ((scriptMatch = scriptBlockRegex.exec(nonCodeScan)) !== null) {
         const openTag = scriptMatch[1];
+        if (
+          BUILD_DIRECTIVE_RE.test(openTag) ||
+          SERVER_DIRECTIVE_RE.test(openTag) ||
+          ROUTES_DIRECTIVE_RE.test(openTag) ||
+          STREAM_DIRECTIVE_RE.test(openTag)
+        ) {
+          continue;
+        }
         const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
         const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
-        const isJs = !typeVal || typeVal === "module" || typeVal === "text/javascript" || typeVal === "application/javascript";
+        const isJs =
+          !typeVal ||
+          typeVal === "module" ||
+          typeVal === "text/javascript" ||
+          typeVal === "application/javascript" ||
+          typeVal === "text/typescript";
         if (isJs) {
           const scriptBody = scriptMatch[2] ?? "";
           const scriptOffset = scriptMatch.index + openTag.length;

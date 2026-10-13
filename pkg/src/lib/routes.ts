@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { directiveSourcePosition, padToSourcePosition } from "./directive-source.ts";
 import { getProjectPath, getRelativePath } from "./file-system.ts";
+import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
 import { runDirectiveHandler } from "./script-runner.ts";
 import {
@@ -20,8 +21,10 @@ import {
   ROUTES_FLAG,
   BUILD_FLAG,
   SERVER_FLAG,
+  STREAM_FLAG,
   SCRIPT_END_TAG,
   SCRIPT_TAG_PREFIX,
+  getHtmlAttributeValue,
   scriptOpenTag,
 } from "./html-patterns.ts";
 import type { RouteEntry } from "./types.ts";
@@ -53,6 +56,11 @@ const ROUTES_BUILD_CONFLICT_RE = new RegExp(
 
 const ROUTES_SERVER_CONFLICT_RE = new RegExp(
   `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${SERVER_FLAG}(?:\\s+${ATTR})*\\s*>`,
+  "i",
+);
+
+const ROUTES_STREAM_CONFLICT_RE = new RegExp(
+  `${SCRIPT_TAG_PREFIX}(?:\\s+${ATTR})*\\s+${STREAM_FLAG}(?:\\s+${ATTR})*\\s*>`,
   "i",
 );
 
@@ -297,11 +305,18 @@ export const executeRoutesScript = async (
     );
   }
 
+  if (ROUTES_STREAM_CONFLICT_RE.test(openTag)) {
+    throw new Error(
+      `[bascik] error: <script> tag has both data-bascik-routes and data-bascik-stream${tagLocation(index, openTag)}. Remove one of the attributes.`,
+    );
+  }
+
   const cleanedHtml = html.slice(0, index) + html.slice(index + fullTag.length);
 
   const isComponent =
     filePath &&
-    (filePath.includes("/components/") ||
+    (findComponentRoot(filePath) !== undefined ||
+      filePath.includes("/components/") ||
       filePath.includes("\\components\\") ||
       filePath.startsWith("components/") ||
       filePath.startsWith("components\\"));
@@ -342,9 +357,8 @@ export const executeRoutesScript = async (
   let moduleSource = scriptContent;
   let moduleFilePath: string | undefined;
   if (!trimmedScript) {
-    const srcMatch = openTag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    if (srcMatch) {
-      const srcPath = srcMatch[1] ?? srcMatch[2] ?? srcMatch[3];
+    const srcPath = getHtmlAttributeValue(openTag, "src");
+    if (srcPath) {
       const containingDir = filePath
         ? dirname(resolve(process.cwd(), filePath))
         : process.cwd();

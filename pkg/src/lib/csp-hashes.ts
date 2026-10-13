@@ -17,6 +17,13 @@ export type CspHashesManifest = Record<string, PageCspHashes>;
 export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   const scripts = new Set<string>();
   const styles = new Set<string>();
+  const scannable = emittedHtml
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
+    .replace(
+      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_match, tag: string, attrs: string, inner: string, close: string) =>
+        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
+    );
 
   // Collect inline script hashes
   // End tags follow the HTML raw-text rules (`</script\n>` and `</script/>`
@@ -25,7 +32,7 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
   // quote-aware and the body starts where the browser's does.
   const scriptRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
   let match: RegExpExecArray | null;
-  while ((match = scriptRegex.exec(emittedHtml)) !== null) {
+  while ((match = scriptRegex.exec(scannable)) !== null) {
     const openTag = match[1];
     const body = match[2];
 
@@ -46,9 +53,16 @@ export const computePageCspHashes = (emittedHtml: string): PageCspHashes => {
     scripts.add(hash);
   }
 
+  // Blank script bodies before scanning for <style> so a literal `<style>` inside
+  // a JavaScript string literal is never hashed as a stylesheet.
+  const styleScannable = scannable.replace(
+    scriptRegex,
+    (_match, openTag: string, body: string) => `<script${openTag}>${" ".repeat(body.length)}</script>`,
+  );
+
   // Collect inline style hashes
   const styleRegex = /<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-  while ((match = styleRegex.exec(emittedHtml)) !== null) {
+  while ((match = styleRegex.exec(styleScannable)) !== null) {
     const body = match[2];
     const hash = `sha256-${createHash("sha256").update(Buffer.from(body, "utf8")).digest("base64")}`;
     styles.add(hash);

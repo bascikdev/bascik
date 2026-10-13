@@ -298,17 +298,24 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
+  const scannable = html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
+    .replace(
+      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_match, tag: string, attrs: string, inner: string, close: string) =>
+        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
+    );
   const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
   const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
-  while ((m = regex.exec(html)) !== null) {
+  while ((m = regex.exec(scannable)) !== null) {
     const [full, open, body, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
-    if (/\bsrc\s*=/i.test(open)) continue;
+    if (/\s+src\s*=/i.test(open)) continue;
     const { code, sourceUrl } = splitTrailingSourceUrl(body);
     ops.push({ index: m.index, len: full.length, open, code, sourceUrl, close });
   }
@@ -1613,14 +1620,7 @@ export const transpilePage = async (
       // Strip HTML comments as well as <script>, <style>, and <textarea> content
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
       // doesn't produce false unresolved component warnings.
-      // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
-      // codeql[js/incomplete-multi-character-sanitization] Only feeds the unresolved-component warning scan; never emitted.
-      const scannable = chunk
-        .replace(/<!--[\s\S]*?-->/g, () => "")
-        .replace(
-          /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-          (_match, tag, attrs) => `<${tag}${attrs ?? ""}></${tag}>`,
-        );
+      const scannable = maskRawTextContent(chunk);
       const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {
@@ -1677,12 +1677,14 @@ export const transpilePage = async (
   // Compress the entire head (removes newlines, collapses whitespace in inline <style> tags too)
 
   if (cssMinifier) {
-    // Also minify any inline <style> blocks that came from the page source
-    const styleBlockRegex = /<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-    const matches: Array<{ full: string; css: string; index: number }> = [];
+    // Also minify any inline <style> blocks that came from the page source,
+    // preserving their opening and closing tags (such as media="..." attributes).
+    const styleBlockRegex =
+      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi;
+    const matches: Array<{ full: string; open: string; css: string; close: string; index: number }> = [];
     let match: RegExpExecArray | null;
     while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {
-      matches.push({ full: match[0], css: match[1], index: match.index });
+      matches.push({ full: match[0], open: match[1], css: match[2], close: match[3], index: match.index });
     }
     if (matches.length > 0) {
       let newHead = "";
@@ -1693,7 +1695,7 @@ export const transpilePage = async (
         pause();
         const minifiedCss = await pendingInlineCss;
         resume();
-        newHead += `<style>${minifiedCss}</style>`;
+        newHead += `${m.open}${minifiedCss}${m.close}`;
         lastIndex = m.index + m.full.length;
       }
       newHead += transpiledHead.slice(lastIndex);

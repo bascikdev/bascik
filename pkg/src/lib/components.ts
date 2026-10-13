@@ -6,7 +6,7 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { maskElementContents } from "./shielding.ts";
+import { createContentShield, maskElementContents, shieldElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
@@ -934,7 +934,13 @@ export const injectPropAttributes = (
   if (!fileContent) return "";
   if (!fileContent.includes("data-bascik-attr-")) return fileContent;
 
-  return fileContent.replace(
+  const commentShield = createContentShield(fileContent);
+  const withoutComments = fileContent.includes("<!--")
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    : fileContent;
+  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+
+  const rewritten = rawShield.html.replace(
     new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
     (openingTag: string) => {
       if (!openingTag.includes("data-bascik-attr-")) return openingTag;
@@ -996,6 +1002,7 @@ export const injectPropAttributes = (
       return result;
     },
   );
+  return commentShield.restore(rawShield.restore(rewritten));
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1015,7 +1022,12 @@ export const injectProps = (
   props: Record<string, string>,
 ): string => {
   if (!fileContent) return "";
-  let result = fileContent;
+  const commentShield = createContentShield(fileContent);
+  const withoutComments = fileContent.includes("<!--")
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    : fileContent;
+  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+  let result = rawShield.html;
   Object.entries(props).forEach(([propName, propValue]) => {
     if (!result.includes(propName)) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
@@ -1059,7 +1071,8 @@ export const injectProps = (
   // followed immediately by `>` or whitespace). Markers with a value
   // (e.g. `data-bascik-prop-label="featured"`) are child component prop declarations
   // and must be preserved so nested components receive their props.
-  return result.replace(/\s+data-bascik-prop-[\w-]+(?=[>\s])/gi, "");
+  const stripped = result.replace(/\s+data-bascik-prop-[\w-]+(?=[>\s])/gi, "");
+  return commentShield.restore(rawShield.restore(stripped));
 };
 
 // ─── Named Slots ──────────────────────────────────────────────────────────────
@@ -1125,23 +1138,26 @@ const parseNamedSlots = (
 ): Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> => {
   if (!innerContent.includes("data-bascik-slot")) return [];
   const results: Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> = [];
+  const masked = maskRawTextContent(innerContent);
   // Quote-aware attribute scan (ATTR_VALUE) so the marker may appear after
   // other attributes, and `data-bascik-slot` inside a quoted attribute value
   // never false-positives.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot="([^"]+)"(?:${ATTR_VALUE})>`,
+    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot=(?:"([^"]+)"|'([^']+)')(?:${ATTR_VALUE})>`,
     "gi",
   );
   let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(innerContent)) !== null) {
-    const [fullOpen, tagName, slotName] = match;
-    if (isInsideNestedComponent(innerContent, match.index, componentNames)) continue;
+  while ((match = openTagRe.exec(masked)) !== null) {
+    const [fullOpen, tagName, doubleName, singleName] = match;
+    const slotName = doubleName ?? singleName;
+    if (isInsideNestedComponent(innerContent, match.index, componentNames, masked)) continue;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(innerContent, tagName, contentStart);
+    const closeIndex = findMatchingClose(innerContent, tagName, contentStart, masked);
     if (closeIndex === -1) continue;
-    const closeTag = `</${tagName}>`;
-    const endIndex = closeIndex + closeTag.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(innerContent.slice(closeIndex));
+    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const endIndex = closeIndex + closeTagLen;
     results.push({
       slotName,
       startIndex: match.index,
@@ -1163,9 +1179,10 @@ const isInsideNestedComponent = (
   html: string,
   index: number,
   componentNames: ReadonlySet<string>,
+  preMasked?: string,
 ): boolean => {
   if (componentNames.size === 0) return false;
-  const masked = maskRawTextContent(html);
+  const masked = preMasked !== undefined ? preMasked : maskRawTextContent(html);
   for (const componentName of componentNames) {
     let searchFrom = 0;
     while (searchFrom < index) {
@@ -1275,6 +1292,7 @@ export const replaceDefaultSlots = (
   defaultSlotContent: string,
 ): string => {
   if (!fileContent.includes("data-bascik-slot")) return fileContent;
+  const masked = maskRawTextContent(fileContent);
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
     `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot(?!\\s*=)(?:${ATTR_VALUE})>`,
@@ -1282,12 +1300,14 @@ export const replaceDefaultSlots = (
   );
   const wrappers: Array<{ startIndex: number; endIndex: number; content: string }> = [];
   let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(fileContent)) !== null) {
+  while ((match = openTagRe.exec(masked)) !== null) {
     const [fullOpen, tagName] = match;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(fileContent, tagName, contentStart);
+    const closeIndex = findMatchingClose(fileContent, tagName, contentStart, masked);
     if (closeIndex === -1) continue;
-    const endIndex = closeIndex + `</${tagName}>`.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(fileContent.slice(closeIndex));
+    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const endIndex = closeIndex + closeTagLen;
     wrappers.push({
       startIndex: match.index,
       endIndex,
@@ -1378,35 +1398,36 @@ export const mergeAttributesOntoRoot = (
   }
 
   for (const [name, value] of Object.entries(attrs)) {
-    if (name === "class" && value) {
-      if (/class="/.test(attrStr)) {
+    const lowerName = name.toLowerCase();
+    if (lowerName === "class" && value) {
+      if (/\sclass="/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /class="([^"]*)"/,
-          (_, classes) => `class="${classes} ${value}"`,
+          /(\sclass=")([^"]*)"/i,
+          (_, prefix, classes) => `${prefix}${classes} ${value}"`,
         );
-      } else if (/class='/.test(attrStr)) {
+      } else if (/\sclass='/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /class='([^']*)'/,
-          (_, classes) => `class='${classes} ${value}'`,
+          /(\sclass=')([^']*)'/i,
+          (_, prefix, classes) => `${prefix}${classes} ${value}'`,
         );
       } else {
         attrStr += ` class="${value}"`;
       }
-    } else if (name === "style" && value) {
-      if (/style="/.test(attrStr)) {
+    } else if (lowerName === "style" && value) {
+      if (/\sstyle="/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /style="([^"]*)"/,
-          (_, style) => `style="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+          /(\sstyle=")([^"]*)"/i,
+          (_, prefix, style) => `${prefix}${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
-      } else if (/style='/.test(attrStr)) {
+      } else if (/\sstyle='/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /style='([^']*)'/,
-          (_, style) => `style='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+          /(\sstyle=')([^']*)'/i,
+          (_, prefix, style) => `${prefix}${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
         );
       } else {
         attrStr += ` style="${value}"`;
       }
-    } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
+    } else if (value !== undefined && !existingNames.has(lowerName)) {
       attrStr += ` ${name}="${value}"`;
     }
   }
