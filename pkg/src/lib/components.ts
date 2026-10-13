@@ -11,7 +11,9 @@ import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModul
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
-import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
+import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import { PLAUSIBLE_TAG_NAME, PRESERVE_WILDCARD_PATTERN } from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -162,6 +164,115 @@ const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
   "gi",
 );
 
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const SERVER_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${SERVER_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const ROUTES_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const STREAM_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${STREAM_ATTR_NAME}`, "i");
+
+const getLineAtOffset = (source: string, offset: number): number => {
+  let line = 1;
+  for (let i = 0; i < offset; i++) {
+    if (source.charCodeAt(i) === 10) line++;
+  }
+  return line;
+};
+
+const warnComponentCompatibility = async (
+  rawHtml: string,
+  fileName: string,
+  componentCssFileNames: string[],
+  companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined,
+): Promise<void> => {
+  const relHtml = relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
+  const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) => {
+    const newlines = match.match(/\n/g);
+    return newlines ? newlines.join("") : " ";
+  });
+  const nonCodeScan = maskElementContents(noComments, [
+    "textarea",
+    ...(BascikConfig.scoping?.preserve ?? ["code"])
+      .map((t) => String(t))
+      .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t)),
+  ]);
+
+  const seenWarnings = new Set<string>();
+  const emitWarning = (displayPath: string, line: number, ruleId: string, message: string, suggestion: string) => {
+    const key = `${displayPath}:${line}:${ruleId}`;
+    if (seenWarnings.has(key)) return;
+    seenWarnings.add(key);
+    console.warn(`[bascik] warning (${ruleId}) in ${displayPath}:${line}: ${message} ${suggestion}`);
+  };
+
+  const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+  let styleMatch: RegExpExecArray | null;
+  while ((styleMatch = styleBlockRegex.exec(nonCodeScan)) !== null) {
+    const styleBody = styleMatch[2] ?? "";
+    const styleOffset = styleMatch.index + styleMatch[1].length;
+    for (const m of findCompatibilityMatches(styleBody, "css")) {
+      emitWarning(relHtml, getLineAtOffset(rawHtml, styleOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+    }
+  }
+
+  const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+  let scriptMatch: RegExpExecArray | null;
+  while ((scriptMatch = scriptBlockRegex.exec(nonCodeScan)) !== null) {
+    const openTag = scriptMatch[1];
+    if (
+      BUILD_DIRECTIVE_RE.test(openTag) ||
+      SERVER_DIRECTIVE_RE.test(openTag) ||
+      ROUTES_DIRECTIVE_RE.test(openTag) ||
+      STREAM_DIRECTIVE_RE.test(openTag)
+    ) {
+      continue;
+    }
+    const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
+    const isJs =
+      !typeVal ||
+      typeVal === "module" ||
+      typeVal === "text/javascript" ||
+      typeVal === "application/javascript" ||
+      typeVal === "text/typescript";
+    if (isJs) {
+      const scriptBody = scriptMatch[2] ?? "";
+      const scriptOffset = scriptMatch.index + openTag.length;
+      for (const m of findCompatibilityMatches(scriptBody, "js")) {
+        emitWarning(relHtml, getLineAtOffset(rawHtml, scriptOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      }
+    }
+  }
+
+  const cssFileName = componentCssFileNames.find(
+    (c) => c.replace(/\.css$/, ".html") === fileName,
+  );
+  if (cssFileName) {
+    try {
+      const rawCss = await readFile(cssFileName, "utf8");
+      const relCss = relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
+      for (const m of findCompatibilityMatches(rawCss, "css")) {
+        emitWarning(relCss, getLineAtOffset(rawCss, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      }
+    } catch {
+      // ignore unreadable companion css
+    }
+  }
+
+  if (companionScripts && companionScripts.scriptMap.size > 0) {
+    const visitedCompanions = new Set<string>();
+    for (const scriptInfo of companionScripts.scriptMap.values()) {
+      if (visitedCompanions.has(scriptInfo.relPath)) continue;
+      visitedCompanions.add(scriptInfo.relPath);
+      for (const m of findCompatibilityMatches(scriptInfo.code, "js")) {
+        emitWarning(scriptInfo.relPath, getLineAtOffset(scriptInfo.code, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      }
+    }
+  }
+};
+
 export const isPageAwareBuildScript = (
   openTag: string,
   scriptContent: string,
@@ -209,12 +320,15 @@ export const readComponentRoot = async (root: string, cwd = process.cwd()): Prom
   }
 };
 
-export const listComponents = async (): Promise<ComponentList> => {
-  if (componentListCache) return componentListCache;
+export const listComponents = async (
+  componentRoots: readonly string[] = BascikConfig.directory.components,
+): Promise<ComponentList> => {
+  const isDefaultRoots = componentRoots === BascikConfig.directory.components;
+  if (isDefaultRoots && componentListCache) return componentListCache;
   // Every configured root is scanned; the union feeds one collision map so a
   // duplicate filename across roots is the same error as across subfolders.
   const componentFileNames = (
-    await Promise.all(BascikConfig.directory.components.map((root) => readComponentRoot(root)))
+    await Promise.all(componentRoots.map((root) => readComponentRoot(root)))
   ).flat();
   const componentHtmlFileNames = (componentFileNames as string[]).filter(
     (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
@@ -297,6 +411,7 @@ export const listComponents = async (): Promise<ComponentList> => {
       }
 
       const rawContent = fileContentBuffer.toString();
+      await warnComponentCompatibility(rawContent, fileName, componentCssFileNames, companionScripts);
       // Record every script's source position now: style extraction, build
       // scripts, and minification below all move scripts around. Directive
       // scripts first, because the browser-script stamp adds characters that
@@ -417,7 +532,7 @@ export const listComponents = async (): Promise<ComponentList> => {
     }),
   );
   stylesheetImporters = nextStylesheetImporters;
-  componentListCache = (components as BascikComponent[]).reduce(
+  const builtList = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;
       acc[name] = rest as Omit<BascikComponent, "name">;
@@ -425,7 +540,10 @@ export const listComponents = async (): Promise<ComponentList> => {
     },
     {} as ComponentList,
   );
-  return componentListCache;
+  if (isDefaultRoots) {
+    componentListCache = builtList;
+  }
+  return builtList;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

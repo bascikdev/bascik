@@ -219,7 +219,7 @@ Open the DevTools **Sources** tab to set breakpoints in component scripts. Becau
 ```html
 <!-- Inside src/components/counter/counter.html -->
 <script>
-  document.querySelector('.counter-btn').addEventListener('click', (e) => {
+  document.getElementById('counter-btn').addEventListener('click', (e) => {
     // Set a breakpoint directly on this line in browser DevTools
     const count = parseInt(e.target.dataset.count || '0', 10) + 1;
     e.target.dataset.count = String(count);

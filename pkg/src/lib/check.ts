@@ -12,7 +12,7 @@
  * into human and JSON formatters.
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve, relative, join } from "node:path";
 import { existsSync } from "node:fs";
 import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
@@ -422,7 +422,7 @@ const findComponentCycles = (
  * Run the static check across pages, components, and API routes.
  * Produces structured data without printing.
  */
-export const checkProject = async (): Promise<CheckFindings> => {
+export const checkProject = async (options: { fix?: boolean } = {}): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
 
@@ -550,6 +550,30 @@ export const checkProject = async (): Promise<CheckFindings> => {
   }
 
   const knownComponents = new Set(Object.keys(componentList));
+  const declaredPropsByComponent = new Map<string, Set<string>>();
+  await Promise.all(
+    Object.entries(componentList).map(async ([compName, compData]) => {
+      let src = compData.fileContent ?? "";
+      if (!src && compData.fileName) {
+        try {
+          src = await readFile(compData.fileName, "utf8");
+        } catch {
+          src = "";
+        }
+      }
+      const props = new Set<string>();
+      for (const m of src.matchAll(/\bdata-bascik-prop-([\w-]+)\b/gi)) {
+        if (m[1]) props.add(m[1].toLowerCase());
+      }
+      for (const m of src.matchAll(/\bdata-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi)) {
+        const p = m[1] ?? m[2];
+        if (p) props.add(p.toLowerCase());
+      }
+      if (props.size > 0) {
+        declaredPropsByComponent.set(compName.toLowerCase(), props);
+      }
+    }),
+  );
 
   // Scan every page AND every component source file for hyphenated tags
   const allFilePaths = [...pageList, ...componentFilePaths];
@@ -557,7 +581,41 @@ export const checkProject = async (): Promise<CheckFindings> => {
   const scanResults = await Promise.all(
     allFilePaths.map(async (filePath) => {
       try {
-        const html = await readFile(filePath, "utf8");
+        let html = await readFile(filePath, "utf8");
+        if (options.fix && declaredPropsByComponent.size > 0) {
+          let modified = false;
+          const compTagNames = [...declaredPropsByComponent.keys()]
+            .sort((a, b) => b.length - a.length)
+            .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+          if (compTagNames.length > 0) {
+            // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            const compOpenRe = new RegExp(
+              `<(${compTagNames.join("|")})\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`,
+              "gi",
+            );
+            html = html.replace(compOpenRe, (fullTag, rawTagName: string, attrs: string) => {
+              const declaredProps = declaredPropsByComponent.get(rawTagName.toLowerCase());
+              if (!declaredProps) return fullTag;
+              const updatedAttrs = attrs.replace(
+                /(\s)([^\s"'=<>`/]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))/g,
+                (attrMatch, space: string, attrName: string, rest: string) => {
+                  const lower = attrName.toLowerCase();
+                  if (lower.startsWith("data-bascik-")) return attrMatch;
+                  if (!declaredProps.has(lower)) return attrMatch;
+                  if (new RegExp(`\\bdata-bascik-prop-${lower}\\b`, "i").test(attrs)) {
+                    return attrMatch;
+                  }
+                  modified = true;
+                  return `${space}data-bascik-prop-${attrName}${rest}`;
+                },
+              );
+              return modified ? `<${rawTagName}${updatedAttrs}>` : fullTag;
+            });
+            if (modified) {
+              await writeFile(filePath, html, "utf8");
+            }
+          }
+        }
         return {
           filePath,
           html,
@@ -608,6 +666,39 @@ export const checkProject = async (): Promise<CheckFindings> => {
       const list = unknownBascikAttrs.get(unknown.attr) ?? [];
       list.push({ filePath: displayPath, line: unknown.line });
       unknownBascikAttrs.set(unknown.attr, list);
+    }
+
+    if (declaredPropsByComponent.size > 0) {
+      const noComments = stripComments(html);
+      const stripped = stripElementContents(noComments);
+      const compTagNames = [...declaredPropsByComponent.keys()]
+        .sort((a, b) => b.length - a.length)
+        .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      if (compTagNames.length > 0) {
+        // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        const compOpenRe = new RegExp(
+          `<(${compTagNames.join("|")})\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`,
+          "gi",
+        );
+        let compMatch: RegExpExecArray | null;
+        while ((compMatch = compOpenRe.exec(stripped)) !== null) {
+          const tagName = compMatch[1].toLowerCase();
+          const attrs = compMatch[2] ?? "";
+          const declaredProps = declaredPropsByComponent.get(tagName);
+          if (!declaredProps) continue;
+          for (const attrName of extractAttributeNames(attrs)) {
+            if (attrName.startsWith("data-bascik-")) continue;
+            if (!declaredProps.has(attrName)) continue;
+            if (new RegExp(`\\bdata-bascik-prop-${attrName}\\b`, "i").test(attrs)) continue;
+            items.push({
+              category: "missing-prop-prefix",
+              severity: "warning",
+              message: `<${tagName}> declares prop "${attrName}"; pass data-bascik-prop-${attrName} instead of "${attrName}" (or run bascik --check --fix)`,
+              locations: [{ filePath: displayPath, line: getLineAt(stripped, compMatch.index) }],
+            });
+          }
+        }
+      }
     }
 
     const scriptTagRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -1042,6 +1133,10 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "unknown-bascik-attribute": {
     title: "Unknown data-bascik attributes",
     description: "Likely typos in special Bascik attributes that are ignored at build time.",
+  },
+  "missing-prop-prefix": {
+    title: "Component props missing data-bascik-prop-* prefix",
+    description: "Component props must be passed using the data-bascik-prop-* attribute prefix (auto-fixable with --fix).",
   },
   "script-mode-conflict": {
     title: "Conflicting script modes",

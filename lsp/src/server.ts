@@ -19,6 +19,7 @@ import {
   createCompletions,
   createHover,
   createDefinition,
+  createCodeActions,
 } from './analyzer.js';
 
 export function uriToFsPath(uri: string): string {
@@ -65,6 +66,7 @@ export class BascikLanguageServer {
             },
             hoverProvider: true,
             definitionProvider: true,
+            codeActionProvider: true,
           },
         };
       },
@@ -103,6 +105,20 @@ export class BascikLanguageServer {
       const snapshot = await this.getSnapshotForFile(fsPath);
       if (!snapshot) return undefined;
       return createDefinition(document, params.position, snapshot, fsPath);
+    });
+
+    this.connection.onCodeAction(async (params) => {
+      const document = this.documents.get(params.textDocument.uri);
+      if (!document) return undefined;
+      const fsPath = uriToFsPath(document.uri);
+      const snapshot = await this.getSnapshotForFile(fsPath);
+      return createCodeActions(
+        document,
+        params.range,
+        params.context.diagnostics,
+        snapshot,
+        fsPath,
+      );
     });
 
     this.connection.onDidChangeWatchedFiles(() => {

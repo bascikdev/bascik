@@ -8,6 +8,16 @@ describe("cli helper tests", () => {
       expect(filterNodeArgs(["--build"])).toEqual(["--build"]);
       expect(filterNodeArgs(["--server"])).toEqual(["--server"]);
       expect(filterNodeArgs(["--check"])).toEqual(["--check"]);
+      expect(filterNodeArgs(["--lint"])).toEqual(["--lint"]);
+      expect(filterNodeArgs(["--fix"])).toEqual(["--fix"]);
+    });
+
+    it("resolves --lint and --fix to check action with fix flag", () => {
+      const lintDecision = resolveCliAction(["--lint"]);
+      expect(lintDecision.action).toBe("check");
+      const fixDecision = resolveCliAction(["--lint", "--fix"]);
+      expect(fixDecision.action).toBe("check");
+      expect(fixDecision.flags.fix).toBe(true);
     });
 
     it("should filter out node profiling flags", () => {

@@ -46,6 +46,7 @@ export interface CliFlags {
   target?: string;
   strict?: boolean;
   json?: boolean;
+  fix?: boolean;
   force?: boolean;
   yes?: boolean;
   dryRun?: boolean;
@@ -77,6 +78,8 @@ const BOOLEAN_FLAGS = new Set([
   "--build",
   "--server",
   "--check",
+  "--lint",
+  "--fix",
   "--strict",
   "--json",
   "--force",
@@ -114,6 +117,8 @@ const SUGGESTION_CANDIDATES = [
   "--build",
   "--server",
   "--check",
+  "--lint",
+  "--fix",
   "--strict",
   "--json",
   "--force",
@@ -416,6 +421,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (present.has("--strict")) flags.strict = true;
   if (present.has("--json")) flags.json = true;
+  if (present.has("--fix")) flags.fix = true;
 
   if (flags.force) {
     return error("Error: --force only applies to add.");
@@ -429,7 +435,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     return error("Error: --dry-run only applies to add.");
   }
 
-  const action: CliAction = present.has("--check")
+  const action: CliAction = present.has("--check") || present.has("--lint")
     ? "check"
     : present.has("--server")
       ? "server"
@@ -443,6 +449,10 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (flags.json && action !== "check") {
     return error("Error: --json only applies to --check.");
+  }
+
+  if (flags.fix && action !== "check") {
+    return error("Error: --fix only applies to --check / --lint.");
   }
 
   if (flags.log !== undefined && action !== "build") {

@@ -5,6 +5,8 @@ import {
   createCompletions,
   createHover,
   createDefinition,
+  createCodeActions,
+  applyAutoFixes,
 } from './analyzer.js';
 import { type ProjectSnapshot } from './project.js';
 
@@ -177,6 +179,30 @@ describe('Bascik Language Server Analyzer', () => {
     const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
     const zeroSlot = diags.find((d) => d.code === 'prefer-self-closing-component');
     expect(zeroSlot).toBeDefined();
+  });
+
+  it('diagnoses missing data-bascik-prop-* prefix when passing a declared prop name and provides quick fix', () => {
+    const doc = TextDocument.create(
+      'file:///test-project/src/pages/index.html',
+      'html',
+      1,
+      '<site-nav title="Welcome"><p>Body</p></site-nav><docs-head></docs-head>',
+    );
+    const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
+    const missingPrefix = diags.find((d) => d.code === 'missing-prop-prefix');
+    expect(missingPrefix).toBeDefined();
+    expect(String(missingPrefix?.message)).toContain('data-bascik-prop-title');
+
+    const actions = createCodeActions(doc, missingPrefix!.range, diags, mockSnapshot);
+    expect(actions.length).toBeGreaterThan(0);
+    const edit = actions[0].edit?.changes?.[doc.uri]?.[0];
+    expect(edit?.newText).toBe('data-bascik-prop-title');
+
+    const fixed = applyAutoFixes(doc, mockSnapshot);
+    expect(fixed.fixedCount).toBe(2);
+    expect(fixed.text).toBe(
+      '<site-nav data-bascik-prop-title="Welcome"><p>Body</p></site-nav><docs-head />',
+    );
   });
 
   it('diagnoses script directive placed on non-script tag', () => {

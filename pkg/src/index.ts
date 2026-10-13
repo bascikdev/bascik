@@ -113,7 +113,7 @@ export const runCli = async (
     }
     case "check": {
       const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
-      const findings = await checkProject();
+      const findings = await checkProject({ fix: decision.flags.fix });
       if (decision.flags.json) {
         logger(formatFindingsJson(findings));
       } else {

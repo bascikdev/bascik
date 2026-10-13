@@ -1,3 +1,4 @@
+/* bascik-disable js-attribute-selector */
 var btn = document.querySelector('.dnav-search-btn');
 var overlay = document.querySelector('.search-overlay');
 var backdrop = document.querySelector('.search-backdrop');

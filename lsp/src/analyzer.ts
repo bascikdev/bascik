@@ -10,6 +10,9 @@ import {
   type LocationLink,
   type Hover,
   MarkupKind,
+  type CodeAction,
+  CodeActionKind,
+  type TextEdit,
 } from 'vscode-languageserver';
 import { type TextDocumentLike } from './types.js';
 import {
@@ -1075,6 +1078,41 @@ export function createDiagnostics(
                   message: `Component <${tagName}> does not declare prop "${propName}".`,
                   severity: DiagnosticSeverity.Warning,
                   source: 'bascik',
+                  code: 'undeclared-prop',
+                });
+              }
+            }
+
+            if (compMeta.props.length > 0) {
+              const insideOpenTag = openTagText
+                .replace(new RegExp(`^<${escapeRegExp(tagName)}\\b`, 'i'), '')
+                .replace(/\/?>$/, '');
+              const baseAttrOffset = openTagText.indexOf(insideOpenTag);
+              const bareAttrRe =
+                /([^\s"'=<>`/]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/gi;
+              let bareMatch: RegExpExecArray | null;
+              while ((bareMatch = bareAttrRe.exec(insideOpenTag)) !== null) {
+                const attrName = bareMatch[1];
+                const lowerAttr = attrName.toLowerCase();
+                if (lowerAttr.startsWith('data-bascik-')) continue;
+                const declaredProp = compMeta.props.find(
+                  (p) => p.name.toLowerCase() === lowerAttr,
+                );
+                if (!declaredProp) continue;
+                const alreadySupplied = new RegExp(
+                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}\\b`,
+                  'i',
+                ).test(openTagText);
+                if (alreadySupplied) continue;
+                const attrOffset = tagStartIndex + baseAttrOffset + bareMatch.index;
+                const start = document.positionAt(attrOffset);
+                const end = document.positionAt(attrOffset + attrName.length);
+                diagnostics.push({
+                  range: { start, end },
+                  message: `Component <${tagName}> declares prop "${declaredProp.name}". Pass it with the data-bascik-prop-${declaredProp.name} prefix instead of "${attrName}".`,
+                  severity: DiagnosticSeverity.Warning,
+                  source: 'bascik',
+                  code: 'missing-prop-prefix',
                 });
               }
             }
@@ -1600,4 +1638,120 @@ export function createDefinition(
   }
 
   return undefined;
+}
+
+function rangesOverlap(a: Range, b: Range): boolean {
+  if (a.end.line < b.start.line || b.end.line < a.start.line) return false;
+  if (a.end.line === b.start.line && a.end.character < b.start.character) return false;
+  if (b.end.line === a.start.line && b.end.character < a.start.character) return false;
+  return true;
+}
+
+export function buildAutoFixEdit(
+  document: TextDocumentLike,
+  diag: Diagnostic,
+): { title: string; edit: TextEdit } | undefined {
+  const code = typeof diag.code === 'string' ? diag.code : undefined;
+  if (code === 'missing-prop-prefix') {
+    const rawAttr = document.getText(diag.range);
+    if (!rawAttr || rawAttr.toLowerCase().startsWith('data-bascik-prop-')) {
+      return undefined;
+    }
+    const newText = `data-bascik-prop-${rawAttr}`;
+    return {
+      title: `Prefix prop with data-bascik-prop- (${newText})`,
+      edit: {
+        range: diag.range,
+        newText,
+      },
+    };
+  }
+  if (code === 'prefer-self-closing-component') {
+    const fullText = document.getText(diag.range);
+    const match = /^<([A-Za-z][\w-]*)(\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?>\s*<\/\1\s*>$/is.exec(
+      fullText,
+    );
+    if (!match) return undefined;
+    const tagName = match[1];
+    const attrs = (match[2] ?? '').trimEnd();
+    const newText = `<${tagName}${attrs} />`;
+    return {
+      title: `Convert <${tagName}> to self-closing tag`,
+      edit: {
+        range: diag.range,
+        newText,
+      },
+    };
+  }
+  return undefined;
+}
+
+export function createCodeActions(
+  document: TextDocumentLike,
+  range: Range,
+  diagnostics: Diagnostic[],
+  snapshot?: ProjectSnapshot,
+  fsPath?: string,
+): CodeAction[] {
+  const activeDiagnostics =
+    diagnostics.length > 0
+      ? diagnostics
+      : fsPath
+        ? createDiagnostics(document, fsPath, snapshot)
+        : [];
+  const actions: CodeAction[] = [];
+
+  for (const diag of activeDiagnostics) {
+    if (!rangesOverlap(diag.range, range)) continue;
+    const fix = buildAutoFixEdit(document, diag);
+    if (!fix) continue;
+    actions.push({
+      title: fix.title,
+      kind: CodeActionKind.QuickFix,
+      diagnostics: [diag],
+      isPreferred: true,
+      edit: {
+        changes: {
+          [document.uri]: [fix.edit],
+        },
+      },
+    });
+  }
+
+  return actions;
+}
+
+export function applyAutoFixes(
+  document: TextDocumentLike,
+  snapshot: ProjectSnapshot | undefined,
+  fsPath = '/virtual.html',
+): { text: string; fixedCount: number } {
+  const diags = createDiagnostics(document, fsPath, snapshot);
+  const edits: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+
+  for (const diag of diags) {
+    const fix = buildAutoFixEdit(document, diag);
+    if (!fix) continue;
+    const startOffset = document.offsetAt(fix.edit.range.start);
+    const endOffset = document.offsetAt(fix.edit.range.end);
+    edits.push({ startOffset, endOffset, newText: fix.edit.newText });
+  }
+
+  if (edits.length === 0) {
+    return { text: document.getText(), fixedCount: 0 };
+  }
+
+  edits.sort((a, b) => b.startOffset - a.startOffset);
+  let text = document.getText();
+  let fixedCount = 0;
+  let lastStart = Number.POSITIVE_INFINITY;
+
+  for (const edit of edits) {
+    if (edit.endOffset > lastStart) continue;
+    text = text.slice(0, edit.startOffset) + edit.newText + text.slice(edit.endOffset);
+    lastStart = edit.startOffset;
+    fixedCount++;
+  }
+
+  return { text, fixedCount };
 }

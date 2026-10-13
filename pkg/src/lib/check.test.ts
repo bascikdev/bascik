@@ -183,6 +183,28 @@ describe("checkProject", () => {
     expect(findings.warnings).toBe(0);
   });
 
+  it("reports missing data-bascik-prop-* prefix on component usage tags and auto-fixes when fix is true", async () => {
+    await setupProject({
+      "pages/index.html": '<my-card heading="Welcome"></my-card>',
+      "components/my-card/my-card.html": "<h2 data-bascik-prop-heading></h2>",
+    });
+    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+    listComponentsMock.mockResolvedValue({
+      "my-card": {
+        fileName: join(workDir, "components/my-card/my-card.html"),
+        fileContent: "<h2 data-bascik-prop-heading></h2>",
+      },
+    });
+
+    const findings = await checkProject();
+    const missingProp = findings.items.find((i) => i.category === "missing-prop-prefix");
+    expect(missingProp).toBeDefined();
+    expect(missingProp?.message).toContain('data-bascik-prop-heading');
+
+    const fixedFindings = await checkProject({ fix: true });
+    expect(fixedFindings.items.some((i) => i.category === "missing-prop-prefix")).toBe(false);
+  });
+
   it("reports unknown component tags as warnings (not errors)", async () => {
     await setupProject({
       "pages/index.html": "<my-card></my-card><ghost-tag></ghost-tag>",

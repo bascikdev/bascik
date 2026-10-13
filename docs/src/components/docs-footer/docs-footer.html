@@ -66,6 +66,7 @@
     if (norm) {
       el = document.getElementById(norm);
       if (el) return el;
+      // bascik-ignore js-attribute-selector
       const headings = document.querySelectorAll('h1, h2, h3, h4, [id]');
       for (let i = 0; i < headings.length; i++) {
         const id = headings[i].id;

@@ -230,6 +230,21 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – id (existing patterns)", () => {
+  it("scopes unquoted and whitespace-spaced class, id, and name attributes", () => {
+    let component = makeComponent(
+      '<label for = email>Email</label><input id = email name=email class = field><div class=card/>',
+      ".field { color: red; } .card { color: blue; }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(`for = "${scope("email")}"`);
+    expect(component.fileContent).toContain(`id = "${scope("email")}"`);
+    expect(component.fileContent).toContain(`name="${scope("email")}"`);
+    expect(component.fileContent).toContain(`class = "${scopeClass("field")}"`);
+    expect(component.fileContent).toContain(`<div class="${scopeClass("card")}"/>`);
+  });
+
   it("scopes the for attribute to match a scoped input id", () => {
     const component = makeComponent(
       '<label for="email">Email</label><input id="email">',

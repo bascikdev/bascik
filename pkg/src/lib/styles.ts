@@ -123,7 +123,7 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?::[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+))[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
+      /(?<=\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
       toClass,
     );
   } while (result !== previousResult);
@@ -136,7 +136,7 @@ export const convertCssElementSelectorsToClasses = (
  * corrupting class-like text nested inside other attribute values.
  */
 export const injectClassIntoTag = (openTag: string, className: string): string => {
-  if (!/class=/i.test(openTag)) {
+  if (!/\sclass\s*=/i.test(openTag)) {
     return openTag.replace(
       /^<[a-zA-Z0-9-]+/i,
       (tagHead) => `${tagHead} class="${className}"`,
@@ -162,7 +162,7 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
 
   let replaced = false;
   let finalStr = "";
-  const attrRegexG = /(?:\s)class=(?:"([^"]*)"|'([^']*)')/gi;
+  const attrRegexG = /(?:\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/gi;
   let match;
 
   while (!replaced && (match = attrRegexG.exec(openTag)) !== null) {
@@ -171,11 +171,16 @@ export const injectClassIntoTag = (openTag: string, className: string): string =
       (r) => matchStart > r.start && matchStart < r.end,
     );
     if (!isInside) {
-      const classQuote = match[1] !== undefined ? '"' : "'";
-      const classVal = match[1] !== undefined ? match[1] : match[2];
+      const classQuote = match[2] !== undefined ? "'" : '"';
+      const rawUnquoted = match[3];
+      const trailingSlash = rawUnquoted !== undefined && rawUnquoted.endsWith("/") ? "/" : "";
+      const unquotedClean = rawUnquoted !== undefined && rawUnquoted.endsWith("/")
+        ? rawUnquoted.slice(0, -1)
+        : rawUnquoted;
+      const classVal = match[1] ?? match[2] ?? unquotedClean ?? "";
       finalStr =
         openTag.substring(0, matchStart) +
-        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}` +
+        ` class=${classQuote}${classVal ? classVal + " " : ""}${className}${classQuote}${trailingSlash}` +
         openTag.substring(matchStart + match[0].length);
       replaced = true;
     }
@@ -375,9 +380,12 @@ export const addIdClassesInHtml = (
     const idGroupSingle = escapedScoped
       ? `(?:(?:[^']*__)?${escaped}|${escapedScoped})`
       : `(?:[^']*__)?${escaped}`;
+    const idGroupUnquoted = escapedScoped
+      ? `(?:(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}|${escapedScoped})`
+      : `(?:[^\\s"'=<>` + "`" + `]*__)?${escaped}`;
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     const idPattern = new RegExp(
-      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid=(?:"${idGroup}"|'${idGroupSingle}')(?:[^>"']|"[^"]*"|'[^']*')*>`,
+      `<[a-zA-Z0-9-]+(?:[^>"']|"[^"]*"|'[^']*')*\\sid\\s*=\\s*(?:"${idGroup}"|'${idGroupSingle}'|${idGroupUnquoted}(?=\\s|\\/>|>))(?:[^>"']|"[^"]*"|'[^']*')*>`,
       "gi",
     );
     result = result.replace(idPattern, (openTag) =>
@@ -1210,16 +1218,16 @@ export const scopeInlineStyleTags = (
           minifyAttributeName(`bascik__${componentName}__${className}`),
         ),
       );
-      const { css: elCss, elementsConvertedClasses } =
-        convertCssElementSelectorsToClasses(css, componentName);
-      css = elCss;
-      allElementClasses.push(...elementsConvertedClasses);
       const { css: idCss, idsConverted } = convertCssIdSelectorsToClasses(
         css,
         componentName,
       );
       css = idCss;
       allIdsConverted.push(...idsConverted);
+      const { css: elCss, elementsConvertedClasses } =
+        convertCssElementSelectorsToClasses(css, componentName);
+      css = elCss;
+      allElementClasses.push(...elementsConvertedClasses);
       css = prefixKeyframes(css, componentName);
       css = removeIdSelectors(css);
       css = scopeCssCustomProperties(css, componentName);

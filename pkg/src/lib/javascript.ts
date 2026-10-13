@@ -285,15 +285,19 @@ const replaceSafeAttr = (
   replacer: (fullMatch: string, prefix: string, quotedVal: string) => string,
 ): string => {
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-  const attrRegex = new RegExp(`(\\s${attrName}=)("[^"]*"|'[^']*')`, "gm");
+  const attrRegex = new RegExp(
+    `(\\s${attrName}\\s*=\\s*)("[^"]*"|'[^']*'|[^\\s"'=<>` + "`" + `]+?)(?=\\s|\\/>|>|$)`,
+    "gm",
+  );
+  // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+  const attrQuickCheck = new RegExp(`\\s${attrName}\\s*=`, "i");
 
   // This simple regex identifies tags loosely. It handles nested attributes
   // because we only process the attributes inside the matched tag brackets.
-  const attrNeedle = `${attrName}=`;
   return html.replace(
     /<[a-zA-Z0-9-]+(?:\s(?:[^>"']|"[^"]*"|'[^']*')*)?>/g,
     (tagMatch) => {
-      if (!tagMatch.includes(attrNeedle)) return tagMatch;
+      if (!attrQuickCheck.test(tagMatch)) return tagMatch;
       // First, find all proper string boundaries in this tag to ignore false matches.
       const stringRanges: Array<{ start: number; end: number }> = [];
       let j = 0;
@@ -457,8 +461,15 @@ export const prefixElementAttribute = (
     nonScriptRawShield.html,
     attribute,
     (fullMatch, prefix, quotedVal) => {
-      const quote = quotedVal[0];
-      const match = quotedVal.slice(1, -1);
+      const firstChar = quotedVal[0];
+      const isQuoted = firstChar === '"' || firstChar === "'";
+      const quote = isQuoted ? firstChar : '"';
+      const match = isQuoted
+        ? quotedVal.slice(1, -1)
+        : quotedVal.endsWith("/")
+          ? quotedVal.slice(0, -1)
+          : quotedVal;
+      const trailingSlash = !isQuoted && quotedVal.endsWith("/") ? "/" : "";
       if (!match) return fullMatch;
       const newInner = match
         .trim()
@@ -474,7 +485,7 @@ export const prefixElementAttribute = (
           return obfuscatedAttributeName;
         })
         .join(" ");
-      return `${prefix}${quote}${newInner}${quote}`;
+      return `${prefix}${quote}${newInner}${quote}${trailingSlash}`;
     },
   ));
 
@@ -775,6 +786,14 @@ export const prefixElementAttribute = (
           }),
         );
 
+        // Convert CSS hash-ID selectors (#id) to component-scoped class selectors
+        // before element-selector conversion so descendant elements after #id
+        // (e.g. `#panel p`, `#panel > h3`) are converted in Pass 4.
+        const { css: idSelectorCss, idsConverted } =
+          convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
+        component.cssFileContent = idSelectorCss;
+        allIdsConverted.push(...idsConverted);
+
         const { css: elSelectorToClassCss, elementsConvertedClasses } =
           convertCssElementSelectorsToClasses(component.cssFileContent, scopeKey);
         component.cssFileContent = elSelectorToClassCss;
@@ -784,13 +803,6 @@ export const prefixElementAttribute = (
           component.cssFileContent,
           scopeKey,
         );
-
-        // Convert CSS hash-ID selectors (#id) to component-scoped class selectors.
-        // Uses a context-aware lookahead to avoid matching hex color values.
-        const { css: idSelectorCss, idsConverted } =
-          convertCssIdSelectorsToClasses(component.cssFileContent, scopeKey);
-        component.cssFileContent = idSelectorCss;
-        allIdsConverted.push(...idsConverted);
 
         // Strip the [id] attribute-selector form (cannot be scoped without wrapping).
         component.cssFileContent = removeIdSelectors(component.cssFileContent);

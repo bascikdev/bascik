@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { DiagnosticSeverity } from 'vscode-languageserver';
 import { buildSnapshot, isInsideComponentRoots, type ProjectSnapshot } from './project.js';
-import { createDiagnostics } from './analyzer.js';
+import { createDiagnostics, applyAutoFixes } from './analyzer.js';
 
 interface CheckOptions {
   cwd: string;
   targetPath?: string;
   projectPath?: string;
+  fix?: boolean;
 }
 
 const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs'];
@@ -18,10 +19,15 @@ const CONFIG_FILES = ['bascik.config.ts', 'bascik.config.js', 'bascik.config.mjs
 function parseArgs(args: string[]): CheckOptions {
   let targetPath: string | undefined;
   let projectPath: string | undefined;
+  let fix = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--stdio') {
+    if (arg === '--stdio' || arg === '--check' || arg === '--lint') {
       // Handled by main bin launcher
+      continue;
+    }
+    if (arg === '--fix') {
+      fix = true;
       continue;
     }
     if (arg === '--project') {
@@ -40,6 +46,7 @@ function parseArgs(args: string[]): CheckOptions {
     cwd: process.cwd(),
     targetPath,
     projectPath,
+    fix,
   };
 }
 
@@ -55,7 +62,7 @@ function findConfigRoot(start: string): string | undefined {
 }
 
 export async function runCliCheck(args: string[] = process.argv.slice(2)): Promise<number> {
-  const { cwd, targetPath, projectPath } = parseArgs(args);
+  const { cwd, targetPath, projectPath, fix } = parseArgs(args);
   const targetRoot = targetPath ? path.resolve(cwd, targetPath) : cwd;
 
   const stat = fs.existsSync(targetRoot) ? fs.statSync(targetRoot) : undefined;
@@ -141,7 +148,15 @@ export async function runCliCheck(args: string[] = process.argv.slice(2)): Promi
         ? 'typescript'
         : 'javascript';
 
-    const doc = TextDocument.create(`file://${filePath}`, languageId, 1, content);
+    let doc = TextDocument.create(`file://${filePath}`, languageId, 1, content);
+    if (fix && languageId === 'html') {
+      const fixed = applyAutoFixes(doc, snapshot, filePath);
+      if (fixed.fixedCount > 0) {
+        fs.writeFileSync(filePath, fixed.text, 'utf8');
+        content = fixed.text;
+        doc = TextDocument.create(`file://${filePath}`, languageId, 2, content);
+      }
+    }
     const diags = createDiagnostics(doc, filePath, snapshot);
 
     if (diags.length > 0) {

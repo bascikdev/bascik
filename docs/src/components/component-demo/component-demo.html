@@ -407,6 +407,7 @@ Interactive demo box with Preview, Source, and Output panes and per-language tab
 
   /* Page-level examples (site-header, site-footer) span the box instead of shrinking to their content. Element names
      inside :is() stay unscoped, so this matches the example's own <header> and <footer>. */
+  /* bascik-ignore css-is-element-names */
   .demo-preview-content> :is(header, footer) {
     flex: 1;
   }

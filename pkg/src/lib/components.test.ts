@@ -766,6 +766,29 @@ describe("listComponents", () => {
     invalidateComponentListCache();
     await expect(listComponents()).resolves.toEqual({});
   });
+
+  it("emits compatibility warnings with file and line numbers when loading components with unsupported patterns", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-compat-warn-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, "src/components/bad-card"), { recursive: true });
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.html"),
+        '<div id="box"></div>\n<script>\n  const el = document.getElementById("box");\n  el.id = "mutated";\n</script>\n',
+      );
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.css"),
+        "[data-state] {\n  color: red;\n}\n",
+      );
+      await listComponents([join(cwd, "src/components")]);
+      const calls = warnSpy.mock.calls.map((c) => c.join(" "));
+      expect(calls.some((msg) => msg.includes("js-id-setter") && msg.includes("bad-card.html:4"))).toBe(true);
+      expect(calls.some((msg) => msg.includes("css-attribute-selector") && msg.includes("bad-card.css:1"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readComponentRoot", () => {
