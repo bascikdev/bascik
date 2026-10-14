@@ -90,7 +90,7 @@ The development server binds its port immediately while page transpilation runs 
 
 The boot page connects to `/bascik-live-reload`. When the requested page finishes transpiling, the `"transpiled"` event fires, the SSE connection receives a reload signal, and the browser fetches the actual page automatically. Once `watchFiles()` completes the initial build, the `isBooting` flag is cleared and unmatched paths fall through to 404 handling. The boot page is never used in production mode.
 
-> **Startup logging:** After the awaited `pre` phase, `startServer()` binds while page compilation runs. In an interactive terminal the server URL is pinned to the top row as soon as the port is bound (`lib/pinned-banner.ts`, controlled by `logging.pinServerUrl`); in piped output and CI it is printed after the initial compilation and `post` phase finish. Parallel exec tasks are not awaited in dev and may log completion later.
+> **Startup logging:** After the awaited `pre` phase, `startServer()` binds while page compilation runs. In an interactive terminal the server URL is pinned to the top row as soon as the port is bound (`lib/pinned-banner.ts`, turned off by `--no-pin` or `BASCIK_PIN_SERVER_URL=0`; there is deliberately no config key, because it is a per-terminal choice); in piped output and CI it is printed after the initial compilation and `post` phase finish. Parallel exec tasks are not awaited in dev and may log completion later.
 >
 > The pin does not scroll the screen. It asks the terminal where the cursor is, inserts one blank line at the top so everything already on screen moves down a row, draws the banner there, and sets a scroll region from row 2 down. Only a completely full screen loses a line, exactly one.
 >

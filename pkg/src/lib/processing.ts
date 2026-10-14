@@ -128,6 +128,7 @@ import { WorkerPool } from "./worker-pool.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
+import { logInfo } from "./log.ts";
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
@@ -1275,7 +1276,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
-  console.log(colorOut.dim("Starting transpiling..."));
+  logInfo(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
   const useWorkers = options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
@@ -1444,7 +1445,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     allJobs.length >= 20 &&
     cpus().length >= 4
   ) {
-    console.log(
+    logInfo(
       colorOut.yellow(`💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`),
     );
   }

@@ -20,6 +20,8 @@
  *   once a bascik token has been seen, unknown flags are an error.
  */
 
+import { LOG_LEVELS, QUIET_LOG_LEVEL } from "./log-level.ts";
+
 export type CliAction =
   | "init"
   | "add"
@@ -38,7 +40,10 @@ export interface CliFlags {
   log?: string;
   port?: number;
   host?: string;
+  /** From `--log-level`, or `warn` when `--quiet` was passed. */
   logLevel?: string;
+  /** `--no-pin`: do not pin the server URL to the top row of the dev terminal. */
+  noPin?: boolean;
   siteUrl?: string;
   envFiles: string[];
   only?: string[];
@@ -68,10 +73,9 @@ export interface CliDecision {
 /** Default log path for a bare `--log`. */
 export const DEFAULT_LOG_PATH = ".bascik/build.log";
 
-// Mirrors LOG_LEVELS in config.ts. cli.ts cannot import config.ts (config.ts
-// imports this module), so cli.test.ts carries a drift-guard test that keeps
-// the two lists identical.
-const CLI_LOG_LEVELS = ["silent", "error", "warn", "info", "debug"];
+// The same list config.ts and the config validator use. It lives in log-level.ts because cli.ts cannot import
+// config.ts (config.ts imports this module).
+const CLI_LOG_LEVELS: readonly string[] = LOG_LEVELS;
 
 /** Boolean flags the CLI understands (no value). */
 const BOOLEAN_FLAGS = new Set([
@@ -85,6 +89,9 @@ const BOOLEAN_FLAGS = new Set([
   "--yes",
   "-y",
   "--dry-run",
+  "--quiet",
+  "-q",
+  "--no-pin",
   "--help",
   "-h",
   "--version",
@@ -125,6 +132,8 @@ const SUGGESTION_CANDIDATES = [
   "--force",
   "--yes",
   "--dry-run",
+  "--quiet",
+  "--no-pin",
   "--help",
   "--version",
   "--config",
@@ -431,6 +440,15 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   if (present.has("--strict")) flags.strict = true;
   if (present.has("--json")) flags.json = true;
   if (present.has("--fix")) flags.fix = true;
+  if (present.has("--no-pin")) flags.noPin = true;
+
+  // `--quiet` is `--log-level warn`. Giving both is a contradiction, so it is rejected instead of one winning.
+  if (present.has("--quiet") || present.has("-q")) {
+    if (flags.logLevel !== undefined) {
+      return error(`Error: --quiet is the same as --log-level ${QUIET_LOG_LEVEL}. Use one or the other.`);
+    }
+    flags.logLevel = QUIET_LOG_LEVEL;
+  }
 
   if (flags.force) {
     return error("Error: --force only applies to add.");
@@ -462,6 +480,10 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (flags.fix && action !== "check") {
     return error("Error: --fix only applies to --check.");
+  }
+
+  if (flags.noPin && action !== "dev") {
+    return error("Error: --no-pin only applies to the dev server.");
   }
 
   if (flags.log !== undefined && action !== "build") {
@@ -517,6 +539,11 @@ Options:
                      (overrides BASCIK_SERVER_HOST and http.hostname)
   --log-level <lvl>  Override logging.level: silent, error, warn, info, debug
                      (overrides BASCIK_LOG_LEVEL and logging.level)
+  --quiet, -q        Same as --log-level warn: hide per-page, copy, request, and
+                     script progress lines. The server address and the
+                     transpile summary still print
+  --no-pin           Do not pin the server address to the top row of the
+                     terminal (dev only; same as BASCIK_PIN_SERVER_URL=0)
   --site-url <url>   Set the site URL for this run (overrides BASCIK_SITE_URL and .env)
   --env-file <path>  Load env vars from a file (repeatable; later files win).
                      Defaults to ./.env when present, silently skipped when not

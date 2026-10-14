@@ -249,6 +249,29 @@ describe("generateSitemapFiles", () => {
     );
   });
 
+  describe("generated: lines", () => {
+    const run = async (level: string | undefined) => {
+      (BascikConfig as Record<string, unknown>).logging = level === undefined ? undefined : { level };
+      const log = vi.spyOn(console, "log").mockImplementation(() => { });
+      await generateSitemapFiles([]);
+      return log.mock.calls.map((call) => String(call[0]));
+    };
+    afterEach(() => {
+      delete (BascikConfig as Record<string, unknown>).logging;
+      vi.restoreAllMocks();
+    });
+
+    it("prints one line per generated file at the default level", async () => {
+      const lines = await run(undefined);
+      expect(lines.filter((l) => l.startsWith("generated:")).length).toBeGreaterThan(0);
+    });
+
+    it("prints none at warn, which is what --quiet selects, and still writes the files", async () => {
+      expect(await run("warn")).toEqual([]);
+      expect(writeFile).toHaveBeenCalled();
+    });
+  });
+
   it("excludes the 404 page from sitemap.xml", async () => {
     vi.mocked(listPages).mockResolvedValue([
       "/project/src/pages/index.html",

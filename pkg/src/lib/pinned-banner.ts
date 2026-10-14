@@ -25,7 +25,8 @@
  * Only a color-capable interactive terminal gets it. Piped output, CI, `TERM=dumb`, and terminals too short to
  * spare a row are left alone, and callers fall back to a normal log line. Terminals do not keep lines that
  * scroll inside a region that starts below row 1 in their scrollback, so users who want to scroll back through
- * dev output, or keep their scrollback, can turn this off with `logging.pinServerUrl: false`.
+ * dev output, or keep their scrollback, can turn this off with `--no-pin` or `BASCIK_PIN_SERVER_URL=0`. It is not a
+ * config key: it describes one person's terminal, and the config file is shared by everyone on the project.
  *
  * The region is reset on process exit. A process killed with SIGKILL cannot do that, and `reset` clears it.
  */
@@ -125,6 +126,13 @@ export const readCursorPosition = (
     }
   });
 
+/** The environment variable that turns pinning off. `--no-pin` sets it to `0` so workers and children see it too. */
+export const PIN_SERVER_URL_ENV_VAR = "BASCIK_PIN_SERVER_URL";
+
+/** Whether the user turned pinning off: `0`, `false`, `off`, or `no` (any case). Any other value leaves it on. */
+export const isPinningDisabled = (env: PinnedBannerEnvironment = process.env): boolean =>
+  /^(?:0|false|off|no)$/i.test((env[PIN_SERVER_URL_ENV_VAR] ?? "").trim());
+
 /** Whether the stream is an interactive terminal tall enough to give up its first row. */
 export const canPinBanner = (
   stream: PinnedBannerStream = process.stdout,
@@ -166,7 +174,7 @@ export const pinServerUrl = async (
   env: PinnedBannerEnvironment = process.env,
   input: PinnedBannerInput | undefined = process.stdin,
 ): Promise<PinnedBanner | undefined> => {
-  if (!canPinBanner(stream, env)) return undefined;
+  if (isPinningDisabled(env) || !canPinBanner(stream, env)) return undefined;
 
   const rows = () => stream.rows ?? MIN_ROWS;
   // Row 1 holds the banner. Setting the region homes the cursor, so callers put it where they want it afterwards.

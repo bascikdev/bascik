@@ -93,6 +93,8 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
 | `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
 | `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
+| `--quiet`, `-q` | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level` |
+| `--no-pin` | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0` |
 | `--site-url <url>` | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`) |
 | `--env-file <path>` | Load env vars from a file (repeatable; later files win) |
 | `--config <path>` | Load the config from a specific file instead of `./bascik.config.js` or `./bascik.config.ts` |

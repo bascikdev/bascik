@@ -37,12 +37,6 @@ The order is checked again each time a page finishes, not once at the start. A t
 
 While the first compile is still running, the browser shows a short startup page and reloads into your page as soon as it is ready. `bascik --build` does not reorder pages.
 
-## Build Time of This Documentation Site
-
-The numbers below are not typical. They describe this documentation site's own production build (`bascik --build`), measured on one machine, because it is a large real site: many pages, many components, and build scripts that render Markdown, generate images, and write the search index. Compiling and scoping the components is the cheap part, under 0.2ms per page. What takes time is the Node.js your build scripts run, so the build lists every phase.
-
-The build runs your Node.js build scripts in isolated child processes, a few at a time, and caches each result. The first build pays for every script. After that, only scripts whose inputs changed run again. The page and component counts are counted live on every build. The timings come from a measured build and name the machine and date they were taken on.
-
 ## Linked Static Assets
 
 For projects with many large static assets, enable development-only asset links instead of copies:
@@ -107,5 +101,11 @@ The development server watches:
 - **`src/components/` (and all `directory.components` roots):** Editing a component automatically re-transpiles every page that uses that component tag.
 - **`src/` (or `scripts.importRoot`):** Updating shared `@/` script helpers invalidates dependent build script caches and re-renders affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
+
+## Build Time of This Documentation Site
+
+The numbers below are not typical. They describe this documentation site's own production build (`bascik --build`), measured on one machine, because it is a large real site: many pages, many components, and build scripts that render Markdown, generate images, and write the search index. Compiling and scoping the components is the cheap part, under 0.2ms per page. What takes time is the Node.js your build scripts run, so the build lists every phase.
+
+The build runs your Node.js build scripts in isolated child processes, a few at a time, and caches each result. The first build pays for every script. After that, only scripts whose inputs changed run again. The page and component counts are counted live on every build. The timings come from a measured build and name the machine and date they were taken on.
 
 > **Next:** See [Watch Paths](/watch-paths) to configure custom watch directories, or explore [Production Server](/production-server) to learn about production runtime hosting.

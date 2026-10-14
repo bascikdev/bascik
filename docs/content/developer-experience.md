@@ -23,7 +23,9 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. In VS Code's terminal, starting the server also clears the terminal's scrollback, as `clear` does, because its sticky scroll feature would otherwise draw an earlier command over the address. Set [`logging.pinServerUrl`](/configuration#logging) to `false` to turn pinning off and keep your scrollback.
+In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. In VS Code's terminal, starting the server also clears the terminal's scrollback, as `clear` does, because its sticky scroll feature would otherwise draw an earlier command over the address. Start with `bascik --no-pin`, or set `BASCIK_PIN_SERVER_URL=0` in your shell profile, to turn pinning off and keep your scrollback. Pinning is a terminal setting, so it is a flag and an environment variable rather than a config key.
+
+To see less, run `bascik --quiet` (or `-q`). It hides the per-page, copy, request, and script lines, so a running dev server prints the summary and `Server running at` at boot, then stays silent while you edit until a warning or an error. See [Logging](/configuration#logging) for exactly what each level hides.
 
 This is a real run on a new project. After the server starts, one page is saved and only that page is rebuilt:
 

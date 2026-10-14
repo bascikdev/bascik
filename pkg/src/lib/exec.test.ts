@@ -136,6 +136,40 @@ describe("runExecPhase", () => {
     expect(result.count).toBe(1);
   });
 
+  describe("(started) and (completed) lines", () => {
+    const printed = (spy: { mock: { calls: unknown[][] } }): string[] => spy.mock.calls.map((call) => String(call[0]));
+    const withLevel = (level: string | undefined) => {
+      (cfg as unknown as { logging?: { level?: string } }).logging = level === undefined ? undefined : { level };
+    };
+    afterEach(() => withLevel(undefined));
+
+    it("prints both at the default level", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => { });
+      cfg.pipeline.exec = [{ script: "scripts/a.ts", phase: "pre" }];
+      await runExecPhase("pre");
+      const lines = printed(log);
+      expect(lines.some((l) => l.includes("(started)") && l.includes("scripts/a.ts"))).toBe(true);
+      expect(lines.some((l) => l.includes("(completed)") && l.includes("scripts/a.ts"))).toBe(true);
+    });
+
+    it.each(["warn", "error", "silent"])("prints neither at %s, which is what --quiet selects", async (level) => {
+      withLevel(level);
+      const log = vi.spyOn(console, "log").mockImplementation(() => { });
+      cfg.pipeline.exec = [{ script: "scripts/a.ts", phase: "pre" }];
+      await runExecPhase("pre");
+      expect(printed(log).filter((l) => l.includes("exec:"))).toEqual([]);
+    });
+
+    it("still runs the script and still reports a failure when the lines are hidden", async () => {
+      withLevel("warn");
+      vi.spyOn(console, "log").mockImplementation(() => { });
+      setNextExitCode(1);
+      cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];
+      await expect(runExecPhase("pre")).rejects.toThrow('exec "scripts/fail.ts" exited with code 1');
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("rejects when a script exits non-zero", async () => {
     setNextExitCode(1);
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];

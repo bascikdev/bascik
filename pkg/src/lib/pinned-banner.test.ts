@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canPinBanner,
   formatBanner,
+  isPinningDisabled,
   needsEmptyScrollback,
   pinServerUrl,
   readCursorPosition,
@@ -190,6 +191,23 @@ describe("pinned-banner", () => {
       };
       expect(await readCursorPosition(stream, input, 20)).toBeUndefined();
       expect(state.paused).toBe(true);
+    });
+  });
+
+  describe("BASCIK_PIN_SERVER_URL", () => {
+    it.each(["0", "false", "FALSE", "off", "no", " 0 "])("%j turns pinning off", (value) => {
+      expect(isPinningDisabled({ BASCIK_PIN_SERVER_URL: value })).toBe(true);
+    });
+
+    it.each([undefined, "", "1", "true", "on", "yes", "anything"])("%j leaves pinning on", (value) => {
+      expect(isPinningDisabled({ BASCIK_PIN_SERVER_URL: value })).toBe(false);
+    });
+
+    it("pinServerUrl writes nothing, not even the cursor query, when it is off in an otherwise capable terminal", async () => {
+      const { stream, writes } = makeStream();
+      const { input } = makeInput({ reply: `${ESC}[3;1R` });
+      expect(await pinServerUrl("http://localhost:8080", stream, { BASCIK_PIN_SERVER_URL: "0" }, input)).toBeUndefined();
+      expect(writes).toEqual([]);
     });
   });
 

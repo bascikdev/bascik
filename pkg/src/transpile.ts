@@ -114,7 +114,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const url = await dev.url;
     // The URL is known as soon as the port is bound, long before pages finish compiling. Pin it to the top
     // row of an interactive terminal; otherwise it is logged once boot completes, as before.
-    const pinned = url && BascikConfig.logging?.pinServerUrl !== false ? await pinServerUrl(url) : undefined;
+    const pinned = url ? await pinServerUrl(url) : undefined;
 
     const publications: [string, unknown][] = [];
     await watchFiles({

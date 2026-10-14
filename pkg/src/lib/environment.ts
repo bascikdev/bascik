@@ -15,10 +15,11 @@
  * override earlier ones, and a missing explicit path is an error (mirroring
  * Node's `--env-file` versus `--env-file-if-exists` distinction).
  *
- * Server and logging flag overrides (`--port`, `--host`, `--log-level`) are
- * also applied here, written into the environment (BASCIK_SERVER_PORT,
- * BASCIK_SERVER_HOST, BASCIK_LOG_LEVEL) so worker threads, which do not
- * inherit `process.argv`, see the same effective settings.
+ * Server and logging flag overrides (`--port`, `--host`, `--log-level`,
+ * `--quiet`, `--no-pin`) are also applied here, written into the environment
+ * (BASCIK_SERVER_PORT, BASCIK_SERVER_HOST, BASCIK_LOG_LEVEL,
+ * BASCIK_PIN_SERVER_URL) so worker threads, which do not inherit
+ * `process.argv`, see the same effective settings.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -147,6 +148,9 @@ export const bootEnvironment = (
   }
   if (flags.logLevel !== undefined) {
     process.env.BASCIK_LOG_LEVEL = flags.logLevel;
+  }
+  if (flags.noPin === true) {
+    process.env.BASCIK_PIN_SERVER_URL = "0";
   }
 };
 

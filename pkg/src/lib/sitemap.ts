@@ -34,6 +34,7 @@ import { getRelativePath } from "./file-system.ts";
 import { getHttpPath } from "./paths.ts";
 import { composeSiteUrl } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
+import { logInfo } from "./log.ts";
 
 /**
  * Escape the five XML metacharacters for safe interpolation into `<loc>` etc.
@@ -241,7 +242,7 @@ export const generateSitemapFiles = async (
     manifestCollector.recordFile(sitemapPath, sitemapXml);
     writes.push(
       writeFile(sitemapPath, sitemapXml, "utf8").then(() =>
-        console.log(`generated: ${sitemapRel}`),
+        logInfo(`generated: ${sitemapRel}`),
       ),
     );
   }
@@ -253,7 +254,7 @@ export const generateSitemapFiles = async (
     manifestCollector.recordFile(robotsPath, robotsTxt);
     writes.push(
       writeFile(robotsPath, robotsTxt, "utf8").then(() =>
-        console.log(`generated: ${robotsRel}`),
+        logInfo(`generated: ${robotsRel}`),
       ),
     );
   }

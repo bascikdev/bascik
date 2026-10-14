@@ -19,6 +19,7 @@
 import { existsSync, statSync, accessSync, constants } from "node:fs";
 import { resolve, sep } from "node:path";
 import { SITE_URL_ENV_VAR, validateSiteUrl } from "./environment.ts";
+import { LOG_LEVELS } from "./log-level.ts";
 
 export interface ConfigValidationError {
   /** Dotted key path, e.g. "http.port" or "pipeline.exec[0].script". */
@@ -107,7 +108,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     maxBodySize: null,
     apiTimeout: null,
   },
-  logging: { level: null, requests: null, copies: null, deletes: null, transpiles: null, pinServerUrl: null },
+  logging: { level: null, requests: null, copies: null, deletes: null, transpiles: null },
   base: null,
 };
 
@@ -176,7 +177,17 @@ const VALID_EXEC_PHASES = ["pre", "post", "parallel"];
 const SCRIPT_ERROR_ACTIONS = ['"warn", "error", or "ignore"'];
 const VALID_SCRIPT_ERROR_VALUES = new Set(["warn", "error", "ignore"]);
 const VALID_MINIFY_ERROR_VALUES = new Set(["warn", "error"]);
-const VALID_LOG_LEVELS = new Set(["silent", "error", "warn", "info", "debug"]);
+const VALID_LOG_LEVELS: ReadonlySet<string> = new Set(LOG_LEVELS);
+
+/**
+ * Keys that used to exist and now live somewhere else. A user who still has one gets told where it went,
+ * instead of a generic "not a known configuration option".
+ */
+const MOVED_KEY_MESSAGES: Record<string, string> = {
+  "logging.pinServerUrl":
+    "removed: pinning is a setting for your own terminal, not the project. " +
+    "Run `bascik --no-pin` or set BASCIK_PIN_SERVER_URL=0 instead",
+};
 
 export const PLAUSIBLE_TAG_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,49}$/;
 /**
@@ -212,7 +223,7 @@ const collectUnknownKeys = (
       errors.push({
         key: fullKey,
         value: undefined,
-        message: suggestKey(key, Object.keys(schema), pathPrefix),
+        message: MOVED_KEY_MESSAGES[fullKey] ?? suggestKey(key, Object.keys(schema), pathPrefix),
         unknownKey: true,
       });
       continue;

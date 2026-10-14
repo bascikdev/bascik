@@ -327,8 +327,6 @@ export interface LoggingOptions {
   copies: boolean;
   deletes: boolean;
   transpiles: boolean;
-  /** Pin `Server running at <url>` to the top row of an interactive terminal in dev. Default `true`. */
-  pinServerUrl: boolean;
 }
 
 export interface BascikConfigOptions {
