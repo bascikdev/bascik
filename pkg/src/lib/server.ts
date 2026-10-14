@@ -526,8 +526,11 @@ export const createRequestHandler = () => {
       }
 
       // ── Static asset (has extension, not .html) ──────────────────────────
+      // `extname` ignores a trailing slash, but `/style.css/` names a
+      // directory, not the file: it falls through to the page lookup, which
+      // answers 404 like a static host unless a dotted directory page exists.
       const ext = extname(pathname).toLowerCase();
-      if (ext && !ext.match(/^\.htm.*$/)) {
+      if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);

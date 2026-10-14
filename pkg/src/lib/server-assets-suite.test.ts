@@ -514,6 +514,22 @@ describe("startHttp2Server – static representation failure paths", () => {
     );
   });
 
+  // A file is never a directory: `/style.css/` must not serve style.css under
+  // a second, directory-shaped URL (relative URLs inside it would resolve one
+  // level deeper). Static hosts and the Cloudflare asset layer return 404.
+  it.each(["/style.css/", "/assets/logo.txt/"])("responds 404 for a file path with a trailing slash: %s", async (path) => {
+    mockStat.mockResolvedValue({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    mockReadFile.mockResolvedValue(Buffer.from("body{}"));
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders(path, "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
+    expect(mockStat).not.toHaveBeenCalled();
+  });
+
   it("responds 404 when stat reports ENOENT", async () => {
     mockStat.mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     const handler = getStreamHandler()!;

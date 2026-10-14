@@ -68,6 +68,8 @@ dist/.bascik/cloudflare/
 
 Pages with request-time scripts are **not** in `public/`. Their templates live inside `worker.js`, so a routing mistake that lets such a request reach the static layer yields a 404, never a page with inert placeholders.
 
+With a non-root [`base`](/configuration#base) such as `/docs/`, static files are staged below it (`public/docs/index.html`, `public/docs/assets/...`), so the asset layer serves them at the same `/docs/...` URLs that `bascik --server` uses. Nothing is served outside the prefix. The generated control files (`_worker.js`, `_routes.json`) stay at the root of `public/`, where the platform reads them.
+
 `--target` needs a complete build and is rejected together with `--only`: a deployment bundle is one consistent release inventory.
 
 ## Preview locally
@@ -171,6 +173,7 @@ For most projects, selective `run_worker_first` patterns (only `/api/*` and dyna
 Bascik generates an inventory of invocation routes during build (`buildInvocationRoutes` in `build.ts`). This inventory includes:
 
 - Every dynamic page alias (e.g. `/`, `/account`, `/account.html`, `/account/`)
+- The aliases of a static `404.html` (`/404`, `/404/`, `/404.html`), so the Worker answers the custom 404 page with status `404` at its own URL, as `bascik --server` does, instead of the asset layer's `200`
 - `/api/*` if the project has API routes
 - `/_routes.json` and `/_worker.js` (generated control files)
 - `/*` if the overflow limit is exceeded
@@ -189,6 +192,7 @@ The following scenarios were validated against local workerd (via `npx wrangler 
 | **Dynamic page alias** (`/about.html`) | Worker invoked first, renders corresponding dynamic page |
 | **HTML-navigation request** | If path is in `run_worker_first`, Worker handles it; otherwise CDN serves static |
 | **Private dynamic templates** | Remain in the Worker's private graph; inaccessible as static files under `./public` |
+| **Static page alias** (`/about.html`, `/blog/`, `/docs/index.html`) | The asset layer answers with a `307` redirect to its canonical URL (`/about`, `/blog`, `/docs/`). `bascik --server` serves the same page directly with `200`. Both reach the same bytes. |
 
 These behaviors are confirmed by the existing integration tests in `adapters/cloudflare/src/serverless-build.integration.test.ts` and `adapters/cloudflare/src/cloudflare.test.ts`.
 
