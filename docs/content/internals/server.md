@@ -92,7 +92,9 @@ The boot page connects to `/bascik-live-reload`. When the requested page finishe
 
 > **Startup logging:** After the awaited `pre` phase, `startServer()` binds while page compilation runs. In an interactive terminal the server URL is pinned to the top row as soon as the port is bound (`lib/pinned-banner.ts`, controlled by `logging.pinServerUrl`); in piped output and CI it is printed after the initial compilation and `post` phase finish. Parallel exec tasks are not awaited in dev and may log completion later.
 >
-> The pin does not scroll the screen. It asks the terminal where the cursor is, inserts one blank line at the top so everything already on screen moves down a row, draws the banner there, and sets a scroll region from row 2 down. Only a completely full screen loses a line, exactly one. This is deliberate: VS Code's terminal shows the running command's line as a sticky overlay across the top row once that line has scrolled out of view, so scrolling the command into the scrollback would hide the banner behind the overlay. The command's line stays on screen and is overwritten by output as it arrives.
+> The pin does not scroll the screen. It asks the terminal where the cursor is, inserts one blank line at the top so everything already on screen moves down a row, draws the banner there, and sets a scroll region from row 2 down. Only a completely full screen loses a line, exactly one.
+>
+> In VS Code's integrated terminal with shell integration on (`TERM_PROGRAM=vscode` and `VSCODE_INJECTION` set), the scrollback is also erased, the way `clear` does it. That terminal draws the command line of whichever command owns the top visible row as a sticky overlay across that row, as soon as that command's line has scrolled out of view. Any scrollback above the screen belongs to earlier commands, so the overlay would cover the banner. It stays hidden only while nothing above the screen can own the top row. Other terminals have no such overlay and keep their scrollback.
 
 ### Watch system (`watch.ts`)
 

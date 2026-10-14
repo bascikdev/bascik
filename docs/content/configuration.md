@@ -553,6 +553,8 @@ logging: {
 
 `pinServerUrl` keeps the dev server URL on the first row of the terminal while logs scroll beneath it. It only applies to `bascik` (dev) in an interactive terminal at least six rows tall; piped output, CI, and `TERM=dumb` print the URL as a normal line once the first compile finishes. Terminals do not keep lines that scroll inside a region that starts below row 1 in their scrollback, so set `pinServerUrl: false` if you scroll back through dev output.
 
+In VS Code's integrated terminal, pinning also clears the scrollback, as the `clear` command does, and keeps what is on screen. VS Code's sticky scroll feature otherwise draws the command line of an earlier command over the top row, and the pinned address would be hidden behind it. Set `pinServerUrl: false` if you want to keep that history, or turn off `terminal.integrated.stickyScroll.enabled` in VS Code.
+
 ## Mode Overrides (`dev`, `build`, `server`)
 
 Exporting `dev`, `build`, or `server` mode configuration objects lets you specify mode-specific overrides that merge on top of `default`:

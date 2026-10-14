@@ -23,7 +23,7 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
-In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. Set [`logging.pinServerUrl`](/configuration#logging) to `false` to turn pinning off.
+In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. In VS Code's terminal, starting the server also clears the terminal's scrollback, as `clear` does, because its sticky scroll feature would otherwise draw an earlier command over the address. Set [`logging.pinServerUrl`](/configuration#logging) to `false` to turn pinning off and keep your scrollback.
 
 This is a real run on a new project. After the server starts, one page is saved and only that page is rebuilt:
 

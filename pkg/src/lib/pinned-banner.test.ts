@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canPinBanner,
   formatBanner,
+  needsEmptyScrollback,
   pinServerUrl,
   readCursorPosition,
   type PinnedBannerInput,
@@ -99,6 +100,22 @@ describe("pinned-banner", () => {
       ["TERM=dumb", {}, { TERM: "dumb" }],
     ])("rejects %s", (_name, streamOverrides, env) => {
       expect(canPinBanner(makeStream(streamOverrides).stream, env)).toBe(false);
+    });
+  });
+
+  describe("needsEmptyScrollback", () => {
+    it("is true only in VS Code's terminal with shell integration on, where sticky scroll draws over the top row", () => {
+      expect(needsEmptyScrollback({ TERM_PROGRAM: "vscode", VSCODE_INJECTION: "1" })).toBe(true);
+      expect(needsEmptyScrollback({ TERM_PROGRAM: "vscode", VSCODE_SHELL_INTEGRATION: "1" })).toBe(true);
+    });
+
+    it.each([
+      ["VS Code with shell integration off", { TERM_PROGRAM: "vscode" }],
+      ["another terminal", { TERM_PROGRAM: "Apple_Terminal" }],
+      ["an environment variable left over from VS Code in a different terminal", { TERM_PROGRAM: "iTerm.app", VSCODE_INJECTION: "1" }],
+      ["no terminal program", {}],
+    ])("is false for %s, so their scrollback is kept", (_name, env) => {
+      expect(needsEmptyScrollback(env)).toBe(false);
     });
   });
 
@@ -223,6 +240,53 @@ describe("pinned-banner", () => {
       );
       // Nothing scrolls: no newline is written.
       expect(setup).not.toContain("\n");
+    });
+
+    it("leaves the scrollback alone outside VS Code's terminal", async () => {
+      const { stream, writes } = makeStream({ rows: 24 });
+      const { input, answer } = makeInput({ reply: `${ESC}[7;1R` });
+      answer(stream);
+      const banner = await pinServerUrl("http://localhost:8080", stream, { TERM_PROGRAM: "Apple_Terminal" }, input);
+      banner?.release();
+      expect(writes[1]).not.toContain(`${ESC}[3J`);
+    });
+
+    describe("in VS Code's terminal", () => {
+      const vscode = { TERM_PROGRAM: "vscode", VSCODE_INJECTION: "1" };
+
+      it("erases the scrollback, so no earlier command is left above the screen to own the top row", async () => {
+        const { stream, writes } = makeStream({ rows: 40 });
+        const { input, answer } = makeInput({ reply: `${ESC}[7;5R` });
+        answer(stream);
+        const banner = await pinServerUrl("http://localhost:8080", stream, vscode, input);
+        banner?.release();
+        expect(writes[1]).toBe(
+          `${ESC}[r${ESC}[?6l${ESC}[3J` +
+            `${ESC}[1;1H${ESC}[L` +
+            `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080${ESC}[2;40r` +
+            `${ESC}[8;5H`,
+        );
+      });
+
+      it("erases it AFTER scrolling a full screen, so the line that scroll pushed up goes too", async () => {
+        const { stream, writes } = makeStream({ rows: 24 });
+        const { input, answer } = makeInput({ reply: `${ESC}[24;1R` });
+        answer(stream);
+        const banner = await pinServerUrl("http://localhost:8080", stream, vscode, input);
+        banner?.release();
+        const setup = writes[1];
+        expect(setup.startsWith(`${ESC}[r${ESC}[?6l${ESC}[24;1H\n${ESC}[3J${ESC}[1;1H${ESC}[L`)).toBe(true);
+      });
+
+      it("erases it again on resize, because shrinking the window pushes the top rows into the scrollback", async () => {
+        const { stream, writes, listeners } = makeStream();
+        const { input, answer } = makeInput({ reply: `${ESC}[3;1R` });
+        answer(stream);
+        const banner = await pinServerUrl("http://localhost:8080", stream, vscode, input);
+        for (const listener of listeners) listener();
+        expect((writes.at(-1) ?? "").startsWith(`${ESC}7${ESC}[3J${ESC}[1;1H`)).toBe(true);
+        banner?.release();
+      });
     });
 
     it("scrolls exactly one line away when the screen is full, and puts the cursor back where it was", async () => {

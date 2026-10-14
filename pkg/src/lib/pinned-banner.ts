@@ -6,12 +6,15 @@
  * 1 once is not enough, because the first screenful of output would scroll it away.
  *
  * Everything already on screen stays where the user can see it. One blank line is inserted at the top, which moves
- * the screen down a row, and the banner goes into that line. Nothing is erased, and nothing is pushed into the
- * scrollback unless the screen is completely full, when exactly one line has to go to make room. The line the
- * command was typed on is the one that matters: VS Code's terminal shows the running command's line as a sticky
- * overlay across the top row as soon as it has scrolled out of view, which would hide the banner. Keeping that line
- * on screen is what keeps the overlay away. The scroll region then starts below it, so the line is gradually
- * overwritten by output instead of scrolling away, and the overlay never has a reason to appear.
+ * the screen down a row, and the banner goes into that line. Only a completely full screen loses a line, exactly
+ * one, to make room.
+ *
+ * VS Code's integrated terminal needs one more step. With shell integration on, it draws the command line of
+ * whichever command owns the top visible row as a sticky overlay across that row, as soon as that command's line
+ * has scrolled out of view. Any scrollback above the screen belongs to earlier commands, so their lines would be
+ * drawn over the banner. The overlay stays hidden only while nothing above the screen can own the top row, so in
+ * that terminal the scrollback is erased (`ESC [ 3 J`, the part of `clear` that matters). What is on screen is kept.
+ * Other terminals keep their scrollback.
  *
  * The terminal is asked where the cursor is (`ESC [ 6 n`) so the cursor can be put back on the same line, now one
  * row lower, and so a full screen is told from one with room. A terminal that does not answer within a moment is
@@ -22,7 +25,7 @@
  * Only a color-capable interactive terminal gets it. Piped output, CI, `TERM=dumb`, and terminals too short to
  * spare a row are left alone, and callers fall back to a normal log line. Terminals do not keep lines that
  * scroll inside a region that starts below row 1 in their scrollback, so users who want to scroll back through
- * dev output can turn this off with `logging.pinServerUrl: false`.
+ * dev output, or keep their scrollback, can turn this off with `logging.pinServerUrl: false`.
  *
  * The region is reset on process exit. A process killed with SIGKILL cannot do that, and `reset` clears it.
  */
@@ -35,6 +38,7 @@ const CLEAR_LINE = `${ESC}[2K`;
 const RESET_SCROLL_REGION = `${ESC}[r`;
 const RESET_ORIGIN_MODE = `${ESC}[?6l`;
 const INSERT_LINE = `${ESC}[L`;
+const ERASE_SCROLLBACK = `${ESC}[3J`;
 const MIN_ROWS = 6;
 const LABEL = "Server running at";
 
@@ -132,6 +136,13 @@ export const canPinBanner = (
   !env.CI &&
   env.TERM !== "dumb";
 
+/**
+ * Whether the scrollback has to be emptied for the banner to stay visible: VS Code's terminal (and editors built
+ * on it) with shell integration on, which is what turns on the sticky scroll overlay.
+ */
+export const needsEmptyScrollback = (env: PinnedBannerEnvironment = process.env): boolean =>
+  env.TERM_PROGRAM === "vscode" && Boolean(env.VSCODE_INJECTION || env.VSCODE_SHELL_INTEGRATION);
+
 /** The banner text, with the URL shortened so it never wraps onto row 2. */
 export const formatBanner = (url: string, columns: number): string => {
   const room = Math.max(1, columns - LABEL.length - 2);
@@ -146,7 +157,8 @@ export interface PinnedBanner {
 
 /**
  * Pins `Server running at <url>` to row 1 and returns a handle that releases it, or `undefined` when the
- * terminal cannot take it. Whatever was on screen moves down one row and stays visible.
+ * terminal cannot take it. Whatever was on screen moves down one row and stays visible. In VS Code's terminal the
+ * scrollback is erased too, see the top of this file.
  */
 export const pinServerUrl = async (
   url: string,
@@ -168,26 +180,31 @@ export const pinServerUrl = async (
   const cursorRow = Math.min(Math.max(position?.row ?? total, 1), total);
   const cursorColumn = Math.max(position?.column ?? 1, 1);
   const full = cursorRow >= total;
+  const emptyScrollback = needsEmptyScrollback(env);
 
   // 1. Forget any region a previous run left behind, and origin mode with it, so a newline scrolls the whole
   //    screen and a row number means the same as it does on the glass.
   // 2. A full screen has no row to spare, so scroll exactly one line away. The cursor line moves up one row and
   //    the last row is empty. A screen with room needs nothing here.
-  // 3. Insert a blank line at the top. Everything moves down one row, the empty row at the bottom is the one that
+  // 3. In VS Code's terminal, erase the scrollback. This comes AFTER the scroll in step 2, so the line that
+  //    scroll pushed up goes with the rest and nothing is left above the screen to own the top row.
+  // 4. Insert a blank line at the top. Everything moves down one row, the empty row at the bottom is the one that
   //    falls off, and the command's line is still on screen.
-  // 4. Draw the banner on the new top row and set the region below it. Setting the region homes the cursor.
-  // 5. Put the cursor back on the line it was on, which is one row lower, or still the last row when the screen
+  // 5. Draw the banner on the new top row and set the region below it. Setting the region homes the cursor.
+  // 6. Put the cursor back on the line it was on, which is one row lower, or still the last row when the screen
   //    was full, in the column it was in.
   const resumeRow = full ? total : cursorRow + 1;
   stream.write(
-    `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${full ? `${ESC}[${total};1H\n` : ""}` +
+    `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${full ? `${ESC}[${total};1H\n` : ""}${emptyScrollback ? ERASE_SCROLLBACK : ""}` +
       `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
   );
 
-  // A resize can reset the region and reflow the text. Redraw both without moving the cursor.
+  // A resize can reset the region and reflow the text, and shrinking the window pushes the top rows, banner
+  // included, into the scrollback. Redraw both without moving the cursor, and empty the scrollback again where
+  // that is needed so the pushed rows cannot own the top row.
   const onResize = () => {
     if (!canPinBanner(stream, env)) return;
-    stream.write(`${SAVE_CURSOR}${drawBanner()}${RESTORE_CURSOR}`);
+    stream.write(`${SAVE_CURSOR}${emptyScrollback ? ERASE_SCROLLBACK : ""}${drawBanner()}${RESTORE_CURSOR}`);
   };
   const onExit = () => {
     stream.write(`${RESET_SCROLL_REGION}${ESC}[${stream.rows ?? 1};1H\n`);
