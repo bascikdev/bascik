@@ -8,8 +8,8 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "dev": "BASCIK_SITE_URL=https://bascik.dev bascik",
-    "build": "BASCIK_SITE_URL=https://bascik.dev bascik --build",
+    "dev": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik",
+    "build": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build",
     "serve": "bascik --server",
     "preview": "bascik --server",
     "e2e": "playwright test --config e2e/playwright.config.ts --reporter=line",
@@ -19,9 +19,9 @@
     "generate:og": "node scripts/generate-og-images.ts",
     "generate:search": "node scripts/generate-search-index.ts",
     "lhci": "lhci",
-    "lighthouse": "BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
-    "lighthouse:all": "BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",
-    "lighthouse:ci": "BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
+    "lighthouse": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
+    "lighthouse:all": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && node lighthouse/generate-config.ts && lhci autorun --config=./lighthouse/lighthouserc.all.json && lhci autorun --config=./lighthouse/lighthouserc.all-light.json",
+    "lighthouse:ci": "NODE_OPTIONS=--disable-warning=ExperimentalWarning BASCIK_SITE_URL=https://bascik.dev bascik --build && lhci autorun --config=./lighthouse/lighthouserc.json && lhci autorun --config=./lighthouse/lighthouserc.light.json",
     "typecheck": "yarn workspace @bascik/bascik build && tsc --noEmit",
     "unit": "yarn workspace @bascik/bascik build && vitest run --project unit",
     "integration": "yarn workspace @bascik/bascik build && yarn workspace @bascik/language-server build && vitest run --project integration",
