@@ -183,7 +183,7 @@ If `bascik --server` exited unexpectedly, check the process log for `[bascik] Fa
 
 ## How do I use a strict Content Security Policy with Bascik?
 
-Enable `generate.cspHashes: true` in `bascik.config.ts`. Bascik computes SHA-256 hashes for all inlined component scripts and stylesheets and outputs them in `dist/.bascik/csp-hashes.json`. You can then consume this file in a post-build script to emit strict `script-src` and `style-src` hash directives for your hosting platform.
+List the hash of each inline script in the policy. Enable `generate.cspHashes: true` in `bascik.config.ts` and Bascik writes the SHA-256 hashes of all inlined component scripts and stylesheets to `dist/.bascik/csp-hashes.json`, or hash the built pages yourself in a `post` exec script. See [Content Security Policy](/how-to/content-security-policy) for a worked recipe.
 
 ## Does Bascik set a Content Security Policy header?
 

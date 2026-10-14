@@ -120,6 +120,7 @@ export const NAV: NavSection[] = [
       { href: '/how-to/bundling-npm-packages', label: 'Bundling npm Packages' },
       { href: '/how-to/third-party-web-components', label: 'Third-Party Web Components' },
       { href: '/how-to/asset-fingerprinting', label: 'Asset Fingerprinting' },
+      { href: '/how-to/content-security-policy', label: 'Content Security Policy' },
       { href: '/how-to/sharing-components', label: 'Sharing Components' },
       { href: '/how-to/publishing-components', label: 'Publishing Components' },
       { href: '/how-to/monorepos', label: 'Monorepos' },

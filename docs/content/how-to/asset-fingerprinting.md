@@ -51,7 +51,7 @@ The Bascik docs site works this way for its recorded demos and screenshots. The 
 Two details matter on Cloudflare Pages:
 
 - **`http.cacheControl` does nothing there.** That option configures `bascik --server` only. Pages sets its own headers, and a `_headers` file in the output is how you override them.
-- **Bascik does not copy extensionless files**, so a `_headers` file in `src/pages/` never reaches `dist/`. Write it from a `pipeline.exec` script in the build config, the same way the CSP example in [Deployment](/deployment) writes `dist/_headers`.
+- **Bascik does not copy extensionless files**, so a `_headers` file in `src/pages/` never reaches `dist/`. Write it from a `pipeline.exec` script in the build config.
 
 Only mark a folder `immutable` when every reference to it is versioned. An unversioned URL into that folder would be cached for a year.
 
