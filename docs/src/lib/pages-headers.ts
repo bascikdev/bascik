@@ -14,10 +14,13 @@
  */
 export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
+export const SECURITY_HEADERS_RULE = `/*\n  Content-Security-Policy: frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n`;
+
 export const PAGES_DEV_NOINDEX_RULE = 'https://:project.pages.dev/*\n  X-Robots-Tag: noindex\n';
 
 export function pagesHeaders(versionedFolders: readonly string[]): string {
   return [
+    SECURITY_HEADERS_RULE,
     PAGES_DEV_NOINDEX_RULE,
     ...versionedFolders.map((folder) => `${folder}*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`),
   ].join('\n');

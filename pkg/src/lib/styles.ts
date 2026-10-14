@@ -91,7 +91,10 @@ export const convertCssElementSelectorsToClasses = (
   //     `;`, `}`, or `)` always appears before the next `{`.
   // Adding `)` to the stop set is essential — it prevents false positives
   // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
-  result = result.replace(/(?<=,[ \t]*)[a-z][a-z1-6]*(?![\w-])(?=[^{};)]*\{)/g, toClass);
+  result = result.replace(
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};)]*\{)/g,
+    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
+  );
 
   // Pass 3: element selectors in CSS nesting context (W3C CSS Nesting Module).
   // Handles:
@@ -99,12 +102,12 @@ export const convertCssElementSelectorsToClasses = (
   //   - 2023 Relaxed direct combinator nesting without explicit `&`:
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = result.replace(
-    /(?<=&\s*(?:[>+~]\s*)?)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-    toClass,
+    /(&\s*(?:[>+~]\s*)?)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
   result = result.replace(
-    /(?<=(?:^|[;{}])\s*[>+~]\s*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-    toClass,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+    (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -123,8 +126,8 @@ export const convertCssElementSelectorsToClasses = (
   do {
     previousResult = result;
     result = result.replace(
-      /(?<=(?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)[a-z][a-z1-6]*(?![\w-])(?=[^{};]*\{)/g,
-      toClass,
+      /((?:\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\([^)]*\.(?:bascik__[\w-]+|b[0-9a-zA-Z]{11})[^)]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^)]*\))?|\[[^\]]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])(?=[^{};]*\{)/g,
+      (_match, prefix: string, elementName: string) => `${prefix}${toClass(elementName)}`,
     );
   } while (result !== previousResult);
 
