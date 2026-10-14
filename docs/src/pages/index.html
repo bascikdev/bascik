@@ -1067,11 +1067,13 @@
     <section class="home-section">
       <div class="container">
         <p class="section-label">Build Performance</p>
-        <h2 class="section-heading">Milliseconds per page. Zero runtime overhead.</h2>
-        <p class="section-sub">Scoping and compiling a component is the cheap part: under 0.2ms per page. What takes
-          time on a real site is the Node.js you run while building it. Below is a new project in the dev server.
-          This documentation site's own production build is measured phase by phase on the
-          <a href="/development-server#build-time-of-this-documentation-site">development server page</a>.
+        <h2 class="section-heading">Page builds in milliseconds. Zero runtime overhead.</h2>
+        <p class="section-sub">The dev server and the production build run the exact same pipeline, and it is tuned for
+          performance. Component scoping runs once, then every instance reuses the result.
+          Build script output is cached, so only scripts whose inputs changed run again. The dev server serves files
+          from memory. Unchanged assets are symlinked instead of copied. Watch the terminal: the server is up almost
+          instantly, and edits are back in the browser before you have switched windows.
+          <a href="/development-server">See how the dev server works</a>.
         </p>
         <div class="speed-grid">
           <figure class="demo-figure">
@@ -1086,12 +1088,12 @@
 
           <div class="speed-metrics">
             <div class="metric-card">
-              <div class="metric-number">&lt; 0.2ms</div>
-              <div class="metric-label">Pure component and CSS scoping time per page</div>
+              <div class="metric-number">Builds in Milliseconds</div>
+              <div class="metric-label">Sites on average take just a couple seconds or less to boot</div>
             </div>
             <div class="metric-card">
-              <div class="metric-number">0 kB</div>
-              <div class="metric-label">Framework runtime shipped to the browser</div>
+              <div class="metric-number">Instantaneous Assets</div>
+              <div class="metric-label">Assets are symlinked by default to save on disk space and time.</div>
             </div>
           </div>
         </div>

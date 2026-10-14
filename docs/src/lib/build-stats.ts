@@ -1,7 +1,7 @@
 /**
  * build-stats.ts
  *
- * The numbers the /development-server page quotes about this documentation site's own build, so they
+ * The numbers the /development-server page quotes about this website's own build, so they
  * never go stale in the prose.
  *
  * - Page and component counts are counted live from `src/pages` and the component folders on every build.

@@ -102,9 +102,9 @@ The development server watches:
 - **`src/` (or `scripts.importRoot`):** Updating shared `@/` script helpers invalidates dependent build script caches and re-renders affected pages. A helper imported at request time by a `src=` server script or API route, at any depth, is reloaded on the next request together with every module that imports it; no restart and no edit to the importing file is needed. A helper imported by an inline `data-bascik-server` script is picked up when its page recompiles (or after a restart), because the inline module is a `data:` URL the module graph cannot record an importer edge for.
 - **`pipeline.watchPaths`:** Custom content directories or JSON data files trigger re-compilation according to your configured globs.
 
-## Build Time of This Documentation Site
+## Build Time of This Website
 
-The numbers below are not typical. They describe this documentation site's own production build (`bascik --build`), measured on one machine, because it is a large real site: many pages, many components, and build scripts that render Markdown, generate images, and write the search index. Compiling and scoping the components is the cheap part, under 0.2ms per page. What takes time is the Node.js your build scripts run, so the build lists every phase.
+The numbers below are not typical. They describe this website's own production build (`bascik --build`), measured on one machine, because it is a large real site: many pages, many components, and build scripts that render Markdown, generate images, and write the search index. The Pages phase includes transpiling and scoping each page as well as its build-script work; it is not a component/CSS-only benchmark. The breakdown lists each build phase, and the per-page figures show the spread between a typical page and the slowest one.
 
 The build runs your Node.js build scripts in isolated child processes, a few at a time, and caches each result. The first build pays for every script. After that, only scripts whose inputs changed run again. The page and component counts are counted live on every build. The timings come from a measured build and name the machine and date they were taken on.
 
