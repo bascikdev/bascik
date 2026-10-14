@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "total": 2225,
-      "covered": 1243,
+      "total": 2226,
+      "covered": 1244,
       "skipped": 0,
-      "pct": 55.86
+      "pct": 55.88
     },
     "statements": {
-      "total": 2560,
-      "covered": 1416,
+      "total": 2561,
+      "covered": 1417,
       "skipped": 0,
-      "pct": 55.31
+      "pct": 55.32
     },
     "functions": {
       "total": 369,
