@@ -22,7 +22,7 @@ function parseArgs(args: string[]): CheckOptions {
   let fix = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--stdio' || arg === '--check' || arg === '--lint') {
+    if (arg === '--stdio' || arg === '--check') {
       // Handled by main bin launcher
       continue;
     }

@@ -118,7 +118,7 @@ bascik --build              # production build to dist/ (HTML, CSS, JS, and iden
 bascik --build --only "blog/**"   # rebuild matching pages without cleaning dist/
 bascik --server             # serve a built dist/ (needed for server/stream scripts and API routes)
 bascik --check              # validate pages, components, config, and API routes without building
-bascik --check --fix        # also rewrite fixable findings (missing data-bascik-prop- prefix); --lint is an alias
+bascik --check --fix        # also rewrite fixable findings (missing data-bascik-prop- prefix)
 bascik add <package>        # copy components from an installed npm package into src/components/
 bascik init                 # add Bascik to an existing project
 npx @bascik/language-server --check   # lint scoping patterns, unclosed tags, and directives

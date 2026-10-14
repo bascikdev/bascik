@@ -76,7 +76,6 @@ bascik --build   # production: transpile to dist/ only
 bascik --server  # production server: serve a pre-built dist/ over HTTP/1.1
                  # (HTTP/2 when http.tls.enabled is set)
 bascik --check   # static analysis: validate pages, components, and config without building
-bascik --lint    # alias for --check
 bascik add <pkg> # copy components from an installed npm package into src/components/
 ```
 
@@ -399,7 +398,7 @@ bascik --check --fix
 <my-card data-bascik-prop-title="Hello"></my-card>
 ```
 
-`--fix` edits only the tags that `--check` reports. Component-like text inside comments, `<script>`, `<style>`, and `<textarea>` is left alone. `--lint` is an alias for `--check`, so `bascik --lint --fix` does the same thing.
+`--fix` edits only the tags that `--check` reports. Component-like text inside comments, `<script>`, `<style>`, and `<textarea>` is left alone.
 
 ### JSON output with `--json`
 

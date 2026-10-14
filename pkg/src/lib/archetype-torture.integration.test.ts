@@ -807,7 +807,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     }
   });
 
-  it("Archetype 14: CLI --lint --fix Auto-Repair Torture Chamber (Auto-fixing missing-prop-prefix across multiple components and pages)", () => {
+  it("Archetype 14: CLI --check --fix Auto-Repair Torture Chamber (Auto-fixing missing-prop-prefix across multiple components and pages)", () => {
     const dir = createTempSite({
       "bascik.config.ts": `export default {};\n`,
       "src/components/hero-banner/hero-banner.html": [
@@ -825,12 +825,12 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     });
 
     try {
-      // 1. Before --fix, --lint reports 3 missing-prop-prefix warnings
-      const initialLint = runBascikCli(dir, ["--lint"]);
+      // 1. Before --fix, --check reports 3 missing-prop-prefix warnings
+      const initialLint = runBascikCli(dir, ["--check"]);
       expect(initialLint.stdout).toContain("Component props missing data-bascik-prop-* prefix (3)");
 
-      // 2. Run bascik --lint --fix
-      const fixRes = runBascikCli(dir, ["--lint", "--fix"]);
+      // 2. Run bascik --check --fix
+      const fixRes = runBascikCli(dir, ["--check", "--fix"]);
       expect(fixRes.status, fixRes.stderr).toBe(0);
       expect(fixRes.stdout).not.toContain("Component props missing data-bascik-prop-* prefix");
 

@@ -78,7 +78,6 @@ const BOOLEAN_FLAGS = new Set([
   "--build",
   "--server",
   "--check",
-  "--lint",
   "--fix",
   "--strict",
   "--json",
@@ -120,7 +119,6 @@ const SUGGESTION_CANDIDATES = [
   "--build",
   "--server",
   "--check",
-  "--lint",
   "--fix",
   "--strict",
   "--json",
@@ -158,10 +156,14 @@ const editDistance = (a: string, b: string): number => {
   return prev[b.length];
 };
 
+/** Names other tools use for a Bascik command; suggested before any edit-distance match. */
+const SYNONYMS: Record<string, string> = { lint: "--check" };
+
 /** Best near-match candidate for a mistyped token, or undefined when none is close. */
 const suggest = (token: string): string | undefined => {
   const normalized = token.replace(/^-+/, "").toLowerCase();
   if (!normalized) return undefined;
+  if (SYNONYMS[normalized]) return SYNONYMS[normalized];
   let best: { candidate: string; distance: number } | undefined;
   for (const candidate of SUGGESTION_CANDIDATES) {
     const distance = editDistance(normalized, candidate.replace(/^-+/, ""));
@@ -438,7 +440,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
     return error("Error: --dry-run only applies to add.");
   }
 
-  const action: CliAction = present.has("--check") || present.has("--lint")
+  const action: CliAction = present.has("--check")
     ? "check"
     : present.has("--server")
       ? "server"
@@ -455,7 +457,7 @@ export const resolveCliAction = (args: string[]): CliDecision => {
   }
 
   if (flags.fix && action !== "check") {
-    return error("Error: --fix only applies to --check / --lint.");
+    return error("Error: --fix only applies to --check.");
   }
 
   if (flags.log !== undefined && action !== "build") {
@@ -492,7 +494,6 @@ Options:
   --server           Serve the production build over HTTP/1.1
                      (HTTP/2 when http.tls.enabled is set)
   --check            Validate the project (pages, components, config)
-  --lint             Alias for --check
   --fix              Apply deterministic fixes during --check, such as adding a
                      missing data-bascik-prop- prefix, then report what remains
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
