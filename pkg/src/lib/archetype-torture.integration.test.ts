@@ -1319,5 +1319,7 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+    // Each case spawns git archive, a full --build, and --check. Under the parallel integration run that exceeds
+    // vitest's 5 s default even though a case takes 0.7 to 2.3 s alone.
+  }, 30000);
 });
