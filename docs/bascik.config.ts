@@ -94,6 +94,9 @@ export const build = defineConfig({
       // Git-derived <lastmod> for sitemap.xml and TechArticle dates in pages. Post phase: it edits the
       // sitemap and pages Bascik writes. Build only.
       { script: 'scripts/generate-git-dates.ts', phase: 'post' },
+      // Per-page CSP <meta> with the page's inline script hashes. Post phase, after the other post scripts,
+      // because it hashes the final emitted script text. Build only.
+      { script: 'scripts/generate-csp-meta.ts', phase: 'post' },
     ],
   },
 });

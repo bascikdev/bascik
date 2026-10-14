@@ -13,7 +13,7 @@ describe('pages-headers', () => {
 
   it('adds framing protection and safe response headers to every Pages response', () => {
     const headers = pagesHeaders([]);
-    expect(headers).toContain("/*\n  Content-Security-Policy: frame-ancestors 'none'");
+    expect(headers).toContain("/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
     expect(headers).toContain('  X-Frame-Options: DENY');
     expect(headers).toContain('  X-Content-Type-Options: nosniff');
     expect(headers).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
