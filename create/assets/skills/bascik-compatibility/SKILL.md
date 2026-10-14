@@ -57,7 +57,7 @@ The surprises that matter most:
 | `js-unsupported-dom-methods` | `removeAttribute/hasAttribute/toggleAttribute('class'|'id'|'name')` | `classList` or the element reference |
 | `js-document-class-query` | `document.querySelector('.cls')`, `querySelector('.a .b')`, `getElementsByClassName('cls')[0]` (warning; a selector with `#id` is per-instance and not flagged) | `document.getElementById` or `rootEl.querySelector('.cls')` for per-instance lookup |
 | `css-is-element-names` | `:is(h2)`, `:has(img)` | Classes inside the pseudo-class, or a global stylesheet |
-| `css-attribute-selector` | `[data-state] {}` at the start of a selector | `.card[data-state] {}` |
+| `css-attribute-selector` | `[data-state]:hover {}` or `[data-state][hidden] {}` at the start of a selector | `.card[data-state] {}` |
 | `css-id-attribute-selector` | `[id] {}`, `[id="x"] {}` | `#x {}` or a class |
 
 ## Look it up

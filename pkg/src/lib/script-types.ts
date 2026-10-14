@@ -9,7 +9,7 @@ export const JAVASCRIPT_SCRIPT_TYPES = new Set([
 ]);
 
 export const getScriptType = (openTag: string): string | undefined =>
-  getHtmlAttributeValue(openTag, "type")?.trim().toLowerCase();
+  getHtmlAttributeValue(openTag, "type")?.trim().toLowerCase() || undefined;
 
 export const isJavaScriptScript = (openTag: string): boolean => {
   const type = getScriptType(openTag);

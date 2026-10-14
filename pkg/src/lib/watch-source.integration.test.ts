@@ -36,6 +36,7 @@ beforeEach(() => {
   mocks.components.mockReset().mockReturnValue([]);
   mocks.importers.mockReset().mockReturnValue([]);
   mocks.config.pipeline.watchPaths = ['content/*.md'];
+  mocks.config.pipeline.exec = [{ script: 'scripts/pre.ts', watch: ['content/*.md'] }];
   watcher = Object.assign(new EventEmitter(), { close: vi.fn().mockResolvedValue(undefined) });
   mocks.watch.mockReset().mockImplementation(() => { queueMicrotask(() => watcher.emit('ready')); return watcher; });
 });
@@ -172,6 +173,22 @@ describe('source observer and phase queue integration', () => {
 
     expect(mocks.invalidateComponents).not.toHaveBeenCalled();
     expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedPage);
+    expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([editedPage]);
+  });
+
+  it('clears all build script caches when a matching pre producer runs before a page edit', async () => {
+    mocks.deps.mockReturnValue([]);
+    mocks.config.pipeline.exec = [{ script: 'scripts/pre.ts', watch: ['src/pages/*.html'] }];
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit('boot-done');
+    mocks.clear.mockClear();
+
+    const editedPage = resolve('src/pages/index.html');
+    watcher.emit('all', 'change', editedPage);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([editedPage]);
   });
 

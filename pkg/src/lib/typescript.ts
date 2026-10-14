@@ -43,9 +43,25 @@ const TYPESCRIPT_FILE_RE = /\.m?ts$/i;
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const DIRECTIVE_SCRIPT_RE = new RegExp(String.raw`\s${ANY_DIRECTIVE_ATTR_NAME}`, "i");
 
-const SCRIPT_TAG_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
-
 const TYPE_ATTR_RE = /(?:^|\s+)type\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/i;
+const TAG_START_RE = /<(\/)?([a-z][\w:-]*)\b/gi;
+const SCRIPT_CLOSE_RE = /<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+const RAW_TEXT_ELEMENTS = new Set(["textarea", "title", "noscript", "xmp", "style", "iframe", "noembed", "noframes", "plaintext"]);
+
+const findTagEnd = (html: string, start: number): number => {
+  let quote: string | undefined;
+  for (let index = start; index < html.length; index++) {
+    const char = html[index];
+    if (quote) {
+      if (char === quote) quote = undefined;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ">") {
+      return index;
+    }
+  }
+  return -1;
+};
 
 /**
  * Node emits a one-time `ExperimentalWarning` the first time
@@ -265,36 +281,72 @@ export const transformTypeScriptScriptTags = async (
   // TypeScript script is present; skip the per-tag work in that case.
   if (!diagnose && !/text\/typescript/i.test(html)) return html;
   const transformEnabled = isBrowserTypeScriptEnabled();
-
-  const scannable = html
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
-    .replace(
-      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (_match, tag: string, attrs: string, inner: string, close: string) =>
-        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
-    );
-
   const ops: Array<{ index: number; len: number; open: string; body: string; close: string }> = [];
-  for (const m of scannable.matchAll(SCRIPT_TAG_RE)) {
-    const [full, open, body, close] = m as unknown as [string, string, string, string];
-    if (DIRECTIVE_SCRIPT_RE.test(open)) continue;
-    if (/(?:^|\s)src\s*=/i.test(open)) continue;
-
-    if (isTypeScriptScriptTag(open)) {
-      if (transformEnabled) ops.push({ index: m.index ?? 0, len: full.length, open, body, close });
+  let cursor = 0;
+  while (cursor < html.length) {
+    const start = html.indexOf("<", cursor);
+    if (start < 0) break;
+    if (html.startsWith("<!--", start)) {
+      const end = html.indexOf("-->", start + 4);
+      cursor = end < 0 ? html.length : end + 3;
       continue;
     }
 
-    if (!diagnose) continue;
-    const type = getScriptType(open);
-    if ((type === undefined || type === "text/javascript") && looksLikeTypeScript(body)) {
-      console.warn(
-        `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
-        `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
-        `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
-        `or move it to a companion .ts file referenced with <script src="name.ts">.`,
-      );
+    TAG_START_RE.lastIndex = start;
+    const tagMatch = TAG_START_RE.exec(html);
+    if (!tagMatch || tagMatch.index !== start) {
+      cursor = start + 1;
+      continue;
     }
+    const tagEnd = findTagEnd(html, start);
+    if (tagEnd < 0) break;
+    const tagName = tagMatch[2].toLowerCase();
+    const open = html.slice(start, tagEnd + 1);
+    if (tagMatch[1]) {
+      cursor = tagEnd + 1;
+      continue;
+    }
+
+    if (tagName === "script") {
+      SCRIPT_CLOSE_RE.lastIndex = tagEnd + 1;
+      const closing = SCRIPT_CLOSE_RE.exec(html);
+      if (!closing) break;
+      const body = html.slice(tagEnd + 1, closing.index);
+      const close = closing[0];
+      const fullLength = closing.index + close.length - start;
+      cursor = closing.index + close.length;
+      if (DIRECTIVE_SCRIPT_RE.test(open)) continue;
+      if (/(?:^|\s)src\s*=/i.test(open)) continue;
+
+      if (isTypeScriptScriptTag(open)) {
+        if (transformEnabled) ops.push({ index: start, len: fullLength, open, body, close });
+        continue;
+      }
+
+      if (!diagnose) continue;
+      const type = getScriptType(open);
+      if ((type === undefined || type === "text/javascript") && looksLikeTypeScript(body)) {
+        console.warn(
+          `[bascik] warning: TypeScript syntax found in an ordinary <script> block in "${sourceFile}". ` +
+          `Browsers do not execute TypeScript in an unmarked <script>, so this block will fail at runtime. ` +
+          `Mark it <script type="text/typescript"> to have Bascik strip the types, ` +
+          `or move it to a companion .ts file referenced with <script src="name.ts">.`,
+        );
+      }
+      continue;
+    }
+    if (RAW_TEXT_ELEMENTS.has(tagName)) {
+      if (tagName === "plaintext") {
+        cursor = html.length;
+        continue;
+      }
+      const closeTag = new RegExp(`</${tagName}(?:[\\t\\n\\f\\r /][^>]*)?>`, "ig");
+      closeTag.lastIndex = tagEnd + 1;
+      const closing = closeTag.exec(html);
+      cursor = closing ? closing.index + closing[0].length : html.length;
+      continue;
+    }
+    cursor = tagEnd + 1;
   }
   if (!ops.length) return html;
 

@@ -56,6 +56,7 @@ const CONTROL_FILES: Record<string, string[]> = {
   pages: ["_worker.js", "_routes.json"],
   workers: ["wrangler.jsonc", "worker.js"],
 };
+const ASSET_CONTROL_FILES = new Set(["_headers", "_redirects"]);
 
 export const detectControlCollisions = (publicPaths: string[], variant: string): string[] => {
   const control = new Set(CONTROL_FILES[variant] ?? []);
@@ -212,7 +213,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     : publicDir;
   for (const rel of graph.publicFiles) {
     const from = join(distDir, rel);
-    const to = join(assetRoot, rel);
+    const to = join(ASSET_CONTROL_FILES.has(rel) ? publicDir : assetRoot, rel);
     if (!resolve(to).startsWith(publicDir + sep)) continue;
     await mkdir(dirname(to), { recursive: true });
     await copyFile(from, to);

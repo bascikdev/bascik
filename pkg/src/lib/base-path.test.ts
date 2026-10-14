@@ -158,6 +158,11 @@ describe("rewriteHtmlBasePaths", () => {
       ].join(""),
     );
   });
+
+  it("rewrites URL attributes after a quoted value ending in a backslash", () => {
+    const html = String.raw`<img alt="C:\" src="/logo.png">`;
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(String.raw`<img alt="C:\" src="/sub/logo.png">`);
+  });
 });
 
 describe("rewriteCssBasePaths", () => {

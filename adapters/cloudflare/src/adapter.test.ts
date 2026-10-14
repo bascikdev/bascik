@@ -109,6 +109,8 @@ describe("cloudflare adapter definition and execution", () => {
       await writeFile(join(distDir, "index.html"), "<p>home</p>");
       await writeFile(join(distDir, "404.html"), "<p>missing</p>");
       await writeFile(join(distDir, "assets/logo.txt"), "logo");
+      await writeFile(join(distDir, "_headers"), "/*\n  X-Frame-Options: DENY\n");
+      await writeFile(join(distDir, "_redirects"), "/old /new 301\n");
 
       const graph: SiteGraph = {
         base: "/docs/",
@@ -116,7 +118,7 @@ describe("cloudflare adapter definition and execution", () => {
         scriptTimeoutMs: 1000,
         apiTimeoutMs: 1000,
         onServerScriptError: "error",
-        publicFiles: ["index.html", "404.html", "assets/logo.txt"],
+        publicFiles: ["index.html", "404.html", "assets/logo.txt", "_headers", "_redirects"],
         pages: {},
         apiRoutes: [],
         importRoot: testDir,
@@ -127,6 +129,10 @@ describe("cloudflare adapter definition and execution", () => {
         expect(await readFile(join(outDir, "public/docs/index.html"), "utf8")).toBe("<p>home</p>");
         expect(await readFile(join(outDir, "public/docs/404.html"), "utf8")).toBe("<p>missing</p>");
         expect(await readFile(join(outDir, "public/docs/assets/logo.txt"), "utf8")).toBe("logo");
+        expect(await readFile(join(outDir, "public/_headers"), "utf8")).toContain("X-Frame-Options");
+        expect(await readFile(join(outDir, "public/_redirects"), "utf8")).toBe("/old /new 301\n");
+        await expect(readFile(join(outDir, "public/docs/_headers"))).rejects.toThrow();
+        await expect(readFile(join(outDir, "public/docs/_redirects"))).rejects.toThrow();
         await expect(readFile(join(outDir, "public/index.html"))).rejects.toThrow();
         if (variant === "pages") {
           await expect(readFile(join(outDir, "public/_worker.js"), "utf8")).resolves.toBeTypeOf("string");

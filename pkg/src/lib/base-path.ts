@@ -166,8 +166,7 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
   let strStart = -1;
   while (scanIdx < tag.length) {
     if (strChar) {
-      if (tag[scanIdx] === "\\") scanIdx++;
-      else if (tag[scanIdx] === strChar) {
+      if (tag[scanIdx] === strChar) {
         stringRanges.push({ start: strStart, end: scanIdx });
         strChar = null;
       }

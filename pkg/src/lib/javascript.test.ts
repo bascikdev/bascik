@@ -1751,6 +1751,11 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
     expect(isolated.fileContent).toContain('(function() {');
   });
 
+  it("wraps a classic script with an empty type attribute in an IIFE", () => {
+    const c = makeComponent('<script type="">const shared = 1;</script>');
+    expect(namespaceScriptTags(c).fileContent).toContain('(function() {\nconst shared = 1;\n})();');
+  });
+
   it("does not treat script examples in HTML comments as browser scripts", () => {
     const c = makeComponent(
       '<!-- The <script> below runs after markup. -->' +

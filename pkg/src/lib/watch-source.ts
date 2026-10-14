@@ -52,7 +52,10 @@ export const watchSourceCycles = async (
       let all = false;
       let staticAssetsInvalidated = false;
       let shouldInvalidateComponents = false;
-      let shouldClearAllBuildCaches = false;
+      let shouldClearAllBuildCaches = entries.some(entry => {
+        const patterns = entry.watch ? Array.isArray(entry.watch) ? entry.watch : [entry.watch] : [];
+        return (entry.phase ?? 'pre') === 'pre' && paths.some(path => execWatchCoversPath(patterns, path));
+      });
       for (const path of paths) {
         const kind = batchChanges.get(path)!;
         const inPages = inside(path, pagesRoot);
@@ -64,7 +67,7 @@ export const watchSourceCycles = async (
           shouldInvalidateComponents = true;
         }
         if (isDirectPageHtmlEdit || inComponents) {
-          clearBuildScriptCaches(path);
+          if (!shouldClearAllBuildCaches) clearBuildScriptCaches(path);
         } else {
           shouldClearAllBuildCaches = true;
         }

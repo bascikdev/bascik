@@ -27,12 +27,16 @@ describe("compatibility-rules contract & positive/negative probes", () => {
       kind: "css",
       positive: [
         "[data-state] { color: red; }",
+        "[data-state]:hover { color: red; }",
+        "[data-state][hidden] { color: red; }",
         '[data-open="true"] { display: block; }',
         ".ok, [aria-expanded='true'] { opacity: 1; }",
       ],
       negative: [
         ".card[data-state] { color: red; }",
         '[data-stocked="false"] .name { color: red; }',
+        "[data-state] .scoped-class { color: red; }",
+        "[data-state] > .scoped-class { color: red; }",
         "html[data-theme='dark'] .box { color: white; }",
         "/* [data-state] { color: red; } */",
         "/* bascik-ignore css-attribute-selector */\n[data-state] { color: red; }",

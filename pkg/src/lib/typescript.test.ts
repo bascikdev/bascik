@@ -265,6 +265,26 @@ describe("transformTypeScriptScriptTags", () => {
     expect(out).toContain('<textarea><script type="text/typescript">enum Broken { A }</script></textarea>');
   });
 
+  it("compiles the original body when a TypeScript script contains HTML comment markers", async () => {
+    const html = '<script type="text/typescript">const note: string = "<!-- note -->";</script>';
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
+    expect(out).toContain('const note         = "<!-- note -->";');
+  });
+
+  it("does not let a comment-like string hide later TypeScript scripts", async () => {
+    const html =
+      '<script type="text/typescript">const marker: string = "<!--";</script>' +
+      '<script type="text/typescript">let after: number = 1;</script>';
+    const out = await transformTypeScriptScriptTags(html, "src/pages/index.html");
+    expect(out).toContain('const marker         = "<!--";');
+    expect(out).toContain("let after         = 1;");
+  });
+
+  it("does not transform script-like text in a plaintext element", async () => {
+    const html = '<plaintext><script type="text/typescript">enum NotAScript { A }</script>';
+    expect(await transformTypeScriptScriptTags(html, "src/pages/index.html")).toBe(html);
+  });
+
   it("leaves ordinary inline scripts, module scripts, external scripts, JSON, and directive scripts untouched", async () => {
     const html = [
       "<script>let a: number = 1;</script>",

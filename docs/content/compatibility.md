@@ -22,7 +22,7 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
   {
     "id": "css-attribute-selector",
     "kind": "css",
-    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\](?=\\s*[,{])",
+    "pattern": "(^|,)\\s*\\[(?!id\\b)[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\](?![^,{]*\\.[A-Za-z_][\\w-]*)",
     "flags": "gm",
     "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
     "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector.",

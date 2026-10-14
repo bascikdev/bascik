@@ -48,6 +48,10 @@ function report(title, result) {
   return status;
 }
 
+export function integratedPerFileChecksCompleted(output) {
+  return /\b\d+ files? checked by @bascik\/language-server\b/.test(output);
+}
+
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -74,10 +78,10 @@ async function main() {
   const lsp = findPackageBin(root, '@bascik/language-server', 'bascik-language-server');
   const config = await loadProjectConfig(root);
   const external = externalComponentRoots(root, componentRoots(root, config?.module));
-  // bascik --check already ran the per-file checks over this project, so running the linter on it again would print
-  // every finding twice. It says so when it had to skip them, and only then does the linter stand in for it.
-  const perFileSkipped = /per-file checks skipped/.test(checked.output ?? '');
-  const lintTargets = [...(perFileSkipped ? [undefined] : []), ...external];
+  // Only skip the project linter when the output confirms its per-file checks ran; older Bascik releases do not
+  // report whether they ran them.
+  const perFileChecksCompleted = integratedPerFileChecksCompleted(checked.output ?? '');
+  const lintTargets = [...(!perFileChecksCompleted ? [undefined] : []), ...external];
   const label = (target) => `bascik-language-server --check${target ? ` ${relative(root, target)}` : ''}`;
   // --project makes the linter read this project's config for a folder outside it, so shared components are
   // checked as components. The target stays last so an older linter that ignores --project still checks it.
