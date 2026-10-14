@@ -113,7 +113,7 @@ describe("pinned-banner", () => {
     it.each([
       ["VS Code with shell integration off", { TERM_PROGRAM: "vscode" }],
       ["another terminal", { TERM_PROGRAM: "Apple_Terminal" }],
-      ["an environment variable left over from VS Code in a different terminal", { TERM_PROGRAM: "iTerm.app", VSCODE_INJECTION: "1" }],
+      ["an environment variable left over from VS Code in a different terminal", { TERM_PROGRAM: "ghostty", VSCODE_INJECTION: "1" }],
       ["no terminal program", {}],
     ])("is false for %s, so their scrollback is kept", (_name, env) => {
       expect(needsEmptyScrollback(env)).toBe(false);

@@ -140,6 +140,11 @@ jobs:
           node-version: 24
           cache: 'yarn'
 
+      # On Windows, Corepack's shims are written next to the active `node`, so the
+      # ones from the runner's preinstalled Node are gone once Node 24 is on PATH.
+      - name: Enable Corepack for Node 24
+        run: corepack enable
+
       - name: Install dependencies
         run: yarn install --immutable
 
