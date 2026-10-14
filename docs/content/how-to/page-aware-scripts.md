@@ -103,7 +103,7 @@ The script runs on the source HTML before any other build scripts have fired, so
 
 By default, static `<script data-bascik-build>` blocks inside component templates execute once during initial component registration. However, reusable navigation, breadcrumb, TOC, and pagination components (like `<docs-pagination />`) need to adapt to whichever page shell they are placed on.
 
-Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to defer script execution to page transpilation time. A literal `process.env.BASCIK_PAGE_PATH` reference inside the script is also detected. Bascik does not follow imported helpers to infer indirect environment reads, so use the explicit `page` value when a helper such as `pagePath()` reads page context:
+Declaring `data-bascik-build="page"` or `data-bascik-page-aware` tells Bascik to defer script execution to page transpilation time. The value must be exactly `page` (any quoting, spacing around `=`, or letter case): a typo such as `data-bascik-build="pages"` runs once as a static script, and `bascik --check` reports it as `unknown-directive-value`. A literal `process.env.BASCIK_PAGE_PATH` reference inside the script is also detected. Bascik does not follow imported helpers to infer indirect environment reads, so use the explicit `page` value when a helper such as `pagePath()` reads page context:
 
 ```html
 <!-- src/components/docs-pagination/docs-pagination.html -->

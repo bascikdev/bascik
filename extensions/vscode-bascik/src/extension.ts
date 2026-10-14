@@ -1254,6 +1254,25 @@ function parseScriptOpenTagAttributes(
   return attrs;
 }
 
+/**
+ * Attribute values of any open tag, keyed by lowercased name. A bare attribute
+ * maps to `""`, as the DOM reports it. The first occurrence of a name wins, as
+ * in the HTML tokenizer, and text inside a quoted value is never read as an
+ * attribute. An unquoted value keeps its slashes; a trailing `/>` ends it.
+ */
+function readOpenTagAttributes(openTag: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const insideTag = openTag.replace(/^<[^\s/>]+/, '').replace(/\/?>$/, '');
+  const attrRe =
+    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(insideTag)) !== null) {
+    const name = match[1].toLowerCase();
+    if (!attrs.has(name)) attrs.set(name, match[2] ?? match[3] ?? match[4] ?? '');
+  }
+  return attrs;
+}
+
 class ScriptImportDefinitionProvider implements vscode.DefinitionProvider {
   constructor(private readonly projects: ProjectStateManager) { }
 
@@ -1696,21 +1715,16 @@ async function createDiagnosticsForDocument(
       isComponentDocument &&
       (formMatch = formOpenTagRegex.exec(text)) !== null
     ) {
-      const actionMatch = formMatch[0].match(
-        /\saction\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+))/i,
-      );
-      const action = actionMatch?.[1] ?? actionMatch?.[2] ?? actionMatch?.[3];
+      const formAttributes = readOpenTagAttributes(formMatch[0]);
+      const action = formAttributes.get('action');
       if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
-      const preserveMatch = formMatch[0].match(
-        /\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/i,
-      );
+      const preserveValue = formAttributes.get('data-bascik-preserve');
+      // A bare directive, or an empty value (the bare form as serializers
+      // write it), preserves every attribute, `name` included.
+      const preserveTokens = (preserveValue ?? '').trim().split(/\s+/).filter(Boolean);
       const preservesName =
-        preserveMatch !== null &&
-        (preserveMatch[1] === undefined && preserveMatch[2] === undefined && preserveMatch[3] === undefined ||
-          (preserveMatch[1] ?? preserveMatch[2] ?? preserveMatch[3] ?? '')
-            .trim()
-            .split(/\s+/)
-            .includes('name'));
+        preserveValue !== undefined &&
+        (preserveTokens.length === 0 || preserveTokens.includes('name'));
       if (preservesName) continue;
       const start = document.positionAt(formMatch.index);
       const end = document.positionAt(formMatch.index + formMatch[0].length);

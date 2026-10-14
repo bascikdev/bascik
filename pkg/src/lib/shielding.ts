@@ -150,13 +150,10 @@ const getPreserveTokens = (tag: string): Set<string> | null => {
     /\sdata-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?(?=\s|\/?>)/i,
   );
   if (!match) return null;
-  if (match[1] === undefined) return new Set(PRESERVABLE_ATTRIBUTES);
-  return new Set(
-    (match[2] ?? match[3] ?? match[4] ?? "")
-      .trim()
-      .split(/\s+/)
-      .filter((token) => PRESERVABLE_ATTRIBUTES.has(token)),
-  );
+  const value = (match[2] ?? match[3] ?? match[4] ?? "").trim();
+  // An empty value is the bare directive as DOM serializers write it.
+  if (match[1] === undefined || value === "") return new Set(PRESERVABLE_ATTRIBUTES);
+  return new Set(value.split(/\s+/).filter((token) => PRESERVABLE_ATTRIBUTES.has(token)));
 };
 
 const identityRestore = (value: string): string => value;

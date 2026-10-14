@@ -4,6 +4,7 @@ import {
   maskElementContents,
   shieldElementContents,
   shieldPreservedAttribute,
+  stripPreserveDirectives,
   __shieldStatsForTests,
 } from "./shielding.ts";
 
@@ -246,5 +247,34 @@ describe("createContentShield collision checks", () => {
     const shield = createContentShield("plain \x00BASCIK_SHIELD_ text");
     expect(shield.hide("a")).toBe(`\x00BASCIK_SHIELD_${next}\x00`);
     expect(shield.hide("b")).toBe(`\x00BASCIK_SHIELD_${next + 1}\x00`);
+  });
+});
+
+// `data-bascik-preserve=""` is how DOM serializers, parse5, and many HTML
+// formatters write a bare attribute, so it must mean the same thing as the
+// bare directive: preserve id, name, and class. An empty token list that
+// preserved nothing would silently scope a widget mount point.
+describe("data-bascik-preserve with an empty value", () => {
+  it.each([
+    'data-bascik-preserve=""',
+    "data-bascik-preserve = ''",
+    'data-bascik-preserve="  "',
+    "data-bascik-preserve",
+  ])("%s preserves id, name, and class on the element and its descendants", (directive) => {
+    const html = `<div id="mount" name="m" class="vendor" ${directive}><span class="inner">x</span></div><p class="scoped">y</p>`;
+    for (const attribute of ["id", "name", "class"] as const) {
+      const result = shieldPreservedAttribute(html, attribute);
+      expect(result.restore(result.html)).toBe(html);
+      expect(result.html).not.toContain(`<div id="mount"`);
+    }
+    const classResult = shieldPreservedAttribute(html, "class");
+    expect(classResult.html).not.toContain(`<span class="inner">`);
+    expect(classResult.html).toContain(`<p class="scoped">`);
+  });
+
+  it("strips the empty-valued directive without an unknown-token warning", () => {
+    const warnings: string[] = [];
+    expect(stripPreserveDirectives('<div data-bascik-preserve="" id="a"></div>', (m) => warnings.push(m))).toBe('<div id="a"></div>');
+    expect(warnings).toEqual([]);
   });
 });

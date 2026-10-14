@@ -11,7 +11,7 @@ import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModul
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
-import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME, isPageAwareBuildOpenTag } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import { PLAUSIBLE_TAG_NAME, PRESERVE_WILDCARD_PATTERN } from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
@@ -292,8 +292,7 @@ export const isPageAwareBuildScript = (
   openTag: string,
   scriptContent: string,
 ): boolean => {
-  if (/\bdata-bascik-page-aware\b/i.test(openTag)) return true;
-  if (/\bdata-bascik-build\s*=\s*["']?page["']?/i.test(openTag)) return true;
+  if (isPageAwareBuildOpenTag(openTag)) return true;
   if (/\bprocess\.env\.(BASCIK_PAGE_PATH|BASCIK_PAGE_FILE|BASCIK_ROUTE)\b/.test(scriptContent)) {
     return true;
   }

@@ -124,6 +124,8 @@ To add a new validation check:
 | Circular Component Reference | `circular-component-reference` | Error | 1 | Direct or indirect component graph cycle detected (full cycle path included). |
 | Unknown Bascik Directive | `unknown-bascik-attribute` | Warning | 0 | A `data-bascik-*` attribute is unrecognized and likely a typo. |
 | Script Mode Conflict | `script-mode-conflict` | Error | 1 | A script tag has both `data-bascik-build` and `data-bascik-server`. |
+| Unknown Directive Value | `unknown-directive-value` | Warning | 0 | `data-bascik-build` has a value other than `page`, so the script runs once as a static build script instead of once per page. |
+| Missing Prop Prefix | `missing-prop-prefix` | Warning | 0 | A component usage passes a declared prop as a plain attribute (`title="x"`) instead of `data-bascik-prop-title`. `--fix` rewrites it. |
 | Duplicate Route Resolution | `duplicate-route-resolution` | Error | 1 | Multiple pages resolve to the same route path. |
 | API Route Missing Handler | `missing-method-handler` | Error | 1 | An API route file exports no recognized HTTP method handler (`GET`, `POST`, etc.). |
 | API Route Collision | `route-collision` | Error | 1 | Multiple API route files resolve to the same endpoint URL path, or two catch-all routes match the same requests. |

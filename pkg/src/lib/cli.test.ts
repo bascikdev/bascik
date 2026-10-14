@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCliAction, filterNodeArgs } from "./cli.ts";
+import { resolveCliAction, filterNodeArgs, CLI_FLAGS, CLI_USAGE } from "./cli.ts";
 import { LOG_LEVELS } from "./config.ts";
 
 describe("cli helper tests", () => {
@@ -389,5 +389,12 @@ describe("cli helper tests", () => {
       expect(decision.action).toBe("error");
       expect(decision.errorMessage).toContain("--dry-run only applies to add");
     });
+  });
+});
+
+describe("CLI_USAGE", () => {
+  // Every flag the parser accepts must be discoverable from --help.
+  it.each([...CLI_FLAGS])("documents %s", (flag) => {
+    expect(CLI_USAGE).toMatch(new RegExp(`(?:^|[\\s,])${flag.replace(/[-]/g, "\\-")}(?![\\w-])`, "m"));
   });
 });

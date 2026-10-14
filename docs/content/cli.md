@@ -76,6 +76,7 @@ bascik --build   # production: transpile to dist/ only
 bascik --server  # production server: serve a pre-built dist/ over HTTP/1.1
                  # (HTTP/2 when http.tls.enabled is set)
 bascik --check   # static analysis: validate pages, components, and config without building
+bascik --lint    # alias for --check
 bascik add <pkg> # copy components from an installed npm package into src/components/
 ```
 
@@ -84,6 +85,7 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
 | `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
 | `--target <name>` | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare-pages`, `cloudflare-workers`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
+| `--fix` | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain |
 | `--strict` | Treat warnings as errors during `--check` (exits with code 1 if warnings are found) |
 | `--json` | Emit findings as a structured JSON document during `--check` |
 | `--force` | Overwrite locally modified components during `bascik add` |
@@ -345,6 +347,8 @@ Unused components (1)
 | Circular component references | `circular-component-reference` | Error |
 | Unknown `data-bascik-*` attributes | `unknown-bascik-attribute` | Warning |
 | A script tag with both `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
+| A `data-bascik-build` value other than `page` (`data-bascik-build="pages"`) | `unknown-directive-value` | Warning |
+| A declared component prop passed without the `data-bascik-prop-` prefix (auto-fixable with `--fix`) | `missing-prop-prefix` | Warning |
 | Duplicate route resolution from page paths | `duplicate-route-resolution` | Error |
 | API route file with no recognized method export | `missing-method-handler` | Error |
 | Multiple API route files resolving to one URL, or ambiguous catch-all pairs | `route-collision` | Error |
@@ -379,6 +383,23 @@ By default, warnings do not fail the command. Pass `--strict` to treat warnings 
 ```sh
 bascik --check --strict
 ```
+
+### Auto-fixing with `--fix`
+
+Pass `--fix` to rewrite the findings that have exactly one correct fix, then report what remains. Today that is `missing-prop-prefix`: a declared prop passed as a plain attribute becomes a `data-bascik-prop-*` attribute.
+
+```sh
+bascik --check --fix
+```
+
+```html
+<!-- before -->
+<my-card title="Hello"></my-card>
+<!-- after -->
+<my-card data-bascik-prop-title="Hello"></my-card>
+```
+
+`--fix` edits only the tags that `--check` reports. Component-like text inside comments, `<script>`, `<style>`, and `<textarea>` is left alone. `--lint` is an alias for `--check`, so `bascik --lint --fix` does the same thing.
 
 ### JSON output with `--json`
 

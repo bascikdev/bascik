@@ -47,6 +47,21 @@ npx @bascik/language-server --check ../../shared/components
 npx @bascik/language-server --check ../../shared/components --project .
 ```
 
+### Auto-fixing with `--fix`
+
+Add `--fix` to apply the fixes that have exactly one correct answer, write them to disk, and report what remains:
+
+```sh
+npx @bascik/language-server --check --fix
+```
+
+Two rules are fixable:
+
+- `missing-prop-prefix`: `<my-card title="Hello">` becomes `<my-card data-bascik-prop-title="Hello">` when `title` is a declared prop of `my-card`.
+- `prefer-self-closing-component`: `<zero-slot-comp></zero-slot-comp>` becomes `<zero-slot-comp />` when the component has no slots.
+
+In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies the `missing-prop-prefix` fix too, so either command works in a pre-commit hook.
+
 ### CI / Pre-commit Integration
 
 The CLI checker exits with code `0` when clean (or only warnings) and code `1` when errors are detected, making it drop-in ready for GitHub Actions or pre-commit git hooks:

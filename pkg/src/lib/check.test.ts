@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { BascikConfig } from "./config.ts";
 import {
@@ -203,6 +203,36 @@ describe("checkProject", () => {
 
     const fixedFindings = await checkProject({ fix: true });
     expect(fixedFindings.items.some((i) => i.category === "missing-prop-prefix")).toBe(false);
+  });
+
+  // --fix must rewrite exactly what --check reports: a tag inside a comment,
+  // a script string, or a <textarea> is text, so --check never flags it and
+  // --fix must leave those bytes alone.
+  it("--fix only rewrites usages that --check reports, never comments, scripts, or textarea text", async () => {
+    const page = [
+      '<!-- <my-card heading="in a comment"></my-card> -->',
+      "<script>const sample = '<my-card heading=\"in a script\"></my-card>';</script>",
+      '<textarea><my-card heading="typed"></my-card></textarea>',
+      '<my-card heading="Welcome"></my-card>',
+    ].join("\n");
+    await setupProject({
+      "pages/index.html": page,
+      "components/my-card/my-card.html": "<h2 data-bascik-prop-heading></h2>",
+    });
+    listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+    listComponentsMock.mockResolvedValue({
+      "my-card": {
+        fileName: join(workDir, "components/my-card/my-card.html"),
+        fileContent: "<h2 data-bascik-prop-heading></h2>",
+      },
+    });
+
+    const before = await checkProject();
+    expect(before.items.filter((i) => i.category === "missing-prop-prefix")).toHaveLength(1);
+
+    await checkProject({ fix: true });
+    const fixed = await readFile(join(workDir, "pages/index.html"), "utf8");
+    expect(fixed).toBe(page.replace('<my-card heading="Welcome">', '<my-card data-bascik-prop-heading="Welcome">'));
   });
 
   it("reports unknown component tags as warnings (not errors)", async () => {
@@ -609,6 +639,32 @@ describe("checkProject", () => {
       const item = findings.items.find((i) => i.category === "script-mode-conflict");
       expect(item).toBeDefined();
       expect(item?.severity).toBe("error");
+    });
+
+    it("warns when data-bascik-build carries a value other than page", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<script data-bascik-build="pages">export default () => "a"</script>',
+          '<script data-bascik-build = "page">export default () => "b"</script>',
+          "<script data-bascik-build=PAGE>export default () => 'c'</script>",
+          '<script data-bascik-build="">export default () => "d"</script>',
+          "<script data-bascik-build>export default () => 'e'</script>",
+          "<script data-bascik-build=static>export default () => 'f'</script>",
+        ].join("\n"),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      const items = findings.items.filter((i) => i.category === "unknown-directive-value");
+      expect(items).toHaveLength(2);
+      expect(items.every((i) => i.severity === "warning")).toBe(true);
+      expect(items.map((i) => i.message).join("\n")).toContain('"pages"');
+      expect(items.map((i) => i.message).join("\n")).toContain('"static"');
+      expect(items.flatMap((i) => i.locations)).toEqual([
+        { filePath: "pages/index.html", line: 1 },
+        { filePath: "pages/index.html", line: 6 },
+      ]);
     });
 
     it("reads script directives after a quoted attribute value containing >", async () => {

@@ -34,6 +34,18 @@ suite('LSP parity', () => {
     );
   });
 
+  test('open tag attribute reader is identical', () => {
+    const reader = (source: string): string => {
+      const match = /function readOpenTagAttributes\([\s\S]*?\n}\n/.exec(source);
+      assert.ok(match, 'expected a readOpenTagAttributes function');
+      return match[0];
+    };
+    assert.strictEqual(
+      reader(read('extensions/vscode-bascik/src/extension.ts')),
+      reader(read('lsp/src/analyzer.ts')),
+    );
+  });
+
   test('script and style tag patterns are identical', () => {
     const extension = tagPatternLines(read('extensions/vscode-bascik/src/extension.ts'));
     const lsp = tagPatternLines(read('lsp/src/analyzer.ts'));

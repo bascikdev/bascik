@@ -269,4 +269,33 @@ describe('Bascik Language Server Analyzer', () => {
       expect(messages.some((m) => String(m).includes('"missing"'))).toBe(true);
     });
   });
+  describe('external form preserve check', () => {
+    const formDiagnostics = (formTag: string) => {
+      const filePath = '/test-project/src/components/site-nav.html';
+      const doc = TextDocument.create(`file://${filePath}`, 'html', 1, `${formTag}<input name="email"></form>`);
+      return createDiagnostics(doc, filePath, mockSnapshot).filter((d) =>
+        String(d.message).includes('External form actions require'),
+      );
+    };
+
+    it.each([
+      '<form action="https://forms.example/submit" data-bascik-preserve>',
+      '<form action="https://forms.example/submit" data-bascik-preserve="">',
+      "<form action=https://forms.example/submit data-bascik-preserve = ''>",
+      '<form action = "https://forms.example/submit" data-bascik-preserve = "name">',
+      '<form action="https://forms.example/submit" data-bascik-preserve=name>',
+    ])('accepts %s', (formTag) => {
+      expect(formDiagnostics(formTag)).toHaveLength(0);
+    });
+
+    it.each([
+      '<form action="https://forms.example/submit">',
+      '<form action=https://forms.example/submit>',
+      '<form action = //forms.example/submit/>',
+      '<form action="https://forms.example/submit" data-bascik-preserve="class">',
+      '<form action="https://forms.example/submit" data-note="data-bascik-preserve">',
+    ])('warns for %s', (formTag) => {
+      expect(formDiagnostics(formTag)).toHaveLength(1);
+    });
+  });
 });

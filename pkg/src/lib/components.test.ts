@@ -24,6 +24,7 @@ import {
   listComponents,
   invalidateComponentListCache,
   readComponentRoot,
+  isPageAwareBuildScript,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 
@@ -1788,3 +1789,21 @@ describe("masked string caching performance helpers", () => {
 });
 
 
+
+describe("isPageAwareBuildScript – directive value is matched exactly", () => {
+  it.each([
+    ['<script data-bascik-build = "page">', true],
+    ["<script data-bascik-build=PAGE>", true],
+    ['<script data-bascik-build data-bascik-page-aware="">', true],
+    ['<script data-bascik-build="pages">', false],
+    ['<script data-bascik-build="page-x">', false],
+    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
+    ["<script data-bascik-build data-bascik-page-aware-x>", false],
+  ])("%s -> %s", (openTag, expected) => {
+    expect(isPageAwareBuildScript(openTag, "export default () => ''")).toBe(expected);
+  });
+
+  it("still defers a script that reads page context literally", () => {
+    expect(isPageAwareBuildScript("<script data-bascik-build>", "process.env.BASCIK_PAGE_PATH")).toBe(true);
+  });
+});

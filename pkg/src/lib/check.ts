@@ -32,7 +32,7 @@ import {
   PLAUSIBLE_TAG_NAME,
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
-import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
+import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME, getHtmlAttributeValue } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
 import type { ComponentList } from "./types.ts";
 
@@ -248,6 +248,10 @@ const extractBuildScripts = (html: string): string[] => {
   }
   return scripts;
 };
+
+/** Blank every HTML comment character except newlines, so offsets and lines stay put. */
+const maskCommentsKeepingOffsets = (source: string): string =>
+  source.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => comment.replace(/[^\n]/g, " "));
 
 const stripComments = (source: string): string => {
   return source.replace(/<!--[\s\S]*?-->/g, (match) => {
@@ -593,9 +597,16 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
               `<(${compTagNames.join("|")})\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`,
               "gi",
             );
-            html = html.replace(compOpenRe, (fullTag, rawTagName: string, attrs: string) => {
+            // Find usage tags where --check looks for them: outside comments
+            // and raw text. The mask keeps offsets, so each edit lands on the
+            // same bytes in the original file.
+            const searchable = stripElementContents(maskCommentsKeepingOffsets(html));
+            const edits: Array<{ start: number; end: number; text: string }> = [];
+            for (const match of searchable.matchAll(compOpenRe)) {
+              const [fullTag, rawTagName, attrs] = match as unknown as [string, string, string];
               const declaredProps = declaredPropsByComponent.get(rawTagName.toLowerCase());
-              if (!declaredProps) return fullTag;
+              if (!declaredProps) continue;
+              let tagModified = false;
               const updatedAttrs = attrs.replace(
                 /(\s)([^\s"'=<>`/]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))/g,
                 (attrMatch, space: string, attrName: string, rest: string) => {
@@ -605,12 +616,18 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
                   if (new RegExp(`\\bdata-bascik-prop-${lower}\\b`, "i").test(attrs)) {
                     return attrMatch;
                   }
-                  modified = true;
+                  tagModified = true;
                   return `${space}data-bascik-prop-${attrName}${rest}`;
                 },
               );
-              return modified ? `<${rawTagName}${updatedAttrs}>` : fullTag;
-            });
+              if (!tagModified) continue;
+              const start = match.index;
+              edits.push({ start, end: start + fullTag.length, text: `<${rawTagName}${updatedAttrs}>` });
+            }
+            for (const edit of edits.reverse()) {
+              html = `${html.slice(0, edit.start)}${edit.text}${html.slice(edit.end)}`;
+              modified = true;
+            }
             if (modified) {
               await writeFile(filePath, html, "utf8");
             }
@@ -634,6 +651,7 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
   const unknownBascikAttrs = new Map<string, FindingLocation[]>();
   const componentGraph = new Map<string, Set<string>>();
   const scriptBuildServerConflicts: FindingLocation[] = [];
+  const unknownBuildValues = new Map<string, FindingLocation[]>();
   const componentPathByName = new Map<string, string>();
   const componentNameByPath = new Map<string, string>();
 
@@ -707,6 +725,12 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
       if (hasBuildServerConflict(scriptMatch[1] ?? "")) {
         scriptBuildServerConflicts.push({ filePath: displayPath, line: getLineAt(html, scriptMatch.index) });
       }
+      const buildValue = getHtmlAttributeValue(scriptMatch[0], "data-bascik-build")?.trim();
+      if (buildValue && buildValue.toLowerCase() !== "page") {
+        const list = unknownBuildValues.get(buildValue) ?? [];
+        list.push({ filePath: displayPath, line: getLineAt(html, scriptMatch.index) });
+        unknownBuildValues.set(buildValue, list);
+      }
     }
 
     const ownerPath = canonicalPath(filePath);
@@ -765,6 +789,15 @@ export const checkProject = async (options: { fix?: boolean } = {}): Promise<Che
       severity: "error",
       message: "<script> tag combines two script directives (data-bascik-build, data-bascik-server, data-bascik-routes, data-bascik-stream are mutually exclusive). Remove one attribute.",
       locations: scriptBuildServerConflicts,
+    });
+  }
+
+  for (const [value, locations] of unknownBuildValues.entries()) {
+    items.push({
+      category: "unknown-directive-value",
+      severity: "warning",
+      message: `data-bascik-build="${value}" is not a known value, so the script runs once as a static build script. Use data-bascik-build="page" to run it for each page, or a bare data-bascik-build.`,
+      locations,
     });
   }
 
@@ -1141,6 +1174,10 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "script-mode-conflict": {
     title: "Conflicting script modes",
     description: "A single script tag cannot be both build-time and server-time.",
+  },
+  "unknown-directive-value": {
+    title: "Unknown script directive values",
+    description: "data-bascik-build accepts only \"page\" as a value; any other value runs the script once as a static build script.",
   },
   "pages-directory": {
     title: "Pages directory issues",

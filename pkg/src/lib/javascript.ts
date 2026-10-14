@@ -78,7 +78,7 @@ import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
 import { BascikConfig } from "./config.ts";
 import { findComponentRoot } from "./component-roots.ts";
-import { ANY_DIRECTIVE_ATTR_NAME } from "./html-patterns.ts";
+import { ANY_DIRECTIVE_ATTR_NAME, isPageAwareBuildOpenTag } from "./html-patterns.ts";
 import { encodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./output-scope.ts";
 
 /**
@@ -90,10 +90,7 @@ import { encodeOutputScope, OUTPUT_SCOPE_ATTRIBUTE, type OutputScope } from "./o
 const annotatePageAwareScripts = (html: string, encodedScope: string): string =>
   html.replace(/<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, (openTag) => {
     if (openTag.includes(OUTPUT_SCOPE_ATTRIBUTE)) return openTag;
-    const isPageAware =
-      /\sdata-bascik-page-aware\b/i.test(openTag) ||
-      /\sdata-bascik-build\s*=\s*["']?page["']?/i.test(openTag);
-    if (!isPageAware) return openTag;
+    if (!isPageAwareBuildOpenTag(openTag)) return openTag;
     return openTag.replace(/>$/, ` ${OUTPUT_SCOPE_ATTRIBUTE}="${encodedScope}">`);
   });
 

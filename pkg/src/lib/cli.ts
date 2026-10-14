@@ -107,6 +107,9 @@ const VALUE_FLAGS = new Set([
 /** `--log` is the one flag whose value is optional. */
 const OPTIONAL_VALUE_FLAGS = new Set(["--log"]);
 
+/** Every flag the parser accepts, for the help-text drift test. */
+export const CLI_FLAGS: readonly string[] = [...BOOLEAN_FLAGS, ...VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS];
+
 /** Positional subcommands the CLI understands. */
 const KNOWN_SUBCOMMANDS = new Set(["init", "add"]);
 
@@ -489,6 +492,9 @@ Options:
   --server           Serve the production build over HTTP/1.1
                      (HTTP/2 when http.tls.enabled is set)
   --check            Validate the project (pages, components, config)
+  --lint             Alias for --check
+  --fix              Apply deterministic fixes during --check, such as adding a
+                     missing data-bascik-prop- prefix, then report what remains
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
   --json             Emit structured JSON findings during --check
   --force            Overwrite modified local components when running add
@@ -496,6 +502,8 @@ Options:
   --dry-run          List what add would do without writing to disk
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)
+  --only <glob>      Only transpile pages matching the glob, relative to
+                     directory.pages (repeatable; only with --build)
   --target <name>    Also emit a serverless deployment bundle under
                      dist/.bascik/<name>/ (only with --build).
   --port <n>         Override the server port

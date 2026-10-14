@@ -1837,6 +1837,23 @@ suite('Extension Integration Suite', () => {
       );
     });
 
+    test('accepts an empty-valued preserve directive on an external form', async () => {
+      const document = await openWorkspaceDocument({
+        language: 'html',
+        content:
+          '<form action="https://forms.example/submit" data-bascik-preserve=""><input name="email"></form>',
+      });
+      assert.ok(
+        !vscode.languages
+          .getDiagnostics(document.uri)
+          .some((diagnostic) =>
+            diagnostic.message.includes(
+              'External form actions require data-bascik-preserve="name"',
+            ),
+          ),
+      );
+    });
+
     test('accepts a bare preserve directive on an external form', async () => {
       const document = await openWorkspaceDocument({
         language: 'html',
