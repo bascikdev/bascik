@@ -130,7 +130,7 @@ The checks below cover the most common mistakes. Metadata annotation warnings us
 | Component naming | A component filename without the hyphen a custom element name requires |
 | Unclosed elements | A non-self-closing component tag with no matching closing tag |
 | Script directives | A script combining more than one of `data-bascik-build`, `data-bascik-routes`, `data-bascik-server`, and `data-bascik-stream` (error), or a directive on an element other than `<script>` (error) |
-| Props | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (warning) |
+| Props | A `data-bascik-prop-*` attribute the component does not declare or infer (warning), and a `data-bascik-attr-*` binding whose prop no project caller supplies (hint) |
 | Slots | `data-bascik-slot` outside any parent component, a slot name the containing component does not have, or an empty named slot (errors) |
 | Imports | Imports and script `src` values that begin with `/`, with guidance to use `@/` or a relative path |
 | Styles | A component that combines an inline `<style>` element with a companion `.css` file (warning). Multiple inline `<style>` elements are supported and are not reported |
@@ -145,6 +145,8 @@ Bascik rewrites CSS and JavaScript at build time to keep components isolated. So
 ![A hover message on the standalone attribute selector [data-state] in a CSS file, explaining that it is not scoped and suggesting an anchored selector](/assets/vscode/scoping-warnings@2x.webp)
 
 Every warning includes a safer alternative, such as retaining an element reference, using a static scoped class, or anchoring a selector with a class. The rules match [Scoping Compatibility](/compatibility).
+
+These checks apply to component files only: the component's `.html` file and the `.css`, `.js`, and `.ts` files beside it. Those are the only files Bascik scopes, so a page, an API route, or a script outside your component folders is not checked.
 
 | Language | Patterns that are flagged |
 | --- | --- |
@@ -248,6 +250,12 @@ When projects are nested, the closest enclosing project owns the file. Separate 
 Component discovery follows `directory.components` in the owning project's `bascik.config.ts`, `bascik.config.js`, or `bascik.config.mjs`. It supports one component directory, multiple directories, absolute paths, and relative paths, including shared component directories outside the project root.
 
 Config files, component directories, and project HTML usage are watched for changes. Creating, editing, renaming, or deleting them refreshes extension state automatically, so reopening VS Code is not required.
+
+## How It Works
+
+The extension does not analyze anything itself. It starts `@bascik/language-server`, which ships inside the extension, and connects it to VS Code. Every diagnostic, completion, hover, and definition on this page comes from that server. The same server runs under [`bascik --check`](/cli#static-analysis-with-bascik-check) and in other editors, so a squiggle in VS Code is the same finding CI reports.
+
+If diagnostics ever look stale or missing, open the **Bascik** output panel to see the server's log. Reloading the window restarts it.
 
 ## Command-Line Linting and Other Editors
 

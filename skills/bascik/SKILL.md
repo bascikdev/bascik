@@ -19,7 +19,7 @@ Code in this skill is illustrative. Adapt tag names, paths, and values to the pr
 
 - `package.json` depends on `@bascik/bascik`, or the root has `bascik.config.ts` / `bascik.config.js`, or there are `.html` files under `src/components/`.
 - Node.js 22.18 or newer (24 LTS recommended). Node runs `.ts` helpers natively, so no TypeScript build step exists.
-- Standard scripts: `npm run dev` (`bascik`), `npm run build` (`bascik --build`), `npm run lint` (`bascik-language-server --check`).
+- Standard scripts: `npm run dev` (`bascik`), `npm run build` (`bascik --build`), `npm run lint` (`bascik --check`).
 
 ## Project layout
 
@@ -117,12 +117,14 @@ bascik                      # dev server at http://localhost:8080 with live relo
 bascik --build              # production build to dist/ (HTML, CSS, JS, and identifier minification on)
 bascik --build --only "blog/**"   # rebuild matching pages without cleaning dist/
 bascik --server             # serve a built dist/ (needed for server/stream scripts and API routes)
-bascik --check              # validate pages, components, config, and API routes without building
-bascik --check --fix        # also rewrite fixable findings (missing data-bascik-prop- prefix)
+bascik --check              # project checks, plus the per-file checks when @bascik/language-server is installed
+bascik --check --fix        # also rewrite fixable findings (needs @bascik/language-server)
 bascik add <package>        # copy components from an installed npm package into src/components/
 bascik init                 # add Bascik to an existing project
-npx @bascik/language-server --check   # lint scoping patterns, unclosed tags, and directives
+npx @bascik/language-server --check   # the per-file checks on their own (bascik --check already runs them)
 ```
+
+`bascik --check` and the linter are not two overlapping tools. `bascik --check` answers project questions (duplicate routes, unused components, config), and the linter answers per-file questions (attribute typos, CSS that cannot be scoped). `bascik --check` runs the linter too, so use it, and reach for the linter alone only on a folder outside the project.
 
 New project: `npm create bascik@latest my-site -y`. Production builds need a site URL for `sitemap.xml` and `robots.txt`: `BASCIK_SITE_URL=https://example.com bascik --build` (or `--site-url`, or `.env`). Full CLI and error output: `read-doc.mjs /cli`.
 
@@ -130,7 +132,7 @@ New project: `npm create bascik@latest my-site -y`. Production builds need a sit
 
 Do not stop at "the file looks right". Run these from the project root:
 
-1. `node <skill-dir>/scripts/verify.mjs` runs `bascik --check` and the language server linter and summarizes both. Add `--build` to also run a production build.
+1. `node <skill-dir>/scripts/verify.mjs` runs `bascik --check` (project and per-file checks) and, for component folders outside the project, the linter, then summarizes each step. Add `--build` to also run a production build.
 2. `node <skill-dir>/scripts/preview.mjs '<my-card data-bascik-prop-title="Hi" />' --count 2` compiles a snippet with the project's real components and config and prints the unminified output, so you can confirm scoped names, slot placement, and script rewrites.
 3. Read the relevant file in `dist/` after a build. A hyphenated tag still present in `dist/` means no component matched it.
 
@@ -142,7 +144,7 @@ All scripts are dependency-free Node.js (22.18+) and run from the project root. 
 
 | Script | Purpose |
 |---|---|
-| [`scripts/verify.mjs`](scripts/verify.mjs) | `bascik --check` plus `@bascik/language-server --check`, with an optional `--build` |
+| [`scripts/verify.mjs`](scripts/verify.mjs) | `bascik --check`, plus the linter on component folders outside the project, with an optional `--build` |
 | [`scripts/preview.mjs`](scripts/preview.mjs) | Compile a snippet, file, or existing page in a temporary build and print the result |
 | [`scripts/list-components.mjs`](scripts/list-components.mjs) | Inventory components with their props, slots, companion files, and `@bascik` descriptions |
 | [`scripts/new-component.mjs`](scripts/new-component.mjs) | Create a component folder that follows the naming and ordering rules |

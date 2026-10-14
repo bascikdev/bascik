@@ -156,14 +156,18 @@ const editDistance = (a: string, b: string): number => {
   return prev[b.length];
 };
 
-/** Names other tools use for a Bascik command; suggested before any edit-distance match. */
-const SYNONYMS: Record<string, string> = { lint: "--check" };
+/**
+ * Words that belong to another command, so a near match would send the user somewhere wrong. `lint` is the
+ * language server's command (`bascik-language-server --check`), not a Bascik one, and within edit distance 2 of
+ * `init`, which would scaffold files. There is deliberately no `lint` alias for `--check`: the two commands do
+ * different jobs, and the word means one thing.
+ */
+const NEVER_SUGGEST = new Set(["lint"]);
 
 /** Best near-match candidate for a mistyped token, or undefined when none is close. */
 const suggest = (token: string): string | undefined => {
   const normalized = token.replace(/^-+/, "").toLowerCase();
-  if (!normalized) return undefined;
-  if (SYNONYMS[normalized]) return SYNONYMS[normalized];
+  if (!normalized || NEVER_SUGGEST.has(normalized)) return undefined;
   let best: { candidate: string; distance: number } | undefined;
   for (const candidate of SUGGESTION_CANDIDATES) {
     const distance = editDistance(normalized, candidate.replace(/^-+/, ""));

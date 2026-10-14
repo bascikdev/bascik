@@ -340,7 +340,7 @@ All three can live in a single file. Follow the component convention order: plac
 
 Choosing between inline `<style>` or `<script>` blocks and companion `.css` or `.ts`/`.js`/`.mjs` files is a matter of personal preference.
 
-For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is now validated by `bascik --check` as an advisory warning (`component-structure-order`).
+For inline component blocks, keep `<style>` above the component markup and `<script>` below the markup. This convention is checked as an advisory warning (`component-structure-order`) by the [linter](/tools/linter), in your editor and in `bascik --check`.
 
 Create a `.css` file or companion script files alongside the `.html` file if you prefer to keep your styles or JavaScript separate. Companion `.css` files in the same component directory are merged automatically. Companion script files explicitly referenced via `<script src="counter.ts"></script>` are resolved, inlined, and scoped at build time. Browsers ignore inline content in a `<script>` that has `src`, so Bascik drops any such content when it inlines the companion and prints a warning. A `.ts` or `.mts` companion has its erasable TypeScript stripped automatically before scoping, with no configuration; see [TypeScript in Component Scripts](/scoped-javascript#typescript-in-component-scripts).
 

@@ -1,0 +1,140 @@
+{
+  "measuredOn": "2026-10-14",
+  "bascikVersion": "1.0.0-rc.7",
+  "nodeVersion": "24.17.0",
+  "machine": "Apple M1, 8 cores",
+  "pages": 102,
+  "buildScripts": 965,
+  "cold": {
+    "wallSeconds": 19.54,
+    "totalSeconds": 19.4,
+    "startupSeconds": 0.14,
+    "preScriptsSeconds": 0.08,
+    "pagesSeconds": 18.65,
+    "postScriptsSeconds": 0.64,
+    "otherSeconds": 0.03,
+    "execScripts": [
+      {
+        "script": "scripts/publish-heading-anchors.ts",
+        "phase": "pre",
+        "seconds": 0.08
+      },
+      {
+        "script": "scripts/publish-examples.ts",
+        "phase": "parallel",
+        "seconds": 0.22
+      },
+      {
+        "script": "scripts/generate-pages-headers.ts",
+        "phase": "parallel",
+        "seconds": 0.21
+      },
+      {
+        "script": "scripts/publish-agent-skill.ts",
+        "phase": "parallel",
+        "seconds": 0.26
+      },
+      {
+        "script": "scripts/generate-llms-txt.ts",
+        "phase": "parallel",
+        "seconds": 0.27
+      },
+      {
+        "script": "scripts/generate-search-index.ts",
+        "phase": "parallel",
+        "seconds": 0.29
+      },
+      {
+        "script": "scripts/generate-press-kit.ts",
+        "phase": "parallel",
+        "seconds": 0.47
+      },
+      {
+        "script": "scripts/generate-og-images.ts",
+        "phase": "parallel",
+        "seconds": 0.53
+      },
+      {
+        "script": "scripts/generate-git-dates.ts",
+        "phase": "post",
+        "seconds": 0.44
+      },
+      {
+        "script": "scripts/generate-csp-meta.ts",
+        "phase": "post",
+        "seconds": 0.2
+      }
+    ],
+    "pageMedianMs": 60,
+    "slowestPage": {
+      "path": "pages/components.html",
+      "ms": 561
+    }
+  },
+  "warm": {
+    "wallSeconds": 4.09,
+    "totalSeconds": 3.94,
+    "startupSeconds": 0.15,
+    "preScriptsSeconds": 0.07,
+    "pagesSeconds": 3.14,
+    "postScriptsSeconds": 0.7,
+    "otherSeconds": 0.03,
+    "execScripts": [
+      {
+        "script": "scripts/publish-heading-anchors.ts",
+        "phase": "pre",
+        "seconds": 0.07
+      },
+      {
+        "script": "scripts/generate-pages-headers.ts",
+        "phase": "parallel",
+        "seconds": 0.2
+      },
+      {
+        "script": "scripts/publish-examples.ts",
+        "phase": "parallel",
+        "seconds": 0.21
+      },
+      {
+        "script": "scripts/generate-llms-txt.ts",
+        "phase": "parallel",
+        "seconds": 0.23
+      },
+      {
+        "script": "scripts/generate-search-index.ts",
+        "phase": "parallel",
+        "seconds": 0.25
+      },
+      {
+        "script": "scripts/publish-agent-skill.ts",
+        "phase": "parallel",
+        "seconds": 0.42
+      },
+      {
+        "script": "scripts/generate-og-images.ts",
+        "phase": "parallel",
+        "seconds": 0.52
+      },
+      {
+        "script": "scripts/generate-press-kit.ts",
+        "phase": "parallel",
+        "seconds": 0.69
+      },
+      {
+        "script": "scripts/generate-git-dates.ts",
+        "phase": "post",
+        "seconds": 0.44
+      },
+      {
+        "script": "scripts/generate-csp-meta.ts",
+        "phase": "post",
+        "seconds": 0.26
+      }
+    ],
+    "pageMedianMs": 66,
+    "slowestPage": {
+      "path": "pages/components.html",
+      "ms": 691
+    }
+  }
+}

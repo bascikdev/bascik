@@ -188,6 +188,7 @@ export default defineConfig({
     copies: true,
     deletes: true,
     transpiles: true,
+    pinServerUrl: true,   // pin the dev server URL to the top row of an interactive terminal
   },
   base: '/',
 });
@@ -546,8 +547,11 @@ logging: {
   copies: true,        // log asset copies
   deletes: true,       // log asset deletions
   transpiles: true,    // log page transpilation
+  pinServerUrl: true,  // pin "Server running at" to the top row of an interactive dev terminal
 }
 ```
+
+`pinServerUrl` keeps the dev server URL on the first row of the terminal while logs scroll beneath it. It only applies to `bascik` (dev) in an interactive terminal at least six rows tall; piped output, CI, and `TERM=dumb` print the URL as a normal line once the first compile finishes. Terminals do not keep lines that scroll inside a region that starts below row 1 in their scrollback, so set `pinServerUrl: false` if you scroll back through dev output.
 
 ## Mode Overrides (`dev`, `build`, `server`)
 

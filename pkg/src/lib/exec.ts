@@ -3,6 +3,7 @@ import { matchesGlob, resolve, sep } from 'node:path';
 import { BascikConfig } from './config.ts';
 import { eventEmitter, registerShutdownHandler } from './events.ts';
 import { formatDuration } from './format.ts';
+import { stdout as colorOut } from './colors.ts';
 import { getSiteUrl } from './environment.ts';
 import { nativeClock, type FrameworkClock, type TimeoutHandle } from './clock.ts';
 import { getExecErrorAction, stopAfterExecFailure } from './exec-policy.ts';
@@ -125,7 +126,7 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
   const entryObj = typeof entry === 'string' ? { script: entry } : entry;
 
   const start = performance.now();
-  console.log(`(started) exec: ${scriptPath}`);
+  console.log(`${colorOut.dim("(started)")} exec: ${scriptPath}`);
 
   const cwd = entryObj.cwd ? resolve(process.cwd(), entryObj.cwd) : process.cwd();
   const args = entryObj.args ?? [];
@@ -219,7 +220,7 @@ const spawnScript = (entry: ExecEntry | string, options?: ExecOptions): Promise<
       record.settled = true;
       const elapsed = performance.now() - start;
       if (code === 0) {
-        console.log(`(completed) exec: ${scriptPath} in ${formatDuration(elapsed)}`);
+        console.log(`${colorOut.green("(completed)")} exec: ${scriptPath} ${colorOut.dim(`in ${formatDuration(elapsed)}`)}`);
         resolvePromise(elapsed);
       } else {
         rejectPromise(new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`));

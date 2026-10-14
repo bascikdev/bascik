@@ -65,6 +65,14 @@
     "chokidar": "^5.0.0",
     "parse5": "^8.0.1"
   },
+  "peerDependencies": {
+    "@bascik/language-server": ">=0.1.0-rc.4"
+  },
+  "peerDependenciesMeta": {
+    "@bascik/language-server": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "0x": "^6.0.0",
     "@mdn/browser-compat-data": "^8.1.4",

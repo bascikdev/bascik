@@ -17,10 +17,12 @@ describe("cli helper tests", () => {
       expect(fixDecision.flags.fix).toBe(true);
     });
 
-    it("rejects --lint and suggests --check", () => {
-      const decision = resolveCliAction(["--lint"]);
-      expect(decision.action).toBe("error");
-      expect(decision.errorMessage).toContain('Did you mean "--check"?');
+    it("rejects --lint and bare lint without suggesting anything: it is not an alias for --check", () => {
+      for (const args of [["--lint"], ["lint"]]) {
+        const decision = resolveCliAction(args);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).not.toContain("Did you mean");
+      }
     });
 
     it("should filter out node profiling flags", () => {

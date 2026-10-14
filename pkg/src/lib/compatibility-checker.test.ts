@@ -161,3 +161,33 @@ describe("compatibility-rules contract & positive/negative probes", () => {
     });
   }
 });
+
+describe("bascik-disable and bascik-ignore rule lists", () => {
+  const source = "document.querySelector('.a');\nel.querySelector('[data-x]');\n";
+
+  it("scans both rules when nothing is disabled", () => {
+    const ids = findCompatibilityMatches(source, "js").map((m) => m.rule.id);
+    expect(ids).toContain("js-document-class-query");
+    expect(ids).toContain("js-attribute-selector");
+  });
+
+  it.each([
+    "/* bascik-disable js-attribute-selector,js-document-class-query */",
+    "/* bascik-disable js-attribute-selector, js-document-class-query */",
+    "/* bascik-disable js-attribute-selector , js-document-class-query */",
+  ])("honors a block comment that lists several rules: %s", (directive) => {
+    expect(findCompatibilityMatches(`${directive}\n${source}`, "js")).toEqual([]);
+  });
+
+  it("honors a line comment that lists several rules separated by comma and space", () => {
+    const text = `// bascik-disable js-attribute-selector, js-document-class-query\n${source}`;
+    expect(findCompatibilityMatches(text, "js")).toEqual([]);
+  });
+
+  it("only disables the listed rules", () => {
+    const ids = findCompatibilityMatches(`/* bascik-disable js-attribute-selector, js-other */\n${source}`, "js").map(
+      (m) => m.rule.id,
+    );
+    expect(ids).toEqual(["js-document-class-query"]);
+  });
+});

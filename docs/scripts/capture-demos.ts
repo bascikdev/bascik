@@ -19,7 +19,14 @@
  *   dev-terminal      the terminal: `bascik` starts in milliseconds, then an edit rebuilds only one page
  *   lint              the terminal: `npm run lint` finding real problems
  *
+ * Terminal scenes record the real program. The dev server runs in a pseudo-terminal (node-pty) and
+ * its output is replayed through a terminal emulator, so the color and the address pinned to the top row are
+ * exactly what a reader's terminal shows. Re-record the terminal scenes (dev-terminal, exec-watch, sitemap, lint)
+ * whenever the CLI's output changes. `api-routes` only shows curl, so it does not depend on the CLI's output.
+ *
  * Maintainer tool only: it is not part of the docs build. macOS only (it drives the VS Code app bundle).
+ *   yarn pkg:build                          # scenes run pkg/dist
+ *   yarn workspace @bascik/language-server build   # the lint scene runs lsp/dist
  *   yarn workspace create-bascik build      # when the scaffolder changed: scenes use create/dist
  *   yarn workspace bascik-vscode compile    # when the extension changed
  *   node scripts/capture-demos.ts [scene ...]
@@ -32,13 +39,13 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripVTControlCharacters } from 'node:util';
 import { chromium, type Browser, type Page } from 'playwright';
 import { browserWindow, roundCorners, sideBySide, stacked } from './capture-kit/compose.ts';
 import { INTRO_HOLD, OUTRO_HOLD, pushFrame, sleep, writeScene, type Frame } from './capture-kit/frames.ts';
 import {
   bascikBin,
   createStarterProject,
-  languageServerBin,
   startDevServer,
   type StarterProject,
 } from './capture-kit/project.ts';
@@ -495,11 +502,14 @@ async function devTerminal(): Promise<Frame[]> {
       command: process.execPath,
       args: [bascikBin, '--port', String(PORT)],
       cwd: project.dir,
+      // A terminal, not a pipe: the dev server colors its output and pins its address to the top row there.
+      pty: { rows: 17, cols: 92 },
       stopAfterMs: 20_000,
       stopWhen: /transpiled: pages\/index\.html[^\n]*\n(?:[^\n]*\n)*?[^\n]*transpiled: pages\/index\.html/,
       triggers: [
         {
-          when: /Server running at/,
+          // The address is pinned as soon as the port is bound. The edit waits for the first compile to finish.
+          when: /All tasks completed/,
           run: async () => {
             await sleep(900);
             await writeFile(pageFile, before.replace('Build fast with', 'Ship fast with'));
@@ -508,7 +518,7 @@ async function devTerminal(): Promise<Frame[]> {
         },
       ],
     });
-    if (!edited) throw new Error('The dev server never reported that it was running');
+    if (!edited) throw new Error('The dev server never finished its first compile');
     for (const chunk of recording.chunks) chunk.text = redact(chunk.text, pairs);
     return await renderTerminal(browser, { title: 'bascik', rows: 17, width: 780 }, {
       typed: 'bascik',
@@ -523,12 +533,20 @@ async function devTerminal(): Promise<Frame[]> {
   }
 }
 
-/** Real problems, each of a kind the language server reports. */
+/**
+ * Real problems, each of a kind the language server reports. They are all in a page on purpose: a scoping
+ * problem in a component is also printed by the compiler while `bascik --check` loads components, which would
+ * put the same finding in this recording twice.
+ */
 const LINT_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head><title>Team</title></head>
 <body>
   <site-header data-bascik-prop-brnad="my-site" />
+  <div data-bascik-build></div>
+  <script data-bascik-build data-bascik-server>
+    export default () => '<p>Hi</p>';
+  </script>
   <feat-card>
     <h3>Unclosed card</h3>
   <site-footer data-bascik-prop-brand="my-site" />
@@ -536,30 +554,20 @@ const LINT_PAGE = `<!DOCTYPE html>
 </html>
 `;
 
-const LINT_COMPONENT = `<button class="toggle" id="toggle">Toggle</button>
-
-<script>
-  const toggle = document.getElementById('toggle');
-  toggle.id = 'toggle-active';
-  document.querySelector('[data-state="open"]');
-</script>
-`;
-
 async function lint(): Promise<Frame[]> {
   const project = await createStarterProject();
   await writeFile(join(project.dir, 'src/pages/team.html'), LINT_PAGE);
-  await mkdir(join(project.dir, 'src/components/toggle-box'), { recursive: true });
-  await writeFile(join(project.dir, 'src/components/toggle-box/toggle-box.html'), LINT_COMPONENT);
   const browser = await chromium.launch();
   try {
     const pairs = await redactions(project);
     const recording = await recordCommand({
       command: process.execPath,
-      args: [languageServerBin, '--check'],
+      // The scaffolded `lint` script is `bascik --check`.
+      args: [bascikBin, '--check'],
       cwd: project.dir,
     });
     for (const chunk of recording.chunks) chunk.text = redact(chunk.text, pairs);
-    return await renderTerminal(browser, { title: 'npm run lint', rows: 15, width: 780 }, {
+    return await renderTerminal(browser, { title: 'npm run lint', rows: 23, width: 780 }, {
       typed: 'npm run lint',
       recording,
       maxGapMs: 500,
@@ -779,11 +787,12 @@ async function execWatch(): Promise<Frame[]> {
       command: process.execPath,
       args: [bascikBin, '--port', String(PORT)],
       cwd: project.dir,
+      pty: { rows: 18, cols: 92 },
       stopAfterMs: 20_000,
       stopWhen: /\(completed\) exec[^\n]*\n(?:[^\n]*\n)*?[^\n]*\(completed\) exec/,
       triggers: [
         {
-          when: /Server running at/,
+          when: /All tasks completed/,
           run: async () => {
             await sleep(900);
             await writeFile(markdownFile, NOTES_MD.replace('# Release notes', '# Release notes for 1.0'));
@@ -792,8 +801,8 @@ async function execWatch(): Promise<Frame[]> {
         },
       ],
     });
-    if (!edited) throw new Error('The dev server never reported that it was running');
-    const text = recording.chunks.map((chunk) => chunk.text).join('');
+    if (!edited) throw new Error('The dev server never finished its first compile');
+    const text = stripVTControlCharacters(recording.chunks.map((chunk) => chunk.text).join(''));
     if (!/transpiled: pages\/notes\.html[\s\S]*indexed: Release notes for 1\.0/.test(text)) {
       throw new Error(`The edit did not rebuild the page and rerun the script:\n${text}`);
     }

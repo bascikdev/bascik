@@ -128,6 +128,7 @@ import { WorkerPool } from "./worker-pool.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
+import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -857,20 +858,69 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
   return jobs;
 };
 
+/** The route of a page with any trailing slash removed, so `/blog/` and `/blog` compare equal. */
+const stripTrailingRouteSlash = (route: string): string => route.replace(/\/$/, "") || "/";
+
+const pageRoute = (item: string | PageJob): string =>
+  stripTrailingRouteSlash(
+    getHttpPath(typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath),
+  );
+
 /** Partitions page paths or PageJobs into [openPages, otherPages] by active SSE connections. */
 export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string | PageJob)[], (string | PageJob)[]] => {
   const openSet = new Set(mem.openPages);
   if (openSet.size === 0) return [[], pageList];
-  const strip = (p: string) => p.replace(/\/$/, "") || "/";
-  const openNormalizedSet = new Set([...openSet].map(strip));
+  const openNormalizedSet = new Set([...openSet].map(stripTrailingRouteSlash));
   const open: (string | PageJob)[] = [];
   const rest: (string | PageJob)[] = [];
   for (const item of pageList) {
-    const relPath = typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath;
-    const httpPath = getHttpPath(relPath);
-    (openNormalizedSet.has(strip(httpPath)) ? open : rest).push(item);
+    (openNormalizedSet.has(pageRoute(item)) ? open : rest).push(item);
   }
   return [open, rest];
+};
+
+/**
+ * Splits pages into [open, home, rest] for a dev batch. The pages open in a
+ * browser come first, then the home page (`/`), which is the page most often
+ * opened next. A build keeps its input order, so build output never depends on
+ * this.
+ */
+const partitionByCompilePriority = <T extends string | PageJob>(pageList: T[]): [T[], T[], T[]] => {
+  const [open, rest] = partitionByOpenPages(pageList) as [T[], T[]];
+  if (BascikConfig.isBuild) return [open, [], rest];
+  const homeIndex = rest.findIndex((item) => pageRoute(item) === "/");
+  if (homeIndex < 0) return [open, [], rest];
+  return [open, [rest[homeIndex]], [...rest.slice(0, homeIndex), ...rest.slice(homeIndex + 1)]];
+};
+
+/**
+ * A queue that picks each next page when a worker asks for it, not once up
+ * front. A browser that connects while a long batch is already running (a tab
+ * reconnecting after a restart) therefore still jumps ahead of the pages that
+ * have not started. Order: pages open in a browser, then the home page, then
+ * the remaining pages in their original order. A build keeps its input order.
+ */
+const createCompileQueue = <T extends string | PageJob>(items: T[]) => {
+  const entries = items.map((item) => ({ item, route: pageRoute(item) }));
+  let homeRemains = !BascikConfig.isBuild && entries.some((entry) => entry.route === "/");
+  return {
+    next(): T | undefined {
+      if (entries.length === 0) return undefined;
+      let index = -1;
+      const open = mem.openPages;
+      if (open.length > 0) {
+        const openRoutes = new Set(open.map(stripTrailingRouteSlash));
+        index = entries.findIndex((entry) => openRoutes.has(entry.route));
+      }
+      if (index < 0 && homeRemains) {
+        index = entries.findIndex((entry) => entry.route === "/");
+        if (index < 0) homeRemains = false;
+      }
+      const [picked] = entries.splice(index < 0 ? 0 : index, 1);
+      if (picked.route === "/") homeRemains = false;
+      return picked.item;
+    },
+  };
 };
 
 const pageProcessingQueues = new Map<string, Promise<unknown>>();
@@ -1092,7 +1142,7 @@ export const processPageBatch = async (
     return [];
   }
 
-  const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
+  const [openJobs, homeJobs, restJobs] = partitionByCompilePriority(jobs);
 
   const results: (TranspilePageResult | null)[] = [];
 
@@ -1151,6 +1201,11 @@ export const processPageBatch = async (
   // Transpile open pages first, store in memory, and emit transpiled reload event IMMEDIATELY.
   if (openJobs.length > 0) {
     await runJobs(openJobs);
+  }
+
+  // The home page is the page most likely to be opened next.
+  if (homeJobs.length > 0) {
+    await runJobs(homeJobs);
   }
 
   // Transpile remaining (closed) pages afterwards
@@ -1220,7 +1275,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
-  console.log("Starting transpiling...");
+  console.log(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
   const useWorkers = options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
@@ -1257,6 +1312,8 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
+      // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+      { env: workerEnvironment() },
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: PageWorkerResult[] = [];
@@ -1330,17 +1387,27 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
+      // Pages already open in a browser finish first, so their reload is not
+      // delayed by anything else.
       if (openJobs.length > 0) {
         for (const result of await Promise.all(openJobs.map(runWorkerJob))) {
           if (result) results.push(result);
         }
       }
 
-      if (restJobs.length > 0) {
-        for (const result of await Promise.all(restJobs.map(runWorkerJob))) {
+      // Each lane takes its next page from the queue only when it is free, so
+      // the home page is picked before the rest, and a page opened after this
+      // batch started still jumps ahead of every page that has not begun. Two
+      // jobs per worker keep each worker busy while the main thread stores the
+      // previous result.
+      const compileQueue = createCompileQueue(restJobs);
+      const lanes = Math.min(restJobs.length, poolSize * 2);
+      await Promise.all(Array.from({ length: lanes }, async () => {
+        for (let job = compileQueue.next(); job; job = compileQueue.next()) {
+          const result = await runWorkerJob(job);
           if (result) results.push(result);
         }
-      }
+      }));
 
       reportPageErrors(pageErrors);
     } finally {
@@ -1367,7 +1434,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   }
 
   console.log(
-    `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${formatDuration(elapsed)}`,
+    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}`,
   );
 
   if (
@@ -1378,7 +1445,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     cpus().length >= 4
   ) {
     console.log(
-      `💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`,
+      colorOut.yellow(`💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`),
     );
   }
 
@@ -1839,7 +1906,7 @@ export const transpilePage = async (
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
-      console.log(`transpiled: ${relativePagePath} in ${formatDuration(workMs)}`);
+      console.log(`${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}`)}`);
     }
   }
 

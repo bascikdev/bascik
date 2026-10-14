@@ -201,6 +201,8 @@ describe("index.ts CLI runner functions", () => {
       items: [],
       distHtmlChecked: null,
       distHtmlSpecHintNeeded: false,
+      perFileChecked: null,
+      fixedFiles: [],
     });
     const serveSpy = vi.spyOn(await import("./lib/server-prod.ts"), "startProdServer").mockResolvedValueOnce("http://localhost:8080");
     const transpileSpy = vi.spyOn(await import("./transpile.ts"), "runTranspile").mockResolvedValue(undefined);
@@ -299,6 +301,22 @@ describe("index.ts CLI runner functions", () => {
     expect(checkSpy).toHaveBeenCalled();
   });
 
+  it("prints --fix without a language server as a plain message and exits 1, with no stack", async () => {
+    const { runCli } = await import("./index.ts");
+    const { LanguageServerRequiredError } = await import("./lib/check-language-server.ts");
+    vi.spyOn(await import("./lib/check.ts"), "checkProject").mockRejectedValueOnce(
+      new LanguageServerRequiredError("[bascik] --fix needs the language server: install it"),
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    try {
+      const res = await runCli(["--check", "--fix"], { exitOnFinish: false });
+      expect(res).toEqual({ action: "check", exitCode: 1 });
+      expect(errorSpy).toHaveBeenCalledWith("[bascik] --fix needs the language server: install it");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   describe("runCli --check flags (--strict, --json)", () => {
     it("exits 0 on warnings without --strict", async () => {
       const { runCli } = await import("./index.ts");
@@ -309,6 +327,8 @@ describe("index.ts CLI runner functions", () => {
         componentsChecked: 1,
         distHtmlChecked: null,
         distHtmlSpecHintNeeded: false,
+        perFileChecked: null,
+        fixedFiles: [],
         items: [
           {
             category: "unmatched-tag",
@@ -332,6 +352,8 @@ describe("index.ts CLI runner functions", () => {
         componentsChecked: 0,
         distHtmlChecked: null,
         distHtmlSpecHintNeeded: false,
+        perFileChecked: null,
+        fixedFiles: [],
         items: [
           {
             category: "unmatched-tag",
@@ -356,8 +378,8 @@ describe("index.ts CLI runner functions", () => {
           pagesChecked: 1,
           componentsChecked: 0,
           distHtmlChecked: null,
-          distHtmlSpecHintNeeded: false,
-          items: [
+          distHtmlSpecHintNeeded: false,          perFileChecked: null,
+          fixedFiles: [],          items: [
             {
               category: "unmatched-tag",
               severity: "warning",
@@ -391,6 +413,8 @@ describe("index.ts CLI runner functions", () => {
           componentsChecked: 0,
           distHtmlChecked: null,
           distHtmlSpecHintNeeded: false,
+          perFileChecked: null,
+          fixedFiles: [],
           items: [
             {
               category: "unmatched-tag",

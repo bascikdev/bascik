@@ -91,5 +91,5 @@ It reports an **error** for `var(--x)` with no declaration and no fallback, a **
 ## Verify
 
 1. `node <skills-dir>/bascik/scripts/preview.mjs '<my-widget />' --count 2` and confirm each instance has its own IDs and its script references them.
-2. `node <skills-dir>/bascik/scripts/verify.mjs` (runs `bascik --check` and the linter, which flags `.id =`, template-literal classes, attribute selectors, and element names in `:is()`).
+2. `node <skills-dir>/bascik/scripts/verify.mjs` (runs `bascik --check`, which includes the linter, and flags `.id =`, template-literal classes, attribute selectors, and element names in `:is()`).
 3. In the browser: two instances on one page, keyboard only, and JavaScript disabled.

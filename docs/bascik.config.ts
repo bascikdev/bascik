@@ -24,6 +24,7 @@ export default defineConfig({
       '../extensions/vscode-bascik/test-coverage.json',
       '../adapters/cloudflare/test-coverage.json',
       'test-coverage.json',
+      'build-timings.json',
     ],
     exec: [
       // Copies the npm custom element into dist/assets/vendor/. 'pre' so it exists before pages load it.
@@ -63,7 +64,8 @@ export default defineConfig({
   scripts: {
     cache: {
       // Example pages read example files through markers in their Markdown, which the cache key cannot see.
-      exclude: ['src/pages/example-components/**'],
+      // <build-breakdown> counts pages and components by reading directories, which it cannot see either.
+      exclude: ['src/pages/example-components/**', 'src/components/build-breakdown/**'],
     },
   },
 });

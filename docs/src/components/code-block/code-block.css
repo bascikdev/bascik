@@ -39,6 +39,8 @@
   border-radius: 0;
   padding: 18px 22px;
   margin: 0;
+  /* Browsers draw a tab 8 columns wide. Docs code indents with 2, so a tab that slips in looks the same. */
+  tab-size: 2;
 }
 
 .cblock pre code {

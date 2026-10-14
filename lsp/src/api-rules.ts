@@ -1,4 +1,6 @@
 export interface ApiRouteDiagnostic {
+  /** The rule id, as shown by `bascik --check` and usable in `bascik-ignore` and `disabledRules`. */
+  code: 'invalid-method-case' | 'api-handler-return-type' | 'missing-method-handler' | 'api-unguarded-json';
   message: string;
   severity: "error" | "warning" | "info";
   range?: { startLine: number; startChar: number; endLine: number; endChar: number };
@@ -22,6 +24,7 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
     const upper = name.toUpperCase();
     if (VALID_METHODS.has(upper) && name !== upper) {
       diagnostics.push({
+        code: 'invalid-method-case',
         message: `API route method export "${name}" must be uppercase ("${upper}"). Lowercase or mixed-case HTTP methods are not recognized by the dispatcher.`,
         severity: "warning",
       });
@@ -38,6 +41,7 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
       const returnType = returnTypeMatch[1] ?? returnTypeMatch[2];
       if (returnType && returnType !== "Response" && returnType !== "any" && returnType !== "unknown") {
         diagnostics.push({
+          code: 'api-handler-return-type',
           message: `API route handler "${name}" has return type "${returnType}". Handlers must return a standard WHATWG Response (or Promise<Response>).`,
           severity: "warning",
         });
@@ -48,6 +52,7 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
   const hasRecognizedMethod = exportedNames.some((n) => VALID_METHODS.has(n));
   if (!hasRecognizedMethod) {
     diagnostics.push({
+      code: 'missing-method-handler',
       message: `API route file does not export any recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`,
       severity: "error",
     });
@@ -67,6 +72,7 @@ export function analyzeApiRouteSource(text: string): ApiRouteDiagnostic[] {
 
     if (!insideTry) {
       diagnostics.push({
+        code: 'api-unguarded-json',
         message: `Calling request.json() without a surrounding try/catch will throw an unhandled error on malformed JSON payloads (resulting in a 500 response). Consider wrapping in a try/catch or validating input.`,
         severity: "info",
       });

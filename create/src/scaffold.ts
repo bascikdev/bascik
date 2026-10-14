@@ -39,7 +39,7 @@ export const PACKAGE_JSON = (name: string): string =>
       scripts: {
         dev: "bascik",
         build: "bascik --build",
-        lint: "bascik-language-server --check",
+        lint: "bascik --check",
         test: "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",

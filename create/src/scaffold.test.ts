@@ -121,7 +121,8 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.type).toBe("module");
     expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.scripts.build).toBe("bascik --build");
-    expect(pkg.scripts.lint).toBe("bascik-language-server --check");
+    // One command for the whole project: `bascik --check` runs the per-file linter and the project-wide checks.
+    expect(pkg.scripts.lint).toBe("bascik --check");
     expect(pkg.scripts.test).toBe("vitest run");
     expect(pkg.scripts["test:watch"]).toBe("vitest");
     expect(pkg.scripts["test:coverage"]).toBe("vitest run --coverage");
@@ -130,6 +131,7 @@ describe("PACKAGE_JSON", () => {
 
   it("includes language-server, vitest, coverage-v8, and playwright in devDependencies", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    // `bascik --check` skips the per-file checks when the language server is not installed.
     expect(pkg.devDependencies["@bascik/language-server"]).toBeDefined();
     expect(pkg.devDependencies.vitest).toBeDefined();
     expect(pkg.devDependencies["@vitest/coverage-v8"]).toBeDefined();

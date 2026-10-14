@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// One verification loop for a Bascik project: bascik --check, the language server linter, and optionally a build.
+// One verification loop for a Bascik project: bascik --check (which includes the language server's per-file checks
+// when it is installed), the linter on component folders outside the project, and optionally a build.
 import { parseArgs } from 'node:util';
 import { isAbsolute, relative, sep } from 'node:path';
 import { componentRoots, fail, findPackageBin, findProjectRoot, installedVersion, isMain, loadProjectConfig, run } from './lib/project.mjs';
@@ -7,10 +8,13 @@ import { componentRoots, fail, findPackageBin, findProjectRoot, installedVersion
 const HELP = `Usage: node verify.mjs [--build] [--strict] [--npx]
 
 Runs, from the project root:
-  1. bascik --check                       pages, components, config, and API routes
-  2. bascik-language-server --check       scoping patterns, unclosed tags, misplaced directives (also run on
-                                          each directory.components root outside the project, such as a
-                                          monorepo's shared components)
+  1. bascik --check                       the project checks (config, routes, components) and, when
+                                          @bascik/language-server is installed, the per-file checks too
+                                          (scoping patterns, unclosed tags, misplaced directives)
+  2. bascik-language-server --check       each directory.components root outside the project, such as a
+                                          monorepo's shared components, which bascik --check does not
+                                          reach. Also the project itself, when step 1 had to skip its
+                                          per-file checks
   3. bascik --build (with --build)        a full production build
 
 Uses the project's installed packages. Exits nonzero when any step fails.
@@ -64,17 +68,23 @@ async function main() {
   const statuses = [];
 
   const checkArgs = [bascik, '--check', ...(values.strict ? ['--strict'] : [])];
-  statuses.push(report(`bascik --check${values.strict ? ' --strict' : ''}`, await run(process.execPath, checkArgs, options)));
+  const checked = await run(process.execPath, checkArgs, options);
+  statuses.push(report(`bascik --check${values.strict ? ' --strict' : ''}`, checked));
 
   const lsp = findPackageBin(root, '@bascik/language-server', 'bascik-language-server');
   const config = await loadProjectConfig(root);
   const external = externalComponentRoots(root, componentRoots(root, config?.module));
-  const lintTargets = [undefined, ...external];
+  // bascik --check already ran the per-file checks over this project, so running the linter on it again would print
+  // every finding twice. It says so when it had to skip them, and only then does the linter stand in for it.
+  const perFileSkipped = /per-file checks skipped/.test(checked.output ?? '');
+  const lintTargets = [...(perFileSkipped ? [undefined] : []), ...external];
   const label = (target) => `bascik-language-server --check${target ? ` ${relative(root, target)}` : ''}`;
   // --project makes the linter read this project's config for a folder outside it, so shared components are
   // checked as components. The target stays last so an older linter that ignores --project still checks it.
   const lintArgs = (target) => ['--check', ...(target ? ['--project', root, target] : [])];
-  if (lsp) {
+  if (lintTargets.length === 0) {
+    // Nothing for the linter to add: bascik --check covered the project, and no component root lies outside it.
+  } else if (lsp) {
     for (const target of lintTargets) {
       statuses.push(report(label(target), await run(process.execPath, [lsp, ...lintArgs(target)], options)));
     }

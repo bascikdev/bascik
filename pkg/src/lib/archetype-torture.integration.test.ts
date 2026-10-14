@@ -825,14 +825,17 @@ describe("Real-world archetype torture suite & migration-tutorials example sites
     });
 
     try {
-      // 1. Before --fix, --check reports 3 missing-prop-prefix warnings
+      // 1. Before --fix, --check reports 3 missing-prop-prefix warnings. They come from the language server, the
+      //    one place that rule lives, so they are listed per file under their rule id.
       const initialLint = runBascikCli(dir, ["--check"]);
-      expect(initialLint.stdout).toContain("Component props missing data-bascik-prop-* prefix (3)");
+      expect(initialLint.stdout).toContain("Per-file checks");
+      expect(initialLint.stdout.match(/\(missing-prop-prefix\)/g)).toHaveLength(3);
 
       // 2. Run bascik --check --fix
       const fixRes = runBascikCli(dir, ["--check", "--fix"]);
       expect(fixRes.status, fixRes.stderr).toBe(0);
-      expect(fixRes.stdout).not.toContain("Component props missing data-bascik-prop-* prefix");
+      expect(fixRes.stdout).not.toContain("(missing-prop-prefix)");
+      expect(fixRes.stdout).toContain("fixed 1 file: src/pages/index.html");
 
       // 3. Build and verify all 3 props now render into the compiled HTML
       const buildRes = runBascikCli(dir, ["--build"]);

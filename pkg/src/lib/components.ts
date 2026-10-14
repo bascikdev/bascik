@@ -13,6 +13,7 @@ import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME, isPageAwareBuildOpenTag } from "./html-patterns.ts";
 import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import { stderr as colorErr } from "./colors.ts";
 import { PLAUSIBLE_TAG_NAME, PRESERVE_WILDCARD_PATTERN } from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
@@ -227,7 +228,9 @@ const warnComponentCompatibility = async (
     const key = `${displayPath}:${line}:${ruleId}`;
     if (seenWarnings.has(key)) return;
     seenWarnings.add(key);
-    console.warn(`[bascik] warning (${ruleId}) in ${displayPath}:${line}: ${message} ${suggestion}`);
+    console.warn(
+      `${colorErr.tag("warn", "[bascik] warning")} ${colorErr.dim(`(${ruleId})`)} in ${colorErr.cyan(`${displayPath}:${line}`)}: ${message} ${colorErr.dim(suggestion)}`,
+    );
   };
 
   const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;

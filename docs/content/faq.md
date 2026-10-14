@@ -79,17 +79,26 @@ Bascik does not maintain a hardcoded allowlist of third-party custom element nam
 
 ## What does `bascik --check` actually check?
 
-`bascik --check` validates pages, components, config, and API route files in one pass. It reports:
+`bascik --check` validates pages, components, config, and API route files in one pass. It does this in two halves, and each rule lives in exactly one of them.
+
+**Project checks**, which `bascik` runs itself because they need the whole project:
 
 - Config and path validation issues (including missing script paths and unreadable TLS files)
 - Missing site URL when sitemap/robots generation is enabled
 - Duplicate component tag names and circular component references
+- Two pages, or two API route files, that resolve to the same URL
+- Unmatched or unused components
+- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
+
+**Per-file checks**, which need only one file and come from the [linter](/tools/linter) (`@bascik/language-server`, which projects created with `npm create bascik` already have):
+
 - Unknown `data-bascik-*` attribute names (likely typos)
 - Script mode conflicts such as one tag containing both `data-bascik-build` and `data-bascik-server`
-- API route method/export problems and route collisions
-- Unmatched or unused components
+- API route files with no method handler, or with a method export that is not uppercase
+- CSS and JavaScript in components that cannot be scoped
 - Advisory conventions such as component `<style>` placement and `<script>` placement ordering
-- WHATWG HTML5 parse errors in every compiled `dist/` HTML file (requires [parse5](https://parse5.js.org/) as a dev dependency; if not installed, `--check` prints a one-line install hint instead)
+
+If the linter is not installed, the project checks still run and the report says the per-file checks were skipped.
 
 Run `bascik --check --json` for machine-readable results, and `bascik --check --strict` if you want warnings to fail CI.
 

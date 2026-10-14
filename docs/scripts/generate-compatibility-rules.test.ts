@@ -3,12 +3,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 describe('generate-compatibility-rules', () => {
-  it('parses compatibility.md and generates extension compatibility rules JSON', async () => {
+  it('parses compatibility.md and generates compatibility rules JSON for the language server and the compiler', async () => {
     // Dynamically import the generator module so it executes its top-level script logic
     await import('./generate-compatibility-rules.js');
 
-    const rulesFile = path.resolve(import.meta.dirname, '../../extensions/vscode-bascik/src/compatibility-rules.json');
-    const content = await fs.readFile(rulesFile, 'utf8');
+    // The VS Code extension has no copy: it runs the language server, which holds this one.
+    const lspFile = path.resolve(import.meta.dirname, '../../lsp/src/compatibility-rules.json');
+    const pkgFile = path.resolve(import.meta.dirname, '../../pkg/src/lib/compatibility-rules.json');
+    const content = await fs.readFile(lspFile, 'utf8');
+    expect(await fs.readFile(pkgFile, 'utf8')).toBe(content);
     const rules = JSON.parse(content);
 
     expect(Array.isArray(rules)).toBe(true);

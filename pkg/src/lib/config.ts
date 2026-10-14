@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
 import { resolveCliAction } from "./cli.ts";
+import { stderr as colorErr } from "./colors.ts";
 import {
   collectConfigWarnings,
   formatConfigErrors,
@@ -202,6 +203,7 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
     copies: true,
     deletes: true,
     transpiles: true,
+    pinServerUrl: true,
   },
   base: "/",
 };
@@ -390,7 +392,7 @@ export const initBascikConfig = (
   // Non-fatal findings (e.g. a missing scripts.importRoot directory) are
   // reported once and never abort startup.
   for (const warning of collectConfigWarnings(safeUserConfig, { fs: deps.fs, cwd: deps.cwd })) {
-    console.warn(`[bascik] warning: ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
+    console.warn(`${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
   }
 
   let activeOverride: UserConfig = {};

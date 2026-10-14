@@ -46,7 +46,7 @@ The surprises that matter most:
 
 ## Lint rules
 
-`bascik-language-server --check` (run by `verify.mjs`) reports these as errors:
+`bascik --check` (through `@bascik/language-server`, and run by `verify.mjs`) reports these as errors:
 
 | Rule | Pattern | Use instead |
 |---|---|---|

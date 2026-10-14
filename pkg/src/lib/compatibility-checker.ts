@@ -48,9 +48,9 @@ export function parseIgnoreDirectives(text: string): DiagnosticIgnoreRange[] {
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
     const ignoreMatch =
-      /<!--\s*bascik-ignore(?:\s+([\w,-]+))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-ignore(?:\s+([\w,-]+))?\s*\*\//.exec(line) ||
-      /\/\/\s*bascik-ignore(?:\s+([\w,-]+))?/.exec(line);
+      /<!--\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
+      /\/\*\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /\/\/\s*bascik-ignore(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (ignoreMatch) {
       const rules = ignoreMatch[1]
@@ -64,9 +64,9 @@ export function parseIgnoreDirectives(text: string): DiagnosticIgnoreRange[] {
     }
 
     const disableMatch =
-      /<!--\s*bascik-disable(?:\s+([\w,-]+))?\s*-->/.exec(line) ||
-      /\/\*\s*bascik-disable(?:\s+([\w,-]+))?\s*\*\//.exec(line) ||
-      /\/\/\s*bascik-disable(?:\s+([\w,-]+))?/.exec(line);
+      /<!--\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*-->/.exec(line) ||
+      /\/\*\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?\s*\*\//.exec(line) ||
+      /\/\/\s*bascik-disable(?:\s+([\w-]+(?:\s*,\s*[\w-]+)*))?/.exec(line);
 
     if (disableMatch && disableStart === null) {
       disableStart = lineIndex;

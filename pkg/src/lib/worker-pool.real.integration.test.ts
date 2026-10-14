@@ -71,6 +71,35 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("WorkerPool real-worker lifecycle settlement", () => {
   it(
+    "settles every task when work is submitted as earlier tasks finish",
+    async () => {
+      // The dev pipeline keeps a few tasks per worker in flight and submits the next one as
+      // each finishes. A worker that took a queued task was once still listed as idle, so the
+      // next submission replaced its task and that task never settled.
+      const script = await fixture("waves", EXIT_ON_SIGNAL);
+      const pool = new WorkerPool<unknown, unknown>(script, 2, {});
+      try {
+        const total = 60;
+        let next = 0;
+        const lane = async (): Promise<unknown[]> => {
+          const done: unknown[] = [];
+          while (next < total) done.push(await pool.run(`task-${next++}`));
+          return done;
+        };
+        const settled = await Promise.race([
+          Promise.all(Array.from({ length: 4 }, lane)),
+          sleep(8000).then(() => "timed out" as const),
+        ]);
+        expect(settled).not.toBe("timed out");
+        expect((settled as unknown[][]).flat()).toHaveLength(total);
+      } finally {
+        await pool.terminate();
+      }
+    },
+    15_000,
+  );
+
+  it(
     "rejects a clean exit(0) active task and dispatches the queued task to a replacement",
     async () => {
       const script = await fixture("exit0", EXIT_ON_SIGNAL);

@@ -137,7 +137,7 @@ When running `bascik` in development mode:
 
 This recording runs the dev server with a `post` script that watches `content/` and writes `dist/search-index.json`. Saving `content/notes.md` rebuilds only the page that reads it, then reruns the script:
 
-![A terminal running bascik. Five pages transpile, then the search-index exec script runs once and logs indexed: Release notes, and the server starts. After content/notes.md is saved, only pages/notes.html is rebuilt and the script runs again, logging indexed: Release notes for 1.0](/assets/demos/exec-watch@2x.webp)
+![A terminal running bascik. The server address stays pinned to the top row. Five pages transpile, then the search-index exec script runs once and logs indexed: Release notes. After content/notes.md is saved, only pages/notes.html is rebuilt and the script runs again, logging indexed: Release notes for 1.0](/assets/demos/exec-watch@2x.webp)
 
 ## When a script fails
 

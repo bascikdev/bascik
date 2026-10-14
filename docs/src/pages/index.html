@@ -605,23 +605,6 @@
       color: var(--pillar-text);
     }
 
-    .speed-note {
-      grid-column: 1 / -1;
-      margin-top: 12px;
-      font-size: 0.82rem;
-      line-height: 1.55;
-      color: var(--text-muted);
-    }
-
-    .speed-note code {
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      padding: 2px 5px;
-      border-radius: 4px;
-      background: var(--pre-bg);
-      border: 1px solid var(--border);
-    }
-
     /* ── Install CTA ── */
     .cta-section {
       padding: 72px 0 88px;
@@ -1041,61 +1024,6 @@
       </div>
     </section>
 
-    <!-- ── Speed & Build Performance ── -->
-    <section class="home-section">
-      <div class="container">
-        <p class="section-label">Build Performance</p>
-        <h2 class="section-heading">Sub-second build speeds. Zero runtime overhead.</h2>
-        <p class="section-sub">Bascik transpiles and scopes static HTML components in milliseconds with zero runtime
-          overhead. Pure component and style scoping executes in under 0.2ms per page. In real-world projects with heavy
-          build-time execution, Bascik parallelizes and caches builds automatically: across this documentation site's 85
-          pages executing hundreds of custom Node.js build scripts to render Markdown and extract demo blocks, the
-          entire
-          site transpiles for dev startup in about <b class="highlight-text">1.4 seconds</b> with a warm cache and
-          workers
-          enabled on multi-core hardware.
-        </p>
-        <div class="speed-grid">
-          <figure class="demo-figure">
-            <script data-bascik-build>
-              import { demoImage } from '@/lib/md-renderer.ts';
-              export default () => demoImage('/assets/demos/dev-terminal@2x.webp', 'A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds.');
-            </script>
-            <figcaption>A new <code>npm create bascik</code> project, recorded for real on a laptop: the server is up
-              almost immediately, and saving one file rebuilds only that page. The figures beside it describe this
-              documentation site.</figcaption>
-          </figure>
-
-          <div class="speed-metrics">
-            <div class="metric-card">
-              <div class="metric-number">&lt; 0.2ms</div>
-              <div class="metric-label">Pure component and CSS scoping time per page</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-number">~1.4s</div>
-              <div class="metric-label">This documentation site (85 pages, hundreds of build scripts and Markdown
-                renders, warm cache)</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-number">0 kB</div>
-              <div class="metric-label">Framework runtime shipped to the browser</div>
-            </div>
-          </div>
-
-          <p class="speed-note">
-            <strong>Warm vs. Cold Startup Note:</strong> The ~1.4s dev startup transpile time reflects a warm
-            start with workers enabled on multi-core hardware and SHA-256 build script output caching enabled. On a
-            fresh
-            cold start (or after clearing <code>node_modules/.cache/bascik</code>), Bascik runs each uncached build
-            script in its
-            own isolated child process bounded by a concurrency-aware semaphore, compiling all 85 pages and hundreds of
-            Markdown
-            scripts in ~3.8s on an M1 MacBook Air. Once cached, subsequent restarts and live-reload edits compile in
-            milliseconds.
-          </p>
-        </div>
-      </div>
-    </section>
     <script>
       function flashCopy(btn) {
         btn.classList.add('copy-btn--done');
@@ -1129,6 +1057,44 @@
           <figcaption>Recorded for real: the starter site from <code>npm create bascik</code>, edited in VS Code and
             served by the Bascik dev server. Nothing here is mocked.</figcaption>
         </figure>
+      </div>
+    </section>
+
+    <!-- ── Speed & Build Performance ── -->
+    <!-- Sits last before Developer Experience, below the first screens: the recording is large, and a recording
+         high on the page lowers the mobile Lighthouse score. The build time breakdown of this site lives on
+         /development-server (<build-breakdown>), not here. -->
+    <section class="home-section">
+      <div class="container">
+        <p class="section-label">Build Performance</p>
+        <h2 class="section-heading">Milliseconds per page. Zero runtime overhead.</h2>
+        <p class="section-sub">Scoping and compiling a component is the cheap part: under 0.2ms per page. What takes
+          time on a real site is the Node.js you run while building it. Below is a new project in the dev server.
+          This documentation site's own production build is measured phase by phase on the
+          <a href="/development-server#build-time-of-this-documentation-site">development server page</a>.
+        </p>
+        <div class="speed-grid">
+          <figure class="demo-figure">
+            <script data-bascik-build>
+              import { demoImage } from '@/lib/md-renderer.ts';
+              export default () => demoImage('/assets/demos/dev-terminal@2x.webp', 'A terminal running bascik on a new project. The server URL is pinned to the top row as soon as the server is up, four pages transpile in a fraction of a second, and after one file is saved only that page is rebuilt, in a few milliseconds.');
+            </script>
+            <figcaption>A new <code>npm create bascik</code> project, recorded for real on a laptop: the server is up
+              almost immediately, its address stays pinned to the top row, and saving one file rebuilds only that
+              page.</figcaption>
+          </figure>
+
+          <div class="speed-metrics">
+            <div class="metric-card">
+              <div class="metric-number">&lt; 0.2ms</div>
+              <div class="metric-label">Pure component and CSS scoping time per page</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-number">0 kB</div>
+              <div class="metric-label">Framework runtime shipped to the browser</div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -1,0 +1,228 @@
+/* Phase colors. The pages phase is the accent: it is where the work is. */
+.bb {
+  --bb-startup: rgba(255, 255, 255, 0.22);
+  --bb-pre: #8ccaff;
+  --bb-pages: var(--accent);
+  --bb-post: #d6a0ff;
+  --bb-other: rgba(255, 255, 255, 0.42);
+  margin-top: 28px;
+}
+
+.bb-facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.bb-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  background: var(--callout-bg);
+  border: 1px solid var(--callout-border);
+  border-radius: var(--r);
+}
+
+.bb-fact-value {
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--accent-fg);
+}
+
+.bb-fact-label {
+  font-size: 0.82rem;
+  color: var(--pillar-text);
+}
+
+/* The docs column is narrow, so the two builds stack. */
+.bb-runs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.bb-run {
+  padding: 20px 22px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+
+.bb-run-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bb-run-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bb-run-total {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--accent-fg);
+}
+
+.bb-run-note {
+  margin: 2px 0 14px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* One scale for both bars, set inline as a share of the longer build. */
+.bb-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin-bottom: 16px;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.bb-seg {
+  min-width: 3px;
+}
+
+.bb-seg-startup {
+  background: var(--bb-startup);
+}
+
+.bb-seg-pre {
+  background: var(--bb-pre);
+}
+
+.bb-seg-pages {
+  background: var(--bb-pages);
+}
+
+.bb-seg-post {
+  background: var(--bb-post);
+}
+
+.bb-seg-other {
+  background: var(--bb-other);
+}
+
+/* `.bb` in front outranks the docs page's own `ul` spacing, which would indent these lists. */
+.bb .bb-legend {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bb-legend-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  column-gap: 10px;
+  align-items: baseline;
+  margin: 0;
+  padding: 0;
+}
+
+.bb-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  align-self: center;
+}
+
+.bb-legend-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bb-legend-time {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.bb-legend-detail {
+  grid-column: 2 / -1;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.bb-parallel {
+  margin-top: 20px;
+}
+
+.bb-parallel-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bb-parallel-note {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.bb .bb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bb-chip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  padding: 5px 10px;
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+}
+
+.bb-chip-name {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.bb-chip-time {
+  font-family: var(--mono);
+  color: var(--accent-fg);
+}
+
+.bb-foot {
+  margin: 20px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.bb-foot code {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 820px) {
+  .bb-facts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

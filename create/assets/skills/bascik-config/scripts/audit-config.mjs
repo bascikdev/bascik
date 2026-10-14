@@ -70,6 +70,7 @@ export const KNOWN_DEFAULTS = {
   'logging.copies': true,
   'logging.deletes': true,
   'logging.transpiles': true,
+  'logging.pinServerUrl': true,
   base: '/',
 };
 

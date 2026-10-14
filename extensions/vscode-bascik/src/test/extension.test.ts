@@ -30,18 +30,35 @@ async function waitFor(
   assert.fail(message);
 }
 
+/**
+ * The language server publishes diagnostics after a document opens, not before it returns. Waits for one a
+ * test expects and returns it.
+ */
+async function waitForDiagnostic(
+  uri: vscode.Uri,
+  predicate: (diagnostic: vscode.Diagnostic) => boolean,
+  message: string,
+): Promise<vscode.Diagnostic> {
+  let found: vscode.Diagnostic | undefined;
+  await waitFor(() => {
+    found = vscode.languages.getDiagnostics(uri).find(predicate);
+    return found !== undefined;
+  }, message);
+  return found!;
+}
+
 async function definitionsInFile(
   folderName: string,
   relativePath: string,
   needle: string,
-): Promise<vscode.Location[]> {
+): Promise<(vscode.Location | vscode.LocationLink)[]> {
   const folder = getWorkspaceFolder(folderName);
   const document = await vscode.workspace.openTextDocument(
     vscode.Uri.file(path.join(folder.uri.fsPath, relativePath)),
   );
   const index = document.getText().indexOf(needle);
   assert.ok(index >= 0, `${relativePath} should contain ${needle}`);
-  return vscode.commands.executeCommand<vscode.Location[]>(
+  return vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
     'vscode.executeDefinitionProvider',
     document.uri,
     document.positionAt(index + Math.max(1, Math.floor(needle.length / 2))),
@@ -149,17 +166,19 @@ const documentExtensions: Record<string, string> = {
 };
 const temporaryDocumentUris: vscode.Uri[] = [];
 
-// The extension only analyzes file: documents, so untitled buffers never receive diagnostics.
+// The language server only analyzes file: documents, so untitled buffers never receive diagnostics.
+// Scoping rules apply to component files only, so those tests pass `directory: 'src/components'`.
 async function openWorkspaceDocument(options: {
   language: string;
   content: string;
+  directory?: string;
 }): Promise<vscode.TextDocument> {
   const folder = getWorkspaceFolder('primary');
   const extension = documentExtensions[options.language] ?? options.language;
   const uri = vscode.Uri.file(
     path.join(
       folder.uri.fsPath,
-      'src',
+      options.directory ?? 'src',
       `tmp-doc-${temporaryDocumentUris.length}.${extension}`,
     ),
   );
@@ -205,7 +224,7 @@ suite('Extension Integration Suite', () => {
         locations && locations.length > 0,
         'Definition should be found',
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, '/');
       assert.ok(
         targetPath.endsWith('src/components/my-button.html'),
         `Expected location to end with src/components/my-button.html, got ${targetPath}`,
@@ -223,7 +242,7 @@ suite('Extension Integration Suite', () => {
         locations && locations.length > 0,
         'Definition for nested component should be found',
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, '/');
       assert.ok(
         targetPath.endsWith('src/components/card/my-card.html'),
         `Expected location to end with src/components/card/my-card.html, got ${targetPath}`,
@@ -242,7 +261,7 @@ suite('Extension Integration Suite', () => {
         locations && locations.length > 0,
         'Definition in the second root should be found',
       );
-      const targetPath = locations[0].uri.fsPath.replace(/\\/g, '/');
+      const targetPath = firstLocationPath(locations)!.replace(/\\/g, '/');
       assert.ok(
         targetPath.endsWith('shared-components/shared-pill.html'),
         `Expected location to end with shared-components/shared-pill.html, got ${targetPath}`,
@@ -314,7 +333,7 @@ suite('Extension Integration Suite', () => {
         'conflict-card',
       );
       assert.ok(
-        primary?.[0].uri.fsPath.endsWith(
+        firstLocationPath(primary)?.endsWith(
           path.join(
             'sample-workspace',
             'src',
@@ -324,7 +343,7 @@ suite('Extension Integration Suite', () => {
         ),
       );
       assert.ok(
-        secondary?.[0].uri.fsPath.endsWith(
+        firstLocationPath(secondary)?.endsWith(
           path.join(
             'secondary-workspace',
             'ui',
@@ -346,7 +365,7 @@ suite('Extension Integration Suite', () => {
         'Nested project definition should be found',
       );
       assert.ok(
-        locations[0].uri.fsPath.endsWith(
+        firstLocationPath(locations)?.endsWith(
           path.join(
             'nested-project',
             'src',
@@ -368,7 +387,7 @@ suite('Extension Integration Suite', () => {
         'Nested conflicting definition should be found',
       );
       assert.ok(
-        locations[0].uri.fsPath.endsWith(
+        firstLocationPath(locations)?.endsWith(
           path.join(
             'nested-project',
             'src',
@@ -1728,6 +1747,14 @@ suite('Extension Integration Suite', () => {
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
+      await waitForDiagnostic(
+        doc.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            'is not declared in this component and will be left unscoped',
+          ),
+        'Expected the undeclared ID reference outside the raw-text elements',
+      );
       const diagnostics = vscode.languages
         .getDiagnostics(doc.uri)
         .filter((diagnostic) =>
@@ -1882,17 +1909,17 @@ suite('Extension Integration Suite', () => {
         ),
       );
       const doc = await vscode.workspace.openTextDocument(componentUri);
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((diagnostic) =>
-        diagnostic.message.includes(
-          'data-bascik-attr-href references prop "link"',
-        ),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            'data-bascik-attr-href references prop "link"',
+          ),
+        'Expected a hint for an attribute directive prop missing from every usage',
       );
-      assert.ok(
-        match,
-        'Expected warning for an attribute directive prop missing from every usage',
-      );
-      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
+      // A hint, not a warning: pages built from Markdown or a build script are invisible to the language server.
+      assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Information);
+      assert.strictEqual(match.code, 'attr-prop-unsupplied');
     });
 
     test('reports error when script has both data-bascik-build and data-bascik-server', async () => {
@@ -1972,35 +1999,62 @@ suite('Extension Integration Suite', () => {
     test('reports JS compatibility warning in html script tag', async () => {
       const doc = await openWorkspaceDocument({
         language: 'html',
+        directory: 'src/components',
         content: '<script>\nelement.id = "custom";\n</script>',
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Runtime .id assignment'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes('Runtime .id assignment'),
+        'Expected JS compatibility warning in script block',
       );
-      assert.ok(match, 'Expected JS compatibility warning in script block');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
     test('reports CSS compatibility warning in an inline style tag', async () => {
       const document = await openWorkspaceDocument({
         language: 'html',
+        directory: 'src/components',
         content: '<style>\n[data-state] { color: red; }\n</style>',
       });
-      assert.ok(
-        vscode.languages
-          .getDiagnostics(document.uri)
-          .some((diagnostic) =>
-            diagnostic.message.includes(
-              'Standalone attribute selectors are not scoped',
-            ),
+      await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
+          diagnostic.message.includes(
+            'Standalone attribute selectors are not scoped',
           ),
+        'Expected CSS compatibility warning in an inline style tag',
       );
+    });
+
+    test('does not report scoping rules in a page, which Bascik does not scope', async () => {
+      const page = await openWorkspaceDocument({
+        language: 'html',
+        content:
+          '<style>\n[data-state] { color: red; }\n</style>\n<script>\nelement.id = "custom";\n</script>',
+      });
+      const css = await openWorkspaceDocument({
+        language: 'css',
+        content: '[data-state] { color: red; }',
+      });
+      const js = await openWorkspaceDocument({
+        language: 'javascript',
+        content: 'document.querySelector("[data-target]");',
+      });
+      for (const document of [page, css, js]) {
+        assert.deepStrictEqual(
+          vscode.languages
+            .getDiagnostics(document.uri)
+            .filter((diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error),
+          [],
+          `${document.uri.fsPath} is not a component file`,
+        );
+      }
     });
 
     test('does not report CSS compatibility warning for @import in html style tag', async () => {
       const doc = await openWorkspaceDocument({
         language: 'html',
+        directory: 'src/components',
         content: '<style>\n@import "theme.css";\n</style>',
       });
       const diagnostics = vscode.languages.getDiagnostics(doc.uri);
@@ -2023,11 +2077,11 @@ suite('Extension Integration Suite', () => {
           ),
         ),
       );
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Component tag <my-button> is unclosed'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes('Component tag <my-button> is unclosed'),
+        'Expected unclosed component tag warning',
       );
-      assert.ok(match, 'Expected unclosed component tag warning');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
@@ -2076,13 +2130,14 @@ suite('Extension Integration Suite', () => {
         ),
       );
       const doc = await vscode.workspace.openTextDocument(companionUri);
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Component has both a companion .css file and an inline <style> tag',
-        ),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) =>
+          d.message.includes(
+            'Component has both a companion .css file and an inline <style> tag',
+          ),
+        'Expected warning for companion CSS file conflict',
       );
-      assert.ok(match, 'Expected warning for companion CSS file conflict');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
@@ -2111,59 +2166,62 @@ suite('Extension Integration Suite', () => {
       }
     });
 
-    test('reports compatibility warning in standalone CSS file', async () => {
+    test('reports compatibility warning in a component companion CSS file', async () => {
       const doc = await openWorkspaceDocument({
         language: 'css',
+        directory: 'src/components',
         content: '[data-state] { color: red; }',
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Standalone attribute selectors are not scoped'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes('Standalone attribute selectors are not scoped'),
+        'Expected CSS warning in a companion CSS file',
       );
-      assert.ok(match, 'Expected CSS warning in standalone CSS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports compatibility warning in standalone JS file', async () => {
+    test('reports compatibility warning in a component companion JS file', async () => {
       const doc = await openWorkspaceDocument({
         language: 'javascript',
+        directory: 'src/components',
         content: 'document.querySelector("[data-target]");',
       });
-      const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes('Attribute selectors are not rewritten'),
+      const match = await waitForDiagnostic(
+        doc.uri,
+        (d) => d.message.includes('Attribute selectors are not rewritten'),
+        'Expected JS warning in a companion JS file',
       );
-      assert.ok(match, 'Expected JS warning in standalone JS file');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
 
-    test('reports compatibility warning in standalone TypeScript file', async () => {
+    test('reports compatibility warning in a component companion TypeScript file', async () => {
       const document = await openWorkspaceDocument({
         language: 'typescript',
+        directory: 'src/components',
         content: 'document.querySelectorAll("[data-target]");',
       });
-      assert.ok(
-        vscode.languages
-          .getDiagnostics(document.uri)
-          .some((diagnostic) =>
-            diagnostic.message.includes('Attribute selectors are not rewritten'),
-          ),
+      await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
+          diagnostic.message.includes('Attribute selectors are not rewritten'),
+        'Expected JS warning in a companion TypeScript file',
       );
     });
 
-    test('reports template classList replacement error in standalone TypeScript', async () => {
+    test('reports template classList replacement error in a component companion TypeScript file', async () => {
       const document = await openWorkspaceDocument({
         language: 'typescript',
+        directory: 'src/components',
         content: 'element.classList.replace("old", `state-${nextState}`);',
       });
-      const match = vscode.languages
-        .getDiagnostics(document.uri)
-        .find((diagnostic) =>
+      const match = await waitForDiagnostic(
+        document.uri,
+        (diagnostic) =>
           diagnostic.message.includes(
             'Template-literal class names are not rewritten safely',
           ),
-        );
-      assert.ok(match, 'Expected template classList replacement diagnostic');
+        'Expected template classList replacement diagnostic',
+      );
       // Every compatibility rule is an error (docs/content/compatibility.md).
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Error);
     });
@@ -2208,13 +2266,14 @@ suite('Extension Integration Suite', () => {
       );
       // Test file with fsPath ending with src/components/card.html
       const fileDoc = await vscode.workspace.openTextDocument(nonHyphenatedUri);
-      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Under WHATWG HTML §4.13, custom elements should include a hyphen',
-        ),
+      const match = await waitForDiagnostic(
+        fileDoc.uri,
+        (d) =>
+          d.message.includes(
+            'Under WHATWG HTML §4.13, custom elements should include a hyphen',
+          ),
+        'Expected non-hyphenated component warning',
       );
-      assert.ok(match, 'Expected non-hyphenated component warning');
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);
     });
 
@@ -2229,14 +2288,12 @@ suite('Extension Integration Suite', () => {
         ),
       );
       const fileDoc = await vscode.workspace.openTextDocument(uri);
-      const diagnostics = vscode.languages.getDiagnostics(fileDoc.uri);
-      const match = diagnostics.find((d) =>
-        d.message.includes(
-          'Under WHATWG HTML §4.13, custom elements should include a hyphen',
-        ),
-      );
-      assert.ok(
-        match,
+      const match = await waitForDiagnostic(
+        fileDoc.uri,
+        (d) =>
+          d.message.includes(
+            'Under WHATWG HTML §4.13, custom elements should include a hyphen',
+          ),
         'Expected non-hyphenated component warning for a file in the second root',
       );
       assert.strictEqual(match.severity, vscode.DiagnosticSeverity.Warning);

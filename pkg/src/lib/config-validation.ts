@@ -107,7 +107,7 @@ const KNOWN_KEYS: Record<string, unknown> = {
     maxBodySize: null,
     apiTimeout: null,
   },
-  logging: { level: null, requests: null, copies: null, deletes: null, transpiles: null },
+  logging: { level: null, requests: null, copies: null, deletes: null, transpiles: null, pinServerUrl: null },
   base: null,
 };
 

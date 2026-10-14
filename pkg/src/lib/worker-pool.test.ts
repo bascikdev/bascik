@@ -69,6 +69,14 @@ describe("WorkerPool", () => {
     });
   });
 
+  it("gives workers the environment it was handed, and leaves the default alone when it was not", () => {
+    new WorkerPool<string, string>("/fake/worker.js", 1, {}, { env: { FORCE_COLOR: "1" } });
+    expect(WorkerMock).toHaveBeenLastCalledWith("/fake/worker.js", expect.objectContaining({ env: { FORCE_COLOR: "1" } }));
+    WorkerMock.mockClear();
+    makePool(1);
+    expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty("env");
+  });
+
   it("dispatches tasks to idle workers and resolves with the result", async () => {
     const pool = makePool(1);
     const promise = pool.run("task-a");
@@ -107,6 +115,27 @@ describe("WorkerPool", () => {
     expect(workers[0].postMessage).toHaveBeenLastCalledWith("task-2");
     completeWith(workers[0], "r2");
     await expect(second).resolves.toBe("r2");
+    await pool.terminate();
+  });
+
+  it("does not hand a new task to a worker that already picked up a queued one", async () => {
+    // A worker that finishes a task and immediately takes the next queued one is busy,
+    // so a task submitted afterwards has to wait for it instead of replacing that job.
+    const pool = makePool(1);
+    const first = pool.run("task-1");
+    const second = pool.run("task-2");
+    completeWith(workers[0], "r1");
+    await expect(first).resolves.toBe("r1");
+    expect(workers[0].postMessage).toHaveBeenLastCalledWith("task-2");
+
+    const third = pool.run("task-3");
+    expect(workers[0].postMessage).toHaveBeenCalledTimes(2);
+
+    completeWith(workers[0], "r2");
+    await expect(second).resolves.toBe("r2");
+    expect(workers[0].postMessage).toHaveBeenLastCalledWith("task-3");
+    completeWith(workers[0], "r3");
+    await expect(third).resolves.toBe("r3");
     await pool.terminate();
   });
 
