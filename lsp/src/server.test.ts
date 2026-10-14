@@ -377,8 +377,20 @@ describe('BascikLanguageServer', () => {
 });
 
 describe('uriToFsPath', () => {
+  // Built from the platform's own absolute path, so it holds for `/a/b c.html` on POSIX and `C:\a\b c.html` on Windows.
+  const absolute = path.resolve(path.parse(process.cwd()).root, 'a', 'b c.html');
+
   it('turns a file URI into a path and leaves other strings alone', () => {
-    expect(uriToFsPath('file:///a/b%20c.html')).toBe('/a/b c.html');
-    expect(uriToFsPath('/already/a/path')).toBe('/already/a/path');
+    expect(uriToFsPath(pathToFileURL(absolute).toString())).toBe(absolute);
+    expect(uriToFsPath(absolute)).toBe(absolute);
+  });
+
+  it('decodes the percent-encoding in a URI', () => {
+    expect(pathToFileURL(absolute).toString()).toContain('b%20c.html');
+    expect(uriToFsPath(pathToFileURL(absolute).toString())).toContain('b c.html');
+  });
+
+  it.skipIf(process.platform !== 'win32')('reads the drive-letter form VS Code sends, with the colon encoded', () => {
+    expect(uriToFsPath('file:///c%3A/Users/me/site/index.html')).toBe('c:\\Users\\me\\site\\index.html');
   });
 });

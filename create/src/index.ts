@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises";
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { parseCliOptions } from "./cli.js";
+import { runNpm } from "./npm.js";
 import { scaffold, validateProjectName } from "./scaffold.js";
 
 const args = process.argv.slice(2);
@@ -47,16 +47,17 @@ if (yesFlag) {
 rl.close();
 
 const projectDir = join(process.cwd(), projectName);
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
 
 if (shouldInstall) {
   console.log("\nInstalling dependencies…\n");
-  spawnSync(npmCmd, ["install"], { cwd: projectDir, stdio: "inherit" });
+  const installed = runNpm(["install"], projectDir);
+  if (installed.error) console.error(`\nCould not run npm: ${installed.error}\nRun "npm install" in ${projectName} yourself.\n`);
 }
 
 if (shouldDev) {
   console.log("\nStarting dev server…\n");
-  spawnSync(npmCmd, ["run", "dev"], { cwd: projectDir, stdio: "inherit" });
+  const started = runNpm(["run", "dev"], projectDir);
+  if (started.error) console.error(`\nCould not run npm: ${started.error}\nRun "npm run dev" in ${projectName} yourself.\n`);
   console.log(`\nTo start again:  cd ${projectName} && npm run dev\n`);
 } else {
   console.log("\nNext steps:\n");

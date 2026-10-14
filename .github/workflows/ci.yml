@@ -119,6 +119,45 @@ jobs:
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
 
+  # Windows is a supported platform, so the code that touches paths, processes, and files runs there too. Checkout
+  # uses Git for Windows' default line-ending conversion on purpose: `.gitattributes` must keep every file LF, and a
+  # failure here that mentions line endings means it no longer does. Each step runs even if an earlier one failed,
+  # so one run reports every failing package.
+  unit-windows:
+    name: Windows Unit Tests
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Framework unit tests
+        if: ${{ !cancelled() }}
+        run: yarn pkg:unit
+
+      - name: Language server unit tests
+        if: ${{ !cancelled() }}
+        run: yarn lsp:unit
+
+      - name: Create-Bascik unit tests
+        if: ${{ !cancelled() }}
+        run: yarn create:unit
+
   unit-adapter-cloudflare:
     name: Cloudflare Adapter Unit Tests
     runs-on: ubuntu-latest

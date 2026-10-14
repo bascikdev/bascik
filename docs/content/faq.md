@@ -128,6 +128,15 @@ Bascik then links unchanged assets from `src/pages/` into `dist/` instead of cop
 
 Restart the dev server after changing configuration. Each dev startup clears `dist/`, so previously copied assets are recreated as links. On Windows, if symlink permissions are unavailable, Bascik warns once and falls back to copying. Enable Developer Mode or grant symlink permission to use the faster path.
 
+## Does Bascik run on Windows?
+
+Windows is a supported platform, and Bascik's own tests run on it in CI. Two things differ from macOS and Linux:
+
+- **Symlinked assets.** `assets.symlink` needs permission to create symlinks. Without it, Bascik warns once and copies the files instead. See [How can I speed up development when my site has many static assets?](#how-can-i-speed-up-development-when-my-site-has-many-static-assets).
+- **Line endings.** Source files saved with Windows (CRLF) line endings build to the same output as LF files, so you do not need to convert them. If you keep your project in Git, add `* text=auto eol=lf` to `.gitattributes` so every contributor gets the same bytes.
+
+If something behaves differently on Windows than this page says, please [open an issue](https://github.com/bascikdev/bascik/issues).
+
 ## How do I share components between projects?
 
 A components directory is plain files, so sharing means using `bascik add` from an npm package, copying files directly, or using a git submodule. Component names derive from filenames regardless of subfolder nesting, so a copied component that collides with a local one fails the build by design; rename with a prefix on the way in. See [Sharing Components](/how-to/sharing-components).
