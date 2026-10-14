@@ -38,7 +38,7 @@ node <skills-dir>/bascik-compatibility/scripts/lookup.mjs --list
 The surprises that matter most:
 
 - **Container, layer, anchor, and view-transition names are scoped per component type** and invisible to other components. A child cannot query its parent's named container (use an unnamed `@container (...)`), a global `@layer` order does not place component layers, and two instances share one `anchor-name` or `view-transition-name`. Read `/compatibility#names-shared-by-every-instance` before using any of them.
-- **Element names are not converted inside `:is()`, `:where()`, `:has()`,** and element selectors never reach slotted content or elements a script creates.
+- **Element names are not converted inside `:is()`, `:where()`, `:has()`,** and element selectors never reach slotted content or elements a script creates. Exception that is safe: `.markdown :is(p, ul)` (a scoped class, then a descendant combinator) matches every descendant, slotted content included, and is not flagged.
 - **Attribute selectors are not scoped:** anchor them on a class in CSS, and never use them in `querySelector`.
 - **`name` attributes are scoped per instance,** including `<details name>` groups and form fields; `data-bascik-preserve="name"` keeps them literal.
 - **TypeScript runs in the browser only** through `<script type="text/typescript">` or a companion `.ts` file, with erasable syntax.
