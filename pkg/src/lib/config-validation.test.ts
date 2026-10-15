@@ -48,6 +48,15 @@ describe("unknown keys", () => {
     );
   });
 
+  it("tells a user who still has logging.pinServerUrl where the setting went", () => {
+    const errors = validateConfigShape({ logging: { pinServerUrl: false } });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe("logging.pinServerUrl");
+    expect(errors[0].unknownKey).toBe(true);
+    expect(errors[0].message).toContain("--no-pin");
+    expect(errors[0].message).toContain("BASCIK_PIN_SERVER_URL=0");
+  });
+
   it("does not suggest anything for an unrelated key", () => {
     const errors = validateConfigShape({ zzzzzz: true });
     expect(errors).toHaveLength(1);

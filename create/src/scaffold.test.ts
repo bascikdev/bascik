@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseCliOptions } from "./cli.js";
 import {
   E2E_APP_SPEC,
@@ -119,7 +121,8 @@ describe("PACKAGE_JSON", () => {
     expect(pkg.type).toBe("module");
     expect(pkg.scripts.dev).toBe("bascik");
     expect(pkg.scripts.build).toBe("bascik --build");
-    expect(pkg.scripts.lint).toBe("bascik-language-server --check");
+    // One command for the whole project: `bascik --check` runs the per-file linter and the project-wide checks.
+    expect(pkg.scripts.lint).toBe("bascik --check");
     expect(pkg.scripts.test).toBe("vitest run");
     expect(pkg.scripts["test:watch"]).toBe("vitest");
     expect(pkg.scripts["test:coverage"]).toBe("vitest run --coverage");
@@ -128,6 +131,7 @@ describe("PACKAGE_JSON", () => {
 
   it("includes language-server, vitest, coverage-v8, and playwright in devDependencies", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
+    // `bascik --check` skips the per-file checks when the language server is not installed.
     expect(pkg.devDependencies["@bascik/language-server"]).toBeDefined();
     expect(pkg.devDependencies.vitest).toBeDefined();
     expect(pkg.devDependencies["@vitest/coverage-v8"]).toBeDefined();
@@ -137,6 +141,20 @@ describe("PACKAGE_JSON", () => {
   it("includes Bascik as a dependency", () => {
     const pkg = JSON.parse(PACKAGE_JSON("my-app"));
     expect(pkg.dependencies["@bascik/bascik"]).toBeDefined();
+  });
+
+  it("pins @bascik/bascik and @bascik/language-server to the current workspace versions", () => {
+    const repoRoot = resolve(import.meta.dirname, "../..");
+    const pkgJson = JSON.parse(readFileSync(resolve(repoRoot, "pkg/package.json"), "utf8")) as { version: string };
+    const lspJson = JSON.parse(readFileSync(resolve(repoRoot, "lsp/package.json"), "utf8")) as { version: string };
+    const adapterJson = JSON.parse(readFileSync(resolve(repoRoot, "adapters/cloudflare/package.json"), "utf8")) as {
+      peerDependencies: Record<string, string>;
+    };
+    const scaffolded = JSON.parse(PACKAGE_JSON("my-app"));
+
+    expect(scaffolded.dependencies["@bascik/bascik"]).toBe(`^${pkgJson.version}`);
+    expect(scaffolded.devDependencies["@bascik/language-server"]).toBe(`^${lspJson.version}`);
+    expect(adapterJson.peerDependencies["@bascik/bascik"]).toBe(`^${pkgJson.version}`);
   });
 
   it("uses the supplied name", () => {

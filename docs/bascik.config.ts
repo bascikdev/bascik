@@ -24,6 +24,7 @@ export default defineConfig({
       '../extensions/vscode-bascik/test-coverage.json',
       '../adapters/cloudflare/test-coverage.json',
       'test-coverage.json',
+      'build-timings.json',
     ],
     exec: [
       // Copies the npm custom element into dist/assets/vendor/. 'pre' so it exists before pages load it.
@@ -63,7 +64,8 @@ export default defineConfig({
   scripts: {
     cache: {
       // Example pages read example files through markers in their Markdown, which the cache key cannot see.
-      exclude: ['src/pages/example-components/**'],
+      // <build-breakdown> counts pages and components by reading directories, which it cannot see either.
+      exclude: ['src/pages/example-components/**', 'src/components/build-breakdown/**'],
     },
   },
 });
@@ -94,6 +96,9 @@ export const build = defineConfig({
       // Git-derived <lastmod> for sitemap.xml and TechArticle dates in pages. Post phase: it edits the
       // sitemap and pages Bascik writes. Build only.
       { script: 'scripts/generate-git-dates.ts', phase: 'post' },
+      // Per-page CSP <meta> with the page's inline script hashes. Post phase, after the other post scripts,
+      // because it hashes the final emitted script text. Build only.
+      { script: 'scripts/generate-csp-meta.ts', phase: 'post' },
     ],
   },
 });

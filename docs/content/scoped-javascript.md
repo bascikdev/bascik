@@ -69,7 +69,7 @@ Because class names are shared across all instances of the same component (for C
 **Use `id` + `getElementById` instead:**
 
 ```html
-<!-- ❌ Broken for multiple instances - querySelector returns first instance's button -->
+<!-- Broken for multiple instances - querySelector returns first instance's button -->
 <button class="my-btn">Click</button>
 <script>
   document.querySelector('.my-btn').addEventListener('click', () => { … });
@@ -77,7 +77,7 @@ Because class names are shared across all instances of the same component (for C
 ```
 
 ```html
-<!-- ✅ Correct - id is scoped per instance -->
+<!-- Correct - id is scoped per instance -->
 <button id="my-btn" class="my-btn">Click</button>
 <script>
   document.getElementById('my-btn').addEventListener('click', () => { … });

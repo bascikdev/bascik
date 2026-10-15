@@ -1,7 +1,12 @@
-<div class="boundary-wrapper">
+<div class="boundary-wrapper" data-class="preserve-data-class" data-style="preserve-data-style">
   <button id="boundary-btn" class="boundary-box">Click Me</button>
   <div id="boundary-output" class="boundary-output">Ready</div>
   <code class="boundary-code">data-bascik-prop-sample="literal"</code>
+  <textarea class="boundary-textarea" aria-label="Literal markup"
+    readonly><button id="boundary-btn" class="boundary-box" data-bascik-prop-sample="x"></button></textarea>
+  <div class="a b a-b" data-testid="boundary-multi-tokens">
+    <span class="token-probe">tokens</span>
+  </div>
 </div>
 
 <style>
@@ -17,16 +22,31 @@
   }
 
   .boundary-box::before {
-    content: ".boundary-box #boundary-btn";
+    content: ".boundary-box #boundary-btn { color: red; } @keyframes fake";
   }
 
   .boundary-active {
     color: green;
     font-weight: bold;
   }
+
+  .a {
+    --v: 10px;
+    --v-long: 24px;
+    padding-left: var(--v);
+    padding-right: var(--v-long);
+  }
+
+  .b {
+    font-style: italic;
+  }
+
+  .a-b {
+    text-decoration: underline;
+  }
 </style>
 
-<script>
+<script data-src="/lazy-chunk.js">
   // document.querySelector("#boundary-btn");
   /* document.getElementsByClassName("boundary-box"); */
 
@@ -39,6 +59,10 @@
 
       // Static scoped query works
       out.textContent = "Clicked Successfully";
+      out.setAttribute(
+        "data-multi-class-count",
+        String(document.getElementsByClassName("a b").length),
+      );
 
       // Dynamic variable lookup is intentionally unsupported at build time
       const targetId = "boundary-output";

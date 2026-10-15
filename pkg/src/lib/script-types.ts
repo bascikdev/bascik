@@ -1,3 +1,5 @@
+import { getHtmlAttributeValue } from "./html-patterns.ts";
+
 export const JAVASCRIPT_SCRIPT_TYPES = new Set([
   "text/javascript",
   "module",
@@ -7,7 +9,7 @@ export const JAVASCRIPT_SCRIPT_TYPES = new Set([
 ]);
 
 export const getScriptType = (openTag: string): string | undefined =>
-  openTag.match(/\btype\s*=\s*["']?([^"'>\s]+)["']?/i)?.[1].toLowerCase();
+  getHtmlAttributeValue(openTag, "type")?.trim().toLowerCase() || undefined;
 
 export const isJavaScriptScript = (openTag: string): boolean => {
   const type = getScriptType(openTag);

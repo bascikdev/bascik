@@ -258,6 +258,45 @@ describe("bootEnvironment", () => {
   });
 });
 
+describe("bootEnvironment: --quiet and --no-pin", () => {
+  const keys = ["BASCIK_LOG_LEVEL", "BASCIK_PIN_SERVER_URL"] as const;
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const key of keys) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+  afterEach(() => {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it("--quiet reaches workers as BASCIK_LOG_LEVEL=warn", async () => {
+    bootEnvironment(["--quiet"], await makeDir());
+    expect(process.env.BASCIK_LOG_LEVEL).toBe("warn");
+  });
+
+  it("-q is the same as --quiet", async () => {
+    bootEnvironment(["-q"], await makeDir());
+    expect(process.env.BASCIK_LOG_LEVEL).toBe("warn");
+  });
+
+  it("--no-pin reaches workers as BASCIK_PIN_SERVER_URL=0", async () => {
+    bootEnvironment(["--no-pin"], await makeDir());
+    expect(process.env.BASCIK_PIN_SERVER_URL).toBe("0");
+  });
+
+  it("does not touch either variable when neither flag is given, so a shell's own setting survives", async () => {
+    process.env.BASCIK_PIN_SERVER_URL = "0";
+    bootEnvironment([], await makeDir());
+    expect(process.env.BASCIK_PIN_SERVER_URL).toBe("0");
+    expect(process.env.BASCIK_LOG_LEVEL).toBeUndefined();
+  });
+});
+
 describe("getSiteUrl", () => {
   it("returns undefined when BASCIK_SITE_URL is unset", () => {
     delete process.env[SITE_URL_ENV_VAR];

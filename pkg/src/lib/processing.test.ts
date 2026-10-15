@@ -1103,6 +1103,25 @@ describe("pageProcessing – inlineStyles", () => {
     expect(pageContent).not.toContain('body {  color:  red;  }');
   });
 
+  it("preserves media and custom attributes on page-level <style> tags when minify.css is true", async () => {
+    (BascikConfig.minify as any).css = true;
+    const html =
+      '<!DOCTYPE html><html><head><style media="print" data-theme="print">.print-only { display: block; }</style></head><body><p data-note="x > y">Body</p></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
+    const result = await transpilePage(PAGE_PATH, {});
+    expect(result?.distHtml).toContain('<style media="print" data-theme="print">.print-only{display:block;}</style>');
+  });
+
+  it("does not emit false unresolved component warnings when script or style open tags contain a quoted >", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => { });
+    const html =
+      '<!DOCTYPE html><html><head></head><body><script data-note="a > b">const tpl = "<fake-comp></fake-comp>";</script></body></html>';
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(html);
+    await transpilePage(PAGE_PATH, {});
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("minifies inlined CSS using a custom minify.css function", async () => {
     (BascikConfig as any).assets = { inlineStyles: ['src/css/styles.css'], exclude: [] };
     (BascikConfig.minify as any).css = async (css: string) => `/* custom */ ${css.trim()}`;
@@ -2124,6 +2143,142 @@ describe("processAllPages – side effects", () => {
     expect(callOrder).toContain("emit:pages/index.html");
     expect(callOrder).toContain("store:pages/about.html");
     expect(callOrder).toContain("emit:pages/about.html");
+  });
+
+  describe("dev compile order: open pages, then the home page, then the rest", () => {
+    const recordEmitOrder = async () => {
+      const emitOrder: string[] = [];
+      const { eventEmitter } = await import("./events.ts");
+      (eventEmitter.emit as ReturnType<typeof vi.fn>).mockImplementation((event: string, payload: { relativePagePath: string }) => {
+        if (event === "transpiled") emitOrder.push(payload.relativePagePath);
+      });
+      return emitOrder;
+    };
+
+    // The pool mock records every dispatched job in call order.
+    const dispatchedPages = async (): Promise<string[]> => {
+      const { WorkerPool } = await import("./worker-pool.ts");
+      const instances = (WorkerPool as unknown as ReturnType<typeof vi.fn>).mock.instances as any[];
+      return instances.at(-1).run.mock.calls.map(([job]: [{ relativePagePath: string }]) => job.relativePagePath);
+    };
+
+    afterEach(() => {
+      (mem as any).openPages = [];
+    });
+
+    // listPages is alphabetical, which puts the home page after 404 and about.
+    const alphabetical = ["src/pages/404.html", "src/pages/about.html", "src/pages/faq.html", "src/pages/index.html"];
+
+    it("compiles the home page first on the main thread when no page is open", async () => {
+      (mem as any).openPages = [];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(alphabetical);
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+      const emitOrder = await recordEmitOrder();
+
+      await processAllPages({ useWorkers: false });
+
+      expect(emitOrder[0]).toBe("pages/index.html");
+      expect(emitOrder).toHaveLength(4);
+    });
+
+    it("compiles the home page first with workers when no page is open", async () => {
+      (mem as any).openPages = [];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(alphabetical);
+
+      await processAllPages({ useWorkers: true });
+
+      expect((await dispatchedPages())[0]).toBe("pages/index.html");
+    });
+
+    it("compiles an open page first, then the home page, then the rest on the main thread", async () => {
+      (mem as any).openPages = ["/faq"];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(alphabetical);
+      (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE_HTML);
+      const emitOrder = await recordEmitOrder();
+
+      await processAllPages({ useWorkers: false });
+
+      expect(emitOrder).toHaveLength(4);
+      // The open page and the home page both finish before any other page.
+      expect(new Set(emitOrder.slice(0, 2))).toEqual(new Set(["pages/faq.html", "pages/index.html"]));
+    });
+
+    it("dispatches an open page, then the home page, then the rest to workers", async () => {
+      (mem as any).openPages = ["/faq"];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(alphabetical);
+
+      await processAllPages({ useWorkers: true });
+
+      expect(await dispatchedPages()).toEqual([
+        "pages/faq.html",
+        "pages/index.html",
+        "pages/404.html",
+        "pages/about.html",
+      ]);
+    });
+
+    it("keeps the home page first when it is also the open page", async () => {
+      (mem as any).openPages = ["/"];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(alphabetical);
+
+      await processAllPages({ useWorkers: true });
+
+      expect(await dispatchedPages()).toEqual([
+        "pages/index.html",
+        "pages/404.html",
+        "pages/about.html",
+        "pages/faq.html",
+      ]);
+    });
+
+    it("keeps alphabetical order for the rest when there is no home page", async () => {
+      (mem as any).openPages = [];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/a.html", "src/pages/b.html", "src/pages/c.html"]);
+
+      await processAllPages({ useWorkers: true });
+
+      expect(await dispatchedPages()).toEqual(["pages/a.html", "pages/b.html", "pages/c.html"]);
+    });
+
+    it("treats a nested directory index as an ordinary page, not the home page", async () => {
+      (mem as any).openPages = [];
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(["src/pages/blog/index.html", "src/pages/index.html"]);
+
+      await processAllPages({ useWorkers: true });
+
+      expect(await dispatchedPages()).toEqual(["pages/index.html", "pages/blog/index.html"]);
+    });
+
+    it("moves a page that was opened after the batch started to the front of the queue", async () => {
+      (mem as any).openPages = [];
+      const names = Array.from({ length: 12 }, (_, i) => `page-${String(i + 1).padStart(2, "0")}`);
+      (listPages as ReturnType<typeof vi.fn>).mockResolvedValue(names.map((name) => `src/pages/${name}.html`));
+
+      const { WorkerPool } = await import("./worker-pool.ts");
+      (WorkerPool as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function (this: any) {
+        let calls = 0;
+        this.run = vi.fn(async (job: any) => {
+          // A browser connects its live-reload stream while the first page compiles.
+          if (calls++ === 0) (mem as any).openPages = ["/page-12"];
+          await new Promise((r) => setImmediate(r));
+          return {
+            relativePagePath: job.relativePagePath,
+            absolutePagePath: job.pagePath,
+            distHtmlBytes: new TextEncoder().encode("<html></html>"),
+            usedComponentsNames: [],
+            fileDependencies: [],
+          };
+        });
+        this.terminate = vi.fn(async () => { });
+      });
+
+      await processAllPages({ useWorkers: true });
+
+      const dispatched = await dispatchedPages();
+      expect(dispatched).toHaveLength(12);
+      // Only the job already in flight can precede it.
+      expect(dispatched.indexOf("pages/page-12.html")).toBeLessThanOrEqual(1);
+    });
   });
 
   it("invalidates the component list cache before processing pages", async () => {

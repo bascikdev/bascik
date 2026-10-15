@@ -394,6 +394,21 @@ describe("serverless parity: Node oracle versus local workerd", () => {
     });
   });
 
+  // The asset layer serves a static 404.html at its own URL as a 200. The
+  // Node server answers the custom 404 page with status 404 at every alias,
+  // so a crawler that requests /404 never indexes it as content.
+  it("the custom 404 page answers 404 at its own URL on both hosts", async () => {
+    for (const path of ["/404", "/404/"]) {
+      const { node: n, cf } = await both(path);
+      expect(n.status, `node ${path}`).toBe(404);
+      expect(cf.status, `cf ${path}`).toBe(404);
+      expect(cf.body, path).toBe(n.body);
+    }
+    const head = await both("/404", { method: "HEAD" });
+    expect(head.cf.status).toBe(404);
+    expect(head.cf.body).toBe("");
+  });
+
   it("no source leaks on either host", async () => {
     for (const path of ["/.bascik/server-scripts.json", "/src/api/health.ts", "/.env", "/_worker.js"]) {
       const { node: n, cf } = await both(path);
@@ -443,3 +458,58 @@ describe("serverless parity: failed deployment assembly", () => {
     }
   }, 120_000);
 });
+
+// A site built with a non-root base is requested with the prefix on every URL.
+// Both variants must serve static pages, assets, and the custom 404 below it,
+// exactly as `bascik --server` does, and nothing outside it.
+for (const target of ["cloudflare-pages", "cloudflare-workers"] as const) {
+  describe(`serverless parity: non-root base (${target})`, () => {
+    let root: string;
+    let node: NodeOracle;
+    let cloudflare: Harness;
+
+    beforeAll(async () => {
+      root = await createServerlessFixture(`base-${target}`, { base: "/docs/" });
+      await buildServerlessFixture(root, target);
+      node = await startNodeServer(root);
+      cloudflare = await startHarness({ projectRoot: root, target, bindings: { GREETING: "kv" } });
+    }, 180_000);
+
+    afterAll(async () => {
+      await cloudflare?.dispose();
+      await node?.stop();
+      if (root) await cleanupServerlessFixture(root);
+    });
+
+    it("serves static pages, assets, .well-known, dynamic pages, and API routes below the base", async () => {
+      for (const path of ["/docs/", "/docs/assets/logo.txt", "/docs/style.css", "/docs/.well-known/security.txt", "/docs/api/health"]) {
+        const n = await observe(await fetch(new URL(path, node.url)));
+        const cf = await observe(await cloudflare.fetch(path));
+        expect(n.status, `node ${path}`).toBe(200);
+        expect(cf.status, `cf ${path}`).toBe(200);
+        expect(cf.body, path).toBe(n.body);
+        expect(cf.headers["content-type"]?.split(";")[0], path).toBe(n.headers["content-type"]?.split(";")[0]);
+      }
+      const account = await cloudflare.fetch("/docs/account");
+      expect(account.status).toBe(200);
+      expect(await account.text()).toContain("via cloudflare");
+    });
+
+    it("answers a missing page below the base with the custom 404 and keeps paths outside the base unserved", async () => {
+      const n = await observe(await fetch(new URL("/docs/nope", node.url)));
+      const cf = await observe(await cloudflare.fetch("/docs/nope"));
+      expect(n.status).toBe(404);
+      expect(cf.status).toBe(404);
+      expect(cf.body).toContain("Custom 404");
+      expect(n.body).toContain("Custom 404");
+      const own = await cloudflare.fetch("/docs/404");
+      expect(own.status).toBe(404);
+      expect(await own.text()).toContain("Custom 404");
+      for (const outside of ["/", "/assets/logo.txt", "/index.html"]) {
+        const res = await cloudflare.fetch(outside, { redirect: "manual" });
+        expect(res.status, `cf ${outside}`).toBe(404);
+        await res.arrayBuffer();
+      }
+    });
+  });
+}

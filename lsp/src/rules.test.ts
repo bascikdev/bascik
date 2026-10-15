@@ -16,6 +16,20 @@ describe('Scoping Compatibility Rules', () => {
       expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(true);
     });
 
+    it.each(['[data-state]:hover { color: red; }', '[data-state][hidden] { color: red; }'])(
+      'detects unanchored compound selector %s',
+      (css) => {
+        const matches = matchCompatibilityRules(css, 'css');
+        expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(true);
+      },
+    );
+
+    it('allows an attribute selector with a scoped descendant class', () => {
+      const css = '[data-state] > .scoped-class { color: red; }';
+      const matches = matchCompatibilityRules(css, 'css');
+      expect(matches.some((m) => m.id === 'css-attribute-selector')).toBe(false);
+    });
+
     it('detects bare element selector in :is()', () => {
       const css = ':is(div, span) { color: blue; }';
       const matches = matchCompatibilityRules(css, 'css');

@@ -12,15 +12,18 @@ import { cpus } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
-import { distDigest, encodeEditPlan } from './compiler-timeline.ts';
+import { distDigest, encodeEditPlan, linkDependencies } from './compiler-timeline.ts';
+import { createPipelineBenchmarkFixture } from './profile-fixture.ts';
 import { execute } from './profile-runner.ts';
 import { cleanGeneratorEnvironment, validatePrivateDirectory } from './profile-workload.ts';
 
 export const COMPARISON_SCHEMA_VERSION = 1;
+export const COMPARE_FIXTURES = ['pipeline'] as const;
+export type CompareFixture = typeof COMPARE_FIXTURES[number];
 type BuildName = 'baseline' | 'candidate';
 type CacheState = 'cold' | 'warm';
 export interface CompareOptions {
-  project: string; baseline: string; candidate: string; reportDir: string;
+  project?: string; fixture?: CompareFixture; baseline: string; candidate: string; reportDir: string;
   rounds: number; mode: 'dev' | 'build'; siteUrl?: string;
 }
 
@@ -28,17 +31,22 @@ export function parseCompareArguments(args: string[]): CompareOptions {
   const { values } = parseArgs({
     args, strict: true,
     options: {
-      project: { type: 'string' }, baseline: { type: 'string' }, candidate: { type: 'string' },
+      project: { type: 'string' }, fixture: { type: 'string' }, baseline: { type: 'string' }, candidate: { type: 'string' },
       'report-dir': { type: 'string' }, rounds: { type: 'string', default: '3' }, mode: { type: 'string', default: 'build' },
       'site-url': { type: 'string' },
     }
   });
-  for (const name of ['project', 'baseline', 'candidate', 'report-dir'] as const) assert(values[name], `--${name} is required`);
+  for (const name of ['baseline', 'candidate', 'report-dir'] as const) assert(values[name], `--${name} is required`);
+  assert(Boolean(values.project) !== Boolean(values.fixture), 'pass either --project or --fixture');
+  if (values.fixture !== undefined) {
+    assert((COMPARE_FIXTURES as readonly string[]).includes(values.fixture), 'fixture must be pipeline');
+  }
   assert(values.mode === 'dev' || values.mode === 'build', 'mode must be dev or build');
   const rounds = Number(values.rounds);
   assert(Number.isInteger(rounds) && rounds >= 1 && rounds <= 10, 'rounds must be 1..10');
   return {
-    project: values.project!, baseline: values.baseline!, candidate: values.candidate!, reportDir: values['report-dir']!,
+    project: values.project, fixture: values.fixture as CompareFixture | undefined,
+    baseline: values.baseline!, candidate: values.candidate!, reportDir: values['report-dir']!,
     rounds, mode: values.mode, siteUrl: values['site-url'],
   };
 }
@@ -85,15 +93,24 @@ async function compilerIdentity(path: string) {
 export async function runCompilerCompare(options: CompareOptions) {
   const repository = fileURLToPath(new URL('../../', import.meta.url));
   const root = await validatePrivateDirectory(options.reportDir, [repository]);
-  const project = await realpath(options.project);
-  const distance = relative(repository, project);
-  assert(isAbsolute(distance) || distance === '..' || distance.startsWith('../'), 'project must be private and outside repository');
-  assert(!(await lstat(join(project, 'node_modules'))).isSymbolicLink(), 'project cache parent must not be a symlink');
   await mkdir(root, { recursive: true, mode: 0o700 });
   assert.equal((await readdir(root)).length, 0, 'report directory must be empty');
   const compilers = { baseline: await compilerIdentity(options.baseline), candidate: await compilerIdentity(options.candidate) };
+  let project: string;
+  if (options.fixture === 'pipeline') {
+    const generated = join(root, 'fixture');
+    await createPipelineBenchmarkFixture(generated, false);
+    await linkDependencies(join(repository, 'node_modules'), join(generated, 'node_modules'), compilers.baseline.path);
+    project = await realpath(generated);
+  } else {
+    assert(options.project, 'pass either --project or --fixture');
+    project = await realpath(options.project);
+  }
+  const distance = relative(repository, project);
+  assert(isAbsolute(distance) || distance === '..' || distance.startsWith('../'), 'project must be private and outside repository');
+  assert(!(await lstat(join(project, 'node_modules'))).isSymbolicLink(), 'project cache parent must not be a symlink');
   const metadata = {
-    schemaVersion: COMPARISON_SCHEMA_VERSION, mode: options.mode, project, rounds: options.rounds, siteUrl: options.siteUrl ?? null,
+    schemaVersion: COMPARISON_SCHEMA_VERSION, mode: options.mode, project, fixture: options.fixture ?? null, rounds: options.rounds, siteUrl: options.siteUrl ?? null,
     compilers, runtime: process.versions, platform: process.platform, arch: process.arch, cores: cpus().length,
     metric: 'readyMs: subject start to runCli resolution',
     limitations: ['Application-cache cold, not OS disk cold', 'Byte identity covers emitted HTML only, not metadata artifacts', 'A warm run reuses the script cache left by the preceding run, which may be the other compiler'],

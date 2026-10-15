@@ -9,3 +9,5 @@ export * from './config.js';
 export * from './project.js';
 export * from './analyzer.js';
 export * from './server.js';
+export * from './check.js';
+export * from './directive-rules.js';

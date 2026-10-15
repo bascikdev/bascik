@@ -160,8 +160,11 @@ describe('private compiler investigation harness', () => {
 describe('paired same-path compiler comparison', () => {
   it('requires every path argument and rejects removed edit mode', () => {
     const required = ['--project', '/p', '--baseline', '/b', '--candidate', '/c', '--report-dir', '/r'];
-    expect(parseCompareArguments(required)).toMatchObject({ rounds: 3, mode: 'build', siteUrl: undefined });
-    expect(() => parseCompareArguments(required.slice(2))).toThrow('--project is required');
+    expect(parseCompareArguments(required)).toMatchObject({ project: '/p', fixture: undefined, rounds: 3, mode: 'build', siteUrl: undefined });
+    expect(parseCompareArguments(['--fixture', 'pipeline', '--baseline', '/b', '--candidate', '/c', '--report-dir', '/r'])).toMatchObject({ project: undefined, fixture: 'pipeline', rounds: 3, mode: 'build' });
+    expect(() => parseCompareArguments(required.slice(2))).toThrow('pass either --project or --fixture');
+    expect(() => parseCompareArguments([...required, '--fixture', 'pipeline'])).toThrow('pass either --project or --fixture');
+    expect(() => parseCompareArguments(['--fixture', 'unknown', '--baseline', '/b', '--candidate', '/c', '--report-dir', '/r'])).toThrow('fixture must be pipeline');
     expect(() => parseCompareArguments([...required, '--mode', 'serve'])).toThrow('mode must be dev or build');
     expect(() => parseCompareArguments([...required, '--rounds', '0'])).toThrow('rounds must be 1..10');
     // Byte-equivalence controls require unchanged authored sources.

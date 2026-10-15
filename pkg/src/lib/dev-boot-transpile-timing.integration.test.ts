@@ -237,10 +237,17 @@ describe("dev boot transpile timing and worker diagnostic", () => {
     const median = sorted[Math.floor(sorted.length / 2)];
     expect(median).toBeGreaterThan(0);
 
-    // Bound individual outliers; the sum assertion below detects cumulative queue time.
-    for (const d of durations) {
+    // Bound individual outliers. The first page pays the one-time cold cost
+    // (scoping template recording, scopedCssCache fill, V8 warmup) while the
+    // other pages hit the shared caches, so exactly one cold page may exceed
+    // 5x the median. Every other page must stay within 5x (no staircase), and
+    // the cold page gets a looser bound with an absolute floor so CPU load or
+    // coverage instrumentation does not make it flaky. The sum assertion below
+    // detects cumulative queue time.
+    for (const d of sorted.slice(0, -1)) {
       expect(d).toBeLessThanOrEqual(median * 5);
     }
+    expect(sorted[sorted.length - 1]).toBeLessThanOrEqual(Math.max(median * 10, 150));
 
     // Extract total boot time
     const totalMatch = logs.match(/✓\s+40\s+pages\s+transpiled\s+in\s+(\d+(?:\.\d+)?)(ms|s)/);

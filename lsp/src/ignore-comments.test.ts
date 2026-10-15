@@ -25,6 +25,14 @@ describe('ignore-comments', () => {
     expect(isDiagnosticIgnored(2, undefined, ranges)).toBe(false);
   });
 
+  it('parses a block disable that lists several rules separated by comma and space', () => {
+    const js = `/* bascik-disable js-attribute-selector, js-document-class-query */\nconst a = 1;`;
+    const ranges = parseIgnoreDirectives(js, 'javascript');
+    expect(isDiagnosticIgnored(1, 'js-attribute-selector', ranges)).toBe(true);
+    expect(isDiagnosticIgnored(1, 'js-document-class-query', ranges)).toBe(true);
+    expect(isDiagnosticIgnored(1, 'css-other', ranges)).toBe(false);
+  });
+
   it('parses CSS /* bascik-ignore */', () => {
     const css = `/* bascik-ignore */\n[data-state] { color: red; }\np { color: blue; }`;
     const ranges = parseIgnoreDirectives(css, 'css');

@@ -86,6 +86,7 @@
     "docs:coverage": "yarn workspace bascik-docs coverage",
     "docs:cover": "yarn docs:coverage",
     "docs:test": "yarn workspace bascik-docs test",
+    "docs:measure-build": "yarn pkg:build && yarn workspace bascik-docs measure-build",
     "docs:update-coverage": "yarn workspace @bascik/bascik update-coverage",
     "docs:update-e2e-coverage": "yarn workspace @bascik/bascik update-e2e-coverage",
     "docs:update-scripts-coverage": "yarn workspace bascik-docs update-coverage",

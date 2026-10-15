@@ -20,6 +20,8 @@
  *   once a bascik token has been seen, unknown flags are an error.
  */
 
+import { LOG_LEVELS, QUIET_LOG_LEVEL } from "./log-level.ts";
+
 export type CliAction =
   | "init"
   | "add"
@@ -38,7 +40,10 @@ export interface CliFlags {
   log?: string;
   port?: number;
   host?: string;
+  /** From `--log-level`, or `warn` when `--quiet` was passed. */
   logLevel?: string;
+  /** `--no-pin`: do not pin the server URL to the top row of the dev terminal. */
+  noPin?: boolean;
   siteUrl?: string;
   envFiles: string[];
   only?: string[];
@@ -46,6 +51,7 @@ export interface CliFlags {
   target?: string;
   strict?: boolean;
   json?: boolean;
+  fix?: boolean;
   force?: boolean;
   yes?: boolean;
   dryRun?: boolean;
@@ -67,22 +73,25 @@ export interface CliDecision {
 /** Default log path for a bare `--log`. */
 export const DEFAULT_LOG_PATH = ".bascik/build.log";
 
-// Mirrors LOG_LEVELS in config.ts. cli.ts cannot import config.ts (config.ts
-// imports this module), so cli.test.ts carries a drift-guard test that keeps
-// the two lists identical.
-const CLI_LOG_LEVELS = ["silent", "error", "warn", "info", "debug"];
+// The same list config.ts and the config validator use. It lives in log-level.ts because cli.ts cannot import
+// config.ts (config.ts imports this module).
+const CLI_LOG_LEVELS: readonly string[] = LOG_LEVELS;
 
 /** Boolean flags the CLI understands (no value). */
 const BOOLEAN_FLAGS = new Set([
   "--build",
   "--server",
   "--check",
+  "--fix",
   "--strict",
   "--json",
   "--force",
   "--yes",
   "-y",
   "--dry-run",
+  "--quiet",
+  "-q",
+  "--no-pin",
   "--help",
   "-h",
   "--version",
@@ -104,6 +113,9 @@ const VALUE_FLAGS = new Set([
 /** `--log` is the one flag whose value is optional. */
 const OPTIONAL_VALUE_FLAGS = new Set(["--log"]);
 
+/** Every flag the parser accepts, for the help-text drift test. */
+export const CLI_FLAGS: readonly string[] = [...BOOLEAN_FLAGS, ...VALUE_FLAGS, ...OPTIONAL_VALUE_FLAGS];
+
 /** Positional subcommands the CLI understands. */
 const KNOWN_SUBCOMMANDS = new Set(["init", "add"]);
 
@@ -114,11 +126,14 @@ const SUGGESTION_CANDIDATES = [
   "--build",
   "--server",
   "--check",
+  "--fix",
   "--strict",
   "--json",
   "--force",
   "--yes",
   "--dry-run",
+  "--quiet",
+  "--no-pin",
   "--help",
   "--version",
   "--config",
@@ -150,10 +165,18 @@ const editDistance = (a: string, b: string): number => {
   return prev[b.length];
 };
 
+/**
+ * Words that belong to another command, so a near match would send the user somewhere wrong. `lint` is the
+ * language server's command (`bascik-language-server --check`), not a Bascik one, and within edit distance 2 of
+ * `init`, which would scaffold files. There is deliberately no `lint` alias for `--check`: the two commands do
+ * different jobs, and the word means one thing.
+ */
+const NEVER_SUGGEST = new Set(["lint"]);
+
 /** Best near-match candidate for a mistyped token, or undefined when none is close. */
 const suggest = (token: string): string | undefined => {
   const normalized = token.replace(/^-+/, "").toLowerCase();
-  if (!normalized) return undefined;
+  if (!normalized || NEVER_SUGGEST.has(normalized)) return undefined;
   let best: { candidate: string; distance: number } | undefined;
   for (const candidate of SUGGESTION_CANDIDATES) {
     const distance = editDistance(normalized, candidate.replace(/^-+/, ""));
@@ -416,6 +439,16 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (present.has("--strict")) flags.strict = true;
   if (present.has("--json")) flags.json = true;
+  if (present.has("--fix")) flags.fix = true;
+  if (present.has("--no-pin")) flags.noPin = true;
+
+  // `--quiet` is `--log-level warn`. Giving both is a contradiction, so it is rejected instead of one winning.
+  if (present.has("--quiet") || present.has("-q")) {
+    if (flags.logLevel !== undefined) {
+      return error(`Error: --quiet is the same as --log-level ${QUIET_LOG_LEVEL}. Use one or the other.`);
+    }
+    flags.logLevel = QUIET_LOG_LEVEL;
+  }
 
   if (flags.force) {
     return error("Error: --force only applies to add.");
@@ -443,6 +476,14 @@ export const resolveCliAction = (args: string[]): CliDecision => {
 
   if (flags.json && action !== "check") {
     return error("Error: --json only applies to --check.");
+  }
+
+  if (flags.fix && action !== "check") {
+    return error("Error: --fix only applies to --check.");
+  }
+
+  if (flags.noPin && action !== "dev") {
+    return error("Error: --no-pin only applies to the dev server.");
   }
 
   if (flags.log !== undefined && action !== "build") {
@@ -479,6 +520,8 @@ Options:
   --server           Serve the production build over HTTP/1.1
                      (HTTP/2 when http.tls.enabled is set)
   --check            Validate the project (pages, components, config)
+  --fix              Apply deterministic fixes during --check, such as adding a
+                     missing data-bascik-prop- prefix, then report what remains
   --strict           Treat warnings as errors during --check (exits 1 on warnings)
   --json             Emit structured JSON findings during --check
   --force            Overwrite modified local components when running add
@@ -486,6 +529,8 @@ Options:
   --dry-run          List what add would do without writing to disk
   --log [path]       Also write build output to a log file
                      (only with --build; default: .bascik/build.log)
+  --only <glob>      Only transpile pages matching the glob, relative to
+                     directory.pages (repeatable; only with --build)
   --target <name>    Also emit a serverless deployment bundle under
                      dist/.bascik/<name>/ (only with --build).
   --port <n>         Override the server port
@@ -494,6 +539,11 @@ Options:
                      (overrides BASCIK_SERVER_HOST and http.hostname)
   --log-level <lvl>  Override logging.level: silent, error, warn, info, debug
                      (overrides BASCIK_LOG_LEVEL and logging.level)
+  --quiet, -q        Same as --log-level warn: hide per-page, copy, request, and
+                     script progress lines. The server address and the
+                     transpile summary still print
+  --no-pin           Do not pin the server address to the top row of the
+                     terminal (dev only; same as BASCIK_PIN_SERVER_URL=0)
   --site-url <url>   Set the site URL for this run (overrides BASCIK_SITE_URL and .env)
   --env-file <path>  Load env vars from a file (repeatable; later files win).
                      Defaults to ./.env when present, silently skipped when not

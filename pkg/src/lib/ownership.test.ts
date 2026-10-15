@@ -167,7 +167,9 @@ describe("ownership inventory persistence & integrity", () => {
     expect(inv?.owners[source].outputs).toEqual([{ file: "index.html", route: "/" }]);
   });
 
-  it("a failed artifact write leaves the previous valid ownership untouched (rollback contract)", async () => {
+  // The write is made to fail by removing write permission from the folder. Windows ignores those permission bits,
+  // so nothing would fail there. The same rollback runs on every platform; only this way of forcing it is POSIX.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a failed artifact write leaves the previous valid ownership untouched (rollback contract)", async () => {
     // Write a valid prior inventory, then force the manifest write to fail so
     // the finalize transaction aborts before the ownership is replaced.
     const source = resolve(tempDir, "src/pages/a.html");
@@ -180,18 +182,14 @@ describe("ownership inventory persistence & integrity", () => {
     ownershipTracker.recordOutput(source, "pages/a.html", "a.html", "/a");
 
     // Make the .bascik dir read-only so atomicWriteJson's rename fails.
-    if (process.platform !== "win32") {
-      await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o500);
-    }
+    await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o500);
     let threw = false;
     try {
       await finalizeOwnedArtifacts("1.0.0", { forTargetedBuild: true });
     } catch {
       threw = true;
     } finally {
-      if (process.platform !== "win32") {
-        await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o700);
-      }
+      await (await import("node:fs/promises")).chmod(join(tempDir, ".bascik"), 0o700);
     }
     // The previous ownership file must still exist and be valid.
     const after = await readOwnershipInventory();

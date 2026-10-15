@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   type Diagnostic,
   DiagnosticSeverity,
@@ -10,6 +11,9 @@ import {
   type LocationLink,
   type Hover,
   MarkupKind,
+  type CodeAction,
+  CodeActionKind,
+  type TextEdit,
 } from 'vscode-languageserver';
 import { type TextDocumentLike } from './types.js';
 import {
@@ -19,8 +23,15 @@ import {
   normalizeComponentName,
   htmlSuppliesComponentProp,
 } from './project.js';
-import { matchCompatibilityRules } from './rules.js';
+import { findCompatibilityMatches } from './rules.js';
 import { analyzeApiRouteSource } from './api-rules.js';
+import {
+  findComponentStructureProblems,
+  isKnownBascikAttribute,
+  isKnownBuildValue,
+  unknownBascikAttributeMessage,
+  unknownDirectiveValueMessage,
+} from './directive-rules.js';
 import { findModuleSpecifiers } from './module-specifiers.js';
 import { analyzeServerScriptSource } from './server-script-rules.js';
 import {
@@ -345,6 +356,25 @@ export function parseScriptOpenTagAttributes(
   return attrs;
 }
 
+/**
+ * Attribute values of any open tag, keyed by lowercased name. A bare attribute
+ * maps to `""`, as the DOM reports it. The first occurrence of a name wins, as
+ * in the HTML tokenizer, and text inside a quoted value is never read as an
+ * attribute. An unquoted value keeps its slashes; a trailing `/>` ends it.
+ */
+function readOpenTagAttributes(openTag: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const insideTag = openTag.replace(/^<[^\s/>]+/, '').replace(/\/?>$/, '');
+  const attrRe =
+    /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(insideTag)) !== null) {
+    const name = match[1].toLowerCase();
+    if (!attrs.has(name)) attrs.set(name, match[2] ?? match[3] ?? match[4] ?? '');
+  }
+  return attrs;
+}
+
 export function resolveScriptTarget(
   value: string,
   documentDir: string,
@@ -421,13 +451,27 @@ export function collectLeadingSlashDiagnostics(
   return out;
 }
 
+/**
+ * Escapes plain text so it renders as typed inside markdown: syntax characters are backslash-escaped, runs of
+ * spaces become `&nbsp;`, `>` is escaped, and a newline becomes a hard break. Descriptions come from a
+ * component's `<!-- @bascik -->` header and are prose, not markdown, so `<unsafe>` or `*not bold*` stay literal.
+ * Matches VS Code's `MarkdownString.appendText`, so the text looks the same in every editor.
+ */
+export function escapeMarkdownText(text: string): string {
+  return text
+    .replace(/[\\`*_{}[\]()#+\-!~]/g, '\\$&')
+    .replace(/([ \t]+)/g, (_match, spaces: string) => '&nbsp;'.repeat(spaces.length))
+    .replace(/>/g, '\\>')
+    .replace(/\n/g, '\\\n');
+}
+
 export function createComponentDocumentationMarkdown(
   relativePath: string,
   metadata: ComponentMetadata | undefined,
 ): string {
   const parts: string[] = [];
   if (metadata?.description) {
-    parts.push(metadata.description, '\n\n');
+    parts.push(escapeMarkdownText(metadata.description), '\n\n');
   }
   parts.push(`Bascik component from \`${relativePath}\`.`);
   if (metadata) {
@@ -451,7 +495,7 @@ function appendMetadataMembersMarkdown(
   for (const member of members) {
     parts.push(`- \`${member.name}\``);
     if (member.description) {
-      parts.push(`: ${member.description}`);
+      parts.push(`: ${escapeMarkdownText(member.description)}`);
     }
     parts.push('\n');
   }
@@ -498,9 +542,13 @@ export function createDiagnostics(
   const isComponentDocument =
     snapshot !== undefined &&
     isInsideComponentRoots(normalizedDocumentPath, snapshot.componentRoots);
+  // The API folder is `directory.api`, so it is read from the project when there is one. Without a project
+  // (a file opened on its own), the default folder name is the best guess.
+  const isInsideApiRoot = snapshot?.apiRoot
+    ? isInsideComponentRoots(normalizedDocumentPath, [snapshot.apiRoot])
+    : normalizedDocumentPath.includes('/src/api/');
   const isApiRouteDocument =
-    normalizedDocumentPath.includes('/src/api/') &&
-    (languageId === 'typescript' || languageId === 'javascript');
+    isInsideApiRoot && (languageId === 'typescript' || languageId === 'javascript');
 
   if (isApiRouteDocument) {
     if (path.basename(normalizedDocumentPath).startsWith('_middleware.')) {
@@ -513,6 +561,7 @@ export function createDiagnostics(
           'Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.',
         severity: DiagnosticSeverity.Error,
         source: 'bascik',
+        code: 'middleware-unsupported',
       });
     }
     const apiDiags = analyzeApiRouteSource(text);
@@ -531,6 +580,7 @@ export function createDiagnostics(
         message: diag.message,
         severity,
         source: 'bascik',
+        code: diag.code,
       });
     }
   }
@@ -548,6 +598,7 @@ export function createDiagnostics(
             start: { line: 0, character: 0 },
             end: { line: 0, character: Math.min(text.length, 10) },
           },
+          code: 'component-name-not-hyphenated',
           message: `Component "${nameWithoutExt}" is not hyphenated. Under WHATWG HTML §4.13, custom elements should include a hyphen (e.g. "my-${nameWithoutExt}") to avoid collisions with future HTML standards.`,
           severity: DiagnosticSeverity.Warning,
           source: 'bascik',
@@ -556,22 +607,19 @@ export function createDiagnostics(
     }
   }
 
+  // Scoping rules describe what Bascik cannot rewrite, so they apply to component files, the only code it scopes.
+  // Pages and API routes are not scoped. Without a project there is no way to tell, so every file is checked.
+  const appliesScopingRules = snapshot === undefined || isComponentDocument;
+
   const addCompatibilityDiagnostics = (
     sourceText: string,
     kind: 'css' | 'js',
     offset: number,
   ) => {
-    for (const rule of matchCompatibilityRules(sourceText, kind)) {
-      const flags = rule.regex.flags.includes('g')
-        ? rule.regex.flags
-        : `${rule.regex.flags}g`;
-      const regex = new RegExp(rule.regex.source, flags);
-      const match = regex.exec(sourceText);
-      if (!match || typeof match.index !== 'number') continue;
-      const start = document.positionAt(offset + match.index);
-      const end = document.positionAt(
-        offset + match.index + Math.max(match[0].length, 1),
-      );
+    if (!appliesScopingRules) return;
+    for (const { rule, index, length } of findCompatibilityMatches(sourceText, kind)) {
+      const start = document.positionAt(offset + index);
+      const end = document.positionAt(offset + index + length);
       const severity = rule.severity === 'warning'
         ? DiagnosticSeverity.Warning
         : DiagnosticSeverity.Error;
@@ -631,19 +679,19 @@ export function createDiagnostics(
       );
       const declaredIds = new Set(
         Array.from(
-          referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)')/gi),
+          referenceScanText.matchAll(/\sid\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`/>]+))/gi),
         )
-          .map((match) => match[1] ?? match[2])
+          .map((match) => match[1] ?? match[2] ?? match[3])
           .filter((id): id is string => Boolean(id)),
       );
       const idReferenceAttributeRegex =
-        /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+        /\s(for|itemref|aria-activedescendant|aria-details|aria-errormessage|aria-labelledby|aria-describedby|aria-controls|aria-owns|aria-flowto)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+))/gi;
       let idReferenceMatch: RegExpExecArray | null;
       while (
         (idReferenceMatch =
           idReferenceAttributeRegex.exec(referenceScanText)) !== null
       ) {
-        const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? '';
+        const value = idReferenceMatch[2] ?? idReferenceMatch[3] ?? idReferenceMatch[4] ?? '';
         for (const id of value.trim().split(/\s+/).filter(Boolean)) {
           if (declaredIds.has(id)) continue;
           const valueOffset = idReferenceMatch[0].indexOf(id);
@@ -655,19 +703,20 @@ export function createDiagnostics(
           );
           diagnostics.push({
             range: { start, end },
+            code: 'id-reference-undeclared',
             message: `ID reference "${id}" is not declared in this component and will be left unscoped.`,
             severity: DiagnosticSeverity.Information,
             source: 'bascik',
           });
         }
       }
-      const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)')/gi;
+      const fragmentReferenceRegex = /\shref\s*=\s*(?:"#([^"]+)"|'#([^']+)'|#([^\s"'=<>`/>]+))/gi;
       let fragmentReferenceMatch: RegExpExecArray | null;
       while (
         (fragmentReferenceMatch =
           fragmentReferenceRegex.exec(referenceScanText)) !== null
       ) {
-        const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2];
+        const id = fragmentReferenceMatch[1] ?? fragmentReferenceMatch[2] ?? fragmentReferenceMatch[3];
         if (!id || declaredIds.has(id)) continue;
         const idOffset = fragmentReferenceMatch[0].indexOf(id);
         const start = document.positionAt(
@@ -678,6 +727,7 @@ export function createDiagnostics(
         );
         diagnostics.push({
           range: { start, end },
+          code: 'id-reference-undeclared',
           message: `ID reference "${id}" is not declared in this component and will be left unscoped.`,
           severity: DiagnosticSeverity.Information,
           source: 'bascik',
@@ -686,11 +736,11 @@ export function createDiagnostics(
     }
 
     const preserveDirectiveRegex =
-      /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'))?/gi;
+      /data-bascik-preserve(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`/>]+)))?/gi;
     let preserveMatch: RegExpExecArray | null;
     while ((preserveMatch = preserveDirectiveRegex.exec(text)) !== null) {
       if (preserveMatch[1] === undefined) continue;
-      const value = preserveMatch[2] ?? preserveMatch[3] ?? '';
+      const value = preserveMatch[2] ?? preserveMatch[3] ?? preserveMatch[4] ?? '';
       for (const preserveToken of value.trim().split(/\s+/).filter(Boolean)) {
         if (
           preserveToken === 'id' ||
@@ -707,6 +757,7 @@ export function createDiagnostics(
         );
         diagnostics.push({
           range: { start, end },
+          code: 'unknown-preserve-token',
           message: `Unknown data-bascik-preserve token "${preserveToken}". Valid tokens are id, name, and class.`,
           severity: DiagnosticSeverity.Warning,
           source: 'bascik',
@@ -720,26 +771,22 @@ export function createDiagnostics(
       isComponentDocument &&
       (formMatch = formOpenTagRegex.exec(text)) !== null
     ) {
-      const actionMatch = formMatch[0].match(
-        /\saction\s*=\s*(?:"([^"]*)"|'([^']*)')/i,
-      );
-      const action = actionMatch?.[1] ?? actionMatch?.[2];
+      const formAttributes = readOpenTagAttributes(formMatch[0]);
+      const action = formAttributes.get('action');
       if (!action || !/^(?:https?:)?\/\//i.test(action)) continue;
-      const preserveMatch = formMatch[0].match(
-        /\sdata-bascik-preserve(?:\s*=\s*(?:"([^"]*)"|'([^']*)'))?/i,
-      );
+      const preserveValue = formAttributes.get('data-bascik-preserve');
+      // A bare directive, or an empty value (the bare form as serializers
+      // write it), preserves every attribute, `name` included.
+      const preserveTokens = (preserveValue ?? '').trim().split(/\s+/).filter(Boolean);
       const preservesName =
-        preserveMatch !== null &&
-        (preserveMatch[1] === undefined ||
-          (preserveMatch[1] ?? preserveMatch[2] ?? '')
-            .trim()
-            .split(/\s+/)
-            .includes('name'));
+        preserveValue !== undefined &&
+        (preserveTokens.length === 0 || preserveTokens.includes('name'));
       if (preservesName) continue;
       const start = document.positionAt(formMatch.index);
       const end = document.positionAt(formMatch.index + formMatch[0].length);
       diagnostics.push({
         range: { start, end },
+        code: 'external-form-missing-preserve-name',
         message:
           'External form actions require data-bascik-preserve="name" so submitted field names remain literal.',
         severity: DiagnosticSeverity.Warning,
@@ -750,11 +797,11 @@ export function createDiagnostics(
     if (snapshot && isComponentDocument) {
       const componentName = normalizeComponentName(fsPath);
       const directiveRegex =
-        /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/gi;
+        /data-bascik-attr-([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi;
       let directiveMatch: RegExpExecArray | null;
       while ((directiveMatch = directiveRegex.exec(text)) !== null) {
         const targetName = directiveMatch[1];
-        const propName = directiveMatch[2] ?? directiveMatch[3];
+        const propName = directiveMatch[2] ?? directiveMatch[3] ?? directiveMatch[4];
         const suppliedInOpen = openDocumentTexts.some(({ text }) =>
           htmlSuppliesComponentProp(text, componentName, propName),
         );
@@ -769,8 +816,11 @@ export function createDiagnostics(
         );
         diagnostics.push({
           range: { start, end },
+          // A hint, not a warning. Whether anything supplies the prop is a question about every page, and the
+          // snapshot only reads src/**/*.html, so usage from Markdown or a build script is invisible to it.
+          code: 'attr-prop-unsupplied',
           message: `data-bascik-attr-${targetName} references prop "${propName}", but no <${componentName}> usage supplies data-bascik-prop-${propName}.`,
-          severity: DiagnosticSeverity.Warning,
+          severity: DiagnosticSeverity.Information,
           source: 'bascik',
         });
       }
@@ -826,8 +876,23 @@ export function createDiagnostics(
             message,
             severity: DiagnosticSeverity.Error,
             source: 'bascik',
+            code: 'script-mode-conflict',
           });
         }
+      }
+
+      const buildValue = attrs.get('data-bascik-build');
+      if (typeof buildValue === 'string' && !isKnownBuildValue(buildValue)) {
+        diagnostics.push({
+          range: {
+            start: document.positionAt(scriptMatch.index ?? 0),
+            end: document.positionAt((scriptMatch.index ?? 0) + openTag.length),
+          },
+          message: unknownDirectiveValueMessage(buildValue.trim()),
+          severity: DiagnosticSeverity.Warning,
+          source: 'bascik',
+          code: 'unknown-directive-value',
+        });
       }
 
       const hasServerDirective =
@@ -880,7 +945,8 @@ export function createDiagnostics(
           attrs,
         ),
       );
-      if (isJavaScriptScriptTag(openTag)) {
+      // A directive script runs in Node, at build time or per request, and never in the browser Bascik scopes.
+      if (isJavaScriptScriptTag(openTag) && !hasServerDirective) {
         addCompatibilityDiagnostics(scriptBody, 'js', scriptBodyOffset);
       }
     }
@@ -903,6 +969,52 @@ export function createDiagnostics(
 
     const componentMap = snapshot?.componentMap ?? new Map<string, string>();
     const componentNames = Array.from(componentMap.keys());
+
+    // Typos in Bascik's own attributes. Bascik ignores an attribute it does not know, so nothing else reports
+    // them. `<code>` contents are shown as text by default (`scoping.preserve`), so they are not scanned.
+    const attributeScanText = maskedText.replace(
+      /(<code(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/code(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_m, open: string, content: string, close: string) => open + content.replace(/[^\n]/g, ' ') + close,
+    );
+    const anyOpenTagRe = /<([A-Za-z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+    let anyOpenTag: RegExpExecArray | null;
+    while ((anyOpenTag = anyOpenTagRe.exec(attributeScanText)) !== null) {
+      const attributesOffset = anyOpenTag.index + 1 + anyOpenTag[1].length;
+      const attributeNameRe = /(?:^|\s)([^\s"'=<>`/]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+      let attributeMatch: RegExpExecArray | null;
+      while ((attributeMatch = attributeNameRe.exec(anyOpenTag[2])) !== null) {
+        const attributeName = attributeMatch[1].toLowerCase();
+        if (!attributeName.startsWith('data-bascik-') || isKnownBascikAttribute(attributeName)) continue;
+        const nameStart = attributesOffset + attributeMatch.index + attributeMatch[0].indexOf(attributeMatch[1]);
+        diagnostics.push({
+          range: {
+            start: document.positionAt(nameStart),
+            end: document.positionAt(nameStart + attributeMatch[1].length),
+          },
+          message: unknownBascikAttributeMessage(attributeName),
+          severity: DiagnosticSeverity.Warning,
+          source: 'bascik',
+          code: 'unknown-bascik-attribute',
+        });
+      }
+    }
+
+    // Component layout convention: styles above the markup, scripts below it.
+    if (isComponentDocument) {
+      for (const problem of findComponentStructureProblems(maskedText)) {
+        const tagLength = problem.kind === 'script-before-markup' ? '<script'.length : '<style'.length;
+        diagnostics.push({
+          range: {
+            start: document.positionAt(problem.index),
+            end: document.positionAt(problem.index + tagLength),
+          },
+          message: problem.message,
+          severity: DiagnosticSeverity.Warning,
+          source: 'bascik',
+          code: 'component-structure-order',
+        });
+      }
+    }
 
     // 1. Diagnose script directives on non-script tags
     const elementOpenTagRe =
@@ -939,6 +1051,7 @@ export function createDiagnostics(
           );
           diagnostics.push({
             range: { start, end },
+            code: 'directive-on-non-script',
             message: `\`${attrMatch[1]}\` is only valid on <script> tags. It has no effect on <${tagName}>.`,
             severity: DiagnosticSeverity.Error,
             source: 'bascik',
@@ -992,6 +1105,7 @@ export function createDiagnostics(
         );
         diagnostics.push({
           range: { start, end },
+          code: 'slot-outside-component',
           message:
             '`data-bascik-slot` is only valid inside a Bascik component body.',
           severity: DiagnosticSeverity.Error,
@@ -1012,6 +1126,7 @@ export function createDiagnostics(
             );
             diagnostics.push({
               range: { start, end },
+              code: 'undeclared-slot',
               message: `Component <${parentName}> does not declare slot "${slotName}".`,
               severity: DiagnosticSeverity.Error,
               source: 'bascik',
@@ -1075,6 +1190,41 @@ export function createDiagnostics(
                   message: `Component <${tagName}> does not declare prop "${propName}".`,
                   severity: DiagnosticSeverity.Warning,
                   source: 'bascik',
+                  code: 'undeclared-prop',
+                });
+              }
+            }
+
+            if (compMeta.props.length > 0) {
+              const insideOpenTag = openTagText
+                .replace(new RegExp(`^<${escapeRegExp(tagName)}\\b`, 'i'), '')
+                .replace(/\/?>$/, '');
+              const baseAttrOffset = openTagText.indexOf(insideOpenTag);
+              const bareAttrRe =
+                /([^\s"'=<>`/]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/gi;
+              let bareMatch: RegExpExecArray | null;
+              while ((bareMatch = bareAttrRe.exec(insideOpenTag)) !== null) {
+                const attrName = bareMatch[1];
+                const lowerAttr = attrName.toLowerCase();
+                if (lowerAttr.startsWith('data-bascik-')) continue;
+                const declaredProp = compMeta.props.find(
+                  (p) => p.name.toLowerCase() === lowerAttr,
+                );
+                if (!declaredProp) continue;
+                const alreadySupplied = new RegExp(
+                  `\\bdata-bascik-prop-${escapeRegExp(declaredProp.name)}\\b`,
+                  'i',
+                ).test(openTagText);
+                if (alreadySupplied) continue;
+                const attrOffset = tagStartIndex + baseAttrOffset + bareMatch.index;
+                const start = document.positionAt(attrOffset);
+                const end = document.positionAt(attrOffset + attrName.length);
+                diagnostics.push({
+                  range: { start, end },
+                  message: `Component <${tagName}> declares prop "${declaredProp.name}". Pass it with the data-bascik-prop-${declaredProp.name} prefix instead of "${attrName}".`,
+                  severity: DiagnosticSeverity.Warning,
+                  source: 'bascik',
+                  code: 'missing-prop-prefix',
                 });
               }
             }
@@ -1138,6 +1288,7 @@ export function createDiagnostics(
         const end = document.positionAt((match.index ?? 0) + openTag.length);
         diagnostics.push({
           range: { start, end },
+          code: 'inline-and-companion-styles',
           message:
             'Component has both a companion .css file and an inline <style> tag. They will be combined at build time, but mixing both is not recommended for readability and maintainability.',
           severity: DiagnosticSeverity.Warning,
@@ -1260,7 +1411,7 @@ export function createCompletions(
           if (prop.description) {
             item.documentation = {
               kind: MarkupKind.Markdown,
-              value: prop.description,
+              value: escapeMarkdownText(prop.description),
             };
           }
           return item;
@@ -1292,7 +1443,7 @@ export function createCompletions(
       if (slot.description) {
         item.documentation = {
           kind: MarkupKind.Markdown,
-          value: slot.description,
+          value: escapeMarkdownText(slot.description),
         };
       }
       return item;
@@ -1340,19 +1491,22 @@ export function createCompletions(
     },
   ];
 
+  // The replacement starts at the "<" already typed, so the filter text must start there too, or the editor
+  // compares what was typed ("<my-b") against a label without it and hides every item.
+  const tagRange: Range = {
+    start: document.positionAt(tagStart),
+    end: replacementRange.end,
+  };
+
   const shorthandItems: CompletionItem[] = scriptShorthands
     .filter((shorthand) => shorthand.label.startsWith(prefix))
     .map((shorthand) => ({
       label: shorthand.label,
       kind: CompletionItemKind.Snippet,
       sortText: `0_${shorthand.label}`,
-      range: {
-        start: document.positionAt(tagStart),
-        end: replacementRange.end,
-      },
-      insertText: shorthand.insertText,
+      textEdit: { range: tagRange, newText: shorthand.insertText },
       insertTextFormat: 2, // Snippet
-      filterText: shorthand.label,
+      filterText: `<${shorthand.label}`,
       detail: shorthand.detail,
       documentation: {
         kind: MarkupKind.Markdown,
@@ -1373,15 +1527,14 @@ export function createCompletions(
         label: componentName,
         kind: CompletionItemKind.Class,
         sortText: `0_${componentName}`,
-        range: {
-          start: document.positionAt(tagStart),
-          end: replacementRange.end,
+        textEdit: {
+          range: tagRange,
+          newText: metadata?.defaultSlot
+            ? `<${componentName}>$0</${componentName}>`
+            : `<${componentName} />$0`,
         },
-        insertText: metadata?.defaultSlot
-          ? `<${componentName}>$0</${componentName}>`
-          : `<${componentName} />$0`,
         insertTextFormat: 2, // Snippet
-        filterText: componentName,
+        filterText: `<${componentName}`,
         detail: 'Bascik component',
         documentation: {
           kind: MarkupKind.Markdown,
@@ -1434,10 +1587,10 @@ export function createHover(
     .replace(/\\/g, '/');
   const details: string[] = [`### \`<${componentName}>\`\n\n`];
   if (metadata.description) {
-    details.push(metadata.description, '\n\n');
+    details.push(escapeMarkdownText(metadata.description), '\n\n');
   }
   details.push(
-    `**Source:** [\`${relativePath}\`](file://${componentPath})\n\n`,
+    `**Source:** [\`${relativePath}\`](${pathToFileURL(componentPath).toString()})\n\n`,
   );
   appendMetadataMembersMarkdown(details, 'Props', metadata.props);
   appendMetadataMembersMarkdown(details, 'Slots', [
@@ -1600,4 +1753,120 @@ export function createDefinition(
   }
 
   return undefined;
+}
+
+function rangesOverlap(a: Range, b: Range): boolean {
+  if (a.end.line < b.start.line || b.end.line < a.start.line) return false;
+  if (a.end.line === b.start.line && a.end.character < b.start.character) return false;
+  if (b.end.line === a.start.line && b.end.character < a.start.character) return false;
+  return true;
+}
+
+export function buildAutoFixEdit(
+  document: TextDocumentLike,
+  diag: Diagnostic,
+): { title: string; edit: TextEdit } | undefined {
+  const code = typeof diag.code === 'string' ? diag.code : undefined;
+  if (code === 'missing-prop-prefix') {
+    const rawAttr = document.getText(diag.range);
+    if (!rawAttr || rawAttr.toLowerCase().startsWith('data-bascik-prop-')) {
+      return undefined;
+    }
+    const newText = `data-bascik-prop-${rawAttr}`;
+    return {
+      title: `Prefix prop with data-bascik-prop- (${newText})`,
+      edit: {
+        range: diag.range,
+        newText,
+      },
+    };
+  }
+  if (code === 'prefer-self-closing-component') {
+    const fullText = document.getText(diag.range);
+    const match = /^<([A-Za-z][\w-]*)(\s+(?:[^>"']|"[^"]*"|'[^']*')*?)?>\s*<\/\1\s*>$/is.exec(
+      fullText,
+    );
+    if (!match) return undefined;
+    const tagName = match[1];
+    const attrs = (match[2] ?? '').trimEnd();
+    const newText = `<${tagName}${attrs} />`;
+    return {
+      title: `Convert <${tagName}> to self-closing tag`,
+      edit: {
+        range: diag.range,
+        newText,
+      },
+    };
+  }
+  return undefined;
+}
+
+export function createCodeActions(
+  document: TextDocumentLike,
+  range: Range,
+  diagnostics: Diagnostic[],
+  snapshot?: ProjectSnapshot,
+  fsPath?: string,
+): CodeAction[] {
+  const activeDiagnostics =
+    diagnostics.length > 0
+      ? diagnostics
+      : fsPath
+        ? createDiagnostics(document, fsPath, snapshot)
+        : [];
+  const actions: CodeAction[] = [];
+
+  for (const diag of activeDiagnostics) {
+    if (!rangesOverlap(diag.range, range)) continue;
+    const fix = buildAutoFixEdit(document, diag);
+    if (!fix) continue;
+    actions.push({
+      title: fix.title,
+      kind: CodeActionKind.QuickFix,
+      diagnostics: [diag],
+      isPreferred: true,
+      edit: {
+        changes: {
+          [document.uri]: [fix.edit],
+        },
+      },
+    });
+  }
+
+  return actions;
+}
+
+export function applyAutoFixes(
+  document: TextDocumentLike,
+  snapshot: ProjectSnapshot | undefined,
+  fsPath = '/virtual.html',
+): { text: string; fixedCount: number } {
+  const diags = createDiagnostics(document, fsPath, snapshot);
+  const edits: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+
+  for (const diag of diags) {
+    const fix = buildAutoFixEdit(document, diag);
+    if (!fix) continue;
+    const startOffset = document.offsetAt(fix.edit.range.start);
+    const endOffset = document.offsetAt(fix.edit.range.end);
+    edits.push({ startOffset, endOffset, newText: fix.edit.newText });
+  }
+
+  if (edits.length === 0) {
+    return { text: document.getText(), fixedCount: 0 };
+  }
+
+  edits.sort((a, b) => b.startOffset - a.startOffset);
+  let text = document.getText();
+  let fixedCount = 0;
+  let lastStart = Number.POSITIVE_INFINITY;
+
+  for (const edit of edits) {
+    if (edit.endOffset > lastStart) continue;
+    text = text.slice(0, edit.startOffset) + edit.newText + text.slice(edit.endOffset);
+    lastStart = edit.startOffset;
+    fixedCount++;
+  }
+
+  return { text, fixedCount };
 }

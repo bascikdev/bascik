@@ -244,14 +244,14 @@ After scoping, `recursivelyTranspile` appends `?instance=N` to the sourceURL of 
 // Before (in src/components/card.html at line 12)
 <script>
   var count = 0;
-  document.querySelector(".btn").addEventListener("click", function() { count++; });
+  document.getElementById("btn").addEventListener("click", function() { count++; });
 </script>
 
 // After (simplified; 11 blank lines of padding before the IIFE are not shown)
 <script>
 (function() {
   var count = 0;
-  document.querySelector(".bascik__card__btn").addEventListener("click", function() { count++; });
+  document.getElementById("bascik__card__a1b2c3d4__btn").addEventListener("click", function() { count++; });
 })();
 //# sourceURL=src/components/card.html
 </script>

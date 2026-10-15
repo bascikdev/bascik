@@ -1,12 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import type { CompletionItem, TextEdit } from 'vscode-languageserver';
 import {
   createDiagnostics,
   createCompletions,
   createHover,
   createDefinition,
+  createCodeActions,
+  applyAutoFixes,
+  escapeMarkdownText,
 } from './analyzer.js';
 import { type ProjectSnapshot } from './project.js';
+
+/** What accepting a completion inserts. */
+const insertedText = (item: CompletionItem | undefined): string | undefined =>
+  (item?.textEdit as TextEdit | undefined)?.newText;
 
 describe('Bascik Language Server Analyzer', () => {
   const mockSnapshot: ProjectSnapshot = {
@@ -56,7 +64,7 @@ describe('Bascik Language Server Analyzer', () => {
     expect(completions).toBeDefined();
     const siteNav = completions?.find((c) => c.label === 'site-nav');
     expect(siteNav).toBeDefined();
-    expect(siteNav?.insertText).toBe('<site-nav>$0</site-nav>');
+    expect(insertedText(siteNav)).toBe('<site-nav>$0</site-nav>');
 
     const docVoid = TextDocument.create(
       'file:///test-project/src/pages/index.html',
@@ -66,7 +74,32 @@ describe('Bascik Language Server Analyzer', () => {
     );
     const completionsVoid = createCompletions(docVoid, { line: 0, character: 5 }, mockSnapshot);
     const docsHead = completionsVoid?.find((c) => c.label === 'docs-head');
-    expect(docsHead?.insertText).toBe('<docs-head />$0');
+    expect(insertedText(docsHead)).toBe('<docs-head />$0');
+  });
+
+  it('replaces the typed "<" and filters on it, so the editor does not hide the item', () => {
+    const doc = TextDocument.create(
+      'file:///test-project/src/pages/index.html',
+      'html',
+      1,
+      '<p>hi</p>\n<site',
+    );
+    const completions = createCompletions(doc, { line: 1, character: 5 }, mockSnapshot) ?? [];
+    const siteNav = completions.find((c) => c.label === 'site-nav');
+    // The replacement starts at the "<" (column 0), so what is typed ("<site") is what the filter text must match.
+    expect((siteNav?.textEdit as TextEdit).range).toEqual({
+      start: { line: 1, character: 0 },
+      end: { line: 1, character: 5 },
+    });
+    expect(siteNav?.filterText).toBe('<site-nav');
+    for (const shorthand of createCompletions(
+      TextDocument.create('file:///test-project/src/pages/index.html', 'html', 1, '<bascik-'),
+      { line: 0, character: 8 },
+      mockSnapshot,
+    ) ?? []) {
+      expect(shorthand.filterText).toBe(`<${shorthand.label}`);
+      expect((shorthand.textEdit as TextEdit).range.start).toEqual({ line: 0, character: 0 });
+    }
   });
 
   it('provides component prop completions', () => {
@@ -118,25 +151,25 @@ describe('Bascik Language Server Analyzer', () => {
     expect(completions).toBeDefined();
     const buildShorthand = completions?.find((c) => c.label === 'bascik-build');
     expect(buildShorthand).toBeDefined();
-    expect(buildShorthand?.insertText).toBe(
+    expect(insertedText(buildShorthand)).toBe(
       '<script data-bascik-build>\n  export default async function () {\n    return `$0`;\n  }\n</script>'
     );
 
     const routesShorthand = completions?.find((c) => c.label === 'bascik-routes');
     expect(routesShorthand).toBeDefined();
-    expect(routesShorthand?.insertText).toBe(
+    expect(insertedText(routesShorthand)).toBe(
       '<script data-bascik-routes>\n  export default async function () {\n    return [\n      $0\n    ];\n  }\n</script>'
     );
 
     const serverShorthand = completions?.find((c) => c.label === 'bascik-server');
     expect(serverShorthand).toBeDefined();
-    expect(serverShorthand?.insertText).toBe(
+    expect(insertedText(serverShorthand)).toBe(
       '<script data-bascik-server>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
     );
 
     const streamShorthand = completions?.find((c) => c.label === 'bascik-stream');
     expect(streamShorthand).toBeDefined();
-    expect(streamShorthand?.insertText).toBe(
+    expect(insertedText(streamShorthand)).toBe(
       '<script data-bascik-stream>\n  export default async function (request, context, { signal }) {\n    return `$0`;\n  }\n</script>'
     );
   });
@@ -151,8 +184,22 @@ describe('Bascik Language Server Analyzer', () => {
     const hover = createHover(doc, { line: 0, character: 3 }, mockSnapshot);
     expect(hover).toBeDefined();
     const contents = hover?.contents as { value: string };
-    expect(contents.value).toContain('Top navigation bar');
-    expect(contents.value).toContain('`title`: Page title');
+    expect(contents.value).toContain('Top&nbsp;navigation&nbsp;bar');
+    expect(contents.value).toContain('`title`: Page&nbsp;title');
+    expect(contents.value).toContain('(file:///test-project/src/components/site-nav.html)');
+  });
+
+  describe('escapeMarkdownText', () => {
+    it('keeps prose literal: markup, emphasis, and links are not interpreted', () => {
+      expect(escapeMarkdownText('Uses <unsafe> markup and *stars* and [a](b)')).toBe(
+        'Uses&nbsp;<unsafe\\>&nbsp;markup&nbsp;and&nbsp;\\*stars\\*&nbsp;and&nbsp;\\[a\\]\\(b\\)',
+      );
+    });
+
+    it('turns a newline into a hard break and leaves plain words alone', () => {
+      expect(escapeMarkdownText('one\ntwo')).toBe('one\\\ntwo');
+      expect(escapeMarkdownText('plain')).toBe('plain');
+    });
   });
 
   it('diagnoses unclosed component tags', () => {
@@ -177,6 +224,30 @@ describe('Bascik Language Server Analyzer', () => {
     const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
     const zeroSlot = diags.find((d) => d.code === 'prefer-self-closing-component');
     expect(zeroSlot).toBeDefined();
+  });
+
+  it('diagnoses missing data-bascik-prop-* prefix when passing a declared prop name and provides quick fix', () => {
+    const doc = TextDocument.create(
+      'file:///test-project/src/pages/index.html',
+      'html',
+      1,
+      '<site-nav title="Welcome"><p>Body</p></site-nav><docs-head></docs-head>',
+    );
+    const diags = createDiagnostics(doc, '/test-project/src/pages/index.html', mockSnapshot);
+    const missingPrefix = diags.find((d) => d.code === 'missing-prop-prefix');
+    expect(missingPrefix).toBeDefined();
+    expect(String(missingPrefix?.message)).toContain('data-bascik-prop-title');
+
+    const actions = createCodeActions(doc, missingPrefix!.range, diags, mockSnapshot);
+    expect(actions.length).toBeGreaterThan(0);
+    const edit = actions[0].edit?.changes?.[doc.uri]?.[0];
+    expect(edit?.newText).toBe('data-bascik-prop-title');
+
+    const fixed = applyAutoFixes(doc, mockSnapshot);
+    expect(fixed.fixedCount).toBe(2);
+    expect(fixed.text).toBe(
+      '<site-nav data-bascik-prop-title="Welcome"><p>Body</p></site-nav><docs-head />',
+    );
   });
 
   it('diagnoses script directive placed on non-script tag', () => {
@@ -230,6 +301,46 @@ describe('Bascik Language Server Analyzer', () => {
       );
       expect(codes).not.toContain('css-attribute-selector');
       expect(codes).not.toContain('js-id-setter');
+    });
+
+    it('recognizes unquoted and whitespace-spaced ID declarations and references in components', () => {
+      const diags = createDiagnostics(
+        TextDocument.create(`file://${componentPath}`, 'html', 1, '<input id = email /><label for=email>Email</label><a href=#missing>Jump</a>'),
+        componentPath,
+        mockSnapshot,
+      );
+      const messages = diags.map((d) => d.message);
+      expect(messages.some((m) => String(m).includes('"email"'))).toBe(false);
+      expect(messages.some((m) => String(m).includes('"missing"'))).toBe(true);
+    });
+  });
+  describe('external form preserve check', () => {
+    const formDiagnostics = (formTag: string) => {
+      const filePath = '/test-project/src/components/site-nav.html';
+      const doc = TextDocument.create(`file://${filePath}`, 'html', 1, `${formTag}<input name="email"></form>`);
+      return createDiagnostics(doc, filePath, mockSnapshot).filter((d) =>
+        String(d.message).includes('External form actions require'),
+      );
+    };
+
+    it.each([
+      '<form action="https://forms.example/submit" data-bascik-preserve>',
+      '<form action="https://forms.example/submit" data-bascik-preserve="">',
+      "<form action=https://forms.example/submit data-bascik-preserve = ''>",
+      '<form action = "https://forms.example/submit" data-bascik-preserve = "name">',
+      '<form action="https://forms.example/submit" data-bascik-preserve=name>',
+    ])('accepts %s', (formTag) => {
+      expect(formDiagnostics(formTag)).toHaveLength(0);
+    });
+
+    it.each([
+      '<form action="https://forms.example/submit">',
+      '<form action=https://forms.example/submit>',
+      '<form action = //forms.example/submit/>',
+      '<form action="https://forms.example/submit" data-bascik-preserve="class">',
+      '<form action="https://forms.example/submit" data-note="data-bascik-preserve">',
+    ])('warns for %s', (formTag) => {
+      expect(formDiagnostics(formTag)).toHaveLength(1);
     });
   });
 });

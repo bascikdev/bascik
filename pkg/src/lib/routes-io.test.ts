@@ -216,6 +216,13 @@ describe("executeRoutesScript", () => {
     ).rejects.toThrow(/both data-bascik-routes and data-bascik-server/);
   });
 
+  it("throws hard error on routes + stream conflict on same tag", async () => {
+    const html = `<script data-bascik-routes data-bascik-stream>export default () => []</script>`;
+    await expect(
+      executeRoutesScript(html, "src/pages/blog/[slug].html"),
+    ).rejects.toThrow(/both data-bascik-routes and data-bascik-stream/);
+  });
+
   it("does not trigger on quoted-attribute false positives", async () => {
     const html = `<div data-desc="data-bascik-routes">Not a script</div>`;
     const result = await executeRoutesScript(html, "src/pages/blog/[slug].html");

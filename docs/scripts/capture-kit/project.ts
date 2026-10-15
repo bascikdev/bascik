@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url';
 
 const repoDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 export const bascikBin = join(repoDir, 'pkg/bin/bascik.js');
-export const languageServerBin = join(repoDir, 'lsp/dist/bin.js');
 
 export interface StarterProject {
   /** Project root, named like a project a user would create. */

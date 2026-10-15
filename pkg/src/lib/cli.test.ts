@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCliAction, filterNodeArgs } from "./cli.ts";
+import { resolveCliAction, filterNodeArgs, CLI_FLAGS, CLI_USAGE } from "./cli.ts";
 import { LOG_LEVELS } from "./config.ts";
 
 describe("cli helper tests", () => {
@@ -8,6 +8,21 @@ describe("cli helper tests", () => {
       expect(filterNodeArgs(["--build"])).toEqual(["--build"]);
       expect(filterNodeArgs(["--server"])).toEqual(["--server"]);
       expect(filterNodeArgs(["--check"])).toEqual(["--check"]);
+      expect(filterNodeArgs(["--fix"])).toEqual(["--fix"]);
+    });
+
+    it("resolves --check --fix to the check action with the fix flag", () => {
+      const fixDecision = resolveCliAction(["--check", "--fix"]);
+      expect(fixDecision.action).toBe("check");
+      expect(fixDecision.flags.fix).toBe(true);
+    });
+
+    it("rejects --lint and bare lint without suggesting anything: it is not an alias for --check", () => {
+      for (const args of [["--lint"], ["lint"]]) {
+        const decision = resolveCliAction(args);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).not.toContain("Did you mean");
+      }
     });
 
     it("should filter out node profiling flags", () => {
@@ -328,6 +343,57 @@ describe("cli helper tests", () => {
     });
   });
 
+  describe("--quiet and -q", () => {
+    it.each(["--quiet", "-q"])("%s selects the warn level on every run mode", (flag) => {
+      expect(resolveCliAction([flag])).toMatchObject({ action: "dev", flags: { logLevel: "warn" } });
+      expect(resolveCliAction(["--build", flag])).toMatchObject({ action: "build", flags: { logLevel: "warn" } });
+      expect(resolveCliAction(["--server", flag])).toMatchObject({ action: "server", flags: { logLevel: "warn" } });
+    });
+
+    it("can come before or after the mode flag", () => {
+      expect(resolveCliAction(["-q", "--build"]).flags.logLevel).toBe("warn");
+    });
+
+    it("rejects --quiet together with --log-level, naming both, instead of letting one win", () => {
+      for (const args of [["--quiet", "--log-level", "debug"], ["--log-level=debug", "-q"]]) {
+        const decision = resolveCliAction(args);
+        expect(decision.action).toBe("error");
+        expect(decision.errorMessage).toContain("--quiet");
+        expect(decision.errorMessage).toContain("--log-level");
+      }
+    });
+
+    it("does not take a value", () => {
+      const decision = resolveCliAction(["--quiet=yes"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("does not take a value");
+    });
+
+    it("leaves the level unset when it is not passed, so the config and BASCIK_LOG_LEVEL decide", () => {
+      expect(resolveCliAction(["--build"]).flags.logLevel).toBeUndefined();
+    });
+  });
+
+  describe("--no-pin", () => {
+    it("is accepted by the dev server", () => {
+      expect(resolveCliAction(["--no-pin"])).toMatchObject({ action: "dev", flags: { noPin: true } });
+    });
+
+    it("is off unless passed", () => {
+      expect(resolveCliAction([]).flags.noPin).toBeUndefined();
+    });
+
+    it.each([["--build"], ["--server"], ["--check"]])("is rejected with %s, where nothing is pinned", (mode) => {
+      const decision = resolveCliAction([mode, "--no-pin"]);
+      expect(decision.action).toBe("error");
+      expect(decision.errorMessage).toContain("--no-pin only applies to the dev server");
+    });
+
+    it("is suggested for a near miss", () => {
+      expect(resolveCliAction(["--build", "--nopin"]).errorMessage).toContain('Did you mean "--no-pin"?');
+    });
+  });
+
   describe("--log gating", () => {
     it("resolves the default log path for a bare --log", () => {
       const decision = resolveCliAction(["--build", "--log"]);
@@ -379,5 +445,12 @@ describe("cli helper tests", () => {
       expect(decision.action).toBe("error");
       expect(decision.errorMessage).toContain("--dry-run only applies to add");
     });
+  });
+});
+
+describe("CLI_USAGE", () => {
+  // Every flag the parser accepts must be discoverable from --help.
+  it.each([...CLI_FLAGS])("documents %s", (flag) => {
+    expect(CLI_USAGE).toMatch(new RegExp(`(?:^|[\\s,])${flag.replace(/[-]/g, "\\-")}(?![\\w-])`, "m"));
   });
 });

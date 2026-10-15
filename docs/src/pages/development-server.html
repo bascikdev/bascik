@@ -39,8 +39,15 @@
         </script>
 
         <script data-bascik-build>
-          import { renderMd } from '@/lib/md-renderer.ts';
-          export default async () => await renderMd('./content/development-server.md');
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/development-server.md', { to: 'Linked Static Assets' });
+        </script>
+
+        <build-breakdown />
+
+        <script data-bascik-build>
+          import { renderMdRange } from '@/lib/md-renderer.ts';
+          export default async () => await renderMdRange('./content/development-server.md', { from: 'Linked Static Assets' });
         </script>
 
         <docs-pagination />

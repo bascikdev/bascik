@@ -3,6 +3,8 @@ import { existsSync, realpathSync } from "node:fs";
 import { config, modeOverrides } from "./userConfig.ts";
 import { ensureEnvironmentReady } from "./environment.ts";
 import { resolveCliAction } from "./cli.ts";
+import { LOG_LEVELS, shouldLog, type LogLevel } from "./log-level.ts";
+import { stderr as colorErr } from "./colors.ts";
 import {
   collectConfigWarnings,
   formatConfigErrors,
@@ -206,17 +208,10 @@ export const defaultConfig: Omit<BascikConfigOptions, "isBuild" | "isProdServer"
   base: "/",
 };
 
-export const LOG_LEVELS = ["silent", "error", "warn", "info", "debug"] as const;
-export type LogLevel = (typeof LOG_LEVELS)[number];
-
-export const shouldLog = (
-  configuredLevel: LogLevel | undefined,
-  eventLevel: LogLevel = "info",
-  defaultLevel: LogLevel = "info",
-): boolean => {
-  const resolvedLevel = configuredLevel ?? defaultLevel;
-  return LOG_LEVELS.indexOf(resolvedLevel) >= LOG_LEVELS.indexOf(eventLevel);
-};
+// The level list and comparison live in log-level.ts so the CLI parser and the config validator can share them
+// without importing this module. Re-exported because this is where callers have always imported them from.
+export { LOG_LEVELS, shouldLog };
+export type { LogLevel };
 
 /**
  * Deep-clone plain objects and arrays. Functions (e.g. a custom `minify.js`
@@ -390,7 +385,7 @@ export const initBascikConfig = (
   // Non-fatal findings (e.g. a missing scripts.importRoot directory) are
   // reported once and never abort startup.
   for (const warning of collectConfigWarnings(safeUserConfig, { fs: deps.fs, cwd: deps.cwd })) {
-    console.warn(`[bascik] warning: ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
+    console.warn(`${colorErr.tag("warn", "[bascik] warning:")} ${warning.key} ${JSON.stringify(warning.value)}: ${warning.message}`);
   }
 
   let activeOverride: UserConfig = {};

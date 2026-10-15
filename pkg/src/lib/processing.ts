@@ -128,6 +128,8 @@ import { WorkerPool } from "./worker-pool.ts";
 import type { PageWorkerResult } from "./page-worker.ts";
 import { isDynamicRoute, resolveRoutePath, executeRoutesScript } from "./routes.ts";
 import { formatDuration } from "./format.ts";
+import { logInfo } from "./log.ts";
+import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { rewriteCssBasePaths, rewriteHtmlBasePaths, withBasePath } from "./base-path.ts";
 import { filterPagesByOnlyGlobs } from "./targeted-build.ts";
 import { manifestCollector } from "./manifest.ts";
@@ -298,17 +300,24 @@ const minifyScriptTagsInHtml = async (
   html: string,
   minifyFn: (code: string) => string | Promise<string>,
 ): Promise<string> => {
+  const scannable = html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => " ".repeat(comment.length))
+    .replace(
+      /<(textarea|title|noscript|xmp)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi,
+      (_match, tag: string, attrs: string, inner: string, close: string) =>
+        `<${tag}${attrs}>${" ".repeat(inner.length)}${close}`,
+    );
   const regex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script(?:[\t\n\f\r /][^>]*)?>)/gi;
   const ops: Array<{ index: number; len: number; open: string; code: string; sourceUrl: string | null; close: string }> = [];
   let m: RegExpExecArray | null;
-  while ((m = regex.exec(html)) !== null) {
+  while ((m = regex.exec(scannable)) !== null) {
     const [full, open, body, close] = m as unknown as [string, string, string, string];
     // Skip non-JS types (e.g. application/ld+json, text/template)
     if (!isJavaScriptScript(open)) continue;
     // Server and stream scripts run at request time in Node.js, skip them here
     if (SERVER_OR_STREAM_SCRIPT_RE.test(open)) continue;
     // Skip external scripts — no inline content to minify
-    if (/\bsrc\s*=/i.test(open)) continue;
+    if (/\s+src\s*=/i.test(open)) continue;
     const { code, sourceUrl } = splitTrailingSourceUrl(body);
     ops.push({ index: m.index, len: full.length, open, code, sourceUrl, close });
   }
@@ -616,57 +625,67 @@ export const recursivelyTranspile = (
       component.fileContent = injectProps(component.fileContent, props);
 
       currentStage = "slot resolution";
-      const componentNames = new Set(Object.keys(componentList));
-      const protectedChildren: Array<{ placeholder: string; content: string }> = [];
-      let slotTemplate = component.fileContent;
-      let childSearchFrom = 0;
-      // The usage site's default slot content, computed once. It is also what a default slot
-      // marker written inside a nested child's usage tag receives (see below).
-      const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
-      while (childSearchFrom < slotTemplate.length) {
-        const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
-          startIndex?: number;
-          endIndex?: number;
-          contentStart?: number;
-          closeIndex?: number;
-        };
-        if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
-        const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
-        let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
-        // Forward the default slot: a valueless `data-bascik-slot` marker written between a
-        // child's usage tags is this template's own marker (named wrappers stay with the
-        // child). Only the child's inner content is touched, never its opening tag.
-        if (
-          typeof child.contentStart === "number" &&
-          typeof child.closeIndex === "number" &&
-          child.closeIndex > child.contentStart
-        ) {
-          const innerStart = child.contentStart - child.startIndex;
-          const innerEnd = child.closeIndex - child.startIndex;
-          childContent =
-            childContent.slice(0, innerStart) +
-            replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
-            childContent.slice(innerEnd);
+      let transpiledTag: string;
+      const hasTemplateSlot = component.fileContent.includes("data-bascik-slot");
+      const hasUsageSlot = Boolean(component.innerContent && component.innerContent.includes("data-bascik-slot"));
+      if (!hasTemplateSlot && !hasUsageSlot) {
+        const defaultSlotContent = extractDefaultSlotContent(component.innerContent);
+        const namedSlots = extractNamedSlotContent(component.innerContent);
+        const slotTemplate = replaceNamedSlots(component.fileContent, namedSlots);
+        transpiledTag = replaceDefaultSlots(slotTemplate, defaultSlotContent);
+      } else {
+        const componentNames = new Set(Object.keys(componentList));
+        const protectedChildren: Array<{ placeholder: string; content: string }> = [];
+        let slotTemplate = component.fileContent;
+        let childSearchFrom = 0;
+        // The usage site's default slot content, computed once. It is also what a default slot
+        // marker written inside a nested child's usage tag receives (see below).
+        const defaultSlotContent = extractDefaultSlotContent(component.innerContent, componentNames);
+        while (childSearchFrom < slotTemplate.length) {
+          const child = getFirstComponent(slotTemplate, componentList, undefined, childSearchFrom) as Partial<BascikComponent> & {
+            startIndex?: number;
+            endIndex?: number;
+            contentStart?: number;
+            closeIndex?: number;
+          };
+          if (typeof child.startIndex !== "number" || typeof child.endIndex !== "number") break;
+          const placeholder = `<!--__BASCIK_NESTED_COMPONENT_${protectedChildren.length}__-->`;
+          let childContent = slotTemplate.slice(child.startIndex, child.endIndex);
+          // Forward the default slot: a valueless `data-bascik-slot` marker written between a
+          // child's usage tags is this template's own marker (named wrappers stay with the
+          // child). Only the child's inner content is touched, never its opening tag.
+          if (
+            typeof child.contentStart === "number" &&
+            typeof child.closeIndex === "number" &&
+            child.closeIndex > child.contentStart
+          ) {
+            const innerStart = child.contentStart - child.startIndex;
+            const innerEnd = child.closeIndex - child.startIndex;
+            childContent =
+              childContent.slice(0, innerStart) +
+              replaceDefaultSlots(childContent.slice(innerStart, innerEnd), defaultSlotContent) +
+              childContent.slice(innerEnd);
+          }
+          protectedChildren.push({ placeholder, content: childContent });
+          slotTemplate =
+            slotTemplate.slice(0, child.startIndex) +
+            placeholder +
+            slotTemplate.slice(child.endIndex);
+          childSearchFrom = child.startIndex + placeholder.length;
         }
-        protectedChildren.push({ placeholder, content: childContent });
-        slotTemplate =
-          slotTemplate.slice(0, child.startIndex) +
-          placeholder +
-          slotTemplate.slice(child.endIndex);
-        childSearchFrom = child.startIndex + placeholder.length;
-      }
-      // Resolve named slots from the usage inner HTML.
-      const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
-      slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
+        // Resolve named slots from the usage inner HTML.
+        const namedSlots = extractNamedSlotContent(component.innerContent, componentNames);
+        slotTemplate = replaceNamedSlots(slotTemplate, namedSlots, componentNames);
 
-      // Replace <element data-bascik-slot> default slot markers.
-      // Named slots were already handled above by replaceNamedSlots.
-      let transpiledTag = replaceDefaultSlots(
-        slotTemplate,
-        defaultSlotContent,
-      );
-      for (const { placeholder, content } of protectedChildren) {
-        transpiledTag = transpiledTag.replace(placeholder, () => content);
+        // Replace <element data-bascik-slot> default slot markers.
+        // Named slots were already handled above by replaceNamedSlots.
+        transpiledTag = replaceDefaultSlots(
+          slotTemplate,
+          defaultSlotContent,
+        );
+        for (const { placeholder, content } of protectedChildren) {
+          transpiledTag = transpiledTag.replace(placeholder, () => content);
+        }
       }
 
       currentStage = "attribute inheritance";
@@ -840,20 +859,69 @@ export const expandPageToJobs = async (pagePath: string): Promise<PageJob[]> => 
   return jobs;
 };
 
+/** The route of a page with any trailing slash removed, so `/blog/` and `/blog` compare equal. */
+const stripTrailingRouteSlash = (route: string): string => route.replace(/\/$/, "") || "/";
+
+const pageRoute = (item: string | PageJob): string =>
+  stripTrailingRouteSlash(
+    getHttpPath(typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath),
+  );
+
 /** Partitions page paths or PageJobs into [openPages, otherPages] by active SSE connections. */
 export const partitionByOpenPages = (pageList: (string | PageJob)[]): [(string | PageJob)[], (string | PageJob)[]] => {
   const openSet = new Set(mem.openPages);
   if (openSet.size === 0) return [[], pageList];
-  const strip = (p: string) => p.replace(/\/$/, "") || "/";
-  const openNormalizedSet = new Set([...openSet].map(strip));
+  const openNormalizedSet = new Set([...openSet].map(stripTrailingRouteSlash));
   const open: (string | PageJob)[] = [];
   const rest: (string | PageJob)[] = [];
   for (const item of pageList) {
-    const relPath = typeof item === "string" ? getRelativePath(item, "pages") : item.relativePagePath;
-    const httpPath = getHttpPath(relPath);
-    (openNormalizedSet.has(strip(httpPath)) ? open : rest).push(item);
+    (openNormalizedSet.has(pageRoute(item)) ? open : rest).push(item);
   }
   return [open, rest];
+};
+
+/**
+ * Splits pages into [open, home, rest] for a dev batch. The pages open in a
+ * browser come first, then the home page (`/`), which is the page most often
+ * opened next. A build keeps its input order, so build output never depends on
+ * this.
+ */
+const partitionByCompilePriority = <T extends string | PageJob>(pageList: T[]): [T[], T[], T[]] => {
+  const [open, rest] = partitionByOpenPages(pageList) as [T[], T[]];
+  if (BascikConfig.isBuild) return [open, [], rest];
+  const homeIndex = rest.findIndex((item) => pageRoute(item) === "/");
+  if (homeIndex < 0) return [open, [], rest];
+  return [open, [rest[homeIndex]], [...rest.slice(0, homeIndex), ...rest.slice(homeIndex + 1)]];
+};
+
+/**
+ * A queue that picks each next page when a worker asks for it, not once up
+ * front. A browser that connects while a long batch is already running (a tab
+ * reconnecting after a restart) therefore still jumps ahead of the pages that
+ * have not started. Order: pages open in a browser, then the home page, then
+ * the remaining pages in their original order. A build keeps its input order.
+ */
+const createCompileQueue = <T extends string | PageJob>(items: T[]) => {
+  const entries = items.map((item) => ({ item, route: pageRoute(item) }));
+  let homeRemains = !BascikConfig.isBuild && entries.some((entry) => entry.route === "/");
+  return {
+    next(): T | undefined {
+      if (entries.length === 0) return undefined;
+      let index = -1;
+      const open = mem.openPages;
+      if (open.length > 0) {
+        const openRoutes = new Set(open.map(stripTrailingRouteSlash));
+        index = entries.findIndex((entry) => openRoutes.has(entry.route));
+      }
+      if (index < 0 && homeRemains) {
+        index = entries.findIndex((entry) => entry.route === "/");
+        if (index < 0) homeRemains = false;
+      }
+      const [picked] = entries.splice(index < 0 ? 0 : index, 1);
+      if (picked.route === "/") homeRemains = false;
+      return picked.item;
+    },
+  };
 };
 
 const pageProcessingQueues = new Map<string, Promise<unknown>>();
@@ -1075,7 +1143,7 @@ export const processPageBatch = async (
     return [];
   }
 
-  const [openJobs, restJobs] = partitionByOpenPages(jobs) as [PageJob[], PageJob[]];
+  const [openJobs, homeJobs, restJobs] = partitionByCompilePriority(jobs);
 
   const results: (TranspilePageResult | null)[] = [];
 
@@ -1134,6 +1202,11 @@ export const processPageBatch = async (
   // Transpile open pages first, store in memory, and emit transpiled reload event IMMEDIATELY.
   if (openJobs.length > 0) {
     await runJobs(openJobs);
+  }
+
+  // The home page is the page most likely to be opened next.
+  if (homeJobs.length > 0) {
+    await runJobs(homeJobs);
   }
 
   // Transpile remaining (closed) pages afterwards
@@ -1203,7 +1276,7 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
 };
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
-  console.log("Starting transpiling...");
+  logInfo(colorOut.dim("Starting transpiling..."));
   invalidateComponentListCache();
   const useWorkers = options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
   const start = performance.now();
@@ -1240,6 +1313,8 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       fileURLToPath(workerUrl),
       poolSize,
       { componentList, globalStylesHtml },
+      // The `transpiled:` line is printed inside the worker, which cannot tell on its own that it has a terminal.
+      { env: workerEnvironment() },
     );
     const [openJobs, restJobs] = partitionByOpenPages(allJobs) as [PageJob[], PageJob[]];
     const results: PageWorkerResult[] = [];
@@ -1313,17 +1388,27 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
+      // Pages already open in a browser finish first, so their reload is not
+      // delayed by anything else.
       if (openJobs.length > 0) {
         for (const result of await Promise.all(openJobs.map(runWorkerJob))) {
           if (result) results.push(result);
         }
       }
 
-      if (restJobs.length > 0) {
-        for (const result of await Promise.all(restJobs.map(runWorkerJob))) {
+      // Each lane takes its next page from the queue only when it is free, so
+      // the home page is picked before the rest, and a page opened after this
+      // batch started still jumps ahead of every page that has not begun. Two
+      // jobs per worker keep each worker busy while the main thread stores the
+      // previous result.
+      const compileQueue = createCompileQueue(restJobs);
+      const lanes = Math.min(restJobs.length, poolSize * 2);
+      await Promise.all(Array.from({ length: lanes }, async () => {
+        for (let job = compileQueue.next(); job; job = compileQueue.next()) {
+          const result = await runWorkerJob(job);
           if (result) results.push(result);
         }
-      }
+      }));
 
       reportPageErrors(pageErrors);
     } finally {
@@ -1350,7 +1435,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   }
 
   console.log(
-    `\n✓ ${count} page${count !== 1 ? "s" : ""} transpiled in ${formatDuration(elapsed)}`,
+    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}`,
   );
 
   if (
@@ -1360,8 +1445,8 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     allJobs.length >= 20 &&
     cpus().length >= 4
   ) {
-    console.log(
-      `💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`,
+    logInfo(
+      colorOut.yellow(`💡 Boot transpilation took ${formatDuration(elapsed)} on a single thread. Consider setting pipeline.workers: true in bascik.config.ts to parallelize across CPU cores.`),
     );
   }
 
@@ -1613,14 +1698,7 @@ export const transpilePage = async (
       // Strip HTML comments as well as <script>, <style>, and <textarea> content
       // so literal text like `<my-tag>` inside comments, JSON-LD, or demo strings
       // doesn't produce false unresolved component warnings.
-      // Use replacement functions `() => ""` to prevent regex replacement token expansion ($1, $&, etc.)
-      // codeql[js/incomplete-multi-character-sanitization] Only feeds the unresolved-component warning scan; never emitted.
-      const scannable = chunk
-        .replace(/<!--[\s\S]*?-->/g, () => "")
-        .replace(
-          /<(script|style|textarea)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-          (_match, tag, attrs) => `<${tag}${attrs ?? ""}></${tag}>`,
-        );
+      const scannable = maskRawTextContent(chunk);
       const re = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s\/>]/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(scannable)) !== null) {
@@ -1677,12 +1755,14 @@ export const transpilePage = async (
   // Compress the entire head (removes newlines, collapses whitespace in inline <style> tags too)
 
   if (cssMinifier) {
-    // Also minify any inline <style> blocks that came from the page source
-    const styleBlockRegex = /<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-    const matches: Array<{ full: string; css: string; index: number }> = [];
+    // Also minify any inline <style> blocks that came from the page source,
+    // preserving their opening and closing tags (such as media="..." attributes).
+    const styleBlockRegex =
+      /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/style(?:[\t\n\f\r /][^>]*)?>)/gi;
+    const matches: Array<{ full: string; open: string; css: string; close: string; index: number }> = [];
     let match: RegExpExecArray | null;
     while ((match = styleBlockRegex.exec(transpiledHead)) !== null) {
-      matches.push({ full: match[0], css: match[1], index: match.index });
+      matches.push({ full: match[0], open: match[1], css: match[2], close: match[3], index: match.index });
     }
     if (matches.length > 0) {
       let newHead = "";
@@ -1693,7 +1773,7 @@ export const transpilePage = async (
         pause();
         const minifiedCss = await pendingInlineCss;
         resume();
-        newHead += `<style>${minifiedCss}</style>`;
+        newHead += `${m.open}${minifiedCss}${m.close}`;
         lastIndex = m.index + m.full.length;
       }
       newHead += transpiledHead.slice(lastIndex);
@@ -1789,7 +1869,10 @@ export const transpilePage = async (
   await pendingMissingDeps;
   resume();
 
+  const seenDepComponents = new Set<string>();
   for (const comp of allUsedComponents) {
+    if (seenDepComponents.has(comp.name)) continue;
+    seenDepComponents.add(comp.name);
     const compContent = comp.scriptDependenciesContent ?? comp.fileContent;
     if (compContent) {
       const componentSourcePath = comp.fileName
@@ -1824,7 +1907,7 @@ export const transpilePage = async (
   if (BascikConfig.logging?.transpiles !== false) {
     const configLevel = BascikConfig.logging?.level ?? "info";
     if (shouldLog(configLevel, "info")) {
-      console.log(`transpiled: ${relativePagePath} in ${formatDuration(workMs)}`);
+      console.log(`${colorOut.green("transpiled:")} ${relativePagePath} ${colorOut.dim(`in ${formatDuration(workMs)}`)}`);
     }
   }
 

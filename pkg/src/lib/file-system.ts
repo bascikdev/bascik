@@ -11,6 +11,7 @@ import { isStaticAssetPath } from "./asset-filter.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
+import { stdout as colorOut } from "./colors.ts";
 
 export { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 
@@ -171,7 +172,7 @@ export async function copyReplicatePath(
       await unlinkDestinationSymlink(destPath);
       await writeFile(destPath, content);
       if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-        console.log(isMinified ? "copied (minified):" : "copied:", displayRelativePath(src));
+        console.log(colorOut.dim(isMinified ? "copied (minified):" : "copied:"), displayRelativePath(src));
       }
     }
     // Record the DESTINATION after a successful write (or a hash-equal no-op),
@@ -247,7 +248,7 @@ export async function copyReplicatePath(
           await symlink(relative(destDir, src), temporaryLinkPath, "file");
           await rename(temporaryLinkPath, destPath);
           if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-            console.log("linked:", displayRelativePath(src));
+            console.log(colorOut.dim("linked:"), displayRelativePath(src));
           }
         } catch (error) {
           await rm(temporaryLinkPath, { force: true }).catch(() => { });
@@ -265,14 +266,14 @@ export async function copyReplicatePath(
           await unlinkDestinationSymlink(destPath);
           await copyFile(src, destPath);
           if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-            console.log("copied:", displayRelativePath(src));
+            console.log(colorOut.dim("copied:"), displayRelativePath(src));
           }
         }
       } else {
         await unlinkDestinationSymlink(destPath);
         await copyFile(src, destPath);
         if (canLogDevEvent(BascikConfig.logging?.copies, "info")) {
-          console.log("copied:", displayRelativePath(src));
+          console.log(colorOut.dim("copied:"), displayRelativePath(src));
         }
       }
     }

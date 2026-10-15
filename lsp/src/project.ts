@@ -9,19 +9,27 @@ import {
 export interface ProjectSnapshot {
   projectRoot: string;
   componentRoots: string[];
+  /** The API routes folder (`directory.api`, default `src/api`), resolved and normalized. */
+  apiRoot?: string;
   componentMap: Map<string, string>;
   componentMetadata: Map<string, ComponentMetadata>;
   importRoot: string;
   htmlUsageByFile: Map<string, string>;
 }
 
-const CONFIG_FILE_CANDIDATES = [
+export const CONFIG_FILE_CANDIDATES = [
   'bascik.config.ts',
   'bascik.config.js',
   'bascik.config.mjs',
 ];
 const DEFAULT_COMPONENT_ROOTS = ['src/components'];
 const DEFAULT_IMPORT_ROOT = 'src';
+const DEFAULT_API_ROOT = 'src/api';
+
+/** Reads `directory.api` from the config source. `apiTimeout` does not match: the key must be exactly `api`. */
+export function parseApiRoot(source: string | undefined): string {
+  return /\bapi\s*:\s*['"]([^'"]+)['"]/.exec(source ?? '')?.[1] ?? DEFAULT_API_ROOT;
+}
 
 export function normalizeComponentName(name: string): string {
   return (
@@ -163,6 +171,9 @@ export async function buildSnapshot(workspaceRoot: string): Promise<ProjectSnaps
   return {
     projectRoot: path.resolve(workspaceRoot),
     componentRoots,
+    apiRoot: trimTrailingSlashes(
+      path.resolve(workspaceRoot, parseApiRoot(configSource)).replace(/\\/g, '/'),
+    ),
     componentMap,
     componentMetadata,
     importRoot: path.resolve(workspaceRoot, parseImportRoot(configSource)),
@@ -175,6 +186,24 @@ export function isPathInside(fsPath: string, root: string): boolean {
   return (
     relative === '' ||
     (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+/** Is `fsPath` a Bascik config file (`bascik.config.ts`, `.js`, or `.mjs`)? */
+export function isConfigFile(fsPath: string): boolean {
+  return CONFIG_FILE_CANDIDATES.includes(path.basename(fsPath));
+}
+
+/**
+ * Paths that never hold a project: installed packages, build output, and git internals. Judged relative to the
+ * workspace folder, so a workspace that itself lives under a folder named `dist` still works.
+ */
+export function isExcludedProjectPath(fsPath: string, workspaceRoot: string): boolean {
+  const relativeParts = path
+    .relative(path.resolve(workspaceRoot), path.resolve(fsPath))
+    .split(path.sep);
+  return relativeParts.some(
+    (part) => part === 'node_modules' || part === 'dist' || part === '.git',
   );
 }
 

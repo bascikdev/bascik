@@ -137,7 +137,7 @@ When running `bascik` in development mode:
 
 This recording runs the dev server with a `post` script that watches `content/` and writes `dist/search-index.json`. Saving `content/notes.md` rebuilds only the page that reads it, then reruns the script:
 
-![A terminal running bascik. Five pages transpile, then the search-index exec script runs once and logs indexed: Release notes, and the server starts. After content/notes.md is saved, only pages/notes.html is rebuilt and the script runs again, logging indexed: Release notes for 1.0](/assets/demos/exec-watch@2x.webp)
+![A terminal running bascik. The server address stays pinned to the top row. Five pages transpile, then the search-index exec script runs once and logs indexed: Release notes. After content/notes.md is saved, only pages/notes.html is rebuilt and the script runs again, logging indexed: Release notes for 1.0](/assets/demos/exec-watch@2x.webp)
 
 ## When a script fails
 
@@ -183,6 +183,8 @@ A failing script follows [When a script fails](#when-a-script-fails) the same wa
 A `parallel` script never blocks dev startup or later page compilation. Pages must not depend on its output being ready; use `pre` for required dependencies. Every parallel promise is observed, including failures after other tasks fail. A parallel failure reports a build-error and its completion never sends a reload. It cannot retract a page reload already delivered before that asynchronous failure. Repeated runs of the same watched parallel entry are serialized without blocking page edits or independent scripts.
 
 In a one-shot build, parallel scripts genuinely run alongside compilation. Post starts after compilation, without waiting for parallel. The build waits for both branches to settle before finalizing metadata or declaring success, and under the default `onExecError: 'error'` reports any failure with a nonzero exit status.
+
+Because metadata is finalized after post settles, a post script cannot read `dist/.bascik/` files such as `csp-hashes.json`, `server-scripts.json`, or the asset manifest: they are not on disk yet. A post script that needs CSP hashes, for example to write host headers, computes them from the emitted HTML in `dist/` it already sees.
 
 ### Overlapping watches share one cycle
 

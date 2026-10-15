@@ -3,10 +3,16 @@
  *
  * Static analysis for Bascik projects (`bascik --check`).
  *
- * Scans all pages, component files, and API route files for:
- *  - Hyphenated tags that have no matching component file (warnings)
- *  - Component files that are never referenced anywhere (warnings)
- *  - API route method handler and collision issues (errors / warnings)
+ * This module owns the questions that need the whole project:
+ *  - Config, site URL, and pages directory validity
+ *  - Component names, references, cycles, and components that are never used
+ *  - Routes that collide, for pages and for API routes
+ *  - Whether the compiled `dist/` HTML parses (optional parse5)
+ *
+ * Questions about one file (an attribute typo, CSS that cannot be scoped, an API route that exports no handler)
+ * belong to `@bascik/language-server`, the engine the editor uses. When it is installed, `bascik --check` runs it
+ * over the project's pages, components, and API routes and merges the findings. Each rule lives in exactly one
+ * place; see docs/content/internals/diagnostics.md for which.
  *
  * Returns a structured data model of findings. Output formatting is separated
  * into human and JSON formatters.
@@ -22,6 +28,13 @@ import { BascikConfig } from "./config.ts";
 import { maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import { scanApiRouteFiles, fileToApiRoutePath, findApiRoutePatternProblems } from "./api-routes.ts";
+import {
+  LanguageServerRequiredError,
+  languageServerFixMessage,
+  languageServerHint,
+  runLanguageServerCheck,
+  type LanguageServerDiagnostic,
+} from "./check-language-server.ts";
 import { getHttpPath } from "./paths.ts";
 import { buildMissingSiteUrlError } from "./sitemap.ts";
 import { getSiteUrl, SITE_URL_ENV_VAR } from "./environment.ts";
@@ -32,8 +45,8 @@ import {
   PLAUSIBLE_TAG_NAME,
   PRESERVE_WILDCARD_PATTERN,
 } from "./config-validation.ts";
-import { BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME } from "./html-patterns.ts";
-import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import { stdout } from "./colors.ts";
+import { BUILD_ATTR_NAME } from "./html-patterns.ts";
 import type { ComponentList } from "./types.ts";
 
 export type FindingSeverity = "error" | "warning";
@@ -41,14 +54,18 @@ export type FindingSeverity = "error" | "warning";
 export interface FindingLocation {
   filePath: string;
   line?: number;
+  column?: number;
 }
 
 export interface CheckFinding {
+  /** The rule id. For per-file findings this is the language server's rule id. */
   category: string;
   severity: FindingSeverity;
   message: string;
   locations: FindingLocation[];
   suggestion?: string;
+  /** `language-server` for per-file findings; absent for the project checks this module owns. */
+  source?: "language-server";
 }
 
 export interface CheckFindings {
@@ -61,6 +78,14 @@ export interface CheckFindings {
   distHtmlChecked: number | null;
   /** True when dist/ has HTML files but parse5 is not installed. */
   distHtmlSpecHintNeeded: boolean;
+  /** Number of files the language server checked, or null when it is not installed or too old. */
+  perFileChecked: number | null;
+  /** Why the per-file checks did not run, when they did not. Absent when they ran. */
+  perFileHint?: string;
+  /** Files `--fix` rewrote, relative to the project. */
+  fixedFiles: string[];
+  /** The language server's own one-line rendering of a finding. Absent when the per-file checks did not run. */
+  perFileFormat?: (diagnostic: LanguageServerDiagnostic, color?: boolean) => string;
 }
 
 /**
@@ -105,19 +130,6 @@ async function walkFiles(dir: string, ext: string): Promise<string[]> {
   }
   return out;
 }
-
-const VALID_API_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
-const API_METHOD_LIKE_REGEX = /\bexport\s+(?:async\s+)?(?:const|function|let|var)\s+([a-zA-Z0-9_$]+)\b/g;
-const KNOWN_BASCIK_DATA_EXACT = new Set([
-  "data-bascik-slot",
-  "data-bascik-build",
-  "data-bascik-server",
-  "data-bascik-routes",
-  "data-bascik-stream",
-  "data-bascik-preserve",
-  "data-bascik-server-id",
-]);
-const KNOWN_BASCIK_DATA_PREFIX = ["data-bascik-prop-", "data-bascik-attr-"];
 
 /** Simple edit distance (Levenshtein) with no external dependencies. */
 const editDistance = (a: string, b: string): number => {
@@ -249,90 +261,23 @@ const extractBuildScripts = (html: string): string[] => {
   return scripts;
 };
 
-const stripComments = (source: string): string => {
-  return source.replace(/<!--[\s\S]*?-->/g, (match) => {
-    const newlines = match.match(/\n/g);
-    return newlines ? newlines.join("") : " ";
-  });
-};
-
-const getLineAt = (source: string, index: number): number => {
-  let line = 1;
-  for (let i = 0; i < index; i++) {
-    if (source.charCodeAt(i) === 10) line++;
-  }
-  return line;
-};
-
-interface OpenTagData {
-  attrs: string;
-  line: number;
-}
-
-const extractOpenTagData = (html: string): OpenTagData[] => {
-  const out: OpenTagData[] = [];
-  const noComments = stripComments(html);
-  const stripped = stripElementContents(noComments);
-  const regex = /<[a-z][a-z0-9:-]*\b([^>]*)>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(stripped)) !== null) {
-    out.push({
-      attrs: match[1] ?? "",
-      line: getLineAt(stripped, match.index),
+const maskPreservedSubtrees = (html: string): string => {
+  let result = html;
+  const re =
+    /(<([a-z][a-z0-9:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*\bdata-bascik-preserve\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
+  let previous = "";
+  while (previous !== result) {
+    previous = result;
+    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
+      return `${open}${" ".repeat(inner.length)}${close}`;
     });
   }
-  return out;
+  return result;
 };
 
-const extractAttributeNames = (attrs: string): string[] => {
-  const names: string[] = [];
-  const attrRegex = /(?:^|\s)([^\s"'<>\/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
-  let attrMatch: RegExpExecArray | null;
-  while ((attrMatch = attrRegex.exec(attrs)) !== null) {
-    names.push((attrMatch[1] ?? "").toLowerCase());
-  }
-  return names;
-};
-
-const extractUnknownBascikAttributes = (
-  html: string,
-): Array<{ attr: string; line: number }> => {
-  const out: Array<{ attr: string; line: number }> = [];
-  for (const tag of extractOpenTagData(html)) {
-    for (const name of extractAttributeNames(tag.attrs)) {
-      if (!name.startsWith("data-bascik-")) continue;
-      const isKnownPrefix = KNOWN_BASCIK_DATA_PREFIX.some((prefix) => name.startsWith(prefix));
-      if (KNOWN_BASCIK_DATA_EXACT.has(name) || isKnownPrefix) continue;
-      out.push({ attr: name, line: tag.line });
-    }
-  }
-  return out;
-};
-
-// Whole-attribute-name directive tests (prompt 65 step 0).
+// Whole-attribute-name directive test (prompt 65 step 0).
 // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const SERVER_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${SERVER_ATTR_NAME}`, "i");
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const ROUTES_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`, "i");
-// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-const STREAM_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${STREAM_ATTR_NAME}`, "i");
-
-/**
- * The four script directives are mutually exclusive. Returns the pair of
- * directive names present when two or more are, otherwise undefined.
- */
-export const findDirectiveConflict = (attrs: string): [string, string] | undefined => {
-  const present: string[] = [];
-  if (BUILD_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-build");
-  if (SERVER_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-server");
-  if (ROUTES_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-routes");
-  if (STREAM_DIRECTIVE_RE.test(attrs)) present.push("data-bascik-stream");
-  return present.length >= 2 ? [present[0], present[1]] : undefined;
-};
-
-const hasBuildServerConflict = (attrs: string): boolean => findDirectiveConflict(attrs) !== undefined;
 
 const mapConfigErrorSeverity = (error: ConfigValidationError): FindingSeverity => {
   if (error.key.startsWith("pipeline.watchPaths[")) return "warning";
@@ -362,19 +307,6 @@ const resolveConfigSourcePath = (): string => {
 };
 
 const canonicalPath = (filePath: string): string => resolve(process.cwd(), filePath).replace(/\\/g, "/");
-
-const maskPreservedSubtrees = (html: string): string => {
-  let result = html;
-  const re = /(<([a-z][a-z0-9:-]*)\b[^>]*\bdata-bascik-preserve\b[^>]*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi;
-  let previous = "";
-  while (previous !== result) {
-    previous = result;
-    result = result.replace(re, (_m, open: string, _tag: string, inner: string, close: string) => {
-      return `${open}${" ".repeat(inner.length)}${close}`;
-    });
-  }
-  return result;
-};
 
 const findComponentCycles = (
   graph: Map<string, Set<string>>,
@@ -421,9 +353,16 @@ const findComponentCycles = (
  * Run the static check across pages, components, and API routes.
  * Produces structured data without printing.
  */
-export const checkProject = async (): Promise<CheckFindings> => {
+export const checkProject = async (options: { fix?: boolean } = {}): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
+
+  // The per-file checks run first: `--fix` rewrites files, and everything below should read the fixed text.
+  const perFile = await runLanguageServerCheck({ fix: options.fix });
+  if (options.fix && perFile.status !== "ran") {
+    // Fixes are the language server's. Reporting success with nothing fixed would be a lie.
+    throw new LanguageServerRequiredError(languageServerFixMessage(perFile));
+  }
 
   const formatConfigValue = (value: unknown): string => {
     if (typeof value === "string") return `\"${value}\"`;
@@ -572,9 +511,7 @@ export const checkProject = async (): Promise<CheckFindings> => {
   const isExternalTag = createExternalTagMatcher(BascikConfig.components?.external);
   const usedComponents = new Set<string>();
   const unmatchedTagLocations = new Map<string, FindingLocation[]>();
-  const unknownBascikAttrs = new Map<string, FindingLocation[]>();
   const componentGraph = new Map<string, Set<string>>();
-  const scriptBuildServerConflicts: FindingLocation[] = [];
   const componentPathByName = new Map<string, string>();
   const componentNameByPath = new Map<string, string>();
 
@@ -602,20 +539,6 @@ export const checkProject = async (): Promise<CheckFindings> => {
 
   for (const { filePath, html, occurrences } of scanResults) {
     const displayPath = toDisplay(filePath);
-
-    for (const unknown of extractUnknownBascikAttributes(html)) {
-      const list = unknownBascikAttrs.get(unknown.attr) ?? [];
-      list.push({ filePath: displayPath, line: unknown.line });
-      unknownBascikAttrs.set(unknown.attr, list);
-    }
-
-    const scriptTagRegex = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-    let scriptMatch: RegExpExecArray | null;
-    while ((scriptMatch = scriptTagRegex.exec(html)) !== null) {
-      if (hasBuildServerConflict(scriptMatch[1] ?? "")) {
-        scriptBuildServerConflicts.push({ filePath: displayPath, line: getLineAt(html, scriptMatch.index) });
-      }
-    }
 
     const ownerPath = canonicalPath(filePath);
     if (componentNameByPath.has(ownerPath)) {
@@ -652,27 +575,6 @@ export const checkProject = async (): Promise<CheckFindings> => {
       message: `<${tag}>`,
       locations,
       suggestion,
-    });
-  }
-
-  for (const [attr, locations] of unknownBascikAttrs.entries()) {
-    const known = [...KNOWN_BASCIK_DATA_EXACT, ...KNOWN_BASCIK_DATA_PREFIX.map((p) => `${p}...`)]
-      .sort()
-      .join(", ");
-    items.push({
-      category: "unknown-bascik-attribute",
-      severity: "warning",
-      message: `unknown attribute "${attr}". Known attributes: ${known}`,
-      locations,
-    });
-  }
-
-  if (scriptBuildServerConflicts.length > 0) {
-    items.push({
-      category: "script-mode-conflict",
-      severity: "error",
-      message: "<script> tag combines two script directives (data-bascik-build, data-bascik-server, data-bascik-routes, data-bascik-stream are mutually exclusive). Remove one attribute.",
-      locations: scriptBuildServerConflicts,
     });
   }
 
@@ -723,115 +625,15 @@ export const checkProject = async (): Promise<CheckFindings> => {
     });
   }
 
-  // Component template convention: styles first, scripts last.
-  for (const filePath of componentFilePaths) {
-    try {
-      const html = await readFile(filePath, "utf8");
-      const noComments = stripComments(html);
-      const firstHtmlTag = noComments.search(/<(?!\/?(?:style|script)\b)[a-z]/i);
-      const firstScript = noComments.search(/<script\b/i);
-      const firstStyle = noComments.search(/<style\b/i);
-
-      if (firstScript >= 0 && (firstHtmlTag < 0 || firstScript < firstHtmlTag)) {
-        items.push({
-          category: "component-structure-order",
-          severity: "warning",
-          message: "component template convention: place <script> blocks after HTML markup.",
-          // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
-          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstScript) }],
-        });
-      }
-
-      if (firstStyle >= 0 && firstHtmlTag >= 0 && firstStyle > firstHtmlTag) {
-        items.push({
-          category: "component-structure-order",
-          severity: "warning",
-          message: "component template convention: place <style> blocks above HTML markup.",
-          // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
-          locations: [{ filePath: toDisplay(filePath), line: getLineAt(noComments, firstStyle) }],
-        });
-      }
-
-      // ── Scoping compatibility analysis in component HTML, inline styles & scripts ──
-      const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
-      let styleMatch: RegExpExecArray | null;
-      while ((styleMatch = styleBlockRegex.exec(html)) !== null) {
-        const styleBody = styleMatch[2] ?? "";
-        const styleOffset = styleMatch.index + styleMatch[1].length;
-        const matches = findCompatibilityMatches(styleBody, "css");
-        for (const m of matches) {
-          items.push({
-            category: "compatibility",
-            severity: (m.rule.severity as FindingSeverity) ?? "error",
-            message: `${m.rule.message} ${m.rule.suggestion}`,
-            locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, styleOffset + m.index) }],
-            suggestion: m.rule.suggestion,
-          });
-        }
-      }
-
-      const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
-      let scriptMatch: RegExpExecArray | null;
-      while ((scriptMatch = scriptBlockRegex.exec(html)) !== null) {
-        const openTag = scriptMatch[1];
-        const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-        const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
-        const isJs = !typeVal || typeVal === "module" || typeVal === "text/javascript" || typeVal === "application/javascript";
-        if (isJs) {
-          const scriptBody = scriptMatch[2] ?? "";
-          const scriptOffset = scriptMatch.index + openTag.length;
-          const matches = findCompatibilityMatches(scriptBody, "js");
-          for (const m of matches) {
-            items.push({
-              category: "compatibility",
-              severity: (m.rule.severity as FindingSeverity) ?? "error",
-              message: `${m.rule.message} ${m.rule.suggestion}`,
-              locations: [{ filePath: toDisplay(filePath), line: getLineAt(html, scriptOffset + m.index) }],
-              suggestion: m.rule.suggestion,
-            });
-          }
-        }
-      }
-
-      // Check companion .css file if it exists
-      const companionCssPath = filePath.replace(/\.html$/i, ".css");
-      if (existsSync(companionCssPath)) {
-        try {
-          const cssContent = await readFile(companionCssPath, "utf8");
-          const matches = findCompatibilityMatches(cssContent, "css");
-          for (const m of matches) {
-            items.push({
-              category: "compatibility",
-              severity: (m.rule.severity as FindingSeverity) ?? "error",
-              message: `${m.rule.message} ${m.rule.suggestion}`,
-              locations: [{ filePath: toDisplay(companionCssPath), line: getLineAt(cssContent, m.index) }],
-              suggestion: m.rule.suggestion,
-            });
-          }
-        } catch {
-          // ignore unreadable companion css
-        }
-      }
-    } catch {
-      // Ignore unreadable component files here.
-    }
-  }
-
-  // ── API route static analysis (Prompt 49) ───────────────────────────
+  // ── API route table analysis (Prompt 49) ────────────────────────────
+  // Whether a route file exports a handler is a per-file question and belongs to the language server. Whether two
+  // files claim one URL needs every route at once, so it is checked here.
   const apiDir = resolve(process.cwd(), BascikConfig.directory?.api ?? "src/api");
   if (existsSync(apiDir)) {
     const apiFiles = await scanApiRouteFiles(apiDir);
     const routesByUrl = new Map<string, string[]>();
 
     for (const filePath of apiFiles) {
-      if (filePath.replace(/\\/g, "/").split("/").pop()?.startsWith("_middleware.")) {
-        items.push({
-          category: "middleware-unsupported",
-          severity: "error",
-          message: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Compose plain functions directly in handler files.",
-          locations: [{ filePath: toDisplay(filePath) }],
-        });
-      }
       const normalizedApiDir = apiDir.replace(/\\/g, "/");
       const normalizedFilePath = filePath.replace(/\\/g, "/");
       let rel = normalizedFilePath.startsWith(normalizedApiDir + "/")
@@ -844,40 +646,6 @@ export const checkProject = async (): Promise<CheckFindings> => {
         existing.push(filePath);
       } else {
         routesByUrl.set(routeUrl, [filePath]);
-      }
-
-      try {
-        const content = await readFile(filePath, "utf8");
-        API_METHOD_LIKE_REGEX.lastIndex = 0;
-        const exportedNames: string[] = [];
-        let match: RegExpExecArray | null;
-
-        while ((match = API_METHOD_LIKE_REGEX.exec(content)) !== null) {
-          const name = match[1];
-          exportedNames.push(name);
-
-          const upper = name.toUpperCase();
-          if (VALID_API_METHODS.has(upper) && name !== upper) {
-            items.push({
-              category: "invalid-method-case",
-              severity: "warning",
-              message: `method export "${name}" must be uppercase ("${upper}"). Lowercase or mixed-case HTTP methods are not recognized by the dispatcher.`,
-              locations: [{ filePath: toDisplay(filePath) }],
-            });
-          }
-        }
-
-        const hasRecognized = exportedNames.some((n) => VALID_API_METHODS.has(n));
-        if (!hasRecognized) {
-          items.push({
-            category: "missing-method-handler",
-            severity: "error",
-            message: `file exports no recognized HTTP method handler (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD).`,
-            locations: [{ filePath: toDisplay(filePath) }],
-          });
-        }
-      } catch {
-        // Skip unreadable files
       }
     }
 
@@ -960,6 +728,17 @@ export const checkProject = async (): Promise<CheckFindings> => {
     }
   }
 
+  // ── Per-file findings from the language server ───────────────────────────
+  for (const diagnostic of perFile.status === "ran" ? perFile.diagnostics : []) {
+    items.push({
+      category: diagnostic.code ?? "language-server",
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      locations: [{ filePath: diagnostic.filePath.replace(/\\/g, "/"), line: diagnostic.line, column: diagnostic.column }],
+      source: "language-server",
+    });
+  }
+
   const errors = items.filter((i) => i.severity === "error").length;
   const warnings = items.filter((i) => i.severity === "warning").length;
 
@@ -971,6 +750,10 @@ export const checkProject = async (): Promise<CheckFindings> => {
     items,
     distHtmlChecked,
     distHtmlSpecHintNeeded,
+    perFileChecked: perFile.status === "ran" ? perFile.filesChecked : null,
+    perFileHint: languageServerHint(perFile),
+    fixedFiles: perFile.status === "ran" ? perFile.fixedFiles : [],
+    perFileFormat: perFile.status === "ran" ? perFile.formatDiagnostic : undefined,
   };
 };
 
@@ -985,14 +768,6 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Unused components",
     description:
       "Defined but never referenced. Safe to delete, or referenced only from a\nbuild script, which this check cannot always see.",
-  },
-  "missing-method-handler": {
-    title: "API routes missing method handler",
-    description: "API route files must export at least one standard HTTP method handler.",
-  },
-  "invalid-method-case": {
-    title: "API route method exports with invalid casing",
-    description: "HTTP method handlers must be uppercase (e.g. GET, POST).",
   },
   "route-collision": {
     title: "API route collisions",
@@ -1018,14 +793,6 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Circular component references",
     description: "Component templates reference each other in a cycle, which causes runaway expansion.",
   },
-  "unknown-bascik-attribute": {
-    title: "Unknown data-bascik attributes",
-    description: "Likely typos in special Bascik attributes that are ignored at build time.",
-  },
-  "script-mode-conflict": {
-    title: "Conflicting script modes",
-    description: "A single script tag cannot be both build-time and server-time.",
-  },
   "pages-directory": {
     title: "Pages directory issues",
     description: "The configured pages directory must exist, be readable, and contain at least one HTML page.",
@@ -1033,18 +800,6 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   "duplicate-route-resolution": {
     title: "Duplicate route resolution",
     description: "Multiple pages resolve to the same route path.",
-  },
-  "component-structure-order": {
-    title: "Component style and script order",
-    description: "Component templates should place styles above markup and scripts below markup.",
-  },
-  compatibility: {
-    title: "Scoping compatibility errors",
-    description: "CSS or JavaScript patterns that cannot be reliably scoped by Bascik.",
-  },
-  "middleware-unsupported": {
-    title: "Unsupported API middleware files",
-    description: "Middleware chains (_middleware.ts) are not supported by design in Bascik API routes. Handlers compose plain functions directly.",
   },
   "component-list": {
     title: "Component scan failures",
@@ -1059,15 +814,66 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
   },
 };
 
+const plural = (count: number, word: string): string => `${count} ${word}${count !== 1 ? "s" : ""}`;
+
+/** The lines under the summary: what else was checked, what was skipped, and what `--fix` rewrote. */
+const statusLines = (findings: CheckFindings): string[] => {
+  const lines: string[] = [];
+  if ((findings.distHtmlChecked ?? null) !== null) {
+    lines.push(`✓ ${plural(findings.distHtmlChecked as number, "dist/ HTML file")} pass WHATWG spec (parse5)`);
+  } else if (findings.distHtmlSpecHintNeeded) {
+    lines.push("ℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking");
+  }
+  if ((findings.perFileChecked ?? null) !== null) {
+    lines.push(`✓ ${plural(findings.perFileChecked as number, "file")} checked by @bascik/language-server`);
+  } else if (findings.perFileHint) {
+    lines.push(`ℹ  ${findings.perFileHint}`);
+  }
+  if (findings.fixedFiles?.length) {
+    lines.push(`✓ fixed ${plural(findings.fixedFiles.length, "file")}: ${findings.fixedFiles.join(", ")}`);
+  }
+  return lines;
+};
+
+/** A per-file finding rebuilt as the language server reports it, so both commands print it the same way. */
+const toLanguageServerDiagnostic = (item: CheckFinding): LanguageServerDiagnostic => ({
+  filePath: item.locations[0]?.filePath ?? "",
+  line: item.locations[0]?.line ?? 1,
+  column: item.locations[0]?.column ?? 1,
+  severity: item.severity,
+  code: item.category === "language-server" ? undefined : item.category,
+  message: item.message,
+});
+
+const perFileSection = (findings: CheckFindings, items: CheckFinding[]): string => {
+  const render = findings.perFileFormat ?? ((d: LanguageServerDiagnostic) => `${d.filePath}:${d.line}:${d.column} - ${d.severity}: ${d.code ? `(${d.code}) ` : ""}${d.message}`);
+  const color = stdout.green("x") !== "x";
+  const lines = items
+    .map(toLanguageServerDiagnostic)
+    .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line || a.column - b.column)
+    .map((diagnostic) => `  ${render(diagnostic, color)}`);
+  return (
+    `Per-file checks (${items.length})\n` +
+    "  Reported by @bascik/language-server, the engine the editor uses. Run it on its own\n" +
+    "  with `npx bascik-language-server --check`.\n\n" +
+    `${lines.join("\n")}\n`
+  );
+};
+
 /**
  * Format check findings into human-readable console output.
  */
 export const formatFindingsHuman = (findings: CheckFindings): string => {
   const sections: string[] = ["bascik --check\n"];
 
-  // Group items by category
+  // Project findings are grouped by rule. Per-file findings are listed by file, as the editor shows them.
   const grouped = new Map<string, CheckFinding[]>();
+  const perFileItems: CheckFinding[] = [];
   for (const item of findings.items) {
+    if (item.source === "language-server") {
+      perFileItems.push(item);
+      continue;
+    }
     const list = grouped.get(item.category) ?? [];
     list.push(item);
     grouped.set(item.category, list);
@@ -1075,13 +881,8 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
 
   if (findings.items.length === 0) {
     const warnNote = findings.warnings > 0 ? ` (${findings.warnings} warnings)` : "";
-    let out = `bascik --check\n\n✓ ${findings.pagesChecked} page${findings.pagesChecked !== 1 ? "s" : ""} and ${findings.componentsChecked} component${findings.componentsChecked !== 1 ? "s" : ""} checked — no errors${warnNote}`;
-    if (findings.distHtmlChecked !== null) {
-      out += `\n✓ ${findings.distHtmlChecked} dist/ HTML file${findings.distHtmlChecked !== 1 ? "s" : ""} pass WHATWG spec (parse5)`;
-    } else if (findings.distHtmlSpecHintNeeded) {
-      out += `\nℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking`;
-    }
-    return out;
+    const status = statusLines(findings).map((line) => `\n${line}`).join("");
+    return `bascik --check\n\n✓ ${findings.pagesChecked} page${findings.pagesChecked !== 1 ? "s" : ""} and ${findings.componentsChecked} component${findings.componentsChecked !== 1 ? "s" : ""} checked — no errors${warnNote}${status}`;
   }
 
   for (const [category, items] of grouped.entries()) {
@@ -1127,13 +928,13 @@ export const formatFindingsHuman = (findings: CheckFindings): string => {
     sections.push(section);
   }
 
+  if (perFileItems.length > 0) sections.push(perFileSection(findings, perFileItems));
+
   const symbol = findings.errors > 0 ? "✗" : "✓";
-  let summary = `${symbol} ${findings.errors} error${findings.errors !== 1 ? "s" : ""}, ${findings.warnings} warning${findings.warnings !== 1 ? "s" : ""}`;
-  if (findings.distHtmlChecked !== null) {
-    summary += `\n✓ ${findings.distHtmlChecked} dist/ HTML file${findings.distHtmlChecked !== 1 ? "s" : ""} pass WHATWG spec (parse5)`;
-  } else if (findings.distHtmlSpecHintNeeded) {
-    summary += `\nℹ  dist/ HTML not validated — install parse5 to enable WHATWG spec checking`;
-  }
+  const summary = [
+    `${symbol} ${findings.errors} error${findings.errors !== 1 ? "s" : ""}, ${findings.warnings} warning${findings.warnings !== 1 ? "s" : ""}`,
+    ...statusLines(findings),
+  ].join("\n");
   sections.push(summary);
 
   return sections.join("\n");
@@ -1146,12 +947,19 @@ export interface CheckJsonOutput {
   componentsChecked: number;
   distHtmlChecked: number | null;
   distHtmlSpecHintNeeded: boolean;
+  /** Files the language server checked, or null when it is not installed or too old. */
+  perFileChecked: number | null;
+  /** True when the per-file checks were skipped because the language server is missing or too old. */
+  perFileHintNeeded: boolean;
+  fixedFiles: string[];
   findings: Array<{
     category: string;
     severity: FindingSeverity;
     message: string;
     locations: FindingLocation[];
     suggestion?: string;
+    /** `language-server` for per-file findings; absent for the project checks. */
+    source?: "language-server";
   }>;
 }
 
@@ -1166,12 +974,16 @@ export const formatFindingsJson = (findings: CheckFindings): string => {
     componentsChecked: findings.componentsChecked,
     distHtmlChecked: findings.distHtmlChecked,
     distHtmlSpecHintNeeded: findings.distHtmlSpecHintNeeded,
+    perFileChecked: findings.perFileChecked ?? null,
+    perFileHintNeeded: Boolean(findings.perFileHint),
+    fixedFiles: findings.fixedFiles ?? [],
     findings: findings.items.map((item) => ({
       category: item.category,
       severity: item.severity,
       message: item.message,
       locations: item.locations,
       ...(item.suggestion ? { suggestion: item.suggestion } : {}),
+      ...(item.source ? { source: item.source } : {}),
     })),
   };
   return JSON.stringify(output, null, 2);

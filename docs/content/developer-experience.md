@@ -23,9 +23,13 @@ transpiled: pages/about.html in 0.3ms
 Server running at http://localhost:8080
 ```
 
+In an interactive terminal, the `Server running at` line is pinned to the top row the moment the server is up, so the address never scrolls away as logs arrive. Piped output and CI print it as an ordinary line instead. In VS Code's terminal, starting the server also clears the terminal's scrollback, as `clear` does, because its sticky scroll feature would otherwise draw an earlier command over the address. Start with `bascik --no-pin`, or set `BASCIK_PIN_SERVER_URL=0` in your shell profile, to turn pinning off and keep your scrollback. Pinning is a terminal setting, so it is a flag and an environment variable rather than a config key.
+
+To see less, run `bascik --quiet` (or `-q`). It hides the per-page, copy, request, and script lines, so a running dev server prints the summary and `Server running at` at boot, then stays silent while you edit until a warning or an error. See [Logging](/configuration#logging) for exactly what each level hides.
+
 This is a real run on a new project. After the server starts, one page is saved and only that page is rebuilt:
 
-![A terminal running bascik on a new project. Four pages transpile in under a quarter of a second and the server is running at localhost:8080. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
+![A terminal running bascik on a new project. The line Server running at localhost:8080 stays pinned to the top row while four pages transpile in under a quarter of a second below it. After one file is saved, only that page is rebuilt, in a few milliseconds](/assets/demos/dev-terminal@2x.webp)
 
 ### Daily Edit-and-Save Loop
 
@@ -56,6 +60,8 @@ Dev mode writes each transpiled HTML page to `dist/` after placing it in the in-
 ### Open-Page Prioritization for Instant Feedback
 
 When you edit a shared component or a global stylesheet used across many pages, Bascik does not make your active browser tab wait for the entire site to recompile. The dev server tracks which pages currently have active live-reload browser tabs connected. It partitions the rebuild queue, transpiles the open page(s) first, stores them in memory, and emits the live-reload signal immediately. Your visible browser window updates in milliseconds while any remaining background pages finish compiling afterwards.
+
+The same order applies when the dev server starts: open pages first, then the home page, then everything else. A tab that connects after compilation has begun, for example one reconnecting after a restart, still moves its page ahead of the pages that have not started. See [Compile Order](/development-server#compile-order).
 
 > **Zero-Refresh Dev Server Reconnection:** If you stop or restart the local development server while working in your code editor, you do not need to click refresh in your browser. As soon as you focus back onto your web page, Bascik's injected live reload client immediately re-establishes the SSE connection and reloads the page automatically.
 
@@ -219,7 +225,7 @@ Open the DevTools **Sources** tab to set breakpoints in component scripts. Becau
 ```html
 <!-- Inside src/components/counter/counter.html -->
 <script>
-  document.querySelector('.counter-btn').addEventListener('click', (e) => {
+  document.getElementById('counter-btn').addEventListener('click', (e) => {
     // Set a breakpoint directly on this line in browser DevTools
     const count = parseInt(e.target.dataset.count || '0', 10) + 1;
     e.target.dataset.count = String(count);
@@ -367,9 +373,9 @@ Output:
 ✓ Checked 4 pages and 12 components in 14ms (0 errors, 0 warnings)
 ```
 
-Scaffolded projects also include `npm run lint`, which runs the same `@bascik/language-server` checks as the editor extension from the terminal. Each finding names the file, line, column, and rule:
+Scaffolded projects also include `npm run lint`, which is `bascik --check`. It runs the same `@bascik/language-server` checks as the editor extension, plus the project-wide checks, from the terminal. Each finding names the file, line, column, and rule:
 
-![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors in a component, a runtime id assignment and an attribute selector. It ends with Found 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
+![A terminal running npm run lint. It reports two warnings, an undeclared prop on site-header and an unclosed feat-card tag, and two errors, a data-bascik-build attribute on a div and a script with two conflicting directives. It ends with 2 errors, 2 warnings](/assets/demos/lint@2x.webp)
 
 > **Deep Dive:** Read [Component Template Contract Testing](/testing/component-testing) and [End-to-End Browser Testing](/testing/e2e-testing) for complete testing guidelines.
 

@@ -15,6 +15,14 @@ describe("collectDeclaredIds", () => {
     ).toEqual(new Set(["first", "second", "icon"]));
   });
 
+  it("collects unquoted and whitespace-spaced ids from HTML", () => {
+    expect(
+      collectDeclaredIds(
+        `<div id = "spaced"></div><span id=unquoted></span><p id = bare-id/></p>`,
+      ),
+    ).toEqual(new Set(["spaced", "unquoted", "bare-id"]));
+  });
+
   it("returns an empty set when no ids are declared", () => {
     expect(collectDeclaredIds("<div><span></span></div>")).toEqual(new Set());
   });
@@ -78,6 +86,14 @@ describe("rewriteIdReferencesInHtml", () => {
   ])("rewrites local tokens independently in %s", (attribute) => {
     expect(rewrite(`<div ${attribute}="external  local\texternal"></div>`)).toBe(
       `<div ${attribute}="external  scoped-local\texternal"></div>`,
+    );
+  });
+
+  it("rewrites unquoted and whitespace-spaced ID reference attributes", () => {
+    expect(
+      rewrite('<label for = "local"></label><label for=local></label><a href=#local></a>'),
+    ).toBe(
+      '<label for = "scoped-local"></label><label for="scoped-local"></label><a href="#scoped-local"></a>',
     );
   });
 

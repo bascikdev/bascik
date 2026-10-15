@@ -6,12 +6,15 @@ import { deepReadDirFlat } from "./file-system.ts";
 import { BascikConfig } from "./config.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { minifyHtml } from "./html-minifier.ts";
-import { maskElementContents } from "./shielding.ts";
+import { createContentShield, maskElementContents, shieldElementContents } from "./shielding.ts";
 import { transformTypeScriptScriptTags, TypeScriptTransformError, hasStaticModuleSyntax } from "./typescript.ts";
 import { getScriptType } from "./script-types.ts";
 import { stampScriptLines, withScriptLine } from "./script-source-lines.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
-import { SCRIPT_END_TAG, scriptOpenTag } from "./html-patterns.ts";
+import { SCRIPT_END_TAG, scriptOpenTag, BUILD_ATTR_NAME, ROUTES_ATTR_NAME, SERVER_ATTR_NAME, STREAM_ATTR_NAME, isPageAwareBuildOpenTag } from "./html-patterns.ts";
+import { findCompatibilityMatches } from "./compatibility-checker.ts";
+import { stderr as colorErr } from "./colors.ts";
+import { PLAUSIBLE_TAG_NAME, PRESERVE_WILDCARD_PATTERN } from "./config-validation.ts";
 import type { BascikComponent, ComponentList } from "./types.ts";
 
 // Warn if a component name shadows a native HTML element
@@ -131,6 +134,7 @@ export const NATIVE_HTML_ELEMENTS = new Set([
 ]);
 
 let componentListCache: ComponentList | null = null;
+const componentCompatFingerprints = new Map<string, string>();
 
 export const invalidateComponentListCache = () => {
   componentListCache = null;
@@ -162,12 +166,136 @@ const COMPONENT_BUILD_SCRIPT_RE = new RegExp(
   "gi",
 );
 
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const BUILD_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${BUILD_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const SERVER_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${SERVER_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const ROUTES_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${ROUTES_ATTR_NAME}`, "i");
+// nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+const STREAM_DIRECTIVE_RE = new RegExp(String.raw`(?:^|\s)${STREAM_ATTR_NAME}`, "i");
+
+const getLineAtOffset = (source: string, offset: number): number => {
+  let line = 1;
+  for (let i = 0; i < offset; i++) {
+    if (source.charCodeAt(i) === 10) line++;
+  }
+  return line;
+};
+
+const warnComponentCompatibility = async (
+  rawHtml: string,
+  fileName: string,
+  componentCssFileNames: string[],
+  companionScripts: Awaited<ReturnType<typeof getComponentScripts>> | undefined,
+): Promise<void> => {
+  const cssFileName = componentCssFileNames.find(
+    (c) => c.replace(/\.css$/, ".html") === fileName,
+  );
+  let rawCss = "";
+  if (cssFileName) {
+    try {
+      rawCss = await readFile(cssFileName, "utf8");
+    } catch {
+      rawCss = "";
+    }
+  }
+  const companionFingerprint = companionScripts && companionScripts.scriptMap.size > 0
+    ? [...new Map([...companionScripts.scriptMap.values()].map((s) => [s.relPath, s.code])).entries()]
+        .map(([rel, code]) => `${rel}::${code}`)
+        .join("\0")
+    : "";
+  const fingerprint = `${rawHtml}\0${rawCss}\0${companionFingerprint}`;
+  if (componentCompatFingerprints.get(fileName) === fingerprint) {
+    return;
+  }
+  componentCompatFingerprints.set(fileName, fingerprint);
+
+  const relHtml = relative(process.cwd(), fileName).replace(/\\/g, "/") || fileName;
+  const noComments = rawHtml.replace(/<!--[\s\S]*?-->/g, (match) => {
+    const newlines = match.match(/\n/g);
+    return newlines ? newlines.join("") : " ";
+  });
+  const nonCodeScan = maskElementContents(noComments, [
+    "textarea",
+    ...(BascikConfig.scoping?.preserve ?? ["code"])
+      .map((t) => String(t))
+      .filter((t) => PLAUSIBLE_TAG_NAME.test(t) || PRESERVE_WILDCARD_PATTERN.test(t)),
+  ]);
+
+  const seenWarnings = new Set<string>();
+  const emitWarning = (displayPath: string, line: number, ruleId: string, message: string, suggestion: string) => {
+    const key = `${displayPath}:${line}:${ruleId}`;
+    if (seenWarnings.has(key)) return;
+    seenWarnings.add(key);
+    console.warn(
+      `${colorErr.tag("warn", "[bascik] warning")} ${colorErr.dim(`(${ruleId})`)} in ${colorErr.cyan(`${displayPath}:${line}`)}: ${message} ${colorErr.dim(suggestion)}`,
+    );
+  };
+
+  const styleBlockRegex = /(<style(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/style(?:[\t\n\f\r /][^>]*)?>/gi;
+  let styleMatch: RegExpExecArray | null;
+  while ((styleMatch = styleBlockRegex.exec(nonCodeScan)) !== null) {
+    const styleBody = styleMatch[2] ?? "";
+    const styleOffset = styleMatch.index + styleMatch[1].length;
+    for (const m of findCompatibilityMatches(styleBody, "css")) {
+      emitWarning(relHtml, getLineAtOffset(rawHtml, styleOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+    }
+  }
+
+  const scriptBlockRegex = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi;
+  let scriptMatch: RegExpExecArray | null;
+  while ((scriptMatch = scriptBlockRegex.exec(nonCodeScan)) !== null) {
+    const openTag = scriptMatch[1];
+    if (
+      BUILD_DIRECTIVE_RE.test(openTag) ||
+      SERVER_DIRECTIVE_RE.test(openTag) ||
+      ROUTES_DIRECTIVE_RE.test(openTag) ||
+      STREAM_DIRECTIVE_RE.test(openTag)
+    ) {
+      continue;
+    }
+    const typeMatch = openTag.match(/\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const typeVal = (typeMatch?.[1] ?? typeMatch?.[2] ?? typeMatch?.[3] ?? "").toLowerCase();
+    const isJs =
+      !typeVal ||
+      typeVal === "module" ||
+      typeVal === "text/javascript" ||
+      typeVal === "application/javascript" ||
+      typeVal === "text/typescript";
+    if (isJs) {
+      const scriptBody = scriptMatch[2] ?? "";
+      const scriptOffset = scriptMatch.index + openTag.length;
+      for (const m of findCompatibilityMatches(scriptBody, "js")) {
+        emitWarning(relHtml, getLineAtOffset(rawHtml, scriptOffset + m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      }
+    }
+  }
+
+  if (cssFileName && rawCss) {
+    const relCss = relative(process.cwd(), cssFileName).replace(/\\/g, "/") || cssFileName;
+    for (const m of findCompatibilityMatches(rawCss, "css")) {
+      emitWarning(relCss, getLineAtOffset(rawCss, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+    }
+  }
+
+  if (companionScripts && companionScripts.scriptMap.size > 0) {
+    const visitedCompanions = new Set<string>();
+    for (const scriptInfo of companionScripts.scriptMap.values()) {
+      if (visitedCompanions.has(scriptInfo.relPath)) continue;
+      visitedCompanions.add(scriptInfo.relPath);
+      for (const m of findCompatibilityMatches(scriptInfo.code, "js")) {
+        emitWarning(scriptInfo.relPath, getLineAtOffset(scriptInfo.code, m.index), m.rule.id, m.rule.message, m.rule.suggestion);
+      }
+    }
+  }
+};
+
 export const isPageAwareBuildScript = (
   openTag: string,
   scriptContent: string,
 ): boolean => {
-  if (/\bdata-bascik-page-aware\b/i.test(openTag)) return true;
-  if (/\bdata-bascik-build\s*=\s*["']?page["']?/i.test(openTag)) return true;
+  if (isPageAwareBuildOpenTag(openTag)) return true;
   if (/\bprocess\.env\.(BASCIK_PAGE_PATH|BASCIK_PAGE_FILE|BASCIK_ROUTE)\b/.test(scriptContent)) {
     return true;
   }
@@ -209,12 +337,15 @@ export const readComponentRoot = async (root: string, cwd = process.cwd()): Prom
   }
 };
 
-export const listComponents = async (): Promise<ComponentList> => {
-  if (componentListCache) return componentListCache;
+export const listComponents = async (
+  componentRoots: readonly string[] = BascikConfig.directory.components,
+): Promise<ComponentList> => {
+  const isDefaultRoots = componentRoots === BascikConfig.directory.components;
+  if (isDefaultRoots && componentListCache) return componentListCache;
   // Every configured root is scanned; the union feeds one collision map so a
   // duplicate filename across roots is the same error as across subfolders.
   const componentFileNames = (
-    await Promise.all(BascikConfig.directory.components.map((root) => readComponentRoot(root)))
+    await Promise.all(componentRoots.map((root) => readComponentRoot(root)))
   ).flat();
   const componentHtmlFileNames = (componentFileNames as string[]).filter(
     (fileName) => fileName.match(/\.html$/) && !fileName.match(/\.(test|spec)\.html$/),
@@ -297,6 +428,7 @@ export const listComponents = async (): Promise<ComponentList> => {
       }
 
       const rawContent = fileContentBuffer.toString();
+      await warnComponentCompatibility(rawContent, fileName, componentCssFileNames, companionScripts);
       // Record every script's source position now: style extraction, build
       // scripts, and minification below all move scripts around. Directive
       // scripts first, because the browser-script stamp adds characters that
@@ -417,7 +549,7 @@ export const listComponents = async (): Promise<ComponentList> => {
     }),
   );
   stylesheetImporters = nextStylesheetImporters;
-  componentListCache = (components as BascikComponent[]).reduce(
+  const builtList = (components as BascikComponent[]).reduce(
     (acc: ComponentList, { name, ...rest }) => {
       if (!name) return acc;
       acc[name] = rest as Omit<BascikComponent, "name">;
@@ -425,7 +557,10 @@ export const listComponents = async (): Promise<ComponentList> => {
     },
     {} as ComponentList,
   );
-  return componentListCache;
+  if (isDefaultRoots) {
+    componentListCache = builtList;
+  }
+  return builtList;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -652,7 +787,7 @@ export const replaceTag = (
   );
 };
 
-const componentRegexCache = new WeakMap<ComponentList, { namesKey: string; regex: RegExp | null }>();
+const componentRegexCache = new WeakMap<ComponentList, { keyCount: number; firstKey: string | undefined; lastKey: string | undefined; regex: RegExp | null }>();
 
 /**
  * Test-only instrumentation: bytes of already-resolved document prefix that a
@@ -684,12 +819,15 @@ export const getFirstComponent = (
 ): Partial<BascikComponent> & { index?: number } => {
   if (!htmlString) return {};
 
-  const componentNames = Object.keys(componentList)
-    .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
-    .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
-  const namesKey = componentNames.join("\0");
+  const rawKeys = Object.keys(componentList);
+  const keyCount = rawKeys.length;
+  const firstKey = rawKeys[0];
+  const lastKey = rawKeys[keyCount - 1];
   let cached = componentRegexCache.get(componentList);
-  if (!cached || cached.namesKey !== namesKey) {
+  if (!cached || cached.keyCount !== keyCount || cached.firstKey !== firstKey || cached.lastKey !== lastKey) {
+    const componentNames = rawKeys
+      .filter((name) => /^[a-zA-Z][\w:-]*$/.test(name))
+      .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
     // Super important here, reverse, makes it so we're matching on the most specific tag first
     // Meaning, it will find test-comp-clone before test-comp,
     // because reverse, the longer tag will be first in the regexp, and therefore match first.
@@ -699,7 +837,7 @@ export const getFirstComponent = (
     const regex = escapedComponentNames.length === 0
       ? null
       : new RegExp(`<(${escapedComponentNames.join("|")})(?![\\w-])[\\s\\S]*?>`, "gi");
-    cached = { namesKey, regex };
+    cached = { keyCount, firstKey, lastKey, regex };
     componentRegexCache.set(componentList, cached);
   }
 
@@ -904,25 +1042,34 @@ export const extractProps = (
   componentContent: string | undefined,
 ): Record<string, string> => {
   const props: Record<string, string> = {};
-  if (!componentContent) return props;
+  if (!componentContent || !/data-bascik-prop-/i.test(componentContent)) return props;
   const openingTag = componentContent.match(
     // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     new RegExp(`^<[a-zA-Z][\\w:-]*(?:${ATTR_VALUE})>`, "i"),
   )?.[0];
   if (!openingTag) return props;
-  // Accept both double-quoted and single-quoted prop values,
-  // e.g. data-bascik-prop-title="Hi" or data-bascik-prop-title='Hi'.
-  const regexp = /data-bascik-prop-([\w-]+)=("[^"]*"|'[^']*')/gi;
+  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted prop values.
+  const regexp = /data-bascik-prop-([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+?)/gi;
   let match;
   while ((match = regexp.exec(openingTag)) !== null) {
-    const followingCharacter = openingTag[match.index + match[0].length];
-    if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
-      console.warn(
-        `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
-      );
-      continue;
+    const rawVal = match[2];
+    const isQuoted = rawVal.startsWith('"') || rawVal.startsWith("'");
+    if (isQuoted) {
+      const followingCharacter = openingTag[match.index + match[0].length];
+      if (followingCharacter && !/[\s/>]/.test(followingCharacter)) {
+        console.warn(
+          `Ignoring malformed data-bascik-prop-${match[1]}: the value contains an unescaped delimiting quote. Use &quot; or &#39; for quotes inside prop values.`,
+        );
+        continue;
+      }
+      props[match[1]] = decodePropEntities(rawVal.slice(1, -1));
+    } else {
+      // Unquoted value: consume up to whitespace, `/>`, or `>`
+      const unquotedMatch = /^[^\s"'=<>`]+/.exec(openingTag.slice(match.index + match[0].length - rawVal.length));
+      const fullUnquoted = unquotedMatch ? unquotedMatch[0] : rawVal;
+      const cleanUnquoted = fullUnquoted.endsWith("/") ? fullUnquoted.slice(0, -1) : fullUnquoted;
+      props[match[1]] = decodePropEntities(cleanUnquoted);
     }
-    props[match[1]] = decodePropEntities(match[2].slice(1, -1));
   }
   return props;
 };
@@ -934,7 +1081,18 @@ export const injectPropAttributes = (
   if (!fileContent) return "";
   if (!fileContent.includes("data-bascik-attr-")) return fileContent;
 
-  return fileContent.replace(
+  const propsLowerMap = new Map<string, string>();
+  for (const [k, v] of Object.entries(props)) {
+    propsLowerMap.set(k.toLowerCase(), v);
+  }
+
+  const commentShield = createContentShield(fileContent);
+  const withoutComments = fileContent.includes("<!--")
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    : fileContent;
+  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+
+  const rewritten = rawShield.html.replace(
     new RegExp(`<([a-zA-Z][\\w:-]*)(?:${ATTR_VALUE})>`, "gi"),
     (openingTag: string) => {
       if (!openingTag.includes("data-bascik-attr-")) return openingTag;
@@ -975,7 +1133,7 @@ export const injectPropAttributes = (
           continue;
         }
 
-        const propValue = props[propName];
+        const propValue = props[propName] ?? propsLowerMap.get(propName.toLowerCase());
         if (propValue === undefined) continue;
         const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const targetRegex = new RegExp(
@@ -996,6 +1154,7 @@ export const injectPropAttributes = (
       return result;
     },
   );
+  return commentShield.restore(rawShield.restore(rewritten));
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1015,9 +1174,18 @@ export const injectProps = (
   props: Record<string, string>,
 ): string => {
   if (!fileContent) return "";
-  let result = fileContent;
+  if (Object.keys(props).length === 0 && !fileContent.includes("data-bascik-prop-")) {
+    return fileContent;
+  }
+  const commentShield = createContentShield(fileContent);
+  const withoutComments = fileContent.includes("<!--")
+    ? fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) => commentShield.hide(comment))
+    : fileContent;
+  const rawShield = shieldElementContents(withoutComments, ["script", "style", "textarea"]);
+  let result = rawShield.html;
+  const resultLower = result.toLowerCase();
   Object.entries(props).forEach(([propName, propValue]) => {
-    if (!result.includes(propName)) return;
+    if (!resultLower.includes(propName.toLowerCase())) return;
     if (!/^[a-zA-Z0-9_-]+$/.test(propName)) return;
     const attrName = `data-bascik-prop-${propName}`;
     const escapedPropValue = escapePropValue(propValue);
@@ -1059,7 +1227,8 @@ export const injectProps = (
   // followed immediately by `>` or whitespace). Markers with a value
   // (e.g. `data-bascik-prop-label="featured"`) are child component prop declarations
   // and must be preserved so nested components receive their props.
-  return result.replace(/\s+data-bascik-prop-[\w-]+(?=[>\s])/gi, "");
+  const stripped = result.replace(/\s+data-bascik-prop-[\w-]+(?=[>\s])/gi, "");
+  return commentShield.restore(rawShield.restore(stripped));
 };
 
 // ─── Named Slots ──────────────────────────────────────────────────────────────
@@ -1125,23 +1294,26 @@ const parseNamedSlots = (
 ): Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> => {
   if (!innerContent.includes("data-bascik-slot")) return [];
   const results: Array<{ slotName: string; startIndex: number; endIndex: number; content: string }> = [];
+  const masked = maskRawTextContent(innerContent);
   // Quote-aware attribute scan (ATTR_VALUE) so the marker may appear after
   // other attributes, and `data-bascik-slot` inside a quoted attribute value
   // never false-positives.
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
-    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot="([^"]+)"(?:${ATTR_VALUE})>`,
+    `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s"'=<>` + "`" + `/>]+))(?:${ATTR_VALUE})>`,
     "gi",
   );
   let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(innerContent)) !== null) {
-    const [fullOpen, tagName, slotName] = match;
-    if (isInsideNestedComponent(innerContent, match.index, componentNames)) continue;
+  while ((match = openTagRe.exec(masked)) !== null) {
+    const [fullOpen, tagName, doubleName, singleName, unquotedName] = match;
+    const slotName = doubleName ?? singleName ?? unquotedName;
+    if (isInsideNestedComponent(innerContent, match.index, componentNames, masked)) continue;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(innerContent, tagName, contentStart);
+    const closeIndex = findMatchingClose(innerContent, tagName, contentStart, masked);
     if (closeIndex === -1) continue;
-    const closeTag = `</${tagName}>`;
-    const endIndex = closeIndex + closeTag.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(innerContent.slice(closeIndex));
+    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const endIndex = closeIndex + closeTagLen;
     results.push({
       slotName,
       startIndex: match.index,
@@ -1163,9 +1335,10 @@ const isInsideNestedComponent = (
   html: string,
   index: number,
   componentNames: ReadonlySet<string>,
+  preMasked?: string,
 ): boolean => {
   if (componentNames.size === 0) return false;
-  const masked = maskRawTextContent(html);
+  const masked = preMasked !== undefined ? preMasked : maskRawTextContent(html);
   for (const componentName of componentNames) {
     let searchFrom = 0;
     while (searchFrom < index) {
@@ -1252,11 +1425,17 @@ export const replaceNamedSlots = (
   // nested same-tag elements inside a placeholder's fallback content are
   // handled correctly, then replace right-to-left to preserve indices.
   const wrappers = parseNamedSlots(fileContent, componentNames);
+  if (wrappers.length === 0) return fileContent;
+  const slotsLowerMap = new Map<string, string>();
+  for (const [key, val] of Object.entries(slots)) {
+    slotsLowerMap.set(key.toLowerCase(), val);
+  }
   let result = fileContent;
   for (let i = wrappers.length - 1; i >= 0; i--) {
     const { slotName, startIndex, endIndex, content } = wrappers[i];
     // Use the element's own inner content as fallback when the slot is not provided
-    const replacement = slotName in slots ? slots[slotName] : content;
+    const matchedSlot = slotName in slots ? slots[slotName] : slotsLowerMap.get(slotName.toLowerCase());
+    const replacement = matchedSlot !== undefined ? matchedSlot : content;
     result = result.slice(0, startIndex) + replacement + result.slice(endIndex);
   }
   return result;
@@ -1275,6 +1454,7 @@ export const replaceDefaultSlots = (
   defaultSlotContent: string,
 ): string => {
   if (!fileContent.includes("data-bascik-slot")) return fileContent;
+  const masked = maskRawTextContent(fileContent);
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const openTagRe = new RegExp(
     `<(\\w+(?:-\\w+)*)(?=[\\s>])(?:${ATTR_VALUE}?)\\s+data-bascik-slot(?!\\s*=)(?:${ATTR_VALUE})>`,
@@ -1282,12 +1462,14 @@ export const replaceDefaultSlots = (
   );
   const wrappers: Array<{ startIndex: number; endIndex: number; content: string }> = [];
   let match: RegExpExecArray | null;
-  while ((match = openTagRe.exec(fileContent)) !== null) {
+  while ((match = openTagRe.exec(masked)) !== null) {
     const [fullOpen, tagName] = match;
     const contentStart = match.index + fullOpen.length;
-    const closeIndex = findMatchingClose(fileContent, tagName, contentStart);
+    const closeIndex = findMatchingClose(fileContent, tagName, contentStart, masked);
     if (closeIndex === -1) continue;
-    const endIndex = closeIndex + `</${tagName}>`.length;
+    const closeTagMatch = new RegExp(`^<\\/${tagName}\\s*>`, "i").exec(fileContent.slice(closeIndex));
+    const closeTagLen = closeTagMatch ? closeTagMatch[0].length : `</${tagName}>`.length;
+    const endIndex = closeIndex + closeTagLen;
     wrappers.push({
       startIndex: match.index,
       endIndex,
@@ -1329,14 +1511,18 @@ export const extractInheritableAttributes = (
   );
   if (!openTagMatch || !openTagMatch[1]) return attrs;
   const attrStr = openTagMatch[1];
-  // Accept both double-quoted and single-quoted attribute values.
-  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'))?/g;
+  // Accept double-quoted, single-quoted, whitespace-spaced, and unquoted attribute values.
+  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
   let match;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     const [, name, rawValue] = match;
-    const value = rawValue === undefined ? "" : rawValue.slice(1, -1);
-    if (!name.startsWith("data-bascik-")) {
-      attrs[name] = value;
+    if (name.startsWith("data-bascik-")) continue;
+    if (rawValue === undefined) {
+      attrs[name] = "";
+    } else if (rawValue.startsWith('"') || rawValue.startsWith("'")) {
+      attrs[name] = rawValue.slice(1, -1);
+    } else {
+      attrs[name] = rawValue;
     }
   }
   return attrs;
@@ -1371,42 +1557,53 @@ export const mergeAttributesOntoRoot = (
   const [, tagName, existing, close] = rootParts;
   let attrStr = existing || "";
   const existingNames = new Set<string>();
-  const attrRegex = /\s+([\w:-]+)(?:=("[^"]*"|'[^']*'|[^\s>]+))?/g;
+  const attrRegex = /\s+([\w:-]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`/>]+))?/g;
   let match: RegExpExecArray | null;
   while ((match = attrRegex.exec(attrStr)) !== null) {
     existingNames.add(match[1].toLowerCase());
   }
 
   for (const [name, value] of Object.entries(attrs)) {
-    if (name === "class" && value) {
-      if (/class="/.test(attrStr)) {
+    const lowerName = name.toLowerCase();
+    if (lowerName === "class" && value) {
+      if (/\sclass\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /class="([^"]*)"/,
-          (_, classes) => `class="${classes} ${value}"`,
+          /\s(class)\s*=\s*"([^"]*)"/i,
+          (_, attrName: string, classes: string) => ` ${attrName}="${classes ? `${classes} ` : ""}${value}"`,
         );
-      } else if (/class='/.test(attrStr)) {
+      } else if (/\sclass\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /class='([^']*)'/,
-          (_, classes) => `class='${classes} ${value}'`,
+          /\s(class)\s*=\s*'([^']*)'/i,
+          (_, attrName: string, classes: string) => ` ${attrName}='${classes ? `${classes} ` : ""}${value}'`,
+        );
+      } else if (/\sclass\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /\s(class)\s*=\s*([^\s"'=<>`/>]+)/i,
+          (_, attrName: string, classes: string) => ` ${attrName}="${classes} ${value}"`,
         );
       } else {
         attrStr += ` class="${value}"`;
       }
-    } else if (name === "style" && value) {
-      if (/style="/.test(attrStr)) {
+    } else if (lowerName === "style" && value) {
+      if (/\sstyle\s*=\s*"/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /style="([^"]*)"/,
-          (_, style) => `style="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
+          /\s(style)\s*=\s*"([^"]*)"/i,
+          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
-      } else if (/style='/.test(attrStr)) {
+      } else if (/\sstyle\s*=\s*'/i.test(attrStr)) {
         attrStr = attrStr.replace(
-          /style='([^']*)'/,
-          (_, style) => `style='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+          /\s(style)\s*=\s*'([^']*)'/i,
+          (_, attrName: string, style: string) => ` ${attrName}='${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}'`,
+        );
+      } else if (/\sstyle\s*=\s*[^\s"'=<>`/>]+/i.test(attrStr)) {
+        attrStr = attrStr.replace(
+          /\s(style)\s*=\s*([^\s"'=<>`/>]+)/i,
+          (_, attrName: string, style: string) => ` ${attrName}="${style}${style.trimEnd().endsWith(";") ? " " : "; "}${value}"`,
         );
       } else {
         attrStr += ` style="${value}"`;
       }
-    } else if (value !== undefined && !existingNames.has(name.toLowerCase())) {
+    } else if (value !== undefined && !existingNames.has(lowerName)) {
       attrStr += ` ${name}="${value}"`;
     }
   }

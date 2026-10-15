@@ -16,6 +16,7 @@ import {
 import { createResponseSink } from "./response-sink.ts";
 import { getBootPageHtml } from "./boot-page.ts";
 import { formatDuration } from "./format.ts";
+import { colorStatus, stdout as colorOut } from "./colors.ts";
 import { stripBasePath, withBasePath } from "./base-path.ts";
 import { ServerScriptError } from "./build-error.ts";
 import {
@@ -403,7 +404,7 @@ export const createRequestHandler = () => {
       const cleanPath = path?.split(/[?#]/)[0];
       if (cleanPath === withBasePath("/bascik-live-reload", BascikConfig.base)) return;
       if (isHealthEndpoint(cleanPath ?? "")) return;
-      console.log(`${method} ${path} ${responseStatus} ${formatDuration(elapsed)}`);
+      console.log(`${colorOut.bold(String(method))} ${path} ${colorStatus(responseStatus)} ${colorOut.dim(formatDuration(elapsed))}`);
     };
 
     try {
@@ -526,8 +527,11 @@ export const createRequestHandler = () => {
       }
 
       // ── Static asset (has extension, not .html) ──────────────────────────
+      // `extname` ignores a trailing slash, but `/style.css/` names a
+      // directory, not the file: it falls through to the page lookup, which
+      // answers 404 like a static host unless a dotted directory page exists.
       const ext = extname(pathname).toLowerCase();
-      if (ext && !ext.match(/^\.htm.*$/)) {
+      if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);

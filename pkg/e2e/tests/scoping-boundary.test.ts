@@ -63,4 +63,36 @@ test.describe('scoping-boundary-test page', () => {
     const code = inst0.locator('code');
     await expect(code).toHaveText('data-bascik-prop-sample="literal"');
   });
+
+  test('textarea raw text content is not rewritten by element/id/class/prop passes', async ({ page }) => {
+    const inst0 = getInstance(page, 0);
+    const textarea = inst0.locator('textarea');
+    await expect(textarea).toHaveValue(
+      '<button id="boundary-btn" class="boundary-box" data-bascik-prop-sample="x"></button>',
+    );
+  });
+
+  test('short and prefix-overlapping class and CSS custom property names scope without clobbering', async ({ page }) => {
+    const inst0 = getInstance(page, 0);
+    const multi = inst0.getByTestId('boundary-multi-tokens');
+    await expect(multi).toHaveAttribute(
+      'class',
+      'bascik__scoping-boundary__a bascik__scoping-boundary__b bascik__scoping-boundary__a-b',
+    );
+    await expect(multi).toHaveCSS('padding-left', '10px');
+    await expect(multi).toHaveCSS('padding-right', '24px');
+    await expect(multi).toHaveCSS('font-style', 'italic');
+
+    await inst0.locator('button').click();
+    await expect(inst0.locator('[id$="__boundary-output"]')).toHaveAttribute('data-multi-class-count', '2');
+  });
+
+  test('root class/style merging preserves data-class and data-style attributes', async ({ page }) => {
+    const inst0 = getInstance(page, 0);
+    await expect(inst0).toHaveAttribute('data-class', 'preserve-data-class');
+    await expect(inst0).toHaveAttribute('data-style', 'preserve-data-style');
+    await expect(inst0).toHaveClass(/bascik__scoping-boundary__boundary-wrapper/);
+    await expect(inst0).toHaveClass(/passed-root-class/);
+    await expect(inst0).toHaveAttribute('style', /outline-width:\s*2px/);
+  });
 });

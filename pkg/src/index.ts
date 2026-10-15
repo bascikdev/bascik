@@ -7,6 +7,7 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
+import { stripColors } from "./lib/colors.ts";
 
 export { readVersion, installProcessCrashHandlers };
 
@@ -28,7 +29,7 @@ export const setupBuildLogging = async (buildLogPath: string): Promise<string> =
   const tee = (target: (...args: unknown[]) => void) => {
     return (...args: unknown[]) => {
       target(...args);
-      appendFile(absoluteLogPath, `${format(...args)}\n`, "utf8").catch(() => { });
+      appendFile(absoluteLogPath, `${stripColors(format(...args))}\n`, "utf8").catch(() => { });
     };
   };
 
@@ -113,7 +114,18 @@ export const runCli = async (
     }
     case "check": {
       const { checkProject, formatFindingsHuman, formatFindingsJson } = await import("./lib/check.ts");
-      const findings = await checkProject();
+      const { LanguageServerRequiredError } = await import("./lib/check-language-server.ts");
+      let findings;
+      try {
+        findings = await checkProject({ fix: decision.flags.fix });
+      } catch (error) {
+        // The one expected failure is `--fix` with no language server to apply the fixes. Say so, without a stack.
+        // Anything else is a bug and keeps its stack.
+        if (!(error instanceof LanguageServerRequiredError)) throw error;
+        console.error(error.message);
+        exit(1);
+        return { action: "check", exitCode: 1 };
+      }
       if (decision.flags.json) {
         logger(formatFindingsJson(findings));
       } else {

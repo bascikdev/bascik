@@ -15,6 +15,8 @@ import { withCompilationPublisher } from "./lib/compilation-events.ts";
 import { eventEmitter } from "./lib/events.ts";
 import { assertProductionBuildState, writeBuildState } from "./lib/build-state.ts";
 import { toleratingExecFailure } from "./lib/exec-policy.ts";
+import { stdout as colorOut } from "./lib/colors.ts";
+import { pinServerUrl } from "./lib/pinned-banner.ts";
 
 export const runTranspile = async (options: { exitOnError?: boolean } = {}): Promise<void> => {
   const projectRoot = resolve(process.cwd());
@@ -93,7 +95,7 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await writeBuildState("build", version);
 
     const totalElapsed = performance.now() - overallStart;
-    console.log(`\n✓ Build complete in ${formatDuration(totalElapsed)}`);
+    console.log(`\n${colorOut.green("✓ Build complete")} in ${colorOut.bold(formatDuration(totalElapsed))}`);
   } else {
     await toleratingExecFailure(() => runExecPhase("pre"));
     // Parallel entries run alongside the dev server and page compilation:
@@ -110,6 +112,9 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     const { startDevServer } = await import("./lib/server-dev.ts");
     const dev = startDevServer({ ...options, parallel });
     const url = await dev.url;
+    // The URL is known as soon as the port is bound, long before pages finish compiling. Pin it to the top
+    // row of an interactive terminal; otherwise it is logged once boot completes, as before.
+    const pinned = url ? await pinServerUrl(url) : undefined;
 
     const publications: [string, unknown][] = [];
     await watchFiles({
@@ -135,8 +140,8 @@ export const runTranspile = async (options: { exitOnError?: boolean } = {}): Pro
     await manifestCollector.writeManifest(version);
     await dev.finishBoot();
     const totalElapsed = performance.now() - overallStart;
-    console.log(`✓ All tasks completed in ${formatDuration(totalElapsed)}`);
-    if (url) console.log(`Server running at ${url}`);
+    console.log(`${colorOut.green("✓ All tasks completed")} in ${colorOut.bold(formatDuration(totalElapsed))}`);
+    if (url && !pinned) console.log(`Server running at ${url}`);
   }
 };
 

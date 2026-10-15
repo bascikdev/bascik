@@ -224,6 +224,16 @@ describe("convertCssElementSelectorsToClasses", () => {
     );
     expect(elementsConvertedClasses).toEqual(["h1", "h2"]);
   });
+
+  it("scopes element selectors following :is(.a, .b) or :where(.a, .b)", () => {
+    const preScopedCss = ":is(.bascik__my-comp__a, .bascik__my-comp__b) p > span { color: red; }";
+    const { css: result, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(preScopedCss, "my-comp");
+    expect(result).toBe(
+      ":is(.bascik__my-comp__a, .bascik__my-comp__b) .bascik__my-comp__el__p > .bascik__my-comp__el__span { color: red; }",
+    );
+    expect(elementsConvertedClasses).toEqual(["p", "span"]);
+  });
 });
 
 describe("addElementClassesInHtml", () => {
@@ -245,6 +255,20 @@ describe("addElementClassesInHtml", () => {
       '<header class="bascik__site-header__el__header"><header class="x bascik__site-header__el__header"></header><header class="bascik__site-header__el__header"\n  data-x></header><header class="bascik__site-header__el__header" /><header-link data-x="1">link</header-link></header>',
     );
   });
+
+  it("does not inject element classes into HTML comments or raw-text elements", () => {
+    const html =
+      '<!-- <p>commented</p> -->' +
+      '<script>const s = "<p>scripted</p>";</script>' +
+      '<textarea><p>typed</p></textarea>' +
+      '<p>real</p>';
+    expect(addElementClassesInHtml(html, "my-comp", ["p"])).toBe(
+      '<!-- <p>commented</p> -->' +
+      '<script>const s = "<p>scripted</p>";</script>' +
+      '<textarea><p>typed</p></textarea>' +
+      '<p class="bascik__my-comp__el__p">real</p>',
+    );
+  });
 });
 
 describe("addIdClassesInHtml", () => {
@@ -252,6 +276,20 @@ describe("addIdClassesInHtml", () => {
     const html = "<div id=\"btn\" class='btn-base'></div>";
     const result = addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }]);
     expect(result).toContain("class='btn-base bascik__my-comp__id__btn'");
+  });
+
+  it("does not inject id classes into HTML comments or raw-text elements", () => {
+    const html =
+      '<!-- <div id="btn"></div> -->' +
+      '<script>const s = \'<div id="btn"></div>\';</script>' +
+      '<textarea><div id="btn"></div></textarea>' +
+      '<div id="btn"></div>';
+    expect(addIdClassesInHtml(html, [{ idName: "btn", className: "bascik__my-comp__id__btn" }])).toBe(
+      '<!-- <div id="btn"></div> -->' +
+      '<script>const s = \'<div id="btn"></div>\';</script>' +
+      '<textarea><div id="btn"></div></textarea>' +
+      '<div class="bascik__my-comp__id__btn" id="btn"></div>',
+    );
   });
 });
 
@@ -296,6 +334,36 @@ describe("removeIdSelectors", () => {
     expect(result).not.toContain("[id]");
     expect(result).not.toContain("end}end");
     expect(result).toContain(".normal { color: blue; }");
+  });
+
+  it("does not swallow an enclosing @media or @supports rule when [id] is nested inside it", () => {
+    const input = [
+      "@media (min-width: 600px) {",
+      "  .keep-before { color: green; }",
+      "  [id] { color: red; }",
+      "  .keep-after { color: blue; }",
+      "}",
+    ].join("\n");
+    const result = removeIdSelectors(input);
+    expect(result).not.toContain("[id]");
+    expect(result).not.toContain("color: red");
+    expect(result).toContain("@media (min-width: 600px)");
+    expect(result).toContain(".keep-before { color: green; }");
+    expect(result).toContain(".keep-after { color: blue; }");
+    // Must keep balanced braces
+    expect((result.match(/\{/g) ?? []).length).toBe((result.match(/\}/g) ?? []).length);
+  });
+
+  it("removes only the [id] selector item from a comma-separated selector list while preserving sibling selectors", () => {
+    const result1 = removeIdSelectors(".keep, [id=\"foo\"] { color: red; }");
+    expect(result1).not.toContain("[id");
+    expect(result1).toContain(".keep");
+    expect(result1).toContain("color: red");
+
+    const result2 = removeIdSelectors("[id], .keep { color: blue; }");
+    expect(result2).not.toContain("[id");
+    expect(result2).toContain(".keep");
+    expect(result2).toContain("color: blue");
   });
 });
 
@@ -985,6 +1053,71 @@ describe("convertCssElementSelectorsToClasses – descendant after scoped class"
     expect(elementsConvertedClasses).toEqual(expect.arrayContaining(["div", "ul", "li"]));
   });
 
+  it("converts descendant and combinator element selectors after an #id selector in prefixElementAttribute and scopeInlineStyleTags", () => {
+    let component: BascikComponent = {
+      name: "my-card",
+      fileContent: '<div id="panel"><header><h3>Title</h3><p>Body</p></header></div>',
+      cssFileContent: "#panel header > h3 + p { color: red; }",
+    };
+    component = prefixElementAttribute(component, "id", "inst1");
+    component = prefixElementAttribute(component, "class", "inst1", true);
+    expect(component.cssFileContent).toBe(
+      ".bascik__my-card__id__panel .bascik__my-card__el__header > .bascik__my-card__el__h3 + .bascik__my-card__el__p { color: red; }",
+    );
+    expect(component.fileContent).toContain("bascik__my-card__id__panel");
+    expect(component.fileContent).toContain("bascik__my-card__el__header");
+    expect(component.fileContent).toContain("bascik__my-card__el__h3");
+    expect(component.fileContent).toContain("bascik__my-card__el__p");
+
+    const inline = scopeInlineStyleTags(
+      "<style>#panel p, #panel > h3 { margin: 0; }</style>",
+      "my-card",
+    );
+    expect(inline.html).toContain(
+      ".bascik__my-card__id__panel .bascik__my-card__el__p, .bascik__my-card__id__panel > .bascik__my-card__el__h3",
+    );
+    expect(inline.elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["p", "h3"]),
+    );
+  });
+
+  it("converts element selectors after compound class, universal, and double-colon pseudo-elements", () => {
+    const pre =
+      ".bascik__my-comp__card.bascik__my-comp__active > p, .bascik__my-comp__list * span { color: red; }";
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toBe(
+      ".bascik__my-comp__card.bascik__my-comp__active > .bascik__my-comp__el__p, .bascik__my-comp__list * .bascik__my-comp__el__span { color: red; }",
+    );
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["p", "span"]),
+    );
+  });
+
+  it("converts multi-hop element selectors after a comma in a selector list: h1, div p, section > span { }", () => {
+    const pre = "h1, div p, section > span + a { margin: 0; }";
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toBe(
+      ".bascik__my-comp__el__h1, .bascik__my-comp__el__div .bascik__my-comp__el__p, .bascik__my-comp__el__section > .bascik__my-comp__el__span + .bascik__my-comp__el__a { margin: 0; }",
+    );
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["h1", "div", "p", "section", "span", "a"]),
+    );
+  });
+
+  it("converts descendant element selectors after an element with an attribute selector: a[href$='.pdf'] span { }", () => {
+    const pre = `a[href$=".pdf"] span, input[type=checkbox]:checked + label { color: red; }`;
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(pre, "my-comp");
+    expect(css).toBe(
+      `.bascik__my-comp__el__a[href$=".pdf"] .bascik__my-comp__el__span, .bascik__my-comp__el__input[type=checkbox]:checked + .bascik__my-comp__el__label { color: red; }`,
+    );
+    expect(elementsConvertedClasses).toEqual(
+      expect.arrayContaining(["a", "span", "input", "label"]),
+    );
+  });
+
   it.each([
     [".bascik__my-comp__list>li { color: red; }", ".bascik__my-comp__list>.bascik__my-comp__el__li"],
     [".bascik__my-comp__list >li { color: red; }", ".bascik__my-comp__list >.bascik__my-comp__el__li"],
@@ -1043,12 +1176,28 @@ describe("single-quoted HTML attributes in styles", () => {
     expect(result).toBe("<pre class='code bascik__my-comp__el__pre'>content</pre>");
   });
 
-  it("adds id class to single-quoted id attribute", () => {
-    const html = "<div id='main-box'>content</div>";
+  it("appends element class to whitespace-spaced and unquoted class attributes", () => {
+    expect(addElementClassesInHtml('<pre class = "code">content</pre>', "my-comp", ["pre"])).toBe(
+      '<pre class="code bascik__my-comp__el__pre">content</pre>',
+    );
+    expect(addElementClassesInHtml("<pre class=code>content</pre>", "my-comp", ["pre"])).toBe(
+      '<pre class="code bascik__my-comp__el__pre">content</pre>',
+    );
+    expect(addElementClassesInHtml("<img class=hero/>", "my-comp", ["img"])).toBe(
+      '<img class="hero bascik__my-comp__el__img"/>',
+    );
+  });
+
+  it("adds id class to single-quoted, whitespace-spaced, and unquoted id attributes", () => {
+    const html = "<div id='main-box'>content</div><div id = \"spaced-box\"></div><div id=bare-box></div>";
     const result = addIdClassesInHtml(html, [
       { idName: "main-box", className: "bascik__my-comp__id__main-box" },
+      { idName: "spaced-box", className: "bascik__my-comp__id__spaced-box" },
+      { idName: "bare-box", className: "bascik__my-comp__id__bare-box" },
     ]);
     expect(result).toContain('class="bascik__my-comp__id__main-box"');
+    expect(result).toContain('class="bascik__my-comp__id__spaced-box"');
+    expect(result).toContain('class="bascik__my-comp__id__bare-box"');
   });
 });
 

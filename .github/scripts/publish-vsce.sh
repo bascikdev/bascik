@@ -24,7 +24,8 @@ if [ "${prefix}" = "ext-pre-v" ]; then
 fi
 
 echo "Publishing ${version} to the Marketplace ${flags[*]:-}"
-# The extension has no runtime dependencies, so skip vsce's npm dependency scan.
+# The extension has no runtime dependencies: build.mjs bundles the language client and the language server
+# into dist/, so skip vsce's npm dependency scan (a VSIX ships no node_modules).
 # Entra ID credentials (az login or workload identity) are the default; VSCE_PAT is a fallback until PATs retire.
 auth=(--azure-credential)
 if [ -n "${VSCE_PAT:-}" ]; then

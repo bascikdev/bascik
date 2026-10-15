@@ -24,13 +24,20 @@ describe('analyzeComponentSource', () => {
       <p data-bascik-text="label"></p>
       <a data-bascik-attr-href="link" data-bascik-prop-label></a>
       <div data-bascik-html='content' data-bascik-prop-link></div>
+      <img data-bascik-attr-src = unquotedSrc />
     `);
 
     expect(metadata.props).toEqual([
       { name: 'label' },
       { name: 'link' },
       { name: 'content' },
+      { name: 'unquotedSrc' },
     ]);
+  });
+
+  it('infers unquoted slot names on self-closing tags without trailing slash', () => {
+    const metadata = analyzeComponentSource('<div data-bascik-slot=heroHeader/>');
+    expect(metadata.slots).toEqual([{ name: 'heroHeader' }]);
   });
 
   it('infers named and default slots and component features', () => {

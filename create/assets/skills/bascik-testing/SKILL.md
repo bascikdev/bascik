@@ -15,12 +15,12 @@ Requires the `bascik` skill for project basics and its `scripts/verify.mjs` for 
 
 Run cheapest first and stop at the first failure:
 
-1. `npx bascik --check` (structure, config, references) and `npx @bascik/language-server --check` (scoping patterns, unclosed tags). `node <skills-dir>/bascik/scripts/verify.mjs` runs both.
+1. `npx bascik --check`: project checks (config, routes, references) plus, when `@bascik/language-server` is installed, the per-file checks (scoping patterns, unclosed tags). `node <skills-dir>/bascik/scripts/verify.mjs` runs it and also covers component folders outside the project.
 2. `npx vitest run` for unit tests of pure logic.
 3. `BASCIK_SITE_URL=https://example.com npx bascik --build`, then inspect `dist/` or run `verify.mjs --build`.
 4. `npx playwright test` against the built site or the dev server.
 
-CI gate: `bascik --check && bascik-language-server --check && vitest run && bascik --build && playwright test`.
+CI gate: `bascik --check && vitest run && bascik --build && playwright test`. `bascik --check` already runs the per-file checks, so there is no separate linter step. Add `bascik-language-server --check <dir>` only for a component folder outside the project.
 
 ## Unit tests: extract pure logic
 

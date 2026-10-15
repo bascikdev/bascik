@@ -76,6 +76,9 @@ The flags that override specific config keys:
 | `--port <n>` | `BASCIK_SERVER_PORT` | `http.port` |
 | `--host <name>` | `BASCIK_SERVER_HOST` | `http.hostname` |
 | `--log-level <level>` | `BASCIK_LOG_LEVEL` | `logging.level` |
+| `--quiet`, `-q` | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
+
+One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 
 See [Command Line Interface](/cli#cli-reference) for the full flag reference.
 
@@ -548,6 +551,18 @@ logging: {
   transpiles: true,    // log page transpilation
 }
 ```
+
+At `info`, the default, Bascik prints a line for each page it transpiles, each asset it copies, links, or deletes, each request the server answers, each exec script that starts and finishes, and each file it generates, such as `sitemap.xml`. At `warn`, which is what `bascik --quiet` selects, those lines are hidden and only warnings and errors remain. Most people who want less output want this, and it is the one setting you can flip for a single run without editing the config.
+
+A few lines print at every level, because they say the work is done and where to find it: `✓ N pages transpiled in 18ms`, `✓ Build complete` or `✓ All tasks completed`, and `Server running at`. The notice printed when you press `Ctrl+C` does too. Output from your own scripts is also never filtered, because it is not Bascik's to hide. A quiet dev server therefore prints those lines at boot, says nothing while you edit, and speaks again only for a warning, an error, or shutdown.
+
+```sh
+bascik --quiet                      # dev server, boot summary only
+bascik --build -q                   # build, summary only
+BASCIK_LOG_LEVEL=warn bascik        # the same, from the environment
+```
+
+Use `requests`, `copies`, `deletes`, and `transpiles` to keep one kind of line while hiding another. For example, `export const server = { logging: { requests: false } }` quiets a deployed server's access log without touching any start script.
 
 ## Mode Overrides (`dev`, `build`, `server`)
 

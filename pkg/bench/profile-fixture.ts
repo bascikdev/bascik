@@ -38,3 +38,87 @@ export async function createFixture(root: string, workers: boolean, port: number
   for (let index = 0; index < 8; index++) await writeFile(join(root, `src/pages/asset-${index}.txt`), assetBytes(index + 1));
   await writeFile(join(root, "src/pages/readiness.json"), '{"status":"ok","ready":true}');
 }
+
+export const pipelineFixtureComponentCount = 10;
+export const pipelineFixturePageCount = 25;
+export const pipelineFixtureInstancesPerPage = 40;
+
+/**
+ * Generates a synthetic pipeline-heavy benchmark project (25 pages, 10 components,
+ * 1,000 component instances total) that exercises ID scoping, element and #id CSS
+ * selector rewriting, aria/href ID reference rewriting, dynamic data-bascik-attr-*
+ * and data-bascik-prop-* bindings, and build scripts importing an external package.
+ */
+export async function createPipelineBenchmarkFixture(root: string, workers = false) {
+  for (const directory of ["src/pages", "src/components"]) {
+    await mkdir(join(root, directory), { recursive: true });
+  }
+  await writeFile(
+    join(root, "bascik.config.ts"),
+    `export default ${JSON.stringify({
+      directory: { pages: "src/pages", components: "src/components", out: "dist" },
+      pipeline: { workers },
+      minify: { html: true, css: true, js: true, identifiers: false },
+      generate: { sitemap: false, robots: false },
+    })};\n`,
+  );
+  for (let c = 0; c < pipelineFixtureComponentCount; c++) {
+    const html = `<style>
+  section { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  header h3 { font-size: 1.1rem; margin: 0; color: #111; }
+  div p { line-height: 1.5; color: #333; }
+  ul li a { text-decoration: none; color: #0055cc; }
+  footer span { font-size: 0.85rem; opacity: 0.8; }
+  button { cursor: pointer; border-radius: 4px; }
+  #panel-${c} { border: 1px solid #ddd; background: #fafafa; }
+  #btn-${c}:hover { background: #eee; }
+</style>
+<section id="panel-${c}" class="widget-${c}" data-bascik-attr-data-slug="slug">
+  <header>
+    <h3 id="title-${c}" data-bascik-prop-heading>Default Heading ${c}</h3>
+  </header>
+  <div>
+    <p data-bascik-prop-summary>Paragraph content inside component ${c} with nested elements and attributes.</p>
+    <ul>
+      <li><a href="#title-${c}">Jump to title</a></li>
+      <li><span>Secondary item</span></li>
+    </ul>
+  </div>
+  <footer>
+    <span id="status-${c}">Ready</span>
+    <button id="btn-${c}" aria-labelledby="title-${c}" aria-describedby="status-${c}">Action</button>
+  </footer>
+</section>
+<script>
+  const btn = document.getElementById("btn-${c}");
+  const panel = document.querySelector("#panel-${c}");
+  if (btn && panel) btn.addEventListener("click", () => panel.classList.toggle("active"));
+</script>`;
+    await writeFile(join(root, `src/components/ui-widget-${c}.html`), html);
+  }
+
+  for (let p = 0; p < pipelineFixturePageCount; p++) {
+    const instances = Array.from({ length: pipelineFixtureInstancesPerPage }, (_, i) => {
+      const c = i % pipelineFixtureComponentCount;
+      return `<ui-widget-${c} data-bascik-prop-slug="p${p}-i${i}" data-bascik-prop-heading="Page ${p} Item ${i}" data-bascik-prop-summary="Summary for ${p}.${i}"></ui-widget-${c}>`;
+    });
+    const pageHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Benchmark Page ${p}</title>
+</head>
+<body>
+  <main>
+    <h1>Benchmark Page ${p}</h1>
+    <script data-bascik-build>
+      import { marked } from "marked";
+      export default () => marked.parse("Rendered **markdown** summary for page ${p}.");
+    </script>
+    ${instances.join("\n    ")}
+  </main>
+</body>
+</html>`;
+    await writeFile(join(root, `src/pages/page-${p}.html`), pageHtml);
+  }
+}

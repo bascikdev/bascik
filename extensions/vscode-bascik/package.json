@@ -4,7 +4,7 @@
   "publisher": "bascik",
   "description": "Navigate Bascik components and catch scoping, server script, stream, and API route issues as you type.",
   "icon": "icon.png",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,7 +12,7 @@
     "directory": "extensions/vscode-bascik"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.91.0"
   },
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -44,8 +44,7 @@
   },
   "scripts": {
     "precompile": "node ../../docs/scripts/generate-compatibility-rules.ts",
-    "compile": "tsc -p ./tsconfig.json",
-    "watch": "tsc -watch -p ./tsconfig.json",
+    "compile": "node build.mjs",
     "vscode:prepublish": "npm run compile",
     "pretest": "npm run compile",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
@@ -60,13 +59,15 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.19.1",
-    "@types/vscode": "^1.90.0",
+    "@types/vscode": "^1.91.0",
     "@vitest/coverage-v8": "^5.0.3",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
+    "esbuild": "^0.28.2",
     "mocha": "^12.0.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "vscode-languageclient": "^10.1.2"
   }
 }

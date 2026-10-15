@@ -230,6 +230,21 @@ describe("prefixElementAttribute - data-bascik-preserve", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("prefixElementAttribute – id (existing patterns)", () => {
+  it("scopes unquoted and whitespace-spaced class, id, and name attributes", () => {
+    let component = makeComponent(
+      '<label for = email>Email</label><input id = email name=email class = field><div class=card/>',
+      ".field { color: red; } .card { color: blue; }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(`for = "${scope("email")}"`);
+    expect(component.fileContent).toContain(`id = "${scope("email")}"`);
+    expect(component.fileContent).toContain(`name="${scope("email")}"`);
+    expect(component.fileContent).toContain(`class = "${scopeClass("field")}"`);
+    expect(component.fileContent).toContain(`<div class="${scopeClass("card")}"/>`);
+  });
+
   it("scopes the for attribute to match a scoped input id", () => {
     const component = makeComponent(
       '<label for="email">Email</label><input id="email">',
@@ -237,6 +252,36 @@ describe("prefixElementAttribute – id (existing patterns)", () => {
     const result = prefixElementAttribute(component, "id", "test1234");
     expect(result.fileContent).toContain(`for="${scope("email")}"`);
     expect(result.fileContent).toContain(`id="${scope("email")}"`);
+  });
+
+  it("scopes JS DOM calls that include whitespace before '(' or around commas", () => {
+    let component = makeComponent(
+      [
+        '<input id="email" name="email">',
+        '<script>',
+        '  document.getElementById ("email");',
+        '  document.querySelector ("#email");',
+        '  document.querySelectorAll (".js-only");',
+        '  document.getElementsByName ("email");',
+        '  document.getElementsByClassName ("js-only");',
+        '  el.setAttribute ( "id" , "email" );',
+        '  el.setAttribute ( "name" , "email" );',
+        '  el.setAttribute ( "class" , "js-only" );',
+        '</script>',
+      ].join("\n"),
+      ".js-only { color: red; }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "name", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(`getElementById ("${scope("email")}")`);
+    expect(component.fileContent).toContain(`querySelector ("#${scope("email")}")`);
+    expect(component.fileContent).toContain(`querySelectorAll (".${scopeClass("js-only")}")`);
+    expect(component.fileContent).toContain(`getElementsByName ("${scope("email")}")`);
+    expect(component.fileContent).toContain(`getElementsByClassName ("${scopeClass("js-only")}")`);
+    expect(component.fileContent).toContain(`setAttribute ( "id" , "${scope("email")}" )`);
+    expect(component.fileContent).toContain(`setAttribute ( "name" , "${scope("email")}" )`);
+    expect(component.fileContent).toContain(`setAttribute ( "class" , "${scopeClass("js-only")}" )`);
   });
 
   it("scopes aria-labelledby tokens that resolve to local ids", () => {
@@ -883,6 +928,16 @@ describe("prefixElementAttribute – JS-only class discovery via selector and as
     const result = prefixElementAttribute(c, "class", "test1234");
     expect(result.fileContent).toContain(`setAttribute("class", "${scopeClass("hidden")}")`);
     expect(result.cssFileContent).toContain(`.${scopeClass("hidden")}`);
+  });
+
+  it("scopes a JS-only class used in getElementsByClassName", () => {
+    const c = makeComponent(
+      '<div></div><script>const items = document.getElementsByClassName("js-only-cls");</script>',
+      ".js-only-cls { display: flex; }",
+    );
+    const result = prefixElementAttribute(c, "class", "test1234");
+    expect(result.fileContent).toContain(`getElementsByClassName("${scopeClass("js-only-cls")}")`);
+    expect(result.cssFileContent).toContain(`.${scopeClass("js-only-cls")}`);
   });
 
   it("does not double-scope a class appearing in both HTML and querySelector", () => {
@@ -1694,6 +1749,11 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
     const isolated = namespaceScriptTags(c);
     expect(isolated.fileContent).toContain('var secret = "A";');
     expect(isolated.fileContent).toContain('(function() {');
+  });
+
+  it("wraps a classic script with an empty type attribute in an IIFE", () => {
+    const c = makeComponent('<script type="">const shared = 1;</script>');
+    expect(namespaceScriptTags(c).fileContent).toContain('(function() {\nconst shared = 1;\n})();');
   });
 
   it("does not treat script examples in HTML comments as browser scripts", () => {

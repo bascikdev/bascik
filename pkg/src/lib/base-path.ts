@@ -147,7 +147,7 @@ export const rewriteCssBasePaths = (css: string, base: string): string => {
 const getAttributeValue = (tag: string, attribute: string): string | undefined => {
   // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const pattern = new RegExp(
-    `\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+    `\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\\\`]+?))(?=\\s|\\/>|>|$)`,
     "i",
   );
   const match = pattern.exec(tag);
@@ -160,9 +160,29 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
     ? (getAttributeValue(tag, "property") ?? getAttributeValue(tag, "name"))?.toLowerCase()
     : undefined;
 
+  const stringRanges: Array<{ start: number; end: number }> = [];
+  let scanIdx = 0;
+  let strChar: string | null = null;
+  let strStart = -1;
+  while (scanIdx < tag.length) {
+    if (strChar) {
+      if (tag[scanIdx] === strChar) {
+        stringRanges.push({ start: strStart, end: scanIdx });
+        strChar = null;
+      }
+    } else if (tag[scanIdx] === '"' || tag[scanIdx] === "'") {
+      strChar = tag[scanIdx];
+      strStart = scanIdx;
+    }
+    scanIdx++;
+  }
+
   return tag.replace(
-    /\s([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g,
-    (match, rawName: string, _rawValue: string, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined) => {
+    /\s([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/g,
+    (match, rawName: string, _rawValue: string, doubleValue: string | undefined, singleValue: string | undefined, unquotedValue: string | undefined, offset: number) => {
+      if (stringRanges.some((r) => offset > r.start && offset < r.end)) {
+        return match;
+      }
       const name = rawName.toLowerCase();
       const value = doubleValue ?? singleValue ?? unquotedValue ?? "";
       let rewritten = value;

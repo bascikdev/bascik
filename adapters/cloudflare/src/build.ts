@@ -36,9 +36,12 @@ export const buildInvocationRoutes = (input: {
   base: string;
   dynamicPagePaths: string[];
   hasApiRoutes: boolean;
+  /** A static 404.html exists; its URLs must reach the worker to answer 404. */
+  hasStaticNotFoundPage?: boolean;
 }): InvocationRoutes => {
   const include = new Set<string>();
   for (const path of input.dynamicPagePaths) for (const alias of pageAliasesFor(path, input.base)) include.add(alias);
+  if (input.hasStaticNotFoundPage) for (const alias of pageAliasesFor("/404", input.base)) include.add(alias);
   if (input.hasApiRoutes) include.add(withBasePath("/api/*", input.base));
   include.add(withBasePath("/_routes.json", input.base));
   include.add(withBasePath("/_worker.js", input.base));
@@ -53,6 +56,7 @@ const CONTROL_FILES: Record<string, string[]> = {
   pages: ["_worker.js", "_routes.json"],
   workers: ["wrangler.jsonc", "worker.js"],
 };
+const ASSET_CONTROL_FILES = new Set(["_headers", "_redirects"]);
 
 export const detectControlCollisions = (publicPaths: string[], variant: string): string[] => {
   const control = new Set(CONTROL_FILES[variant] ?? []);
@@ -88,6 +92,10 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     }
     set.add(owner);
   };
+
+  // A dynamic /404 page already answers 404 from the worker. A static one is
+  // served by the asset layer, which answers 200 at its own URL.
+  const hasStaticNotFoundPage = graph.publicFiles.includes("404.html") && graph.pages["/404"] === undefined;
 
   const here = fileURLToPath(import.meta.url);
   const runtimeFile = resolve(here, `../runtime${here.endsWith(".ts") ? ".ts" : ".js"}`);
@@ -129,6 +137,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
   lines.push(`  onServerScriptError: ${JSON.stringify(graph.onServerScriptError)},`);
   lines.push(`  release: ${JSON.stringify(graph.release)},`);
   if (graph.custom500 !== undefined) lines.push(`  custom500: ${JSON.stringify(graph.custom500)},`);
+  if (hasStaticNotFoundPage) lines.push(`  staticNotFoundPage: true,`);
   lines.push(`  pages: { ${pageLiterals.join(",\n    ")} },`);
   lines.push(`  apiRoutes: [ ${routeLiterals.join(",\n    ")} ],`);
   lines.push(`};`);
@@ -195,10 +204,16 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
   }
   const workerCode = result.outputFiles?.[0]?.text ?? "";
 
-  // Copy public files
+  // Copy public files. The asset layer maps a request URL straight to a file
+  // under public/, and every URL of a non-root base site carries the prefix,
+  // so assets are staged below it. Control files stay at the public root,
+  // where the platform reads them.
+  const assetRoot = graph.base && graph.base !== "/"
+    ? join(publicDir, ...graph.base.split("/").filter(Boolean))
+    : publicDir;
   for (const rel of graph.publicFiles) {
     const from = join(distDir, rel);
-    const to = join(publicDir, rel);
+    const to = join(ASSET_CONTROL_FILES.has(rel) ? publicDir : assetRoot, rel);
     if (!resolve(to).startsWith(publicDir + sep)) continue;
     await mkdir(dirname(to), { recursive: true });
     await copyFile(from, to);
@@ -208,6 +223,7 @@ export const build = async (context: AdapterBuildContext): Promise<AdapterBuildR
     base: graph.base,
     dynamicPagePaths: Object.keys(graph.pages),
     hasApiRoutes: graph.apiRoutes.length > 0,
+    hasStaticNotFoundPage,
   });
 
   let workerPath: string;

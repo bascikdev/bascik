@@ -78,6 +78,10 @@ describe("applyOutputScope", () => {
     expect(applyOutputScope("<p class=item>x</p>", scope)).toBe('<p class="bascik__c__item">x</p>');
   });
 
+  it("handles unquoted class on self-closing tags without absorbing the trailing slash", () => {
+    expect(applyOutputScope("<img class=item/>", scope)).toBe('<img class="bascik__c__item"/>');
+  });
+
   it("scopes only the first class attribute when one is written twice", () => {
     expect(applyOutputScope('<p class="item" class="wrap">x</p>', scope)).toBe('<p class="bascik__c__item" class="wrap">x</p>');
   });

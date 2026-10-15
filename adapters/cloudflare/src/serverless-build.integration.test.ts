@@ -135,8 +135,12 @@ describe("serverless build artifacts (real build, cloudflare-workers)", () => {
     const files = await listFiles(targetDir);
     expect(files).toContain("worker.js");
     expect(files).toContain("wrangler.jsonc");
-    expect(files).toContain("public/index.html");
+    // Static files are staged below the base so the asset layer serves them
+    // at the same /docs/... URLs the Node server uses.
+    expect(files).toContain("public/docs/index.html");
+    expect(files).not.toContain("public/index.html");
     expect(files).not.toContain("public/_worker.js");
+    expect(files).not.toContain("public/docs/account.html");
     expect(files).not.toContain("public/account.html");
     const wrangler = JSON.parse(await readFile(join(targetDir, "wrangler.jsonc"), "utf8"));
     expect(wrangler.main).toBe("worker.js");

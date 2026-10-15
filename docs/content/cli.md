@@ -84,6 +84,7 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--log [path]` | Also write build output to a log file. Only valid with `--build`. Default: `.bascik/build.log` |
 | `--only <glob>` | Only transpile pages matching the glob pattern (relative to `directory.pages`). Repeatable. Only valid with `--build` |
 | `--target <name>` | Also emit a serverless deployment bundle under `dist/.bascik/<name>/`. Accepts an official name (`cloudflare-pages`, `cloudflare-workers`), an adapter package (`@acme/adapter-foo`), or a local path. Only valid with `--build`; cannot be combined with `--only` |
+| `--fix` | Apply deterministic fixes during `--check` (for example, a missing `data-bascik-prop-` prefix), then report the findings that remain |
 | `--strict` | Treat warnings as errors during `--check` (exits with code 1 if warnings are found) |
 | `--json` | Emit findings as a structured JSON document during `--check` |
 | `--force` | Overwrite locally modified components during `bascik add` |
@@ -92,6 +93,8 @@ bascik add <pkg> # copy components from an installed npm package into src/compon
 | `--port <n>` | Override the server port (overrides `BASCIK_SERVER_PORT` and `http.port`) |
 | `--host <name>` | Override the server hostname (overrides `BASCIK_SERVER_HOST` and `http.hostname`) |
 | `--log-level <level>` | Override `logging.level`: `silent`, `error`, `warn`, `info`, or `debug` (overrides `BASCIK_LOG_LEVEL`) |
+| `--quiet`, `-q` | The same as `--log-level warn`: hide the per-page, copy, request, and script progress lines. The server address and the transpile summary still print. Cannot be combined with `--log-level` |
+| `--no-pin` | Do not pin the server address to the top row of the terminal. Only valid for the dev server. The same as `BASCIK_PIN_SERVER_URL=0` |
 | `--site-url <url>` | Set the site URL for this run (overrides `BASCIK_SITE_URL` and `.env`) |
 | `--env-file <path>` | Load env vars from a file (repeatable; later files win) |
 | `--config <path>` | Load the config from a specific file instead of `./bascik.config.js` or `./bascik.config.ts` |
@@ -173,7 +176,11 @@ bascik --build --log
 bascik --build --log ./logs/build.log
 ```
 
-`--log` is only valid together with `--build`; passing it to the dev server or `--server` is an error. The terminal output still stays as the primary log, and the file is an optional diagnostic artifact. If you do not pass `--log`, Bascik does not create a build log file.
+`--log` is only valid together with `--build`; passing it to the dev server or `--server` is an error. The terminal output still stays as the primary log, and the file is an optional diagnostic artifact. If you do not pass `--log`, Bascik does not create a build log file. The log file never contains color codes.
+
+### Terminal colors
+
+Build and dev output is colored when the terminal supports it: green for finished work, yellow for warnings, red for errors, and dim for labels and timings. Piped output and CI logs without a terminal stay plain. Set `NO_COLOR=1` to turn color off, or `FORCE_COLOR=1` to keep it when output is piped.
 
 ## Targeted builds (`--only`)
 
@@ -245,7 +252,7 @@ While the dev server is active, Bascik incrementally updates your build as files
   transpiled: pages/about.html in 0.3ms
   ```
 - **Open-page prioritization** rebuilds active browser tabs first:
-  When a change impacts multiple pages (such as an inlined stylesheet or shared component), Bascik checks active live-reload connections and compiles currently open pages first so your visible browser window refreshes immediately before background pages are processed.
+  When a change impacts multiple pages (such as an inlined stylesheet or shared component), Bascik checks active live-reload connections and compiles currently open pages first so your visible browser window refreshes immediately before background pages are processed. The home page compiles next, then the rest. The same order applies when the server starts. See [Compile Order](/development-server#compile-order).
 - **Static assets** are copied into `dist/`:
   ```terminal
   copied: pages/css/custom.css
@@ -302,11 +309,24 @@ When you build for production (`bascik --build`), this file is compiled to `dist
 
 ## Static analysis with `bascik --check`
 
-Run `bascik --check` from your project root to validate all pages, component files, and API route files without starting the dev server or writing any output files:
+Run `bascik --check` from your project root to validate the project without starting the dev server or writing any output files:
 
 ```sh
 bascik --check
 ```
+
+`bascik --check` is one command with two halves, and each rule lives in exactly one of them:
+
+- **Project checks** need the whole project: the config, every page and component, the route table. Duplicate routes, unused components, and unmatched tags are examples. `bascik` runs these itself.
+- **Per-file checks** need one file: an attribute typo, CSS that cannot be scoped, an API route with no handler. These are the same checks your editor shows as you type, and `bascik --check` runs them through [`@bascik/language-server`](/tools/linter) when it is installed.
+
+Projects created with `npm create bascik` have the language server installed. In a project without it, the project checks still run, and the report says what was skipped:
+
+```terminal
+ℹ  per-file checks skipped: install @bascik/language-server to run them (npm install --save-dev @bascik/language-server)
+```
+
+The language server also works on its own, with no `bascik` involved, as `npx bascik-language-server --check`. That is the right tool for a shared component library that has no site of its own. See [Linter](/tools/linter) for what it covers and how to suppress a finding.
 
 Findings are grouped by category with every location listed, brief explanations, and near-match suggestions:
 
@@ -329,12 +349,20 @@ Unused components (1)
 
   src/components/legacy-banner/legacy-banner.html
 
-✓ 0 errors, 4 warnings
+Per-file checks (2)
+  Reported by @bascik/language-server, the engine the editor uses. Run it on its own
+  with `npx bascik-language-server --check`.
+
+  src/components/nav/nav.html:3:12 - warning: (unknown-bascik-attribute) Unknown attribute "data-bascik-slott"…
+  src/components/nav/nav.html:9:1 - warning: (component-structure-order) Component template convention: place <script> blocks after HTML markup.
+
+✓ 0 errors, 6 warnings
+✓ 31 files checked by @bascik/language-server
 ```
 
 ### Check Reference
 
-`bascik --check` runs the following validations:
+`bascik --check` runs the following validations. The first table is the project checks, which `bascik` runs itself. The second is the per-file checks, which come from the language server:
 
 | Check | Category | Severity |
 | --- | --- | --- |
@@ -343,17 +371,28 @@ Unused components (1)
 | Pages directory unreadable or empty | `pages-directory` | Error |
 | Duplicate component tag names | `duplicate-component-name` | Error |
 | Circular component references | `circular-component-reference` | Error |
-| Unknown `data-bascik-*` attributes | `unknown-bascik-attribute` | Warning |
-| A script tag with both `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
 | Duplicate route resolution from page paths | `duplicate-route-resolution` | Error |
-| API route file with no recognized method export | `missing-method-handler` | Error |
 | Multiple API route files resolving to one URL, or ambiguous catch-all pairs | `route-collision` | Error |
 | Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`) | `invalid-catch-all` | Error |
-| Method-like API export with wrong casing (`get`, `Post`) | `invalid-method-case` | Warning |
 | Unmatched component tag usage | `unmatched-tag` | Warning |
 | Unused component file | `unused-component` | Warning |
-| Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
 | WHATWG HTML5 parse errors in compiled `dist/` HTML files | `dist-html-spec` | Error |
+
+The per-file checks, from `@bascik/language-server`:
+
+| Check | Rule id | Severity |
+| --- | --- | --- |
+| Unknown `data-bascik-*` attributes | `unknown-bascik-attribute` | Warning |
+| A script tag with two directives, such as `data-bascik-build` and `data-bascik-server` | `script-mode-conflict` | Error |
+| A `data-bascik-build` value other than `page` (`data-bascik-build="pages"`) | `unknown-directive-value` | Warning |
+| A declared component prop passed without the `data-bascik-prop-` prefix (auto-fixable with `--fix`) | `missing-prop-prefix` | Warning |
+| API route file with no recognized method export | `missing-method-handler` | Error |
+| Method-like API export with wrong casing (`get`, `Post`) | `invalid-method-case` | Warning |
+| A `_middleware.ts` file in the API folder | `middleware-unsupported` | Error |
+| Component template convention (`<style>` above markup, `<script>` below markup) | `component-structure-order` | Warning |
+| CSS or JavaScript in a component that cannot be scoped | `css-*`, `js-*` | Error or warning by rule |
+
+The language server knows more rules than these, such as undeclared props and slots and unsafe patterns in server scripts. They are all reported by `bascik --check` too. See [Linter](/tools/linter) for the full list and how to suppress one by its rule id. Hints, which are advice for the editor, are not reported by `--check`, so they never fail a CI run.
 
 The `dist-html-spec` check requires [parse5](https://parse5.js.org/), the reference WHATWG HTML5 parser, to be installed as a dev dependency. When parse5 is present, `--check` parses every compiled HTML file in `dist/` and reports any spec violation with a `file:line:col [error-code]` location. When parse5 is not installed, `--check` prints a one-line hint but does not fail:
 
@@ -380,6 +419,25 @@ By default, warnings do not fail the command. Pass `--strict` to treat warnings 
 bascik --check --strict
 ```
 
+### Auto-fixing with `--fix`
+
+Pass `--fix` to rewrite the findings that have exactly one correct fix, then report what remains. Fixes are applied by the language server, so `--fix` needs it installed: without it, `bascik --check --fix` exits with code 1 and changes nothing.
+
+Two rules are fixable. `missing-prop-prefix`: a declared prop passed as a plain attribute becomes a `data-bascik-prop-*` attribute. `prefer-self-closing-component`: `<my-card></my-card>` becomes `<my-card />` when the component has no slots.
+
+```sh
+bascik --check --fix
+```
+
+```html
+<!-- before -->
+<my-card title="Hello"></my-card>
+<!-- after -->
+<my-card data-bascik-prop-title="Hello"></my-card>
+```
+
+`--fix` edits only the tags that `--check` reports. Component-like text inside comments, `<script>`, `<style>`, and `<textarea>` is left alone.
+
 ### JSON output with `--json`
 
 Pass `--json` to emit findings using a stable, documented JSON schema for CI/CD status integrations:
@@ -398,6 +456,9 @@ Schema:
   "componentsChecked": 12,
   "distHtmlChecked": 8,
   "distHtmlSpecHintNeeded": false,
+  "perFileChecked": 31,
+  "perFileHintNeeded": false,
+  "fixedFiles": [],
   "findings": [
     {
       "category": "unmatched-tag",
@@ -410,12 +471,27 @@ Schema:
         }
       ],
       "suggestion": "my-viewer"
+    },
+    {
+      "category": "unknown-bascik-attribute",
+      "severity": "warning",
+      "message": "Unknown attribute \"data-bascik-slott\"…",
+      "locations": [
+        {
+          "filePath": "src/components/nav/nav.html",
+          "line": 3,
+          "column": 12
+        }
+      ],
+      "source": "language-server"
     }
   ]
 }
 ```
 
 `distHtmlChecked` is the number of `dist/` HTML files parse5 validated, or `null` when `dist/` does not exist or parse5 is not installed. `distHtmlSpecHintNeeded` is `true` when `dist/` has HTML files but parse5 is absent.
+
+`perFileChecked` is the number of files the language server checked, or `null` when it is not installed or too old, in which case `perFileHintNeeded` is `true`. `fixedFiles` lists the files `--fix` rewrote. A finding from the language server has `"source": "language-server"` and a `column`; its `category` is the rule id.
 
 `bascik --check` exits with code `1` when errors are found (or warnings under `--strict`), which makes it suitable for CI:
 

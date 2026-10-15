@@ -163,5 +163,5 @@ If you already have the official extension installed from the marketplace (`~/.v
 
 From the repository root:
 
-- `yarn ext:unit` runs fast Vitest unit tests for rules and metadata parsing.
+- `yarn ext:unit` runs fast Vitest unit tests, including one that starts the bundled language server and talks to it over the protocol. The analysis itself is tested in `lsp/` (`yarn lsp:unit`).
 - `yarn ext:e2e` runs the VS Code extension-host integration test suite.

@@ -130,6 +130,8 @@ describe("rewriteHtmlBasePaths", () => {
       `<script>const template = '<img src="/script.png">';</script>`,
       `<textarea><img src="/textarea.png"></textarea>`,
       `<img alt="greater > than" src="/active.png">`,
+      `<div data-example="click href='/keep-literal'"><a href="/real">Real</a></div>`,
+      `<img src=/unquoted.png/>`,
     ].join("");
 
     expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
@@ -138,8 +140,28 @@ describe("rewriteHtmlBasePaths", () => {
         `<script>const template = '<img src="/script.png">';</script>`,
         `<textarea><img src="/textarea.png"></textarea>`,
         `<img alt="greater > than" src="/sub/active.png">`,
+        `<div data-example="click href='/keep-literal'"><a href="/sub/real">Real</a></div>`,
+        `<img src=/sub/unquoted.png/>`,
       ].join(""),
     );
+  });
+
+  it("Does not corrupt quoted attribute strings containing URL-like attribute text with spaces", () => {
+    const html = [
+      `<div data-example="click href = '/keep-literal'"><a href = /real/>Real</a></div>`,
+      `<meta content=/share.png property=og:image/>`,
+    ].join("");
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(
+      [
+        `<div data-example="click href = '/keep-literal'"><a href=/sub/real/>Real</a></div>`,
+        `<meta content=/sub/share.png property=og:image/>`,
+      ].join(""),
+    );
+  });
+
+  it("rewrites URL attributes after a quoted value ending in a backslash", () => {
+    const html = String.raw`<img alt="C:\" src="/logo.png">`;
+    expect(rewriteHtmlBasePaths(html, "/sub/")).toBe(String.raw`<img alt="C:\" src="/sub/logo.png">`);
   });
 });
 

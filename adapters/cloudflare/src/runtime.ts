@@ -100,6 +100,8 @@ export interface SiteGraph {
   apiRoutes: GraphApiRoute[];
   /** Optional authored 500 page body. */
   custom500?: string;
+  /** A static `404.html` is deployed; its own URLs answer 404, as on Node. */
+  staticNotFoundPage?: boolean;
   /** Release identity for diagnostics headers. */
   release: string;
 }
@@ -285,7 +287,20 @@ export const createCloudflareWorker = (graph: SiteGraph, options: CreateWorkerOp
 
     // ── Dynamic pages ─────────────────────────────────────────────────────
     const page = findPage(graph, baseRelative);
-    if (!page) return forwardToAssets(request, env);
+    if (!page) {
+      if (graph.staticNotFoundPage && pageLookupCandidates(baseRelative).includes("/404")) {
+        // The asset layer serves 404.html at its own URL with 200 (and
+        // redirects its aliases). Fetch the canonical asset and answer with
+        // the status the Node server uses for the custom 404 page.
+        const assetUrl = new URL(request.url);
+        assetUrl.pathname = graph.base === "/" ? "/404" : `${graph.base}404`;
+        assetUrl.search = "";
+        const asset = await forwardToAssets(new Request(assetUrl, { method: request.method === "HEAD" ? "HEAD" : "GET", headers: request.headers }), env);
+        if (asset.status !== 200) return asset;
+        return new Response(request.method === "HEAD" ? null : asset.body, { status: 404, headers: asset.headers });
+      }
+      return forwardToAssets(request, env);
+    }
 
     const isHead = request.method === "HEAD";
     if (request.method !== "GET" && !isHead) {

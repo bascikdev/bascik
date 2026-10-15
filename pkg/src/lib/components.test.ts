@@ -24,6 +24,7 @@ import {
   listComponents,
   invalidateComponentListCache,
   readComponentRoot,
+  isPageAwareBuildScript,
 } from "./components.ts";
 import { minifyHtml } from "./html-minifier.ts";
 
@@ -368,6 +369,19 @@ describe("extractProps", () => {
         '<my-comp data-bascik-prop-title="Hello" data-bascik-prop-href="/about"></my-comp>',
       ),
     ).toEqual({ title: "Hello", href: "/about" });
+  });
+
+  it("extracts whitespace-spaced and unquoted prop values and matches case-insensitively", () => {
+    const props = extractProps(
+      '<my-comp data-bascik-prop-ctaUrl = "/start" data-bascik-prop-variant=primary></my-comp>',
+    );
+    expect(props).toEqual({ ctaUrl: "/start", variant: "primary" });
+    expect(
+      injectProps('<span data-bascik-prop-variant></span>', props),
+    ).toBe("<span>primary</span>");
+    expect(
+      injectPropAttributes('<a data-bascik-attr-href="ctaurl">Go</a>', props),
+    ).toBe('<a href="/start">Go</a>');
   });
 
   it("returns empty object when no props", () => {
@@ -766,6 +780,29 @@ describe("listComponents", () => {
     invalidateComponentListCache();
     await expect(listComponents()).resolves.toEqual({});
   });
+
+  it("emits compatibility warnings with file and line numbers when loading components with unsupported patterns", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "bascik-compat-warn-"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await mkdir(join(cwd, "src/components/bad-card"), { recursive: true });
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.html"),
+        '<div id="box"></div>\n<script>\n  const el = document.getElementById("box");\n  el.id = "mutated";\n</script>\n',
+      );
+      await writeFile(
+        join(cwd, "src/components/bad-card/bad-card.css"),
+        "[data-state] {\n  color: red;\n}\n",
+      );
+      await listComponents([join(cwd, "src/components")]);
+      const calls = warnSpy.mock.calls.map((c) => c.join(" "));
+      expect(calls.some((msg) => msg.includes("js-id-setter") && msg.includes("bad-card.html:4"))).toBe(true);
+      expect(calls.some((msg) => msg.includes("css-attribute-selector") && msg.includes("bad-card.css:1"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readComponentRoot", () => {
@@ -920,6 +957,23 @@ describe("extractInheritableAttributes", () => {
     ).toEqual({ class: "sticky" });
   });
 
+  it("extracts whitespace-spaced and unquoted inheritable attributes and named slots", () => {
+    expect(
+      extractInheritableAttributes('<my-nav class = "sticky" data-testid=main-nav />'),
+    ).toEqual({ class: "sticky", "data-testid": "main-nav" });
+
+    expect(
+      extractNamedSlotContent('<div data-bascik-slot = "header"><h1>H</h1></div><div data-bascik-slot=footer><p>F</p></div>'),
+    ).toEqual({ header: "<h1>H</h1>", footer: "<p>F</p>" });
+
+    expect(
+      replaceNamedSlots(
+        '<header data-bascik-slot = "header"></header><footer data-bascik-slot=footer></footer>',
+        { header: "<h1>H</h1>", footer: "<p>F</p>" },
+      ),
+    ).toBe("<h1>H</h1><p>F</p>");
+  });
+
   it("extracts multiple inheritable attributes", () => {
     expect(
       extractInheritableAttributes(
@@ -964,6 +1018,30 @@ describe("mergeAttributesOntoRoot", () => {
     expect(result).toContain("class='scoped-nav sticky'");
     // Must not produce a duplicate class attribute
     expect(result.match(/class=/g)).toHaveLength(1);
+  });
+
+  it("merges class and style onto root elements that use spaces around '=' or unquoted values without duplicating attributes", () => {
+    expect(
+      mergeAttributesOntoRoot('<nav class = "scoped-nav" style = "color: red" id = "main"><a>link</a></nav>', {
+        class: "sticky",
+        style: "font-weight: bold;",
+        id: "ignored-override",
+      }),
+    ).toBe('<nav class="scoped-nav sticky" style="color: red; font-weight: bold;" id = "main"><a>link</a></nav>');
+
+    expect(
+      mergeAttributesOntoRoot('<nav class=scoped-nav id = existing-id><a>link</a></nav>', {
+        class: "sticky",
+        id: "override",
+      }),
+    ).toBe('<nav class="scoped-nav sticky" id = existing-id><a>link</a></nav>');
+  });
+
+  it("matches named slots case-insensitively when camelCase is used", () => {
+    const extracted = extractNamedSlotContent('<div data-bascik-slot="heroHeader"><h1>Hero</h1></div>');
+    expect(
+      replaceNamedSlots('<header data-bascik-slot="heroheader">Fallback</header>', extracted),
+    ).toBe("<h1>Hero</h1>");
   });
 
   it("adds class attribute to root element that has none", () => {
@@ -1051,6 +1129,43 @@ describe("mergeAttributesOntoRoot", () => {
         style: "font-weight: bold;",
       }),
     ).toBe('<div style="color: red; font-weight: bold;">Card</div>');
+  });
+
+  it("does not corrupt data-class or data-style attributes on the root element when merging class or style", () => {
+    expect(
+      mergeAttributesOntoRoot('<div data-class="foo" data-style="bar" class="base">Card</div>', {
+        class: "extra",
+        style: "color: red;",
+      }),
+    ).toBe('<div data-class="foo" data-style="bar" class="base extra" style="color: red;">Card</div>');
+  });
+
+  it("ignores slot and prop markers inside HTML comments, <script>, and <textarea>", () => {
+    const template =
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+      '<script>const s = \'<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>\';</script>' +
+      '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+      '<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>';
+    const withProps = injectProps(template, { title: "Title" });
+    const withNamed = replaceNamedSlots(withProps, { header: "<h1>Header</h1>" });
+    const withDefault = replaceDefaultSlots(withNamed, "<span>Body</span>");
+
+    expect(withDefault).toBe(
+      '<!-- <p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div> -->' +
+      '<script>const s = \'<p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div>\';</script>' +
+      '<textarea><p data-bascik-prop-title></p><div data-bascik-slot="header"></div><div data-bascik-slot></div></textarea>' +
+      '<p>Title</p><h1>Header</h1><span>Body</span>',
+    );
+  });
+
+  it("accepts single-quoted named slot wrappers and close tags with trailing whitespace", () => {
+    const usage = "<div data-bascik-slot='header'><h1>H</h1></div ><p>Body</p>";
+    expect(extractNamedSlotContent(usage)).toEqual({ header: "<h1>H</h1>" });
+    expect(extractDefaultSlotContent(usage)).toBe("<p>Body</p>");
+
+    const template = "<footer><div data-bascik-slot='header'>fallback</div ><div data-bascik-slot>def</div ></footer>";
+    const namedReplaced = replaceNamedSlots(template, { header: "<h1>H</h1>" });
+    expect(replaceDefaultSlots(namedReplaced, "<p>Body</p>")).toBe("<footer><h1>H</h1><p>Body</p></footer>");
   });
 });
 
@@ -1674,3 +1789,21 @@ describe("masked string caching performance helpers", () => {
 });
 
 
+
+describe("isPageAwareBuildScript – directive value is matched exactly", () => {
+  it.each([
+    ['<script data-bascik-build = "page">', true],
+    ["<script data-bascik-build=PAGE>", true],
+    ['<script data-bascik-build data-bascik-page-aware="">', true],
+    ['<script data-bascik-build="pages">', false],
+    ['<script data-bascik-build="page-x">', false],
+    ['<script data-bascik-build data-note="data-bascik-build=page">', false],
+    ["<script data-bascik-build data-bascik-page-aware-x>", false],
+  ])("%s -> %s", (openTag, expected) => {
+    expect(isPageAwareBuildScript(openTag, "export default () => ''")).toBe(expected);
+  });
+
+  it("still defers a script that reads page context literally", () => {
+    expect(isPageAwareBuildScript("<script data-bascik-build>", "process.env.BASCIK_PAGE_PATH")).toBe(true);
+  });
+});

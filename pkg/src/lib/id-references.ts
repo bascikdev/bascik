@@ -37,8 +37,12 @@ export const collectDeclaredIds = (html: string): Set<string> => {
   );
   const declaredIds = new Set<string>();
   for (const tagMatch of shieldedHtml.matchAll(OPENING_TAG_PATTERN)) {
-    const idMatch = tagMatch[0].match(/\sid\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
-    const id = idMatch?.[1] ?? idMatch?.[2];
+    const idMatch = tagMatch[0].match(
+      /\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+?))(?=\s|\/>|>|$)/i,
+    );
+    const rawUnquoted = idMatch?.[3];
+    const unquoted = rawUnquoted?.endsWith("/") ? rawUnquoted.slice(0, -1) : rawUnquoted;
+    const id = idMatch?.[1] ?? idMatch?.[2] ?? unquoted;
     if (id) declaredIds.add(id);
   }
   return declaredIds;
@@ -52,14 +56,23 @@ const replaceAttributeValue = (
   const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // nosemgrep javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const attributePattern = new RegExp(
-    `(\\s${escapedAttribute}\\s*=\\s*)(["'])([\\s\\S]*?)\\2`,
+    `(\\s${escapedAttribute}\\s*=\\s*)(?:(["'])([\\s\\S]*?)\\2|([^\\s"'=<>` + "`" + `]+?))(?=\\s|\\/>|>|$)`,
     "i",
   );
   return tag.replace(
     attributePattern,
-    (full, prefix: string, quote: string, value: string) => {
-      const replaced = replaceValue(value);
-      return replaced === value ? full : `${prefix}${quote}${replaced}${quote}`;
+    (full, prefix: string, quote: string | undefined, quotedVal: string | undefined, unquotedVal: string | undefined) => {
+      if (quote !== undefined && quotedVal !== undefined) {
+        const replaced = replaceValue(quotedVal);
+        return replaced === quotedVal ? full : `${prefix}${quote}${replaced}${quote}`;
+      }
+      if (unquotedVal !== undefined) {
+        const trailingSlash = unquotedVal.endsWith("/") ? "/" : "";
+        const raw = trailingSlash ? unquotedVal.slice(0, -1) : unquotedVal;
+        const replaced = replaceValue(raw);
+        return replaced === raw ? full : `${prefix}"${replaced}"${trailingSlash}`;
+      }
+      return full;
     },
   );
 };
@@ -127,25 +140,33 @@ const SVG_PRESENTATION_ATTRIBUTES = [
 ];
 
 /** Rewrite ID-holding attributes in HTML, using a resolver for declared IDs. */
+const QUICK_ID_REF_RE = /\s(?:for|form|list|popovertarget|commandfor|aria-[\w-]+|itemref|headers|href|xlink:href|fill|stroke|mask|clip-path|filter|marker-[\w-]+|style)\s*=/i;
+
 export const rewriteIdReferencesInHtml = (
   html: string,
   resolve: (originalId: string) => string | null,
 ): string => {
+  if (!QUICK_ID_REF_RE.test(html)) return html;
   const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
   const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
+    if (!QUICK_ID_REF_RE.test(openingTag)) return openingTag;
     const tagName = openingTag.match(/^<\s*([a-zA-Z][a-zA-Z0-9:-]*)/)?.[1].toLowerCase();
     if (!tagName) return openingTag;
     let tag = openingTag;
 
     for (const attribute of SINGLE_ID_ATTRIBUTES) {
-      tag = replaceAttributeValue(tag, attribute, (value) =>
-        rewriteSingleId(value, resolve),
-      );
+      if (tag.includes(attribute)) {
+        tag = replaceAttributeValue(tag, attribute, (value) =>
+          rewriteSingleId(value, resolve),
+        );
+      }
     }
     for (const attribute of ID_LIST_ATTRIBUTES) {
-      tag = replaceAttributeValue(tag, attribute, (value) =>
-        rewriteIdList(value, resolve),
-      );
+      if (tag.includes(attribute)) {
+        tag = replaceAttributeValue(tag, attribute, (value) =>
+          rewriteIdList(value, resolve),
+        );
+      }
     }
 
     if (tagName === "label") {
@@ -172,14 +193,20 @@ export const rewriteIdReferencesInHtml = (
         rewriteFragment(value, resolve),
       );
     }
-    for (const attribute of SVG_PRESENTATION_ATTRIBUTES) {
-      tag = replaceAttributeValue(tag, attribute, (value) =>
-        rewriteUrlFragments(value, resolve),
-      );
+    if (tag.includes("url(") || tag.includes("URL(")) {
+      for (const attribute of SVG_PRESENTATION_ATTRIBUTES) {
+        if (tag.includes(attribute)) {
+          tag = replaceAttributeValue(tag, attribute, (value) =>
+            rewriteUrlFragments(value, resolve),
+          );
+        }
+      }
+      if (tag.includes("style")) {
+        tag = replaceAttributeValue(tag, "style", (value) =>
+          rewriteUrlFragments(value, resolve),
+        );
+      }
     }
-    tag = replaceAttributeValue(tag, "style", (value) =>
-      rewriteUrlFragments(value, resolve),
-    );
     return tag;
   });
   return restore(rewritten);
@@ -190,6 +217,7 @@ export const rewriteUsemapReferencesInHtml = (
   html: string,
   resolve: (originalName: string) => string | null,
 ): string => {
+  if (!/usemap/i.test(html)) return html;
   const { html: shieldedHtml, restore } = shieldHtmlScanningContexts(html);
   const rewritten = shieldedHtml.replace(OPENING_TAG_PATTERN, (openingTag) => {
     if (!/^<\s*img(?:\s|\/?>)/i.test(openingTag)) return openingTag;

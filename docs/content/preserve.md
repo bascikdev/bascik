@@ -55,7 +55,7 @@ Add a bare `data-bascik-preserve` directive when a third-party script looks up a
 </script>
 ```
 
-The bare directive preserves `id`, `name`, and `class` on the element and every descendant. Bascik removes the directive from compiled output.
+The bare directive preserves `id`, `name`, and `class` on the element and every descendant. Bascik removes the directive from compiled output. An empty value, `data-bascik-preserve=""`, is the bare directive as DOM serializers and some formatters write it, and behaves the same.
 
 ## External Form Endpoints
 

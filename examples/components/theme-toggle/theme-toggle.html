@@ -20,8 +20,21 @@ A button that switches between light and dark themes and remembers the choice. N
   // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
   const toggle = document.getElementById('toggle');
   const media = matchMedia('(prefers-color-scheme: dark)');
+  const preview = toggle.closest('[data-demo-theme]');
+  const themeTarget = preview ?? document.documentElement;
+  const themeAttribute = preview ? 'data-demo-theme' : 'data-theme';
+  const storageKey = preview ? 'theme-demo' : 'theme';
 
-  const current = () => document.documentElement.getAttribute('data-theme') ?? (media.matches ? 'dark' : 'light');
+  if (preview) {
+    try {
+      const savedTheme = localStorage.getItem(storageKey);
+      if (savedTheme === 'light' || savedTheme === 'dark') preview.setAttribute(themeAttribute, savedTheme);
+    } catch {
+      // The preview keeps its default theme when storage is unavailable.
+    }
+  }
+
+  const current = () => themeTarget.getAttribute(themeAttribute) ?? (media.matches ? 'dark' : 'light');
 
   const render = () => {
     toggle.setAttribute('aria-pressed', String(current() === 'dark'));
@@ -29,11 +42,11 @@ A button that switches between light and dark themes and remembers the choice. N
 
   toggle.addEventListener('click', () => {
     const next = current() === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
+    themeTarget.setAttribute(themeAttribute, next);
     try {
-      localStorage.setItem('theme', next);
+      localStorage.setItem(storageKey, next);
     } catch {
-      // Not persisted when storage is unavailable; the choice still applies to this page.
+      // Not persisted when storage is unavailable; the choice still applies here.
     }
     render();
     // Other components can react without reaching into this one.
@@ -42,7 +55,7 @@ A button that switches between light and dark themes and remembers the choice. N
 
   media.addEventListener('change', render);
   // Stay in sync when another toggle, or any other script, changes the theme.
-  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  new MutationObserver(render).observe(themeTarget, { attributes: true, attributeFilter: [themeAttribute] });
   render();
   toggle.hidden = false;
 </script>

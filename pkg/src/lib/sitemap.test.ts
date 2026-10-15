@@ -249,6 +249,29 @@ describe("generateSitemapFiles", () => {
     );
   });
 
+  describe("generated: lines", () => {
+    const run = async (level: string | undefined) => {
+      (BascikConfig as Record<string, unknown>).logging = level === undefined ? undefined : { level };
+      const log = vi.spyOn(console, "log").mockImplementation(() => { });
+      await generateSitemapFiles([]);
+      return log.mock.calls.map((call) => String(call[0]));
+    };
+    afterEach(() => {
+      delete (BascikConfig as Record<string, unknown>).logging;
+      vi.restoreAllMocks();
+    });
+
+    it("prints one line per generated file at the default level", async () => {
+      const lines = await run(undefined);
+      expect(lines.filter((l) => l.startsWith("generated:")).length).toBeGreaterThan(0);
+    });
+
+    it("prints none at warn, which is what --quiet selects, and still writes the files", async () => {
+      expect(await run("warn")).toEqual([]);
+      expect(writeFile).toHaveBeenCalled();
+    });
+  });
+
   it("excludes the 404 page from sitemap.xml", async () => {
     vi.mocked(listPages).mockResolvedValue([
       "/project/src/pages/index.html",
@@ -477,6 +500,45 @@ describe("generateSitemapFiles – early-return branches", () => {
     const xml = String(sitemapCall?.[1]);
     expect(xml).toContain("<loc>https://example.com/</loc>");
     expect(xml).not.toContain("redirect");
+  });
+
+  it("does not exclude a page whose exclude meta tag only appears inside an HTML comment or <pre>/<code>/<script>", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      if (String(p).endsWith("sitemap.xml") || String(p).endsWith("robots.txt")) return false;
+      return true;
+    });
+    mocks.readFile.mockImplementation(async () =>
+      '<!-- <meta name="bascik-sitemap" content="exclude"> -->' +
+      '<script>const example = \'<meta name="bascik-sitemap" content="exclude">\';</script>' +
+      '<textarea><meta name="bascik-sitemap" content="exclude"></textarea><p>Docs</p>',
+    );
+
+    await generateSitemapFiles(["pages/seo-guide.html"]);
+    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/seo-guide</loc>");
+  });
+
+  it("excludes a dynamic route page when its emitted dist HTML carries the exclude meta tag", async () => {
+    mocks.existsSync.mockImplementation((p: any) => {
+      const s = String(p);
+      if (s.endsWith("sitemap.xml") || s.endsWith("robots.txt")) return false;
+      // Source file does not exist (was [slug].html), but dist file exists
+      if (s.includes("/src/pages/")) return false;
+      return true;
+    });
+    mocks.readFile.mockImplementation(async (p: any) => {
+      if (String(p).includes("draft-post.html")) {
+        return '<head><meta name="bascik-sitemap" content="exclude"></head><body>Draft</body>';
+      }
+      return "<head></head><body>Published</body>";
+    });
+
+    await generateSitemapFiles(["pages/blog/published.html", "pages/blog/draft-post.html"]);
+    const sitemapCall = vi.mocked(writeFile).mock.calls.find(([f]) => String(f).includes("sitemap.xml"));
+    const xml = String(sitemapCall?.[1]);
+    expect(xml).toContain("<loc>https://example.com/blog/published</loc>");
+    expect(xml).not.toContain("draft-post");
   });
 
   it("includes <lastmod> when generate.sitemapLastmod is enabled", async () => {

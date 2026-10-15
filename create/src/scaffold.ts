@@ -39,17 +39,17 @@ export const PACKAGE_JSON = (name: string): string =>
       scripts: {
         dev: "bascik",
         build: "bascik --build",
-        lint: "bascik-language-server --check",
+        lint: "bascik --check",
         test: "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         e2e: "playwright test --config e2e/playwright.config.ts",
       },
       dependencies: {
-        "@bascik/bascik": "^1.0.0-rc.6",
+        "@bascik/bascik": "^1.0.0-rc.7",
       },
       devDependencies: {
-        "@bascik/language-server": "^0.1.0-rc.2",
+        "@bascik/language-server": "^0.1.0-rc.4",
         "@playwright/test": "^1.62.0",
         "@types/node": "^24.0.0",
         "@vitest/coverage-v8": "^4.1.10",

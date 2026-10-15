@@ -1,14 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { pagesHeaders, IMMUTABLE_CACHE_CONTROL, PAGES_DEV_NOINDEX_RULE } from './pages-headers.ts';
+import { pagesHeaders, IMMUTABLE_CACHE_CONTROL, PAGES_DEV_NOINDEX_RULE, SECURITY_HEADERS_RULE } from './pages-headers.ts';
 import { VERSIONED_IMAGE_FOLDERS } from './md-renderer.ts';
 import config, { build } from '../../bascik.config.ts';
 
 describe('pages-headers', () => {
   it('writes one immutable rule per versioned folder and nothing for other paths', () => {
     expect(pagesHeaders(['/assets/demos/', '/assets/vscode/'])).toBe(
-      `${PAGES_DEV_NOINDEX_RULE}\n/assets/demos/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n\n/assets/vscode/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
+      `${SECURITY_HEADERS_RULE}\n${PAGES_DEV_NOINDEX_RULE}\n/assets/demos/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n\n/assets/vscode/*\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\n`,
     );
-    expect(pagesHeaders([])).toBe(PAGES_DEV_NOINDEX_RULE);
+    expect(pagesHeaders([])).toBe(`${SECURITY_HEADERS_RULE}\n${PAGES_DEV_NOINDEX_RULE}`);
+  });
+
+  it('adds framing protection and safe response headers to every Pages response', () => {
+    const headers = pagesHeaders([]);
+    expect(headers).toContain("/*\n  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+    expect(headers).toContain('  X-Frame-Options: DENY');
+    expect(headers).toContain('  X-Content-Type-Options: nosniff');
+    expect(headers).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
   });
 
   it('keeps the pages.dev alias out of search results without touching the custom domain', () => {
@@ -22,7 +30,7 @@ describe('pages-headers', () => {
   it('covers exactly the folders whose image URLs are versioned', () => {
     const rules = pagesHeaders(VERSIONED_IMAGE_FOLDERS)
       .split('\n')
-      .filter((line) => line.startsWith('/'));
+      .filter((line) => line.startsWith('/') && line !== '/*');
     expect(rules).toEqual(VERSIONED_IMAGE_FOLDERS.map((folder) => `${folder}*`));
   });
 

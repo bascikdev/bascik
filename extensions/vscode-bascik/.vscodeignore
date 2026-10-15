@@ -2,12 +2,14 @@
 .vscode-test/**
 .vscode-test.cjs
 bin/**
+build.mjs
 coverage/**
 node_modules/**
 src/**
 test-fixtures/**
 dist/test/**
 dist/**/*.test.js
+dist/client-options.js
 test-coverage.json
 tsconfig.json
 vite.config.mjs

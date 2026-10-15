@@ -46,6 +46,56 @@ describe("computePageCspHashes end tags", () => {
   it("does not end a script at a lookalike tag", () => {
     expect(computePageCspHashes("<script>a('</scripts>')</script>").scripts).toEqual([sha("a('</scripts>')")]);
   });
+
+  it("ignores script and style tags inside HTML comments, <textarea>, and JavaScript string literals", () => {
+    const html =
+      "<!-- <script>commented()</script><style>.commented{}</style> -->" +
+      "<textarea><script>typed()</script><style>.typed{}</style></textarea>" +
+      '<script>const s = "<style>.fake{}</style>";</script>' +
+      "<style>.real{}</style>";
+    const hashes = computePageCspHashes(html);
+    expect(hashes.scripts).toEqual([sha('const s = "<style>.fake{}</style>";')]);
+    expect(hashes.styles).toEqual([sha(".real{}")]);
+  });
+
+  // A script body is raw text: `<!--`, `<textarea>`, or `<title>` inside it is
+  // JavaScript, not markup. Masking those before finding scripts hashed the
+  // wrong bytes or dropped later scripts, so a strict CSP blocked valid code.
+  it("hashes the exact body of a script whose string literals contain comment or RCDATA markup", () => {
+    const bodies = [
+      'const s = "<!-- x -->";',
+      'el.innerHTML = "<!--";',
+      'x = "<textarea>"; y = "</textarea>";',
+      'a = "<title>"',
+      "b()",
+    ];
+    const html =
+      `<script>${bodies[0]}</script><script>${bodies[1]}</script>` +
+      `<script>${bodies[2]}</script><script>${bodies[3]}</script>` +
+      `<script>${bodies[4]}</script><title>t</title><style>.after{}</style>`;
+    const hashes = computePageCspHashes(html);
+    expect(hashes.scripts).toEqual(bodies.map(sha).sort());
+    expect(hashes.styles).toEqual([sha(".after{}")]);
+  });
+
+  it("reads src and type the way the tokenizer does, including spaced and unquoted values", () => {
+    const hashes = computePageCspHashes(
+      '<script src = "a.js"></script><script SRC=b.js></script>' +
+      '<script type = "text/bascik-server" data-bascik-server-id="x"></script>' +
+      "<script type=text/bascik-server data-bascik-server-id=y></script>" +
+      "<script type = module>inline()</script>",
+    );
+    expect(hashes.scripts).toEqual([sha("inline()")]);
+  });
+
+  it("hashes scripts inside <template> and SVG, and skips a script the document never closes", () => {
+    const hashes = computePageCspHashes(
+      "<template><script>cloned()</script></template>" +
+      "<svg><script>svgRun()</script></svg>" +
+      "<script>never()",
+    );
+    expect(hashes.scripts).toEqual([sha("cloned()"), sha("svgRun()")].sort());
+  });
 });
 
 describe("csp-hashes manifest", () => {
